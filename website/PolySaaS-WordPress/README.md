@@ -1,6 +1,6 @@
-# SFTP Configuration
+# PolySaaS WordPress SFTP Configuration
 
-This directory contains SFTP configuration templates for VSCode's SFTP extension.
+This directory contains SFTP configuration templates for managing WordPress deployments using VSCode's SFTP extension.
 
 ## Setup Instructions
 
