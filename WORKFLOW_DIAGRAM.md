@@ -126,7 +126,7 @@ Step 3: Result
 
 Step 1: Backup
 ┌────────────────────────────────────────┐
-│ $ git branch main-backup-20231223      │
+│ $ git branch main-backup-$(date +%Y%m%d) │
 │                                        │
 │ main ─────────────> main-backup        │
 │  (preserved for safety)                │

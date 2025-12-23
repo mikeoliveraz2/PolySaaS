@@ -48,8 +48,8 @@ If a main branch already exists but you want to replace it with your clean subse
 git checkout copilot/promote-subset-clean-branch
 
 # 2. Create backup of current main (safety precaution)
-git branch main-backup-$(date +%Y%m%d)
-git push origin main-backup-$(date +%Y%m%d)
+git branch main-backup-$(date +%Y%m%d-%H%M%S)
+git push origin main-backup-$(date +%Y%m%d-%H%M%S)
 
 # 3. Delete your local main branch
 git branch -D main
@@ -80,7 +80,8 @@ This is the safest method and allows for review:
 
 1. **Create a Pull Request on GitHub:**
    - Go to your repository on GitHub
-   - Click "Pull Requests" → "New Pull Request"
+   - Navigate to the Pull Requests section
+   - Click "New Pull Request"
    - Set base: `main`, compare: `copilot/promote-subset-clean-branch`
    - Review the changes
    - Create the pull request
