@@ -9,9 +9,11 @@ This directory contains SFTP configuration templates for managing WordPress depl
    - `YOUR_HOST_HERE` - Your Hostinger server IP or hostname
    - `YOUR_USERNAME_HERE` - Your SFTP username
    - `YOUR_PASSWORD_HERE` - Your SFTP password
-   - `YOUR_DOMAIN_HERE` - Your domain name
+   - `YOUR_DOMAIN_HERE` - Your domain name (e.g., `example-site-123.hostingersite.com`)
 
-3. **IMPORTANT**: Never commit the actual `sftp.json` files to git. They are already in `.gitignore`
+3. **Note on remotePath**: The template uses `/domains/YOUR_DOMAIN_HERE/public_html` as the standard path structure for Hostinger shared hosting. If your server uses a different structure (e.g., `/home/username/domains/...`), adjust accordingly.
+
+4. **IMPORTANT**: Never commit the actual `sftp.json` files to git. They are already in `.gitignore`
 
 ## Security Note
 

@@ -5,7 +5,8 @@
   "port": 65002,
   "username": "YOUR_USERNAME_HERE",
   "password": "YOUR_PASSWORD_HERE",
-  "remotePath": "/home/YOUR_USERNAME_HERE/domains/YOUR_DOMAIN_HERE/public_html",
+  "remotePath": "/domains/YOUR_DOMAIN_HERE/public_html",
+  "uploadOnSave": true,
   "interactiveAuth": true,
   "ignore": [
     ".vscode",
