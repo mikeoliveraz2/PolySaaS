@@ -1,0 +1,39 @@
+/*
+ Theme Name:   PolySaaS Pro
+ Theme URI:    https://polysaas.online
+ Description:  Custom child theme for PolySaaS - full control, upgrade-safe
+ Author:       PolySaaS Team
+ Author URI:   https://polysaas.online
+ Template:     twentytwentyfive
+ Version:      1.0.0
+ Text Domain:  polysaas-pro
+*/
+/* refreshed */
+/* PolySaaS Pro LIVE CONFIRMATION */
+body {
+    background: #f0f9ff !important; /* very light sky blue */
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.wp-block-site-title a {
+    color: #1e40af !important; /* deep blue */
+    font-size: 3.5rem !important;
+    font-weight: 800;
+}
+.wp-block-site-logo img {
+    border: 5px solid #1e40af;
+    border-radius: 50%;
+}
+/* LOCAL TO SERVER SYNC TEST – DEC 2025 */
+.wp-block-site-title {
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+body::before {
+    content: "PolySaaS Pro LIVE & SYNCED!";
+    display: block;
+    background: #4f46e5;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+}
+/* LOCAL TO SERVER SYNC TEST – DEC 14, 2025 */

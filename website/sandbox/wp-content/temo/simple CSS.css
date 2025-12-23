@@ -1,0 +1,175 @@
+.polysaas-full-black-bar {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin-left: calc(-50vw + 50%) !important;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    box-sizing: border-box;
+}
+
+/* Machined aluminum bottom bevel */
+.polysaas-full-black-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(to bottom, #333333, #777777, #aaaaaa, #cccccc, #aaaaaa, #777777, #333333);
+    pointer-events: none;
+}
+
+header .polysaas-centered-menu,
+.wp-block-template-part-header .polysaas-centered-menu,
+.wp-block-navigation.polysaas-centered-menu {
+    justify-content: center !important;
+    text-align: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.polysaas-centered-menu .wp-block-navigation__container,
+.polysaas-centered-menu .wp-block-navigation-item {
+    justify-content: center !important;
+    text-align: center !important;
+}
+
+.polysaas-centered-menu .wp-block-navigation__container {
+    flex-direction: row !important;
+    justify-content: flex-end !important; /* pushes to right if center fails */
+}
+
+.polysaas-full-width-group {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin-left: calc(-50vw + 50%) !important;
+    box-sizing: border-box;
+}
+
+.main-sidebar {
+    transition: opacity 0.4s ease, width 0.4s ease;
+    opacity: 1;
+    width: 220px;
+    background: #111111;
+    border: 2px solid #444444;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    padding: 20px;
+}
+
+.main-sidebar.hidden {
+    opacity: 0;
+    width: 0;
+    padding: 0;
+}
+
+.icon-sidebar {
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    background: #111111;
+    border: 1px solid #555555;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    padding: 5px;
+}
+
+.main-content {
+    transition: width 0.4s ease;
+    width: calc(100% - 220px);
+}
+
+.main-content.expanded {
+    width: calc(100% - 60px);
+}
+
+.icon-sidebar a {
+  position: relative;
+  display: block;
+  margin: 10px 0;
+  text-decoration: none;
+}
+
+.icon-sidebar svg {
+  transition: transform 0.2s ease;
+}
+
+.icon-sidebar a:hover svg {
+  transform: scale(1.1); /* subtle grow on hover */
+}
+
+.icon-sidebar a::after {
+  content: attr(data-label); /* we'll add data-label to each  */
+  position: absolute;
+  left: 70px; /* right of icon, adjust if needed */
+  top: 50%;
+  transform: translateY(-50%);
+  background: #222;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.icon-sidebar a:hover::after {
+  opacity: 1;
+}
+
+.icon-sidebar {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    opacity: 0;
+    overflow: hidden;
+    transition: width 0.4s ease, opacity 0.4s ease;
+}
+
+.icon-sidebar.visible {
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    padding: 5px !important;
+    opacity: 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
