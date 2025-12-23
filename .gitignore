@@ -1,0 +1,40 @@
+# WordPress Core Files
+wp-admin/
+wp-includes/
+*.log
+
+# WordPress Configuration
+wp-config.php
+.htaccess
+
+# Uploads (typically not committed)
+wp-content/uploads/
+*.wpress
+
+# Sensitive Files
+**/sftp.json
+*.pem
+*.key
+.env
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+
+# Temporary files
+*.tmp
+*.bak
+tmp/
+temp/
