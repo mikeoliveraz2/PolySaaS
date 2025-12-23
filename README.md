@@ -29,18 +29,20 @@ See [setup vscode for wordpress.md](./website/setup%20vscode%20for%20wordpress.m
 
 This repository uses a clean subset approach, excluding large files like uploads and .wpress archives.
 
-### Promoting Branches to Main
+### 🚀 Promoting Your Branch to Main
 
-If you need to promote your current branch to main (or set up main for the first time), see the comprehensive guide:
+**Quick Answer:** Need to promote your subset-clean branch to main? Start here:
 
-📖 **[Branch Promotion Guide](./BRANCH_PROMOTION_GUIDE.md)**
+1. **⚡ Quick Start** → [QUICK_START_PROMOTION.md](./QUICK_START_PROMOTION.md) - Get it done in 5 minutes
+2. **📖 Full Guide** → [BRANCH_PROMOTION_GUIDE.md](./BRANCH_PROMOTION_GUIDE.md) - Complete reference with all methods
+3. **📊 Visual Guide** → [WORKFLOW_DIAGRAM.md](./WORKFLOW_DIAGRAM.md) - Flowcharts and diagrams
 
-This guide covers:
-- Creating main from a clean subset branch
-- Replacing existing main branch
-- Using Pull Requests for safe promotion
-- Post-promotion verification steps
-- Troubleshooting common issues
+**What you'll learn:**
+- ✅ How to create main branch from your clean subset
+- ✅ Multiple promotion methods (simple, merge, force, PR)
+- ✅ Step-by-step instructions for your specific situation
+- ✅ Safety checks and troubleshooting
+- ✅ Post-promotion verification steps
 
 ## Development Workflow
 
@@ -69,10 +71,15 @@ When contributing to this repository:
 4. Submit a Pull Request
 5. Wait for review and approval
 
-## Additional Documentation
+## Documentation Index
 
-- [Branch Promotion Guide](./BRANCH_PROMOTION_GUIDE.md) - How to promote branches to main
-- [WordPress Setup Guide](./website/setup%20vscode%20for%20wordpress.md) - VSCode + SFTP setup
+### Branch Management
+- 📋 [Quick Start: Promote to Main](./QUICK_START_PROMOTION.md) - Fast 5-minute guide
+- 📖 [Complete Branch Promotion Guide](./BRANCH_PROMOTION_GUIDE.md) - Full reference
+- 📊 [Workflow Diagrams](./WORKFLOW_DIAGRAM.md) - Visual flowcharts and decision trees
+
+### Development Setup
+- 🔧 [WordPress Setup Guide](./website/setup%20vscode%20for%20wordpress.md) - VSCode + SFTP configuration
 
 ## Support
 
