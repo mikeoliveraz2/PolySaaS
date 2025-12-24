@@ -93,6 +93,8 @@ markers =
 
 ### conftest.py Example
 
+**Note**: This is an example for when the FastAPI application is implemented.
+
 ```python
 import pytest
 from sqlalchemy import create_engine
@@ -136,6 +138,8 @@ def client():
 8. **Test Behavior**: Not implementation details
 
 ## Example Test
+
+**Note**: This is an example for when the FastAPI application is implemented.
 
 ```python
 def test_create_user_with_valid_data(db_session):

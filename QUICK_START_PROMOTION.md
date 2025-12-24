@@ -59,7 +59,18 @@ git push origin main
 ```bash
 git checkout main
 git reset --hard v1.0.0
-git push origin main --force  # ⚠️  Use with caution
+# ⚠️  DANGER: Force push should ONLY be used in emergency situations
+# and requires coordination with the entire team.
+# Consider using 'git revert' instead for safer rollbacks.
+# Force push command (USE WITH EXTREME CAUTION):
+# git push origin main --force
+```
+
+**Safer alternative - use revert instead:**
+```bash
+git checkout main
+git revert <commit-hash>
+git push origin main  # Normal push, safe for collaboration
 ```
 
 ## Common Commands

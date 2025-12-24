@@ -71,7 +71,7 @@ git push -u origin main
 ### 5. Add Remote and Push
 
 ```bash
-git remote add origin https://github.com/username/repo-name.git
+git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
 git branch -M main
 git push -u origin main
 ```

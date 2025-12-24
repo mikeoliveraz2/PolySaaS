@@ -41,7 +41,7 @@ This project includes comprehensive documentation:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/mikeoliveraz2/PolySaaS.git
+git clone https://github.com/YOUR_USERNAME/PolySaaS.git
 cd PolySaaS
 ```
 
@@ -62,7 +62,7 @@ cp .env.example .env
 
 For WordPress development, see the WordPress setup documentation in `website/`.
 
-For FastAPI backend development:
+For FastAPI backend development (once implemented):
 ```bash
 # Run development server
 python -m uvicorn src.polysaas.main:app --reload
@@ -73,6 +73,8 @@ pytest
 # Run linting
 make lint
 ```
+
+**Note**: The FastAPI application is documented but not yet implemented. See `src/README.md` for planned structure.
 
 ## Repository Structure
 
