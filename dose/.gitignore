@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+.DS_Store
+Thumbs.db
+node_modules/
+venv/
+.idea/
+*.log
+*.wpress
+*.pptx
+*.ppt
+*.zip
+*.tar
+large_files_backup/
