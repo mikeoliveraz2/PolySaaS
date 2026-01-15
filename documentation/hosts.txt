@@ -1,0 +1,11 @@
+127.0.0.1 polysaas.online
+127.0.0.1 app.polysaas.online          # main dashboard / login
+127.0.0.1 osticket.polysaas.online
+127.0.0.1 invoiceninja.polysaas.online
+127.0.0.1 n8n.polysaas.online
+127.0.0.1 metabase.polysaas.online
+127.0.0.1 hedgedoc.polysaas.online
+127.0.0.1 mail.polysaas.online
+127.0.0.1 admin.polysaas.online
+127.0.0.1 api.polysaas.online
+127.0.0.1 www.polysaas.online

@@ -1,0 +1,2 @@
+"id","primary_color","name","slug","schema_name","description","tagline","logo","created_at","is_active"
+"2","#007bff","Public","public","public","Default public tenant","Public schema",NULL,NULL,True
