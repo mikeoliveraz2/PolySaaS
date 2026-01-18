@@ -1,0 +1,11 @@
+# Headless browser dependencies for Airtable authentication
+# Install with: pip install -r requirements_headless.txt
+
+# Option 1: Playwright (recommended - faster, more modern)
+playwright>=1.40.0
+
+# Option 2: Selenium (fallback)
+selenium>=4.15.0
+
+# Note: After installing playwright, run: playwright install chromium
+

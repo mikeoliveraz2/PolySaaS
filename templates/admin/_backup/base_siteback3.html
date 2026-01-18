@@ -1,0 +1,12 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static admin_urls admin_modify jazzmin %}
+
+{% block title %}{{ block.super }} - Custom Loaded!{% endblock %}  <!-- Test: Check browser tab title -->
+
+{% block nav-global %}
+    <div style="background: red; color: white; padding: 12px; text-align: center; font-size: 1.2em; margin-bottom: 8px; border-radius: 4px;">
+        TEST HEADER: admin/base.html is loaded!
+        <span style="font-weight:normal;">Hello, {{ request.user.username }}!</span>
+    </div>
+    {{ block.super }}
+{% endblock %}

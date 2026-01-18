@@ -1,0 +1,30 @@
+{% load i18n %}
+<nav id="nav-sidebar" aria-label="{% trans 'Sidebar navigation' %}">
+    <input type="search" id="nav-filter" placeholder="{% trans 'Filter navigation items' %}" aria-label="{% trans 'Filter navigation items' %}">
+    <ul>
+    {% for app in app_list %}
+        <li class="model-app">
+            <div class="app-label">{{ app.name }}</div>
+            <ul>
+            {% for model in app.models %}
+                <li class="model-item">
+                    <a href="{{ model.admin_url }}">{{ model.name }}</a>
+                    {% if model.add_url %}
+                        <a href="{{ model.add_url }}" class="addlink">{% trans 'Add' %}</a>
+                    {% endif %}
+                    {# Do NOT render change_url or change_icon #}
+                    {# {% if model.change_url %}
+                        <a href="{{ model.change_url }}" class="changelink">
+                            {% if model.change_icon %}
+                                {{ model.change_icon }}
+                            {% endif %}
+                            {% trans 'Change' %}
+                        </a>
+                    {% endif %} #}
+                </li>
+            {% endfor %}
+            </ul>
+        </li>
+    {% endfor %}
+    </ul>
+</nav>

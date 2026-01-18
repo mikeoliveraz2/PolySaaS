@@ -1,0 +1,1040 @@
+# Page after successful subscribe: connect to Google or skip
+def connect_social_after_subscribe(request):
+    return render(request, 'dose/connect_social_after_subscribe.html')
+# DO NOT MODIFY: Critical system file. Ask before making changes.
+# Debug session view for inspecting session and user info
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+@login_required
+def debug_session_view(request):
+    """Debug view to inspect session and user info"""
+    context = {
+        'user': request.user,
+        'session': dict(request.session.items()),
+        'is_authenticated': request.user.is_authenticated,
+        'session_keys': list(request.session.keys()),
+    }
+    return render(request, 'dose/debug_session.html', context)
+# Bulk moved views from views.py
+from django.shortcuts import render, redirect
+from django.contrib.auth import logout
+from django.contrib.auth.decorators import login_required, user_passes_test
+from rest_framework import viewsets, permissions, status
+from rest_framework.response import Response
+from dose.models import AtomicService, Subscription, UserProfile, Tenant, RequestLog, ErrorLog
+from dose.serializers import AtomicServiceSerializer, SubscriptionSerializer, RequestLogSerializer, ErrorLogSerializer
+import stripe
+stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
+
+@login_required
+def debug_tenant_session(request):
+    user = request.user
+    session_keys = dict(request.session.items())
+    # Add any debug logic needed
+    return render(request, 'dose/debug_tenant.html', {'user': user, 'session_keys': session_keys})
+
+def index(request):
+    return render(request, 'dose/index.html')
+
+def logout_view(request):
+    """Basic logout view for Django with debug logging."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"logout_view: Logging out user {getattr(request.user, 'username', None)}. Session keys before logout: {list(request.session.keys())}")
+    logout(request)
+    logger.info(f"logout_view: Session keys after logout: {list(request.session.keys())}")
+    return redirect('/')
+
+class RequestLogViewSet(viewsets.ModelViewSet):
+    queryset = RequestLog.objects.all()
+    serializer_class = RequestLogSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+class ErrorLogViewSet(viewsets.ModelViewSet):
+    queryset = ErrorLog.objects.all()
+    serializer_class = ErrorLogSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+class SubscriptionViewSet(viewsets.ModelViewSet):
+    queryset = Subscription.objects.all()
+    serializer_class = SubscriptionSerializer
+    permission_classes = [permissions.AllowAny]
+    def create(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        import json as pyjson
+        print("SubscriptionViewSet.create called")
+        print(f"Request content_type: {request.content_type}")
+        # ...existing code...
+# Custom swagger view moved from views.py
+from django.shortcuts import render
+def custom_swagger_view(request):
+    return render(request, 'dose/swagger_custom.html', {
+        'schema_url': '/dose/api/openapi/',
+    })
+# Health check view moved from views.py
+from django.http import JsonResponse
+from django.utils import timezone
+import json
+from dose.models import Tenant, UserProfile
+from django.contrib.auth.models import User
+def health_check(request):
+    """Health check endpoint for monitoring"""
+    try:
+        # Basic database connectivity check
+        tenant_count = Tenant.objects.count()
+        user_count = User.objects.count()
+        return JsonResponse({
+            'status': 'healthy',
+            'timestamp': json.dumps(timezone.now(), default=str),
+            'database': 'connected',
+            'tenants': tenant_count,
+            'users': user_count
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'unhealthy',
+            'error': str(e)
+        }, status=500)
+# Create sample dashboard buttons view moved from views.py
+from django.http import JsonResponse
+from dose.models import DashboardButton
+from dose.utils import get_current_tenant
+def create_sample_dashboard_buttons(request):
+    """Create sample dashboard buttons for testing (Development only)"""
+    current_tenant = get_current_tenant(request)
+    if not current_tenant:
+        return JsonResponse({'success': False, 'error': 'No active tenant'}, status=400)
+    # Check if user already has buttons
+    existing_buttons = DashboardButton.objects.filter(
+        user=request.user,
+        tenant=current_tenant
+    ).count()
+    if existing_buttons > 0:
+        return JsonResponse({
+            'success': False,
+            'error': f'User already has {existing_buttons} dashboard buttons'
+        }, status=400)
+    # Sample buttons to create
+    sample_buttons = [
+        {
+            'title': 'Admin Panel',
+            'description': 'Access the Django administration interface for system management',
+            'url': '/admin/',
+            'button_type': 'internal',
+            'icon_style': 'emoji',
+            'icon_value': '�a"!���',
+            'target': '_self',
+            'color': '#3498db',
+            'size': 'medium',
+            'sort_order': 1
+        },
+        {
+            'title': 'Parameters',
+            'description': 'Configure system parameters and application settings',
+            'url': '/parameters/',
+            'button_type': 'internal',
+            'icon_style': 'emoji',
+            'icon_value': '�x `',
+            'target': '_self',
+            'color': '#27ae60',
+            'size': 'medium',
+            'sort_order': 2
+        },
+        {
+            'title': 'Reviews',
+            'description': 'Access the reviews and feedback system',
+            'url': '/reviews/',
+            'button_type': 'internal',
+            'icon_style': 'emoji',
+            'icon_value': '���',
+            'target': '_self',
+            'color': '#f39c12',
+            'size': 'medium',
+            'sort_order': 3
+        },
+        {
+            'title': 'API Documentation',
+            'description': 'Browse API endpoints and documentation',
+            'url': '/api/',
+            'button_type': 'api',
+            'icon_style': 'emoji',
+            'icon_value': '�x R',
+            'target': '_blank',
+            'color': '#9b59b6',
+            'size': 'large',
+            'sort_order': 4
+        }
+    ]
+    created_buttons = []
+    for button_data in sample_buttons:
+        button = DashboardButton.objects.create(
+            user=request.user,
+            tenant=current_tenant,
+            **button_data
+        )
+        created_buttons.append({
+            'id': button.id,
+            'title': button.title,
+            'url': button.url
+        })
+    return JsonResponse({
+        'success': True,
+        'message': f'Created {len(created_buttons)} sample dashboard buttons',
+        'buttons': created_buttons
+    })
+# Setup demo view moved from views.py
+from django.http import JsonResponse
+from dose.models import Tenant, UserProfile
+from django.contrib.auth.models import User
+def setup_demo_view(request):
+    """Setup demo data for testing the session-based tenant system"""
+    messages = []
+    try:
+        # Create demo tenant
+        demo_tenant, created = Tenant.objects.get_or_create(
+            slug='demo',
+            defaults={
+                'name': 'Demo Company',
+                'description': 'Demo tenant for testing session-based multi-tenancy',
+                'tagline': 'Your Demo Environment',
+                'is_active': True
+            }
+        )
+        if created:
+            messages.append(f"Created demo tenant: {demo_tenant.name}")
+        else:
+            messages.append(f"Demo tenant already exists: {demo_tenant.name}")
+        # Create demo user
+        demo_user, created = User.objects.get_or_create(
+            username='demouser',
+            defaults={
+                'email': 'demo@example.com',
+                'first_name': 'Demo',
+                'last_name': 'User',
+                'is_staff': True,
+                'is_active': True
+            }
+        )
+        if created:
+            demo_user.set_password('demo123')
+            demo_user.save()
+            messages.append(f"Created demo user: {demo_user.username}")
+        else:
+            messages.append(f"Demo user already exists: {demo_user.username}")
+        # Create user profile linking user to tenant
+        user_profile, created = UserProfile.objects.get_or_create(
+            user=demo_user,
+            defaults={'tenant': demo_tenant}
+        )
+        if created:
+            messages.append(f"Created user profile linking {demo_user.username} to {demo_tenant.name}")
+        else:
+            messages.append(f"User profile already exists for {demo_user.username}")
+        # Create admin user
+        admin_user, created = User.objects.get_or_create(
+            username='admin',
+            defaults={
+                'email': 'admin@example.com',
+                'first_name': 'Admin',
+                'last_name': 'User',
+                'is_staff': True,
+                'is_superuser': True,
+                'is_active': True
+            }
+        )
+        if created:
+            admin_user.set_password('admin123')
+            admin_user.save()
+            messages.append(f"Created admin user: {admin_user.username}")
+        else:
+            messages.append(f"Admin user already exists: {admin_user.username}")
+        # Create admin profile
+        admin_profile, created = UserProfile.objects.get_or_create(
+            user=admin_user,
+            defaults={'tenant': demo_tenant}
+        )
+        if created:
+            messages.append(f"Created admin profile")
+        return JsonResponse({
+            'success': True,
+            'message': 'Demo setup completed successfully',
+            'details': messages,
+            'demo_credentials': {
+                'username': 'demouser',
+                'password': 'demo123',
+                'tenant': demo_tenant.name
+            },
+            'admin_credentials': {
+                'username': 'admin',
+                'password': 'admin123',
+                'tenant': demo_tenant.name
+            }
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Demo setup failed: {str(e)}',
+            'details': messages
+        })
+# Debug view moved from views.py
+from django.shortcuts import render
+from dose.models import UserProfile, Tenant
+from django.contrib.auth.models import User
+def debug_view(request):
+    """Debug view to check system status"""
+    # Only show user_profiles if in public schema and user is superadmin
+    show_profiles = False
+    current_schema = request.session.get('current_schema', 'public')
+    if current_schema == 'public' and request.user.is_superuser:
+        show_profiles = True
+    context = {
+        'users': User.objects.all(),
+        'tenants': Tenant.objects.all(),
+        'user_profiles': UserProfile.objects.all() if show_profiles else [],
+        'current_tenant_id': request.session.get('tenant_id'),
+        'current_tenant_name': request.session.get('tenant_name'),
+        'current_tenant_slug': request.session.get('tenant_slug'),
+        'current_user': request.user if request.user.is_authenticated else None,
+        'session_data': dict(request.session.items()),
+    }
+    return render(request, 'dose/debug.html', context)
+# Track dashboard button click view moved from views.py
+from django.http import JsonResponse
+import json
+from dose.utils import get_current_tenant
+from dose.models import DashboardButton
+def track_dashboard_button_click(request):
+    """Track dashboard button clicks for analytics"""
+    if request.method == 'POST' and request.user.is_authenticated:
+        try:
+            data = json.loads(request.body)
+            button_id = data.get('button_id')
+            if button_id:
+                # Get the dashboard button and verify it belongs to the current user and tenant
+                current_tenant = get_current_tenant(request)
+                try:
+                    dashboard_button = DashboardButton.objects.get(
+                        id=button_id,
+                        user=request.user,
+                        tenant=current_tenant,
+                        is_active=True
+                    )
+                    # Track the click
+                    dashboard_button.track_click()
+                    return JsonResponse({
+                        'success': True,
+                        'clicks': dashboard_button.click_count,
+                        'button_title': dashboard_button.title
+                    })
+                except DashboardButton.DoesNotExist:
+                    return JsonResponse({'success': False, 'error': 'Dashboard button not found'}, status=404)
+            else:
+                return JsonResponse({'success': False, 'error': 'Missing button_id'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    return JsonResponse({'success': False, 'error': 'Invalid request'}, status=405)
+# Track navigation click view moved from views.py
+from django.http import JsonResponse
+import json
+from dose.utils import get_current_tenant
+from dose.models import NavigationItem
+def track_navigation_click(request):
+    """Track navigation item clicks for analytics"""
+    if request.method == 'POST' and request.user.is_authenticated:
+        try:
+            data = json.loads(request.body)
+            item_id = data.get('item_id')
+            if item_id:
+                # Get the navigation item and verify it belongs to user's tenant
+                current_tenant = get_current_tenant(request)
+                try:
+                    nav_item = NavigationItem.objects.select_related('panel').get(
+                        id=item_id,
+                        panel__tenant=current_tenant,
+                        is_active=True
+                    )
+                    # Check if user has permission for this item
+                    if nav_item.has_permission(request.user):
+                        nav_item.increment_click_count()
+                        return JsonResponse({'success': True, 'clicks': nav_item.click_count})
+                    else:
+                        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+                except NavigationItem.DoesNotExist:
+                    return JsonResponse({'success': False, 'error': 'Navigation item not found'}, status=404)
+            else:
+                return JsonResponse({'success': False, 'error': 'Missing item_id'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    return JsonResponse({'success': False, 'error': 'Invalid request'}, status=405)
+# Update tenant API view moved from views.py
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
+import json
+from dose.utils import get_current_tenant
+@login_required
+@csrf_exempt
+def update_tenant_api(request):
+    """API endpoint to update tenant information"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST method required'})
+    if not request.user.is_staff:
+        return JsonResponse({'success': False, 'error': 'Staff access required'})
+    current_tenant = get_current_tenant(request)
+    if not current_tenant:
+        return JsonResponse({'success': False, 'error': 'No active tenant'})
+    try:
+        data = json.loads(request.body)
+        # Update allowed fields
+        if 'name' in data:
+            current_tenant.name = data['name']
+            request.session['tenant_name'] = data['name']
+        if 'description' in data:
+            current_tenant.description = data['description']
+        if 'tagline' in data:
+            current_tenant.tagline = data['tagline']
+        current_tenant.save()
+        return JsonResponse({
+            'success': True,
+            'message': 'Tenant updated successfully',
+            'tenant': {
+                'id': current_tenant.id,
+                'name': current_tenant.name,
+                'description': current_tenant.description,
+                'tagline': current_tenant.tagline
+            }
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+# Get tenant info API view moved from views.py
+from django.http import JsonResponse
+from dose.utils import get_current_tenant
+def get_tenant_info_api(request):
+    """API endpoint to get current tenant information"""
+    current_tenant = get_current_tenant(request)
+    if not current_tenant:
+        return JsonResponse({'success': False, 'error': 'No tenant found for this session.'}, status=404)
+    return JsonResponse({
+        'success': True,
+        'tenant': {
+            'id': current_tenant.id,
+            'name': current_tenant.name,
+            'slug': current_tenant.slug,
+            'description': current_tenant.description,
+            'logo': current_tenant.logo.url if current_tenant.logo else None,
+            'tagline': current_tenant.tagline,
+            'created_at': current_tenant.created_at.isoformat(),
+            'is_active': current_tenant.is_active
+        }
+    })
+# Get user tenants API view moved from views.py
+from django.http import JsonResponse
+from dose.models import UserProfile
+from django.contrib.auth.decorators import login_required
+# Get user tenants API view moved from views.py
+from django.http import JsonResponse
+from dose.models import UserProfile
+@login_required
+def get_user_tenants_api(request):
+    """API endpoint to get user's available tenants"""
+    try:
+        user_profile = request.user.userprofile
+        tenant = user_profile.tenant
+        current_tenant_id = request.session.get('tenant_id')
+        tenants = [{
+            'id': tenant.id,
+            'name': tenant.name,
+            'slug': tenant.slug,
+            'description': tenant.description,
+            'logo': tenant.logo.url if tenant.logo else None,
+            'is_current': current_tenant_id == tenant.id
+        }]
+        return JsonResponse({
+            'success': True,
+            'tenants': tenants,
+            'current_tenant_id': current_tenant_id
+        })
+    except UserProfile.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'No tenant profile found',
+            'tenants': []
+        })
+# Tenant users view moved from views.py
+from django.shortcuts import render
+from django.contrib.auth.models import User
+from dose.utils import get_current_tenant
+def tenant_users(request):
+    """View for managing tenant users"""
+    current_tenant = get_current_tenant(request)
+    # Get all users for this tenant
+    tenant_users = User.objects.filter(userprofile__tenant=current_tenant)
+    context = {
+        'tenant': current_tenant,
+        'users': tenant_users,
+        'can_manage': request.user.is_staff
+    }
+    return render(request, 'dose/tenant_users.html', context)
+# Tenant settings view moved from views.py
+from django.shortcuts import render
+import logging
+from dose.utils import get_current_tenant
+def tenant_settings(request):
+    """View for managing tenant settings"""
+    logger = logging.getLogger(__name__)
+    current_tenant = get_current_tenant(request)
+    logger.info(f"tenant_settings: current_tenant={current_tenant}")
+    logger.info(f"tenant_settings: session keys={dict(request.session.items())}")
+
+    can_edit = request.user.is_staff
+    if request.method == 'POST' and can_edit:
+        current_tenant.name = request.POST.get('name', current_tenant.name)
+        current_tenant.description = request.POST.get('description', current_tenant.description)
+        current_tenant.save()
+        request.session['tenant_name'] = current_tenant.name
+
+    # Toggle this to True to show under construction page
+    show_under_construction = False
+    if show_under_construction:
+        return render(request, 'dose/tenant_settings_under_construction.html')
+    else:
+        return render(request, 'dose/tenant_settings.html', {
+            'tenant': current_tenant,
+            'can_edit': can_edit
+        })
+# Switch tenant view moved from views.py
+from django.http import HttpResponseForbidden
+from django.shortcuts import redirect
+from dose.models import Tenant
+def switch_tenant(request, tenant_id):
+    """Allow users to switch between available tenants"""
+    if request.user.is_authenticated:
+        try:
+            # Check if user has access to this tenant
+            tenant = Tenant.objects.get(id=tenant_id, userprofile__user=request.user)
+            request.session['tenant_id'] = tenant.id
+            request.session['tenant_name'] = tenant.name
+            request.session['tenant_slug'] = tenant.slug
+            request.session['tenant_description'] = getattr(tenant, 'description', '')
+            if hasattr(tenant, 'logo') and tenant.logo:
+                request.session['tenant_logo_url'] = tenant.logo.url
+            return redirect('dose:dashboard')
+        except Tenant.DoesNotExist:
+            return HttpResponseForbidden("You do not have access to this tenant")
+    return redirect('dose:login')
+# Landing page view moved from views.py
+from django.shortcuts import render, redirect
+from django.utils import timezone
+from dose.models import UserProfile, NavigationPanel, DashboardButton, NavigationItem
+from dose.utils import get_current_tenant, get_tenant_theme_colors
+def landing_page(request):
+    """
+    Comprehensive landing page with themed layout and table-driven navigation
+    Includes: header, menu bar, tenant-specific navigation panels, main body, status bar
+    Redirects to login with tenant selection if no active tenant
+    """
+    current_tenant = get_current_tenant(request)
+    user_profile = UserProfile.objects.filter(user=request.user).first() if request.user.is_authenticated else None
+
+    # If no active tenant
+    if not current_tenant:
+        theme_info = {
+            'name': 'default',
+            'display_name': 'Default'
+        }
+        theme_colors = get_tenant_theme_colors('tech_blue')
+        status_info = {'system_status': 'operational'}
+        context = {
+            'current_tenant': None,
+            'user_profile': user_profile,
+            'theme_info': theme_info,
+            'theme_colors': theme_colors,
+            'status_info': status_info,
+            'navigation_panels': [],
+            'dashboard_buttons': [],
+            'top_navigation_items': [],
+            'page_title': 'D.O.S.E. Landing - System'
+        }
+        if not request.user.is_authenticated:
+            # Only redirect to login if not authenticated
+            login_url = f"/dose/login/?next={request.path}"
+            return redirect(login_url)
+        # If authenticated, show prompt to select tenant
+        context['tenant_prompt'] = True
+        return render(request, 'dose/landing_page.html', context)
+
+    # If tenant is set, show full landing page
+    theme_info = {
+        'name': 'tech_blue',
+        'display_name': 'Tech Blue'
+    }
+    theme_colors = get_tenant_theme_colors('tech_blue')
+    # Get tenant-specific navigation panels and items
+    navigation_panels = NavigationPanel.objects.filter(
+        tenant=current_tenant,
+        is_active=True
+    ).prefetch_related('navigation_items').order_by('sort_order')
+
+    # Filter navigation items based on user permissions
+    filtered_panels = []
+    for panel in navigation_panels:
+        active_items = []
+        for item in panel.navigation_items.filter(is_active=True).order_by('sort_order'):
+            if item.has_permission(request.user):
+                active_items.append(item)
+
+        # Only include panels that have at least one visible item
+        if active_items:
+            panel.filtered_items = active_items
+            filtered_panels.append(panel)
+
+    # Get PassThroughEndpoint records (per-tenant external services)
+    # These should display ABOVE NavigationItems in the sidebar
+    from dose.models import PassThroughEndpoint
+    passthrough_endpoints = PassThroughEndpoint.objects.filter(
+        is_enabled=True,
+        show_in_menu=True
+    ).order_by('id')
+
+    # All PassThroughEndpoint records are passthrough services
+    passthrough_services = []  # Gmail, OSTicket, HubSpot, etc. (passthrough endpoints)
+    external_services = []     # Other external integrations (from NavigationPanel if added later)
+
+    for endpoint in passthrough_endpoints:
+        # Use standardized /pt/[context]/[trigger] URL format
+        from django.urls import reverse
+        
+        # Determine context based on service type
+        if endpoint.trigger_path.lower() in ['osticket', 'gmail']:
+            # Admin-accessible services
+            context = 'admin'
+        else:
+            # Default to admin context for other services
+            context = 'admin'
+        
+        # Use standardized passthrough URL format
+        url = f'/pt/{context}/{endpoint.trigger_path}/'
+
+        service_data = {
+            'id': f"pt_{endpoint.id}",
+            'title': endpoint.menu_title or endpoint.trigger_path.title(),
+            'url': url,
+            'icon': endpoint.menu_icon or "🔗",
+            'description': endpoint.description or f"Access {endpoint.menu_title or endpoint.trigger_path}"
+        }
+
+        # All PassThroughEndpoint records go to passthrough_services
+        passthrough_services.append(service_data)
+
+    # Get user's customizable dashboard buttons (Big Ass Buttons - BABs)
+    dashboard_buttons = DashboardButton.objects.filter(
+        user=request.user,
+        tenant=current_tenant,
+        is_active=True
+    ).order_by('sort_order')
+
+    # System status information
+    status_info = {
+        'system_status': 'operational',
+        'last_login': request.user.last_login,
+        'tenant_users_count': UserProfile.objects.filter(tenant=current_tenant).count() if current_tenant else 0,
+        'current_time': timezone.now(),
+        'total_navigation_panels': len(filtered_panels),
+        'total_navigation_items': sum(len(panel.filtered_items) for panel in filtered_panels),
+        'dashboard_buttons_count': dashboard_buttons.count()
+    }
+
+    # Static navigation menu items (for header/top menu)
+    top_navigation_items = [
+        {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '📊'},
+        {'name': 'About', 'url': '/dose/about/', 'icon': 'ℹ️'},
+        {'name': 'Admin Panel', 'url': '/admin/', 'icon': '⚙️'},
+        {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
+        {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
+        {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'}
+    ]
+
+    # Add dynamic passthrough endpoints (e.g., Gmail) from 'External Services' NavigationPanel
+    if current_tenant:
+        try:
+            passthrough_panel = NavigationPanel.objects.filter(
+                tenant=current_tenant,
+                title__iexact="External Services",
+                is_active=True
+            ).prefetch_related('navigation_items').first()
+            if passthrough_panel:
+                passthrough_items = passthrough_panel.navigation_items.filter(is_active=True).order_by('sort_order')
+                # Only include items user has permission for
+                for item in passthrough_items:
+                    if item.has_permission(request.user):
+                        top_navigation_items.append({
+                            'name': item.title,
+                            'url': item.url,
+                            'icon': item.icon_value or '🔗',
+                        })
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error loading passthrough navigation items: {e}")
+
+    context = {
+        'current_tenant': current_tenant,
+        'user_profile': user_profile,
+        'theme_info': theme_info,
+        'theme_colors': theme_colors,
+        'status_info': status_info,
+        'passthrough_services': passthrough_services,  # Gmail, OSTicket (AJAX-loaded)
+        'external_services': external_services,  # Other PassThroughEndpoint items (per-tenant)
+        'navigation_panels': filtered_panels,     # NavigationItem items (per-user)
+        'dashboard_buttons': dashboard_buttons,
+        'top_navigation_items': top_navigation_items,
+        'page_title': f'D.O.S.E. Landing - {current_tenant.name if current_tenant else "System"}'
+    }
+
+    return render(request, 'dose/landing_page.html', context)
+# Dashboard view moved from views.py
+from django.shortcuts import render
+def dashboard(request):
+    """Basic dashboard view for Django."""
+    from dose.models import Tenant, UserProfile, ErrorLog
+    from django.utils import timezone
+    from datetime import timedelta
+
+    # Get current tenant
+    tenant = None
+    try:
+        profile = UserProfile.objects.get(user=request.user)
+        tenant = profile.tenant
+    except (UserProfile.DoesNotExist, AttributeError):
+        tenant_id = request.session.get('tenant_id')
+        if tenant_id:
+            try:
+                tenant = Tenant.objects.get(id=tenant_id)
+            except Tenant.DoesNotExist:
+                pass
+
+    # Get active users count (dummy data for now)
+    active_users = 5
+
+    # Get requests in last hour (dummy data for now)
+    requests_last_hour = 42
+
+    # Get recent errors
+    tenant_errors = []
+    if tenant:
+        one_hour_ago = timezone.now() - timedelta(hours=1)
+        tenant_errors = ErrorLog.objects.filter(
+            tenant=tenant,
+            timestamp__gte=one_hour_ago
+        ).order_by('-timestamp')[:5]
+
+    context = {
+        'tenant': tenant,
+        'active_users': active_users,
+        'requests_last_hour': requests_last_hour,
+        'tenant_errors': tenant_errors,
+    }
+
+    return render(request, 'dose/dashboard.html', context)
+# Logout view
+from django.contrib.auth import logout
+
+def logout_view(request):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"logout_view: Logging out user {getattr(request.user, 'username', None)}. Session keys before logout: {list(request.session.keys())}")
+    logout(request)
+    logger.info(f"logout_view: Session keys after logout: {list(request.session.keys())}")
+    return redirect('/')
+# Login view
+from django.contrib.auth import authenticate, login
+from django.shortcuts import render, redirect
+import logging
+from dose.models import UserProfile
+
+def login_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            logger = logging.getLogger(__name__)
+            try:
+                profile = UserProfile.objects.get(user=user)
+                tenant = profile.tenant
+                from django.db import connection
+                schema_name = tenant.slug if hasattr(tenant, 'slug') else tenant.schema_name
+                with connection.cursor() as cursor:
+                    cursor.execute(f"SET search_path TO {schema_name},public;")
+                    request.session['tenant_id'] = tenant.id
+                    request.session['tenant_name'] = tenant.name
+                    request.session['tenant_slug'] = tenant.slug
+                    request.session['tenant_description'] = getattr(tenant, 'description', '')
+                    if hasattr(tenant, 'logo') and tenant.logo:
+                        request.session['tenant_logo_url'] = tenant.logo.url
+                    logger.info(f"login_view: Set tenant session keys for user {user.username}: tenant_id={tenant.id}, tenant_name={tenant.name}")
+                    logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
+                    request.session.save()
+            except UserProfile.DoesNotExist:
+                logger.warning(f"login_view: No UserProfile found for user {user.username}")
+                pass
+            next_url = request.GET.get('next') or '/'
+            return redirect(next_url)
+        else:
+            return render(request, 'dose/login.html', {'error': 'Invalid username or password'})
+    return render(request, 'dose/login.html')
+# Debug tenant session view
+def debug_tenant_session(request):
+    from dose.models import UserProfile, Tenant
+    user = request.user
+    session_keys = dict(request.session.items())
+    profile_info = None
+    tenant_info = None
+    try:
+        profile = UserProfile.objects.get(user=user)
+        profile_info = {
+            'user_id': profile.user.id,
+            'tenant_id': profile.tenant.id,
+            'tenant_name': profile.tenant.name,
+        }
+        tenant_info = {
+            'id': profile.tenant.id,
+            'name': profile.tenant.name,
+            'is_active': profile.tenant.is_active,
+        }
+    except UserProfile.DoesNotExist:
+        profile_info = 'No UserProfile found'
+    return JsonResponse({
+        'user': user.username,
+        'session_keys': session_keys,
+        'profile_info': profile_info,
+        'tenant_info': tenant_info,
+    })
+
+# AtomicServiceViewSet
+from rest_framework import viewsets, permissions
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.response import Response
+from django.contrib import messages as django_messages
+from dose.models import AtomicService
+from dose.serializers import AtomicServiceSerializer
+
+class AtomicServiceViewSet(viewsets.ModelViewSet):
+    queryset = AtomicService.objects.all()
+    serializer_class = AtomicServiceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_messages_list(self, request):
+        """Extract Django messages and return as list of dicts."""
+        messages_list = []
+        if hasattr(request, '_messages'):
+            for message in django_messages.get_messages(request):
+                messages_list.append({
+                    'text': str(message),
+                    'level': message.level_tag,
+                    'tags': message.tags
+                })
+        return messages_list
+
+    def _add_messages_to_response(self, response_data, request):
+        """Add Django messages to the response data."""
+        messages_list = self._get_messages_list(request)
+        if messages_list:
+            response_data['_messages'] = messages_list
+        return response_data
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data = self._add_messages_to_response(response.data, request)
+        return response
+
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        response.data = self._add_messages_to_response(response.data, request)
+        return response
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        response.data = self._add_messages_to_response(response.data, request)
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        response.data = self._add_messages_to_response(response.data, request)
+        return response
+
+    def partial_update(self, request, *args, **kwargs):
+        response = super().partial_update(request, *args, **kwargs)
+        response.data = self._add_messages_to_response(response.data, request)
+        return response
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        return instance
+
+# RequestLogViewSet
+from dose.models import RequestLog, ErrorLog, Subscription
+from dose.serializers import RequestLogSerializer, ErrorLogSerializer, SubscriptionSerializer
+
+class RequestLogViewSet(viewsets.ModelViewSet):
+    queryset = RequestLog.objects.all()
+    serializer_class = RequestLogSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+class ErrorLogViewSet(viewsets.ModelViewSet):
+    queryset = ErrorLog.objects.all()
+    serializer_class = ErrorLogSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+import stripe
+stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
+
+class SubscriptionViewSet(viewsets.ModelViewSet):
+    queryset = Subscription.objects.all()
+    serializer_class = SubscriptionSerializer
+    permission_classes = [permissions.AllowAny]
+    def create(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        import json as pyjson
+        print("SubscriptionViewSet.create called")
+        print(f"Request content_type: {request.content_type}")
+        if request.content_type == 'application/json':
+            try:
+                data = request.data
+            except Exception:
+                data = {}
+        else:
+            data = {}
+        # ...existing logic...
+# GitHub profile passthrough view
+from allauth.socialaccount.models import SocialToken
+import requests
+
+def github_api_passthrough(user, api_path):
+    try:
+        token = SocialToken.objects.get(account__user=user, account__provider='github')
+        access_token = token.token
+    except SocialToken.DoesNotExist:
+        return None
+    url = f'https://api.github.com{api_path}'
+    headers = {
+        'Authorization': f'token {access_token}',
+        'Accept': 'application/vnd.github.v3+json',
+    }
+    response = requests.get(url, headers=headers)
+    return response
+
+from django.http import JsonResponse
+
+def github_profile_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    response = github_api_passthrough(request.user, '/user')
+    if response and response.status_code == 200:
+        return JsonResponse(response.json())
+    return JsonResponse({'error': 'Unable to fetch profile'}, status=400)
+# Google and Facebook profile passthrough views
+from django.http import JsonResponse
+
+def get_social_token(user, provider):
+    from allauth.socialaccount.models import SocialToken
+    try:
+        token = SocialToken.objects.get(account__user=user, account__provider=provider)
+        return token.token
+    except SocialToken.DoesNotExist:
+        return None
+
+def google_api_passthrough(user, api_path):
+    import requests
+    access_token = get_social_token(user, 'google')
+    if not access_token:
+        return None
+    url = f'https://www.googleapis.com{api_path}'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json',
+    }
+    response = requests.get(url, headers=headers)
+    return response
+
+def facebook_api_passthrough(user, api_path):
+    import requests
+    access_token = get_social_token(user, 'facebook')
+    if not access_token:
+        return None
+    url = f'https://graph.facebook.com{api_path}'
+    params = {
+        'access_token': access_token,
+    }
+    response = requests.get(url, params=params)
+    return response
+
+def google_profile_view(request):
+    import logging
+    logger = logging.getLogger(__name__)
+    if not request.user.is_authenticated:
+        logger.info("google_profile_view: Not authenticated user attempted access.")
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    response = google_api_passthrough(request.user, '/oauth2/v2/userinfo')
+    if response and response.status_code == 200:
+        profile = response.json()
+        uid = profile.get('id')
+        email = profile.get('email')
+        logger.info(f"google_profile_view: User {request.user.username} Google UID: {uid}, email: {email}")
+        return JsonResponse(profile)
+    logger.warning(f"google_profile_view: Unable to fetch profile for user {request.user.username}")
+    return JsonResponse({'error': 'Unable to fetch profile'}, status=400)
+
+def facebook_profile_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Not authenticated'}, status=401)
+    response = facebook_api_passthrough(request.user, '/me?fields=id,name,email')
+    if response and response.status_code == 200:
+        return JsonResponse(response.json())
+    return JsonResponse({'error': 'Unable to fetch profile'}, status=400)
+# Passthrough views
+def passthrough_iframe_view(request):
+    provider = request.GET.get('provider', 'custom')
+    from dose.models import PassThroughEndpoint
+    endpoint = PassThroughEndpoint.objects.filter(provider=provider).first()
+    passthrough_url = endpoint.endpoint_url if endpoint else 'https://github.com'
+    return render(request, 'passthrough_iframe.html', {'passthrough_url': passthrough_url})
+
+def passthrough_html_view(request):
+    import requests
+    provider = request.GET.get('provider', 'custom')
+    from dose.models import PassThroughEndpoint
+    endpoint = PassThroughEndpoint.objects.filter(provider=provider).first()
+    passthrough_url = endpoint.endpoint_url if endpoint else 'https://github.com'
+    html_content = ''
+    try:
+        response = requests.get(passthrough_url)
+        html_content = response.text
+    except Exception as e:
+        html_content = f'<div class="error">Error fetching content: {e}</div>'
+    return render(request, 'passthrough_html.html', {'html_content': html_content})
+# Main views for Dose
+from django.shortcuts import render
+from django.conf import settings
+
+def subscribe_view(request):
+    # If this is a POST, assume subscription succeeded and redirect to connect_social
+    if request.method == 'POST':
+        return render(request, 'dose/connect_social.html', {
+            'SUBSCRIPTION_AMOUNT': getattr(settings, 'SUBSCRIPTION_AMOUNT', 29.99)
+        })
+    # Otherwise, show the subscription form
+    return render(request, 'dose/subscribe.html', {
+        'SUBSCRIPTION_AMOUNT': getattr(settings, 'SUBSCRIPTION_AMOUNT', 29.99)
+    })
+
+# ...other views from dose/views.py will be moved here...

@@ -1,0 +1,16 @@
+/* Hide the Change link in the Django admin sidebar (robust) */
+
+
+
+
+
+
+
+
+/* Ultra-specific selector to hide the 'Change' link in the sidebar */
+html body #nav-sidebar a.changelink[aria-describedby] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}

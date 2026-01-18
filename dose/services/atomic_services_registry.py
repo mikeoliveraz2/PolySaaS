@@ -1,0 +1,79 @@
+# dose/services/atomic_services_registry.py
+"""
+Registry for all atomic services in dose/services.
+Scans for classes with execute_and_save(request, instruction_row) and registers them for dynamic lookup.
+Supports tenant-specific services in subdirectories like dose/services/olient/
+"""
+import importlib
+import pkgutil
+import os
+import sys
+
+ATOMIC_SERVICE_REGISTRY = {}
+TENANT_SPECIFIC_SERVICES = {}  # tenant_name -> {service_name: service_class}
+
+SERVICES_PATH = os.path.dirname(__file__)
+MODULE_PREFIX = __name__.rsplit('.', 1)[0] + '.' if '.' in __name__ else ''
+
+
+def init_atomic_services_registry():
+    global ATOMIC_SERVICE_REGISTRY, TENANT_SPECIFIC_SERVICES
+    ATOMIC_SERVICE_REGISTRY.clear()
+    TENANT_SPECIFIC_SERVICES.clear()
+
+    # Scan main services directory
+    _scan_services_directory(SERVICES_PATH, '')
+
+    # Scan tenant-specific subdirectories
+    for item in os.listdir(SERVICES_PATH):
+        item_path = os.path.join(SERVICES_PATH, item)
+        if os.path.isdir(item_path) and not item.startswith('__'):
+            # This is a tenant-specific directory (e.g., 'olient')
+            tenant_name = item
+            TENANT_SPECIFIC_SERVICES[tenant_name] = {}
+            _scan_services_directory(item_path, tenant_name)
+
+
+def _scan_services_directory(directory_path, tenant_name=''):
+    """Scan a services directory and register atomic services"""
+    registry = ATOMIC_SERVICE_REGISTRY if not tenant_name else TENANT_SPECIFIC_SERVICES[tenant_name]
+
+    for _, modname, ispkg in pkgutil.iter_modules([directory_path]):
+        if ispkg or modname.startswith('test') or modname == 'atomic_services_registry':
+            continue
+        try:
+            # Build module path for import
+            if tenant_name:
+                module_path = f'dose.services.{tenant_name}.{modname}'
+            else:
+                module_path = f'dose.services.{modname}'
+
+            module = importlib.import_module(module_path)
+            for attr in dir(module):
+                obj = getattr(module, attr)
+                if isinstance(obj, type) and hasattr(obj, 'execute_and_save'):
+                    # Filter out AtomicServiceBase - it's just the abstract base class
+                    if obj.__name__ != 'AtomicServiceBase':
+                        registry[obj.__name__] = obj
+        except Exception as e:
+            print(f"Error importing {modname} from {directory_path}: {e}")
+
+
+def get_atomic_service(service_name, tenant_name=None):
+    """
+    Get an atomic service class by name, checking tenant-specific services first.
+    """
+    # Check tenant-specific services first
+    if tenant_name and tenant_name in TENANT_SPECIFIC_SERVICES:
+        if service_name in TENANT_SPECIFIC_SERVICES[tenant_name]:
+            return TENANT_SPECIFIC_SERVICES[tenant_name][service_name]
+
+    # Fall back to global services
+    return ATOMIC_SERVICE_REGISTRY.get(service_name)
+
+
+# Usage:
+# from dose.services.atomic_services_registry import init_atomic_services_registry, get_atomic_service
+# init_atomic_services_registry()
+# cls = get_atomic_service('CopilotQueryService', tenant_name='olient')
+# if cls: cls.execute_and_save(request, instruction_row)

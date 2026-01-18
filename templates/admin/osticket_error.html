@@ -1,0 +1,20 @@
+{% extends 'admin/base_site.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div style="background: white; border-radius: 4px; padding: 20px; margin-top: 20px;">
+    <h2>{{ title }}</h2>
+    <div style="background: #fee; border: 1px solid #fcc; border-radius: 4px; padding: 15px; color: #c33;">
+        <p><strong>Error:</strong> {{ error }}</p>
+        {% if status_code %}
+            <p><small>Status Code: {{ status_code }}</small></p>
+        {% endif %}
+    </div>
+    <div style="margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto;">
+        <p><strong>Debug Info:</strong></p>
+        <pre>{{ debug_info }}</pre>
+    </div>
+    <p style="margin-top: 20px;"><a href="/admin/">Return to Admin</a></p>
+</div>
+{% endblock %}

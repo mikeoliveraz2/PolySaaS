@@ -1,0 +1,49 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}PolySniffer - {{ endpoint.menu_title|default:endpoint.trigger_path }}{% endblock %}
+
+{% block content %}
+<div style="width: 100%; height: calc(100vh - 200px); border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
+    <div style="background: #f5f5f5; padding: 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong>🔍 PolySniffer:</strong> {{ endpoint.menu_title|default:endpoint.trigger_path }}
+            <span style="color: #666; font-size: 12px; margin-left: 10px;">{{ endpoint.endpoint_url }}</span>
+        </div>
+        <div>
+            <a href="{% url 'admin:dose_passthroughendpoint_change' endpoint.id %}" class="button" style="padding: 5px 10px; font-size: 12px;">⚙️ Configure</a>
+        </div>
+    </div>
+    <iframe
+        id="polysniffer-iframe"
+        src="{{ proxy_url }}"
+        style="width: 100%; height: calc(100vh - 250px); border: none; min-height: 600px;"
+        frameborder="0"
+        allowfullscreen
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation">
+    </iframe>
+</div>
+
+<script>
+// Auto-resize iframe to fit content
+window.addEventListener('message', function(event) {
+    // Only accept messages from our proxy
+    if (event.origin !== window.location.origin) {
+        return;
+    }
+
+    if (event.data && event.data.type === 'iframe-resize') {
+        const iframe = document.getElementById('polysniffer-iframe');
+        if (iframe && event.data.height) {
+            iframe.style.height = event.data.height + 'px';
+        }
+    }
+});
+
+// Handle iframe errors
+document.getElementById('polysniffer-iframe').onerror = function() {
+    console.error('PolySniffer iframe failed to load');
+};
+</script>
+{% endblock %}
+

@@ -1,0 +1,29 @@
+{% extends "drf_yasg/swagger-ui.html" %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <style>
+    .admin-link {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      z-index: 1000;
+      background: #2d2d2d;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: bold;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .admin-link:hover {
+      background: #007acc;
+      color: #fff;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <a href="/admin/" class="admin-link">Return to Admin Interface</a>
+  {{ block.super }}
+{% endblock %}

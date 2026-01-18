@@ -1,0 +1,262 @@
+{# Font Control Dropdown - Separate from Theme Selector #}
+<style>
+    .font-controls-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .font-controls-btn {
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        padding: 8px 12px;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+        margin-left: 10px;
+    }
+
+    .font-controls-btn:hover {
+        background: rgba(255,255,255,0.1);
+        border-color: rgba(255,255,255,0.5);
+    }
+
+    .font-controls-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 15px;
+        margin-top: 5px;
+        min-width: 250px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+        display: none;
+    }
+
+    .font-controls-menu.active {
+        display: block;
+    }
+
+    .font-control-item {
+        margin-bottom: 12px;
+    }
+
+    .font-control-item label {
+        display: block;
+        font-weight: 600;
+        font-size: 13px;
+        color: #333;
+        margin-bottom: 5px;
+    }
+
+    .font-control-item select,
+    .font-control-item input[type="range"] {
+        width: 100%;
+        padding: 6px;
+        font-size: 13px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+
+    .font-control-item input[type="range"] {
+        cursor: pointer;
+    }
+
+    .font-size-display {
+        font-size: 12px;
+        color: #666;
+        margin-top: 3px;
+    }
+
+    .font-weight-display {
+        font-size: 12px;
+        color: #666;
+        margin-top: 3px;
+    }
+
+    .font-control-reset {
+        background: #f0f0f0;
+        border: 1px solid #ccc;
+        padding: 8px;
+        border-radius: 3px;
+        font-size: 12px;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.2s ease;
+    }
+
+    .font-control-reset:hover {
+        background: #e0e0e0;
+    }
+
+    body {
+        --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        --font-size: 14px;
+        --font-weight: 400;
+    }
+
+    * {
+        font-family: var(--font-family) !important;
+        font-size: var(--font-size);
+        font-weight: var(--font-weight);
+    }
+</style>
+
+<div class="font-controls-dropdown">
+    <button class="font-controls-btn" id="font-controls-trigger">
+        <i class="fas fa-palette"></i> Fonts
+    </button>
+
+    <div class="font-controls-menu" id="font-controls-menu">
+        <!-- Font Family -->
+        <div class="font-control-item">
+            <label for="font-family-select">
+                <i class="fas fa-font"></i> Font Family
+            </label>
+            <select id="font-family-select">
+                <option value="'Segoe UI', Tahoma, Geneva, Verdana, sans-serif">Segoe UI (Default)</option>
+                <option value="'Arial', sans-serif">Arial</option>
+                <option value="'Georgia', serif">Georgia</option>
+                <option value="'Verdana', sans-serif">Verdana</option>
+                <option value="'Courier New', monospace">Courier New</option>
+                <option value="'Times New Roman', serif">Times New Roman</option>
+            </select>
+        </div>
+
+        <!-- Font Size -->
+        <div class="font-control-item">
+            <label for="font-size-slider">
+                <i class="fas fa-text-height"></i> Font Size
+            </label>
+            <input type="range" id="font-size-slider" min="12" max="18" value="14" step="1">
+            <div class="font-size-display">
+                Current: <span id="font-size-value">14</span>px
+            </div>
+        </div>
+
+        <!-- Font Weight -->
+        <div class="font-control-item">
+            <label for="font-weight-slider">
+                <i class="fas fa-bold"></i> Font Weight
+            </label>
+            <input type="range" id="font-weight-slider" min="300" max="700" value="400" step="100">
+            <div class="font-weight-display">
+                Current: <span id="font-weight-value">400</span> (<span id="font-weight-label">Normal</span>)
+            </div>
+        </div>
+
+        <!-- Reset Button -->
+        <button class="font-control-reset" id="font-control-reset">
+            <i class="fas fa-redo"></i> Reset to Default
+        </button>
+    </div>
+</div>
+
+<script>
+(function() {
+    const trigger = document.getElementById('font-controls-trigger');
+    const menu = document.getElementById('font-controls-menu');
+    const fontFamilySelect = document.getElementById('font-family-select');
+    const fontSizeSlider = document.getElementById('font-size-slider');
+    const fontWeightSlider = document.getElementById('font-weight-slider');
+    const fontSizeValue = document.getElementById('font-size-value');
+    const fontWeightValue = document.getElementById('font-weight-value');
+    const fontWeightLabel = document.getElementById('font-weight-label');
+    const resetBtn = document.getElementById('font-control-reset');
+
+    // Font weight labels
+    const weightLabels = {
+        300: 'Light',
+        400: 'Normal',
+        500: 'Medium',
+        600: 'Semi-Bold',
+        700: 'Bold'
+    };
+
+    // Toggle menu
+    trigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        menu.classList.toggle('active');
+    });
+
+    // Close menu when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!trigger.contains(e.target) && !menu.contains(e.target)) {
+            menu.classList.remove('active');
+        }
+    });
+
+    // Load saved settings from localStorage
+    function loadSettings() {
+        const savedFamily = localStorage.getItem('dose_font_family');
+        const savedSize = localStorage.getItem('dose_font_size');
+        const savedWeight = localStorage.getItem('dose_font_weight');
+
+        if (savedFamily) {
+            fontFamilySelect.value = savedFamily;
+            document.documentElement.style.setProperty('--font-family', savedFamily);
+        }
+        if (savedSize) {
+            fontSizeSlider.value = savedSize;
+            fontSizeValue.textContent = savedSize;
+            document.documentElement.style.setProperty('--font-size', savedSize + 'px');
+        }
+        if (savedWeight) {
+            fontWeightSlider.value = savedWeight;
+            fontWeightValue.textContent = savedWeight;
+            fontWeightLabel.textContent = weightLabels[savedWeight] || 'Normal';
+            document.documentElement.style.setProperty('--font-weight', savedWeight);
+        }
+    }
+
+    // Font Family Change
+    fontFamilySelect.addEventListener('change', function() {
+        const family = this.value;
+        document.documentElement.style.setProperty('--font-family', family);
+        localStorage.setItem('dose_font_family', family);
+    });
+
+    // Font Size Change
+    fontSizeSlider.addEventListener('input', function() {
+        const size = this.value;
+        fontSizeValue.textContent = size;
+        document.documentElement.style.setProperty('--font-size', size + 'px');
+        localStorage.setItem('dose_font_size', size);
+    });
+
+    // Font Weight Change
+    fontWeightSlider.addEventListener('input', function() {
+        const weight = this.value;
+        fontWeightValue.textContent = weight;
+        fontWeightLabel.textContent = weightLabels[weight] || 'Normal';
+        document.documentElement.style.setProperty('--font-weight', weight);
+        localStorage.setItem('dose_font_weight', weight);
+    });
+
+    // Reset to defaults
+    resetBtn.addEventListener('click', function() {
+        fontFamilySelect.value = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+        fontSizeSlider.value = '14';
+        fontWeightSlider.value = '400';
+
+        fontSizeValue.textContent = '14';
+        fontWeightValue.textContent = '400';
+        fontWeightLabel.textContent = 'Normal';
+
+        document.documentElement.style.setProperty('--font-family', "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif");
+        document.documentElement.style.setProperty('--font-size', '14px');
+        document.documentElement.style.setProperty('--font-weight', '400');
+
+        localStorage.removeItem('dose_font_family');
+        localStorage.removeItem('dose_font_size');
+        localStorage.removeItem('dose_font_weight');
+    });
+
+    // Load settings on page load
+    loadSettings();
+})();
+</script>

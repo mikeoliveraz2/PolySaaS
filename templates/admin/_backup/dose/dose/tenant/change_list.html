@@ -1,0 +1,52 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block content_title %}
+    <h1>Tenant Management</h1>
+    <p>Debug: This is a custom template to bypass any rendering issues</p>
+{% endblock %}
+
+{% block result_list %}
+    <div class="results">
+        <table id="result_list">
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Schema Name</th>
+                    <th scope="col">Tagline</th>
+                    <th scope="col">Created On</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tenant in cl.result_list %}
+                <tr class="{% cycle 'row1' 'row2' %}">
+                    <td>{{ tenant.name|default:"N/A" }}</td>
+                    <td>{{ tenant.schema_name|default:"N/A" }}</td>
+                    <td>{{ tenant.tagline|default:"N/A" }}</td>
+                    <td>{{ tenant.created_on|default:"N/A" }}</td>
+                    <td>
+                        <a href="{% url 'admin:dose_tenant_change' tenant.pk %}" class="btn btn-sm">Edit</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5">
+                        <strong>No tenants found in queryset</strong>
+                        <br>Debug info: {{ cl.result_count }} results
+                        <br>Full count: {{ cl.full_result_count }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border: 1px solid #ccc;">
+        <h3>Debug Information:</h3>
+        <p><strong>Result Count:</strong> {{ cl.result_count }}</p>
+        <p><strong>Full Result Count:</strong> {{ cl.full_result_count }}</p>
+        <p><strong>Queryset:</strong> {{ cl.queryset }}</p>
+        <p><strong>Has Results:</strong> {% if cl.result_list %}Yes{% else %}No{% endif %}</p>
+    </div>
+{% endblock %}

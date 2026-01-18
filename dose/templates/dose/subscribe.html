@@ -1,0 +1,412 @@
+{% extends "dose/dosebase.html" %}
+<!-- DEBUG: subscribe -->
+{% block content %}
+<h2>Subscribe to Dose SaaS...testing</h2>
+
+<p style="text-align:center; font-size:1.2em; margin-bottom:1em; color:#1976d2;">
+    Subscription: ${{ SUBSCRIPTION_AMOUNT }} / Month<br>
+    <small style="color:#666; font-size:0.9em;">14-day free trial included</small>
+</p>
+<style>
+    .subscription-form {
+        max-width: 400px;
+        margin: 2em auto;
+        padding: 2em;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .form-group {
+        margin-bottom: 1.5em;
+    }
+    .form-label {
+        display: block;
+        margin-bottom: 0.5em;
+        font-weight: 500;
+        color: #333;
+    }
+    .form-input {
+        width: 100%;
+        padding: 0.75em;
+        border: 2px solid #1976d2;
+        border-radius: 4px;
+        font-size: 1em;
+        outline: none;
+        transition: border-color 0.2s;
+        background: #f9f9f9;
+    }
+    .form-input:focus {
+        border-color: #1565c0;
+        background: #fff;
+    }
+    #card-element {
+        border: 2px solid #1976d2;
+        border-radius: 4px;
+        padding: 0.75em;
+        background: #f9f9f9;
+        margin-bottom: 1em;
+    }
+    .subscription-btn {
+        width: 100%;
+        padding: 0.75em;
+        background: #1976d2;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .subscription-btn:hover {
+        background: #1565c0;
+    }
+    #card-errors {
+        color: #d32f2f;
+        margin-top: 1em;
+        font-size: 0.95em;
+    }
+</style>
+<form id="subscription-form" class="subscription-form">
+    <div id="stripe-load-error" style="display:none;color:#d32f2f;margin-bottom:1em;font-size:1em;text-align:center;">Unable to load secure card fields. Please check your internet connection or contact support.</div>
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="tenant-name" class="form-label">Tenant Name</label>
+        <input type="text" id="tenant-name" name="tenant_name" class="form-input" required placeholder="Your organization or tenant name" value="">
+        <div class="field-error" id="tenant-name-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="tenant-shortname" class="form-label">Tenant Short Name (slug)</label>
+        <input type="text" id="tenant-shortname" name="tenant_shortname" class="form-input" required minlength="3" maxlength="32" placeholder="Short name, e.g. olient" title="Lowercase letters, numbers, hyphens only. No spaces." value="">
+        <small style="color:#666;">Lowercase letters, numbers, hyphens only. No spaces.</small>
+        <div class="field-error" id="tenant-shortname-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="username" class="form-label">Username</label>
+        <input type="text" id="username" name="username" class="form-input" required placeholder="Choose a username" value="" autocomplete="new-username">
+        <div class="field-error" id="username-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="password" class="form-label">Password</label>
+        <input type="password" id="password" name="password" class="form-input" required placeholder="Choose a password" minlength="9" title="Password must be at least 9 characters, cannot start with a number, and must include at least one special character." value="" autocomplete="new-password">
+        <small style="color:#666;">Password must be at least 9 characters, cannot start with a number, and must include at least one special character.</small>
+        <div class="field-error" id="password-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="email" class="form-label">Email</label>
+        <input type="email" id="email" name="email" class="form-input" required placeholder="Your email address" value="">
+        <div class="field-error" id="email-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="zip" class="form-label">ZIP Code</label>
+        <input type="text" id="zip" name="zip" class="form-input" required pattern="\d{4,5}" maxlength="5" placeholder="ZIP code (4 or 5 digits)" value="">
+        <small style="color:#666;">Philippines: 4 digits, US: 5 digits</small>
+        <div class="field-error" id="zip-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="amount" class="form-label">Amount (USD)</label>
+        <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="{{ SUBSCRIPTION_AMOUNT }}" required readonly>
+        <div class="field-error" id="amount-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="card-name" class="form-label">Name on Card</label>
+        <input type="text" id="card-name" name="card_name" class="form-input" required placeholder="Name as it appears on card" value="">
+        <div class="field-error" id="card-name-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+    <div class="form-group">
+        <label for="card-element" class="form-label">Credit/Debit Card</label>
+        <div id="card-element"></div>
+    </div>
+
+    <!-- Optional Services Checkboxes -->
+    <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
+        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Optional Add-ons (Instant Provisioning)</h4>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-osticket" name="enable_osticket" checked style="margin-right: 0.5em;">
+            <label for="enable-osticket" style="font-weight: normal; color: #555;">OSTicket Helpdesk System</label>
+            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated OSTicket instance for your tenant</small>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-odoo" name="enable_odoo" checked style="margin-right: 0.5em;">
+            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP System</label>
+            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Odoo ERP instance for your tenant</small>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-suitecrm" name="enable_suitecrm" checked style="margin-right: 0.5em;">
+            <label for="enable-suitecrm" style="font-weight: normal; color: #555;">SuiteCRM System</label>
+            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated SuiteCRM instance for your tenant</small>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" checked style="margin-right: 0.5em;">
+            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage</label>
+            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Nextcloud instance for your tenant</small>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" checked style="margin-right: 0.5em;">
+            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM (lightweight)</label>
+            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Dolibarr instance for your tenant</small>
+        </div>
+    </div>
+
+    <button type="submit" id="subscribe-btn" class="subscription-btn">Subscribe & Pay</button>
+</form>
+<div id="card-errors" role="alert"></div>
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+console.log('Subscription JS loaded: form script running');
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Subscription form DOM fully loaded');
+    const btn = document.getElementById('subscribe-btn');
+    if (btn) {
+        btn.addEventListener('click', function() {
+            console.log('Subscribe button clicked');
+        });
+    }
+});
+function checkFormFields() {
+    const requiredFields = [
+        'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'amount', 'card-name'
+    ];
+    let allFilled = true;
+    let failedField = null;
+    for (const id of requiredFields) {
+        const el = document.getElementById(id);
+        if (!el || !el.value || (el.type === 'password' && el.value.length < 9)) {
+            allFilled = false;
+            failedField = id;
+            break;
+        }
+    }
+    // Password validation: at least 9 chars, not starting with number, at least one special char
+    const password = document.getElementById('password').value;
+    const specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
+    // console.log('[DEBUG] Password value:', JSON.stringify(password), 'length:', password.length, 'startsWithNumber:', /^[0-9]/.test(password), 'hasSpecial:', specialCharRegex.test(password));
+    if (password.length < 9 || /^[0-9]/.test(password) || !specialCharRegex.test(password)) {
+        allFilled = false;
+        failedField = 'password (validation)';
+    }
+    // Tenant shortname validation: slug format
+    const shortname = document.getElementById('tenant-shortname').value;
+    // console.log('[DEBUG] Shortname value:', JSON.stringify(shortname), 'length:', shortname.length, 'slugRegex:', /^[a-z0-9-]+$/.test(shortname));
+    if (!/^[a-z0-9-]+$/.test(shortname) || shortname.length < 3 || shortname.length > 32) {
+        allFilled = false;
+        failedField = 'tenant-shortname (slug validation)';
+    }
+    const btn = document.getElementById('subscribe-btn');
+    if (btn) {
+        btn.disabled = !allFilled;
+        if (!allFilled) {
+            console.warn('Subscribe button disabled. First invalid field:', failedField);
+        } else {
+            console.log('Subscribe button enabled. All fields valid.');
+        }
+    }
+}
+
+// Per-field validation on blur (exit) event
+function validateField(id) {
+    let error = '';
+    const el = document.getElementById(id);
+    const val = el ? el.value : '';
+    if (!el) return;
+    switch (id) {
+        case 'tenant-name':
+            if (!val.trim()) error = 'Tenant name is required.';
+            break;
+        case 'tenant-shortname':
+            if (!val.trim()) error = 'Short name is required.';
+            else if (!/^[a-z0-9-]+$/.test(val)) error = 'Only lowercase letters, numbers, hyphens.';
+            else if (val.length < 3 || val.length > 32) error = 'Must be 3-32 characters.';
+            break;
+        case 'username':
+            if (!val.trim()) error = 'Username is required.';
+            break;
+        case 'password':
+            const specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
+            if (!val) error = 'Password is required.';
+            else if (val.length < 9) error = 'At least 9 characters.';
+            else if (/^[0-9]/.test(val)) error = 'Cannot start with a number.';
+            else if (!specialCharRegex.test(val)) error = 'Must include a special character.';
+            break;
+        case 'email':
+            if (!val.trim()) error = 'Email is required.';
+            else if (!/^\S+@\S+\.\S+$/.test(val)) error = 'Invalid email address.';
+            break;
+        case 'zip':
+            if (!val.trim()) error = 'ZIP code is required.';
+            else if (!/^\d{4,5}$/.test(val)) error = 'ZIP must be 4 or 5 digits.';
+            break;
+        case 'amount':
+            if (!val || isNaN(val) || Number(val) < 1) error = 'Amount must be at least 1.';
+            break;
+        case 'card-name':
+            if (!val.trim()) error = 'Name on card is required.';
+            break;
+    }
+    const errorDiv = document.getElementById(id + '-error');
+    if (errorDiv) errorDiv.textContent = error;
+    return !error;
+}
+
+const fieldIds = [
+    'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'amount', 'card-name'
+];
+fieldIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('blur', function() {
+            validateField(id);
+        });
+    }
+});
+
+document.addEventListener('input', function(e) {
+    if (fieldIds.includes(e.target.id)) {
+        validateField(e.target.id);
+    }
+    checkFormFields();
+});
+document.addEventListener('DOMContentLoaded', function() {
+    fieldIds.forEach(id => validateField(id));
+    checkFormFields();
+});
+
+let stripeLoaded = false;
+let stripe, elements, card;
+try {
+    stripe = Stripe('pk_test_51S3owgPQWnaGoDqyVMAyU9sTOrv763E4CP8t1hhlOHeYDMEDoxTrEMO3ylp0xaofCEF3QGCjSJAgIpRXrRVxBs2200j6Yuabiv');
+    elements = stripe.elements();
+    stripeLoaded = true;
+    card = elements.create('card', { hidePostalCode: true });
+    card.mount('#card-element');
+    card.on('change', function(event) {
+        document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
+    });
+} catch (e) {
+    document.getElementById('stripe-load-error').style.display = 'block';
+}
+document.getElementById('subscription-form').addEventListener('submit', async function(e) {
+    console.log('==== FORM SUBMIT HANDLER: START ====');
+    console.log('Subscribe & Pay button clicked, submit handler firing');
+    e.preventDefault();
+    const btn = document.getElementById('subscribe-btn');
+    if (btn) btn.disabled = true;
+    const cardholderName = document.getElementById('card-name').value;
+    const tenantName = document.getElementById('tenant-name').value;
+    const email = document.getElementById('email').value;
+    const zip = document.getElementById('zip').value;
+    const amount = document.getElementById('amount').value;
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const tenantShortname = document.getElementById('tenant-shortname').value;
+
+    console.log('Form values:', {
+        cardholderName, tenantName, tenantShortname, email, zip, amount, username, password
+    });
+
+    // Password validation: at least 9 chars, not starting with number, at least one special char
+    const specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
+    if (password.length < 9 || /^[0-9]/.test(password) || !specialCharRegex.test(password)) {
+        document.getElementById('card-errors').textContent = 'Password must be at least 9 characters, cannot start with a number, and must include at least one special character.';
+        if (btn) btn.disabled = false;
+        console.warn('Password validation failed');
+        console.log('==== FORM SUBMIT HANDLER: END (password validation failed) ====');
+        return;
+    }
+
+
+    // Create real Stripe token from card input
+    let token, error;
+    try {
+        const result = await stripe.createToken(card, { name: cardholderName });
+        token = result.token;
+        error = result.error;
+    } catch (err) {
+        document.getElementById('card-errors').textContent = 'Stripe tokenization failed.';
+        if (btn) btn.disabled = false;
+        if (card) card.clear();
+        console.error('Stripe tokenization exception:', err);
+        return;
+    }
+    if (error) {
+        document.getElementById('card-errors').textContent = error.message;
+        if (btn) btn.disabled = false;
+        if (card) card.clear();
+        console.warn('Stripe tokenization error:', error);
+        return;
+    }
+    console.log('Stripe token:', token);
+
+    // Prepare payload
+    const payload = {
+        stripe_token: token.id,
+        tenant_name: tenantName,
+        tenant_shortname: tenantShortname,
+        card_name: cardholderName,
+        amount: amount,
+        email: email,
+        zip: zip,
+        username: username,
+        password: password
+    };
+    console.log('Sending fetch to /dose/api/subscriptions/ with payload:', payload);
+
+    fetch('/dose/api/subscriptions/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify(payload)
+    }).then(async response => {
+        console.log('Fetch response status:', response.status);
+        const contentType = response.headers.get('content-type');
+        if (response.ok) {
+            if (contentType && contentType.indexOf('application/json') !== -1) {
+                const data = await response.json();
+                console.log('Parsed response JSON:', data);
+                if (data.error) {
+                    console.error('Backend error:', data.error);
+                    let errorDiv = document.getElementById('card-errors');
+                    if (errorDiv) {
+                        errorDiv.textContent = data.error;
+                        errorDiv.style.display = 'block';
+                        errorDiv.style.color = 'red';
+                    } else {
+                        alert(data.error);
+                    }
+                    if (btn) btn.disabled = false;
+                    if (card) card.clear();
+                } else {
+                    // Success: redirect to login page
+                    console.log('Subscription successful, redirecting to Login.');
+                    window.location.href = '/accounts/login/?next=/dose/connect-social-after-subscribe/';
+                }
+            } else {
+                // If not JSON, assume HTML and redirect to login page
+                console.log('Non-JSON response, redirecting to Login.');
+                window.location.href = '/accounts/login/?next=/dose/connect-social-after-subscribe/';
+            }
+        } else {
+            // Not OK (error status)
+            let errorMsg = 'Unexpected server error. Please try again or contact support.';
+            if (contentType && contentType.indexOf('application/json') !== -1) {
+                try {
+                    const data = await response.json();
+                    if (data.error) errorMsg = data.error;
+                } catch (e) {}
+            }
+            document.getElementById('card-errors').textContent = errorMsg;
+            if (btn) btn.disabled = false;
+            if (card) card.clear();
+        }
+    }).catch(err => {
+        console.error('Fetch error:', err);
+        document.getElementById('card-errors').textContent = 'Network or server error. Please try again.';
+        if (btn) btn.disabled = false;
+        if (card) card.clear();
+    });
+    console.log('==== FORM SUBMIT HANDLER: END (after fetch) ====');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "dose/dosebase.html" %}
+{% block content %}
+<h2>Dose API Documentation (Swagger)</h2>
+<div style="margin-bottom: 1.5rem;">
+	<a href="/admin/" style="color: #2980b9; text-decoration: underline; font-weight: bold; font-size: 1.1rem;">Go to Admin Interface</a>
+</div>
+<iframe src="/dose/swagger.json" width="100%" height="800" style="border:none;"></iframe>
+<p>If the interactive Swagger UI does not appear, please ensure drf-yasg is installed and configured, or use the JSON endpoint above.</p>
+{% endblock %}

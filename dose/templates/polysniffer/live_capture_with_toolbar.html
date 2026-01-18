@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PolySniffer - {{ endpoint.menu_title|default:endpoint.trigger_path }}</title>
+    <style>
+        /* PolySniffer Toolbar */
+        #polysniffer-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 55px;
+            background: #1a1a1a;
+            color: #0f0;
+            z-index: 99999;
+            border-bottom: 3px solid #0f0;
+            font-family: system-ui;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 10px;
+            box-shadow: 0 4px 20px rgba(0, 255, 0, 0.3);
+        }
+
+        #polysniffer-toolbar button {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #polysniffer-toolbar button:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: system-ui;
+            background: #fff;
+        }
+
+        .content-area {
+            margin-top: 55px;
+            padding: 0;
+            width: 100%;
+            min-height: calc(100vh - 55px);
+            overflow: auto;
+        }
+
+        /* Hide any OS Ticket body/html styles that might interfere */
+        .content-area > * {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- PolySniffer Toolbar -->
+    <div id="polysniffer-toolbar">
+        <button onclick="captureNow()" style="background:#0f0;color:#000;padding:8px 16px;border:none;font-weight:bold;cursor:pointer;">⚡ CAPTURE SESSION</button>
+        <button onclick="copyCookies()" style="background:#333;color:#0f0;border:1px solid #0f0;padding:8px 16px;cursor:pointer;">📋 Copy Cookies</button>
+        <button onclick="copyPost()" style="background:#333;color:#0f0;border:1px solid #0f0;padding:8px 16px;cursor:pointer;">📤 Copy Last POST</button>
+        <button onclick="autoLogin()" style="background:#333;color:#0f0;border:1px solid #0f0;padding:8px 16px;cursor:pointer;">🔑 Auto-Login</button>
+        <button onclick="navigateToEndpoint()" style="background:#0f0;color:#000;padding:8px 16px;border:none;font-weight:bold;cursor:pointer;">🚀 Navigate to {{ endpoint.menu_title|default:"Service" }}</button>
+        <span id="status" style="margin-left:auto;color:#0f0;font-weight:bold;">Ready</span>
+    </div>
+
+    <div class="content-area">
+        <div style="padding: 40px; text-align: center; color: #0f0;">
+            <h1 style="color: #0f0; margin-bottom: 20px;">PolySniffer Toolbar</h1>
+            <p style="color: #0f0; font-size: 18px; margin-bottom: 30px;">Click "Navigate to {{ endpoint.menu_title|default:endpoint.trigger_path }}" to open {{ endpoint.menu_title|default:endpoint.trigger_path }}</p>
+            <button onclick="navigateToEndpoint()" style="background:#0f0;color:#000;padding:15px 30px;border:none;font-size:18px;font-weight:bold;cursor:pointer;border-radius:5px;">
+                Navigate to {{ endpoint.menu_title|default:endpoint.trigger_path }}
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const endpointId = {{ endpoint.id }};
+        const endpointUrl = '{{ endpoint_url|escapejs }}';
+        let lastPostData = null;
+
+        function updateStatus(message, color = '#0f0') {
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.textContent = message;
+                statusEl.style.color = color;
+                setTimeout(() => {
+                    statusEl.textContent = 'Ready';
+                    statusEl.style.color = '#0f0';
+                }, 3000);
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function navigateToEndpoint() {
+            updateStatus('Navigating...', '#ff0');
+            // Navigate to redirect page that includes toolbar script, then redirects to OS Ticket
+            window.location.href = `/admin/polysniffer/navigate/${endpointId}/?url=${encodeURIComponent(endpointUrl)}`;
+        }
+
+        function captureNow() {
+            updateStatus('Capturing session...', '#ff0');
+            const cookies = document.cookie;
+            const cookieData = {};
+            if (cookies) {
+                cookies.split(';').forEach(cookie => {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name && value) {
+                        cookieData[name] = decodeURIComponent(value);
+                    }
+                });
+            }
+            const captureData = {
+                captures: [{
+                    cookies: cookieData,
+                    url: window.location.href,
+                    timestamp: new Date().toISOString(),
+                    method: 'GET',
+                    status: 200
+                }]
+            };
+            fetch(`/admin/polysniffer/save-capture/${endpointId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(captureData)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    updateStatus('✅ Session captured!', '#0f0');
+                } else {
+                    updateStatus('❌ Capture failed: ' + (data.error || 'Unknown'), '#f00');
+                }
+            })
+            .catch(error => {
+                console.error('Capture error:', error);
+                updateStatus('❌ Capture error: ' + error.message, '#f00');
+            });
+        }
+
+        function copyCookies() {
+            try {
+                const cookies = document.cookie;
+                if (!cookies) {
+                    updateStatus('No cookies found', '#ff0');
+                    return;
+                }
+                const cookieData = {};
+                cookies.split(';').forEach(cookie => {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name && value) {
+                        cookieData[name] = decodeURIComponent(value);
+                    }
+                });
+                const formatted = JSON.stringify(cookieData, null, 2);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(formatted).then(() => {
+                        updateStatus('✅ Cookies copied!', '#0f0');
+                    }).catch(() => {
+                        alert('Cookies:\n\n' + formatted);
+                        updateStatus('✅ Cookies shown', '#0f0');
+                    });
+                } else {
+                    alert('Cookies:\n\n' + formatted);
+                    updateStatus('✅ Cookies shown', '#0f0');
+                }
+            } catch (error) {
+                console.error('Copy cookies error:', error);
+                updateStatus('❌ Copy error', '#f00');
+            }
+        }
+
+        function copyPost() {
+            try {
+                if (!lastPostData) {
+                    updateStatus('No POST data captured yet', '#ff0');
+                    return;
+                }
+                const formatted = JSON.stringify(lastPostData, null, 2);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(formatted).then(() => {
+                        updateStatus('✅ POST data copied!', '#0f0');
+                    }).catch(() => {
+                        alert('Last POST Data:\n\n' + formatted);
+                        updateStatus('✅ POST data shown', '#0f0');
+                    });
+                } else {
+                    alert('Last POST Data:\n\n' + formatted);
+                    updateStatus('✅ POST data shown', '#0f0');
+                }
+            } catch (error) {
+                console.error('Copy POST error:', error);
+                updateStatus('❌ Copy error', '#f00');
+            }
+        }
+
+        function autoLogin() {
+            updateStatus('Auto-login in progress...', '#ff0');
+            fetch(`/admin/polysniffer/apply-capture/${endpointId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateStatus('✅ Auto-login complete! Reloading...', '#0f0');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    updateStatus('❌ Auto-login failed: ' + (data.error || 'Unknown error'), '#f00');
+                }
+            })
+            .catch(error => {
+                console.error('Auto-login error:', error);
+                updateStatus('❌ Auto-login error', '#f00');
+            });
+        }
+
+        // Content is already loaded below the toolbar
+    </script>
+</body>
+</html>
+

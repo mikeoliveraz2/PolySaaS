@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gmail - Dose Admin</title>
+    {% load static %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
+        .gmail-content { background: #ffffff; border-radius: 8px; border: 1px solid #dadce0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; margin: 20px; min-height: 80vh; display: flex; flex-direction: column; }
+        .gmail-header { background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); color: white; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+        .gmail-header > div:first-child { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .gmail-header input { width: 100%; max-width: 400px; padding: 10px 16px; border: 1px solid rgba(255,255,255,0.3); border-radius: 24px; background: rgba(255,255,255,0.2); color: white; font-size: 14px; margin: 0 24px; }
+        .gmail-header input::placeholder { color: rgba(255,255,255,0.7); }
+        .gmail-container { display: flex; background: #f8f9fa; flex: 1; }
+        .gmail-sidebar { width: 220px; background: #fff; border-right: 1px solid #dadce0; padding: 16px 8px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+        .compose-btn { display: block; margin: 0; padding: 10px 20px; background: #c2e7ff; border: 1px solid #1a73e8; border-radius: 20px; text-decoration: none; color: #1a73e8; text-align: center; font-weight: 500; transition: all 0.2s; }
+        .compose-btn:hover { background: #a8d1ff; text-decoration: none; }
+        .sidebar-section { margin-bottom: 12px; }
+        .sidebar-section-title { font-size: 12px; color: #5f6368; margin-bottom: 8px; font-weight: 500; text-transform: uppercase; }
+        .sidebar-item { display: block; padding: 8px 12px; color: #3c4043; text-decoration: none; border-radius: 4px; font-size: 14px; margin-bottom: 2px; transition: background-color 0.2s; }
+        .sidebar-item:hover { background: #f1f3f4; text-decoration: none; }
+        .sidebar-item.active { background: #fce8e6; color: #d93025; font-weight: 500; }
+        .main-content { flex: 1; background: #fff; display: flex; flex-direction: column; }
+        .toolbar { padding: 12px 16px; border-bottom: 1px solid #dadce0; display: flex; align-items: center; gap: 8px; background: #fff; flex-wrap: wrap; }
+        .toolbar-btn { padding: 6px 12px; border: 1px solid #dadce0; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; color: #3c4043; transition: background-color 0.2s; }
+        .toolbar-btn:hover { background: #f8f9fa; }
+        .message-list { flex: 1; overflow-y: auto; }
+        .message-row { padding: 8px 16px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 12px; cursor: pointer; font-size: 14px; transition: background-color 0.2s; }
+        .message-row:hover { background: #f8f9fa; }
+        .message-checkbox { width: 16px; height: 16px; }
+        .message-from { width: 150px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .message-subject { flex: 1; overflow: hidden; }
+        .message-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #202124; }
+        .message-snippet { font-size: 12px; color: #5f6368; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .message-date { width: 80px; text-align: right; color: #5f6368; font-size: 12px; }
+        .status-bar { padding: 8px 16px; background: #f8f9fa; border-top: 1px solid #dadce0; font-size: 12px; color: #5f6368; text-align: center; }
+        #gmail-error-banner { display: none; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 12px; margin: 12px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="gmail-content">
+        <div class="gmail-header">
+            <div>📧 Gmail</div>
+            <input type="text" placeholder="Search mail">
+            <div style="display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,0.9); font-size: 14px; white-space: nowrap;">
+                <span>{{ gmail_data.user_email|default:"Loading..." }}</span>
+                <span>({{ gmail_data.total_messages|default:0|floatformat:0 }} emails)</span>
+            </div>
+        </div>
+        <div class="gmail-container">
+            <div class="gmail-sidebar">
+                <a href="#" class="compose-btn" onclick="showComposeModal(); return false;">✏️ Compose</a>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title">QUICK ACTIONS</div>
+                    <a href="#" class="sidebar-item" onclick="showImportDialog(); return false;">📥 Import Emails</a>
+                    <a href="#" class="sidebar-item" onclick="showExportDialog(); return false;">📤 Export Emails</a>
+                    <a href="#" class="sidebar-item" onclick="showFiltersDialog(); return false;">🔍 Create Filter</a>
+                    <a href="#" class="sidebar-item" onclick="showLabelsDialog(); return false;">🏷️ Manage Labels</a>
+                </div>
+                <div class="sidebar-section">
+                    {% if gmail_data.system_labels %}
+                        {% for label in gmail_data.system_labels %}
+                            {% if label.name in 'INBOX,SENT,DRAFT,SPAM,TRASH,STARRED' %}
+                                <a href="#" class="sidebar-item {% if label.name == 'INBOX' %}active{% endif %}" onclick="alert('Label filtering coming soon!'); return false;">
+                                    {% if label.name == 'INBOX' %}📥
+                                    {% elif label.name == 'SENT' %}📤
+                                    {% elif label.name == 'DRAFT' %}📝
+                                    {% elif label.name == 'SPAM' %}🚫
+                                    {% elif label.name == 'TRASH' %}🗑️
+                                    {% elif label.name == 'STARRED' %}⭐
+                                    {% endif %}
+                                    {{ label.name|title }}
+                                </a>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <a href="#" class="sidebar-item active">📥 Inbox</a>
+                        <a href="#" class="sidebar-item">📤 Sent</a>
+                        <a href="#" class="sidebar-item">📝 Drafts</a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="main-content">
+                <div id="gmail-error-banner">
+                    <span id="gmail-error-message"></span>
+                    <button id="gmail-reconnect-btn" style="display: none; margin-left: 16px;" class="btn btn-warning btn-sm">Reconnect Google Account</button>
+                </div>
+                <div class="toolbar">
+                    <input type="checkbox" id="select-all" title="Select all" onclick="toggleAllMessages(this)" />
+                    <label for="select-all" style="margin-left: 5px; font-size: 12px; color: #5f6368;">Select All</label>
+                    <div style="display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap;">
+                        <button class="toolbar-btn" onclick="deleteSelected()" title="Delete selected emails">🗑️ Delete</button>
+                        <button class="toolbar-btn" onclick="archiveSelected()" title="Archive selected emails">📦 Archive</button>
+                        <button class="toolbar-btn" onclick="markSpamSelected()" title="Mark as spam">🚫 Spam</button>
+                        <button class="toolbar-btn" onclick="markReadSelected()" title="Mark as read">✅ Read</button>
+                        <button class="toolbar-btn" onclick="markUnreadSelected()" title="Mark as unread">📧 Unread</button>
+                        <button class="toolbar-btn" onclick="starSelected()" title="Add star">⭐ Star</button>
+                        <button class="toolbar-btn" onclick="refreshInbox()" title="Refresh inbox">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="message-list" id="message-list">
+                    <div style="padding: 40px; text-align: center; color: #5f6368;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                        <h3>No messages found</h3>
+                        <p>Your inbox appears to be empty or messages couldn't be loaded.</p>
+                    </div>
+                </div>
+                <div class="status-bar">Loading Gmail...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Detail Modal -->
+    <div class="modal fade" id="messageDetailModal" tabindex="-1" role="dialog" aria-labelledby="messageDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="messageDetailModalLabel">Email Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 16px;">
+                        <strong>From:</strong> <span id="modalFrom"></span><br>
+                        <strong>To:</strong> <span id="modalTo"></span><br>
+                        <strong>Subject:</strong> <span id="modalSubject"></span><br>
+                        <strong>Date:</strong> <span id="modalDate"></span>
+                    </div>
+                    <hr>
+                    <div id="modalBody" style="max-height: 400px; overflow-y: auto; padding: 12px; background: #f8f9fa; border-radius: 4px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="alert('Reply functionality coming soon!')">Reply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Cache to store full message data
+        const messageCache = {};
+
+        async function fetchInbox() {
+            const resp = await fetch('/dose/gmail-api/messages?maxResults=20');
+            const data = await resp.json();
+
+            if (!resp.ok) {
+                let errorMsg = data.error || 'Unknown error';
+                let showReconnect = false;
+
+                if (resp.status === 400 && errorMsg && (errorMsg.includes('token') || errorMsg.includes('Google'))) {
+                    errorMsg = 'Google Authentication Required! You need to reconnect your Google account.';
+                    showReconnect = true;
+                } else if (resp.status === 401) {
+                    errorMsg = 'Your Google authentication has expired. Please reconnect.';
+                    showReconnect = true;
+                }
+
+                showGmailError(errorMsg, showReconnect);
+                return;
+            }
+
+            hideGmailError();
+            const messageList = document.getElementById('message-list');
+
+            if (!Array.isArray(data.messages) || data.messages.length === 0) {
+                messageList.innerHTML = `<div style="padding: 40px; text-align: center; color: #5f6368;"><div style="font-size: 48px; margin-bottom: 16px;">📭</div><h3>No messages found</h3></div>`;
+                return;
+            }
+
+            let html = '';
+            for (const msg of data.messages) {
+                html += `<div class="message-row" onclick="openMessageDetail('${msg.id}'); return false;" style="cursor: pointer;"><input type="checkbox" class="message-checkbox" data-message-id="${msg.id}" onclick="event.stopPropagation();" /><div class="message-from">(Loading...)</div><div class="message-subject"><div class="message-title">(Loading...)</div><div class="message-snippet"></div></div><div class="message-date"></div></div>`;
+            }
+
+            messageList.innerHTML = html;
+
+            data.messages.forEach(async (msg, idx) => {
+                try {
+                    const resp = await fetch(`/dose/gmail-api/messages/${msg.id}`);
+                    const msgData = await resp.json();
+
+                    // Cache the full message
+                    messageCache[msg.id] = msgData;
+
+                    let from = '', subject = '', date = '', snippet = '';
+
+                    if (msgData.payload && msgData.payload.headers) {
+                        for (const h of msgData.payload.headers) {
+                            if (h.name === 'From') from = h.value;
+                            if (h.name === 'Subject') subject = h.value;
+                            if (h.name === 'Date') date = new Date(h.value).toLocaleDateString();
+                        }
+                    }
+
+                    if (msgData.snippet) snippet = msgData.snippet;
+
+                    const rows = messageList.querySelectorAll('.message-row');
+                    if (rows[idx]) {
+                        rows[idx].querySelector('.message-from').textContent = from;
+                        rows[idx].querySelector('.message-title').textContent = subject;
+                        rows[idx].querySelector('.message-snippet').textContent = snippet;
+                        rows[idx].querySelector('.message-date').textContent = date;
+                    }
+                } catch (err) {
+                    console.error('Error fetching message details:', err);
+                }
+            });
+        }
+
+        function getEmailBody(msgData) {
+            try {
+                if (!msgData || !msgData.payload) {
+                    return '<p><em>No content available</em></p>';
+                }
+
+                let body = '';
+
+                // Try to get body from different parts
+                if (msgData.payload.parts) {
+                    // For multipart messages, find the HTML or plain text part
+                    for (const part of msgData.payload.parts) {
+                        if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+                            body = decodeURIComponent(escape(atob(part.body.data)));
+                            break;
+                        } else if (part.mimeType === 'text/html' && part.body && part.body.data) {
+                            body = decodeURIComponent(escape(atob(part.body.data)));
+                            break;
+                        }
+                    }
+                } else if (msgData.payload.body && msgData.payload.body.data) {
+                    // For simple messages
+                    body = decodeURIComponent(escape(atob(msgData.payload.body.data)));
+                }
+
+                // Sanitize and format the body
+                if (body) {
+                    // Replace newlines with br tags for plain text
+                    body = body.replace(/\n/g, '<br>');
+
+                    // Wrap in a div with styling
+                    return '<div style="white-space: pre-wrap; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto; font-size: 14px; line-height: 1.5;">' + body + '</div>';
+                }
+
+                return '<p><em>No content available</em></p>';
+            } catch (err) {
+                console.error('Error parsing email body:', err);
+                return '<p><em>Error loading email content</em></p>';
+            }
+        }
+
+        function openMessageDetail(messageId) {
+            if (!messageCache[messageId]) {
+                alert('Message data not available. Please try again.');
+                return;
+            }
+
+            const msgData = messageCache[messageId];
+            let from = '', to = '', subject = '', date = '';
+
+            if (msgData.payload && msgData.payload.headers) {
+                for (const h of msgData.payload.headers) {
+                    if (h.name === 'From') from = h.value;
+                    if (h.name === 'To') to = h.value;
+                    if (h.name === 'Subject') subject = h.value;
+                    if (h.name === 'Date') date = new Date(h.value).toLocaleString();
+                }
+            }
+
+            // Populate modal
+            document.getElementById('modalFrom').textContent = from;
+            document.getElementById('modalTo').textContent = to;
+            document.getElementById('modalSubject').textContent = subject;
+            document.getElementById('modalDate').textContent = date;
+            document.getElementById('modalBody').innerHTML = getEmailBody(msgData);
+
+            // Show modal using Bootstrap 5
+            const modal = new bootstrap.Modal(document.getElementById('messageDetailModal'));
+            modal.show();
+        }
+
+        function showGmailError(message, showReconnect = false, reconnectUrl = '/accounts/google/login/') {
+            const banner = document.getElementById('gmail-error-banner');
+            const msgSpan = document.getElementById('gmail-error-message');
+            const reconnectBtn = document.getElementById('gmail-reconnect-btn');
+
+            msgSpan.textContent = message;
+            banner.style.display = 'block';
+
+            if (showReconnect) {
+                reconnectBtn.style.display = 'inline-block';
+                reconnectBtn.onclick = function() {
+                    window.location.href = reconnectUrl;
+                };
+            } else {
+                reconnectBtn.style.display = 'none';
+            }
+        }
+
+        function hideGmailError() {
+            document.getElementById('gmail-error-banner').style.display = 'none';
+        }
+
+        function toggleAllMessages(selectAllCheckbox) {
+            const messageCheckboxes = document.querySelectorAll('.message-checkbox');
+            messageCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+        }
+
+        function deleteSelected() { alert('Delete functionality coming soon!'); }
+        function archiveSelected() { alert('Archive functionality coming soon!'); }
+        function markSpamSelected() { alert('Mark as spam functionality coming soon!'); }
+        function markReadSelected() { alert('Mark as read functionality coming soon!'); }
+        function markUnreadSelected() { alert('Mark as unread functionality coming soon!'); }
+        function starSelected() { alert('Star functionality coming soon!'); }
+        function refreshInbox() { window.location.reload(); }
+        function showComposeModal() { alert('Compose functionality coming soon!'); }
+        function showImportDialog() { alert('Import functionality coming soon!'); }
+        function showExportDialog() { alert('Export functionality coming soon!'); }
+        function showFiltersDialog() { alert('Filters functionality coming soon!'); }
+        function showLabelsDialog() { alert('Labels functionality coming soon!'); }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchInbox();
+        });
+    </script>
+</body>
+</html>

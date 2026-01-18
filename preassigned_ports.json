@@ -1,0 +1,7 @@
+# List of ports to pre-register as assigned at startup
+# Format: {"port": "service"}
+{
+  "5000": "Monitor Logger",
+  "5002": "PolySniffer",
+  "8070": "PolySysMon WebUI"
+}

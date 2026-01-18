@@ -1,0 +1,17 @@
+/* Hide the Change link in the Django admin sidebar (robust) */
+
+
+
+
+
+
+/* Fully hide and disable the 'Change' link and icon in the sidebar */
+#nav-sidebar a.changelink,
+#nav-sidebar a.changelink *,
+#nav-sidebar li .icon-changelink,
+#nav-sidebar li svg {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}

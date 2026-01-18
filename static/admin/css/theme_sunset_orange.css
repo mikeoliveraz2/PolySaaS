@@ -1,0 +1,55 @@
+/* Sunset Orange Theme - Dynamic & Energetic */
+.tenant-branding {
+    background: linear-gradient(135deg, #ea580c 0%, #dc2626 50%, #b91c1c 100%);
+    padding: 15px 20px;
+    color: white;
+    border-bottom: 3px solid #f97316;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+}
+
+.tenant-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.tenant-details h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.tenant-details p {
+    color: rgba(255,255,255,0.9);
+    margin: 5px 0 0 0;
+    font-size: 14px;
+    font-weight: 300;
+}
+
+/* Enhanced buttons */
+.button, input[type="submit"], .submit-row input {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+}
+
+.button:hover, input[type="submit"]:hover {
+    background: linear-gradient(135deg, #ea580c 0%, #dc2626 100%);
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+    transform: translateY(-1px);
+}
+
+/* Admin navigation styling */
+.module h2, .module caption, .inline-group h2 {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    color: white;
+    border-radius: 6px 6px 0 0;
+}
+
+/* Form field focus */
+input:focus, select:focus, textarea:focus {
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}

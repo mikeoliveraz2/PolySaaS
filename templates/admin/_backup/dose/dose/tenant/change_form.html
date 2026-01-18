@@ -1,0 +1,69 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .branding-help {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .branding-tips {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .branding-tips h4 {
+            color: #495057;
+            margin-top: 0;
+        }
+        
+        .branding-tips ul {
+            margin-bottom: 0;
+            padding-left: 20px;
+        }
+        
+        .branding-tips li {
+            margin-bottom: 5px;
+            color: #6c757d;
+        }
+        
+        .fieldset.branding {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+        }
+    </style>
+{% endblock %}
+
+{% block field_sets %}
+    {% if "Visual Branding" in fieldset.name %}
+        <div class="branding-help">
+            <h4>🎨 Tenant Branding Management</h4>
+            <p>Customize how your tenant appears throughout the admin interface. Changes will be visible immediately after saving.</p>
+        </div>
+    {% endif %}
+    
+    {{ block.super }}
+    
+    {% if "Visual Branding" in fieldset.name %}
+        <div class="branding-tips">
+            <h4>💡 Branding Tips</h4>
+            <ul>
+                <li><strong>Logo:</strong> Upload PNG, JPG, or SVG files. Recommended size: 200x200px or larger</li>
+                <li><strong>Logo format:</strong> Square logos work best for the admin header</li>
+                <li><strong>Tagline:</strong> Keep it concise (under 50 characters for best display)</li>
+                <li><strong>Preview:</strong> The "Branding Preview" shows exactly how it will appear</li>
+                <li><strong>File size:</strong> Keep logo files under 2MB for best performance</li>
+            </ul>
+        </div>
+    {% endif %}
+{% endblock %}

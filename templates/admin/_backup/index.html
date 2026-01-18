@@ -1,0 +1,38 @@
+
+
+
+
+
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{# Ensure branding block is outside content so it always renders at the top #}
+{% block branding %}{{ block.super }}{% endblock %}
+
+{% block content %}
+    {% block breadcrumbs %}{{ block.super }}{% endblock %}
+    <div id="content-main">
+        {% for app in app_list %}
+            <section class="app-{{ app.app_label }} module" style="min-width: 260px; max-width: 340px; width: 100%; margin-bottom: 24px;">
+                <table class="model-table" style="width: 100%;">
+                    <caption class="section-title" style="width: 100%;">{{ app.name }}</caption>
+                    <tbody>
+                    {% for model in app.models %}
+                        <tr class="model-row">
+                            <th scope="row" style="vertical-align: middle;">
+                                <a href="{{ model.admin_url }}">{{ model.name }}</a>
+                            </th>
+                            <td class="add-link" style="vertical-align: middle; text-align: right;">
+                                {% if model.add_url %}
+                                    <a href="{{ model.add_url }}" class="addlink">{% trans 'Add' %}</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        {% endfor %}
+    </div>
+{% endblock %}
+

@@ -25,7 +25,7 @@ except ImportError:
         return dummy_context()
 
 def fix_polysniffer_endpoints():
-    """Check and fix any endpoints with port 9001"""
+    """Check and fix any endpoints with port 9001 or 5001 and update to 5002"""
     
     print("\n" + "="*80)
     print("FIXING POLYSNIFFER PORT CONFIGURATION")
@@ -37,21 +37,22 @@ def fix_polysniffer_endpoints():
         print("   (Running without tenant support)")
     
     with schema_context('public' if HAS_TENANTS else 'public'):
-        endpoints_with_9001 = PassThroughEndpoint.objects.filter(endpoint_url__icontains=':9001')
-        
-        if endpoints_with_9001.exists():
-            print(f"   ⚠️  Found {endpoints_with_9001.count()} endpoint(s) with port 9001")
-            for endpoint in endpoints_with_9001:
+        endpoints = PassThroughEndpoint.objects.filter(
+            endpoint_url__icontains=':9001'
+        ) | PassThroughEndpoint.objects.filter(
+            endpoint_url__icontains=':5001'
+        )
+        if endpoints.exists():
+            print(f"   ⚠️  Found {endpoints.count()} endpoint(s) with port 9001 or 5001")
+            for endpoint in endpoints:
                 print(f"   - ID {endpoint.id}: {endpoint.menu_title or endpoint.trigger_path}")
                 print(f"     Current URL: {endpoint.endpoint_url}")
-                
-                # Option 1: Update to port 5001 (standalone Flask service)
-                new_url = endpoint.endpoint_url.replace(':9001', ':5001')
+                new_url = endpoint.endpoint_url.replace(':9001', ':5002').replace(':5001', ':5002')
                 endpoint.endpoint_url = new_url
                 endpoint.save()
                 print(f"     ✅ Updated to: {endpoint.endpoint_url}")
         else:
-            print("   ✅ No endpoints with port 9001 found in PUBLIC schema")
+            print("   ✅ No endpoints with port 9001 or 5001 found in PUBLIC schema")
     
     # Check all tenant schemas
     try:
@@ -64,28 +65,29 @@ def fix_polysniffer_endpoints():
                 if tenant.schema_name and tenant.schema_name != 'public':
                     print(f"   Checking tenant: {tenant.name} ({tenant.schema_name})")
                     with schema_context(tenant.schema_name):
-                        endpoints_with_9001 = PassThroughEndpoint.objects.filter(endpoint_url__icontains=':9001')
-                        
-                        if endpoints_with_9001.exists():
-                            print(f"      ⚠️  Found {endpoints_with_9001.count()} endpoint(s) with port 9001")
-                            for endpoint in endpoints_with_9001:
+                        endpoints = PassThroughEndpoint.objects.filter(
+                            endpoint_url__icontains=':9001'
+                        ) | PassThroughEndpoint.objects.filter(
+                            endpoint_url__icontains=':5001'
+                        )
+                        if endpoints.exists():
+                            print(f"      ⚠️  Found {endpoints.count()} endpoint(s) with port 9001 or 5001")
+                            for endpoint in endpoints:
                                 print(f"      - ID {endpoint.id}: {endpoint.menu_title or endpoint.trigger_path}")
                                 print(f"        Current URL: {endpoint.endpoint_url}")
-                                
-                                # Update to port 5001
-                                new_url = endpoint.endpoint_url.replace(':9001', ':5001')
+                                new_url = endpoint.endpoint_url.replace(':9001', ':5002').replace(':5001', ':5002')
                                 endpoint.endpoint_url = new_url
                                 endpoint.save()
                                 print(f"        ✅ Updated to: {endpoint.endpoint_url}")
                         else:
-                            print(f"      ✅ No endpoints with port 9001 found")
+                            print(f"      ✅ No endpoints with port 9001 or 5001 found")
     except Exception as e:
         print(f"   ⚠️  Could not check tenant schemas: {e}")
     
     print("\n" + "="*80)
     print("SUMMARY")
     print("="*80)
-    print("✅ All endpoints with port 9001 have been updated to port 5001")
+    print("✅ All endpoints with port 9001 or 5001 have been updated to port 5002")
     print("\n📝 NOTE: The integrated PolySniffer doesn't need an external service.")
     print("   You can use the '🔍 Sniff' button directly from the admin interface")
     print("   without running any standalone service.\n")

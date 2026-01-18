@@ -1,0 +1,48 @@
+{% extends 'dose/dosebase.html' %}
+<!-- DEBUG: tenant_settings -->
+
+{% block title %}Tenant Settings - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<h2>Tenant Settings</h2>
+
+<div style="max-width: 600px;">
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="name">Tenant Name:</label>
+            <input type="text" id="name" name="name" value="{{ tenant.name }}" {% if not can_edit %}readonly{% endif %}>
+        </div>
+        
+        <div class="form-group">
+            <label for="description">Description:</label>
+            <textarea id="description" name="description" rows="4" {% if not can_edit %}readonly{% endif %}>{{ tenant.description|default:"" }}</textarea>
+        </div>
+        
+        <div class="form-group">
+            <label>Slug:</label>
+            <input type="text" value="{{ tenant.slug }}" readonly>
+            <small style="color: #666;">Slug cannot be changed</small>
+        </div>
+        
+        <div class="form-group">
+            <label>Status:</label>
+            <span style="color: {% if tenant.is_active %}green{% else %}red{% endif %};">
+                {% if tenant.is_active %}Active{% else %}Inactive{% endif %}
+            </span>
+        </div>
+        
+        <div class="form-group">
+            <label>Created:</label>
+            <span>{{ tenant.created_at|date:"Y-m-d H:i" }}</span>
+        </div>
+        
+        {% if can_edit %}
+        <button type="submit" class="btn">Save Changes</button>
+        {% else %}
+        <p style="color: #666;"><em>You need staff privileges to edit tenant settings.</em></p>
+        {% endif %}
+    </form>
+</div>
+{% endblock %}

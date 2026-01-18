@@ -1,0 +1,5 @@
+# Test Service Requirements
+# Install these dependencies to run the standalone test service
+
+flask==2.3.3
+Werkzeug==2.3.7

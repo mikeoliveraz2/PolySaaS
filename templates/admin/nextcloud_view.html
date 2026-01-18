@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}NextCloud - {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; NextCloud
+</div>
+{% endblock %}
+
+{% block content %}
+{{ html_content }}
+{% endblock %}

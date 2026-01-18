@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PolySysMon — PolySaaS</title>
+  <style>
+    :root{--brand:#1b355f;--accent:#2c5aa0}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#222;background:#fff;line-height:1.5}
+    .site{max-width:1100px;margin:0 auto;padding:20px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+    .btn{display:inline-block;padding:10px 14px;background:var(--accent);color:#fff;border-radius:6px;text-decoration:none}
+    .hero{min-height:420px;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;position:relative;color:#fff;text-align:center}
+    .hero .overlay{position:absolute;inset:0;background:rgba(0,0,0,0.25)}
+    .hero .inner{position:relative;max-width:980px;padding:40px}
+    h1{color:var(--brand);margin:0 0 12px}
+    h2{color:var(--brand);margin:36px 0 12px}
+    h3{color:var(--brand);margin:0 0 8px}
+    .caption{font-size:0.95rem;color:#555}
+    .aligncenter{display:block;margin:18px auto;max-width:100%}
+    .columns{display:flex;flex-wrap:wrap;gap:18px}
+    .column{flex:1 1 300px}
+    .cta{background:#f5f7fb;padding:36px;border-radius:8px;text-align:center;margin-top:28px}
+    .cta a{margin:0 8px}
+    @media(max-width:720px){.hero{min-height:320px}.hero .inner{padding:20px}}
+  </style>
+</head>
+<body>
+  <div class="site">
+    <div class="topbar">
+      <a class="btn" href="/">← Back to Home</a>
+      <div></div>
+    </div>
+
+    <main>
+      <!-- Hero -->
+      <div class="hero" style="background-image:url('https://darkgreen-armadillo-734129.hostingersite.com/wp-content/uploads/2025/12/Network-Diagram-Rinith10-780552.png')">
+        <span class="overlay" aria-hidden="true"></span>
+        <div class="inner">
+          <h1 style="font-size:42px;color:#fff">If your network diagram looks like this...<br><strong>you need PolySysMon.</strong></h1>
+          <p style="font-size:18px;color:#fff;margin-top:12px;max-width:820px;margin-left:auto;margin-right:auto">PolySysMon is your proactive monitoring system — watching servers, apps, databases, and connections 24/7 to catch issues before they become outages.</p>
+        </div>
+      </div>
+
+      <!-- Architecture -->
+      <section>
+        <h2 class="has-text-align-center">PolySysMon Architecture</h2>
+        <p class="caption" style="text-align:center;max-width:880px;margin:6px auto 18px">PolySysMon is built on a lightweight, GCP-native architecture. Agents collect data via SNMP, APIs, SQL, logs, or custom scripts — streaming securely to PubSub. Flexible scheduling drives processing, while multiple correlators apply your custom taxonomies for real-time anomaly detection. The intuitive TRex Web UI provides full visibility and control with minimal overhead.</p>
+        <img class="aligncenter" src="https://darkgreen-armadillo-734129.hostingersite.com/wp-content/uploads/2025/12/PolySysMon-Arhitecture.png" alt="PolySysMon Architecture Diagram"/>
+      </section>
+
+      <!-- Supporting Visuals -->
+      <section>
+        <h2 class="has-text-align-center">Built on Proven Foundations</h2>
+        <div class="columns" style="margin-top:12px">
+          <div class="column"><img class="aligncenter" src="https://darkgreen-armadillo-734129.hostingersite.com/wp-content/uploads/2025/12/Falcon-on-GCP.png" alt="Falcon on GCP"/></div>
+          <div class="column"><img class="aligncenter" src="https://darkgreen-armadillo-734129.hostingersite.com/wp-content/uploads/2025/12/GCP-Architecture-Framework.jpg" alt="GCP Architecture Framework"/></div>
+        </div>
+      </section>
+
+      <!-- Core Capabilities -->
+      <section>
+        <h2>Core Capabilities</h2>
+        <div class="columns" style="margin-top:12px">
+          <div class="column"><h3>Collect</h3><p>Agents support SNMP, API, SQL, log parsing, and custom scripts.</p></div>
+          <div class="column"><h3>Analyse</h3><p>Data is organized using your custom taxonomies. Multiple correlators detect patterns and anomalies across streams.</p></div>
+          <div class="column"><h3>Deliver</h3><p>Reports, notifications (Slack/Email/SMS), workflow triggers, and intuitive dashboards.</p></div>
+        </div>
+      </section>
+
+      <!-- Link to More + CTA -->
+      <section class="cta">
+        <h2 style="margin-top:0">See Real-World Scenarios</h2>
+        <p style="margin:8px 0 18px">Explore deployed examples and deeper technical notes.</p>
+        <a class="btn" href="https://darkgreen-armadillo-734129.hostingersite.com/polysysmon-2/">PolySysMon More →</a>
+      </section>
+
+      <!-- Final CTA -->
+      <section style="margin-top:28px">
+        <div style="background:#0f1720;color:#fff;padding:40px;border-radius:8px;text-align:center">
+          <h2 style="color:#fff;margin:0 0 8px;font-size:28px">Ready to Monitor Proactively?</h2>
+          <p style="margin:0 0 16px">Join the waitlist and be the first to deploy PolySysMon.</p>
+          <a class="btn" href="/sign-up-3/">Join Waitlist / Sign Up</a>
+          <a class="btn" href="/" style="background:transparent;border:2px solid #fff;margin-left:12px;color:#fff;text-decoration:none">← Back to Home</a>
+        </div>
+      </section>
+
+      <p style="margin-top:28px"><a class="btn" href="/">← Back to Home</a></p>
+    </main>
+  </div>
+</body>
+</html>

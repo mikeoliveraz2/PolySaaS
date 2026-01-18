@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Static Test</title>
+    <style>
+        body { 
+            font-family: Arial; 
+            padding: 20px; 
+            background-color: #f0f8ff; /* Light blue background */ 
+        }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .resource-test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>Static File Resource Test</h1>
+    <p>This page tests if external resources load correctly from the mapped static file.</p>
+    
+    <div class="resource-test">
+        <h3>CSS Test</h3>
+        <link href="https://demozone.surpaascompaas.com/surpaas/resources/font-new/css/all.min.css" rel="stylesheet" type="text/css" />
+        <p>If FontAwesome CSS loads, this should show an icon: <i class="fa fa-check"></i></p>
+    </div>
+    
+    <div class="resource-test">
+        <h3>Image Test</h3>
+        <img src="https://demozone.surpaascompaas.com/surpaas/resources/images/circle-load.gif" alt="Loading GIF" style="width: 32px; height: 32px;" />
+        <p>Above should show a loading spinner GIF from external server</p>
+    </div>
+    
+    <div class="resource-test">
+        <h3>JavaScript Test</h3>
+        <script>
+            // Test if we can load an external JS resource
+            var testImg = new Image();
+            testImg.onload = function() {
+                document.getElementById('js-result').innerHTML = '<span class="success">✅ External image loads successfully</span>';
+            };
+            testImg.onerror = function() {
+                document.getElementById('js-result').innerHTML = '<span class="error">❌ External image failed to load</span>';
+            };
+            testImg.src = 'https://demozone.surpaascompaas.com/surpaas/resources/images/icon-info.png';
+        </script>
+        <div id="js-result">Testing JavaScript resource loading...</div>
+    </div>
+    
+    <div class="resource-test">
+        <h3>Status</h3>
+        <p><strong>This page should load completely without any "Loading..." messages.</strong></p>
+        <p>Background should be light blue, not the JSF application blue.</p>
+    </div>
+</body>
+</html>

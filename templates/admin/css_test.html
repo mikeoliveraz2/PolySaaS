@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS Test - Login Form</title>
+    <!-- Test the login.css in isolation -->
+    <link rel="stylesheet" href="/static/osticket/css/login.css">
+</head>
+<body>
+    <h1>CSS Test Page</h1>
+    <p>This page tests if login.css works in isolation.</p>
+
+    <!-- Test basic form -->
+    <form action="#" method="post">
+        <h1>Login Form</h1>
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="Password" required>
+        <input type="submit" value="Login">
+    </form>
+
+    <!-- Test form with ID like OSTicket might use -->
+    <form id="login" action="#" method="post">
+        <h1>Login Form (with ID)</h1>
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="Password" required>
+        <input type="submit" value="Login">
+    </form>
+
+    <!-- Test form with loginBox ID -->
+    <div id="loginBox">
+        <form action="#" method="post">
+            <h1>Login Form (in loginBox)</h1>
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <input type="submit" value="Login">
+        </form>
+    </div>
+
+    <p>If you see a gradient background and styled forms above, the CSS is working!</p>
+</body>
+</html></content>
+<parameter name="filePath">c:\Users\PC\OneDrive\Documents\GitHub\DoseV3MasterSaaS-main-main\templates\admin\css_test.html

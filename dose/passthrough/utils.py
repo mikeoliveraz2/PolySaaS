@@ -1,0 +1,9 @@
+# dose/passthrough/utils.py — FINAL
+from urllib.parse import urlparse
+
+def derive_endpoint_base(full_url: str) -> str:
+    """User can paste ANYTHING — we always return correct base"""
+    if not full_url.startswith(('http://', 'https://')):
+        full_url = 'http://' + full_url.lstrip('/')
+    parsed = urlparse(full_url)
+    return f"{parsed.scheme}://{parsed.netloc}/"

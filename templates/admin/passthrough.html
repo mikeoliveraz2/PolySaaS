@@ -1,0 +1,255 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ page_title }} - {{ block.super }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+.passthrough-container {
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin: 20px 0;
+}
+
+.service-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #007bff;
+}
+
+.service-icon {
+    font-size: 2em;
+    color: #007bff;
+    margin-right: 15px;
+}
+
+.service-info h1 {
+    margin: 0;
+    color: #333;
+    font-size: 1.8em;
+}
+
+.service-info p {
+    margin: 5px 0 0 0;
+    color: #666;
+    font-size: 1.1em;
+}
+
+.passthrough-frame {
+    width: 100%;
+    height: 800px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #f8f9fa;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255,255,255,0.9);
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    z-index: 1000;
+}
+
+.frame-container {
+    position: relative;
+    margin-top: 20px;
+}
+
+.service-controls {
+    margin: 15px 0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.btn-service {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.btn-service:hover {
+    background: #0056b3;
+}
+
+.service-status {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    margin-left: auto;
+}
+
+.status-connected {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status-loading {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:index' %}">Services</a>
+    &rsaquo; {{ breadcrumb }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="passthrough-container">
+    <!-- Service Header -->
+    <div class="service-header">
+        <i class="{{ service_icon }} service-icon"></i>
+        <div class="service-info">
+            <h1>{{ service_name }}</h1>
+            <p>{{ service_description }}</p>
+        </div>
+    </div>
+
+    <!-- Service Controls -->
+    <div class="service-controls">
+        <button class="btn-service" onclick="refreshService()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button class="btn-service" onclick="openInNewTab()">
+            <i class="fas fa-external-link-alt"></i> Open in New Tab
+        </button>
+        <div class="service-status status-loading" id="service-status">
+            <i class="fas fa-spinner fa-spin"></i> Loading...
+        </div>
+    </div>
+
+    <!-- Service Content Container -->
+    <div class="frame-container">
+        {% if show_error %}
+            <!-- Error Display -->
+            <div class="error-container" style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 20px; border-radius: 4px;">
+                <i class="fas fa-exclamation-triangle fa-2x" style="color: #dc3545; margin-bottom: 10px;"></i>
+                <h3>{{ service_name }} Error</h3>
+                <p>{{ error_message }}</p>
+                <button class="btn-service" onclick="refreshService()">
+                    <i class="fas fa-sync-alt"></i> Try Again
+                </button>
+            </div>
+        {% elif has_structured_data and service_type == 'gmail' %}
+            <!-- Gmail Structured Data Rendering -->
+            {% include 'admin/gmail_content.html' %}
+        {% elif service_content %}
+            <!-- Direct Service Content (from atomic service) -->
+            <div class="service-content-container" style="border: 1px solid #dadce0; border-radius: 4px; overflow: hidden;">
+                {{ service_content|safe }}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Passthrough service JavaScript
+let serviceLoaded = false;
+
+function frameLoaded() {
+    console.log('{{ service_type }} service loaded successfully');
+    document.getElementById('loading-overlay').style.display = 'none';
+    document.getElementById('service-status').className = 'service-status status-connected';
+    document.getElementById('service-status').innerHTML = '<i class="fas fa-check-circle"></i> Connected';
+    serviceLoaded = true;
+}
+
+function frameError() {
+    console.error('Failed to load {{ service_type }} service');
+
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.innerHTML =
+            '<i class="fas fa-exclamation-triangle fa-2x" style="color: #dc3545;"></i>' +
+            '<p>Failed to load {{ service_name }}</p>' +
+            '<button class="btn-service" onclick="refreshService()">Retry</button>';
+    }
+
+    const serviceStatus = document.getElementById('service-status');
+    if (serviceStatus) {
+        serviceStatus.className = 'service-status';
+        serviceStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Connection Failed';
+        serviceStatus.style.background = '#f8d7da';
+        serviceStatus.style.color = '#721c24';
+    }
+}
+
+function refreshService() {
+    console.log('Refreshing {{ service_type }} service');
+    {% if service_content %}
+        // For direct service content, reload the page
+        window.location.reload();
+    {% else %}
+        // For iframe mode
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'block';
+        }
+        const serviceStatus = document.getElementById('service-status');
+        if (serviceStatus) {
+            serviceStatus.className = 'service-status status-loading';
+            serviceStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+        }
+        const frame = document.getElementById('service-frame');
+        if (frame) {
+            frame.src = frame.src; // Reload iframe
+        }
+    {% endif %}
+}
+
+function openInNewTab() {
+    {% if service_content %}
+        // For direct service content, open the service-specific endpoint
+        window.open('/dose/{{ service_type|lower }}/', '_blank');
+    {% else %}
+        window.open('{{ iframe_url }}', '_blank');
+    {% endif %}
+}
+
+// Initialize service status for direct service content
+{% if service_content %}
+document.addEventListener('DOMContentLoaded', function() {
+    // Service content loaded successfully
+    document.getElementById('service-status').className = 'service-status status-connected';
+    document.getElementById('service-status').innerHTML = '<i class="fas fa-check-circle"></i> Connected';
+});
+{% endif %}
+
+// Auto-hide loading overlay after 10 seconds if frame doesn't load
+setTimeout(() => {
+    if (!serviceLoaded) {
+        frameError();
+    }
+}, 10000);
+
+// Service-specific JavaScript can be added here based on service_type
+{% if service_type == 'gmail' %}
+console.log('Gmail-specific JavaScript initialized');
+// Gmail-specific features can be added here
+{% elif service_type == 'osticket' %}
+console.log('OSTicket-specific JavaScript initialized');
+// OSTicket-specific features can be added here
+{% endif %}
+</script>
+{% endblock %}

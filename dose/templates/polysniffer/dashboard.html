@@ -1,0 +1,95 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}PolySniffer - HTTP Traffic Debugger{% endblock %}
+
+{% block content %}
+<h1>🔍 PolySniffer - HTTP Traffic Debugger</h1>
+
+<div style="margin: 20px 0;">
+    <a href="{% url 'polysniffer:dashboard' %}" class="button">Refresh</a>
+    <a href="{% url 'polysniffer:export_har' %}" class="button">Export All as HAR</a>
+    <a href="{% url 'admin:dose_passthroughendpoint_changelist' %}" class="button">← Back to Endpoints</a>
+</div>
+
+<!-- Filters -->
+<div style="background: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px;">
+    <form method="get" style="display: flex; gap: 10px; align-items: center;">
+        <label>Endpoint:</label>
+        <select name="endpoint">
+            <option value="">All Endpoints</option>
+            {% for ep in endpoints %}
+            <option value="{{ ep }}" {% if request.GET.endpoint == ep %}selected{% endif %}>{{ ep }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Method:</label>
+        <select name="method">
+            <option value="">All Methods</option>
+            <option value="GET" {% if request.GET.method == 'GET' %}selected{% endif %}>GET</option>
+            <option value="POST" {% if request.GET.method == 'POST' %}selected{% endif %}>POST</option>
+        </select>
+
+        <button type="submit" class="button">Filter</button>
+    </form>
+</div>
+
+<!-- Stats -->
+<div style="margin: 20px 0; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+    <strong>Total Logs:</strong> {{ total_logs }}
+</div>
+
+<!-- Logs Table -->
+<table style="width: 100%; border-collapse: collapse;">
+    <thead>
+        <tr style="background: #f5f5f5;">
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Time</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Method</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Path</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Status</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Endpoint</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Duration</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in logs %}
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;">{{ log.captured_at|date:"H:i:s" }}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><strong>{{ log.method }}</strong></td>
+            <td style="padding: 8px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis;" title="{{ log.url }}">{{ log.path }}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">
+                <span style="padding: 3px 8px; border-radius: 3px; background: {% if log.status_code < 300 %}#4caf50{% elif log.status_code < 400 %}#ff9800{% else %}#f44336{% endif %}; color: white;">
+                    {{ log.status_code }}
+                </span>
+            </td>
+            <td style="padding: 8px; border: 1px solid #ddd;">{{ log.endpoint_name|default:"-" }}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">{{ log.duration_ms|floatformat:0 }}ms</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">
+                <a href="{% url 'polysniffer:log_detail' log.id %}" class="button" style="padding: 4px 8px; font-size: 12px;">View</a>
+                <a href="{% url 'polysniffer:export_single' log.id %}" class="button" style="padding: 4px 8px; font-size: 12px;">HAR</a>
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="7" style="padding: 20px; text-align: center; color: #999;">No traffic logs yet. Start debugging an endpoint to capture traffic!</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Pagination -->
+{% if logs.has_other_pages %}
+<div style="margin: 20px 0; text-align: center;">
+    {% if logs.has_previous %}
+    <a href="?page={{ logs.previous_page_number }}{% if request.GET.endpoint %}&endpoint={{ request.GET.endpoint }}{% endif %}{% if request.GET.method %}&method={{ request.GET.method }}{% endif %}" class="button">Previous</a>
+    {% endif %}
+    <span style="margin: 0 10px;">Page {{ logs.number }} of {{ logs.paginator.num_pages }}</span>
+    {% if logs.has_next %}
+    <a href="?page={{ logs.next_page_number }}{% if request.GET.endpoint %}&endpoint={{ request.GET.endpoint }}{% endif %}{% if request.GET.method %}&method={{ request.GET.method }}{% endif %}" class="button">Next</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+

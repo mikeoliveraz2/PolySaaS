@@ -1,0 +1,202 @@
+from django.contrib import admin
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseRedirect
+from django.shortcuts import redirect
+from django.contrib.auth import REDIRECT_FIELD_NAME
+from django.contrib.auth.views import redirect_to_login
+from django.urls import reverse
+from django.contrib.admin import AdminSite
+
+
+class TenantAdminSite(AdminSite):
+    """
+    Custom Admin Site that handles tenant-specific routing and branding
+    """
+    site_header = 'Tenant Administration'
+    site_title = 'Tenant Admin'
+    index_title = 'Welcome to Tenant Administration'
+    
+    def __init__(self, name='tenant_admin'):
+        super().__init__(name)
+    
+    def has_permission(self, request):
+        """
+        Check if the user has permission to access the admin.
+        """
+        return request.user.is_active and request.user.is_staff
+    
+    def login(self, request, extra_context=None):
+        """
+        Handle login for tenant admin
+        """
+        # Get tenant schema from path or session
+        tenant_schema = None
+        
+        if request.path.startswith('/tenant/'):
+            try:
+                tenant_schema = request.path.split('/tenant/')[1].split('/')[0]
+                # Store in session for persistence
+                if hasattr(request, 'session'):
+                    request.session['_path_tenant_schema'] = tenant_schema
+                    request.session.save()
+            except:
+                pass
+        
+        # Use default login but ensure tenant context is maintained
+        return super().login(request, extra_context)
+    
+    def admin_view(self, view, cacheable=False):
+        """
+        Override admin_view to handle tenant context and authentication redirects
+        """
+        def inner(request, *args, **kwargs):
+            print(f"DEBUG: TenantAdminSite.admin_view called for path: {request.path}")
+            
+            # Get tenant schema from path or session
+            tenant_schema = None
+            
+            # Try to get tenant from URL path first
+            if request.path.startswith('/tenant/'):
+                try:
+                    tenant_schema = request.path.split('/tenant/')[1].split('/')[0]
+                    print(f"DEBUG: Extracted tenant_schema from path: {tenant_schema}")
+                    # Store in session for persistence
+                    if hasattr(request, 'session'):
+                        request.session['_path_tenant_schema'] = tenant_schema
+                        request.session.save()
+                except:
+                    pass
+            
+            # Fallback to session if not in path
+            if not tenant_schema and hasattr(request, 'session'):
+                tenant_schema = request.session.get('_path_tenant_schema')
+                print(f"DEBUG: Got tenant_schema from session: {tenant_schema}")
+            
+            print(f"DEBUG: Final tenant_schema: {tenant_schema}")
+            print(f"DEBUG: Checking has_permission...")
+            
+            # Check if user has permission (this will trigger authentication if needed)
+            if not self.has_permission(request):
+                print(f"DEBUG: User does not have permission, redirecting to login")
+                if tenant_schema:
+                    # Create tenant-aware login URL with full host and port
+                    scheme = 'https' if request.is_secure() else 'http'
+                    host = request.get_host()  # This includes port if present
+                    login_path = f'/tenant/{tenant_schema}/admin/login/'
+                    next_url = request.get_full_path()
+                    
+                    # Build absolute login URL with query parameters
+                    login_url = f'{scheme}://{host}{login_path}'
+                    if next_url:
+                        login_url += f'?next={next_url}'
+                    
+                    print(f"DEBUG: Redirecting to tenant login: {login_url}")
+                    return HttpResponseRedirect(login_url)
+                else:
+                    print(f"DEBUG: No tenant_schema, using default login redirect")
+                    # Fallback to default behavior
+                    return redirect_to_login(next=request.get_full_path())
+            
+            print(f"DEBUG: User has permission, continuing with view")
+            
+            # Ensure tenant URLs maintain proper prefix
+            if tenant_schema and not request.path.startswith(f'/tenant/{tenant_schema}/'):
+                # Redirect to tenant-prefixed URL preserving host and port
+                scheme = 'https' if request.is_secure() else 'http'
+                host = request.get_host()  # This includes port if present
+                tenant_path = f'/tenant/{tenant_schema}{request.path}'
+                if request.GET:
+                    tenant_path += '?' + request.GET.urlencode()
+                redirect_url = f'{scheme}://{host}{tenant_path}'
+                print(f"DEBUG: Redirecting to maintain tenant prefix: {redirect_url}")
+                return HttpResponseRedirect(redirect_url)
+            
+            return view(request, *args, **kwargs)
+        
+        return super().admin_view(inner, cacheable)
+
+
+# Create the tenant admin site instance
+tenant_admin_site = TenantAdminSite(name='tenant_admin')
+
+
+def register_all_models_with_tenant_admin():
+    """
+    Register all models from various apps with the tenant admin site
+    """
+    from django.contrib.auth.models import Group, User
+    from dose.models import Tenant, Domain, TenantUser, MLEngine, MLTaxonomy, MLDataset, CallBackData, Instruction, Task
+    from parameters.models import Parameter
+    
+    # Register auth models
+    try:
+        tenant_admin_site.register(Group)
+        print("DEBUG: Registered Group with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    # Register dose models
+    try:
+        tenant_admin_site.register(Tenant)
+        print("DEBUG: Registered Tenant with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(Domain)
+        print("DEBUG: Registered Domain with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(TenantUser)
+        print("DEBUG: Registered TenantUser with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(MLEngine)
+        print("DEBUG: Registered MLEngine with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(MLTaxonomy)
+        print("DEBUG: Registered MLTaxonomy with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(MLDataset)
+        print("DEBUG: Registered MLDataset with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(CallBackData)
+        print("DEBUG: Registered CallBackData with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(Instruction)
+        print("DEBUG: Registered Instruction with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    try:
+        tenant_admin_site.register(Task)
+        print("DEBUG: Registered Task with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+    
+    # Register parameters models
+    try:
+        tenant_admin_site.register(Parameter)
+        print("DEBUG: Registered Parameter with tenant admin")
+    except admin.sites.AlreadyRegistered:
+        pass
+
+
+# Call the registration function
+register_all_models_with_tenant_admin()

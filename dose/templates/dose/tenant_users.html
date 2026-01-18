@@ -1,0 +1,64 @@
+{% extends 'dose/dosebase.html' %}
+
+{% block title %}Tenant Users - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<h2>Users for {{ tenant.name }}</h2>
+
+<div style="margin: 2rem 0;">
+    <h3>Tenant Users ({{ users.count }})</h3>
+    
+    {% if users %}
+    <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px;">
+        {% for user in users %}
+        <div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; background-color: white;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h4 style="margin: 0;">{{ user.get_full_name|default:user.username }}</h4>
+                    <p style="margin: 0.5rem 0; color: #666;">{{ user.email }}</p>
+                    <p style="margin: 0; font-size: 0.9rem;">
+                        <strong>Username:</strong> {{ user.username }} |
+                        <strong>Staff:</strong> {% if user.is_staff %}Yes{% else %}No{% endif %} |
+                        <strong>Active:</strong> {% if user.is_active %}Yes{% else %}No{% endif %}
+                    </p>
+                </div>
+                <div>
+                    <span style="padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background-color: {% if user.is_active %}#d4edda; color: #155724{% else %}#f8d7da; color: #721c24{% endif %};">
+                        {% if user.is_active %}Active{% else %}Inactive{% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <div style="margin-top: 0.5rem; font-size: 0.9rem; color: #666;">
+                <strong>Last Login:</strong> 
+                {% if user.last_login %}
+                    {{ user.last_login|date:"Y-m-d H:i" }}
+                {% else %}
+                    Never
+                {% endif %}
+                | <strong>Joined:</strong> {{ user.date_joined|date:"Y-m-d" }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        No users found for this tenant.
+    </div>
+    {% endif %}
+</div>
+
+{% if can_manage %}
+<div style="margin: 2rem 0;">
+    <h3>User Management</h3>
+    <div style="display: flex; gap: 1rem;">
+        <a href="{% url 'admin:auth_user_add' %}" class="btn">Add New User</a>
+        <a href="{% url 'admin:auth_user_changelist' %}" class="btn btn-secondary">Manage in Admin</a>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>You need staff privileges to manage users.</p>
+</div>
+{% endif %}
+{% endblock %}

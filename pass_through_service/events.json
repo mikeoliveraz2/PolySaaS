@@ -1,0 +1,62 @@
+[
+  {
+    "timestamp": "2025-11-21 10:45:52",
+    "service_name": "TicketInterceptorService",
+    "execution_timestamp": "2025-11-21 10:45:50",
+    "user_context": {
+      "username": "olientAdmin",
+      "user_id": 2,
+      "is_authenticated": true
+    },
+    "tenant_context": {
+      "name": "Oliver Enterprises",
+      "tenant_id": 2
+    },
+    "ticket_data": {},
+    "request_metadata": {
+      "method": "GET",
+      "path": "/admin/parameters/parameter/",
+      "content_type": "text/plain",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+      "remote_address": "127.0.0.1"
+    }
+  },
+  {
+    "timestamp": "2025-11-21 10:45:31",
+    "service_name": "TicketInterceptorService",
+    "execution_timestamp": "2025-11-21 10:45:29",
+    "user_context": {
+      "username": "olientAdmin",
+      "user_id": 2,
+      "is_authenticated": true
+    },
+    "tenant_context": {
+      "name": "Oliver Enterprises",
+      "tenant_id": 2
+    },
+    "ticket_data": {
+      "csrfmiddlewaretoken": "VsQ0i7GGkNzvBaiKG67RlcI6iLxdp67lk0x8hetKqicxLWo60i9mAn76GHFLBPz9",
+      "requestpath": "parameters",
+      "eventKey": "more data",
+      "requestmethod": "GET",
+      "direction": "REQ",
+      "urllist": "",
+      "appusername": "appusername",
+      "executescript": "TicketInterceptorService",
+      "description": "Description",
+      "parameters_json": "null",
+      "pub_date_0": "2025-11-21",
+      "pub_date_1": "10:44:44",
+      "initial-pub_date_0": "2025-11-21",
+      "initial-pub_date_1": "10:44:44",
+      "_save": "Save"
+    },
+    "request_metadata": {
+      "method": "POST",
+      "path": "/admin/dose/instruction/add/",
+      "content_type": "application/x-www-form-urlencoded",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+      "remote_address": "127.0.0.1"
+    }
+  }
+]

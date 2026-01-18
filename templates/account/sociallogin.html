@@ -1,0 +1,16 @@
+{% extends "account/base.html" %}
+
+{% block content %}
+<div class="login-container" style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; margin: 100px auto; display: flex; flex-direction: column; align-items: center;">
+    <h2 style="color: #007bff; text-align: center; margin-bottom: 12px;">Google Login (socialaccount/login.html)</h2>
+    <p style="text-align: center; color: #555; font-weight: 500; margin-bottom: 24px;">Sign in with your Google account to access Dose.</p>
+    {% if form %}
+      <form method="post" action="" style="margin-bottom: 14px; width: 100%; max-width: 340px;">
+        {% csrf_token %}
+        <div style="margin-bottom: 16px;">{{ form.as_p }}</div>
+        <button type="submit" style="background-color: #4285f4; color: #fff; width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 16px; margin-top: 10px;">Sign in with Google</button>
+      </form>
+    {% endif %}
+    <a href="/accounts/login/" style="color: #007bff; text-align: center; margin-top: 18px;">Back to Dose Login</a>
+</div>
+{% endblock %}

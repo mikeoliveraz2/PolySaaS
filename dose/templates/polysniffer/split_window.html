@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PolySniffer - {{ endpoint.menu_title|default:endpoint.trigger_path }}</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Pane - Control Panel */
+        #polysniffer-top {
+            height: 40vh;
+            background: #000;
+            border-bottom: 3px solid #0f0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Green Bar */
+        .green-bar {
+            height: 44px;
+            background: #000;
+            color: #0f0;
+            font: bold 14px 'Courier New', monospace;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 3px solid #0f0;
+            box-shadow: 0 4px 20px rgba(0,255,0,0.6);
+            flex-shrink: 0;
+        }
+
+        .green-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .green-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .green-bar button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 6px 12px;
+            font: bold 12px 'Courier New', monospace;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+
+        .green-bar button:hover {
+            background: #0a0;
+            transform: scale(1.05);
+        }
+
+        .green-bar button.danger {
+            background: #f00;
+            color: #fff;
+        }
+
+        .green-bar button.danger:hover {
+            background: #a00;
+        }
+
+        #ps-count {
+            color: #0f0;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        /* Control Panel Content */
+        .control-panel {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Capture Log */
+        #capture-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            font-size: 11px;
+            background: #0a0a0a;
+            border-right: 1px solid #0f0;
+        }
+
+        .log-entry {
+            padding: 8px;
+            margin-bottom: 4px;
+            border-left: 3px solid #0f0;
+            background: rgba(0,255,0,0.05);
+            transition: all 0.2s;
+        }
+
+        .log-entry:hover {
+            background: rgba(0,255,0,0.1);
+            border-left-width: 5px;
+        }
+
+        .log-entry.GET { border-left-color: #4caf50; }
+        .log-entry.POST { border-left-color: #2196f3; }
+        .log-entry.PUT { border-left-color: #ff9800; }
+        .log-entry.DELETE { border-left-color: #f44336; }
+
+        .log-method {
+            font-weight: bold;
+            color: #0f0;
+            margin-right: 8px;
+        }
+
+        .log-url {
+            color: #0f0;
+            word-break: break-all;
+        }
+
+        .log-time {
+            color: #666;
+            font-size: 10px;
+            margin-top: 4px;
+        }
+
+        /* AI Chat (Future) */
+        #ai-chat {
+            width: 300px;
+            background: #0a0a0a;
+            border-left: 1px solid #0f0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #ai-chat-header {
+            font-weight: bold;
+            color: #0f0;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #0f0;
+        }
+
+        #ai-chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 11px;
+            margin-bottom: 10px;
+        }
+
+        .ai-message {
+            padding: 8px;
+            margin-bottom: 8px;
+            background: rgba(0,255,0,0.05);
+            border-radius: 3px;
+        }
+
+        .ai-message.user {
+            background: rgba(0,255,0,0.1);
+        }
+
+        #ai-chat-input {
+            width: 100%;
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        #ai-chat-input:focus {
+            outline: none;
+            border-color: #0a0;
+            box-shadow: 0 0 10px rgba(0,255,0,0.3);
+        }
+
+        /* Bottom Pane - Target App in iframe */
+        #target-app {
+            flex: 1;
+            width: 100%;
+            border: none;
+            background: #fff;
+        }
+
+        /* Iframe error message */
+        .iframe-error {
+            display: none;
+            padding: 40px;
+            text-align: center;
+            color: #f00;
+            background: #1a1a1a;
+        }
+
+        .iframe-error.show {
+            display: block;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #000;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #0f0;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #0a0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Pane - Control Panel -->
+    <div id="polysniffer-top">
+        <!-- Green Bar -->
+        <div class="green-bar">
+            <div class="green-bar-left">
+                <span>🟢 PolySniffer ACTIVE — Capturing all traffic — <span id="ps-count">0</span> requests</span>
+            </div>
+            <div class="green-bar-right">
+                <button onclick="stopCapture()">⏹ Stop</button>
+                <button onclick="clearLog()">🗑 Clear</button>
+                <button onclick="generateHandler()">🤖 Generate Handler</button>
+                <button onclick="deployHandler()">🚀 Deploy</button>
+            </div>
+        </div>
+
+        <!-- Control Panel Content -->
+        <div class="control-panel">
+            <!-- Capture Log -->
+            <div id="capture-log">
+                <div class="log-entry">
+                    <div><span class="log-method">[SYSTEM]</span> <span class="log-url">PolySniffer initialized — waiting for traffic...</span></div>
+                    <div class="log-time">{{ "now"|date:"H:i:s" }}</div>
+                </div>
+            </div>
+
+            <!-- AI Chat -->
+            <div id="ai-chat">
+                <div id="ai-chat-header">🤖 Grok Assistant</div>
+                <div id="ai-chat-messages">
+                    <div class="ai-message">
+                        <strong>Grok:</strong> Ready to analyze captured traffic and generate handler code.
+                    </div>
+                </div>
+                <input type="text" id="ai-chat-input" placeholder="Ask Grok to analyze traffic..." onkeypress="handleChatKeyPress(event)">
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Pane - Target App in iframe -->
+    <div style="flex: 1; position: relative;">
+        <iframe id="target-app"
+                src="{{ proxy_url }}"
+                onload="handleIframeLoad()"
+                onerror="handleIframeError()"
+                style="width: 100%; height: 100%; border: none;"
+                referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <div id="iframe-error" class="iframe-error">
+            <h2>⚠️ Iframe Failed to Load</h2>
+            <p>Proxy URL: <code>{{ proxy_url }}</code></p>
+            <p>This might be due to:</p>
+            <ul style="text-align: left; display: inline-block;">
+                <li>X-Frame-Options header blocking the iframe</li>
+                <li>Content Security Policy (CSP) restrictions</li>
+                <li>Proxy authentication redirect</li>
+                <li>Network error</li>
+            </ul>
+            <p style="margin-top: 20px;">
+                <button onclick="retryIframe()" style="background: #0f0; color: #000; padding: 10px 20px; border: none; cursor: pointer; font-weight: bold;">Retry</button>
+                <button onclick="openInNewTab()" style="background: #333; color: #0f0; padding: 10px 20px; border: 1px solid #0f0; cursor: pointer; margin-left: 10px;">Open in New Tab</button>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const endpointId = {{ endpoint.id }};
+        let requestCount = 0;
+        let isCapturing = true;
+        const captureLog = document.getElementById('capture-log');
+        const countElement = document.getElementById('ps-count');
+
+        // Listen for messages from iframe
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data || !data.type) return;
+
+            console.log("[SPLIT-WINDOW] Received message:", data.type, "from origin:", event.origin);
+
+            // Handle auth-related messages (from iframe) - accept from any origin for auth
+            if (data.type === 'polysniffer-auth-opened') {
+                console.log("[SPLIT-WINDOW] Auth opened message received");
+                addLogEntry("[AUTH] Authentication window opened. Complete authentication, then click 'Refresh After Auth'.", "system");
+                showRefreshAfterAuthButton();
+                return; // Don't check origin for auth messages
+            } else if (data.type === 'polysniffer-auth-closed') {
+                console.log("[SPLIT-WINDOW] Auth closed message received, refreshing iframe...");
+                addLogEntry("[AUTH] Authentication window closed. Refreshing iframe in 2 seconds...", "system");
+                // Refresh immediately, then again after a delay to ensure cookies propagate
+                refreshAfterAuth();
+                setTimeout(refreshAfterAuth, 2000);
+                setTimeout(refreshAfterAuth, 5000); // One more time after 5 seconds
+                return; // Don't check origin for auth messages
+            }
+
+            // Security: Only accept capture messages from our proxy origin
+            if (event.origin !== window.location.origin) {
+                console.log("[SPLIT-WINDOW] Rejecting message from different origin:", event.origin);
+                return;
+            }
+
+            if (data.type === 'polysniffer-capture') {
+                handleCapture(data.payload);
+            }
+        });
+
+        function handleCapture(payload) {
+            if (!isCapturing) return;
+
+            requestCount++;
+            countElement.textContent = requestCount;
+
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${payload.method || 'GET'}`;
+
+            const method = payload.method || 'GET';
+            const url = payload.url || 'Unknown';
+            const status = payload.status || '?';
+            const timestamp = new Date().toLocaleTimeString();
+
+            logEntry.innerHTML = `
+                <div>
+                    <span class="log-method">[${method}]</span>
+                    <span class="log-url">${escapeHtml(url)}</span>
+                    <span style="color: ${getStatusColor(status)}; margin-left: 10px;">${status}</span>
+                </div>
+                <div class="log-time">${timestamp}</div>
+            `;
+
+            captureLog.insertBefore(logEntry, captureLog.firstChild);
+
+            // Keep only last 100 entries
+            while (captureLog.children.length > 100) {
+                captureLog.removeChild(captureLog.lastChild);
+            }
+
+            // Auto-scroll to top
+            captureLog.scrollTop = 0;
+        }
+
+        function getStatusColor(status) {
+            if (status >= 200 && status < 300) return '#0f0';
+            if (status >= 300 && status < 400) return '#ff0';
+            if (status >= 400 && status < 500) return '#ff9800';
+            if (status >= 500) return '#f00';
+            return '#666';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function stopCapture() {
+            isCapturing = !isCapturing;
+            const button = event.target;
+            if (isCapturing) {
+                button.textContent = '⏹ Stop';
+                button.style.background = '#0f0';
+            } else {
+                button.textContent = '▶ Resume';
+                button.style.background = '#ff0';
+            }
+        }
+
+        function clearLog() {
+            captureLog.innerHTML = '<div class="log-entry"><div><span class="log-method">[SYSTEM]</span> <span class="log-url">Log cleared</span></div><div class="log-time">' + new Date().toLocaleTimeString() + '</div></div>';
+            requestCount = 0;
+            countElement.textContent = '0';
+        }
+
+        function generateHandler() {
+            const messages = document.getElementById('ai-chat-messages');
+            const message = document.createElement('div');
+            message.className = 'ai-message';
+            message.innerHTML = '<strong>Grok:</strong> Analyzing captured traffic... (Handler generation coming soon)';
+            messages.appendChild(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function deployHandler() {
+            const messages = document.getElementById('ai-chat-messages');
+            const message = document.createElement('div');
+            message.className = 'ai-message';
+            message.innerHTML = '<strong>System:</strong> Handler deployment coming soon...';
+            messages.appendChild(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function handleChatKeyPress(event) {
+            if (event.key === 'Enter') {
+                const input = document.getElementById('ai-chat-input');
+                const text = input.value.trim();
+                if (!text) return;
+
+                const messages = document.getElementById('ai-chat-messages');
+
+                // User message
+                const userMsg = document.createElement('div');
+                userMsg.className = 'ai-message user';
+                userMsg.innerHTML = '<strong>You:</strong> ' + escapeHtml(text);
+                messages.appendChild(userMsg);
+
+                // Grok response (placeholder)
+                setTimeout(() => {
+                    const grokMsg = document.createElement('div');
+                    grokMsg.className = 'ai-message';
+                    grokMsg.innerHTML = '<strong>Grok:</strong> AI chat integration coming soon...';
+                    messages.appendChild(grokMsg);
+                    messages.scrollTop = messages.scrollHeight;
+                }, 500);
+
+                input.value = '';
+                messages.scrollTop = messages.scrollHeight;
+            }
+        }
+
+        // Iframe load handlers
+        function handleIframeLoad() {
+            console.log("[SPLIT-WINDOW] Iframe loaded successfully");
+            addLogEntry("[SYSTEM] Iframe loaded - proxy URL: {{ proxy_url }}", "system");
+            document.getElementById('iframe-error').classList.remove('show');
+        }
+
+        function handleIframeError() {
+            console.error("[SPLIT-WINDOW] Iframe failed to load");
+            addLogEntry("[ERROR] Iframe failed to load. Proxy URL: {{ proxy_url }}", "error");
+            document.getElementById('iframe-error').classList.add('show');
+        }
+
+        // Check if iframe loaded after 5 seconds
+        setTimeout(() => {
+            try {
+                const iframe = document.getElementById('target-app');
+                console.log("[SPLIT-WINDOW] Checking iframe status...");
+                console.log("[SPLIT-WINDOW] Iframe src:", iframe.src);
+                console.log("[SPLIT-WINDOW] Iframe contentWindow:", iframe.contentWindow);
+
+                // Try to access iframe content - if it fails, it might be blocked
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    console.log("[SPLIT-WINDOW] Iframe document:", iframeDoc);
+                    if (iframeDoc && iframeDoc.body) {
+                        console.log("[SPLIT-WINDOW] Iframe body children:", iframeDoc.body.children.length);
+                        if (iframeDoc.body.children.length === 0) {
+                            console.warn("[SPLIT-WINDOW] Iframe appears empty");
+                            addLogEntry("[WARNING] Iframe loaded but appears empty. Check browser console for details.", "error");
+                            document.getElementById('iframe-error').classList.add('show');
+                        } else {
+                            console.log("[SPLIT-WINDOW] ✅ Iframe has content!");
+                            addLogEntry("[SUCCESS] Iframe loaded successfully with content", "system");
+                        }
+                    } else {
+                        console.warn("[SPLIT-WINDOW] Iframe document or body not accessible");
+                        addLogEntry("[WARNING] Iframe document not accessible", "error");
+                    }
+                } catch (docError) {
+                    // Cross-origin error - iframe is blocked
+                    console.error("[SPLIT-WINDOW] Cannot access iframe content (likely blocked):", docError);
+                    addLogEntry("[ERROR] Iframe blocked by CORS/X-Frame-Options. Error: " + docError.message, "error");
+                    document.getElementById('iframe-error').classList.add('show');
+                }
+            } catch (e) {
+                console.error("[SPLIT-WINDOW] Error checking iframe:", e);
+                addLogEntry("[ERROR] Error checking iframe: " + e.message, "error");
+            }
+        }, 5000);
+
+        function retryIframe() {
+            const iframe = document.getElementById('target-app');
+            iframe.src = iframe.src; // Reload
+            document.getElementById('iframe-error').classList.remove('show');
+        }
+
+        function openInNewTab() {
+            window.open("{{ proxy_url }}", '_blank');
+        }
+
+        function addLogEntry(message, type = "system") {
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `
+                <div><span class="log-method">[${type.toUpperCase()}]</span> <span class="log-url">${escapeHtml(message)}</span></div>
+                <div class="log-time">${new Date().toLocaleTimeString()}</div>
+            `;
+            captureLog.insertBefore(logEntry, captureLog.firstChild);
+        }
+
+        // Show "Refresh After Auth" button
+        function showRefreshAfterAuthButton() {
+            const greenBar = document.querySelector('.green-bar-right');
+            if (!greenBar.querySelector('#refresh-after-auth-btn')) {
+                const btn = document.createElement('button');
+                btn.id = 'refresh-after-auth-btn';
+                btn.textContent = '🔄 Refresh After Auth';
+                btn.style.background = '#ff0';
+                btn.style.color = '#000';
+                btn.onclick = function() {
+                    addLogEntry("[AUTH] Manual refresh triggered by user", "system");
+                    refreshAfterAuth();
+                };
+                greenBar.insertBefore(btn, greenBar.firstChild);
+
+                // Also add a "Check Auth Status" button
+                if (!greenBar.querySelector('#check-auth-btn')) {
+                    const checkBtn = document.createElement('button');
+                    checkBtn.id = 'check-auth-btn';
+                    checkBtn.textContent = '🔍 Check Auth';
+                    checkBtn.style.background = '#0af';
+                    checkBtn.style.color = '#000';
+                    checkBtn.onclick = checkAuthStatus;
+                    greenBar.insertBefore(checkBtn, btn);
+                }
+            }
+        }
+
+        // Check authentication status by making a test request
+        function checkAuthStatus() {
+            addLogEntry("[AUTH] Checking authentication status...", "system");
+            const iframe = document.getElementById('target-app');
+            const testUrl = iframe.src.split('?')[0]; // Remove query params
+
+            // Make a HEAD request to check if we get redirected to auth
+            fetch(testUrl, {
+                method: 'HEAD',
+                credentials: 'include',
+                cache: 'no-cache'
+            })
+            .then(response => {
+                console.log("[AUTH CHECK] Response status:", response.status);
+                console.log("[AUTH CHECK] Response headers:", [...response.headers.entries()]);
+
+                if (response.status === 200 || response.status === 302) {
+                    addLogEntry(`[AUTH] Status check: ${response.status} - May be authenticated`, "system");
+                    // If we get a 200 or redirect (not auth page), refresh the iframe
+                    setTimeout(refreshAfterAuth, 500);
+                } else {
+                    addLogEntry(`[AUTH] Status check: ${response.status} - May need authentication`, "system");
+                }
+            })
+            .catch(error => {
+                console.error("[AUTH CHECK] Error:", error);
+                addLogEntry(`[AUTH] Status check failed: ${error.message}`, "error");
+            });
+        }
+
+        // Hide "Refresh After Auth" button
+        function hideRefreshAfterAuthButton() {
+            const btn = document.getElementById('refresh-after-auth-btn');
+            if (btn) btn.remove();
+        }
+
+        // Refresh iframe after authentication
+        function refreshAfterAuth() {
+            const iframe = document.getElementById('target-app');
+            addLogEntry("[AUTH] Refreshing iframe after authentication...", "system");
+            console.log("[SPLIT-WINDOW] Refreshing iframe, current src:", iframe.src);
+
+            // Force a hard reload by adding a cache-busting parameter
+            const currentSrc = iframe.src;
+            const separator = currentSrc.includes('?') ? '&' : '?';
+            const newSrc = currentSrc + separator + '_refresh=' + Date.now();
+
+            // Clear iframe first
+            iframe.src = 'about:blank';
+
+            // Wait a moment, then reload with new src
+            setTimeout(() => {
+                console.log("[SPLIT-WINDOW] Loading iframe with new src:", newSrc);
+                iframe.src = newSrc;
+                hideRefreshAfterAuthButton();
+
+                // Also try reloading after a delay in case cookies need time to propagate
+                setTimeout(() => {
+                    if (iframe.contentWindow) {
+                        try {
+                            // Check if iframe still shows auth page
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                            if (iframeDoc && iframeDoc.body) {
+                                const bodyText = iframeDoc.body.innerText || '';
+                                if (bodyText.includes('Authentication Required') || bodyText.includes('Authenticate with Vercel')) {
+                                    console.log("[SPLIT-WINDOW] Still showing auth page, forcing another refresh...");
+                                    iframe.src = currentSrc + separator + '_refresh2=' + Date.now();
+                                }
+                            }
+                        } catch (e) {
+                            // Cross-origin, can't check - that's fine, just reload
+                            console.log("[SPLIT-WINDOW] Cannot check iframe content (cross-origin), assuming it loaded");
+                        }
+                    }
+                }, 2000);
+            }, 200);
+        }
+
+        // Enhanced iframe load handler
+        function handleIframeLoad() {
+            console.log("[SPLIT-WINDOW] Iframe loaded successfully");
+            addLogEntry("[SYSTEM] Iframe loaded - proxy URL: {{ proxy_url }}", "system");
+            document.getElementById('iframe-error').classList.remove('show');
+        }
+
+        // Initialize
+        console.log("%c🟢 PolySniffer SPLIT-WINDOW ACTIVE", "color:#0f0;font-size:20px;font-weight:bold");
+        console.log("[SPLIT-WINDOW] Proxy URL:", "{{ proxy_url }}");
+        console.log("[SPLIT-WINDOW] Endpoint ID:", endpointId);
+        addLogEntry("PolySniffer split-window initialized. Loading proxy: {{ proxy_url }}", "system");
+
+        // Test if proxy URL is accessible
+        fetch("{{ proxy_url }}", { method: 'HEAD', mode: 'no-cors' })
+            .then(() => {
+                console.log("[SPLIT-WINDOW] ✅ Proxy URL is accessible");
+                addLogEntry("[SUCCESS] Proxy URL is accessible", "system");
+            })
+            .catch((e) => {
+                console.error("[SPLIT-WINDOW] ❌ Proxy URL test failed:", e);
+                addLogEntry("[ERROR] Proxy URL test failed: " + e.message, "error");
+            });
+
+    </script>
+</body>
+</html>
+

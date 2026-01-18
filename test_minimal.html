@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Test</title>
+    <!-- Test a few key resources -->
+    <link rel="stylesheet" type="text/css" href="https://demozone.surpaascompaas.com/surpaas/javax.faces.resource/theme.css.jsf?ln=primefaces-cupertino&v=12.0.0-RC3&e=12.0.0-RC2">
+    <link rel="stylesheet" type="text/css" href="https://demozone.surpaascompaas.com/surpaas/javax.faces.resource/components.css.jsf?ln=primefaces&v=12.0.0-RC3&e=12.0.0-RC2">
+</head>
+<body>
+    <h1>Testing External Resources</h1>
+    <p>If you see styled content, the external CSS resources are loading correctly.</p>
+    
+    <!-- Test an image -->
+    <img src="https://demozone.surpaascompaas.com/surpaas/resources/images/icon-info.png" alt="Test Image" width="32" height="32">
+    
+    <!-- Test JavaScript -->
+    <script src="https://demozone.surpaascompaas.com/surpaas/javax.faces.resource/jquery/jquery.js.jsf?ln=primefaces&v=12.0.0-RC3&e=12.0.0-RC2"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Minimal test loaded');
+            if (typeof jQuery !== 'undefined') {
+                console.log('jQuery loaded successfully: ' + jQuery.fn.jquery);
+            } else {
+                console.log('jQuery failed to load');
+            }
+        });
+    </script>
+</body>
+</html>

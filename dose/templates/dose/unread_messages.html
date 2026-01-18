@@ -1,0 +1,72 @@
+{% extends "dose/base.html" %}
+{% load static %}
+
+{% block title %}Unread Messages - Dose{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-10 mx-auto">
+            <h1 class="mb-4">Unread Messages</h1>
+
+            {% if unread_messages %}
+                <div class="alert alert-info">
+                    You have <strong>{{ unread_messages.count }}</strong> unread message(s).
+                </div>
+
+                <div class="list-group">
+                    {% for message in unread_messages %}
+                        <div class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">
+                                    {% if message.level == 'error' %}
+                                        <span class="badge badge-danger">Error</span>
+                                    {% elif message.level == 'warning' %}
+                                        <span class="badge badge-warning">Warning</span>
+                                    {% elif message.level == 'success' %}
+                                        <span class="badge badge-success">Success</span>
+                                    {% else %}
+                                        <span class="badge badge-info">Info</span>
+                                    {% endif %}
+                                </h5>
+                                <small class="text-muted">{{ message.created_at|date:"M d, Y H:i" }}</small>
+                            </div>
+                            <p class="mb-1">{{ message.message }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="mt-4">
+                    <form method="post" action="{% url 'dose:api_unread_dosemessages' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">Mark All as Read</button>
+                    </form>
+                </div>
+            {% else %}
+                <div class="alert alert-success">
+                    No unread messages. You're all caught up! 🎉
+                </div>
+            {% endif %}
+
+            <div class="mt-4">
+                <a href="{% url 'dose:dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .list-group-item {
+        border-left: 4px solid #007bff;
+        margin-bottom: 10px;
+    }
+
+    .list-group-item.list-group-item-action:hover {
+        background-color: #f8f9fa;
+    }
+
+    .badge {
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}PolySniffer - Debug {{ endpoint.get_menu_title }}{% endblock %}
+
+{% block content %}
+<h1>🔍 PolySniffer - Debugging {{ endpoint.get_menu_title }}</h1>
+
+<div style="background: #e3f2fd; padding: 20px; margin: 20px 0; border-radius: 5px;">
+    <h3>Endpoint Information</h3>
+    <p><strong>Trigger Path:</strong> {{ endpoint.trigger_path }}</p>
+    <p><strong>Endpoint URL:</strong> <a href="{{ endpoint.endpoint_url }}" target="_blank">{{ endpoint.endpoint_url }}</a></p>
+    <p><strong>Passthrough Type:</strong> {{ endpoint.passthrough_type }}</p>
+</div>
+
+<div style="background: #fff3cd; padding: 20px; margin: 20px 0; border-radius: 5px;">
+    <h3>📋 How to Use</h3>
+    <ol>
+        <li><strong>Access the endpoint</strong> in another tab:
+            <a href="http://localhost:8000{{ endpoint.trigger_path }}" target="_blank">
+                http://localhost:8000{{ endpoint.trigger_path }}
+            </a>
+        </li>
+        <li><strong>Navigate and use the service</strong> (login, click links, etc.)</li>
+        <li><strong>Come back here</strong> and check the dashboard below</li>
+        <li><strong>View captured traffic</strong> to see what's happening</li>
+    </ol>
+</div>
+
+<div style="margin: 20px 0;">
+    <a href="{{ dashboard_url }}" class="button" style="padding: 10px 20px; font-size: 16px;">
+        View Captured Traffic →
+    </a>
+</div>
+
+<div style="background: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px;">
+    <h3>💡 Tips</h3>
+    <ul>
+        <li>Traffic is captured automatically when you access the endpoint</li>
+        <li>Check the dashboard for status codes, headers, and response data</li>
+        <li>Look for 4xx/5xx errors to identify problems</li>
+        <li>Compare with working endpoints (like OS Ticket after we fix it)</li>
+    </ul>
+</div>
+
+{% endblock %}
+

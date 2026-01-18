@@ -1,0 +1,22 @@
+{% extends "admin/base_site.html" %}
+{% block extrahead %}
+<base href="/">
+<style>
+/* Make Nextcloud login page fill the content area perfectly */
+.main-content-wrapper {
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+.main-content-wrapper > div {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: url('http://localhost:8888/apps/theming/img/background/jo-myoung-hee-fluid.webp') center/cover no-repeat;
+}
+</style>
+{% endblock %}
+{% block content %}
+{{ processed_html|safe }}
+{% endblock %}

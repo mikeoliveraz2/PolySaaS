@@ -1,0 +1,37 @@
+{% extends "jazzmin/base.html" %}
+{% block extrahead %}
+    <!-- Add custom CSS for bell icon and badge -->
+    <link rel="stylesheet" href="{% static 'path/to/your/custom.css' %}">
+    
+    <!-- Add custom JavaScript for dynamic badge updates -->
+    <script src="{% static 'path/to/your/custom.js' %}"></script>
+{% endblock %}
+{% block branding %}
+  <div style="background: #222; color: #fff; padding: 16px; text-align: center; position: relative;">
+    <h1>Custom Admin Header</h1>
+    <span id="gmail-bell-container" style="position:absolute; top:18px; right:32px;">
+      <i class="fas fa-bell" style="font-size:1.7em; color:#ffd700; position:relative;"></i>
+      <span id="gmail-unread-badge" style="background:#dc3545; color:#fff; border-radius:50%; padding:2px 7px; font-size:0.9em; position:absolute; top:-10px; right:-18px; min-width:24px; text-align:center;">0</span>
+    </span>
+  </div>
+  {{ block.super }}
+  <script>
+    async function fetchUnreadCount() {
+      try {
+        const resp = await fetch('/dose/gmail-api/gmail/v1/users/me/messages?labelIds=UNREAD&maxResults=1');
+        const data = await resp.json();
+        let count = 0;
+        if (resp.ok && data.resultSizeEstimate !== undefined) {
+          count = data.resultSizeEstimate;
+        }
+        document.getElementById('gmail-unread-badge').textContent = count;
+      } catch (e) {
+        document.getElementById('gmail-unread-badge').textContent = '?';
+      }
+    }
+    fetchUnreadCount();
+    // Optionally, refresh every 60 seconds
+    setInterval(fetchUnreadCount, 60000);
+    console.log('Custom jazzmin/base_site.html branding block loaded');
+  </script>
+{% endblock %}

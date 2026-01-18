@@ -1,0 +1,218 @@
+﻿diff --git a/dose/templates/dose/landing_page.html b/dose/templates/dose/landing_page.html
+index 08fbb0c..bf72867 100644
+--- a/dose/templates/dose/landing_page.html
++++ b/dose/templates/dose/landing_page.html
+@@ -235,19 +235,24 @@
+ 
+     .nav-item {
+         display: block;
+-        padding: 1rem;
++        padding: 0.6rem 0.75rem;
+         color: #2c3e50;
+         text-decoration: none;
+         border-bottom: 1px solid #ecf0f1;
+         transition: all 0.2s ease;
+         display: flex;
+         align-items: center;
+-        gap: 0.75rem;
++        gap: 0.5rem;
++        background: white;
++    }
++
++    .nav-panel-items .nav-item:nth-child(even) {
++        background: #f8f9fa;
+     }
+ 
+     .nav-item:hover {
+-        background: #ecf0f1;
+-        padding-left: 1.5rem;
++        background: #e3f2fd !important;
++        padding-left: 1rem;
+     }
+ 
+     .nav-item:last-child {
+@@ -255,24 +260,24 @@
+     }
+ 
+     .nav-icon {
+-        width: 24px;
+-        height: 24px;
++        width: 20px;
++        height: 20px;
+         display: inline-flex;
+         align-items: center;
+         justify-content: center;
+         background: var(--dose-secondary);
+         color: white;
+-        border-radius: 6px;
+-        font-size: 0.8rem;
++        border-radius: 4px;
++        font-size: 0.75rem;
+         font-weight: bold;
+-        box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
++        box-shadow: 0 1px 3px rgba(52, 152, 219, 0.3);
+     }
+ 
+     /* Navigation Panel Styles */
+     .nav-panel {
+         border-bottom: 2px solid #ecf0f1;
+-        margin-bottom: 1rem;
+-        padding-bottom: 1rem;
++        margin-bottom: 0;
++        padding-bottom: 0;
+     }
+ 
+     .nav-panel:last-child {
+@@ -281,19 +286,19 @@
+     }
+ 
+     .nav-panel-title {
+-        font-size: 0.9rem;
++        font-size: 0.85rem;
+         font-weight: 600;
+-        color: var(--dose-primary);
+-        margin: 0 0 0.5rem 1rem;
++        color: #000000;
++        background: #ADD8E6;
++        padding: 0.5rem 0.75rem;
++        margin: 0;
+         text-transform: uppercase;
+         letter-spacing: 0.5px;
++        text-align: left;
+     }
+ 
+     .nav-panel-description {
+-        font-size: 0.8rem;
+-        color: #7f8c8d;
+-        margin: 0 0 0.5rem 1rem;
+-        font-style: italic;
++        display: none;
+     }
+ 
+     .nav-panel-items {
+@@ -321,12 +326,8 @@
+         content: "≡ƒÄ» ";
+     }
+ 
+-    .nav-panel[data-panel-type="system"] {
+-        background: #f8f9fa;
+-        border: 1px solid #dee2e6;
+-        border-radius: 6px;
+-        padding: 0.75rem;
+-        margin: 1rem;
++    .nav-panel[data-panel-type="system"] .nav-panel-title::before {
++        content: "ΓÜÖ∩╕Å ";
+     }
+ 
+     .nav-text {
+@@ -356,16 +357,6 @@
+         font-style: italic;
+     }
+ 
+-    .system-nav-item {
+-        background: rgba(52, 152, 219, 0.1);
+-        margin: 2px 0;
+-        border-radius: 4px;
+-    }
+-
+-    .system-nav-item:hover {
+-        background: rgba(52, 152, 219, 0.2);
+-    }
+-
+     .main-body {
+         background: white;
+         border-radius: 8px;
+@@ -660,56 +651,56 @@
+             </div>
+             <p class="subtitle">{{ current_tenant.name }} - Advanced Technology Platform</p>
+             <p class="brand-tagline">"Orchestrating {{ current_tenant.name }}'s Technology Solutions"</p>
+-            {% if theme_info %}
+-            <div class="theme-indicator">
+-                ≡ƒÄ¿ {{ current_tenant.name }} Theme: {{ theme_colors.name }}
+-            </div>
+-            {% endif %}
+         </div>
+     </div>
+ 
+-    <!-- Enhanced Menu Bar Section -->
+-    <div class="menu-bar">
+-        <div class="menu-section">
+-            <a href="{% url 'dose:dashboard' %}" class="menu-btn">
+-                ≡ƒôè Dashboard
+-            </a>
+-            <a href="{% url 'dose:tenantsettings' %}" class="menu-btn secondary">
+-                ΓÜÖ∩╕Å Settings
+-            </a>
+-            <button class="menu-btn secondary" onclick="toggleNavigation()">
+-                ≡ƒôï Navigation
+-            </button>
+-        </div>
+-        </div>
+-        <div class="dose-header-bar" style="background: #457894; color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 1.05rem;">
+-            <div>
+-                {% if user.is_authenticated %}
+-                    WELCOME, {{ user.username|upper }} {% if current_tenant and current_tenant.schema_name %}({{ current_tenant.schema_name|lower }}){% endif %}.
+-                    <a href="/" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">VIEW SITE</a> /
+-                    <a href="{% url 'dose:tenantsettings' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">CHANGE PASSWORD</a> /
+-                    {% if user.is_staff or user.is_superuser %}
+-                        <a href="/admin/" style="color: #ffe082; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">ADMIN INTERFACE</a> /
+-                    {% endif %}
+-                    <a href="{% url 'dose:logout' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">LOG OUT</a>
+-                {% else %}
+-                    <a href="{% url 'dose:subscribe' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">Subscribe</a>
++    <!-- User Welcome Bar -->
++    <div class="dose-header-bar" style="background: #457894; color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 1.05rem;">
++        <div>
++            {% if user.is_authenticated %}
++                WELCOME, {{ user.username|upper }} {% if current_tenant and current_tenant.schema_name %}({{ current_tenant.schema_name|lower }}){% endif %}.
++                <a href="{% url 'dose:tenantsettings' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">CHANGE PASSWORD</a> /
++                {% if user.is_staff or user.is_superuser %}
++                    <a href="/admin/" style="color: #ffe082; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">ADMIN INTERFACE</a> /
+                 {% endif %}
+-            </div>
+-            <button id="landing-theme-toggle-btn" style="background: none; border: none; color: #fff; font-size: 1.7rem; cursor: pointer; margin-left: 1rem;" title="Toggle theme">
+-                <span id="landing-theme-toggle-icon">&#9728;</span>
+-            </button>
++                <a href="{% url 'dose:logout' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">LOG OUT</a>
++            {% else %}
++                <a href="{% url 'dose:subscribe' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">Subscribe</a>
++            {% endif %}
+         </div>
++        <button id="landing-theme-toggle-btn" style="background: none; border: none; color: #fff; font-size: 1.7rem; cursor: pointer; margin-left: 1rem;" title="Toggle theme">
++            <span id="landing-theme-toggle-icon">&#9728;</span>
++        </button>
++    </div>
+ 
+-    <!-- Main Content Area with Collapsible Navigation -->
++    <!-- Main Content Area with Sidebar and Body -->
+     <div class="main-content-area">
+         <!-- Table-Driven Navigation Panels -->
+         <div class="collapsible-nav">
+             <div class="nav-header" onclick="toggleNavigation()">
+-                <span>≡ƒÜÇ {{ current_tenant.name }} Navigation</span>
++                <span>Navigation Bar</span>
+                 <span class="nav-toggle" id="nav-toggle">Γû╝</span>
+             </div>
+             <div class="nav-items" id="nav-items">
++                <!-- External Services (Gmail, OSTicket, etc.) -->
++                {% if external_services %}
++                    <div class="nav-panel" data-panel-type="external_services">
++                        <h4 class="nav-panel-title">EXTERNAL SERVICES</h4>
++                        <p class="nav-panel-description">External system integrations and passthrough services</p>
++                        <div class="nav-panel-items">
++                            {% for service in external_services %}
++                                <a href="{{ service.url }}"
++                                   class="nav-item"
++                                   target="_blank"
++                                   title="{{ service.description }}">
++                                    <span class="nav-icon">{{ service.icon }}</span>
++                                    <span class="nav-text">{{ service.title }}</span>
++                                </a>
++                            {% endfor %}
++                        </div>
++                    </div>
++                {% endif %}
++
+                 {% for panel in navigation_panels %}
+                     <div class="nav-panel" data-panel-type="{{ panel.panel_type }}"
+                          {% if panel.panel_background_color %}style="background-color: {{ panel.panel_background_color }};"{% endif %}>

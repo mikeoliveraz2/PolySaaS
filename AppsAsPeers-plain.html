@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apps as Peers - PolySaaS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        /* Fixed Back to Home Button - Top Right */
+        .fixed-home-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            z-index: 9999;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .fixed-home-button:hover {
+            background: rgba(0, 0, 0, 1);
+            transform: scale(1.05);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 60px 20px 20px;
+        }
+
+        /* Page Title */
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            color: #4a9eff;
+        }
+
+        .subtitle {
+            font-size: 1.3rem;
+            margin-bottom: 30px;
+            color: #6bb0ff;
+            font-weight: 400;
+        }
+
+        /* Content Layout - 65/35 Split on Desktop */
+        .content-wrapper {
+            display: grid;
+            grid-template-columns: 65fr 35fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .text-content {
+            padding-right: 20px;
+        }
+
+        .text-content h2 {
+            font-size: 1.8rem;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #4a9eff;
+        }
+
+        .text-content h3 {
+            font-size: 1.4rem;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            color: #6bb0ff;
+        }
+
+        .text-content p {
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+        }
+
+        .text-content ul {
+            margin-left: 20px;
+            margin-bottom: 15px;
+        }
+
+        .text-content li {
+            margin-bottom: 8px;
+        }
+
+        /* Image Sidebar */
+        .image-sidebar img {
+            width: 100%;
+            height: auto;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .image-sidebar figcaption {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #999;
+            margin-top: -15px;
+            margin-bottom: 25px;
+            font-style: italic;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: #2a2a2a;
+            padding: 60px 40px;
+            text-align: center;
+            border-radius: 8px;
+            margin-top: 60px;
+            margin-bottom: 40px;
+        }
+
+        .cta-section h2 {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            color: #4a9eff;
+        }
+
+        .cta-section p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 15px 35px;
+            background: #4a9eff;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .cta-button:hover {
+            background: #3a8eef;
+            transform: scale(1.05);
+        }
+
+        .cta-button.secondary {
+            background: transparent;
+            border: 2px solid #4a9eff;
+            color: #4a9eff;
+        }
+
+        .cta-button.secondary:hover {
+            background: #4a9eff;
+            color: #ffffff;
+        }
+
+        /* Bottom Home Button */
+        .bottom-home-button {
+            display: inline-block;
+            margin-top: 40px;
+            padding: 12px 30px;
+            border: 2px solid #4a9eff;
+            color: #4a9eff;
+            text-decoration: none;
+            text-align: center;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .bottom-home-button:hover {
+            background: #4a9eff;
+            color: #ffffff;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .fixed-home-button {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 0.9rem;
+            }
+
+            .container {
+                padding: 50px 10px 10px;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+                margin-bottom: 8px;
+            }
+
+            .subtitle {
+                font-size: 1.1rem;
+                margin-bottom: 20px;
+            }
+
+            /* Stack content on mobile */
+            .content-wrapper {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .text-content {
+                padding-right: 0;
+            }
+
+            .text-content h2 {
+                font-size: 1.5rem;
+            }
+
+            .text-content h3 {
+                font-size: 1.2rem;
+            }
+
+            .text-content p {
+                font-size: 1rem;
+            }
+
+            .image-sidebar img {
+                margin-bottom: 15px;
+            }
+
+            .cta-section {
+                padding: 40px 20px;
+            }
+
+            .cta-section h2 {
+                font-size: 1.6rem;
+            }
+
+            .cta-section p {
+                font-size: 1.05rem;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .cta-button {
+                width: 100%;
+            }
+
+            .bottom-home-button {
+                display: block;
+                width: 100%;
+                margin-top: 30px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .subtitle {
+                font-size: 1rem;
+            }
+
+            .text-content h2 {
+                font-size: 1.3rem;
+            }
+
+            .text-content h3 {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Fixed Back to Home Button -->
+    <a href="/" class="fixed-home-button">← Back to Home</a>
+
+    <!-- Main Container -->
+    <div class="container">
+        <h1>Apps as Peers</h1>
+        <p class="subtitle">True peer-to-peer collaboration between applications.</p>
+
+        <!-- Content Grid: 65% Text / 35% Images -->
+        <div class="content-wrapper">
+            <!-- Text Content (65%) -->
+            <div class="text-content">
+                <p>
+                    In PolySaaS, applications don't just integrate — they communicate as equals. Using event-driven messaging and data-driven orchestration, apps share information, trigger actions, and adapt to each other without a central controller or brittle APIs.
+                </p>
+
+                <h3>No Central Controller</h3>
+                <p>
+                    Apps subscribe to events and data changes — reacting intelligently without a master orchestrator. Every bundled application will have a "bot" user with email address and user credentials. This bot user can interact with the system, initiate processes, collaborate in Group Chats and private and public channels on MattersMost and over time will have text to voice and voice to text capabilities. In the beginning collaboration will be via text in GCs.
+                </p>
+
+                <h3>Dynamic Adaptation</h3>
+                <p>
+                    Behavior changes by data — no code redeploy needed. Apps evolve with your needs. Invite the App to join, or the AI the same as co-workers, to any group chat. Here is a scenario to make the point.
+                </p>
+
+                <p>
+                    You are a manager in your company responsible for process improvement. Through PolySaaS and PolySysMon you have identified a process that could be improved. You call for a GC on MattersMost private channel and invite one of your staff, the Department head, a fellow with the handle "AP" and "CoPilot" the IT AI handling the coding in Accounts Payable. You welcome everyone and begin by explaining what you found and your proposed solution, which included removing a user step and replacing it with a call to an atomic service to essentially do the same thing as a user, and to combine a couple of steps. You ask AP if this is possible and she said "yes and that was a good suggestion." She asked CoPilot his opinion and he said "Sure, I have identified it, and can make those changes easily because they are implemented with PolySaaS Dynamic Orchestration, only code will be to use logic instead of a user at one of the steps and combine two others." The Department head asked, "How long to do this?" CoPilot answered, "A couple of hours including testing." The Department head tells you, "Go ahead" and you tell CoPilot to keep you informed and you thank everyone and close the chat, which BTW was captured and saved. Do you know which of those were Bots?
+                </p>
+
+                <h3>Event-Driven Communication</h3>
+                <p>
+                    Apps publish and subscribe to events via PubSub — loose coupling, high resilience. With Voice to Text and Text to Voice, Apps as Peers in a GC may not even be noticeable. Add to that, other users, managers and even AI Bots, and things get done faster.
+                </p>
+            </div>
+
+            <!-- Image Sidebar (35%) -->
+            <div class="image-sidebar">
+                <figure>
+                    <img src="https://azure-nightingale-589250.hostingersite.com/wp-content/uploads/2025/12/Mainfam-green-screen.png" alt="Mainframe green screen terminal">
+                    <figcaption>Remember when the only human interface was a green screen?</figcaption>
+                </figure>
+
+                <figure>
+                    <img src="https://azure-nightingale-589250.hostingersite.com/wp-content/uploads/2025/12/group-chat-2.avif" alt="Group chat interface">
+                    <figcaption>Isn't a Group Chat similar, all text?</figcaption>
+                </figure>
+
+                <img src="https://azure-nightingale-589250.hostingersite.com/wp-content/uploads/2025/12/Messenger-Group-Invite-Link-Hero-1024x576.webp" alt="Messenger group invite">
+
+                <img src="https://azure-nightingale-589250.hostingersite.com/wp-content/uploads/2025/12/GC-desktop-mac-1-1.png" alt="Group chat on desktop">
+            </div>
+        </div>
+
+        <!-- CTA Section -->
+        <div class="cta-section">
+            <h2>Ready for True App Collaboration?</h2>
+            <p>Join the waitlist and be part of the future of peer-driven SaaS.</p>
+            <div class="cta-buttons">
+                <a href="/sign-up-3/" class="cta-button">Join Waitlist / Sign Up</a>
+                <a href="/" class="cta-button secondary">← Back to Home</a>
+            </div>
+        </div>
+
+        <!-- Bottom Back to Home Button -->
+        <a href="/" class="bottom-home-button">← Back to Home</a>
+    </div>
+</body>
+</html>

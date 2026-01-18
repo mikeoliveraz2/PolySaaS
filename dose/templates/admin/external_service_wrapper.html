@@ -1,0 +1,86 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ service_name|default:"External Service" }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    /* Remove default Django admin content padding for full-width external service */
+    #content { padding: 0 !important; }
+    #content-main { padding: 0 !important; margin: 0 !important; }
+    .module { padding: 0 !important; }
+
+    /* CRITICAL: Protect admin sidebar from external service CSS bleeding */
+    #jazzy-sidebar,
+    .main-sidebar,
+    .nav-sidebar {
+        background-color: #1f4788 !important;
+        color: #c0c0c0 !important;
+        z-index: 1000 !important;
+    }
+
+    #jazzy-sidebar a,
+    #jazzy-sidebar .nav-link,
+    .nav-sidebar a,
+    .nav-sidebar .nav-link {
+        color: #c0c0c0 !important;
+    }
+
+    #jazzy-sidebar a:hover,
+    #jazzy-sidebar .nav-link:hover,
+    .nav-sidebar a:hover,
+    .nav-sidebar .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.15) !important;
+        color: #ffffff !important;
+    }
+
+    /* Content area - full width, remove all admin styling */
+    .main-content-wrapper {
+        width: 100%;
+        min-height: 100vh;
+        padding: 0;
+        margin: 0;
+        position: relative;
+        overflow: visible;
+        background: transparent;
+    }
+
+    /* Remove any admin wrapper styling that might interfere */
+    body {
+        overflow-x: hidden;
+    }
+
+    /* Ensure Airtable content takes full space */
+    .main-content-wrapper > * {
+        width: 100%;
+    }
+
+    /* Only remove padding from content area, not all wrappers */
+    /* This ensures Airtable displays in the correct location */
+
+    /* Hide debug panel by default for cleaner look */
+    .debug-panel {
+        display: none;
+    }
+</style>
+{% if head_content %}
+{{ head_content|safe }}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="main-content-wrapper">
+    {{ service_content|safe }}
+</div>
+
+<div class="debug-panel" style="margin-top: 30px; border-top: 2px solid #ddd; padding-top: 20px; background: #f9f9f9; border-radius: 4px; padding: 15px;">
+    <h3 style="margin-top: 0; color: #333;">🔍 Debug Panel - Raw {{ service_name }} Response</h3>
+    <button style="cursor: pointer; padding: 8px 12px; background: #417690; color: white; border: none; border-radius: 3px; font-size: 12px;"
+            onclick="var el = document.getElementById('raw-response'); el.style.display = el.style.display === 'none' ? 'block' : 'none'">
+        Toggle Raw Response ({{ raw_response|length }} bytes)
+    </button>
+    <div id="raw-response" style="display: none; margin-top: 10px; background: #fff; border: 1px solid #ddd; padding: 10px; border-radius: 3px; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 11px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.4;">{{ raw_response }}</div>
+</div>
+</div>
+{% endblock %}

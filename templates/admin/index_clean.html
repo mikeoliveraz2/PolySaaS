@@ -1,0 +1,107 @@
+{% extends 'admin/base_site.html' %}
+{% load i18n admin_urls static %}
+
+{% block title %}{% trans 'Site administration' %} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <!-- Dashboard - Pure Django Admin Approach -->
+    <script>
+        console.log('Dashboard: Pure Django admin template');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.querySelector('.main-sidebar');
+            console.log('DASHBOARD: Sidebar found:', !!sidebar);
+
+            if (sidebar) {
+                const navItems = sidebar.querySelectorAll('.nav-item');
+                console.log('DASHBOARD: Nav items naturally present:', navItems.length);
+
+                navItems.forEach((item, index) => {
+                    console.log(`DASHBOARD: Nav item ${index}:`, item.textContent.trim());
+                });
+            }
+        });
+    </script>
+
+    <style>
+        /* Dashboard styling - no sidebar interference */
+        .dashboard-content {
+            background: white;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 400px;
+        }
+
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+    </style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-content">
+    <h1>{% trans 'Dashboard' %}</h1>
+
+    <div class="dashboard-stats">
+        <div class="stat-card">
+            <div class="stat-number">42</div>
+            <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">15</div>
+            <div class="stat-label">Active Sessions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">7</div>
+            <div class="stat-label">Services</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">3</div>
+            <div class="stat-label">Tenants</div>
+        </div>
+    </div>
+
+    <div style="background: #e9ecef; padding: 15px; border-radius: 4px; margin-top: 20px;">
+        <h3>Quick Actions</h3>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="/admin/auth/user/" class="btn btn-primary" style="background: #007bff; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">Manage Users</a>
+            <a href="/admin/dose/" class="btn btn-info" style="background: #17a2b8; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">Dose Services</a>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px; padding: 10px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; color: #0c5460;">
+        🚀 <strong>System Status:</strong> All services running normally
+    </div>
+</div>
+{% endblock %}

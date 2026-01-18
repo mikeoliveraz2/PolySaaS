@@ -1,0 +1,863 @@
+{% extends 'dose/dosebase.html' %}
+{% load static %}
+
+{% block title %}Gmail - {{ current_tenant.name }}{% endblock %}
+
+{% block header_title %}PolySaaS - Dynamic Orchestration Service Engine{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+/* Copy landing page CSS structure */
+:root {
+    --dose-primary: {{ theme_colors.primary|default:"#457894" }};
+    --dose-secondary: {{ theme_colors.secondary|default:"#3498db" }};
+    --dose-accent: {{ theme_colors.accent|default:"#e74c3c" }};
+    --dose-success: {{ theme_colors.success|default:"#27ae60" }};
+    --dose-warning: {{ theme_colors.warning|default:"#f39c12" }};
+    --dose-dark: {{ theme_colors.dark|default:"#34495e" }};
+    --dose-light: {{ theme_colors.light|default:"#f5f5f5" }};
+    --dose-gradient: {{ theme_colors.gradient|default:"linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }};
+    --dose-shadow: 0 4px 12px rgba(44, 62, 80, 0.15);
+    --dose-border-radius: 12px;
+}
+
+.landing-container {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    min-height: 80vh;
+    gap: 1rem;
+}
+
+.landing-header {
+    background: var(--dose-gradient);
+    color: white;
+    padding: 2.5rem;
+    border-radius: var(--dose-border-radius);
+    text-align: center;
+    box-shadow: var(--dose-shadow);
+    position: relative;
+    overflow: hidden;
+}
+
+.landing-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+    opacity: 0.3;
+    z-index: 1;
+}
+
+.header-content {
+    position: relative;
+    z-index: 2;
+}
+
+.dose-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.dose-icon {
+    width: 64px;
+    height: 64px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: bold;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+}
+
+.landing-header h1 {
+    margin: 0 0 0.5rem 0;
+    font-size: 3rem;
+    font-weight: 300;
+    letter-spacing: 3px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+
+.dose-acronym {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.landing-header .subtitle {
+    font-size: 1.3rem;
+    opacity: 0.9;
+    margin: 0;
+    font-weight: 300;
+}
+
+.brand-tagline {
+    font-size: 1rem;
+    opacity: 0.7;
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+.main-content-area {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.collapsible-nav {
+    background: var(--dose-light);
+    border-radius: 8px;
+    box-shadow: var(--dose-shadow);
+    overflow: hidden;
+    border-left: 4px solid var(--dose-secondary);
+}
+
+.nav-header {
+    background: var(--dose-primary);
+    color: white;
+    padding: 1.25rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+    transition: background 0.3s ease;
+}
+
+.nav-header:hover {
+    background: var(--dose-dark);
+}
+
+.nav-toggle {
+    font-size: 1.2rem;
+    transition: transform 0.3s ease;
+}
+
+.nav-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.nav-items {
+    max-height: 85vh;
+    overflow-y: auto;
+    transition: max-height 0.3s ease;
+}
+
+.nav-items.collapsed {
+    max-height: 0;
+    overflow-y: hidden;
+}
+
+.nav-item {
+    display: block;
+    padding: 0.6rem 0.75rem;
+    color: #2c3e50;
+    text-decoration: none;
+    border-bottom: 1px solid #ecf0f1;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: white;
+}
+
+.nav-panel-items .nav-item:nth-child(even) {
+    background: #e8f4f8;
+}
+
+.nav-item:hover {
+    background: #e3f2fd !important;
+    padding-left: 1rem;
+}
+
+.nav-item:last-child {
+    border-bottom: none;
+}
+
+.nav-icon {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--dose-secondary);
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    box-shadow: 0 1px 3px rgba(52, 152, 219, 0.3);
+}
+
+.nav-panel {
+    border-bottom: 2px solid #ecf0f1;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.nav-panel:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.nav-panel-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #000000;
+    background: #ADD8E6;
+    padding: 0.5rem 0.75rem;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: left;
+}
+
+.nav-panel-description {
+    display: none;
+}
+
+.nav-panel-items {
+    display: block;
+}
+
+.nav-text {
+    flex: 1;
+}
+
+.nav-clicks {
+    background: var(--dose-warning);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 16px;
+    text-align: center;
+}
+
+.custom-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+
+.nav-empty-message {
+    text-align: center;
+    color: #7f8c8d;
+    padding: 2rem 1rem;
+    font-style: italic;
+}
+
+.main-body {
+    background: white;
+    border-radius: 8px;
+    padding: 2.5rem;
+    box-shadow: var(--dose-shadow);
+    min-height: 400px;
+    border-left: 4px solid var(--dose-secondary);
+}
+
+/* Gmail-specific CSS */
+#gmail-container {
+    max-width: 100%;
+}
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+#gmail-container h1 {
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+}
+
+#gmail-toolbar {
+    margin-bottom: 1em;
+    display: flex;
+    gap: 0.5em;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#gmail-toolbar button {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    background: #f8f9fa;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+#gmail-toolbar button:hover:not(:disabled) {
+    background: #e9ecef;
+    border-color: #bbb;
+}
+
+#gmail-toolbar button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#gmail-inbox-loading {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+}
+
+#gmail-auth-error {
+    padding: 15px;
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+#gmail-inbox-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+#gmail-inbox-table thead tr {
+    background: #f9f9f9;
+    border-bottom: 2px solid #ddd;
+}
+
+#gmail-inbox-table th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+#gmail-inbox-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+#gmail-inbox-table tbody tr:hover {
+    background: #f5f5f5;
+}
+
+.gmail-message-row {
+    cursor: pointer;
+}
+
+#gmail-message-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+
+#gmail-message-modal .modal-dialog {
+    background: #fff;
+    padding: 2em;
+    max-width: 700px;
+    width: 90%;
+    margin: auto;
+    position: relative;
+    border-radius: 8px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#close-message-modal {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+#gmail-message-content h4 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+}
+
+#gmail-message-content pre {
+    white-space: pre-wrap;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+#gmail-load-more {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.msg-checkbox {
+    cursor: pointer;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="landing-container">
+    <!-- Header Section -->
+    <div class="landing-header">
+        <div class="header-content">
+            <div class="dose-logo">
+                <div class="dose-icon">📧</div>
+                <div>
+                    <h1>PolySaaS</h1>
+                    <div class="dose-acronym">Dynamic Orchestration Service Engine</div>
+                </div>
+            </div>
+            <p class="subtitle">{{ current_tenant.name }} - Gmail Integration</p>
+        </div>
+    </div>
+
+    <!-- User Welcome Bar -->
+    <div class="dose-header-bar" style="background: #457894; color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 1.05rem;">
+        <div>
+            {% if user.is_authenticated %}
+                WELCOME, {{ user.username|upper }} {% if current_tenant and current_tenant.schema_name %}({{ current_tenant.schema_name|lower }}){% endif %}.
+                <a href="{% url 'dose:tenantsettings' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">CHANGE PASSWORD</a> /
+                {% if user.is_staff or user.is_superuser %}
+                    <a href="/admin/" style="color: #ffe082; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">ADMIN INTERFACE</a> /
+                {% endif %}
+                <a href="{% url 'dose:logout' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">LOG OUT</a>
+            {% else %}
+                <a href="{% url 'dose:subscribe' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">Subscribe</a>
+            {% endif %}
+        </div>
+        <button id="landing-theme-toggle-btn" style="background: none; border: none; color: #fff; font-size: 1.7rem; cursor: pointer; margin-left: 1rem;" title="Toggle theme">
+            <span id="landing-theme-toggle-icon">&#9728;</span>
+        </button>
+    </div>
+
+    <!-- Main Content Area with Sidebar and Body -->
+    <div class="main-content-area">
+        <!-- Navigation Sidebar - populated by context processor -->
+        <div class="collapsible-nav">
+            <div class="nav-header" onclick="toggleNavigation()">
+                <span>Navigation Bar</span>
+                <span class="nav-toggle" id="nav-toggle">▼</span>
+            </div>
+            <div class="nav-items" id="nav-items">
+                <!-- External Services -->
+                {% if external_services %}
+                    <div class="nav-panel" data-panel-type="external_services">
+                        <h4 class="nav-panel-title">EXTERNAL SERVICES</h4>
+                        <p class="nav-panel-description">External system integrations and passthrough services</p>
+                        <div class="nav-panel-items">
+                            {% for service in external_services %}
+                                <a href="{{ service.url }}"
+                                   class="nav-item"
+                                   title="{{ service.description }}">
+                                    <span class="nav-icon">{{ service.icon }}</span>
+                                    <span class="nav-text">{{ service.title }}</span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- Navigation Panels -->
+                {% for panel in navigation_panels %}
+                    <div class="nav-panel" data-panel-type="{{ panel.panel_type }}"
+                         {% if panel.panel_background_color %}style="background-color: {{ panel.panel_background_color }};"{% endif %}>
+                        <h4 class="nav-panel-title">{{ panel.title }}</h4>
+                        {% if panel.description %}
+                            <p class="nav-panel-description">{{ panel.description }}</p>
+                        {% endif %}
+                        <div class="nav-panel-items">
+                            {% for item in panel.filtered_items %}
+                                <a href="{{ item.url }}"
+                                   class="nav-item"
+                                   target="{{ item.target }}"
+                                   data-item-id="{{ item.id }}"
+                                   data-item-type="{{ item.item_type }}"
+                                   {% if item.item_css_class %}class="{{ item.item_css_class }}"{% endif %}
+                                   {% if item.button_color %}style="border-left-color: {{ item.button_color }};"{% endif %}
+                                   title="{{ item.description }}">
+                                    {% if item.icon_style == 'emoji' and item.icon_value %}
+                                        <span class="nav-icon">{{ item.icon_value }}</span>
+                                    {% elif item.icon_style == 'fontawesome' and item.icon_value %}
+                                        <i class="fa {{ item.icon_value }}"></i>
+                                    {% elif item.icon_style == 'bootstrap' and item.icon_value %}
+                                        <i class="bi {{ item.icon_value }}</i>
+                                    {% elif item.icon_style == 'custom' and item.icon_value %}
+                                        <img src="{{ item.icon_value }}" class="custom-icon" alt="{{ item.title }}">
+                                    {% else %}
+                                        <span class="nav-icon">🔗</span>
+                                    {% endif %}
+                                    <span class="nav-text">{{ item.title }}</span>
+                                    {% if item.click_count > 0 %}
+                                        <span class="nav-clicks" title="Click count">{{ item.click_count }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="nav-panel">
+                        <p class="nav-empty-message">
+                            🔧 No navigation panels configured for {{ current_tenant.name }}.<br>
+                            <small>Contact your administrator to set up custom navigation.</small>
+                        </p>
+                    </div>
+                {% endfor %}
+
+                <!-- System Navigation -->
+                <div class="nav-panel static-nav" data-panel-type="system">
+                    <h4 class="nav-panel-title">System Navigation</h4>
+                    {% for item in top_navigation_items %}
+                        <a href="{{ item.url }}" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;">
+                            <span class="nav-icon">{{ item.icon }}</span>
+                            <span class="nav-text">{{ item.name }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN BODY - THIS IS THE GREEN BOX WHERE GMAIL GOES -->
+        <div class="main-body">
+            <div id="gmail-container">
+                <h1>📧 Gmail Inbox</h1>
+
+                <div id="gmail-toolbar">
+                    <button id="btn-refresh" title="Refresh inbox"><i class="fa fa-sync"></i> Refresh</button>
+                    <button id="btn-archive" disabled title="Archive selected"><i class="fa fa-archive"></i> Archive</button>
+                    <button id="btn-delete" disabled title="Delete selected"><i class="fa fa-trash"></i> Delete</button>
+                    <button id="btn-markread" disabled title="Mark as read"><i class="fa fa-envelope-open"></i> Mark Read</button>
+                </div>
+
+                <div id="gmail-inbox-loading">Loading inbox...</div>
+
+                <div id="gmail-auth-error" style="display:none;">
+                    <h4>Google Authentication Required</h4>
+                    <p>You need to connect your Google account to access Gmail.</p>
+                    <a href="/accounts/google/login/" style="display: inline-block; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px;">Connect Google Account</a>
+                </div>
+
+                <table id="gmail-inbox-table" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
+                            <th>From</th>
+                            <th>Subject</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+
+                <div id="gmail-load-more" style="display:none;">
+                    <button onclick="loadMoreMessages()" style="padding: 10px 20px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">Load More Messages</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Message Detail Modal -->
+<div id="gmail-message-modal">
+    <div class="modal-dialog">
+        <button id="close-message-modal">×</button>
+        <div id="gmail-message-content">Loading...</div>
+    </div>
+</div>
+
+<script>
+// Determine the base API path from current location
+// Use the correct Gmail API path, not the current page path
+const gmailBasePath = '/dose/gmail-api';
+let nextPageToken = null;
+let selectedMessages = new Set();
+
+async function fetchInbox(pageToken = null) {
+    const loading = document.getElementById('gmail-inbox-loading');
+    const table = document.getElementById('gmail-inbox-table');
+    const authError = document.getElementById('gmail-auth-error');
+    const loadMore = document.getElementById('gmail-load-more');
+
+    if (!pageToken) {
+        selectedMessages.clear();
+    }
+
+    console.log('Fetching Gmail inbox...');
+    console.log('Base path:', gmailBasePath);
+
+    try {
+        const apiUrl = `${gmailBasePath}/messages?maxResults=20&labelIds=INBOX${pageToken ? '&pageToken=' + pageToken : ''}`;
+        console.log('Fetching from:', apiUrl);
+
+        const resp = await fetch(apiUrl);
+        console.log('Response status:', resp.status);
+
+        const data = await resp.json();
+        console.log('Response data:', data);
+        console.log('Response data.messages:', data.messages);
+        console.log('Response data.resultSizeEstimate:', data.resultSizeEstimate);
+
+        if (!resp.ok) {
+            console.log('Error response:', data);
+            console.log('Response status:', resp.status);
+            console.log('Response headers:', Object.fromEntries(resp.headers.entries()));
+
+            if (resp.status === 401 || resp.status === 400 || (data.error && (typeof data.error === 'string' && (data.error.includes('token') || data.error.includes('account') || data.error.includes('authenticate'))))) {
+                console.log('Authentication error detected');
+                loading.style.display = 'none';
+                authError.style.display = 'block';
+
+                // Show the actual error message if available
+                if (data.error) {
+                    const errorDiv = document.getElementById('gmail-auth-error');
+                    if (errorDiv) {
+                        const errorMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+                        errorDiv.innerHTML = `
+                            <h4>Google Authentication Required</h4>
+                            <p>${errorMsg}</p>
+                            <a href="/accounts/google/login/?process=connect&next=${encodeURIComponent(window.location.pathname)}" style="display: inline-block; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px;">Connect Google Account</a>
+                        `;
+                    }
+                }
+                return;
+            }
+
+            let errorMsg = 'Unknown error';
+            if (data.error) {
+                if (typeof data.error === 'string') {
+                    errorMsg = data.error;
+                } else if (data.error.message) {
+                    errorMsg = data.error.message;
+                    if (errorMsg.includes('console.developers.google.com')) {
+                        const urlMatch = errorMsg.match(/https:\/\/console\.developers\.google\.com[^\s]+/);
+                        if (urlMatch) {
+                            errorMsg += `<br><br><a href="${urlMatch[0]}" target="_blank" style="display: inline-block; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px;">Enable Gmail API</a>`;
+                        }
+                    }
+                } else {
+                    errorMsg = JSON.stringify(data.error);
+                }
+            }
+
+            loading.innerHTML = `<div style="color: #721c24; padding: 15px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+                <strong>❌ Error loading inbox (Status ${resp.status})</strong><br><br>
+                ${errorMsg}
+            </div>`;
+            return;
+        }
+
+        if (!data.messages || data.messages.length === 0) {
+            loading.innerHTML = 'No messages found in inbox.';
+            return;
+        }
+
+        nextPageToken = data.nextPageToken || null;
+
+        const rows = [];
+        for (const msg of data.messages) {
+            try {
+                const msgUrl = `${gmailBasePath}/messages/${msg.id}`;
+                const msgResp = await fetch(msgUrl);
+                const msgData = await msgResp.json();
+
+                let from = '', subject = '', date = '';
+                if (msgData.payload && msgData.payload.headers) {
+                    for (const h of msgData.payload.headers) {
+                        if (h.name === 'From') from = h.value;
+                        if (h.name === 'Subject') subject = h.value;
+                        if (h.name === 'Date') date = new Date(h.value).toLocaleDateString();
+                    }
+                }
+
+                rows.push(`<tr class="gmail-message-row" data-id="${msg.id}">
+                    <td><input type="checkbox" class="msg-checkbox" data-id="${msg.id}"></td>
+                    <td>${from}</td>
+                    <td>${subject}</td>
+                    <td>${date}</td>
+                </tr>`);
+            } catch (msgError) {
+                console.warn('Error fetching message:', msgError);
+            }
+        }
+
+        if (pageToken) {
+            table.querySelector('tbody').innerHTML += rows.join('');
+        } else {
+            table.querySelector('tbody').innerHTML = rows.join('');
+        }
+
+        // Add click event listeners
+        document.querySelectorAll('.gmail-message-row').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.classList.contains('msg-checkbox')) return;
+                const msgId = this.getAttribute('data-id');
+                showMessageModal(msgId);
+            });
+        });
+
+        // Checkbox listeners
+        document.querySelectorAll('.msg-checkbox').forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (this.checked) {
+                    selectedMessages.add(this.dataset.id);
+                } else {
+                    selectedMessages.delete(this.dataset.id);
+                }
+                updateToolbarState();
+            });
+        });
+
+        // Select all
+        const selectAll = document.getElementById('select-all');
+        if (selectAll) {
+            selectAll.checked = false;
+            selectAll.addEventListener('change', function() {
+                document.querySelectorAll('.msg-checkbox').forEach(cb => {
+                    cb.checked = selectAll.checked;
+                    if (cb.checked) {
+                        selectedMessages.add(cb.dataset.id);
+                    } else {
+                        selectedMessages.delete(cb.dataset.id);
+                    }
+                });
+                updateToolbarState();
+            });
+        }
+
+        updateToolbarState();
+        loading.style.display = 'none';
+        table.style.display = '';
+        loadMore.style.display = nextPageToken ? 'block' : 'none';
+
+    } catch (e) {
+        console.error('Gmail fetch error:', e);
+        loading.innerHTML = 'Error loading inbox. Please check your connection and try again.';
+    }
+}
+
+function loadMoreMessages() {
+    if (nextPageToken) {
+        fetchInbox(nextPageToken);
+    }
+}
+
+function updateToolbarState() {
+    const hasSelection = selectedMessages.size > 0;
+    document.getElementById('btn-archive').disabled = !hasSelection;
+    document.getElementById('btn-delete').disabled = !hasSelection;
+    document.getElementById('btn-markread').disabled = !hasSelection;
+}
+
+function decodeGmailBody(data) {
+    try {
+        let decoded = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
+        return decodeURIComponent(escape(decoded));
+    } catch {
+        return data;
+    }
+}
+
+async function showMessageModal(msgId) {
+    const modal = document.getElementById('gmail-message-modal');
+    const content = document.getElementById('gmail-message-content');
+    modal.style.display = 'flex';
+    content.innerHTML = 'Loading...';
+
+    try {
+        const msgUrl = `${gmailBasePath}/messages/${msgId}`;
+        const resp = await fetch(msgUrl);
+        const msgData = await resp.json();
+
+        let from = '', subject = '', date = '', body = '';
+        if (msgData.payload && msgData.payload.headers) {
+            for (const h of msgData.payload.headers) {
+                if (h.name === 'From') from = h.value;
+                if (h.name === 'Subject') subject = h.value;
+                if (h.name === 'Date') date = new Date(h.value).toLocaleString();
+            }
+        }
+
+        if (msgData.payload && msgData.payload.parts) {
+            for (const part of msgData.payload.parts) {
+                if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+                    body = decodeGmailBody(part.body.data);
+                    break;
+                }
+            }
+        } else if (msgData.payload && msgData.payload.body && msgData.payload.body.data) {
+            body = decodeGmailBody(msgData.payload.body.data);
+        }
+
+        content.innerHTML = `<h4>${subject}</h4>
+            <div style="margin: 10px 0;"><strong>From:</strong> ${from}</div>
+            <div style="margin: 10px 0;"><strong>Date:</strong> ${date}</div>
+            <hr style="margin: 15px 0;">
+            <pre>${body || '(No body found)'}</pre>`;
+    } catch (err) {
+        console.error('Error loading message:', err);
+        content.innerHTML = 'Error loading message.';
+    }
+}
+
+// Event listeners
+document.getElementById('close-message-modal').addEventListener('click', function() {
+    document.getElementById('gmail-message-modal').style.display = 'none';
+});
+
+document.getElementById('btn-refresh').addEventListener('click', function() {
+    fetchInbox();
+});
+
+document.getElementById('btn-archive').addEventListener('click', function() {
+    alert('Archive action coming soon!');
+});
+
+document.getElementById('btn-delete').addEventListener('click', function() {
+    alert('Delete action coming soon!');
+});
+
+document.getElementById('btn-markread').addEventListener('click', function() {
+    alert('Mark as read action coming soon!');
+});
+
+// Navigation toggle function
+function toggleNavigation() {
+    const navItems = document.getElementById('nav-items');
+    const navToggle = document.getElementById('nav-toggle');
+    navItems.classList.toggle('collapsed');
+    navToggle.classList.toggle('collapsed');
+}
+
+// Start Gmail inbox fetch
+console.log('=== Gmail Dose Script Starting ===');
+fetchInbox();
+</script>
+{% endblock %}

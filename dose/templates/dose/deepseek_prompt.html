@@ -1,0 +1,34 @@
+{% extends 'dose/dosebase.html' %}
+{% block title %}DeepSeek Prompt{% endblock %}
+{% block content %}
+<div style="max-width:600px;margin:40px auto;padding:32px;background:#f8fafc;border-radius:12px;box-shadow:0 2px 12px #0001;">
+    <h2>DeepSeek Prompt</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" style="background:#3498db;color:#fff;padding:8px 16px;border:none;border-radius:4px;">Submit</button>
+    </form>
+</div>
+{% if response_text %}
+    <div style="max-width:600px;margin:24px auto;padding:16px;background:#eaf6ff;border-radius:8px;">
+        <strong>Response:</strong>
+        <pre style="white-space:pre-wrap;word-break:break-word;">{{ response_text }}</pre>
+    </div>
+{% endif %}
+<div style="max-width:600px;margin:40px auto;padding:32px;background:#fff;border-radius:12px;box-shadow:0 2px 12px #0001;">
+    <h3>Prompt History</h3>
+    <ul style="list-style:none;padding:0;">
+        {% for item in history %}
+            <li style="margin-bottom:24px;border-bottom:1px solid #eee;padding-bottom:16px;">
+                <strong>Prompt:</strong>
+                <div style="margin-bottom:8px;">{{ item.prompt }}</div>
+                <strong>Response:</strong>
+                <pre style="white-space:pre-wrap;word-break:break-word;">{{ item.response }}</pre>
+                <span style="color:#888;font-size:0.9em;">{{ item.created_at }}</span>
+            </li>
+        {% empty %}
+            <li>No history yet.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

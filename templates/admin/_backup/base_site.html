@@ -1,0 +1,45 @@
+{% extends "jazzmin/base.html" %}
+
+{% block content %}
+  <div style="background: #222; color: #fff; padding: 16px; text-align: center; position: relative;">
+    <h1>Custom Admin Header</h1>
+    <span id="gmail-bell-container" style="position:absolute; top:18px; right:32px;">
+      <i class="fas fa-bell" style="font-size:1.7em; color:#ffd700; position:relative;"></i>
+      <span id="gmail-unread-badge" style="background:#dc3545; color:#fff; border-radius:50%; padding:2px 7px; font-size:0.9em; position:absolute; top:-10px; right:-18px; min-width:24px; text-align:center;">0</span>
+    </span>
+    <!-- THEME PICKER SNIPPET -->
+    <div style="background: #ffeeba; color: #856404; padding: 0.5em; border: 1px solid #ffeeba; border-radius: 4px; margin: 1em auto; font-weight: bold; max-width: 400px;">[DEBUG] Theme picker should appear below:</div>
+    <div style="padding: 1em; max-width: 400px; margin: 0 auto;">
+      <label for="theme-picker"><strong>Theme:</strong></label>
+      <select id="theme-picker" name="theme-picker">
+        <option value="default">Default</option>
+        <option value="flatly">Flatly</option>
+        <option value="lumen">Lumen</option>
+        <option value="cyborg">Cyborg</option>
+        <option value="darkly">Darkly</option>
+        <option value="sandstone">Sandstone</option>
+        <!-- Add more themes as needed -->
+      </select>
+    </div>
+  </div>
+  {{ block.super }}
+  <script>
+    async function fetchUnreadCount() {
+      try {
+        const resp = await fetch('/dose/gmail-api/gmail/v1/users/me/messages?labelIds=UNREAD&maxResults=1');
+        const data = await resp.json();
+        let count = 0;
+        if (resp.ok && data.resultSizeEstimate !== undefined) {
+          count = data.resultSizeEstimate;
+        }
+        document.getElementById('gmail-unread-badge').textContent = count;
+      } catch (e) {
+        document.getElementById('gmail-unread-badge').textContent = '?';
+      }
+    }
+    fetchUnreadCount();
+    // Optionally, refresh every 60 seconds
+    setInterval(fetchUnreadCount, 60000);
+    console.log('Custom jazzmin/base_site.html branding block loaded');
+  </script>
+{% endblock %}

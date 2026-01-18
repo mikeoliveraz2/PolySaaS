@@ -1,0 +1,85 @@
+﻿diff --git a/dose/templates/dose/dashboard.html b/dose/templates/dose/dashboard.html
+index d24425f..d846e05 100644
+--- a/dose/templates/dose/dashboard.html
++++ b/dose/templates/dose/dashboard.html
+@@ -1,5 +1,4 @@
+ {% extends 'dose/dosebase.html' %}
+-<!-- DEBUG: dashboard -->
+ 
+ {% block title %}Dashboard - {{ tenant.name }}{% endblock %}
+ 
+@@ -9,12 +8,9 @@
+     Subscription successful! Welcome to your dashboard.
+ </div>
+ 
+-
+-
+ <div class="dose-header-bar" style="background: var(--dose-primary, #457894); color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 1.05rem;">
+     <div>
+     WELCOME, {{ user.first_name|default:user.username|title }} {{ user.last_name|title }} {% if tenant and tenant.schema_name %}({{ tenant.schema_name|lower }}){% endif %}.
+-        <a href="/" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">VIEW SITE</a> /
+     <a href="{% url 'dose:tenantsettings' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">CHANGE PASSWORD</a> /
+         <a href="{% url 'dose:logout' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">LOG OUT</a>
+     </div>
+@@ -24,11 +20,6 @@
+ </div>
+ 
+ <h2>Welcome to {{ tenant.name }}</h2>
+-{% if debug %}
+-<div style="color: #856404; background: #fff3cd; border: 1px solid #ffeaa7; font-size: 0.9rem; margin-bottom: 1rem; padding: 0.75rem; border-radius: 4px;">
+-    <strong>DEBUG:</strong> active_users={{ active_users }}, total_users={{ tenant_stats.total_users }}, requests_last_hour={{ requests_last_hour }}
+-</div>
+-{% endif %}
+ 
+ <div style="display: flex; gap: 2rem; justify-content: center; margin: 2rem 0;">
+     <!-- Active Users Dial -->
+@@ -64,30 +55,29 @@
+         </table>
+     </div>
+ </div>
+-<!-- Chart.js CDN -->
+-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+ 
+-<div style="margin: 2rem 0;">
+-    <h3>Quick Actions</h3>
+-    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+-    <a href="{% url 'dose:tenantsettings' %}" class="btn">Tenant Settings</a>
+-    <a href="{% url 'dose:tenant_users' %}" class="btn">Manage Users</a>
+-    <a href="{% url 'admin:index' %}" class="btn btn-secondary">Dose Admin</a>
+-    {% if user.is_staff %}
+-    <a href="/dose/swagger/" class="btn btn-secondary" target="_blank">AI Test (API Docs)</a>
+-    {% endif %}
++<!-- Feature Cards for Visual Appeal -->
++<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0;">
++    <div style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 8px; padding: 2rem; text-align: center; border-left: 4px solid var(--dose-secondary, #3498db); box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: relative; overflow: hidden; transition: all 0.3s ease;">
++        <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #3498db 0%, #2ecc71 100%);"></div>
++        <h3 style="color: var(--dose-primary, #457894); margin-bottom: 0.5rem; font-size: 1.3rem; font-weight: 500;">≡ƒöÉ Multi-Tenant Security</h3>
++        <p style="color: #7f8c8d; font-size: 0.95rem; margin: 0; line-height: 1.5;">Enterprise-grade tenant isolation ensures your data remains secure and private within your dedicated schema.</p>
+     </div>
+-</div>
+-
+-<div style="margin: 2rem 0;">
+-    <h3>Session Information</h3>
+-    <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.9rem;">
+-        <p><strong>Tenant ID:</strong> {{ request.session.tenant_id }}</p>
+-        <p><strong>Tenant Name:</strong> {{ request.session.tenant_name }}</p>
+-        <p><strong>Tenant Slug:</strong> {{ request.session.tenant_slug }}</p>
+-        <p><strong>User:</strong> {{ user.username }} ({{ user.email }})</p>
++    <div style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 8px; padding: 2rem; text-align: center; border-left: 4px solid var(--dose-secondary, #3498db); box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: relative; overflow: hidden; transition: all 0.3s ease;">
++        <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #3498db 0%, #2ecc71 100%);"></div>
++        <h3 style="color: var(--dose-primary, #457894); margin-bottom: 0.5rem; font-size: 1.3rem; font-weight: 500;">ΓÜí Dynamic Orchestration</h3>
++        <p style="color: #7f8c8d; font-size: 0.95rem; margin: 0; line-height: 1.5;">Real-time service coordination and intelligent workflow automation for seamless operations.</p>
++    </div>
++    <div style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 8px; padding: 2rem; text-align: center; border-left: 4px solid var(--dose-secondary, #3498db); box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: relative; overflow: hidden; transition: all 0.3s ease;">
++        <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #3498db 0%, #2ecc71 100%);"></div>
++        <h3 style="color: var(--dose-primary, #457894); margin-bottom: 0.5rem; font-size: 1.3rem; font-weight: 500;">≡ƒôè Professional Analytics</h3>
++        <p style="color: #7f8c8d; font-size: 0.95rem; margin: 0; line-height: 1.5;">Comprehensive insights and reporting tools to monitor performance and track key metrics.</p>
+     </div>
+ </div>
++
++<!-- Chart.js CDN -->
++<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
++
+ {% endblock %}
+ 
+ {% block scripts %}

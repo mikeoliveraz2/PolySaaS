@@ -1,0 +1,153 @@
+version: '3.8'
+
+services:
+  # Core components
+  polysysmon-webui:
+    build:
+      context: ./docker/PolySysMon/RaptorWebUIQ
+      dockerfile: Dockerfile
+    container_name: polysysmon-webui
+    ports:
+      - "8070:8070"
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - API_PORT=5000
+      - WEB_PORT=8070
+    volumes:
+      - ./docker/PolySysMon/RaptorWebUIQ:/app
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    depends_on:
+      - polysysmon-redis
+      - polysysmon-postgres
+
+  polysysmon-job-manager:
+    build:
+      context: ./docker/PolySysMon/CoreJobManagerQ/src
+      dockerfile: Dockerfile
+    container_name: polysysmon-job-manager
+    environment:
+      - REDIS_HOST=polysysmon-redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=polysysmon-postgres
+      - POSTGRES_DB=polysysmon
+      - POSTGRES_USER=polysysmon
+      - POSTGRES_PASSWORD=polysysmon
+    volumes:
+      - ./docker/PolySysMon/CoreJobManagerQ:/app
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    depends_on:
+      - polysysmon-redis
+      - polysysmon-postgres
+
+  polysysmon-correlator:
+    build:
+      context: ./docker/PolySysMon/Correlator1Q/src
+      dockerfile: Dockerfile
+    container_name: polysysmon-correlator
+    environment:
+      - REDIS_HOST=polysysmon-redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./docker/PolySysMon/Correlator1Q:/app
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    depends_on:
+      - polysysmon-redis
+
+  polysysmon-data-receiver:
+    build:
+      context: ./docker/PolySysMon/DataReceiver2Q/src
+      dockerfile: Dockerfile
+    container_name: polysysmon-data-receiver
+    environment:
+      - REDIS_HOST=polysysmon-redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./docker/PolySysMon/DataReceiver2Q:/app
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    depends_on:
+      - polysysmon-redis
+
+  polysysmon-agent-processor:
+    build:
+      context: ./docker/PolySysMon/AgentProcessorQ/src
+      dockerfile: Dockerfile
+    container_name: polysysmon-agent-processor
+    environment:
+      - REDIS_HOST=polysysmon-redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./docker/PolySysMon/AgentProcessorQ:/app
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    depends_on:
+      - polysysmon-redis
+
+  # Optional: SNMP Input Adapter
+  polysysmon-snmp-adapter:
+    build:
+      context: ./docker/PolySysMon/SNMPInputAdapterQ/src
+      dockerfile: Dockerfile
+    container_name: polysysmon-snmp-adapter
+    environment:
+      - REDIS_HOST=polysysmon-redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./docker/PolySysMon/SNMPInputAdapterQ:/app
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    depends_on:
+      - polysysmon-redis
+    profiles:
+      - full
+
+  # Supporting services
+  polysysmon-redis:
+    image: redis:7-alpine
+    container_name: polysysmon-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - polysysmon_redis_data:/data
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    command: redis-server --appendonly yes
+
+  polysysmon-postgres:
+    image: postgres:15-alpine
+    container_name: polysysmon-postgres
+    environment:
+      POSTGRES_DB: polysysmon
+      POSTGRES_USER: polysysmon
+      POSTGRES_PASSWORD: polysysmon
+    ports:
+      - "5433:5432"
+    volumes:
+      - polysysmon_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - polysysmon-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polysysmon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  polysysmon-network:
+    driver: bridge
+
+volumes:
+  polysysmon_redis_data:
+  polysysmon_postgres_data:

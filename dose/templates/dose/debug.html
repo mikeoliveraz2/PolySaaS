@@ -1,0 +1,94 @@
+{% extends 'dose/dosebase.html' %}
+
+{% block title %}Debug - System Status{% endblock %}
+
+{% block content %}
+<h2>System Debug Information</h2>
+
+<div style="margin: 2rem 0;">
+    <h3>Session Data</h3>
+    <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.9rem;">
+        {% for key, value in session_data.items %}
+        <p><strong>{{ key }}:</strong> {{ value }}</p>
+        {% empty %}
+        <p>No session data</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div style="margin: 2rem 0;">
+    <h3>Current User</h3>
+    {% if current_user %}
+    <div style="background-color: #e8f5e8; padding: 1rem; border-radius: 4px;">
+        <p><strong>Username:</strong> {{ current_user.username }}</p>
+        <p><strong>Email:</strong> {{ current_user.email }}</p>
+        <p><strong>Staff:</strong> {{ current_user.is_staff }}</p>
+        <p><strong>Superuser:</strong> {{ current_user.is_superuser }}</p>
+        <p><strong>Active:</strong> {{ current_user.is_active }}</p>
+    </div>
+    {% else %}
+    <div style="background-color: #f8d7da; padding: 1rem; border-radius: 4px;">
+        <p>No authenticated user</p>
+    </div>
+    {% endif %}
+</div>
+
+<div style="margin: 2rem 0;">
+    <h3>All Tenants</h3>
+    <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px;">
+        {% for tenant in tenants %}
+        <div style="margin-bottom: 1rem; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+            <p><strong>ID:</strong> {{ tenant.id }} | <strong>Name:</strong> {{ tenant.name }} | <strong>Slug:</strong> {{ tenant.slug }}</p>
+            <p><strong>Active:</strong> {{ tenant.is_active }} | <strong>Created:</strong> {{ tenant.created_at|date:"Y-m-d H:i" }}</p>
+            {% if tenant.description %}
+            <p><strong>Description:</strong> {{ tenant.description }}</p>
+            {% endif %}
+        </div>
+        {% empty %}
+        <p>No tenants found</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div style="margin: 2rem 0;">
+    <h3>All Users</h3>
+    <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px;">
+        {% for user in users %}
+        <div style="margin-bottom: 1rem; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+            <p><strong>Username:</strong> {{ user.username }} | <strong>Email:</strong> {{ user.email }}</p>
+            <p><strong>Staff:</strong> {{ user.is_staff }} | <strong>Active:</strong> {{ user.is_active }}</p>
+        </div>
+        {% empty %}
+        <p>No users found</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div style="margin: 2rem 0;">
+    <h3>User Profiles</h3>
+    <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 4px;">
+        {% for profile in user_profiles %}
+        <div style="margin-bottom: 1rem; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+            <p><strong>User:</strong> {{ profile.user.username }} → <strong>Tenant:</strong> {{ profile.tenant.name }}</p>
+            <p><strong>Created:</strong> {{ profile.created_at|date:"Y-m-d H:i" }}</p>
+        </div>
+        {% empty %}
+        <p>No user profiles found</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div style="margin: 2rem 0;">
+    <h3>Quick Actions</h3>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <a href="{% url 'dose:setup_demo' %}" class="btn">Setup Demo Data</a>
+        <a href="{% url 'dose:health_check' %}" class="btn btn-secondary">Health Check</a>
+        <a href="{% url 'dose:api_user_tenants' %}" class="btn btn-secondary">API Test</a>
+        {% if current_user %}
+        <a href="{% url 'dose:dashboard' %}" class="btn">Dashboard</a>
+        {% else %}
+        <a href="{% url 'dose:login' %}" class="btn">Login</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

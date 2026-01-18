@@ -1,0 +1,51 @@
+{% extends 'dose/dosebase.html' %}
+{% load static %}
+
+{% block title %}Login - Dose Multi-Tenant System{% endblock %}
+
+{% block header_title %}Login{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 0 auto;">
+    <h2>Login to Dose</h2>
+
+    {% if error %}
+    <div class="alert alert-error">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+
+        <button type="submit" class="btn">Login</button>
+    </form>
+    <div style="margin-top: 1rem; text-align: center;">
+        <a href="{% url 'dose:subscribe' %}" style="color: #2980b9; text-decoration: underline; font-weight: bold;">Sign Up</a>
+    </div>
+
+    <hr style="margin: 2rem 0;">
+
+    <!-- PATCHED: Add Google OAuth2 login button -->
+    <div style="text-align:center; margin:2rem 0;">
+    <a href="/accounts/google/login/" class="subscription-btn" style="background:#4285F4; color:#fff; display:inline-block; width:auto; padding:0.75em 2em; font-size:1em; font-weight:600; border-radius:4px; text-decoration:none;">
+            <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" style="height:1em; vertical-align:middle; margin-right:0.5em;"> Login with Google
+        </a>
+    </div>
+    <div class="alert alert-info">
+        <h4>Demo Credentials:</h4>
+        <p><strong>User:</strong> demouser / demo123</p>
+        <p><strong>Admin:</strong> admin / admin123</p>
+        <p><small>Use <a href="{% url 'dose:setup_demo' %}" style="color: white;">setup demo</a> to create these accounts if they don't exist.</small></p>
+    </div>
+</div>
+{% endblock %}

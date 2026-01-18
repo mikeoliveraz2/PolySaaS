@@ -1,0 +1,145 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ service_name }} - External Service</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .service-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .service-header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .service-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        /* Generic fixes for external services */
+        .modal-backdrop,
+        .modal-overlay,
+        #brickwall,
+        div#blur,
+        div#background {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        body.modal-open {
+            position: static !important;
+            height: auto !important;
+            min-height: 100vh !important;
+            overflow: visible !important;
+            background: #f8f9fa !important;
+            padding: 20px !important;
+        }
+        .modal {
+            position: relative !important;
+            width: auto !important;
+            max-width: 800px !important;
+            margin: 40px auto !important;
+            transform: none !important;
+            top: auto !important;
+            left: auto !important;
+            right: auto !important;
+            bottom: auto !important;
+            z-index: 1 !important;
+            pointer-events: auto !important;
+        }
+        /* Make forms and inputs clickable */
+        form input,
+        form button,
+        form select,
+        form textarea,
+        fieldset {
+            pointer-events: auto !important;
+            position: relative !important;
+            z-index: 1 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="service-container">
+        <div class="service-header">
+            <h2>{{ service_name }}</h2>
+            <p>External service integration</p>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item active">{{ service_name }}</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="service-content">
+            <div id="external-service-container" style="margin: 0; padding: 0; max-width: 100%; overflow-x: auto;">
+                {{ service_content|safe }}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        // Generic fixes for external services
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('[DOSE EXTERNAL SERVICE FIX] Applying generic fixes...');
+
+            // Remove common modal overlays
+            const overlays = document.querySelectorAll('.modal-backdrop, .modal-overlay, #brickwall, #blur, #background');
+            overlays.forEach(overlay => overlay.remove());
+
+            // Fix modal body positioning
+            const modalBodies = document.querySelectorAll('body.modal-open, #loginBody');
+            modalBodies.forEach(body => {
+                body.style.position = 'relative';
+                body.style.height = 'auto';
+                body.style.minHeight = '100vh';
+                body.style.overflow = 'visible';
+                body.style.background = '#f8f9fa';
+                body.style.padding = '20px';
+            });
+
+            // Fix modal dialogs
+            const modals = document.querySelectorAll('.modal, #loginBox, .dialog');
+            modals.forEach(modal => {
+                modal.style.position = 'relative';
+                modal.style.width = 'auto';
+                modal.style.maxWidth = '800px';
+                modal.style.margin = '40px auto';
+                modal.style.transform = 'none';
+                modal.style.top = 'auto';
+                modal.style.left = 'auto';
+                modal.style.right = 'auto';
+                modal.style.bottom = 'auto';
+                modal.style.zIndex = '1';
+                modal.style.pointerEvents = 'auto';
+            });
+
+            // Make all form elements clickable
+            const formElements = document.querySelectorAll('input, button, select, textarea, a');
+            formElements.forEach(element => {
+                element.style.pointerEvents = 'auto';
+                element.style.position = 'relative';
+                element.style.zIndex = '100';
+            });
+
+            console.log('[DOSE EXTERNAL SERVICE FIX] Generic fixes applied');
+        });
+    </script>
+</body>
+</html>

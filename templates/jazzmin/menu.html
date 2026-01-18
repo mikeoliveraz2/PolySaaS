@@ -1,0 +1,20 @@
+{# Jazzmin menu - extend base and let Jazzmin handle menu rendering #}
+{% extends "jazzmin/base.html" %}
+{% load static %}
+rride Jazzmin menu rendering for sidebar debug #}
+{% for app in sidebar_menu %}
+    {% for model in app.models %}
+        <li class="nav-item">
+            <a href="{{ model.url }}" class="nav-link{% if model.active %} active{% endif %}">
+                <i class="nav-icon {{ model.icon }}"></i>
+                <p>
+                    {{ model.name }}
+                    <span style="color:yellow; font-size:10px;">[app_label: {{ model.app_label }} | model_name: {{ model.model_name }} | name: {{ model.name }}]</span>
+                    {% if model.name == "Notifications" and unread_notifications_count > 0 %}
+                        <span class="badge badge-danger right">{{ unread_notifications_count }}</span>
+                    {% endif %}
+                </p>
+            </a>
+        </li>
+    {% endfor %}
+{% endfor %}

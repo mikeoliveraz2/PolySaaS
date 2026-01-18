@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Single Resource Test</title>
+    <!-- Test just one CSS file -->
+    <link rel="stylesheet" type="text/css" href="https://demozone.surpaascompaas.com/surpaas/javax.faces.resource/theme.css.jsf?ln=primefaces-cupertino&v=12.0.0-RC3&e=12.0.0-RC2">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-box { 
+            border: 2px solid #ccc; 
+            padding: 20px; 
+            margin: 10px 0; 
+            background: #f9f9f9; 
+        }
+    </style>
+</head>
+<body>
+    <div class="test-box">
+        <h1>Single Resource Test</h1>
+        <p>This page loads only ONE external CSS resource to test if the basic connection works.</p>
+        <p>Check browser developer tools (F12) → Network tab to see if the CSS file loads successfully.</p>
+    </div>
+    
+    <div class="test-box">
+        <h2>Expected Result:</h2>
+        <ul>
+            <li>CSS file should load with 200 status</li>
+            <li>Content-Type should be: text/css</li>
+            <li>No MIME type errors in console</li>
+        </ul>
+    </div>
+    
+    <script>
+        console.log('Single resource test page loaded');
+        
+        // Check if CSS loaded by testing computed styles
+        setTimeout(function() {
+            const testElement = document.createElement('div');
+            testElement.className = 'ui-widget'; // This class should be defined in PrimeFaces CSS
+            document.body.appendChild(testElement);
+            
+            const computedStyle = window.getComputedStyle(testElement);
+            if (computedStyle.fontFamily || computedStyle.fontSize !== '16px') {
+                console.log('✅ External CSS appears to be loaded - PrimeFaces styles detected');
+            } else {
+                console.log('❌ External CSS may not be loaded - no PrimeFaces styles detected');
+            }
+            
+            document.body.removeChild(testElement);
+        }, 1000);
+    </script>
+</body>
+</html>

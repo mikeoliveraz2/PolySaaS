@@ -1,0 +1,733 @@
+"""
+Passthrough Views - Phase 2 Infrastructure
+Handles routing to external services through admin-styled interfaces
+Generic template system supports any service via atomic service processing
+"""
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, HttpResponseNotFound
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.admin import site
+from django.template.response import TemplateResponse
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_service_content_from_atomic_service(request, service_name, service_class_name, service_module_path):
+    """
+    Generic helper to get content from atomic service
+    Falls back gracefully if atomic service doesn't exist
+
+    Args:
+        request: Django request object
+        service_name: Display name of the service (e.g., 'Gmail', 'OSTicket')
+        service_class_name: Class name of the atomic service (e.g., 'GmailProxyService')
+        service_module_path: Import path (e.g., 'dose.services.gmail_proxy_service')
+
+    Returns:
+        str: Service content or None if atomic service not available
+    """
+    try:
+        # Dynamic import of the atomic service
+        import importlib
+        service_module = importlib.import_module(service_module_path)
+        service_class = getattr(service_module, service_class_name)
+
+        # Instantiate and execute the service
+        service_instance = service_class()
+        service_response = service_instance.execute_and_save(request, None)
+
+        # Extract content
+        if hasattr(service_response, 'content'):
+            content = service_response.content.decode('utf-8') if isinstance(service_response.content, bytes) else str(service_response.content)
+        else:
+            content = str(service_response)
+
+        logger.info(f"{service_name} atomic service provided custom content")
+        return content
+
+    except ImportError:
+        logger.info(f"{service_name} atomic service not available, using fallback")
+        return None
+    except Exception as e:
+        logger.warning(f"{service_name} atomic service error, using fallback: {e}")
+        return None
+
+def get_service_data_from_atomic_service(request, service_name, service_class_name, service_module_path):
+    """
+    Helper to get structured data from atomic service that stores data in instruction_row
+    Returns both content and structured data for template rendering
+
+    Args:
+        request: Django request object
+        service_name: Display name of the service (e.g., 'Gmail', 'OSTicket')
+        service_class_name: Class name of the atomic service (e.g., 'GmailProxyService')
+        service_module_path: Import path (e.g., 'dose.services.gmail_proxy_service')
+
+    Returns:
+        tuple: (content_string, structured_data_dict) or (None, None) if not available
+    """
+    try:
+        from dose.models import AtomicServiceInstructionTracker
+
+        # Dynamic import of the atomic service
+        import importlib
+        service_module = importlib.import_module(service_module_path)
+        service_class = getattr(service_module, service_class_name)
+
+        # Create an instruction tracker to store data
+        instruction_row = AtomicServiceInstructionTracker.objects.create(
+            user=request.user,
+            service_name=service_name,
+            instruction_text=f"{service_name} passthrough request",
+            tenant=getattr(request, 'tenant', None)
+        )
+
+        # Instantiate and execute the service
+        service_instance = service_class()
+        service_response = service_instance.execute_and_save(request, instruction_row)
+
+        # Get structured data from instruction_row if available
+        structured_data = getattr(instruction_row, 'response_output', None)
+
+        # Get content as string
+        if hasattr(service_response, 'content'):
+            content = service_response.content.decode('utf-8') if isinstance(service_response.content, bytes) else str(service_response.content)
+        else:
+            content = str(service_response)
+
+        logger.info(f"{service_name} atomic service provided structured data and content")
+        logger.debug(f"[DEBUG] Content: {content[:100] if content else 'None'}...")
+        logger.debug(f"[DEBUG] Structured data: {structured_data}")
+        return content, structured_data
+
+    except ImportError:
+        logger.info(f"{service_name} atomic service not available, using fallback")
+        return None, None
+    except Exception as e:
+        logger.warning(f"{service_name} atomic service error, using fallback: {e}")
+        return None, None
+
+@login_required
+def passthrough_service(request, service, page=None):
+    """
+    Main passthrough view for external services
+    Routes to appropriate service handler based on service parameter
+    URL pattern: /admin/passthrough/<service>/
+    URL pattern: /admin/passthrough/<service>/<path:page>
+    """
+    logger.info(f"Passthrough request: service={service}, page={page}, user={request.user.username}")
+
+    # Service routing
+    service_handlers = {
+        'gmail': handle_gmail_passthrough,
+        'osticket': handle_osticket_passthrough,
+        # Future services can be added here
+    }
+
+    handler = service_handlers.get(service.lower())
+    if not handler:
+        logger.warning(f"Unknown service requested: {service}")
+        return HttpResponseNotFound(f"Service '{service}' not found")
+
+    return handler(request)
+
+def handle_gmail_passthrough(request):
+    """
+    Gmail service passthrough handler
+    Renders Gmail interface within admin template using structured data
+    """
+    logger.info(f"Gmail passthrough for user: {request.user.username}")
+
+    # Check for debug parameter - defaults to OFF
+    debug_mode = request.GET.get('debug', 'off').lower() == 'on'
+
+    try:
+        # Get real Gmail data from atomic service OR use debug data
+        if debug_mode:
+            # Use debug data for testing
+            service_content = None
+            gmail_data = {
+                'user_email': 'debug@example.com',
+                'total_messages': 42,
+                'status': 'success',
+                'system_labels': [
+                    {'name': 'INBOX', 'count': 25},
+                    {'name': 'SENT', 'count': 10},
+                    {'name': 'DRAFT', 'count': 3},
+                    {'name': 'SPAM', 'count': 2},
+                    {'name': 'TRASH', 'count': 2},
+                    {'name': 'STARRED', 'count': 5},
+                ],
+                'processed_messages': [
+                    {
+                        'id': 'debug_msg_1',
+                        'from': 'Important Client <client@company.com>',
+                        'subject': 'Project Update - Q4 deliverables ready for review',
+                        'snippet': 'Hi team, I wanted to update you on the Q4 project status. All deliverables are now ready...',
+                        'date': '2024-01-15T10:30:00Z',
+                        'unread': True,
+                        'starred': False
+                    },
+                    {
+                        'id': 'debug_msg_2',
+                        'from': 'Marketing Team <marketing@ourcompany.com>',
+                        'subject': 'Weekly Newsletter - Industry trends and updates',
+                        'snippet': 'This week\'s highlights include new market trends, competitor analysis, and upcoming events...',
+                        'date': '2024-01-14T14:20:00Z',
+                        'unread': False,
+                        'starred': True
+                    },
+                    {
+                        'id': 'debug_msg_3',
+                        'from': 'support@servicecompany.com',
+                        'subject': 'Your support ticket has been resolved',
+                        'snippet': 'Great news! We\'ve successfully resolved your support ticket #12345. The issue with your account...',
+                        'date': '2024-01-13T09:15:00Z',
+                        'unread': False,
+                        'starred': False
+                    },
+                    {
+                        'id': 'debug_msg_4',
+                        'from': 'John Smith <john.smith@partner.com>',
+                        'subject': 'Meeting reminder: Strategy session tomorrow',
+                        'snippet': 'Just a quick reminder about our strategy meeting scheduled for tomorrow at 2 PM...',
+                        'date': '2024-01-12T16:45:00Z',
+                        'unread': True,
+                        'starred': False
+                    },
+                    {
+                        'id': 'debug_msg_5',
+                        'from': 'noreply@newsservice.com',
+                        'subject': 'Daily briefing: Tech industry updates',
+                        'snippet': 'Today\'s tech news includes updates on AI developments, startup funding rounds, and new product launches...',
+                        'date': '2024-01-11T08:00:00Z',
+                        'unread': False,
+                        'starred': False
+                    }
+                ]
+            }
+        else:
+            # Get real Gmail data from atomic service
+            service_content, gmail_data = get_service_data_from_atomic_service(
+                request=request,
+                service_name='Gmail',
+                service_class_name='GmailProxyService',
+                service_module_path='dose.services.gmail_proxy_service'
+            )
+
+            # If real Gmail service fails, show error instead of demo data
+            if not gmail_data:
+                raise Exception("Gmail API failed to return data for authenticated user.")
+
+        # Get admin context to ensure sidebar shows all admin models
+        context = site.each_context(request)
+        context.update({
+            'service_name': 'Gmail',
+            'service_type': 'gmail',
+            'page_title': 'Gmail Integration',
+            'breadcrumb': 'Gmail',
+            'service_description': 'Access your Gmail inbox with full OAuth2 integration',
+            'service_icon': 'fas fa-envelope',
+            'service_content': service_content,  # Generic service content for backward compatibility
+            'gmail_data': gmail_data,  # Structured Gmail data for template rendering
+            'has_structured_data': gmail_data is not None,  # Flag for template logic
+            'iframe_url': 'https://mail.google.com' if not gmail_data else None,  # Use iframe only if no structured data
+            'debug_mode': debug_mode,  # Pass debug mode to template
+        })
+
+        return TemplateResponse(request, 'admin/passthrough.html', context)
+
+    except Exception as e:
+        logger.error(f"Gmail passthrough error: {str(e)}")
+
+        # Fallback to error display with admin context, show detailed error if available
+        error_message = str(e)
+        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            error_message += f" (HTTP {e.response.status_code})"
+            try:
+                error_json = e.response.json()
+                error_message += f" - {error_json.get('error', {}).get('message', '')}"
+            except Exception:
+                pass
+        context = site.each_context(request)
+        context.update({
+            'service_name': 'Gmail',
+            'service_type': 'gmail',
+            'page_title': 'Gmail Integration - Error',
+            'breadcrumb': 'Gmail',
+            'service_description': 'Gmail service encountered an error',
+            'service_icon': 'fas fa-envelope',
+            'error_message': error_message,
+            'show_error': True,
+        })
+
+        return TemplateResponse(request, 'admin/passthrough.html', context)
+
+def handle_osticket_passthrough(request):
+    """
+    OSTicket service passthrough handler
+    Fetches HTML from real OSTicket and serves it with form/link rewrites
+    CSS/images/JS are left as-is for browser to fetch from real domain
+    """
+    logger.info(f"OSTicket passthrough for user: {request.user.username}, path: {request.path}")
+    print(f"[OSTICKET] handle_osticket_passthrough CALLED!")
+
+    # For HTML pages, try atomic service first for special processing
+    service_content = get_service_content_from_atomic_service(
+        request=request,
+        service_name='OSTicket',
+        service_class_name='OSTicketProxyService',
+        service_module_path='dose.services.osticket_proxy_service'
+    )
+
+    print(f"[OSTICKET] Atomic service returned: {type(service_content)} = {service_content is not None}")
+    logger.info(f"[OSTICKET] Atomic service returned: {type(service_content)} = {service_content is not None}")
+
+    # If atomic service returned content, use the passthrough template
+    if service_content:
+        print(f"[OSTICKET] Using atomic service content, rendering template")
+        logger.info(f"[OSTICKET] Using atomic service content, rendering template")
+        context = site.each_context(request)
+        context.update({
+            'service_name': 'OSTicket',
+            'service_type': 'osticket',
+            'page_title': 'OSTicket Support System',
+            'breadcrumb': 'Support Tickets',
+            'service_description': 'Support ticket management and customer service portal',
+            'service_icon': 'fas fa-ticket-alt',
+            'service_content': service_content,
+        })
+        return TemplateResponse(request, 'admin/passthrough.html', context)
+
+    # Otherwise, use generic HTML passthrough with minimal text replacement
+    # This handles pure HTML endpoints - fetches from real OSTicket and rewrites only forms/links
+    print(f"[OSTICKET] Atomic service is None, calling generic_html_passthrough")
+    logger.info(f"[OSTICKET] Atomic service is None, calling generic_html_passthrough")
+
+    # Get endpoint config from database instead of hardcoding
+    from dose.models import PassthroughEndpoints
+    try:
+        osticket_config = PassthroughEndpoints.objects.get(
+            service_name='osticket',
+            tenant=getattr(request, 'tenant', None)
+        )
+        real_endpoint = osticket_config.endpoint_url
+        real_domain = osticket_config.base_url
+        real_path = osticket_config.path_prefix or "/scp/"
+        logger.info(f"[OSTICKET] Loaded config from database: endpoint={real_endpoint}, domain={real_domain}, path={real_path}")
+    except PassthroughEndpoints.DoesNotExist:
+        # Fallback to hardcoded defaults if config not found
+        logger.warning(f"[OSTICKET] No PassthroughEndpoints config found in database, using defaults")
+        real_endpoint = "https://oliverenterprises.app.saasify.cloud/scp/dashboard.php"
+        real_domain = "https://oliverenterprises.app.saasify.cloud"
+        real_path = "/scp/"
+
+    return generic_html_passthrough(
+        request=request,
+        real_endpoint=real_endpoint,
+        real_domain=real_domain,
+        real_path=real_path,
+        proxy_path="/admin/osticket/",
+        service_name="OSTicket"
+    )
+
+
+def generic_html_passthrough(request, real_endpoint, real_domain, real_path, proxy_path, service_name):
+    """
+    Generic HTML passthrough handler for any external service endpoint.
+    Handles both GET and POST requests, forwarding to the real endpoint.
+    Rewrites HTML URLs to proxy paths so all asset requests route through Django.
+
+    Uses Django session to persist external service cookies across requests.
+
+    Args:
+        request: Django request (can be GET or POST)
+        real_endpoint: Full URL to real service endpoint for initial GET (e.g., https://service.com/scp/dashboard.php)
+        real_domain: Domain only (e.g., https://service.com)
+        real_path: Path prefix to replace (e.g., /scp/)
+        proxy_path: Local proxy path replacement (e.g., /admin/passthrough/service/)
+        service_name: Display name for logging
+
+    Returns:
+        HttpResponse with rewritten HTML content or forwarded response
+    """
+    import requests
+    from http.cookiejar import Cookie
+    from django.http import HttpResponse
+    from datetime import datetime, timedelta
+
+    logger.info(f"Generic HTML passthrough: {service_name}, method={request.method}, path={request.path}")
+
+    try:
+        # Create a session object to persist cookies
+        session = requests.Session()
+
+        # Restore any previously saved cookies from Django session
+        service_cookies_key = f"_passthrough_cookies_{service_name.lower()}"
+        if service_cookies_key in request.session:
+            logger.info(f"Restoring saved cookies for {service_name}")
+            saved_cookies = request.session[service_cookies_key]
+            for cookie_dict in saved_cookies:
+                session.cookies.set(
+                    name=cookie_dict['name'],
+                    value=cookie_dict['value'],
+                    domain=cookie_dict.get('domain', ''),
+                    path=cookie_dict.get('path', '/'),
+                )
+                logger.info(f"  Restored cookie: {cookie_dict['name']}={cookie_dict['value'][:20]}...")
+
+        # Extract the requested path relative to proxy_path
+        # E.g., /admin/passthrough/osticket/css/login.css -> css/login.css
+        request_path = request.path
+        if request_path.startswith(proxy_path):
+            relative_path = request_path[len(proxy_path):]  # Strip the proxy_path prefix
+        else:
+            relative_path = ""
+
+        logger.info(f"Request path: {request_path}, relative_path: {relative_path}")
+
+        # Build the real endpoint URL
+        # If it's an asset request (has relative_path), use that; otherwise use the default endpoint
+        if relative_path:
+            # Asset request: /admin/passthrough/osticket/css/login.css
+            real_url = real_domain + real_path + relative_path
+            logger.info(f"Asset request: {real_url}")
+        else:
+            # Main page request
+            real_url = real_endpoint
+            logger.info(f"Main page request: {real_url}")
+
+        # Make the request to the real server
+        if request.method == 'POST':
+            # Forward POST with form data, maintaining cookies
+            logger.info(f"POST request to {real_url}")
+            logger.info(f"POST data fields: {list(request.POST.keys())}")
+            response = session.post(
+                real_url,
+                data=request.POST.dict(),
+                headers={'User-Agent': request.META.get('HTTP_USER_AGENT', '')},
+                verify=False,
+                timeout=10,
+                allow_redirects=False
+            )
+        else:
+            # GET request to real server, maintaining cookies
+            response = session.get(real_url, timeout=10, verify=False)
+
+        # Save any new cookies back to Django session
+        if len(session.cookies) > 0:
+            logger.info(f"Saving {len(session.cookies)} cookies to Django session")
+            cookies_to_save = []
+            for cookie in session.cookies:
+                cookies_to_save.append({
+                    'name': cookie.name,
+                    'value': cookie.value,
+                    'domain': cookie.domain,
+                    'path': cookie.path,
+                })
+                logger.info(f"  Saving cookie: {cookie.name}={cookie.value[:20]}...")
+            request.session[service_cookies_key] = cookies_to_save
+            request.session.modified = True
+
+        # Handle redirects for POST requests (common after login)
+        if request.method == 'POST' and response.status_code in [301, 302, 303, 307, 308]:
+            redirect_url = response.headers.get('Location', '')
+            logger.info(f"POST request resulted in redirect: {response.status_code} to {redirect_url}")
+
+            if redirect_url:
+                # Extract the path from the redirect URL
+                from urllib.parse import urlparse
+                parsed = urlparse(redirect_url)
+                redirect_path = parsed.path
+
+                # If it's redirecting to the same domain, rewrite to proxy path
+                if parsed.netloc == urlparse(real_domain).netloc or not parsed.netloc:
+                    logger.info(f"Redirect is to same domain, rewriting to proxy path")
+                    # Build new path relative to real_path
+                    if redirect_path.startswith(real_path):
+                        relative_redirect = redirect_path[len(real_path):]
+                    else:
+                        relative_redirect = redirect_path.lstrip('/')
+
+                    proxy_redirect = f"{proxy_path}{relative_redirect}"
+                    logger.info(f"Rewritten redirect: {proxy_redirect}")
+
+                    # Make a GET request to the redirect URL to get the dashboard or next page
+                    redirect_response = session.get(
+                        real_domain + redirect_path if redirect_path.startswith('/') else real_domain + '/' + redirect_path,
+                        timeout=10,
+                        verify=False
+                    )
+                    response = redirect_response
+                    logger.info(f"Following redirect to get dashboard content")
+
+        # Check if this is an HTML response or an asset
+        content_type = response.headers.get('content-type', '').lower()
+        is_html = 'text/html' in content_type
+        is_json = 'application/json' in content_type
+
+        logger.info(f"\n{'='*120}")
+        logger.info(f"RESPONSE RECEIVED FROM {service_name.upper()}")
+        logger.info(f"{'='*120}")
+        logger.info(f"Request Method: {request.method}")
+        logger.info(f"Request Path: {request.path}")
+        logger.info(f"Real Endpoint Called: {real_url}")
+        logger.info(f"Status Code: {response.status_code}")
+        logger.info(f"Content-Type: {content_type}")
+        logger.info(f"Is HTML: {is_html}")
+        logger.info(f"Is JSON: {is_json}")
+        logger.info(f"{'='*120}\n")
+
+        # Handle JSON responses (like AJAX login forms)
+        if is_json:
+            logger.info(f"JSON response from {service_name}, parsing...")
+            try:
+                import json
+                json_data = json.loads(response.text)
+                logger.info(f"JSON response: {json_data}")
+
+                # Check if login was successful (common patterns)
+                is_success = (
+                    json_data.get('success') or
+                    json_data.get('status') == 'success' or
+                    json_data.get('redirect') or
+                    response.status_code == 200
+                )
+
+                if is_success and json_data.get('redirect'):
+                    # Follow the redirect in the JSON response
+                    redirect_path = json_data.get('redirect')
+                    logger.info(f"JSON response contains redirect to: {redirect_path}")
+
+                    redirect_response = session.get(
+                        real_domain + redirect_path if redirect_path.startswith('/') else real_domain + '/' + redirect_path,
+                        timeout=10,
+                        verify=False
+                    )
+                    response = redirect_response
+                    logger.info(f"Following JSON redirect to get dashboard content")
+
+                    # Re-check content type after redirect
+                    content_type = response.headers.get('content-type', '').lower()
+                    is_html = 'text/html' in content_type
+                    is_json = 'application/json' in content_type
+                else:
+                    # Return JSON as-is for AJAX responses
+                    logger.info(f"Returning JSON response as-is")
+                    return HttpResponse(response.content, content_type=content_type, status=response.status_code)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse JSON response from {service_name}")
+                return HttpResponse(response.content, content_type=content_type, status=response.status_code)
+
+        # If this is NOT HTML (CSS, JS, image, etc.), return it as-is without rewriting
+        if not is_html:
+            logger.info(f"Asset response (not HTML), returning as-is with content-type: {content_type}")
+            return HttpResponse(response.content, content_type=content_type, status=response.status_code)
+
+        # From here on, we only process HTML responses
+        html_original = response.text
+        html = html_original
+
+        logger.info(f"Original HTML size: {len(html_original)} bytes")
+        logger.info(f"\n--- ORIGINAL HTML (first 2000 chars) ---")
+        logger.info(html_original[:2000])
+        logger.info(f"\n{'='*120}\n")
+
+        import re
+        from bs4 import BeautifulSoup
+
+        # Parse HTML with BeautifulSoup for reliable attribute replacement
+        soup = BeautifulSoup(html_original, 'html.parser')
+
+        logger.info(f"Parsed HTML with BeautifulSoup")
+        logger.info(f"  Found {len(soup.find_all('form'))} forms")
+        logger.info(f"  Found {len(soup.find_all('a'))} links")
+        logger.info(f"  Found {len(soup.find_all('link'))} <link> tags")
+        logger.info(f"  Found {len(soup.find_all('img'))} images")
+        logger.info(f"  Found {len(soup.find_all('script', src=True))} scripts with src")
+
+        # STRATEGY: Rewrite ALL URLs to proxy paths so everything routes through Django
+        # This allows Django to manage sessions for asset requests
+        # Pattern: /scp/css/login.css -> /admin/passthrough/osticket/css/login.css
+
+        # 1. Rewrite all form actions to proxy paths (will be forwarded to real server)
+        form_count = 0
+        for form in soup.find_all('form'):
+            action = form.get('action', '')
+            if action and not action.startswith(('http', '#')):
+                # Convert any path to proxy path
+                if action.startswith('//'):
+                    form['action'] = f"{proxy_path}{action.lstrip('/')}"
+                elif action.startswith('/'):
+                    # Root-relative: /login.php -> /admin/passthrough/osticket/login.php
+                    form['action'] = f"{proxy_path}{action.lstrip('/')}"
+                else:
+                    # Relative: login.php or ../path/login.php
+                    form['action'] = f"{proxy_path}{action.lstrip('./')}"
+                logger.info(f"  Rewrote form action: {action} → {form['action']}")
+                form_count += 1
+        logger.info(f"Rewrote {form_count} form actions")
+
+        # 2. Rewrite all link hrefs to proxy paths
+        link_count = 0
+        for link in soup.find_all('a'):
+            href = link.get('href', '')
+            if href and not href.startswith(('http', '#', 'mailto:', 'tel:', 'data:')):
+                if href.startswith('//'):
+                    link['href'] = f"{proxy_path}{href.lstrip('/')}"
+                elif href.startswith('/'):
+                    link['href'] = f"{proxy_path}{href.lstrip('/')}"
+                else:
+                    link['href'] = f"{proxy_path}{href.lstrip('./')}"
+                link_count += 1
+        logger.info(f"Rewrote {link_count} link hrefs")
+
+        # 3. Rewrite all CSS link hrefs to proxy paths
+        css_count = 0
+        for link in soup.find_all('link', href=True):
+            href = link.get('href', '')
+            if href and not href.startswith(('http', '#', 'data:')):
+                # Handle absolute paths (/path), relative paths (../path, path), and protocol-relative (//domain)
+                if href.startswith('//'):
+                    # Protocol-relative URL like //cdn.example.com/file.css
+                    link['href'] = f"{proxy_path}{href.lstrip('/')}"
+                elif href.startswith('/'):
+                    # Absolute path /css/style.css
+                    link['href'] = f"{proxy_path}{href.lstrip('/')}"
+                else:
+                    # Relative path css/style.css or ../css/style.css
+                    # For simplicity, treat all relative paths as if they're relative to /scp/
+                    link['href'] = f"{proxy_path}{href.lstrip('./')}"
+                logger.info(f"  Rewrote CSS href: {href} → {link['href']}")
+                css_count += 1
+        logger.info(f"Rewrote {css_count} CSS hrefs")
+
+        # 4. Rewrite all image sources to proxy paths
+        img_count = 0
+        for img in soup.find_all('img'):
+            src = img.get('src', '')
+            if src and not src.startswith(('http', '#', 'data:')):
+                if src.startswith('//'):
+                    img['src'] = f"{proxy_path}{src.lstrip('/')}"
+                elif src.startswith('/'):
+                    img['src'] = f"{proxy_path}{src.lstrip('/')}"
+                else:
+                    img['src'] = f"{proxy_path}{src.lstrip('./')}"
+                logger.info(f"  Rewrote img src: {src} → {img['src']}")
+                img_count += 1
+        logger.info(f"Rewrote {img_count} image sources")
+
+        # 5. Rewrite all script sources to proxy paths
+        script_count = 0
+        for script in soup.find_all('script', src=True):
+            src = script.get('src', '')
+            if src and not src.startswith(('http', '#', 'data:')):
+                if src.startswith('//'):
+                    script['src'] = f"{proxy_path}{src.lstrip('/')}"
+                elif src.startswith('/'):
+                    script['src'] = f"{proxy_path}{src.lstrip('/')}"
+                else:
+                    script['src'] = f"{proxy_path}{src.lstrip('./')}"
+                logger.info(f"  Rewrote script src: {src} → {script['src']}")
+                script_count += 1
+        logger.info(f"Rewrote {script_count} script sources")
+
+        # Convert back to HTML string
+        html = str(soup)
+        logger.info(f"BeautifulSoup replacement complete")
+        logger.info(f"Checking: css/login.css in html? {'css/login.css' in html}")
+        logger.info(f"Checking: https://oliverenterprises.app.saasify.cloud/scp/css/login.css in html? {'https://oliverenterprises.app.saasify.cloud/scp/css/login.css' in html}")
+
+        logger.info(f"\n{'='*120}")
+        logger.info(f"HTML REPLACEMENT COMPLETE")
+        logger.info(f"{'='*120}")
+        logger.info(f"Modified HTML size: {len(html)} bytes")
+        logger.info(f"Size difference: {len(html) - len(html_original):+d} bytes")
+        logger.info(f"\n--- MODIFIED HTML (checking CSS paths, first 3000 chars) ---")
+        logger.info(html[:3000])
+        logger.info(f"\n{'='*120}\n")
+
+        logger.info(f"{service_name} HTML passthrough successful")
+
+        # Inject CSRF token into all forms so POST requests work
+        from django.middleware.csrf import get_token
+        csrf_token = get_token(request)
+
+        import re
+        html = re.sub(
+            r'(<form[^>]*>)',
+            f'\\1\n<input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">',
+            html
+        )
+
+        logger.info(f"{service_name} HTML passthrough successful, injected CSRF token")
+
+        # Return the processed HTML directly - 100% page replacement like Flask tester
+        # No wrapping, no admin template, just the raw processed HTML
+        logger.info(f"Returning {service_name} HTML directly to browser")
+        return HttpResponse(html, content_type='text/html', status=response.status_code)
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"{service_name} passthrough error: {e}")
+        error_html = f"<h1 style='color:red;'>{service_name} Connection Error</h1><p>Error: {str(e)}</p>"
+        context = site.each_context(request)
+        context.update({'service_name': service_name, 'service_content': error_html})
+        return TemplateResponse(request, 'admin/passthrough.html', context, status=502)
+    except Exception as e:
+        logger.error(f"{service_name} passthrough error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        error_html = f"<h1 style='color:red;'>{service_name} Error</h1><p>Error: {str(e)}</p>"
+        context = site.each_context(request)
+        context.update({'service_name': service_name, 'service_content': error_html})
+        return TemplateResponse(request, 'admin/passthrough.html', context, status=502)
+@csrf_exempt
+def passthrough_api(request, service):
+    """
+    API endpoint for passthrough services
+    Handles AJAX requests from passthrough interfaces
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+
+    logger.info(f"Passthrough API: service={service}, method={request.method}")
+
+    # Service-specific API handling can be added here
+    return JsonResponse({
+        'status': 'success',
+        'service': service,
+        'message': f'{service.title()} API call processed'
+    })
+
+
+# EXAMPLE: Adding any new service - just follow this simple pattern:
+#
+# def handle_newservice_passthrough(request):
+#     """New Service passthrough handler"""
+#     logger.info(f"New Service passthrough for user: {request.user.username}")
+#
+#     # Get content from atomic service using generic helper
+#     service_content = get_service_content_from_atomic_service(
+#         request=request,
+#         service_name='New Service',
+#         service_class_name='NewServiceProxyService',
+#         service_module_path='dose.services.newservice_proxy_service'
+#     )
+#
+#     # Get admin context and add service-specific details
+#     context = site.each_context(request)
+#     context.update({
+#         'service_name': 'New Service',
+#         'service_type': 'newservice',
+#         'page_title': 'New Service Integration',
+#         'breadcrumb': 'New Service',
+#         'service_description': 'Description of new service',
+#         'service_icon': 'fas fa-cog',  # FontAwesome icon
+#         'service_content': service_content,  # Content from atomic service
+#         'iframe_url': 'https://newservice.com' if not service_content else None,  # Fallback URL
+#     })
+#
+#     return TemplateResponse(request, 'admin/passthrough.html', context)
+#
+# Then add URL pattern: path('passthrough/newservice/', views.passthrough_service, {'service': 'newservice'})

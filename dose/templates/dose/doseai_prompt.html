@@ -1,0 +1,34 @@
+{% extends 'dose/dosebase.html' %}
+{% block content %}
+<h2>DoseAI Assistant</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <span style="color: #888; font-size: 0.95em;">Prompt sent to DoseAI API</span>
+    <button type="submit">Ask DoseAI</button>
+</form>
+{% if response_text %}
+    <div class="doseai-response">
+        <h3>Response:</h3>
+        <pre style="white-space: pre-wrap; word-break: break-word;">{{ response_text }}</pre>
+    </div>
+    <script>
+        // Automatically clear the prompt field after a response
+        document.addEventListener('DOMContentLoaded', function() {
+            var promptField = document.querySelector('textarea[name="prompt"]');
+            if (promptField) { promptField.value = ''; }
+        });
+    </script>
+{% endif %}
+<h3>Your DoseAI Prompt History</h3>
+<ul>
+    {% for item in history %}
+        <li><strong>{{ item.prompt }}</strong><br>
+            <span style="color: #457894;">Response:</span> <span style="white-space: pre-wrap; word-break: break-word;">{{ item.response|default:"(no response)" }}</span><br>
+            <em>{{ item.created_at }}</em>
+        </li>
+    {% empty %}
+        <li>No prompt history yet.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Test</title>
+    <!-- Test one CSS resource -->
+    <link rel="stylesheet" type="text/css" href="https://demozone.surpaascompaas.com/surpaas/javax.faces.resource/theme.css.jsf?ln=primefaces-cupertino&amp;v=12.0.0-RC3&amp;e=12.0.0-RC2" />
+    <!-- Test one JS resource -->
+    <script type="text/javascript" src="https://demozone.surpaascompaas.com/surpaas/javax.faces.resource/jquery/jquery.js.jsf?ln=primefaces&amp;v=12.0.0-RC3&amp;e=12.0.0-RC2"></script>
+</head>
+<body>
+    <h1>Simple Test Page</h1>
+    <p>This page tests if external resources load correctly.</p>
+    
+    <script>
+        $(document).ready(function() {
+            console.log("jQuery loaded successfully!");
+            $('body').append('<p style="color: green;">JavaScript resources loaded successfully!</p>');
+        });
+    </script>
+</body>
+</html>
+</content>
+</invoke>

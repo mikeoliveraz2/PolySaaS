@@ -1,0 +1,835 @@
+{% load static %}
+<!-- Custom PollySaaS Sidebar - Below Menu Bar with Grid Layout -->
+<style>
+    /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
+    .admin-content-grid {
+        display: grid;
+        grid-template-columns: 280px 1fr 320px;
+        gap: 0;
+        transition: grid-template-columns 0.3s ease;
+    }
+
+    .admin-content-grid.sidebar-collapse {
+        grid-template-columns: 60px 1fr 320px;
+    }
+
+    body.sidebar-collapse .admin-content-grid {
+        grid-template-columns: 60px 1fr 320px;
+    }
+
+    /* Sidebar Container - positioned in grid, not fixed */
+    .collapsible-nav {
+        background: #2c3e50;
+        border-radius: 0;
+        overflow: hidden;
+        box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+        height: calc(100vh - 50px); /* Account for menu bar height */
+        position: sticky;
+        top: 0;
+        transition: width 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        width: 280px;
+    }
+
+    .collapsible-nav.collapsed {
+        width: 60px;
+    }
+
+    .nav-header {
+        background: #34495e;
+        color: white;
+        padding: 12px 15px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid #2c3e50;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .collapsible-nav.collapsed .nav-header {
+        justify-content: center;
+        padding: 12px 5px;
+    }
+
+    .collapsible-nav.collapsed .nav-header > span:first-child {
+        display: none;
+    }
+
+    .nav-header:hover {
+        background: #3d566e;
+    }
+
+    .nav-toggle {
+        font-size: 1.3rem;
+        transition: all 0.3s ease;
+        font-weight: normal;
+    }
+
+    .nav-items {
+        max-height: 85vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        min-height: 0;
+        transition: max-height 0.3s ease, flex-grow 0.3s ease;
+    }
+
+    .collapsible-nav.collapsed .nav-items {
+        max-height: none;
+        overflow: visible;
+        flex-grow: 0;
+        height: auto;
+        align-items: center;
+    }
+
+    /* Custom scrollbar for navigation */
+    .nav-items::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .nav-items::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+
+    .nav-items::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 3px;
+    }
+
+    .nav-items::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    /* Admin-style compact nav items */
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 15px;
+        color: #333;
+        text-decoration: none;
+        border: none;
+        transition: all 0.15s ease;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+
+    /* Collapsed mode - show only icons centered */
+    .collapsible-nav.collapsed .nav-item,
+    #dose-custom-sidebar.collapsed .nav-item {
+        justify-content: center;
+        padding: 10px;
+        gap: 0;
+        min-height: 40px;
+        border: none;
+        width: auto;
+    }
+
+    .collapsible-nav.collapsed .nav-panel,
+    #dose-custom-sidebar.collapsed .nav-panel {
+        border: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-items,
+    #dose-custom-sidebar.collapsed .nav-panel-items {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .collapsible-nav.collapsed .nav-text,
+    #dose-custom-sidebar.collapsed .nav-text {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        font-size: 0 !important;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-title,
+    #dose-custom-sidebar.collapsed .nav-panel-title,
+    #dose-custom-sidebar.collapsed h4.nav-panel-title {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 0 !important;
+    }
+
+    .collapsible-nav.collapsed .nav-icon,
+    #dose-custom-sidebar.collapsed .nav-icon {
+        font-size: 1.3rem;
+        min-width: auto;
+        margin: 0;
+        display: inline-flex !important;
+        flex-shrink: 0;
+    }
+
+    .collapsible-nav.collapsed .custom-icon,
+    #dose-custom-sidebar.collapsed .custom-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    /* Force hide all text content in collapsed sidebar */
+    #dose-custom-sidebar.collapsed .nav-item * {
+        font-size: inherit;
+    }
+
+    #dose-custom-sidebar.collapsed .nav-text,
+    #dose-custom-sidebar.collapsed .nav-text * {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        opacity: 0 !important;
+    }
+
+    /* Alternating row backgrounds - higher contrast */
+    .nav-item:nth-child(even) {
+        background: #f0f0f0;
+    }
+
+    .nav-item:nth-child(odd) {
+        background: #ffffff;
+    }
+
+    .nav-item:hover {
+        background: #e3f2fd !important;
+        padding-left: 20px;
+    }
+
+    .collapsible-nav.collapsed .nav-item:hover {
+        padding-left: 5px;
+    }
+
+    .nav-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #3498db;
+        color: white;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        box-shadow: 0 1px 3px rgba(52, 152, 219, 0.3);
+        flex-shrink: 0;
+    }
+
+    /* Ensure icons from FontAwesome/Bootstrap work */
+    .nav-icon i {
+        font-size: inherit;
+    }
+
+    /* Custom image icons */
+    .custom-icon {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+    }
+
+    .nav-text {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .nav-panel-title {
+        background: #ecf0f1;
+        padding: 8px 15px;
+        margin: 0;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #7f8c8d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-top: 1px solid #dee2e6;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    /* Special styling for Passthrough panel */
+    .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title {
+        background: #90EE90;
+        color: #000000;
+        font-weight: bold;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-title {
+        font-size: 0;
+        padding: 4px 0;
+        min-height: 2px;
+    }
+
+    .nav-panel-items {
+        /* No padding - items handle their own spacing */
+    }
+
+    .nav-panel:first-child .nav-panel-title {
+        border-top: none;
+    }
+
+    .nav-panel-description {
+        display: none;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-description {
+        display: none;
+    }
+
+    /* Content wrapper - no left margin, handled by grid */
+    .content-wrapper,
+    .main-footer {
+        margin-left: 0 !important;
+        transition: none;
+    }
+
+    /* Menu bar spans full width above grid */
+    .main-header {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Hide Jazzmin's default sidebar completely */
+    .main-sidebar {
+        display: none !important;
+    }
+
+    /* Wrapper for grid container */
+    .admin-main-wrapper {
+        min-height: calc(100vh - 50px);
+    }
+
+    /* Ensure grid and sidebar are visible */
+    .admin-content-grid {
+        display: grid !important;
+        visibility: visible !important;
+    }
+
+    #dose-custom-sidebar {
+        display: flex !important;
+        visibility: visible !important;
+    }
+</style>
+
+<!-- Grid Container Wrapper -->
+<div class="admin-content-grid">
+    <!-- Sidebar Column -->
+    <div class="collapsible-nav" id="dose-custom-sidebar" style="">
+    <div class="nav-header" onclick="toggleDoseSidebar()">
+        <span>Navigation Bar</span>
+        <span class="nav-toggle" id="dose-nav-toggle">☰</span>
+    </div>
+    <div class="nav-items" id="dose-nav-items">
+        <!-- DEBUG: Log context data for admin sidebar -->
+        <script>
+        console.log('=== ADMIN SIDEBAR CONTEXT DATA ===');
+        console.log('passthrough_services count:', {{ passthrough_services|length }});
+        console.log('external_services count:', {{ external_services|length }});
+        {% if external_services %}
+        console.log('external_services EXISTS - rendering panel');
+        {% for service in external_services %}
+        console.log('  - {{ service.title|escapejs }} ({{ service.url|escapejs }})');
+        {% endfor %}
+        {% else %}
+        console.log('external_services is EMPTY or FALSE');
+        {% endif %}
+        console.log('navigation_panels count:', {{ navigation_panels|length }});
+        {% for panel in navigation_panels %}
+            console.log('  Panel "{{ panel.title|escapejs }}": {{ panel.filtered_items|length }} items');
+        {% endfor %}
+        console.log('top_navigation_items count:', {{ top_navigation_items|length }});
+        console.log('===============================');
+        </script>
+
+        <!-- Passthrough Services (Gmail, OSTicket - AJAX-loaded) -->
+        {% if passthrough_services %}
+            <div class="nav-panel" data-panel-type="passthrough_services">
+                <h4 class="nav-panel-title">PASSTHROUGH SERVICES</h4>
+                <div class="nav-panel-items">
+                    {% for service in passthrough_services %}
+                        <a href="{{ service.url }}"
+                           class="nav-item"
+                           title="{{ service.description }}">
+                            <span class="nav-icon">{{ service.icon }}</span>
+                            <span class="nav-text">{{ service.title }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- External Services (Other integrations) -->
+        {% if external_services %}
+            <div class="nav-panel" data-panel-type="external_services">
+                <h4 class="nav-panel-title">EXTERNAL SERVICES</h4>
+                <div class="nav-panel-items">
+                    {% for service in external_services %}
+                        <a href="{{ service.url }}"
+                           class="nav-item"
+                           data-item-id="{{ service.id }}"
+                           data-item-type="external"
+                           target="{{ service.target|default:'_blank' }}"
+                           title="{{ service.description }}">
+                            <span class="nav-icon">{{ service.icon }}</span>
+                            <span class="nav-text">{{ service.title }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Controls Panel (Font Controls + Bell Icon) -->
+        <div class="nav-panel">
+            <h4 class="nav-panel-title">CONTROLS</h4>
+            <div class="nav-panel-items" style="display: flex; gap: 10px; justify-content: space-around; position: relative;">
+                <!-- Font Controls Button with Dropdown -->
+                <div style="position: relative;">
+                    <button id="sidebarFontControlsBtn" title="Font Controls" style="background: none; border: none; cursor: pointer; font-size: 24px; padding: 8px; color: #2c3e50;">
+                        <i class="fas fa-palette"></i>
+                    </button>
+                    <div id="sidebar-font-controls-dropdown" style="display: none; position: absolute; top: 40px; right: -192px; background: #f0f7ff; color: #222; width: 270px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 8px; z-index: 999; border: 2px solid #007bff; overflow: hidden;">
+                        <div style="padding: 12px; border-bottom: 2px solid #007bff; font-weight: 600; font-size: 13px; background: #e7f1ff; color: #003d99;">Font Controls</div>
+                        <div style="padding: 12px; font-size: 12px;">
+                            <div style="margin-bottom: 10px;">
+                                <label for="sidebar-font-family-select" style="display: block; font-weight: 500; margin-bottom: 4px; font-size: 11px;">Font Family</label>
+                                <select id="sidebar-font-family-select" style="width: 100%; padding: 4px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="'Segoe UI', Tahoma, Geneva, Verdana, sans-serif">Segoe UI</option>
+                                    <option value="'Arial', sans-serif">Arial</option>
+                                    <option value="'Georgia', serif">Georgia</option>
+                                    <option value="'Verdana', sans-serif">Verdana</option>
+                                    <option value="'Courier New', monospace">Courier New</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label for="sidebar-font-size-slider" style="display: block; font-weight: 500; margin-bottom: 4px; font-size: 11px;">Font Size: <span id="sidebar-font-size-value">14</span>px</label>
+                                <input type="range" id="sidebar-font-size-slider" min="12" max="18" value="14" step="1" style="width: 100%;">
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label for="sidebar-font-weight-slider" style="display: block; font-weight: 500; margin-bottom: 4px; font-size: 11px;">Font Weight: <span id="sidebar-font-weight-value">Normal</span></label>
+                                <input type="range" id="sidebar-font-weight-slider" min="300" max="700" value="400" step="100" style="width: 100%;">
+                            </div>
+                            <button id="sidebar-font-reset-btn" style="width: 100%; padding: 6px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500;">Reset to Default</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Bell Icon Button with Dropdown -->
+                <div style="position: relative;">
+                    <button id="sidebarBellBtn" title="Unread Messages" style="background: none; border: none; cursor: pointer; font-size: 24px; padding: 8px; color: #2c3e50; position: relative;">
+                        <i class="fas fa-bell"></i>
+                        <span id="sidebar-unread-count" style="position: absolute; top: 0; right: 0; background: #e74c3c; color: #fff; border-radius: 50%; padding: 2px 5px; font-size: 0.7rem; display: none; min-width: 18px; text-align: center;">0</span>
+                    </button>
+                    <div id="sidebar-unread-dropdown" style="display: none; position: absolute; bottom: -380px; left: -190px; background: #f0f8f0; color: #222; width: 270px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 8px; z-index: 999; border: 2px solid #28a745; overflow: hidden;">
+                        <div style="padding: 12px; border-bottom: 2px solid #28a745; font-weight: 600; font-size: 13px; background: #e8f5e9; color: #2d6b2f;">Unread Messages</div>
+                        <div id="sidebar-unread-messages-list" style="max-height: 300px; overflow-y: auto; font-size: 12px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Navigation Items (from database) -->
+        {% for panel in navigation_panels %}
+            <div class="nav-panel" data-panel-type="{{ panel.panel_type }}"
+                 {% if panel.panel_background_color %}style="background-color: {{ panel.panel_background_color }};"{% endif %}>
+                <h4 class="nav-panel-title">{{ panel.title|upper }}</h4>
+                {% if panel.description %}
+                    <p class="nav-panel-description">{{ panel.description }}</p>
+                {% endif %}
+                <div class="nav-panel-items">
+                    {% for item in panel.filtered_items %}
+                        <a href="{{ item.url }}"
+                           class="nav-item"
+                           target="{{ item.target }}"
+                           data-item-id="{{ item.id }}"
+                           data-item-type="{{ item.item_type }}"
+                           title="{{ item.description }}">
+                            {% if item.icon_style == 'emoji' and item.icon_value %}
+                                <span class="nav-icon">{{ item.icon_value }}</span>
+                            {% elif item.icon_style == 'fontawesome' and item.icon_value %}
+                                <span class="nav-icon"><i class="fa {{ item.icon_value }}"></i></span>
+                            {% elif item.icon_style == 'bootstrap' and item.icon_value %}
+                                <span class="nav-icon"><i class="bi {{ item.icon_value }}"></i></span>
+                            {% elif item.icon_style == 'custom' and item.icon_value %}
+                                <span class="nav-icon"><img src="{{ item.icon_value }}" class="custom-icon" alt="{{ item.title }}"></span>
+                            {% else %}
+                                <span class="nav-icon">🔗</span>
+                            {% endif %}
+                            <span class="nav-text">{{ item.title }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+
+        <!-- Static top navigation items -->
+        <div class="nav-panel static-nav" data-panel-type="system">
+            <h4 class="nav-panel-title">SYSTEM NAVIGATION</h4>
+            {% for item in top_navigation_items %}
+                <a href="{{ item.url }}" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;">
+                    <span class="nav-icon">{{ item.icon }}</span>
+                    <span class="nav-text">{{ item.name }}</span>
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+    </div>
+    <!-- End Sidebar Column -->
+
+    <!-- Content Column - will be wrapped by script below -->
+</div>
+<!-- End Grid Container - content will be moved here by script -->
+
+<script>
+// Move content-wrapper into grid on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[ADMIN SIDEBAR] DOMContentLoaded - setting up grid');
+    const grid = document.querySelector('.admin-content-grid');
+    const contentWrapper = document.querySelector('.content-wrapper');
+    const mainFooter = document.querySelector('.main-footer');
+
+    console.log('[ADMIN SIDEBAR] Grid found:', !!grid);
+    console.log('[ADMIN SIDEBAR] Content wrapper found:', !!contentWrapper);
+    console.log('[ADMIN SIDEBAR] Footer found:', !!mainFooter);
+
+    if (!grid) {
+        console.error('[ADMIN SIDEBAR] ERROR: admin-content-grid not found!');
+        return;
+    }
+
+    if (!contentWrapper) {
+        console.error('[ADMIN SIDEBAR] ERROR: content-wrapper not found!');
+        // Try to find it with a delay (in case it's created later)
+        setTimeout(function() {
+            const delayedWrapper = document.querySelector('.content-wrapper');
+            if (delayedWrapper && grid) {
+                console.log('[ADMIN SIDEBAR] Found content-wrapper on retry, moving into grid');
+                grid.appendChild(delayedWrapper);
+            } else {
+                console.error('[ADMIN SIDEBAR] Content-wrapper still not found after retry');
+            }
+        }, 100);
+        return;
+    }
+
+    // Ensure grid is visible
+    if (grid) {
+        grid.style.display = 'grid';
+        grid.style.visibility = 'visible';
+        console.log('[ADMIN SIDEBAR] Grid display set to grid, visibility set to visible');
+    }
+
+    // Move content-wrapper into grid as second column
+    if (grid && contentWrapper) {
+        // Check if already in grid
+        if (contentWrapper.parentNode === grid) {
+            console.log('[ADMIN SIDEBAR] Content-wrapper already in grid');
+        } else {
+            console.log('[ADMIN SIDEBAR] Moving content-wrapper into grid');
+            grid.appendChild(contentWrapper);
+        }
+    }
+
+    // Create right sidebar column for Recent Actions
+    let rightSidebar = document.getElementById('recent-actions-sidebar');
+    if (!rightSidebar) {
+        rightSidebar = document.createElement('div');
+        rightSidebar.id = 'recent-actions-sidebar';
+        rightSidebar.style.position = 'sticky';
+        rightSidebar.style.top = '20px';
+        rightSidebar.style.height = 'fit-content';
+        rightSidebar.style.padding = '0 15px';
+        
+        // Find Recent Actions module (various possible selectors)
+        const recentActions = document.querySelector('#recent-actions-module') ||
+                            document.querySelector('[class*="recent"]') ||
+                            document.querySelector('.card:has(h3:contains("Recent"))') ||
+                            Array.from(document.querySelectorAll('.card')).find(card => {
+                                const heading = card.querySelector('h3, .card-header');
+                                return heading && heading.textContent.toLowerCase().includes('recent');
+                            });
+        
+        if (recentActions) {
+            console.log('[ADMIN SIDEBAR] Found Recent Actions, moving to right sidebar');
+            rightSidebar.appendChild(recentActions);
+        } else {
+            console.log('[ADMIN SIDEBAR] Recent Actions not found, sidebar will be empty');
+        }
+        
+        // Add to grid as third column
+        if (grid) {
+            grid.appendChild(rightSidebar);
+            console.log('[ADMIN SIDEBAR] Right sidebar added to grid');
+        }
+    }
+
+    // Move footer after grid if it exists
+    if (mainFooter && grid && grid.parentNode) {
+        // Only move if not already after grid
+        if (mainFooter.previousSibling !== grid && mainFooter.parentNode !== grid.parentNode) {
+            console.log('[ADMIN SIDEBAR] Moving footer after grid');
+            grid.parentNode.insertBefore(mainFooter, grid.nextSibling);
+        }
+    }
+
+    // Ensure sidebar is visible
+    const sidebar = document.getElementById('dose-custom-sidebar');
+    if (sidebar) {
+        sidebar.style.display = 'flex';
+        sidebar.style.visibility = 'visible';
+        console.log('[ADMIN SIDEBAR] Sidebar display set to flex, visibility set to visible');
+    } else {
+        console.error('[ADMIN SIDEBAR] ERROR: dose-custom-sidebar not found!');
+    }
+
+    // Sidebar starts EXPANDED to show all items (same as home sidebar)
+
+    // Attach Font Controls button handler
+    const sidebarFontControlsBtn = document.getElementById('sidebarFontControlsBtn');
+    const sidebarFontControlsDropdown = document.getElementById('sidebar-font-controls-dropdown');
+
+    if (sidebarFontControlsBtn && sidebarFontControlsDropdown) {
+        sidebarFontControlsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isVisible = sidebarFontControlsDropdown.style.display === 'block';
+            if (!isVisible) {
+                sidebarFontControlsDropdown.style.display = 'block';
+            } else {
+                sidebarFontControlsDropdown.style.display = 'none';
+            }
+        });
+
+    // Font controls event handlers (outside Font Controls if block since they need to run anyway)
+    const fontFamilySelect = document.getElementById('sidebar-font-family-select');
+    const fontSizeSlider = document.getElementById('sidebar-font-size-slider');
+    const fontWeightSlider = document.getElementById('sidebar-font-weight-slider');
+    const fontSizeValue = document.getElementById('sidebar-font-size-value');
+    const fontWeightValue = document.getElementById('sidebar-font-weight-value');
+    const fontResetBtn = document.getElementById('sidebar-font-reset-btn');
+
+    const weightLabels = {
+        300: 'Light',
+        400: 'Normal',
+        500: 'Medium',
+        600: 'Semi-Bold',
+        700: 'Bold'
+    };
+
+    // Load saved font settings from localStorage
+    function loadFontSettings() {
+        const family = localStorage.getItem('dose_font_family');
+        const size = localStorage.getItem('dose_font_size');
+        const weight = localStorage.getItem('dose_font_weight');
+
+        if (family && fontFamilySelect) fontFamilySelect.value = family;
+        if (size && fontSizeSlider) {
+            fontSizeSlider.value = size;
+            if (fontSizeValue) fontSizeValue.textContent = size;
+        }
+        if (weight && fontWeightSlider) {
+            fontWeightSlider.value = weight;
+            if (fontWeightValue) fontWeightValue.textContent = weightLabels[weight] || weight;
+        }
+        applyFontSettings();
+    }
+
+    // Apply font settings to the page
+    function applyFontSettings() {
+        const family = fontFamilySelect?.value || "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+        const size = fontSizeSlider?.value || '14';
+        const weight = fontWeightSlider?.value || '400';
+
+        document.documentElement.style.fontFamily = family;
+        document.documentElement.style.fontSize = size + 'px';
+        document.documentElement.style.fontWeight = weight;
+    }
+
+    // Save font settings
+    function saveFontSettings() {
+        localStorage.setItem('dose_font_family', fontFamilySelect?.value || '');
+        localStorage.setItem('dose_font_size', fontSizeSlider?.value || '14');
+        localStorage.setItem('dose_font_weight', fontWeightSlider?.value || '400');
+        applyFontSettings();
+    }
+
+    if (fontFamilySelect) {
+        fontFamilySelect.addEventListener('change', saveFontSettings);
+    }
+
+    if (fontSizeSlider) {
+        fontSizeSlider.addEventListener('input', function() {
+            if (fontSizeValue) fontSizeValue.textContent = this.value;
+            saveFontSettings();
+        });
+    }
+
+    if (fontWeightSlider) {
+        fontWeightSlider.addEventListener('input', function() {
+            if (fontWeightValue) fontWeightValue.textContent = weightLabels[this.value] || this.value;
+            saveFontSettings();
+        });
+    }
+
+    if (fontResetBtn) {
+        fontResetBtn.addEventListener('click', function() {
+            if (fontFamilySelect) fontFamilySelect.value = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+            if (fontSizeSlider) {
+                fontSizeSlider.value = '14';
+                if (fontSizeValue) fontSizeValue.textContent = '14';
+            }
+            if (fontWeightSlider) {
+                fontWeightSlider.value = '400';
+                if (fontWeightValue) fontWeightValue.textContent = 'Normal';
+            }
+            localStorage.removeItem('dose_font_family');
+            localStorage.removeItem('dose_font_size');
+            localStorage.removeItem('dose_font_weight');
+            applyFontSettings();
+        });
+    }
+
+    // Load settings on page load
+    loadFontSettings();
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        const sidebarFontControlsBtn = document.getElementById('sidebarFontControlsBtn');
+        const sidebarFontControlsDropdown = document.getElementById('sidebar-font-controls-dropdown');
+        if (sidebarFontControlsBtn && sidebarFontControlsDropdown) {
+            if (!sidebarFontControlsBtn.contains(e.target) && !sidebarFontControlsDropdown.contains(e.target)) {
+                sidebarFontControlsDropdown.style.display = 'none';
+            }
+        }
+    });
+}
+
+    // Attach Bell Button handler for unread messages dropdown
+    const sidebarBellBtn = document.getElementById('sidebarBellBtn');
+    const sidebarUnreadDropdown = document.getElementById('sidebar-unread-dropdown');
+
+    if (sidebarBellBtn && sidebarUnreadDropdown) {
+        // Update unread count and populate dropdown (just fetch, don't mark as read)
+        function updateSidebarUnreadCount() {
+            fetch('/dose/api/unread-dosemessages/')
+                .then(response => response.json())
+                .then(data => {
+                    const count = data.count || 0;
+                    const countSpan = document.getElementById('sidebar-unread-count');
+                    if (countSpan) {
+                        countSpan.textContent = count;
+                        countSpan.style.display = count > 0 ? 'inline-block' : 'none';
+                    }
+
+                    const messagesList = document.getElementById('sidebar-unread-messages-list');
+                    if (messagesList && data.messages) {
+                        messagesList.innerHTML = '';
+                        if (data.messages.length > 0) {
+                            data.messages.forEach(function(msg) {
+                                const item = document.createElement('div');
+                                item.style.padding = '10px';
+                                item.style.borderBottom = '1px solid #eee';
+                                item.innerHTML = `<strong>${msg.level.toUpperCase()}</strong><br>${msg.message}<br><small style="color: #999;">${new Date(msg.created_at).toLocaleDateString()}</small>`;
+                                messagesList.appendChild(item);
+                            });
+                        } else {
+                            messagesList.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">No unread messages</div>';
+                        }
+                    }
+                });
+        }
+
+        // Update only the count (without clearing the message list)
+        function updateCountOnly() {
+            fetch('/dose/api/unread-dosemessages/')
+                .then(response => response.json())
+                .then(data => {
+                    const count = data.count || 0;
+                    const countSpan = document.getElementById('sidebar-unread-count');
+                    if (countSpan) {
+                        countSpan.textContent = count;
+                        countSpan.style.display = count > 0 ? 'inline-block' : 'none';
+                    }
+                });
+        }
+
+        // Initial load
+        updateSidebarUnreadCount();
+        // Refresh every minute
+        setInterval(updateSidebarUnreadCount, 60000);
+
+        // Bell click toggles dropdown and marks as read AFTER showing
+        sidebarBellBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const isVisible = sidebarUnreadDropdown.style.display === 'block';
+
+            // If opening (not visible yet)
+            if (!isVisible) {
+                // First, show the dropdown with current messages
+                sidebarUnreadDropdown.style.display = 'block';
+
+                // Then mark all as read (after brief delay to ensure display updates)
+                setTimeout(function() {
+                    fetch('/dose/api/unread-dosemessages/', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]')?.value || '')
+                        }
+                    }).then(() => {
+                        // After marking as read, just update the count (not the message list)
+                        setTimeout(updateCountOnly, 500);
+                    });
+                }, 100);
+            } else {
+                // If closing, just hide it
+                sidebarUnreadDropdown.style.display = 'none';
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!sidebarBellBtn.contains(e.target) && !sidebarUnreadDropdown.contains(e.target)) {
+                sidebarUnreadDropdown.style.display = 'none';
+            }
+        });
+    }
+});
+
+function toggleDoseSidebar() {
+    const navContainer = document.getElementById('dose-custom-sidebar');
+    const navToggle = document.getElementById('dose-nav-toggle');
+    const body = document.body;
+    const grid = document.querySelector('.admin-content-grid');
+
+    navContainer.classList.toggle('collapsed');
+    body.classList.toggle('sidebar-collapse');
+    if (grid) {
+        grid.classList.toggle('sidebar-collapse');
+    }
+
+    // Rotate hamburger icon
+    if (navContainer.classList.contains('collapsed')) {
+        navToggle.style.transform = 'rotate(90deg)';
+    } else {
+        navToggle.style.transform = 'rotate(0deg)';
+    }
+}
+</script>

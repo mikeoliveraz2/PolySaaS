@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DOSE - Welcome</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 50px auto; 
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .welcome-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .user-info {
+            background-color: #e8f5e8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        h1 { color: #2c5c2c; text-align: center; }
+        .logout-link {
+            background-color: #dc3545;
+            color: white;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .logout-link:hover { background-color: #c82333; }
+        .external-link {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin: 10px 5px;
+        }
+        .external-link:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="welcome-container">
+        <h1>Welcome to DOSE!</h1>
+        
+        {% if user.is_authenticated %}
+            <div class="user-info">
+                <strong>Logged in as:</strong> {{ user.email|default:user.username }}<br>
+                <strong>Name:</strong> {{ user.get_full_name|default:"Not provided" }}<br>
+                <strong>SSO Status:</strong> ✅ Google SSO Active
+            </div>
+            
+            <p>You are now logged in with Google SSO. You can access external services without additional login prompts.</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="/secure/browse/ATL-1" class="external-link">🎯 Test Jira Access</a>
+                <a href="/admin/" class="external-link">🔧 Django Admin</a>
+                <a href="/api/" class="external-link">📊 API</a>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="{% url 'account_logout' %}" class="logout-link">Logout</a>
+            </div>
+        {% else %}
+            <p>You are not logged in. <a href="{% url 'account_login' %}">Click here to login</a>.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

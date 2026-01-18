@@ -1,0 +1,90 @@
+{% extends "jazzmin/base.html" %}
+Hi
+{% block content_title %}
+<div style="background: orange; color: black; padding: 8px; margin: 4px; border-radius: 4px;">TEST DIV: content_title block</div>
+<script>console.log('Block: content_title loaded');</script>
+    <h1>🚀 Welcome to My Custom Admin!</h1>
+    {{ block.super }}
+{% endblock %}
+
+{% block content %}
+<div id="custom-dose-header" style="background: #457894; color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 1.05rem; border-radius: 0 0 8px 8px; margin-bottom: 1rem;">
+	{% block topbar %}
+<div style="background: green; color: white; padding: 8px; margin: 4px; border-radius: 4px;">TEST DIV: topbar block</div>
+<div style="background: blue; color: white; padding: 8px; margin: 4px; border-radius: 4px;">TEST DIV: content block</div>
+<script>console.log('Block: topbar loaded');</script>
+<script>console.log('Block: content loaded');</script>
+<script>console.log('Block: content_main loaded');</script>
+<script>console.log('Block: content_bottom loaded');</script>
+	<div id="custom-dose-header" style="background: #457894; color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 1.05rem; border-radius: 0 0 8px 8px; margin-bottom: 1rem;">
+		<div>
+			{% if request.user.is_authenticated %}
+				Welcome, {{ request.user.username|upper }} {% if current_tenant and current_tenant.schema_name %}({{ current_tenant.schema_name|lower }}){% endif %}
+			{% else %}
+				<span style="font-weight: bold;">Not logged in</span>
+			{% endif %}
+		</div>
+		<div style="display: flex; align-items: center; gap: 1.5rem;">
+			<div id="notification-bell-container" style="position: relative;">
+				<span id="notification-bell" style="font-size: 1.5rem; cursor: pointer;">&#128276;</span>
+				<span id="unread-count" style="position: absolute; top: -8px; right: -12px; background: #e74c3c; color: #fff; border-radius: 50%; padding: 2px 7px; font-size: 0.9rem; display: none;">0</span>
+			</div>
+			<a href="/" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">View Site</a>
+			<button id="admin-theme-toggle-btn" style="background: none; border: none; color: #fff; font-size: 1.7rem; cursor: pointer;" title="Toggle theme">
+				<span id="admin-theme-toggle-icon">&#9728;</span>
+			</button>
+		</div>
+	</div>
+	<script>
+	document.addEventListener('DOMContentLoaded', function() {
+		console.log('Custom header loaded');
+		// Notification bell logic
+		function updateUnreadCount() {
+			fetch('/dose/api/unread-dosemessages/')
+				.then(response => response.json())
+				.then(data => {
+					var count = data.count || 0;
+					var unreadCountSpan = document.getElementById('unread-count');
+					if (unreadCountSpan) {
+						unreadCountSpan.textContent = count;
+						unreadCountSpan.style.display = count > 0 ? 'inline-block' : 'none';
+					}
+				});
+		}
+		updateUnreadCount();
+		setInterval(updateUnreadCount, 60000);
+
+		// Theme toggle logic
+		var btn = document.getElementById('admin-theme-toggle-btn');
+		var icon = document.getElementById('admin-theme-toggle-icon');
+		function updateIcon(mode) {
+			if (icon) {
+				icon.textContent = mode === 'dark' ? '\u263D' : '\u2600';
+				icon.title = mode === 'dark' ? 'Switch to day mode' : 'Switch to night mode';
+			}
+		}
+		function setTheme(mode) {
+			if (mode === 'dark') {
+				document.body.style.backgroundColor = '#181a1b';
+			} else {
+				document.body.style.backgroundColor = '#f5f5f5';
+			}
+			updateIcon(mode);
+			localStorage.setItem('adminTheme', mode);
+		}
+		if (btn) {
+			btn.addEventListener('click', function() {
+				var current = localStorage.getItem('adminTheme') || 'dark';
+				var next = current === 'dark' ? 'light' : 'dark';
+				setTheme(next);
+			});
+			setTheme(localStorage.getItem('adminTheme') || 'dark');
+		}
+	});
+	</script>
+	{{ block.super }}
+	{% endblock %}
+{{ block.super }}
+{% endblock %}
+
+

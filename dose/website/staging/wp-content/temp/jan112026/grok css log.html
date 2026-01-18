@@ -1,0 +1,839 @@
+/* ========================================
+   PolySaaS Sidebar — Icon Mobile, Text Desktop
+   ======================================== */
+
+/* Wrapper — row layout */
+.poly-shell {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
+/* Children — no extra space */
+.poly-shell > .wp-block-group {
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Icon sidebar — black, tight */
+.poly-icon-sidebar {
+  background: #000 !important;
+  padding: 12px 0 !important;
+  gap: 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* Text sidebar — visible on desktop */
+.poly-text-sidebar {
+  padding-left: 40px !important;
+}
+
+/* Main content — take remaining space */
+.poly-main-content {
+  flex: 1 1 auto !important;
+  padding: 0 40px !important;
+}
+
+/* Mobile — show icon sidebar, hide text */
+@media (max-width: 759px) {
+  .poly-icon-sidebar {
+    flex: 0 0 56px !important;
+  }
+
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-main-content {
+    padding: 0 20px !important;
+  }
+}
+
+/* Desktop — show text sidebar, hide icon */
+@media (min-width: 760px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+
+  .poly-text-sidebar {
+    display: block !important;
+  }
+}
+
+/* Icon links — tight with labels */
+.poly-icon-sidebar a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px !important;
+  color: #fff !important;
+  text-decoration: none !important;
+}
+
+.poly-icon-sidebar img {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.poly-icon-sidebar span {
+  font-size: 10px !important;
+}
+4:35
+/* ========================================
+   PolySaaS Icon Sidebar — Mobile Only — Tight & Perfect
+   ======================================== */
+
+@media (max-width: 759px) {
+  .poly-icon-sidebar {
+    background: #000 !important;
+    padding: 12px 0 !important;
+    gap: 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+    border-radius: 8px;
+    transition: background 0.2s;
+  }
+
+  .poly-icon-sidebar a:hover {
+    background: rgba(255,255,255,0.1);
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+}
+
+Jan3 
+/* ========================================
+   PolySaaS Layout — Horizontal Flex — Flush to Top
+   ======================================== */
+
+/* Wrapper — horizontal row */
+.poly-layout {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
+/* Children — no extra space */
+.poly-layout > .wp-block-group {
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Icon sidebar — black, tight */
+.poly-icon-sidebar {
+  background: #000 !important;
+  padding: 12px 0 !important;
+  gap: 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* Text sidebar — desktop only */
+.poly-text-sidebar {
+  padding-left: 40px !important;
+}
+
+/* Main content — take remaining space */
+.poly-main-content {
+  flex: 1 1 auto !important;
+  padding: 0 40px !important;
+}
+
+/* Mobile — icon sidebar narrow, hide text */
+@media (max-width: 759px) {
+  .poly-icon-sidebar {
+    flex: 0 0 56px !important;
+  }
+
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-main-content {
+    padding: 0 20px !important;
+  }
+}
+
+/* Desktop — hide icon, show text */
+@media (min-width: 760px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+/* Icon links — tight with labels */
+.poly-icon-sidebar a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px !important;
+  color: #fff !important;
+  text-decoration: none !important;
+}
+
+.poly-icon-sidebar img {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.poly-icon-sidebar span {
+  font-size: 10px !important;
+}
+
+1210
+/* ========================================
+   PolySaaS Sidebars — Icon Mobile Only, Text Desktop Only
+   ======================================== */
+
+/* Default: show text sidebar, hide icon */
+.poly-text-sidebar {
+  display: block !important;
+}
+
+.poly-icon-sidebar {
+  display: none !important;
+}
+
+/* Mobile: show icon, hide text */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+}
+
+/* ========================================
+   PolySaaS Sidebars — Icon Mobile Only, Text Desktop Only — BULLETPROOF
+   ======================================== */
+
+/* Default: show text sidebar, hide icon */
+.poly-text-sidebar {
+  display: block !important;
+}
+
+.poly-icon-sidebar {
+  display: none !important;
+}
+
+/* Mobile — show icon, hide text */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+}
+
+/* Desktop — hide icon sidebar — EXTRA STRONG */
+@media (min-width: 768px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+/* Nuclear override — if Gutenberg adds inline style */
+.poly-icon-sidebar[style*="display"] {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .poly-icon-sidebar[style*="display"] {
+    display: flex !important;
+  }
+}
+
+315
+/* ========================================
+   PolySaaS Sidebars — Text on Desktop, Icon on Mobile Only — BULLETPROOF
+   ======================================== */
+
+/* Default: show text sidebar, hide icon */
+.poly-text-sidebar {
+  display: block !important;
+}
+
+.poly-icon-sidebar {
+  display: none !important;
+}
+
+/* Mobile — show icon, hide text */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+}
+
+/* Desktop — hide icon sidebar — EXTRA STRONG */
+@media (min-width: 768px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+/* Nuclear override — if Gutenberg adds inline style */
+.poly-icon-sidebar[style*="display"] {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .poly-icon-sidebar[style*="display"] {
+    display: flex !important;
+  }
+}
+
+327
+/* ========================================
+   PolySaaS Sidebars — Text on Desktop, Icon on Mobile Only — FINAL
+   ======================================== */
+
+/* Default: show text sidebar, hide icon */
+.poly-text-sidebar {
+  display: block !important;
+}
+
+.poly-icon-sidebar {
+  display: none !important;
+}
+
+/* Mobile — show icon, hide text */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+}
+
+/* Desktop — hide icon sidebar — BULLETPROOF */
+@media (min-width: 768px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+/* Extra strong — override any inline style */
+.poly-icon-sidebar[style*="display"] {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .poly-icon-sidebar[style*="display"] {
+    display: flex !important;
+  }
+}
+432
+/* ========================================
+   PolySaaS Layout — Maximum Content Width, No Waste
+   ======================================== */
+
+/* Wrapper — full bleed, no gaps */
+.poly-layout {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+}
+
+/* Columns — kill all gaps/padding */
+.poly-layout.wp-block-columns {
+  gap: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Flex layout fix */
+.poly-layout.wp-block-columns.is-layout-flex {
+  gap: 0 !important;
+}
+
+/* Children — no extra space */
+.poly-layout > .wp-block-group {
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Mobile — icon sidebar narrow, content full */
+@media (max-width: 767px) {
+  .poly-icon-sidebar {
+    flex: 0 0 56px !important;
+    max-width: 56px !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+  }
+
+  .poly-main-content {
+    padding: 0 16px !important;
+  }
+
+  .poly-text-sidebar {
+    display: none !important;
+  }
+}
+
+/* Desktop — features sidebar narrow, content full */
+@media (min-width: 768px) {
+  .poly-text-sidebar {
+    flex: 0 0 260px !important;
+    max-width: 260px !important;
+    padding: 0 20px !important;
+  }
+
+  .poly-main-content {
+    padding: 0 40px !important;
+  }
+
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+438
+
+/* ========================================
+   PolySaaS — Icons Flush to Left Edge, No Wasted Space
+   ======================================== */
+
+/* Wrapper — full bleed left */
+.poly-layout {
+  margin-left: calc(50% - 50vw) !important;
+  width: 100vw !important;
+}
+
+/* Columns — no left padding */
+.poly-layout.wp-block-columns {
+  padding-left: 0 !important;
+}
+
+/* Icon sidebar — flush left */
+.poly-icon-sidebar {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* Mobile — icons flush left */
+@media (max-width: 767px) {
+  .poly-icon-sidebar {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+  }
+}
+444
+/* ========================================
+   PolySaaS Sidebars — Icon Mobile Only, Text Desktop Only — BULLETPROOF
+   ======================================== */
+
+/* Default: show text sidebar, hide icon */
+.poly-text-sidebar {
+  display: block !important;
+}
+
+.poly-icon-sidebar {
+  display: none !important;
+}
+
+/* Mobile — show icon, hide text */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+}
+
+/* Desktop — hide icon sidebar — EXTRA BULLETPROOF */
+@media (min-width: 768px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+/* Nuclear override — kill any inline display from Gutenberg or JS */
+.poly-icon-sidebar[style*="display"] {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .poly-icon-sidebar[style*="display"] {
+    display: flex !important;
+  }
+}
+
+450
+/* ========================================
+   PolySaaS Icon Sidebar — No Gap, Flush Left
+   ======================================== */
+
+/* Mobile — icon sidebar no gap */
+@media (max-width: 767px) {
+  .poly-layout {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .poly-layout.wp-block-columns {
+    gap: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .poly-icon-sidebar {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    width: 56px !important;
+  }
+
+  .poly-main-content {
+    padding-left: 16px !important; /* minimal breathing room */
+  }
+}
+
+510
+/* ========================================
+   PolySaaS Sidebars — Text on Desktop, Icon on Mobile Only — FINAL BULLETPROOF
+   ======================================== */
+
+/* Default: show text sidebar, hide icon */
+.poly-text-sidebar {
+  display: block !important;
+}
+
+.poly-icon-sidebar {
+  display: none !important;
+}
+
+/* Mobile — show icon, hide text */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+  }
+
+  .poly-icon-sidebar a {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+
+  .poly-icon-sidebar img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .poly-icon-sidebar span {
+    font-size: 10px !important;
+    color: #fff !important;
+  }
+
+  .poly-main-content {
+    padding: 0 16px !important;
+  }
+}
+
+/* Desktop — hide icon sidebar — BULLETPROOF */
+@media (min-width: 768px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+}
+
+/* Nuclear override — kill any inline display */
+.poly-icon-sidebar[style*="display"] {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .poly-icon-sidebar[style*="display"] {
+    display: flex !important;
+  }
+}
+
+/* Flush left edge */
+.poly-layout {
+  margin-left: calc(50% - 50vw) !important;
+  padding-left: 0 !important;
+}
+
+.poly-layout.wp-block-columns {
+  padding-left: 0 !important;
+}
+
+515
+/* ========================================
+   PolySaaS Layout — Maximum Content Width, No Waste, No Drag
+   ======================================== */
+
+/* Full bleed for the columns section */
+.poly-layout {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+}
+
+/* Kill gaps and padding */
+.poly-layout.wp-block-columns {
+  gap: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Layout flex gap fix */
+.poly-layout.is-layout-flex {
+  gap: 0 !important;
+}
+
+/* Allow columns to shrink */
+.poly-layout > .wp-block-column {
+  min-width: 0 !important;
+}
+
+/* Desktop — features left, content full */
+@media (min-width: 768px) {
+  .poly-icon-sidebar {
+    display: none !important;
+  }
+
+  .poly-text-sidebar {
+    flex: 0 0 260px !important;
+    max-width: 260px !important;
+    padding: 0 20px !important;
+  }
+
+  .poly-main-content {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 0 40px !important;
+  }
+}
+
+/* Mobile — icon left, content full, no drag */
+@media (max-width: 767px) {
+  .poly-text-sidebar {
+    display: none !important;
+  }
+
+  .poly-icon-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #000 !important;
+    padding: 16px 0 !important;
+    gap: 12px !important;
+    width: 56px !important;
+    max-width: 56px !important;
+  }
+
+  .poly-main-content {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 0 16px !important;
+  }
+
+  /* Prevent overflow drag */
+  .poly-main-content iframe,
+  .poly-main-content img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}
+
+/* Prevent horizontal scroll */
+html, body {
+  overflow-x: hidden !important;
+}

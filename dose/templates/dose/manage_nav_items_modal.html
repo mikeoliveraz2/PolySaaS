@@ -1,0 +1,731 @@
+<!-- Modal for Managing Personal Navigation Items -->
+<div id="manageNavItemsModal" class="nav-modal" style="display: none;">
+    <div class="nav-modal-overlay" onclick="window.closeNavItemsModal()"></div>
+    <div class="nav-modal-content">
+        <div class="nav-modal-header">
+            <h2>📋 Manage My Navigation Links</h2>
+            <button class="nav-modal-close" onclick="window.closeNavItemsModal()">&times;</button>
+        </div>
+
+        <div class="nav-modal-body">
+            <!-- Add New Item Form -->
+            <div class="nav-item-form-section">
+                <h3>➕ Add New Link</h3>
+                <form id="addNavItemForm" onsubmit="return window.addNavItem(event)">
+                    {% csrf_token %}
+                    <div class="nav-form-row">
+                        <div class="nav-form-group">
+                            <label for="navItemTitle">Title *</label>
+                            <input type="text" id="navItemTitle" name="title" required placeholder="My GitHub">
+                        </div>
+                        <div class="nav-form-group">
+                            <label for="navItemUrl">URL *</label>
+                            <input type="url" id="navItemUrl" name="url" required placeholder="https://github.com/username">
+                        </div>
+                    </div>
+
+                    <div class="nav-form-row">
+                        <div class="nav-form-group">
+                            <label for="navItemIcon">Icon (emoji or FontAwesome)</label>
+                            <input type="text" id="navItemIcon" name="icon_value" placeholder="🔗 or fas fa-link">
+                        </div>
+                        <div class="nav-form-group">
+                            <label for="navItemPanel">Panel</label>
+                            <select id="navItemPanel" name="panel_id">
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="nav-form-row">
+                        <div class="nav-form-group">
+                            <label for="navItemDescription">Description (optional)</label>
+                            <input type="text" id="navItemDescription" name="description" placeholder="Quick link to my GitHub profile">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="nav-btn nav-btn-primary">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                </form>
+            </div>
+
+            <hr style="margin: 2rem 0; border-color: #ddd;">
+
+            <!-- Existing Items List -->
+            <div class="nav-items-list-section">
+                <h3>📚 My Links</h3>
+                <div id="navItemsList" class="nav-items-grid">
+                    <!-- Will be populated dynamically -->
+                    <div class="nav-loading">Loading your links...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Modal Styles */
+    .nav-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .nav-modal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+    }
+
+    .nav-modal-content {
+        position: relative;
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 800px;
+        max-height: 90vh;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .nav-modal-header {
+        padding: 1.5rem 2rem;
+        border-bottom: 2px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .nav-modal-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+
+    .nav-modal-close {
+        background: none;
+        border: none;
+        font-size: 2rem;
+        color: white;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background 0.2s;
+    }
+
+    .nav-modal-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .nav-modal-body {
+        padding: 2rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    /* Form Styles */
+    .nav-item-form-section {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+    }
+
+    .nav-item-form-section h3 {
+        margin-top: 0;
+        color: #333;
+    }
+
+    .nav-form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .nav-form-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .nav-form-group label {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #555;
+        font-size: 0.9rem;
+    }
+
+    .nav-form-group input,
+    .nav-form-group select {
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 1rem;
+        transition: border-color 0.2s;
+    }
+
+    .nav-form-group input:focus,
+    .nav-form-group select:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    /* Button Styles */
+    .nav-btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .nav-btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .nav-btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .nav-btn-danger {
+        background: #e74c3c;
+        color: white;
+    }
+
+    .nav-btn-danger:hover {
+        background: #c0392b;
+    }
+
+    .nav-btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .nav-btn-secondary:hover {
+        background: #5a6268;
+    }
+
+    /* Items List Styles */
+    .nav-items-list-section h3 {
+        color: #333;
+        margin-bottom: 1rem;
+    }
+
+    .nav-items-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+    }
+
+    .nav-item-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1rem;
+        transition: all 0.2s;
+    }
+
+    .nav-item-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    }
+
+    .nav-item-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 0.75rem;
+    }
+
+    .nav-item-card-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: #333;
+    }
+
+    .nav-item-card-icon {
+        font-size: 1.5rem;
+    }
+
+    .nav-item-card-url {
+        color: #667eea;
+        font-size: 0.85rem;
+        word-break: break-all;
+        margin-bottom: 0.5rem;
+    }
+
+    .nav-item-card-description {
+        color: #666;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .nav-item-card-panel {
+        color: #999;
+        font-size: 0.8rem;
+        margin-bottom: 1rem;
+    }
+
+    .nav-item-card-edit {
+        display: none;
+    }
+
+    .nav-item-card-edit .nav-form-group {
+        margin-bottom: 1rem;
+    }
+
+    .nav-item-card-edit label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #555;
+    }
+
+    .nav-item-card-edit input,
+    .nav-item-card-edit select {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+
+    .nav-item-card-actions {
+        display: flex;
+        gap: 0.5rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .nav-item-card-actions button {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        flex: 1;
+    }
+
+    .nav-loading {
+        text-align: center;
+        padding: 2rem;
+        color: #999;
+        font-style: italic;
+    }
+
+    .nav-empty {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: #999;
+    }
+
+    .nav-empty-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+</style>
+
+<script>
+// Open modal
+window.openNavItemsModal = function() {
+    const modal = document.getElementById('manageNavItemsModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        if (typeof loadUserNavItems === 'function') loadUserNavItems();
+        if (typeof loadNavPanels === 'function') loadNavPanels();
+    }
+}
+
+// Close modal
+window.closeNavItemsModal = function() {
+    const modal = document.getElementById('manageNavItemsModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Load available navigation panels for the dropdown
+window.loadNavPanels = async function() {
+    try {
+        const response = await fetch('/dose/api/nav-panels/', {
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+
+        console.log('Panels loaded:', data.panels);  // Debug log
+
+        const select = document.getElementById('navItemPanel');
+        select.innerHTML = '<option value="">-- Select Panel --</option>';
+
+        data.panels.forEach((panel, index) => {
+            const option = document.createElement('option');
+            option.value = panel.id;
+            option.textContent = panel.title;
+
+            // Auto-select if only one panel
+            if (data.panels.length === 1) {
+                option.selected = true;
+            }
+
+            select.appendChild(option);
+        });
+
+        console.log('Panel dropdown populated with', data.panels.length, 'panels');  // Debug log
+    } catch (error) {
+        console.error('Error loading panels:', error);
+    }
+}
+
+// Load user's personal navigation items
+window.loadUserNavItems = async function() {
+    console.log('loadUserNavItems called');
+    const container = document.getElementById('navItemsList');
+    container.innerHTML = '<div class="nav-loading">Loading your links...</div>';
+
+    try {
+        const response = await fetch('/dose/api/my-nav-items/', {
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        console.log('Loaded items:', data.items);
+
+        if (data.items.length === 0) {
+            container.innerHTML = `
+                <div class="nav-empty">
+                    <div class="nav-empty-icon">📭</div>
+                    <p>You haven't created any personal navigation links yet.</p>
+                    <p>Use the form above to add your first link!</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+        data.items.forEach(item => {
+            const card = createNavItemCard(item);
+            container.appendChild(card);
+        });
+        console.log('Displayed', data.items.length, 'items');
+    } catch (error) {
+        console.error('Error loading nav items:', error);
+        container.innerHTML = '<div class="nav-loading">Error loading items. Please try again.</div>';
+    }
+}
+
+// Create a card for a navigation item
+function createNavItemCard(item) {
+    const card = document.createElement('div');
+    card.className = 'nav-item-card';
+    card.setAttribute('data-item-id', item.id);
+    card.setAttribute('data-panel-id', item.panel_id || '');
+    card.innerHTML = `
+        <div class="nav-item-card-view">
+            <div class="nav-item-card-header">
+                <div class="nav-item-card-title">
+                    <span class="nav-item-card-icon">${item.icon_value || '🔗'}</span>
+                    <span>${item.title}</span>
+                </div>
+            </div>
+            <div class="nav-item-card-url">
+                <a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.url}</a>
+            </div>
+            ${item.description ? `<div class="nav-item-card-description">${item.description}</div>` : ''}
+            <div class="nav-item-card-panel">
+                <small>Panel: ${item.panel_title || 'None'}</small>
+            </div>
+            <div class="nav-item-card-actions">
+                <button class="nav-btn nav-btn-secondary" onclick="window.editNavItem(${item.id})">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="nav-btn nav-btn-danger" onclick="window.deleteNavItem(${item.id}, '${escapeHtml(item.title)}')">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+        <div class="nav-item-card-edit" style="display: none;">
+            <div class="nav-form-group">
+                <label>Title *</label>
+                <input type="text" class="edit-title" value="${escapeHtml(item.title)}" required>
+            </div>
+            <div class="nav-form-group">
+                <label>URL *</label>
+                <input type="url" class="edit-url" value="${escapeHtml(item.url)}" required>
+            </div>
+            <div class="nav-form-group">
+                <label>Icon</label>
+                <input type="text" class="edit-icon" value="${escapeHtml(item.icon_value || '🔗')}">
+            </div>
+            <div class="nav-form-group">
+                <label>Panel</label>
+                <select class="edit-panel">
+                    <option value="">-- Select Panel --</option>
+                </select>
+            </div>
+            <div class="nav-form-group">
+                <label>Description</label>
+                <input type="text" class="edit-description" value="${escapeHtml(item.description || '')}">
+            </div>
+            <div class="nav-item-card-actions">
+                <button class="nav-btn nav-btn-primary" onclick="window.saveNavItem(${item.id})">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button class="nav-btn nav-btn-secondary" onclick="window.cancelEditNavItem(${item.id})">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Add new navigation item
+window.addNavItem = async function(event) {
+    event.preventDefault();
+    console.log('addNavItem called');
+
+    const form = event.target;
+    const formData = new FormData(form);
+
+    const data = {
+        title: formData.get('title'),
+        url: formData.get('url'),
+        icon_value: formData.get('icon_value') || '🔗',
+        description: formData.get('description'),
+        panel_id: formData.get('panel_id'),
+        is_personal: true
+    };
+
+    console.log('Submitting data:', data);
+
+    try {
+        const response = await fetch('/dose/api/nav-items/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(data)
+        });
+
+        console.log('Response status:', response.status);
+        const result = await response.json();
+        console.log('Response data:', result);
+
+        if (response.ok) {
+            // Reset form
+            form.reset();
+
+            // Reload items list
+            console.log('Calling loadUserNavItems after successful save...');
+            window.loadUserNavItems();
+
+            // Show success message
+            alert('✅ Navigation link added successfully!');
+        } else {
+            alert('❌ Error: ' + (result.message || 'Failed to add link'));
+        }
+    } catch (error) {
+        console.error('Error adding nav item:', error);
+        alert('❌ Error adding link. Please try again.');
+    }
+
+    return false;
+}
+
+// Delete navigation item
+window.deleteNavItem = async function(itemId, itemTitle) {
+    if (!confirm(`Are you sure you want to delete "${itemTitle}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/dose/api/nav-items/${itemId}/delete/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin'
+        });
+
+        if (response.ok) {
+            window.loadUserNavItems();
+            alert('✅ Link deleted successfully!');
+        } else {
+            alert('❌ Error deleting link. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error deleting nav item:', error);
+        alert('❌ Error deleting link. Please try again.');
+    }
+}
+
+// Edit navigation item - toggle to edit mode
+window.editNavItem = async function(itemId) {
+    const card = document.querySelector(`[data-item-id="${itemId}"]`);
+    if (!card) return;
+
+    // Hide view mode, show edit mode
+    const viewMode = card.querySelector('.nav-item-card-view');
+    const editMode = card.querySelector('.nav-item-card-edit');
+
+    if (viewMode) viewMode.style.display = 'none';
+    if (editMode) editMode.style.display = 'block';
+
+    // Load panels into the edit dropdown
+    const panelSelect = editMode.querySelector('.edit-panel');
+    const currentPanelId = card.getAttribute('data-panel-id');
+
+    if (panelSelect) {
+        try {
+            const response = await fetch('/dose/api/nav-panels/', {
+                credentials: 'same-origin'
+            });
+            const data = await response.json();
+
+            panelSelect.innerHTML = '<option value="">-- Select Panel --</option>';
+            data.panels.forEach(panel => {
+                const option = document.createElement('option');
+                option.value = panel.id;
+                option.textContent = panel.title;
+                // Set selected if this was the item's panel
+                if (currentPanelId && panel.id.toString() === currentPanelId) {
+                    option.selected = true;
+                }
+                panelSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error loading panels for edit:', error);
+        }
+    }
+}
+
+// Save edited navigation item
+window.saveNavItem = async function(itemId) {
+    const card = document.querySelector(`[data-item-id="${itemId}"]`);
+    if (!card) return;
+
+    const editMode = card.querySelector('.nav-item-card-edit');
+    const title = editMode.querySelector('.edit-title').value;
+    const url = editMode.querySelector('.edit-url').value;
+    const icon_value = editMode.querySelector('.edit-icon').value;
+    const panel_id = editMode.querySelector('.edit-panel').value;
+    const description = editMode.querySelector('.edit-description').value;
+
+    if (!title || !url) {
+        alert('❌ Title and URL are required!');
+        return;
+    }
+
+    const data = {
+        title: title,
+        url: url,
+        icon_value: icon_value || '🔗',
+        panel_id: panel_id || null,
+        description: description
+    };
+
+    try {
+        const response = await fetch(`/dose/api/nav-items/${itemId}/update/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            window.loadUserNavItems();
+            alert('✅ Link updated successfully!');
+        } else {
+            const error = await response.json();
+            alert('❌ Error: ' + (error.message || 'Failed to update link'));
+        }
+    } catch (error) {
+        console.error('Error updating nav item:', error);
+        alert('❌ Error updating link. Please try again.');
+    }
+}
+
+// Cancel editing navigation item
+window.cancelEditNavItem = function(itemId) {
+    const card = document.querySelector(`[data-item-id="${itemId}"]`);
+    if (!card) return;
+
+    // Show view mode, hide edit mode
+    const viewMode = card.querySelector('.nav-item-card-view');
+    const editMode = card.querySelector('.nav-item-card-edit');
+
+    if (viewMode) viewMode.style.display = 'block';
+    if (editMode) editMode.style.display = 'none';
+}
+
+// Get CSRF token
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+           document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeNavItemsModal();
+    }
+});
+
+// Attach event listener to navigation button
+console.log('Modal script loaded, looking for button...');
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded fired in modal script');
+    const manageNavBtn = document.getElementById('manageNavItemsBtn');
+    console.log('Button found:', manageNavBtn);
+    if (manageNavBtn) {
+        console.log('Attaching click listener to button');
+        manageNavBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('Button clicked, opening modal');
+            openNavItemsModal();
+        });
+    } else {
+        console.error('manageNavItemsBtn not found in DOM');
+    }
+});
+</script>

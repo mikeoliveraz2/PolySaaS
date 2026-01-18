@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="40" height="40">
+  <!-- PolySaaS Logo - Colorful Geometric Design -->
+  <!-- Blue/Teal background -->
+  <rect width="200" height="200" fill="#2C5F7F"/>
+
+  <!-- Purple diamond -->
+  <polygon points="100,40 130,70 100,100 70,70" fill="#8B2D7F"/>
+
+  <!-- Blue diamond -->
+  <polygon points="100,100 130,130 100,160 70,130" fill="#2E5090"/>
+
+  <!-- Pink/Magenta accent -->
+  <polygon points="130,70 160,85 160,115 130,130" fill="#D946EF"/>
+
+  <!-- Cyan accent -->
+  <polygon points="70,70 70,100 40,85 40,55" fill="#06B6D4"/>
+
+  <!-- Yellow accent -->
+  <polygon points="130,100 160,115 160,85 130,70" fill="#EAB308"/>
+</svg>

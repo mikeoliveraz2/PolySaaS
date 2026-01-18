@@ -1,0 +1,36 @@
+<!-- templates/atomic_instruction_form.html 9/11/2025 ****hi**** -->
+<!-- DEBUG: atomic_instruction_form -->
+<form id="instruction-form" method="post">
+  <label for="executescript">Atomic Service:</label>
+  <select id="executescript" name="executescript">
+    <!-- Options will be populated by JS -->
+  </select>
+  <div id="custom-url-group" style="display:none;">
+      <label for="urllist">Custom Endpoint URLs (comma separated):</label>
+      <input type="text" id="urllist" name="urllist" placeholder="https://url1.com, https://url2.com" />
+      <small>Enter one or more URLs, separated by commas.</small>
+      <div style="margin-top:4px;color:#2980b9;font-size:0.95em;">
+        <strong>Tip:</strong> The urllist can be a local or remote URL with the full path. If specifying more than one, separate multiple URLs with a comma.
+      </div>
+    </div>
+<script>
+fetch('/atomic_service_names/')
+  .then(res => res.json())
+  .then(data => {
+    const select = document.getElementById('executescript');
+    data.atomic_services.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name === 'Custom Endpoint URL' ? '' : name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+  });
+
+document.getElementById('executescript').addEventListener('change', function() {
+  const showCustom = this.value === '';
+  document.getElementById('custom-url-group').style.display = showCustom ? '' : 'none';
+});
+</script>
+  <!-- ...other instruction fields... -->
+  <button type="submit">Save Instruction...</button>
+</form>

@@ -1,0 +1,468 @@
+{% extends 'admin/base_site.html' %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+/* Gmail-specific styles */
+#gmail-container h1 {
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+}
+
+#gmail-toolbar {
+    margin-bottom: 1em;
+    display: flex;
+    gap: 0.5em;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+#gmail-toolbar button {
+    padding: 8px 16px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+#gmail-toolbar button:hover:not(:disabled) {
+    background: #2980b9;
+}
+
+#gmail-toolbar button:disabled {
+    background: #95a5a6;
+    cursor: not-allowed;
+}
+
+#gmail-inbox-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+#gmail-inbox-table thead tr {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+}
+
+#gmail-inbox-table th {
+    padding: 14px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#gmail-inbox-table td {
+    padding: 12px;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+#gmail-inbox-table tbody tr {
+    transition: all 0.2s ease;
+    background: white;
+}
+
+#gmail-inbox-table tbody tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+#gmail-inbox-table tbody tr:hover {
+    background: #e3f2fd;
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+}
+
+.gmail-message-row {
+    cursor: pointer;
+}
+
+.gmail-message-row.unread {
+    font-weight: 600;
+}
+
+.gmail-message-row.unread td {
+    color: #2c3e50;
+}
+
+#gmail-message-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 10000;
+    overflow-y: auto;
+}
+
+.modal-dialog {
+    background: white;
+    max-width: 800px;
+    margin: 50px auto;
+    border-radius: 8px;
+    position: relative;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+#close-message-modal {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 2rem;
+    cursor: pointer;
+    color: #666;
+    line-height: 1;
+}
+
+#close-message-modal:hover {
+    color: #000;
+}
+
+#gmail-message-content {
+    padding: 2rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="gmail-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h1 style="margin: 0;">📧 Gmail Inbox</h1>
+        <button onclick="composeMessage()" style="
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+            transition: all 0.2s ease;
+        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(52, 152, 219, 0.4)';" onmouseout="this.style.transform=''; this.style.boxShadow='0 2px 8px rgba(52, 152, 219, 0.3)';">
+            <i class="fa fa-pencil-alt"></i> Compose
+        </button>
+    </div>
+
+    <div id="gmail-toolbar">
+        <button id="btn-refresh" title="Refresh inbox"><i class="fa fa-sync"></i> Refresh</button>
+        <button id="btn-archive" disabled title="Archive selected"><i class="fa fa-archive"></i> Archive</button>
+        <button id="btn-delete" disabled title="Delete selected"><i class="fa fa-trash"></i> Delete</button>
+        <button id="btn-markread" disabled title="Mark as read"><i class="fa fa-envelope-open"></i> Mark Read</button>
+    </div>
+
+    <div id="gmail-inbox-loading">⏳ Loading inbox...</div>
+
+    <div id="gmail-auth-error" style="display:none;">
+        <h4>Google Authentication Required</h4>
+        <p>You need to connect your Google account to access Gmail.</p>
+        <a href="/accounts/google/login/" style="display: inline-block; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px;">Connect Google Account</a>
+    </div>
+
+    <table id="gmail-inbox-table" style="display:none;">
+        <thead>
+            <tr>
+                <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
+                <th>From</th>
+                <th>Subject</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div id="gmail-load-more" style="display:none;">
+        <button onclick="loadMoreMessages()" style="padding: 10px 20px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">Load More Messages</button>
+    </div>
+</div>
+
+<!-- Message Detail Modal -->
+<div id="gmail-message-modal">
+    <div class="modal-dialog">
+        <button id="close-message-modal">×</button>
+        <div id="gmail-message-content">Loading...</div>
+    </div>
+</div>
+
+<script>
+// Gmail JavaScript for Admin Interface
+const gmailBasePath = '/dose/gmail-api';  // Use Django view with caching, not passthrough
+let nextPageToken = null;
+let selectedMessages = new Set();
+
+async function fetchInbox(pageToken = null, forceRefresh = false) {
+    const loading = document.getElementById('gmail-inbox-loading');
+    const authError = document.getElementById('gmail-auth-error');
+    const table = document.getElementById('gmail-inbox-table');
+    const loadMore = document.getElementById('gmail-load-more');
+
+    if (!pageToken) {
+        loading.style.display = 'block';
+        loading.textContent = forceRefresh ? '🔄 Refreshing inbox...' : '⏳ Fetching messages from Gmail...';
+        authError.style.display = 'none';
+        table.style.display = 'none';
+        selectedMessages.clear();
+    }
+
+    try {
+        const startTime = performance.now();
+        let apiUrl = `${gmailBasePath}/messages?maxResults=20&labelIds=INBOX${pageToken ? '&pageToken=' + pageToken : ''}`;
+
+        if (forceRefresh && !pageToken) {
+            apiUrl += `&_refresh=${Date.now()}`;
+        }
+
+        const resp = await fetch(apiUrl);
+        const data = await resp.json();
+
+        if (!resp.ok) {
+            if (resp.status === 401 || (data.error && data.error.includes('token'))) {
+                loading.style.display = 'none';
+                authError.style.display = 'block';
+                return;
+            }
+            throw new Error(data.error || 'Failed to fetch inbox');
+        }
+
+        const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
+        const fromCache = resp.headers.get('X-From-Cache') === 'true' || loadTime < 0.1;
+        console.log(`📧 Loaded ${data.messages?.length || 0} messages in ${loadTime}s${fromCache ? ' (cached)' : ''}`);
+        console.log('📩 Sample message data:', data.messages?.[0]); // Debug log
+
+        loading.style.display = 'none';
+        table.style.display = 'table';
+
+        const messages = data.messages || [];
+        nextPageToken = data.nextPageToken;
+
+        const tbody = table.querySelector('tbody');
+        if (!pageToken) tbody.innerHTML = '';
+
+        for (const msg of messages) {
+            const tr = document.createElement('tr');
+            tr.className = 'gmail-message-row';
+            tr.dataset.messageId = msg.id;
+
+            let fromDisplay = msg.from || 'Unknown';
+            const emailMatch = fromDisplay.match(/([^<]+)<([^>]+)>/);
+            if (emailMatch) {
+                fromDisplay = emailMatch[1].trim() || emailMatch[2];
+            }
+
+            let dateDisplay = '';
+            if (msg.date) {
+                try {
+                    const dateObj = new Date(msg.date);
+                    const now = new Date();
+                    const isToday = dateObj.toDateString() === now.toDateString();
+                    const isYesterday = new Date(now - 86400000).toDateString() === dateObj.toDateString();
+
+                    if (isToday) {
+                        dateDisplay = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    } else if (isYesterday) {
+                        dateDisplay = 'Yesterday';
+                    } else if (dateObj.getFullYear() === now.getFullYear()) {
+                        dateDisplay = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    } else {
+                        dateDisplay = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                    }
+                } catch (e) {
+                    dateDisplay = msg.date.substring(0, 16);
+                }
+            }
+
+            tr.innerHTML = `
+                <td><input type="checkbox" class="message-checkbox" data-id="${msg.id}"></td>
+                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${msg.from || 'Unknown'}">${fromDisplay}</td>
+                <td style="font-weight: 500;">${msg.subject || '(No subject)'}</td>
+                <td style="color: #7f8c8d; white-space: nowrap;">${dateDisplay}</td>
+            `;
+            tr.addEventListener('click', (e) => {
+                if (!e.target.classList.contains('message-checkbox')) {
+                    showMessageModal(msg.id);
+                }
+            });
+            tbody.appendChild(tr);
+        }
+
+        loadMore.style.display = nextPageToken ? 'block' : 'none';
+        updateToolbarState();
+
+    } catch (err) {
+        console.error('Error fetching inbox:', err);
+        loading.style.display = 'block';
+        loading.innerHTML = '<div style="color: #e74c3c;">❌ Error loading inbox: ' + err.message + '</div>';
+    }
+}
+
+function loadMoreMessages() {
+    if (nextPageToken) fetchInbox(nextPageToken);
+}
+
+async function showMessageModal(messageId) {
+    const modal = document.getElementById('gmail-message-modal');
+    const content = document.getElementById('gmail-message-content');
+
+    modal.style.display = 'block';
+    content.innerHTML = '<div style="text-align: center; padding: 2rem;"><div style="font-size: 2rem; margin-bottom: 1rem;">⏳</div><p>Loading message...</p></div>';
+
+    try {
+        const resp = await fetch(`${gmailBasePath}/messages/${messageId}?format=full`);
+        const msg = await resp.json();
+
+        if (!resp.ok) {
+            throw new Error(msg.error || 'Failed to load message');
+        }
+
+        const headers = msg.payload?.headers || [];
+        const from = headers.find(h => h.name.toLowerCase() === 'from')?.value || 'Unknown';
+        const to = headers.find(h => h.name.toLowerCase() === 'to')?.value || 'Unknown';
+        const subject = headers.find(h => h.name.toLowerCase() === 'subject')?.value || '(No subject)';
+        const date = headers.find(h => h.name.toLowerCase() === 'date')?.value || '';
+
+        let body = msg.snippet || '';
+        if (msg.payload?.parts) {
+            const textPart = msg.payload.parts.find(p => p.mimeType === 'text/plain');
+            if (textPart && textPart.body?.data) {
+                body = atob(textPart.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+            }
+        } else if (msg.payload?.body?.data) {
+            body = atob(msg.payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+        }
+
+        const formattedDate = date ? new Date(date).toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }) : '';
+
+        const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        const textToHtml = (text) => {
+            return escapeHtml(text).replace(/\n/g, '<br>');
+        };
+
+        content.innerHTML = `
+            <div style="border-bottom: 2px solid #3498db; padding-bottom: 1rem; margin-bottom: 1.5rem; background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); padding: 1.5rem; border-radius: 8px;">
+                <h2 style="margin: 0 0 1rem 0; color: #2c3e50; font-size: 1.5rem;">${escapeHtml(subject)}</h2>
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; font-size: 0.95rem; color: #555;">
+                    <strong>From:</strong><span>${escapeHtml(from)}</span>
+                    <strong>To:</strong><span>${escapeHtml(to)}</span>
+                    <strong>Date:</strong><span>${formattedDate}</span>
+                </div>
+            </div>
+            <div style="padding: 1.5rem; background: #fff; border-radius: 8px; line-height: 1.6; color: #333; max-height: 500px; overflow-y: auto;">
+                ${textToHtml(body)}
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button onclick="replyToMessage('${messageId}')" style="padding: 0.75rem 1.5rem; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    <i class="fa fa-reply"></i> Reply
+                </button>
+                <button onclick="forwardMessage('${messageId}')" style="padding: 0.75rem 1.5rem; background: #9b59b6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    <i class="fa fa-share"></i> Forward
+                </button>
+                <button onclick="archiveMessage('${messageId}')" style="padding: 0.75rem 1.5rem; background: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    <i class="fa fa-archive"></i> Archive
+                </button>
+                <button onclick="deleteMessage('${messageId}')" style="padding: 0.75rem 1.5rem; background: #e74c3c; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    <i class="fa fa-trash"></i> Delete
+                </button>
+            </div>
+        `;
+    } catch (err) {
+        console.error('Error loading message:', err);
+        content.innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: #e74c3c;">
+                <div style="font-size: 2rem; margin-bottom: 1rem;">❌</div>
+                <p><strong>Error loading message</strong></p>
+                <p style="color: #7f8c8d; font-size: 0.9rem;">${err.message}</p>
+            </div>
+        `;
+    }
+}
+
+function updateToolbarState() {
+    const hasSelection = selectedMessages.size > 0;
+    document.getElementById('btn-archive').disabled = !hasSelection;
+    document.getElementById('btn-delete').disabled = !hasSelection;
+    document.getElementById('btn-markread').disabled = !hasSelection;
+}
+
+function composeMessage() {
+    alert('Compose new message functionality coming soon!');
+}
+
+function replyToMessage(messageId) {
+    alert('Reply functionality coming soon!\nMessage ID: ' + messageId);
+}
+
+function forwardMessage(messageId) {
+    alert('Forward functionality coming soon!\nMessage ID: ' + messageId);
+}
+
+function archiveMessage(messageId) {
+    if (confirm('Archive this message?')) {
+        alert('Archive functionality coming soon!\nMessage ID: ' + messageId);
+    }
+}
+
+function deleteMessage(messageId) {
+    if (confirm('Delete this message permanently?')) {
+        alert('Delete functionality coming soon!\nMessage ID: ' + messageId);
+    }
+}
+
+// Event listeners
+document.getElementById('select-all')?.addEventListener('change', function(e) {
+    const checkboxes = document.querySelectorAll('.message-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = e.target.checked;
+        const messageId = cb.dataset.id;
+        if (e.target.checked) {
+            selectedMessages.add(messageId);
+        } else {
+            selectedMessages.delete(messageId);
+        }
+    });
+    updateToolbarState();
+});
+
+document.getElementById('btn-refresh')?.addEventListener('click', function() {
+    nextPageToken = null;
+    selectedMessages.clear();
+    fetchInbox(null, true);
+});
+
+document.getElementById('close-message-modal')?.addEventListener('click', function() {
+    document.getElementById('gmail-message-modal').style.display = 'none';
+});
+
+document.getElementById('gmail-message-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.style.display = 'none';
+    }
+});
+
+// Auto-load inbox
+setTimeout(() => fetchInbox(), 100);
+</script>
+{% endblock %}

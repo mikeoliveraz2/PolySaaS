@@ -1,0 +1,1213 @@
+{% extends "dose/dosebase.html" %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block header_title %}PolySaaS - Dynamic Orchestration Service Engine{% endblock %}
+
+{% block page_css %}
+<style>
+    /* Tenant-Aware PollySaaS Branding Variables */
+    :root {
+        --dose-primary: {{ theme_colors.primary }};
+        --dose-secondary: {{ theme_colors.secondary }};
+        --dose-accent: {{ theme_colors.accent }};
+        --dose-success: {{ theme_colors.success }};
+        --dose-warning: {{ theme_colors.warning }};
+        --dose-dark: {{ theme_colors.dark }};
+        --dose-light: {{ theme_colors.light }};
+        --dose-gradient: {{ theme_colors.gradient }};
+        --dose-shadow: 0 4px 12px rgba(44, 62, 80, 0.15);
+        --dose-border-radius: 12px;
+    }
+
+    /* Landing page specific styles with PolySaaS branding */
+    .landing-container {
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        min-height: 80vh;
+        gap: 0.25rem;
+    }
+
+    .landing-header {
+        background: var(--dose-gradient);
+        color: white;
+        padding: 0.1rem 2rem 0.15rem 2rem;
+        border-radius: var(--dose-border-radius);
+        text-align: center;
+        box-shadow: var(--dose-shadow);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .landing-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+        opacity: 0.3;
+        z-index: 1;
+    }
+
+    .header-content {
+        position: relative;
+        z-index: 2;
+        margin: 0;
+        padding: 0;
+    }
+
+    .dose-logo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+
+    .dose-icon {
+        width: 300px;
+        height: 300px;
+        background: transparent;
+        border-radius: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        font-weight: bold;
+        border: none;
+        backdrop-filter: none;
+    }
+
+    .dose-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .landing-header h1 {
+        margin: 0 0 0.5rem 0;
+        font-size: 3rem;
+        font-weight: 300;
+        letter-spacing: 3px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .dose-acronym {
+        font-size: 0.8rem;
+        opacity: 0.8;
+        letter-spacing: 1px;
+        margin-bottom: 0.05rem;
+        font-weight: 500;
+    }
+
+    .landing-header .subtitle {
+        font-size: 1rem;
+        opacity: 0.9;
+        margin: 0.05rem 0 0.05rem 0;
+        font-weight: 300;
+    }
+
+    .brand-tagline {
+        font-size: 0.85rem;
+        opacity: 0.7;
+        margin-top: 0.05rem;
+        margin-bottom: 0;
+        font-style: italic;
+    }
+
+    .theme-indicator {
+        display: inline-block;
+        padding: 0.75rem 1.5rem;
+        background-color: rgba(255,255,255,0.25);
+        border-radius: 25px;
+        font-size: 0.9rem;
+        margin-top: 1.5rem;
+        border: 1px solid rgba(255,255,255,0.3);
+        backdrop-filter: blur(5px);
+    }
+
+    .menu-bar {
+    background: var(--dose-light);
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: var(--dose-shadow);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 4px solid var(--dose-secondary);
+    }
+
+    .menu-bar .menu-section {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .menu-btn {
+    background: var(--dose-secondary);
+    color: var(--dose-light);
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 500;
+        box-shadow: 0 2px 4px rgba(52, 152, 219, 0.2);
+    }
+
+    .menu-btn:hover {
+        background: #2980b9;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+    }
+
+    .menu-btn.secondary {
+        background: var(--dose-dark);
+        box-shadow: 0 2px 4px rgba(26, 37, 47, 0.2);
+    }
+
+    .menu-btn.secondary:hover {
+        background: #34495e;
+        box-shadow: 0 4px 12px rgba(26, 37, 47, 0.4);
+    }
+
+    .user-welcome {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--dose-primary);
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        background: var(--dose-light);
+        border-radius: 6px;
+        border-left: 3px solid var(--dose-secondary);
+    }
+
+    .main-content-area {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        gap: 1.5rem;
+        align-items: start;
+        transition: grid-template-columns 0.3s ease;
+    }
+
+    .main-content-area.sidebar-collapsed {
+        grid-template-columns: 60px 1fr;
+    }
+
+    .collapsible-nav {
+        background: var(--dose-light);
+        border-radius: 8px;
+        box-shadow: var(--dose-shadow);
+        overflow: hidden;
+        border-left: 4px solid var(--dose-secondary);
+        transition: width 0.3s ease, max-height 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        width: 300px;
+    }
+
+    .collapsible-nav.sidebar-collapsed {
+        width: 60px;
+    }
+
+    .nav-header {
+        background: var(--dose-primary);
+        color: white;
+        padding: 1.25rem;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        font-size: 1.1rem;
+        transition: background 0.3s ease;
+        white-space: nowrap;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-header {
+        justify-content: center;
+        padding: 1rem 0.5rem;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-header span:first-child {
+        display: none;
+    }
+
+    .nav-header:hover {
+        background: var(--dose-dark);
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-panel-title,
+    .collapsible-nav.sidebar-collapsed .nav-text,
+    .collapsible-nav.sidebar-collapsed .nav-clicks {
+        display: none;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-panel {
+        border: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-panel-items {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-item {
+        justify-content: center;
+        padding: 0.75rem;
+        gap: 0;
+        border: none;
+        width: auto;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-icon {
+        margin: 0;
+        display: inline-flex !important;
+        flex-shrink: 0;
+    }
+
+    .nav-toggle {
+        font-size: 1.5rem;
+        transition: transform 0.3s ease;
+        display: inline-block;
+        line-height: 1;
+    }
+
+    .nav-toggle.collapsed {
+        transform: rotate(90deg);
+    }
+
+    /* Hamburger icon */
+    .hamburger-icon {
+        display: inline-block;
+        width: 24px;
+        height: 18px;
+        position: relative;
+    }
+
+    .hamburger-icon::before,
+    .hamburger-icon::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: white;
+        transition: transform 0.3s ease;
+    }
+
+    .hamburger-icon::before {
+        top: 0;
+        box-shadow: 0 7.5px 0 white;
+    }
+
+    .hamburger-icon::after {
+        bottom: 0;
+    }
+
+    .nav-items {
+        max-height: 85vh;
+        overflow-y: auto;
+        transition: max-height 0.3s ease, flex-grow 0.3s ease;
+        flex-grow: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .collapsible-nav.sidebar-collapsed .nav-items {
+        max-height: none;
+        overflow: visible;
+        flex-grow: 0;
+        height: auto;
+        align-items: center;
+    }
+
+    .nav-item {
+        padding: 0.6rem 0.75rem;
+        color: #2c3e50;
+        text-decoration: none;
+        border-bottom: 1px solid #ecf0f1;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: white;
+    }
+
+    .nav-panel-items .nav-item:nth-child(even) {
+        background: #e8f4f8;
+    }
+
+    .nav-item:hover {
+        background: #e3f2fd !important;
+        padding-left: 1rem;
+    }
+
+    .nav-item:last-child {
+        border-bottom: none;
+    }
+
+    .nav-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--dose-secondary);
+        color: white;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        box-shadow: 0 1px 3px rgba(52, 152, 219, 0.3);
+        flex-shrink: 0;
+    }
+
+    /* Navigation Panel Styles */
+    .nav-panel {
+        border-bottom: 2px solid #ecf0f1;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .nav-panel:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+    }
+
+    .nav-panel-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #000000;
+        background: #ADD8E6;
+        padding: 0.5rem 0.75rem;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        text-align: left;
+    }
+
+    .nav-panel-description {
+        display: none;
+    }
+
+    .nav-panel-items {
+        /* Panel items container - styles inherited from parent */
+        display: block;
+    }
+
+    .nav-panel[data-panel-type="quick_actions"] .nav-panel-title::before {
+        content: "⚡ ";
+    }
+
+    .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title::before {
+        content: "🔄 ";
+    }
+
+    /* Special styling for Passthrough panel */
+    .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title {
+        background: #90EE90 !important;
+        color: #000000 !important;
+        font-weight: bold;
+    }
+
+    .nav-panel[data-panel-type="integrations"] .nav-panel-title::before {
+        content: "🔗 ";
+    }
+
+    .nav-panel[data-panel-type="external_services"] .nav-panel-title::before {
+        content: "🌐 ";
+    }
+
+    .nav-panel[data-panel-type="analytics"] .nav-panel-title::before {
+        content: "📊 ";
+    }
+
+    .nav-panel[data-panel-type="administration"] .nav-panel-title::before {
+        content: "⚙️ ";
+    }
+
+    .nav-panel[data-panel-type="custom"] .nav-panel-title::before {
+        content: "🎯 ";
+    }
+
+    .nav-panel[data-panel-type="system"] .nav-panel-title::before {
+        content: "⚙️ ";
+    }
+
+    .nav-text {
+        flex: 1;
+    }
+
+    .nav-clicks {
+        background: var(--dose-warning);
+        color: white;
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 10px;
+        min-width: 16px;
+        text-align: center;
+    }
+
+    .custom-icon {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+    }
+
+    .nav-empty-message {
+        text-align: center;
+        color: #7f8c8d;
+        padding: 2rem 1rem;
+        font-style: italic;
+    }
+
+    .main-body {
+        background: white;
+        border-radius: 8px;
+        padding: 0.75rem 1.5rem;
+        box-shadow: var(--dose-shadow);
+        min-height: 250px;
+        border-left: 4px solid var(--dose-secondary);
+    }
+
+    .welcome-section {
+        text-align: center;
+        padding: 0.25rem 0;
+    }
+
+    .welcome-section h2 {
+        color: var(--dose-primary);
+        margin-bottom: 0.25rem;
+        font-size: 1.6rem;
+        font-weight: 300;
+        position: relative;
+    }
+
+    .welcome-section h2::after {
+        content: '';
+        display: block;
+        width: 60px;
+        height: 2px;
+        background: var(--dose-secondary);
+        margin: 0.25rem auto;
+        border-radius: 2px;
+    }
+
+    .welcome-text {
+        color: #7f8c8d;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        max-width: 700px;
+        margin: 0 auto 0.5rem auto;
+    }
+
+    /* Dashboard Button Grid - Big Ass Buttons (BABs) */
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .dashboard-button {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 12px;
+        padding: 2rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        border: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        text-decoration: none;
+        display: block;
+        color: inherit;
+    }
+
+    .dashboard-button:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .dashboard-button:active {
+        transform: translateY(-2px);
+    }
+
+    /* Button sizes */
+    .btn-size-small {
+        grid-column: span 1;
+        padding: 1.5rem;
+    }
+
+    .btn-size-medium {
+        grid-column: span 1;
+        padding: 2rem;
+    }
+
+    .btn-size-large {
+        grid-column: span 2;
+        padding: 2.5rem;
+    }
+
+    .btn-size-full {
+        grid-column: 1 / -1;
+        padding: 3rem;
+    }
+
+    .dashboard-button .button-icon {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        display: block;
+    }
+
+    .dashboard-button .button-title {
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--dose-primary);
+    }
+
+    .dashboard-button .button-description {
+        color: #6c757d;
+        font-size: 1rem;
+        line-height: 1.4;
+    }
+
+    .dashboard-button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--dose-secondary);
+        transition: all 0.3s ease;
+    }
+
+    .dashboard-button:hover::before {
+        height: 6px;
+        background: var(--dose-accent);
+    }
+
+    /* No buttons message */
+    .no-buttons-message {
+        text-align: center;
+        padding: 3rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 12px;
+        border: 2px dashed #dee2e6;
+        color: #6c757d;
+    }
+
+    .no-buttons-message h3 {
+        color: var(--dose-primary);
+        margin-bottom: 1rem;
+    }
+
+    .no-buttons-message .config-hint {
+        margin-top: 1rem;
+        font-size: 0.9rem;
+        color: #868e96;
+    }
+
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .feature-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        border-left: 4px solid var(--dose-secondary);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .feature-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--dose-gradient);
+    }
+
+    .feature-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--dose-shadow);
+        border-left-color: var(--dose-accent);
+    }
+
+    .feature-card h3 {
+        color: var(--dose-primary);
+        margin-bottom: 0.5rem;
+        font-size: 1.3rem;
+        font-weight: 500;
+    }
+
+    .feature-card p {
+        color: #7f8c8d;
+        font-size: 0.95rem;
+        margin: 0;
+        line-height: 1.5;
+    }
+
+    .status-bar {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: var(--dose-shadow);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        border-left: 4px solid var(--dose-success);
+    }
+
+    .status-item {
+        text-align: center;
+        padding: 1rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 6px;
+        transition: all 0.3s ease;
+        border: 1px solid rgba(52, 152, 219, 0.1);
+    }
+
+    .status-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-color: var(--dose-secondary);
+    }
+
+    .status-label {
+        display: block;
+        color: #7f8c8d;
+        font-size: 0.85rem;
+        margin-bottom: 0.25rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .status-value {
+        color: #2c3e50;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    .status-value.operational {
+        color: var(--dose-success);
+        font-weight: 600;
+    }
+
+    .status-value.warning {
+        color: var(--dose-warning);
+        font-weight: 600;
+    }
+
+    .status-value.error {
+        color: var(--dose-accent);
+        font-weight: 600;
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .main-content-area {
+            grid-template-columns: 1fr;
+        }
+
+        .menu-bar {
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .menu-bar .menu-section {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .landing-header h1 {
+            font-size: 2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="landing-container">
+    <!-- Enhanced Header Section with Tenant-Specific PolySaaS Branding -->
+    <div class="landing-header">
+        <div class="header-content">
+            <div class="dose-logo" style="justify-content: center; width: 100%; flex-direction: column;">
+                <div class="dose-icon">
+                    <img src="{% static 'img/PolySaaS-Logo.png' %}" style="height: 100%; width: 100%; object-fit: contain;" alt="PolySaaS">
+                </div>
+                <div class="dose-acronym" style="margin-top: 0.05rem;">Dynamic Orchestration Service Engine</div>
+            </div>
+            <p class="subtitle">{{ current_tenant.name }} - Advanced Technology Platform</p>
+            <p class="brand-tagline">"Orchestrating {{ current_tenant.name }}'s Technology Solutions"</p>
+        </div>
+    </div>
+
+    <!-- User Welcome Bar -->
+    <div class="dose-header-bar" style="background: #457894; color: #fff; padding: 0.4rem 1.5rem; display: flex; align-items: center; justify-content: space-between; font-family: 'Segoe UI', sans-serif; font-size: 0.9rem;">
+        <div>
+            {% if user.is_authenticated %}
+                WELCOME, {{ user.username|upper }} {% if current_tenant and current_tenant.schema_name %}({{ current_tenant.schema_name|lower }}){% endif %}.
+                <a href="{% url 'dose:about' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">ABOUT</a> /
+                <a href="{% url 'dose:tenantsettings' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">CHANGE PASSWORD</a> /
+                {% if user.is_staff or user.is_superuser %}
+                    <a href="/admin/" style="color: #ffe082; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">ADMIN INTERFACE</a> /
+                {% endif %}
+                <a href="{% url 'dose:logout' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">LOG OUT</a>
+            {% else %}
+                <a href="{% url 'dose:about' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem;">ABOUT</a> /
+                <a href="{% url 'dose:subscribe' %}" style="color: #fff; text-decoration: underline; margin: 0 0.5rem; font-weight: bold;">Subscribe</a>
+            {% endif %}
+        </div>
+        <button id="landing-theme-toggle-btn" style="background: none; border: none; color: #fff; font-size: 1.7rem; cursor: pointer; margin-left: 1rem;" title="Toggle theme">
+            <span id="landing-theme-toggle-icon">&#9728;</span>
+        </button>
+    </div>
+
+    <!-- Main Content Area with Sidebar and Body -->
+    <div class="main-content-area">
+        <!-- Table-Driven Navigation Panels -->
+        <div class="collapsible-nav" id="sidebar-nav">
+            <div class="nav-header" onclick="toggleNavigation()">
+                <span>Navigation Bar</span>
+                <span class="nav-toggle" id="nav-toggle">
+                    <span class="hamburger-icon"></span>
+                </span>
+            </div>
+            <div class="nav-items" id="nav-items">
+                <!-- DEBUG: Log context data for home sidebar -->
+                <script>
+                console.log('=== HOME SIDEBAR CONTEXT DATA ===');
+                console.log('passthrough_services:', {{ passthrough_services|length }}, {{ passthrough_services|safe }});
+                console.log('external_services:', {{ external_services|length }}, {{ external_services|safe }});
+                console.log('navigation_panels:', {{ navigation_panels|length }});
+                {% for panel in navigation_panels %}
+                    console.log('  Panel "{{ panel.title }}": {{ panel.filtered_items|length }} items');
+                {% endfor %}
+                console.log('top_navigation_items:', {{ top_navigation_items|length }}, {{ top_navigation_items|safe }});
+                console.log('===============================');
+                </script>
+
+                <!-- Passthrough Services (Gmail, OSTicket - AJAX-loaded) -->
+                {% if passthrough_services %}
+                    <div class="nav-panel" data-panel-type="passthrough_services">
+                        <h4 class="nav-panel-title">PASSTHROUGH SERVICES</h4>
+                        <p class="nav-panel-description">AJAX-loaded external services with enrichment</p>
+                        <div class="nav-panel-items">
+                            {% for service in passthrough_services %}
+                                <a href="{{ service.url }}"
+                                   class="nav-item"
+                                   title="{{ service.description }}">
+                                    <span class="nav-icon">{{ service.icon }}</span>
+                                    <span class="nav-text">{{ service.title }}</span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- External Services (Other integrations) -->
+                {% if external_services %}
+                    <div class="nav-panel" data-panel-type="external_services">
+                        <h4 class="nav-panel-title">EXTERNAL SERVICES</h4>
+                        <p class="nav-panel-description">External system integrations and direct links</p>
+                        <div class="nav-panel-items">
+                            {% for service in external_services %}
+                                <a href="{{ service.url }}"
+                                   class="nav-item"
+                                   title="{{ service.description }}">
+                                    <span class="nav-icon">{{ service.icon }}</span>
+                                    <span class="nav-text">{{ service.title }}</span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% for panel in navigation_panels %}
+                    <div class="nav-panel" data-panel-type="{{ panel.panel_type }}"
+                         {% if panel.panel_background_color %}style="background-color: {{ panel.panel_background_color }};"{% endif %}>
+                        <h4 class="nav-panel-title">{{ panel.title }}</h4>
+                        {% if panel.description %}
+                            <p class="nav-panel-description">{{ panel.description }}</p>
+                        {% endif %}
+                        <div class="nav-panel-items">
+                            {% for item in panel.filtered_items %}
+                                <a href="{{ item.url }}"
+                                   class="nav-item"
+                                   target="{{ item.target }}"
+                                   data-item-id="{{ item.id }}"
+                                   data-item-type="{{ item.item_type }}"
+                                   {% if item.item_css_class %}class="{{ item.item_css_class }}"{% endif %}
+                                   {% if item.button_color %}style="border-left-color: {{ item.button_color }};"{% endif %}
+                                   title="{{ item.description }}">
+                                    {% if item.icon_style == 'emoji' and item.icon_value %}
+                                        <span class="nav-icon">{{ item.icon_value }}</span>
+                                    {% elif item.icon_style == 'fontawesome' and item.icon_value %}
+                                        <i class="fa {{ item.icon_value }}"></i>
+                                    {% elif item.icon_style == 'bootstrap' and item.icon_value %}
+                                        <i class="bi {{ item.icon_value }}"></i>
+                                    {% elif item.icon_style == 'custom' and item.icon_value %}
+                                        <img src="{{ item.icon_value }}" class="custom-icon" alt="{{ item.title }}">
+                                    {% else %}
+                                        <span class="nav-icon">🔗</span>
+                                    {% endif %}
+                                    <span class="nav-text">{{ item.title }}</span>
+                                    {% if item.click_count > 0 %}
+                                        <span class="nav-clicks" title="Click count">{{ item.click_count }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="nav-panel">
+                        <p class="nav-empty-message">
+                            🔧 No navigation panels configured for {{ current_tenant.name }}.<br>
+                            <small>Contact your administrator to set up custom navigation.</small>
+                        </p>
+                    </div>
+                {% endfor %}
+
+                <!-- Static top navigation items -->
+                <div class="nav-panel static-nav" data-panel-type="system">
+                    <h4 class="nav-panel-title">System Navigation</h4>
+                    {% for item in top_navigation_items %}
+                        <a href="{{ item.url }}" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;">
+                            <span class="nav-icon">{{ item.icon }}</span>
+                            <span class="nav-text">{{ item.name }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Enhanced Main Body Section -->
+        <div class="main-body">
+            <div class="welcome-section">
+                <h2>Welcome to {{ current_tenant.name }} PolySaaS Platform</h2>
+                <div class="welcome-text">
+                    Your <strong>{{ current_tenant.name }} Dynamic Orchestration Service Engine</strong> is operational and ready to serve.
+                    This enterprise-grade technology platform provides comprehensive multi-tenant management,
+                    advanced orchestration capabilities, and professional administration tools designed for
+                    {{ current_tenant.name }}'s mission-critical operations and scalable enterprise solutions.
+                </div>
+
+                <!-- Dashboard Buttons (Big Ass Buttons - BABs) -->
+                {% if dashboard_buttons %}
+                    <div class="dashboard-grid">
+                        {% for button in dashboard_buttons %}
+                            <a href="{{ button.url }}"
+                               class="dashboard-button btn-size-{{ button.size }} {{ button.button_css_class }}"
+                               target="{{ button.target }}"
+                               onclick="trackButtonClick({{ button.id }})"
+                               style="{% if button.color %}border-left-color: {{ button.color }};{% endif %}">
+                                <span class="button-icon">{{ button.get_icon_display }}</span>
+                                <h3 class="button-title">{{ button.title }}</h3>
+                                <p class="button-description">{{ button.description }}</p>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <!-- No buttons configured message -->
+                    <div class="no-buttons-message">
+                        <h3>�️ Configure Your Dashboard</h3>
+                        <p>Welcome to your personalized PolySaaS dashboard! You haven't configured any dashboard buttons yet.</p>
+                        <p>Dashboard buttons (Big Ass Buttons) allow you to customize your landing page with quick access to your most-used features and tools.</p>
+                        <div class="config-hint">
+                            <strong>Pro Tip:</strong> Contact your administrator to set up custom dashboard buttons tailored to your workflow.
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced Status Bar Section -->
+    <div class="status-bar">
+        <div class="status-item">
+            <span class="status-label">System Status</span>
+            <span class="status-value operational">🟢 {{ status_info.system_status|title }}</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Current Tenant</span>
+            <span class="status-value">🏢 {{ current_tenant.name }}</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Tenant Users</span>
+            <span class="status-value">👥 {{ status_info.tenant_users_count }}</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Navigation</span>
+            <span class="status-value">🧭 {{ status_info.total_navigation_panels }} panels, {{ status_info.total_navigation_items }} items</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Last Login</span>
+            <span class="status-value">🕐 {{ status_info.last_login|date:"M d, H:i" }}</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Server Time</span>
+            <span class="status-value">⏰ {{ status_info.current_time|date:"H:i:s" }}</span>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleNavigation() {
+    const sidebar = document.getElementById('sidebar-nav');
+    const mainContent = document.querySelector('.main-content-area');
+    const navToggle = document.getElementById('nav-toggle');
+
+    console.log('Toggle clicked!', {
+        sidebarFound: !!sidebar,
+        mainContentFound: !!mainContent,
+        navToggleFound: !!navToggle,
+        sidebarClasses: sidebar?.className,
+        beforeToggle: sidebar?.classList.contains('sidebar-collapsed')
+    });
+
+    sidebar.classList.toggle('sidebar-collapsed');
+    mainContent.classList.toggle('sidebar-collapsed');
+    navToggle.classList.toggle('collapsed');
+
+    console.log('After toggle:', {
+        sidebarClasses: sidebar?.className,
+        afterToggle: sidebar?.classList.contains('sidebar-collapsed')
+    });
+}
+
+// Auto-update server time
+function updateTime() {
+    const now = new Date();
+    const timeElements = document.querySelectorAll('.status-value');
+    const serverTimeElement = timeElements[timeElements.length - 1]; // Last status item
+    if (serverTimeElement) {
+        serverTimeElement.textContent = now.toLocaleTimeString('en-US', {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+}
+
+// Update time every second
+setInterval(updateTime, 1000);
+
+// Click tracking for navigation items
+async function trackNavigationClick(itemId) {
+    try {
+        const response = await fetch('/dose/api/track-click/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify({
+                item_id: itemId
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                // Update click count display if element exists
+                const clickElement = document.querySelector(`[data-item-id="${itemId}"] .nav-clicks`);
+                if (clickElement) {
+                    clickElement.textContent = data.clicks;
+                }
+            }
+        }
+    } catch (error) {
+        console.log('Click tracking failed:', error);
+        // Fail silently - don't prevent navigation
+    }
+}
+
+// Click tracking for dashboard buttons (BABs)
+async function trackButtonClick(buttonId) {
+    try {
+        const response = await fetch('/dose/api/track-button-click/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify({
+                button_id: buttonId
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                console.log(`Button "${data.button_title}" clicked - Total clicks: ${data.clicks}`);
+            }
+        }
+    } catch (error) {
+        console.log('Button click tracking failed:', error);
+        // Fail silently - don't prevent navigation
+    }
+}
+
+// AJAX Content Loader for External Services (Gmail, OSTicket, etc.)
+function loadServiceContent(url, event) {
+    event.preventDefault();
+
+    const mainBody = document.querySelector('.main-body');
+    if (!mainBody) return;
+
+    // Show loading indicator
+    mainBody.innerHTML = '<div style="text-align: center; padding: 3rem;"><div style="font-size: 2rem; margin-bottom: 1rem;">⏳</div><p>Loading...</p></div>';
+
+    // Fetch content with AJAX header
+    fetch(url, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+        .then(response => response.text())
+        .then(html => {
+            // Inject content directly (it's already a fragment)
+            mainBody.innerHTML = html;
+
+            // Execute any scripts in the loaded content
+            const scripts = mainBody.querySelectorAll('script');
+            scripts.forEach(oldScript => {
+                const newScript = document.createElement('script');
+                Array.from(oldScript.attributes).forEach(attr =>
+                    newScript.setAttribute(attr.name, attr.value)
+                );
+                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+
+            // Update URL without reload
+            history.pushState({url: url}, '', url);
+        })
+        .catch(error => {
+            console.error('Error loading content:', error);
+            mainBody.innerHTML = '<div style="text-align: center; padding: 3rem; color: #e74c3c;"><div style="font-size: 2rem; margin-bottom: 1rem;">❌</div><p>Error loading content. Please try again.</p></div>';
+        });
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', function(event) {
+    if (event.state && event.state.url) {
+        loadServiceContent(event.state.url, {preventDefault: () => {}});
+    }
+});
+
+// Initialize navigation state and event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Navigation starts EXPANDED to show all items (same as admin sidebar)
+    const sidebar = document.getElementById('sidebar-nav');
+    const mainContent = document.querySelector('.main-content-area');
+    const navToggle = document.getElementById('nav-toggle');
+
+    // Ensure sidebar is expanded on load
+    sidebar.classList.remove('sidebar-collapsed');
+    mainContent.classList.remove('sidebar-collapsed');
+    navToggle.classList.remove('collapsed');
+
+    // Intercept external service links for AJAX loading
+    document.querySelectorAll('.nav-item[href*="/dose/"]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            // Load Gmail, OSTicket, etc. via AJAX
+            if (href.includes('/dose/gmail') || href.includes('/dose/osticket')) {
+                loadServiceContent(href, e);
+            }
+        });
+    });
+
+    // Add click tracking to navigation items
+    document.querySelectorAll('.nav-item[data-item-id]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const itemId = this.getAttribute('data-item-id');
+            if (itemId) {
+                // Track click asynchronously (don't block navigation)
+                trackNavigationClick(itemId);
+            }
+        });
+    });
+});
+</script>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var landingBtn = document.getElementById('landing-theme-toggle-btn');
+    var landingIcon = document.getElementById('landing-theme-toggle-icon');
+    function updateLandingIcon(mode) {
+        if (landingIcon) {
+            landingIcon.className = '';
+            landingIcon.textContent = mode === 'dark' ? '\u263D' : '\u2600';
+            landingIcon.title = mode === 'dark' ? 'Switch to day mode' : 'Switch to night mode';
+        }
+    }
+    function setLandingTheme(mode) {
+        if (mode === 'dark') {
+            document.documentElement.style.setProperty('--dose-primary', '#1a252f');
+            document.documentElement.style.setProperty('--dose-light', '#222831');
+            document.documentElement.style.setProperty('--dose-dark', '#11151a');
+            document.body.style.backgroundColor = '#181c20';
+        } else {
+            document.documentElement.style.setProperty('--dose-primary', '#457894');
+            document.documentElement.style.setProperty('--dose-light', '#f5f5f5');
+            document.documentElement.style.setProperty('--dose-dark', '#34495e');
+            document.body.style.backgroundColor = '#f5f5f5';
+        }
+        localStorage.setItem('doseTheme', mode);
+        updateLandingIcon(mode);
+    }
+    function toggleLandingTheme() {
+        var current = localStorage.getItem('doseTheme') || 'light';
+        var next = current === 'light' ? 'dark' : 'light';
+        setLandingTheme(next);
+    }
+    if (landingBtn) {
+        landingBtn.addEventListener('click', toggleLandingTheme);
+    }
+    setLandingTheme(localStorage.getItem('doseTheme') || 'light');
+    updateLandingIcon(localStorage.getItem('doseTheme') || 'light');
+});
+</script>
+{% endblock %}
+
+

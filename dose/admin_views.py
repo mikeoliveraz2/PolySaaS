@@ -1,0 +1,580 @@
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
+from django.http import JsonResponse, HttpResponse, HttpResponseNotFound
+from django.contrib.auth.decorators import login_required
+import requests
+import re
+
+@csrf_exempt
+def test_post(request):
+    print('[DEBUG] /dose/test/ POST received:', request.method, request.body)
+    return JsonResponse({'status': 'ok', 'method': request.method, 'body': request.body.decode('utf-8')})
+
+print("[DEBUG] admin_views.py module loaded")
+
+def _debug_pre_decorator():
+    print("[DEBUG] set_theme PRE-DECORATOR ENTRY")
+_debug_pre_decorator()
+
+# AJAX endpoint to persist theme selection from Jazzmin GUI picker
+@csrf_exempt
+def set_theme(request):
+    print("[DEBUG] --- set_theme ENTRY ---")
+    print(f"[DEBUG] request.method: {request.method}")
+    print(f"[DEBUG] request.path: {request.path}")
+    print(f"[DEBUG] request.user: {getattr(request, 'user', None)} (is_authenticated: {getattr(request.user, 'is_authenticated', False)})")
+    print(f"[DEBUG] request.tenant: {getattr(request, 'tenant', None)}")
+    print(f"[DEBUG] request.GET: {request.GET.dict()}")
+    print(f"[DEBUG] request.POST: {request.POST.dict()}")
+    print(f"[DEBUG] request.body: {request.body}")
+    print("[DEBUG] set_theme VIEW ENTRY: This should always print on POST to /dose/set-theme/")
+    print(f"[DEBUG] Session keys: {getattr(request, 'session', None) and dict(request.session.items())}")
+    print(f"[DEBUG] request.tenant: {getattr(request, 'tenant', None)}")
+    # Try to fetch tenant from session if not present
+    tenant = getattr(request, 'tenant', None)
+    if tenant is None:
+        tenant_id = request.session.get('tenant_id')
+        print(f"[DEBUG] Fallback: tenant_id from session = {tenant_id}")
+        from dose.models import Tenant
+        if tenant_id:
+            tenant = Tenant.objects.filter(id=tenant_id).first()
+            print(f"[DEBUG] Fallback: tenant from DB = {tenant}")
+    print(f"[DEBUG] set_theme called: method={request.method}, user={getattr(request, 'user', None)}")
+    print(f"[DEBUG] request.POST: {request.POST.dict()}")
+    print(f"[DEBUG] request.body: {request.body}")
+    if not request.user.is_authenticated:
+        print("[DEBUG] set_theme: user not authenticated")
+        return JsonResponse({"status": "error", "message": "User not authenticated"}, status=400)
+    if request.method != "POST":
+        print(f"[DEBUG] set_theme: invalid method {request.method}")
+        return JsonResponse({"status": "error", "message": "Invalid method"}, status=400)
+    from django.contrib.auth import get_user_model
+    from dose.models import Tenant
+    User = get_user_model()
+    user = getattr(request, 'user', None)
+    public_tenant = Tenant.objects.filter(schema_name='public').first()
+    print(f"[DEBUG] public_tenant: {public_tenant}")
+    if not public_tenant:
+        print("[ERROR] No public tenant found!")
+        return JsonResponse({"status": "error", "message": "No public tenant found"}, status=400)
+    profile = None
+    if user and user.is_authenticated:
+        try:
+            profile = UserProfile.objects.get(user=user, tenant=public_tenant)
+        except UserProfile.DoesNotExist:
+            print(f"[DEBUG] UserProfile not found for user={user}, tenant={public_tenant}. Creating new.")
+            profile = UserProfile(user=user, tenant=public_tenant)
+    print(f"[DEBUG] profile: {profile}")
+    import logging
+    # Main POST logic
+    print(f"[ThemePicker] Raw POST body: {request.body}")
+    print(f"[ThemePicker] request.POST dict: {request.POST.dict()}")
+    # Try to get data from form-encoded POST first
+    light_theme = request.POST.get("light_theme")
+    dark_theme = request.POST.get("dark_theme")
+    display_mode = request.POST.get("display_mode")
+    print(f"[DEBUG] Parsed POST fields: light_theme={light_theme}, dark_theme={dark_theme}, display_mode={display_mode}")
+    # Always try to parse JSON if POST is empty
+    if not any([light_theme, dark_theme, display_mode]):
+        try:
+            import json
+            body = request.body.decode().strip()
+            print(f"[ThemePicker] Raw request.body: {body}")
+            if body:
+                data = json.loads(body)
+                light_theme = data.get("light_theme", light_theme)
+                dark_theme = data.get("dark_theme", dark_theme)
+                display_mode = data.get("display_mode", display_mode)
+                print(f"[ThemePicker] Parsed JSON: {data}")
+        except Exception as e:
+            print(f"[ThemePicker] JSON decode error: {e}")
+    print(f"[DEBUG] Final fields: light_theme={light_theme}, dark_theme={dark_theme}, display_mode={display_mode}")
+    updated_fields = []
+    if light_theme is not None and str(light_theme).strip() != "":
+        profile.light_theme = light_theme
+        updated_fields.append("light_theme")
+    if dark_theme is not None and str(dark_theme).strip() != "":
+        profile.dark_theme = dark_theme
+        updated_fields.append("dark_theme")
+    if display_mode is not None and str(display_mode).strip() != "":
+        if display_mode in ("light", "dark"):
+            profile.last_selected_theme = profile.light_theme if display_mode == "light" else profile.dark_theme
+            updated_fields.append("display_mode")
+    print(f"[ThemePicker] Before save: light_theme={profile.light_theme}, dark_theme={profile.dark_theme}, last_selected_theme={profile.last_selected_theme}")
+    try:
+        profile.save()
+        print(f"[ThemePicker] Save successful.")
+    except Exception as e:
+        print(f"[ThemePicker] Save failed: {e}")
+    refreshed = UserProfile.objects.get(user=user, tenant=public_tenant)
+    print(f"[ThemePicker] After save: last_selected_theme={refreshed.last_selected_theme}, light={refreshed.light_theme}, dark={refreshed.dark_theme}")
+    return JsonResponse({"status": "ok", "updated_fields": updated_fields, "light_theme": profile.light_theme, "dark_theme": profile.dark_theme, "display_mode": display_mode, "last_selected_theme": profile.last_selected_theme})
+
+from django.shortcuts import render, redirect
+from dose.models import UserProfile
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+
+THEMES = [
+    "flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux","minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab","superhero","united","yeti"
+]
+
+@login_required
+def select_theme(request):
+    import logging
+    from django.contrib import messages
+    from dose.tenant_utils import get_current_tenant
+    from dose.models import Tenant
+
+    # Debug session contents
+    print(f"[DEBUG] Session contents: {dict(request.session.items())}")
+    print(f"[DEBUG] Session key 'tenant_id': {request.session.get('tenant_id')}")
+
+    # Get the current tenant (required for UserProfile)
+    tenant = get_current_tenant(request)
+    print(f"[DEBUG] get_current_tenant returned: {tenant}")
+
+    # If no tenant from session, try to get from user's existing profile
+    if not tenant:
+        try:
+            existing_profile = getattr(request.user, 'userprofile', None)
+            if existing_profile:
+                tenant = existing_profile.tenant
+                print(f"[DEBUG] Fallback to tenant from user profile: {tenant}")
+                request.session['tenant_id'] = tenant.id
+                request.session['tenant_name'] = tenant.name
+            else:
+                tenant = Tenant.objects.filter(schema_name='public').first()
+                print(f"[DEBUG] Final fallback to public tenant: {tenant}")
+        except Exception as e:
+            print(f"[DEBUG] Error getting tenant from user profile: {e}")
+            tenant = Tenant.objects.filter(schema_name='public').first()
+
+    print(f"[DEBUG] Using tenant: {tenant.name} (schema: {tenant.schema_name})")
+    profile, created = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
+    print(f"[DEBUG] Profile {'created' if created else 'found'}: light={profile.light_theme}, dark={profile.dark_theme}")
+    if request.method == "POST":
+        print(f"[DEBUG] POST request received")
+        print(f"[DEBUG] POST data: {dict(request.POST.items())}")
+
+        old_light = profile.light_theme
+        old_dark = profile.dark_theme
+        new_light = request.POST.get("light_theme", profile.light_theme)
+        new_dark = request.POST.get("dark_theme", profile.dark_theme)
+        new_system_pref = request.POST.get("use_system_pref") == "on"
+        display_mode = request.POST.get("display_mode", "light")
+
+        print(f"[DEBUG] Theme changes: {old_light}->{new_light}, old_dark->{new_dark}, system_pref: {new_system_pref}, display_mode: {display_mode}")
+
+        profile.light_theme = new_light
+        profile.dark_theme = new_dark
+        profile.use_system_pref = new_system_pref
+        profile.last_selected_theme = new_light if display_mode == "light" else new_dark
+        profile.save()
+
+        print(f"[DEBUG] Profile saved: light={profile.light_theme}, dark={profile.dark_theme}, last={profile.last_selected_theme}")
+        logging.info(f"Theme selector POST: user={request.user.username}, old_light={old_light}, new_light={profile.light_theme}, old_dark={old_dark}, new_dark={profile.dark_theme}, use_system_pref={profile.use_system_pref}")
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Theme saved successfully',
+            'light_theme': profile.light_theme,
+            'dark_theme': profile.dark_theme,
+            'last_selected_theme': profile.last_selected_theme
+        })
+    else:
+        logging.info(f"Theme selector GET: user={request.user.username}, light_theme={profile.light_theme}, dark_theme={profile.dark_theme}")
+        context = {
+            "themes": THEMES,
+            "light_theme": profile.light_theme,
+            "dark_theme": profile.dark_theme,
+            "use_system_pref": profile.use_system_pref,
+        }
+        print(f"[DEBUG] Template context: {context}")
+        return render(request, "admin/select_theme.html", context)
+
+@login_required
+def font_controls(request):
+    request.session['show_font_controls'] = True
+    return redirect('/admin/')
+
+@login_required
+def osticket_view(request):
+    return render(request, 'passthrough/osticket_simple.html', {})
+
+def _rewrite_css_selectors(css_text, prefix):
+    import re
+    css_text = re.sub(r'\bhtml\b[^{]*{[^}]*}', '', css_text)
+    css_text = re.sub(r'\bbody\b[^{]*{[^}]*}', '', css_text)
+    css_text = re.sub(r'\*\s*{[^}]*}', '', css_text)
+    lines = css_text.split('\n')
+    scoped_lines = []
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith('@') and '{' in line:
+            if not line.startswith(prefix):
+                line = f"{prefix} {line}"
+        scoped_lines.append(line)
+    return '\n'.join(scoped_lines)
+
+@login_required
+def nextcloud_view(request):
+    from django.utils.safestring import mark_safe
+    import os
+    from django.conf import settings
+
+    print(f"[DEBUG] NextCloud view called by user: {request.user}")
+
+    captured_file = os.path.join(settings.BASE_DIR, 'nextcloud_logged_in.html')
+
+    if os.path.exists(captured_file):
+        try:
+            with open(captured_file, 'r', encoding='utf-8') as f:
+                nextcloud_html = f.read()
+
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(nextcloud_html, 'html.parser')
+
+            css_content = ""
+            for style_tag in soup.find_all('style'):
+                css_content += style_tag.get_text() + "\n"
+
+            body_content = str(soup.body) if soup.body else nextcloud_html
+
+            escaped_css = css_content.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+            escaped_body = body_content.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+
+            html_content = f"""
+            <style>
+            .nextcloud-full-container {{
+                position: relative;
+                width: 100%;
+                max-width: 1200px;
+                margin: 0 auto;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+                min-height: 85vh;
+                overflow: hidden;
+                border-radius: 12px;
+                box-shadow: inset 0 0 50px rgba(255,255,255,0.1), 0 20px 60px rgba(0,0,0,0.3);
+            }}
+            #nc-root {{ width: 100%; height: 85vh; padding-top: 120px; }}
+            .open-tab-btn-global {{
+                display: block;
+                margin: 0 0 18px auto;
+                background: #667eea;
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 18px;
+                font-size: 15px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                transition: background 0.2s;
+            }}
+            .open-tab-btn-global:hover {{ background: #4c51bf; }}
+            </style>
+
+            <button class="open-tab-btn-global" onclick="window.open('http://localhost:8888', '_blank')">Open in New Tab</button>
+            <div class="nextcloud-full-container">
+                <div id="nc-root"></div>
+            </div>
+
+            <div id="nc-data" style="display: none;">{escaped_body}</div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', () => {{
+                const root = document.getElementById('nc-root');
+                const shadow = root.attachShadow({{mode: 'open'}});
+                const originalHTML = document.getElementById('nc-data').innerHTML;
+                const shadowHTML = `<style>{escaped_css}</style>${{originalHTML}}`;
+                shadow.innerHTML = shadowHTML;
+                const scripts = shadow.querySelectorAll('script');
+                scripts.forEach(oldScript => {{
+                    const newScript = document.createElement('script');
+                    newScript.src = oldScript.src || null;
+                    newScript.textContent = oldScript.textContent || '';
+                    shadow.appendChild(newScript);
+                }});
+            }});
+            </script>
+            """
+        except Exception as e:
+            html_content = f"<div>Error loading NextCloud: {e}</div>"
+    else:
+        html_content = "<div>NextCloud content not found</div>"
+
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
+
+@login_required
+def monitor_logger_view(request):
+    from django.utils.safestring import mark_safe
+    import requests
+
+    try:
+        response = requests.get('http://localhost:5000', timeout=10)
+        if response.status_code == 200:
+            monitor_html = response.text
+            escaped_html = monitor_html.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+            html_content = f"""
+            <style>
+            .monitor-widget-container {{ width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #ddd; }}
+            #monitor-frame {{ width: 100%; min-height: 700px; border: none; }}
+            </style>
+
+            <div class="monitor-widget-container">
+                <div id="monitor-frame"></div>
+            </div>
+
+            <div id="monitor-source" style="display: none;">{escaped_html}</div>
+
+            <script>
+            document.addEventListener('DOMContentLoaded', () => {{
+                const frame = document.getElementById('monitor-frame');
+                const shadow = frame.attachShadow({{mode: 'open'}});
+                const sourceHTML = document.getElementById('monitor-source').innerHTML;
+                shadow.innerHTML = sourceHTML;
+            }});
+            </script>
+            """
+        else:
+            raise Exception("Bad status")
+    except Exception as e:
+        html_content = "<div>Monitor Logger unavailable</div>"
+
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
+
+@login_required
+def odoo_view(request):
+    import requests
+    from django.utils.safestring import mark_safe
+
+    try:
+        response = requests.get("http://localhost:8069/web", timeout=8)
+        if response.status_code == 200:
+            content = f"""
+            <style>
+            .odoo-container {{ width: 100%; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.1); display: flex; flex-direction: column; min-height: 90vh; }}
+            .odoo-header {{ background: linear-gradient(135deg,#7C3AED,#A855F7); color: white; padding: 16px 24px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }}
+            .odoo-frame {{ width: 100%; height: 85vh; border: none; }}
+            .open-tab-btn-global {{
+                display: block;
+                margin: 0 0 18px auto;
+                background: #7C3AED;
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 18px;
+                font-size: 15px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                transition: background 0.2s;
+            }}
+            .open-tab-btn-global:hover {{ background: #5b21b6; }}
+            </style>
+
+            <button class="open-tab-btn-global" onclick="window.open('http://localhost:8069/web', '_blank')">Open in New Tab</button>
+            <div class="odoo-container" style="position:relative;">
+                <div class="odoo-header">
+                    <span>🏢 Odoo 18 Enterprise • polyodoo</span>
+                    <span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:12px">✅ Live</span>
+                </div>
+                <iframe src="http://localhost:8069/web" class="odoo-frame"></iframe>
+            </div>
+            """
+        else:
+            raise Exception("Not responding")
+    except Exception as e:
+        content = "<div>Odoo not running</div>"
+
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(content)})
+
+@never_cache
+@login_required
+def odoo_passthrough_view(request, path="web"):
+    backend_url = f"http://localhost:8069/{path}"
+    if request.META.get('QUERY_STRING'):
+        backend_url += f"?{request.META['QUERY_STRING']}"
+
+    headers = {
+        k: v for k, v in request.META.items()
+        if k.startswith('HTTP_') or k in ('CONTENT_TYPE', 'CONTENT_LENGTH')
+    }
+
+    try:
+        resp = requests.request(
+            method=request.method,
+            url=backend_url,
+            headers=headers,
+            data=request.body,
+            cookies=request.COOKIES,
+            allow_redirects=False,
+            stream=True,
+            timeout=30
+        )
+    except requests.RequestException:
+        return HttpResponse("Odoo not running on port 8069", status=502)
+
+    proxy_response = HttpResponse(
+        resp.content,
+        status=resp.status_code,
+        content_type=resp.headers.get('Content-Type', 'text/html')
+    )
+
+    excluded_headers = {'content-encoding', 'content-length', 'transfer-encoding', 'connection'}
+    for k, v in resp.headers.items():
+        if k.lower() not in excluded_headers:
+            proxy_response[k] = v
+
+    if 'text/html' in proxy_response.get('Content-Type', ''):
+        content = resp.text
+        content = content.replace('href="/', 'href="/pt/admin/odoo/')
+        content = content.replace('src="/', 'src="/pt/admin/odoo/')
+        content = content.replace('action="/', 'action="/pt/admin/odoo/')
+        content = content.replace("window.location.href = '", "window.location.href = '/pt/admin/odoo/")
+        content = content.replace('="/web/', '="/pt/admin/odoo/web/')
+        proxy_response.content = content.encode()
+
+    return proxy_response
+
+@login_required
+def dolibarr_view(request):
+    from django.utils.safestring import mark_safe
+
+    html_content = """
+    <div style="background: linear-gradient(135deg, #059669, #10B981); color:white; padding:40px; text-align:center; border-radius:12px;">
+        <h1>💼 Dolibarr ERP</h1>
+        <p>Open Source ERP & CRM • Coming Soon</p>
+    </div>
+    """
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
+
+@login_required
+def polysysmon_view(request):
+    from django.utils.safestring import mark_safe
+
+    html_content = """
+    <div style="background: linear-gradient(135deg, #DC2626, #EF4444); color:white; padding:40px; text-align:center; border-radius:12px;">
+        <h1>🖥️ PolySysMon</h1>
+        <p>System Monitoring • Coming Soon</p>
+    </div>
+    """
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
+
+@login_required
+def aiaspeers_view(request):
+    from django.utils.safestring import mark_safe
+
+    html_content = """
+    <div style="background: linear-gradient(135deg, #F59E0B, #FBBF24); color:white; padding:40px; text-align:center; border-radius:12px;">
+        <h1>🤖 AI As Peers</h1>
+        <p>Artificial Intelligence Platform • Coming Soon</p>
+    </div>
+    """
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
+
+@login_required
+def gmail_view(request):
+    from django.utils.safestring import mark_safe
+
+    html_content = """
+    <div style="background: linear-gradient(135deg, #DC2626, #EF4444); color:white; padding:40px; text-align:center; border-radius:12px;">
+        <h1>📧 Gmail Enterprise</h1>
+        <p>Email Management • Coming Soon</p>
+    </div>
+    """
+    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
+
+@login_required
+def mattermost_view(request):
+    """
+    Mattermost • Chat & Kanban (screenshot version — looks integrated)
+    """
+    from django.utils.safestring import mark_safe
+
+    content = f"""
+    <style>
+    .widget-header {{
+        background: linear-gradient(135deg, #006C66, #00A3AD);
+        color: white;
+        padding: 16px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 12px 12px 0 0;
+        font-weight: 600;
+        font-size: 18px;
+    }}
+    .view-btn {{
+        background: rgba(255,255,255,0.25);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        margin-left: 8px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 13px;
+    }}
+    .view-btn:hover {{ background: rgba(255,255,255,0.4); }}
+    .view-btn.active {{ background: rgba(255,255,255,0.5); font-weight: bold; }}
+    .fake-iframe {{
+        width: 100%;
+        height: calc(90vh - 70px);
+        background: url('/static/MatterMost/images/1-Town-Square-PolySaaS-online-Mattermost-12-13-2025_01_22_PM.png') no-repeat center top;
+        background-size: contain;
+        border: none;
+        border-radius: 0 0 12px 12px;
+        position: relative;
+        cursor: pointer;
+    }}
+    .fake-overlay {{
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 20px 40px;
+        border-radius: 12px;
+        font-size: 24px;
+        font-weight: bold;
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+    }}
+    .fake-iframe:hover .fake-overlay {{
+        opacity: 1;
+    }}
+    </style>
+
+    <div class="widget-header">
+        <div>Mattermost • Chat & Kanban</div>
+        <div>
+            <button onclick="setView('here')" id="btn-here" class="view-btn active">Open Here</button>
+            <button onclick="setView('tab')" id="btn-tab" class="view-btn">Open in New Tab</button>
+        </div>
+    </div>
+
+    <div class="fake-iframe" onclick="alert('Pro tip: Click \"Open in New Tab\" for the full live experience — seamless embed coming soon! 😉')">
+        <div class="fake-overlay">Full embed coming soon!<br>Try "Open in New Tab" for now</div>
+    </div>
+
+    <script>
+    function setView(mode) {{
+        localStorage.setItem('mattermost_view_mode', mode);
+        document.getElementById('btn-here').classList.toggle('active', mode === 'here');
+        document.getElementById('btn-tab').classList.toggle('active', mode === 'tab');
+        if (mode === 'tab') {{
+            window.open('http://localhost:8065', '_blank');
+        }}
+    }}
+    const saved = localStorage.getItem('mattermost_view_mode') || 'here';
+    setView(saved);
+    </script>
+    """
+
+    return render(request, 'admin/nextcloud_view.html', {
+        'html_content': mark_safe(content)
+    })

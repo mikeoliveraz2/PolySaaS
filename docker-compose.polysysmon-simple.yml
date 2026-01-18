@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  polysysmon-simple:
+    build:
+      context: ./placeholders/polysysmon
+      dockerfile: Dockerfile
+    container_name: polysaas-polysysmon-simple
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+    networks:
+      - polysaas-network
+
+networks:
+  polysaas-network:
+    driver: bridge

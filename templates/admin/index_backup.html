@@ -1,0 +1,105 @@
+{% extends 'admin/base_site.html' %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <!-- Dashboard Admin Integration - Full Navigation -->
+    <script>
+        console.log('Dashboard template loaded with full admin context');
+
+        // Force full admin navigation to appear
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.querySelector('.main-sidebar');
+            console.log('DASHBOARD: Sidebar found:', !!sidebar);
+
+            if (sidebar) {
+                const navItems = sidebar.querySelectorAll('.nav-item');
+                console.log('DASHBOARD: Current nav items:', navItems.length);
+
+                if (navItems.length <= 3) {
+                    console.log('DASHBOARD: Injecting full admin navigation');
+
+                    // Create full admin navigation
+                    const navHtml = `
+                        <nav class="mt-2">
+                            <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+                                <li class="nav-item">
+                                    <a href="/admin/" class="nav-link active">
+                                        <i class="nav-icon fas fa-tachometer-alt"></i>
+                                        <p>Dashboard</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="/admin/auth/user/" class="nav-link">
+                                        <i class="nav-icon fas fa-users"></i>
+                                        <p>Users</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="/admin/auth/group/" class="nav-link">
+                                        <i class="nav-icon fas fa-users-cog"></i>
+                                        <p>Groups</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="/admin/dose/" class="nav-link">
+                                        <i class="nav-icon fas fa-cogs"></i>
+                                        <p>Dose Services</p>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    `;
+
+                    // Find the nav container and replace it
+                    const existingNav = sidebar.querySelector('nav');
+                    if (existingNav) {
+                        existingNav.innerHTML = navHtml;
+                    } else {
+                        sidebar.innerHTML = navHtml;
+                    }
+
+                    console.log('DASHBOARD: Full navigation injected');
+                }
+            }
+        });
+    </script>
+
+    <style>
+        /* DASHBOARD SIDEBAR FIX - No red background */
+        .main-sidebar {
+            width: 250px !important;
+            min-width: 250px !important;
+            max-width: 250px !important;
+            background-color: #343a40 !important; /* Dark admin theme */
+        }
+
+        /* Ensure content wrapper adjusts to sidebar */
+        .content-wrapper {
+            margin-left: 250px !important;
+        }
+
+        /* Handle collapsed states */
+        .sidebar-collapse .main-sidebar {
+            width: 250px !important;
+            margin-left: 0px !important;
+        }
+
+        .sidebar-collapse .content-wrapper {
+            margin-left: 250px !important;
+        }
+
+        /* Sidebar internal elements */
+        .main-sidebar .sidebar {
+            width: 250px !important;
+        }
+
+        .main-sidebar .brand-link {
+            width: 250px !important;
+        }
+
+        /* Force sidebar visibility */
+        .main-sidebar .sidebar .nav {
+            width: 250px !important;
+        }
+    </style>
+{% endblock %}

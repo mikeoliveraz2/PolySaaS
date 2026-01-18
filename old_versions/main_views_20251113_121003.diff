@@ -1,0 +1,61 @@
+﻿diff --git a/dose/views/main.py b/dose/views/main.py
+index 6ba90cb..f84e7c1 100644
+--- a/dose/views/main.py
++++ b/dose/views/main.py
+@@ -643,7 +643,7 @@ def landing_page(request):
+ 
+     # Static navigation menu items (for header/top menu)
+     top_navigation_items = [
+-        {'name': 'Dashboard', 'url': '/dose/', 'icon': '≡ƒôè'},
++        {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '≡ƒôè'},
+         {'name': 'Admin Panel', 'url': '/admin/', 'icon': 'ΓÜÖ∩╕Å'},
+         {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '≡ƒñû'},
+         {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '≡ƒöä'},
+@@ -690,7 +690,46 @@ def landing_page(request):
+ from django.shortcuts import render
+ def dashboard(request):
+     """Basic dashboard view for Django."""
+-    return render(request, 'dose/dashboard.html')
++    from dose.models import Tenant, UserProfile, ErrorLog
++    from django.utils import timezone
++    from datetime import timedelta
++    
++    # Get current tenant
++    tenant = None
++    try:
++        profile = UserProfile.objects.get(user=request.user)
++        tenant = profile.tenant
++    except (UserProfile.DoesNotExist, AttributeError):
++        tenant_id = request.session.get('tenant_id')
++        if tenant_id:
++            try:
++                tenant = Tenant.objects.get(id=tenant_id)
++            except Tenant.DoesNotExist:
++                pass
++    
++    # Get active users count (dummy data for now)
++    active_users = 5
++    
++    # Get requests in last hour (dummy data for now)
++    requests_last_hour = 42
++    
++    # Get recent errors
++    tenant_errors = []
++    if tenant:
++        one_hour_ago = timezone.now() - timedelta(hours=1)
++        tenant_errors = ErrorLog.objects.filter(
++            tenant=tenant,
++            timestamp__gte=one_hour_ago
++        ).order_by('-timestamp')[:5]
++    
++    context = {
++        'tenant': tenant,
++        'active_users': active_users,
++        'requests_last_hour': requests_last_hour,
++        'tenant_errors': tenant_errors,
++    }
++    
++    return render(request, 'dose/dashboard.html', context)
+ # Logout view
+ from django.contrib.auth import logout
+ 
