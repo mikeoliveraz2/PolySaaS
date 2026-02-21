@@ -20,15 +20,17 @@ def analyze_polysniffer_capture(endpoint_id):
 
     endpoint = PassThroughEndpoint.objects.get(id=endpoint_id)
 
-    # Get all captures for this endpoint
-    captures = TrafficLog.objects.filter(
-        endpoint_name__icontains=endpoint.trigger_path or endpoint.endpoint_url
-    ).order_by('captured_at')
+    captures = TrafficLog.objects.none()
+    search_terms = [t for t in [endpoint.trigger_path, endpoint.endpoint_url] if t]
+    for term in search_terms:
+        captures = captures | TrafficLog.objects.filter(endpoint_name__icontains=term)
+        captures = captures | TrafficLog.objects.filter(url__icontains=term)
+    captures = captures.distinct().order_by('captured_at')
 
     if not captures.exists():
         return {
             "error": "No captures found for this endpoint",
-            "suggestion": "Run PolySniffer first to capture traffic"
+            "suggestion": "Use the PolySniffer Chrome extension to capture traffic, then try again"
         }
 
     analysis = {
@@ -60,7 +62,7 @@ def extract_base_url(url):
 def analyze_authentication_flow(captures):
     """Analyze authentication flow from captures"""
     auth_analysis = {
-        "method": None,  # form_based, ajax, oauth2, api_key
+        "method": None,
         "login_url": None,
         "csrf_token_field": None,
         "csrf_token_source": None,
@@ -73,68 +75,66 @@ def analyze_authentication_flow(captures):
         "session_cookie": None
     }
 
-    # Find login page
-    login_captures = [c for c in captures if 'login' in c.url.lower() or 'login' in c.path.lower()]
+    captures_list = list(captures)
+
+    login_captures = [c for c in captures_list if 'login' in (c.url or '').lower() or 'login' in (c.path or '').lower()]
     if not login_captures:
         return auth_analysis
 
     login_capture = login_captures[0]
     auth_analysis["login_url"] = login_capture.url
 
-    # Analyze login page HTML for form structure
-    if login_capture.response_body:
-        soup = BeautifulSoup(login_capture.response_body, 'html.parser')
+    response_body = login_capture.response_body or ''
+    if response_body:
+        try:
+            soup = BeautifulSoup(response_body, 'html.parser')
+        except Exception:
+            soup = None
 
-        # Find login form
-        form = soup.find('form')
-        if form:
-            auth_analysis["method"] = "form_based"
-            auth_analysis["submit_url"] = form.get('action') or login_capture.url
-            auth_analysis["submit_method"] = form.get('method', 'POST').upper()
+        if soup:
+            form = soup.find('form')
+            if form:
+                auth_analysis["method"] = "form_based"
+                auth_analysis["submit_url"] = form.get('action') or login_capture.url
+                auth_analysis["submit_method"] = form.get('method', 'POST').upper()
 
-            # Find CSRF token
-            csrf_input = soup.find('input', {'name': re.compile(r'csrf|token', re.I)})
-            if csrf_input:
-                auth_analysis["csrf_token_field"] = csrf_input.get('name')
-                auth_analysis["csrf_token_source"] = f"input[name='{csrf_input.get('name')}']"
+                csrf_input = soup.find('input', {'name': re.compile(r'csrf|token', re.I)})
+                if csrf_input:
+                    auth_analysis["csrf_token_field"] = csrf_input.get('name')
+                    auth_analysis["csrf_token_source"] = f"input[name='{csrf_input.get('name')}']"
 
-            # Find username/password fields
-            username_input = soup.find('input', {'type': 'text'}) or soup.find('input', {'name': re.compile(r'user|email|login', re.I)})
-            password_input = soup.find('input', {'type': 'password'})
+                username_input = soup.find('input', {'type': 'text'}) or soup.find('input', {'name': re.compile(r'user|email|login', re.I)})
+                password_input = soup.find('input', {'type': 'password'})
 
-            if username_input:
-                auth_analysis["username_field"] = username_input.get('name') or 'username'
-            if password_input:
-                auth_analysis["password_field"] = password_input.get('name') or 'password'
+                if username_input:
+                    auth_analysis["username_field"] = username_input.get('name') or 'username'
+                if password_input:
+                    auth_analysis["password_field"] = password_input.get('name') or 'password'
 
-    # Find login submission
-    login_submissions = [c for c in captures if c.method == 'POST' and ('login' in c.url.lower() or 'login' in c.path.lower())]
+    login_submissions = [c for c in captures_list if c.method == 'POST' and ('login' in (c.url or '').lower() or 'login' in (c.path or '').lower())]
     if login_submissions:
         submission = login_submissions[0]
-        auth_analysis["submit_headers"] = dict(submission.headers)
+        headers = submission.headers if isinstance(submission.headers, dict) else {}
+        body = submission.body or ''
+        auth_analysis["submit_headers"] = dict(headers)
 
-        # Check if it's AJAX
-        if submission.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'ajax' in submission.body.lower():
+        is_ajax = headers.get('X-Requested-With') == 'XMLHttpRequest' or (isinstance(body, str) and 'ajax' in body.lower())
+        if is_ajax:
             auth_analysis["method"] = "form_based_ajax"
             auth_analysis["submit_headers"]["X-Requested-With"] = "XMLHttpRequest"
             auth_analysis["submit_headers"]["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
 
-        # Analyze cookies before and after
-        cookies_before = submission.cookies
-        # Find next capture to see cookies after
-        submission_index = list(captures).index(submission)
-        if submission_index + 1 < len(captures):
-            next_capture = list(captures)[submission_index + 1]
-            cookies_after = next_capture.cookies
+        cookies_before = submission.cookies if isinstance(submission.cookies, dict) else {}
+        submission_index = captures_list.index(submission)
+        if submission_index + 1 < len(captures_list):
+            next_capture = captures_list[submission_index + 1]
+            cookies_after = next_capture.cookies if isinstance(next_capture.cookies, dict) else {}
 
-            # Find new cookies (session cookie)
             new_cookies = set(cookies_after.keys()) - set(cookies_before.keys())
-            if new_cookies:
-                # Likely session cookie
-                for cookie_name in new_cookies:
-                    if 'session' in cookie_name.lower() or 'sess' in cookie_name.lower():
-                        auth_analysis["session_cookie"] = cookie_name
-                        auth_analysis["required_cookies"].append(cookie_name)
+            for cookie_name in new_cookies:
+                if 'session' in cookie_name.lower() or 'sess' in cookie_name.lower():
+                    auth_analysis["session_cookie"] = cookie_name
+                    auth_analysis["required_cookies"].append(cookie_name)
 
     return auth_analysis
 
@@ -148,22 +148,22 @@ def analyze_request_patterns(captures):
     }
 
     for capture in captures:
-        # Collect all headers
-        for header_name in capture.headers.keys():
+        headers = capture.headers if isinstance(capture.headers, dict) else {}
+        cookies = capture.cookies if isinstance(capture.cookies, dict) else {}
+
+        for header_name in headers.keys():
             patterns["required_headers"].add(header_name)
 
-        # Track cookie usage per path
-        if capture.cookies:
-            path = capture.path
+        if cookies:
+            path = capture.path or ''
             if path not in patterns["cookie_dependencies"]:
                 patterns["cookie_dependencies"][path] = set()
-            patterns["cookie_dependencies"][path].update(capture.cookies.keys())
+            patterns["cookie_dependencies"][path].update(cookies.keys())
 
-    # Convert sets to lists for JSON serialization
     patterns["required_headers"] = list(patterns["required_headers"])
     patterns["cookie_dependencies"] = {
-        path: list(cookies)
-        for path, cookies in patterns["cookie_dependencies"].items()
+        path: list(cookies_set)
+        for path, cookies_set in patterns["cookie_dependencies"].items()
     }
 
     return patterns
@@ -249,33 +249,31 @@ def analyze_cookies(captures):
     }
 
     for capture in captures:
-        if capture.cookies:
-            cookie_analysis["all_cookies"].update(capture.cookies.keys())
+        cookies = capture.cookies if isinstance(capture.cookies, dict) else {}
+        if not cookies:
+            continue
 
-            # Identify session cookies
-            for cookie_name in capture.cookies.keys():
-                if 'session' in cookie_name.lower() or 'sess' in cookie_name.lower():
-                    if cookie_name not in cookie_analysis["session_cookies"]:
-                        cookie_analysis["session_cookies"].append(cookie_name)
+        cookie_analysis["all_cookies"].update(cookies.keys())
 
-                # Identify CSRF tokens
-                if 'csrf' in cookie_name.lower() or 'token' in cookie_name.lower():
-                    if cookie_name not in cookie_analysis["csrf_tokens"]:
-                        cookie_analysis["csrf_tokens"].append(cookie_name)
+        for cookie_name in cookies.keys():
+            if 'session' in cookie_name.lower() or 'sess' in cookie_name.lower():
+                if cookie_name not in cookie_analysis["session_cookies"]:
+                    cookie_analysis["session_cookies"].append(cookie_name)
 
-            # Track cookie lifecycle
-            for cookie_name, cookie_value in capture.cookies.items():
-                if cookie_name not in cookie_analysis["cookie_lifecycle"]:
-                    cookie_analysis["cookie_lifecycle"][cookie_name] = []
-                cookie_analysis["cookie_lifecycle"][cookie_name].append({
-                    "timestamp": capture.captured_at.isoformat(),
-                    "url": capture.url,
-                    "present": True
-                })
+            if 'csrf' in cookie_name.lower() or 'token' in cookie_name.lower():
+                if cookie_name not in cookie_analysis["csrf_tokens"]:
+                    cookie_analysis["csrf_tokens"].append(cookie_name)
 
-    # Convert sets to lists
+        for cookie_name, cookie_value in cookies.items():
+            if cookie_name not in cookie_analysis["cookie_lifecycle"]:
+                cookie_analysis["cookie_lifecycle"][cookie_name] = []
+            cookie_analysis["cookie_lifecycle"][cookie_name].append({
+                "timestamp": capture.captured_at.isoformat() if capture.captured_at else '',
+                "url": capture.url,
+                "present": True
+            })
+
     cookie_analysis["all_cookies"] = list(cookie_analysis["all_cookies"])
-
     return cookie_analysis
 
 
@@ -284,21 +282,24 @@ def analyze_ajax_calls(captures):
     ajax_endpoints = []
 
     for capture in captures:
-        # Check if it's an AJAX call
+        headers = capture.headers if isinstance(capture.headers, dict) else {}
+        cookies = capture.cookies if isinstance(capture.cookies, dict) else {}
+        body = capture.body or ''
+
         is_ajax = (
-            capture.headers.get('X-Requested-With') == 'XMLHttpRequest' or
-            'ajax' in capture.body.lower() if capture.body else False or
-            'application/json' in capture.headers.get('Content-Type', '')
+            headers.get('X-Requested-With') == 'XMLHttpRequest' or
+            (isinstance(body, str) and 'ajax' in body.lower()) or
+            'application/json' in headers.get('Content-Type', '')
         )
 
         if is_ajax:
             ajax_endpoints.append({
                 "url": capture.url,
                 "method": capture.method,
-                "requires_auth": bool(capture.cookies),
-                "required_cookies": list(capture.cookies.keys()) if capture.cookies else [],
-                "headers": dict(capture.headers),
-                "body_preview": capture.body[:200] if capture.body else None
+                "requires_auth": bool(cookies),
+                "required_cookies": list(cookies.keys()),
+                "headers": dict(headers),
+                "body_preview": body[:200] if body else None
             })
 
     return ajax_endpoints

@@ -10,10 +10,20 @@ from .views.dashboard import (
     log_capture_to_services, get_captures, apply_latest_capture,
     test_osticket_access, silent_capture, sync_v0_cookies
 )
+from .views.api import list_endpoints, csrf_token
+from .views_ai import ai_analyze_endpoint, ai_generate_handler
 
 app_name = 'polysniffer'
 
 urlpatterns = [
+    # Chrome Extension API endpoints
+    path('api/endpoints/', list_endpoints, name='api_endpoints'),
+    path('api/csrf-token/', csrf_token, name='api_csrf_token'),
+
+    # AI analysis and handler generation
+    path('ai-analyze/<int:endpoint_id>/', ai_analyze_endpoint, name='ai_analyze'),
+    path('ai-generate-handler/<int:endpoint_id>/', ai_generate_handler, name='ai_generate_handler'),
+
     # Root URL - redirect to admin (PolySniffer should only be accessed via admin)
     path('', redirect_to_admin, name='index'),
     # Main entry point - accessed via admin "Sniff" button (old headless version)

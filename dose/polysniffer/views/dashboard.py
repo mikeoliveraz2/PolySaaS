@@ -147,7 +147,8 @@ def capture_traffic(request):
 @staff_member_required
 def save_capture(request, endpoint_id):
     """
-    Save captured data to endpoint
+    Save captured data to endpoint and create TrafficLog entries for AI analysis.
+    Called by both the Django admin UI and the Chrome extension.
     """
     if not request.user.is_staff:
         return JsonResponse({'success': False, 'error': 'Staff access required'}, status=403)
@@ -158,21 +159,43 @@ def save_capture(request, endpoint_id):
         data = json.loads(request.body)
         captures = data.get('captures', [])
 
-        if captures:
-            latest = captures[-1]
-            endpoint.polysniffer_debug_output = json.dumps(latest, indent=2)
-            endpoint.polysniffer_last_run = timezone.now()
-            endpoint.save()
-
-            return JsonResponse({
-                'success': True,
-                'message': f'Saved {len(captures)} capture(s) to endpoint'
-            })
-        else:
+        if not captures:
             return JsonResponse({
                 'success': False,
                 'error': 'No captures to save'
             }, status=400)
+
+        latest = captures[-1]
+        endpoint.polysniffer_debug_output = json.dumps(latest, indent=2)
+        endpoint.polysniffer_last_run = timezone.now()
+        endpoint.save()
+
+        log_count = 0
+        for capture in captures:
+            try:
+                TrafficLog.objects.create(
+                    method=capture.get('method', 'GET'),
+                    url=capture.get('url', ''),
+                    path=capture.get('url', '').split('?')[0].split('#')[0],
+                    headers=capture.get('headers', {}),
+                    cookies=capture.get('cookies', {}),
+                    body=capture.get('body', '') if isinstance(capture.get('body'), str) else json.dumps(capture.get('body', '')),
+                    status_code=capture.get('status', 0),
+                    response_headers={},
+                    response_body=json.dumps(capture.get('data', {})) if capture.get('data') else '',
+                    endpoint_name=endpoint.trigger_path or str(endpoint),
+                    user=request.user,
+                    captured_at=timezone.now(),
+                )
+                log_count += 1
+            except Exception:
+                pass
+
+        source = data.get('source', 'admin')
+        return JsonResponse({
+            'success': True,
+            'message': f'Saved {len(captures)} capture(s), created {log_count} traffic log(s) [source: {source}]'
+        })
     except Exception as e:
         return JsonResponse({
             'success': False,

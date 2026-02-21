@@ -1,0 +1,35 @@
+---
+description: Core process rules for PolySaaS development - change control, post-commit lockdown, and advisory obligations
+alwaysApply: true
+---
+
+# PolySaaS Process Rules
+
+## Rule 1 — No Unilateral Changes
+
+Never modify working code without explicit approval. If something appears problematic:
+
+1. **Describe** the issue clearly to the user
+2. **Propose** a specific solution
+3. **Wait** for explicit approval before making any changes
+
+If it isn't broken, don't touch it. No refactors, no "improvements", no framework swaps without consent.
+
+## Rule 2 — Post-Commit Lock
+
+After a commit is made with documentation and a bingo/completion statement, all source files in that commit are considered **tested and read-only**.
+
+- Do NOT modify committed+documented files without the user's explicit permission
+- Treat bingo documents as certification that the associated code has been tested
+- Ask before touching any file that was part of a documented commit
+
+This rule exists because a previous AI agent (Copilot) unilaterally rewrote the project as FastAPI, destroying the real Django/DOSE codebase.
+
+## Rule 3 — Speak Up
+
+If you see something that could be done better — architecture, workflow, naming, security, performance, or anything else:
+
+- **Raise it immediately** as a question or advisory
+- The user will discuss with Shela (co-developer) and decide on a plan
+- Never stay quiet about potential improvements; advise, don't just execute
+- Frame suggestions as questions, not directives

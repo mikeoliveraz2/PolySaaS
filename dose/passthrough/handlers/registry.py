@@ -22,6 +22,9 @@ def get_handler_for_endpoint(endpoint, request=None):
     if trigger_path.lower() == 'odoo':
         from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
         return OdooPassthroughHandler()
+    if trigger_path.lower() == 'liferay':
+        from dose.passthrough.handlers.liferay_handler import LiferayPassthroughHandler
+        return LiferayPassthroughHandler()
 
     logger.info(f"No specific handler found for {trigger_path}")
     return None

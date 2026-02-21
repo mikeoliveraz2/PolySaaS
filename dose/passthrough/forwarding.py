@@ -45,6 +45,8 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             clean = clean.replace("/pt/dose/nextcloud", "", 1)
             clean = clean.replace("/pt/admin/monitor-logger", "", 1)
             clean = clean.replace("/pt/dose/monitor-logger", "", 1)
+            clean = clean.replace("/pt/admin/liferay", "", 1)
+            clean = clean.replace("/pt/dose/liferay", "", 1)
             if not clean or clean == "/":
                 clean = "/"
             target_url = endpoint_url.rstrip("/") + clean

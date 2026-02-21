@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  liferay-db:
+    image: mysql:8.0
+    container_name: polysaas-liferay-db
+    environment:
+      MYSQL_ROOT_PASSWORD: liferay_root
+      MYSQL_DATABASE: lportal
+      MYSQL_USER: liferay
+      MYSQL_PASSWORD: liferay
+    volumes:
+      - liferay_db_data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - liferay-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  liferay:
+    image: liferay/portal:7.4-ga120
+    container_name: polysaas-liferay
+    depends_on:
+      liferay-db:
+        condition: service_healthy
+    environment:
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_DRIVER_UPPERCASEC_LASS_UPPERCASEN_AME: com.mysql.cj.jdbc.Driver
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_URL: jdbc:mysql://liferay-db:3306/lportal?characterEncoding=UTF-8&dontTrackOpenResources=true&holdResultsOpenOverStatementClose=true&serverTimezone=GMT&useFastDateParsing=false&useUnicode=true
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_USERNAME: liferay
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_PASSWORD: liferay
+    ports:
+      - "8181:8080"
+    volumes:
+      - liferay_data:/opt/liferay/data
+      - liferay_deploy:/opt/liferay/deploy
+    restart: unless-stopped
+    networks:
+      - liferay-network
+
+networks:
+  liferay-network:
+    driver: bridge
+
+volumes:
+  liferay_db_data:
+  liferay_data:
+  liferay_deploy:

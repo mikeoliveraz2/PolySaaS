@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PolySniffer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="header">
+    <h1>PolySniffer</h1>
+    <span id="status-dot" class="dot dot-idle"></span>
+  </div>
+
+  <div class="section">
+    <label for="django-url">Django Server</label>
+    <input type="text" id="django-url" placeholder="http://localhost:8000" />
+    <button id="btn-connect" class="btn btn-sm">Connect</button>
+  </div>
+
+  <div id="connection-status" class="status-bar hidden">
+    <span id="conn-text"></span>
+  </div>
+
+  <div id="endpoint-section" class="section hidden">
+    <label for="endpoint-select">Target Endpoint</label>
+    <select id="endpoint-select">
+      <option value="">-- select endpoint --</option>
+    </select>
+  </div>
+
+  <div id="capture-section" class="section hidden">
+    <div class="btn-row">
+      <button id="btn-start" class="btn btn-primary">Start Capture</button>
+      <button id="btn-stop" class="btn btn-danger hidden">Stop Capture</button>
+    </div>
+
+    <div id="capture-stats" class="stats hidden">
+      <div><strong>Requests:</strong> <span id="stat-requests">0</span></div>
+      <div><strong>Forms:</strong> <span id="stat-forms">0</span></div>
+      <div><strong>Cookies:</strong> <span id="stat-cookies">0</span></div>
+    </div>
+
+    <button id="btn-send" class="btn btn-success hidden">Send to Django</button>
+    <button id="btn-generate" class="btn btn-accent hidden">Generate Handler</button>
+  </div>
+
+  <div id="result-section" class="section hidden">
+    <div id="result-text" class="result-box"></div>
+  </div>
+
+  <div class="footer">
+    <a id="link-dashboard" href="#" target="_blank" class="hidden">Open Dashboard</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
