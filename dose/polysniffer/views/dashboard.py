@@ -4,10 +4,12 @@ from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 from django.core.paginator import Paginator
 from django.utils import timezone
 from ..models import TrafficLog
 from .core import get_endpoint_any_schema
+from urllib.parse import urlparse
 import json
 
 @staff_member_required
@@ -110,6 +112,7 @@ def export_har(request, log_id=None):
     response['Content-Disposition'] = 'attachment; filename="polysniffer_export.har"'
     return response
 
+@csrf_exempt
 @require_http_methods(["POST"])
 @staff_member_required
 def capture_traffic(request):
@@ -143,6 +146,7 @@ def capture_traffic(request):
             'error': f'Error capturing traffic: {str(e)}'
         }, status=500)
 
+@csrf_exempt
 @require_http_methods(["POST"])
 @staff_member_required
 def save_capture(request, endpoint_id):
@@ -202,6 +206,7 @@ def save_capture(request, endpoint_id):
             'error': f'Error saving captures: {str(e)}'
         }, status=500)
 
+@csrf_exempt
 @require_http_methods(["POST"])
 @staff_member_required
 def log_capture_to_services(request, endpoint_id):
@@ -244,26 +249,35 @@ def log_capture_to_services(request, endpoint_id):
 @staff_member_required
 def get_captures(request, endpoint_id):
     """
-    Get captured requests for an endpoint
+    Get captured requests for an endpoint, with optional since_id for polling
     """
     if not request.user.is_staff:
         return JsonResponse({'success': False, 'error': 'Staff access required'}, status=403)
 
     endpoint = get_endpoint_any_schema(endpoint_id, request)
+    endpoint_name = endpoint.menu_title or endpoint.trigger_path or str(endpoint_id)
 
     try:
-        logs = TrafficLog.objects.filter(endpoint=endpoint).order_by('-captured_at')[:100]
+        since_id = int(request.GET.get('since_id', 0))
+        qs = TrafficLog.objects.filter(endpoint_name__iexact=endpoint_name)
+        if not qs.exists():
+            qs = TrafficLog.objects.all()
+        if since_id:
+            qs = qs.filter(id__gt=since_id)
+        logs = qs.order_by('-captured_at')[:100]
+
         captures = []
         for log in logs:
             captures.append({
                 'id': log.id,
                 'method': log.method,
                 'url': log.url,
-                'status': log.status_code,
-                'headers': json.loads(log.request_headers) if log.request_headers else {},
-                'body': json.loads(log.request_body) if log.request_body else '',
-                'data': json.loads(log.response_body) if log.response_body else {},
-                'timestamp': log.captured_at.isoformat()
+                'path': log.path,
+                'status_code': log.status_code,
+                'headers': log.headers if isinstance(log.headers, dict) else {},
+                'cookies': log.cookies if isinstance(log.cookies, dict) else {},
+                'body': log.body or '',
+                'captured_at': log.captured_at.strftime('%H:%M:%S') if log.captured_at else '',
             })
 
         return JsonResponse({
@@ -381,6 +395,7 @@ def test_osticket_access(request):
             'error': f'Error testing osTicket access: {str(e)}'
         }, status=500)
 
+@csrf_exempt
 @require_http_methods(["POST"])
 @staff_member_required
 def silent_capture(request, endpoint_id):
@@ -392,23 +407,43 @@ def silent_capture(request, endpoint_id):
 
     try:
         data = json.loads(request.body)
-        capture_data = data
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+        endpoint_name = endpoint.menu_title or endpoint.trigger_path or str(endpoint_id)
 
-        # Log the capture silently
+        raw_url = str(data.get('url', ''))[:500]
+        raw_method = str(data.get('method', 'GET'))[:10].upper()
+        if raw_method in ('XMLHTTPREQUEST', 'SCRIPT', 'STYLESHEET', 'IMAGE', 'FONT', 'MAIN_FRAME', 'SUB_FRAME', 'OTHER'):
+            raw_method = 'GET'
+        raw_path = ''
+        try:
+            raw_path = urlparse(raw_url).path[:500]
+        except Exception:
+            raw_path = raw_url[:500]
+
+        # URLField requires a valid URL; fall back to placeholder if invalid
+        if not raw_url.startswith(('http://', 'https://')):
+            raw_url = endpoint.endpoint_url or f'http://localhost/{raw_url}'
+
         TrafficLog.objects.create(
-            endpoint=get_endpoint_any_schema(endpoint_id, request),
-            method=capture_data.get('type', 'unknown'),
-            url=capture_data.get('url', ''),
-            status_code=0,
-            request_headers=json.dumps({}),
-            request_body=json.dumps(capture_data),
-            response_headers=json.dumps({}),
-            response_body=json.dumps({}),
+            endpoint_name=endpoint_name,
+            method=raw_method or 'GET',
+            url=raw_url,
+            path=raw_path,
+            headers=data.get('headers', {}),
+            cookies=data.get('cookies', {}),
+            body=json.dumps(data.get('body', data)),
+            status_code=int(data.get('status', 0) or 0),
+            response_headers={},
+            response_body='',
+            user=request.user if request.user.is_authenticated else None,
             captured_at=timezone.now()
         )
 
         return JsonResponse({'success': True})
     except Exception as e:
+        import traceback
+        print(f"[POLYSNIFFER] silent_capture ERROR: {str(e)}")
+        traceback.print_exc()
         return JsonResponse({
             'success': False,
             'error': f'Error in silent capture: {str(e)}'

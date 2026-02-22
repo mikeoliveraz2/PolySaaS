@@ -1,288 +1,165 @@
 # PolySniffer Two-Tab Architecture
 
+**Last Updated**: February 22, 2026
+
 ## Overview
 
-PolySniffer uses a **two-tab architecture** to separate navigation from traffic capture, solving iframe limitations and popup blockers while providing full traffic visibility.
+PolySniffer captures **raw HTTP traffic** from external services (Nextcloud, Liferay, etc.) so that handler code can be generated for the passthrough proxy. It uses a Chrome extension + two-tab architecture: one tab for browsing the raw service, one tab for watching captured traffic in real-time.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    NOTICE PAGE                              │
-│  [Step 1: Open Capture Tab] ← Opens Tab 1                  │
-│  [Step 2: Navigate This Window] ← Opens Tab 2 (enabled)    │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ├─────────────────┐
-                            │                 │
-                            ▼                 ▼
-        ┌──────────────────────────┐  ┌──────────────────────────┐
-        │   TAB 1: CAPTURE         │  │   TAB 2: NAVIGATION     │
-        │   INTERFACE              │  │   (v0.dev)              │
-        │                          │  │                          │
-        │  ┌────────────────────┐  │  │  ┌────────────────────┐ │
-        │  │ 🟢 Green Bar       │  │  │  │  v0.dev Content     │ │
-        │  │ [Stop] [Clear]     │  │  │  │  (Full Page)        │ │
-        │  │ [Generate] [Deploy]│  │  │  │                     │ │
-        │  └────────────────────┘  │  │  │  - No Green Bar     │ │
-        │                          │  │  │  - Silent Capture   │ │
-        │  ┌────────────────────┐  │  │  │  - Full Navigation  │ │
-        │  │ Capture Log        │  │  │  └────────────────────┘ │
-        │  │                    │  │  │                          │
-        │  │ [GET] /api/...     │  │  │  ┌────────────────────┐ │
-        │  │ [POST] /api/...    │◄─┼──┼──│  Silent Capture     │ │
-        │  │ [XHR] /api/...     │  │  │  │  Script Injected    │ │
-        │  │ ...                │  │  │  │  (No Green Bar)     │ │
-        │  │                    │  │  │  └────────────────────┘ │
-        │  └────────────────────┘  │  │                          │
-        │                          │  │                          │
-        │  Polls: /get-captures/   │  │  Sends: /silent-capture/ │
-        └──────────────────────────┘  └──────────────────────────┘
+User clicks "PolySniffer Analysis"
+         │
+         ▼
+┌──────────────────────────────┐
+│  TAB 1: LIVE CAPTURE VIEWER  │
+│                              │
+│  Polls /get-captures/ every  │──── Reads from ──── TrafficLog DB
+│  2 seconds for new entries   │
+│                              │
+│  "Open Nextcloud" button     │
+│  opens Tab 2                 │
+└──────────────────────────────┘
+
+┌──────────────────────────────┐
+│  TAB 2: RAW SERVICE          │
+│  (e.g. http://127.0.0.1:8888)│
+│                              │
+│  User browses normally       │
+│  Chrome extension intercepts │──── Writes to ──── TrafficLog DB
+│  all requests via webRequest │     (via /silent-capture/)
+│  API and POSTs to Django     │
+└──────────────────────────────┘
 ```
+
+## Key Principle
+
+PolySniffer captures **raw** service traffic, not proxied traffic. The captured data is later analyzed to **build handlers** for the proxy. Sniffing through the proxy would be circular and useless.
 
 ## Components
 
-### 1. Notice Page (`navigate_with_toolbar`)
+### 1. Live Capture Page (Tab 1)
 
-**Location:** `dose/polysniffer/views.py` - `navigate_with_toolbar()`
-
-**Purpose:** Initial landing page with two-step button flow.
-
-**Features:**
-- **Button 1 (Top):** "Open Capture Tab (Step 1)" - Opens Tab 1 in new window
-- **Button 2 (Bottom):** "Navigate This Window (Step 2)" - Disabled until Button 1 is clicked
-- Enforces correct order: Capture tab must open first
-
-**URLs Generated:**
-- Capture Interface: `/admin/polysniffer/capture-interface/{endpoint_id}/`
-- Navigation: `/admin/polysniffer/proxy/{endpoint_id}/`
-
-### 2. Capture Interface (Tab 1)
-
-**Location:**
-- View: `dose/polysniffer/views.py` - `capture_interface_view()`
-- Template: `dose/templates/polysniffer/capture_interface.html`
-- URL: `/admin/polysniffer/capture-interface/{endpoint_id}/`
-
-**Purpose:** Display-only interface showing green bar and real-time capture log.
+**View:** `dose/polysniffer/views/ui.py` - `live_capture()`
+**URL:** `/admin/polysniffer/capture/{endpoint_id}/`
+**JS:** `static/polysniffer/live_capture.js` (external static file)
 
 **Features:**
-- **Green Bar:** Fixed at top with request counter and controls
-- **Capture Log:** Real-time display of captured requests
-- **Polling:** Polls `/admin/polysniffer/get-captures/{endpoint_id}/` every 500ms
-- **No Content:** Does NOT display v0.dev content (capture-only)
+- Polls `/admin/polysniffer/get-captures/{endpoint_id}/?since_id=N` every 2 seconds
+- Displays captured requests with color-coded methods (GET/POST/PUT/DELETE)
+- Click any request to expand and see URL, headers, cookies, body
+- Pause/Resume polling, Clear captures
+- "Open [endpoint]" button to launch Tab 2
+- Config embedded in DOM via `#polysniffer-config` data attributes
+- Automatically configures the Chrome extension on page load
 
-**Controls:**
-- ⏹ Stop/Resume capture
-- 🗑 Clear log
-- 🤖 Generate Handler (placeholder)
-- 🚀 Deploy (placeholder)
+### 2. Chrome Extension
 
-**Request Display:**
-- Color-coded by method (GET=green, POST=blue, PUT=orange, DELETE=red)
-- Shows URL, method, status code, timestamp
-- Auto-scrolls to top for new entries
-- Keeps last 100 entries
+**Location:** `polysniffer-chrome-extension/`
 
-### 3. Navigation Tab (Tab 2)
+**Files:**
+- `manifest.json` - Manifest V3, permissions for webRequest, cookies, storage
+- `background.js` - Service worker: intercepts requests matching endpoint URL, POSTs to Django
+- `content.js` - Reads `#polysniffer-config` from Live Capture page, auto-configures background
+- `popup.html/js` - Manual connect UI (backup), shows endpoint selection and capture stats
 
-**Location:**
-- View: `dose/polysniffer/views.py` - `proxy_capture()`
-- URL: `/admin/polysniffer/proxy/{endpoint_id}/`
+**Auto-config flow:**
+1. Live Capture page loads with `<div id="polysniffer-config" data-endpoint-id="15" data-endpoint-url="http://127.0.0.1:8888/" ...>`
+2. Content script detects this element, sends `autoConfig` message to background
+3. Background stores config and starts matching requests by hostname:port
+4. Any request to the endpoint's domain is immediately POSTed to `/silent-capture/`
 
-**Purpose:** Full v0.dev navigation with silent traffic capture.
+**URL matching:** Background compares each request's hostname:port to the configured endpoint URL. Requests to Django admin (`/admin/polysniffer/`) are excluded to prevent capture loops.
 
-**Features:**
-- **Full Content:** Displays complete v0.dev interface
-- **No Green Bar:** Clean navigation experience
-- **Silent Capture:** Injects capture script that sends traffic to backend
-- **Session Sharing:** Same cookies/session as capture tab
+### 3. Silent Capture Endpoint
 
-**Capture Script:**
-- Intercepts `fetch()` calls
-- Intercepts `XMLHttpRequest` calls
-- Sends to `/admin/polysniffer/silent-capture/{endpoint_id}/`
-- No visual indicators (silent)
+**View:** `dose/polysniffer/views/dashboard.py` - `silent_capture()`
+**URL:** `/admin/polysniffer/silent-capture/{endpoint_id}/`
+**Method:** POST (CSRF exempt)
 
-### 4. Proxy Middleware
+Receives captured request data from the Chrome extension and writes to `TrafficLog` model.
 
-**Location:** `dose/polysniffer/views.py` - `proxy_capture()`
+### 4. Get Captures Endpoint
 
-**Key Features:**
+**View:** `dose/polysniffer/views/dashboard.py` - `get_captures()`
+**URL:** `/admin/polysniffer/get-captures/{endpoint_id}/`
+**Method:** GET
 
-#### Conditional Injection
-```python
-enable_capture = request.GET.get('capture', '').lower() == 'true'
+Returns TrafficLog entries, supports `since_id` parameter for efficient polling (only returns new entries).
 
-if enable_capture:
-    # Inject green bar + full capture scripts
-    # (Not used in two-tab mode)
-else:
-    # Inject silent capture script only
-    # (Used for navigation tab)
-```
+### 5. Admin Integration
 
-#### Always-Injected Silent Capture
-- **Location:** After capture mode check
-- **Purpose:** Capture traffic from navigation tab
-- **Visibility:** No green bar, no visual indicators
-- **Endpoint:** `/admin/polysniffer/silent-capture/{endpoint_id}/`
+**List view:** "PolySniffer Analysis" button in `PassThroughEndpointAdmin.debug_button()` opens `/admin/polysniffer/capture/{id}/`
 
-#### URL Rewriting
-- Rewrites v0.dev URLs to go through proxy
-- Handles static assets
-- Preserves authentication cookies
-- Removes X-Frame-Options for iframe compatibility (if needed)
+**Change form:** "PolySniffer Analysis" button in `change_form.html` opens the same URL via `openPolySnifferCapture()`.
+
+Both buttons do the same thing — open the Live Capture page.
 
 ## Data Flow
 
 ```
-Navigation Tab (Tab 2)
+Chrome Extension (background.js)
     │
-    ├─ User navigates v0.dev
-    ├─ Silent capture script intercepts requests
-    ├─ Sends to: /admin/polysniffer/silent-capture/{endpoint_id}/
+    ├─ webRequest.onBeforeRequest intercepts requests to endpoint URL
+    ├─ POSTs each request to /admin/polysniffer/silent-capture/{id}/
     │
-    └─► Backend stores in session/database
+    └─► Django writes to TrafficLog model
             │
             │
-Capture Interface (Tab 1)
+Live Capture Page (Tab 1)
     │
-    ├─ Polls: /admin/polysniffer/get-captures/{endpoint_id}/
-    ├─ Receives captured requests
-    └─ Displays in capture log
+    ├─ Polls /admin/polysniffer/get-captures/{id}/?since_id=N
+    ├─ Receives new TrafficLog entries
+    └─ Displays in real-time capture log
 ```
 
-## API Endpoints
+## TrafficLog Model
 
-### `/admin/polysniffer/silent-capture/{endpoint_id}/`
-- **Method:** POST
-- **Purpose:** Receive captured traffic from navigation tab
-- **Payload:** `{type, data, url, timestamp}`
-- **Response:** 200 OK
+**Location:** `dose/polysniffer/models.py`
 
-### `/admin/polysniffer/get-captures/{endpoint_id}/`
-- **Method:** GET
-- **Purpose:** Retrieve captured requests for display
-- **Response:** `{captures: [...]}`
-- **Polling:** Every 500ms by capture interface
-
-## Benefits
-
-1. **No Iframe Issues:** Navigation happens in full window
-2. **No Popup Blockers:** Direct navigation, not window.open()
-3. **Clean Separation:** Capture UI separate from navigation
-4. **Full Functionality:** v0.dev works normally in navigation tab
-5. **Real-time Updates:** Capture log updates as you navigate
-6. **Session Sharing:** Both tabs share same cookies/session
-7. **Scalable:** Can capture 8000+ requests without performance issues
+| Field | Type | Description |
+|-------|------|-------------|
+| method | CharField(10) | HTTP method (GET, POST, etc.) |
+| url | URLField(500) | Full request URL |
+| path | CharField(500) | URL path component |
+| headers | JSONField | Request headers |
+| cookies | JSONField | Request cookies |
+| body | TextField | Request body |
+| status_code | IntegerField | HTTP response status |
+| response_headers | JSONField | Response headers |
+| endpoint_name | CharField(200) | Name of endpoint being captured |
+| user | ForeignKey(User) | Staff user who initiated capture |
+| captured_at | DateTimeField | Timestamp |
 
 ## Usage Flow
 
-1. User clicks "Sniff" button in admin
-2. Notice page appears
-3. User clicks "Open Capture Tab (Step 1)"
-   - Tab 1 opens with green bar and empty log
-4. User clicks "Navigate This Window (Step 2)"
-   - Current window navigates to v0.dev
-   - Tab 2 shows full v0.dev interface
-5. User navigates in Tab 2
-   - Traffic is silently captured
-   - Tab 1 updates in real-time with captured requests
-6. User can interact with controls in Tab 1
-   - Stop/Resume capture
-   - Clear log
-   - Generate/Deploy handlers (future)
+1. Navigate to **Pass Through Endpoints** in Django admin
+2. Click **"PolySniffer Analysis"** on any endpoint (list or edit page)
+3. **Tab 1 opens** — Live Capture viewer with "Open [endpoint]" button
+4. Click **"Open [endpoint]"** — **Tab 2 opens** with the raw service
+5. **Browse normally** in Tab 2 — Chrome extension captures all traffic
+6. **Watch Tab 1** — captures appear in real-time (1044+ captured in testing)
+7. Click any capture row to expand details (URL, headers, cookies, body)
 
-## Technical Details
+## Verified (Feb 22, 2026)
 
-### Capture Script Injection
+- 1044+ requests captured from Nextcloud browsing session
+- Real-time polling working (2-second intervals)
+- Chrome extension auto-configures from Live Capture page
+- Color-coded methods and status codes
+- Expandable request details
+- Admin buttons working (list view + change form)
 
-The proxy always injects a silent capture script, regardless of `?capture=true`:
+## Files
 
-```javascript
-(function() {
-    'use strict';
-    const ENDPOINT_ID = {endpoint_id};
-
-    function sendCapture(type, data) {
-        const payload = {type, data, url: location.href, timestamp: Date.now()};
-        navigator.sendBeacon?.('/admin/polysniffer/silent-capture/' + ENDPOINT_ID + '/', ...)
-        || fetch('/admin/polysniffer/silent-capture/' + ENDPOINT_ID + '/', ...);
-    }
-
-    // Intercept fetch and XHR
-    // ...
-})();
-```
-
-### Polling Mechanism
-
-Capture interface polls every 500ms:
-
-```javascript
-setInterval(pollCaptures, 500);
-
-function pollCaptures() {
-    fetch(`/admin/polysniffer/get-captures/${endpointId}/`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.captures && data.captures.length > 0) {
-                data.captures.forEach(capture => {
-                    handleCapture(capture);
-                });
-            }
-        });
-}
-```
-
-## Files Modified
-
-1. **`dose/polysniffer/views.py`**
-   - Added `capture_interface_view()` function
-   - Modified `navigate_with_toolbar()` to use two-tab URLs
-   - Modified `proxy_capture()` to always inject silent capture script
-   - Conditional green bar injection (not used in two-tab mode)
-
-2. **`dose/polysniffer/urls.py`**
-   - Added route: `capture-interface/<int:endpoint_id>/`
-
-3. **`dose/templates/polysniffer/capture_interface.html`** (NEW)
-   - Complete capture interface template
-   - Green bar + capture log
-   - Polling mechanism
-   - Control buttons
-
-## Testing
-
-**Verified:**
-- ✅ Navigation tab: 100% functional
-- ✅ Capture tab: 100% functional
-- ✅ 8000+ requests captured successfully
-- ✅ Real-time updates working
-- ✅ Session sharing working
-- ✅ No iframe issues
-- ✅ No popup blockers
-
-## Future Enhancements
-
-1. **Handler Generation:** Implement AI-powered handler code generation
-2. **Deployment:** Add handler deployment functionality
-3. **Filtering:** Add request filtering in capture log
-4. **Export:** Export captured traffic as HAR/JSON
-5. **Search:** Search captured requests
-6. **Replay:** Replay captured requests
-
-## Notes
-
-- The two-tab architecture was chosen after iframe and single-tab injection approaches failed
-- Silent capture ensures no visual interference with navigation
-- Polling mechanism provides real-time updates without WebSockets
-- Session sharing allows seamless authentication between tabs
-
----
-
-**Date:** November 24, 2025
-**Status:** ✅ Production Ready
-**Performance:** 8000+ requests captured successfully
-
+| File | Purpose |
+|------|---------|
+| `dose/polysniffer/views/ui.py` | Live Capture page view |
+| `dose/polysniffer/views/dashboard.py` | silent_capture + get_captures endpoints |
+| `static/polysniffer/live_capture.js` | Polling and display logic (external JS) |
+| `polysniffer-chrome-extension/background.js` | Request interception + POST to Django |
+| `polysniffer-chrome-extension/content.js` | Auto-config from Live Capture page |
+| `polysniffer-chrome-extension/manifest.json` | Extension manifest (V3) |
+| `dose/admin.py` | "PolySniffer Analysis" button in list view |
+| `dose/templates/admin/dose/passthroughendpoint/change_form.html` | Button in change form |

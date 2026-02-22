@@ -145,7 +145,6 @@ def proxy_capture(request, endpoint_id, path=''):
     else:
         response = session.request(method, target_url, headers=headers)
 
-    # Check if response is HTML
     content_type = response.headers.get('content-type', '').lower()
     is_html_response = 'text/html' in content_type
 

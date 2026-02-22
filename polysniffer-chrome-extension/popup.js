@@ -4,7 +4,7 @@ const hide = (el) => el.classList.add('hidden');
 
 let djangoUrl = '';
 let endpointId = null;
-let capturing = false;
+let endpoints = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
   const saved = await chrome.storage.local.get(['djangoUrl', 'endpointId']);
@@ -22,18 +22,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#endpoint-select').addEventListener('change', (e) => {
     endpointId = e.target.value || null;
-    chrome.storage.local.set({ endpointId });
-    if (endpointId) {
-      show($('#capture-section'));
-    } else {
-      hide($('#capture-section'));
-    }
+    const ep = endpoints.find(ep => String(ep.id) === String(endpointId));
+    chrome.storage.local.set({
+      endpointId,
+      endpointUrl: ep ? ep.url : ''
+    });
+    updateActiveState();
   });
 
-  $('#btn-start').addEventListener('click', startCapture);
-  $('#btn-stop').addEventListener('click', stopCapture);
   $('#btn-send').addEventListener('click', sendCaptures);
   $('#btn-generate').addEventListener('click', generateHandler);
+  $('#btn-clear').addEventListener('click', () => {
+    chrome.storage.local.set({ captureData: { requests: [], forms: [], cookies: {} } });
+    updateStats();
+  });
+
+  pollStats();
 });
 
 async function connect(url) {
@@ -48,87 +52,52 @@ async function connect(url) {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-
     if (!data.success) throw new Error(data.error || 'API error');
 
+    endpoints = data.endpoints || [];
+
     statusBar.className = 'status-bar ok';
-    connText.textContent = `Connected — ${data.endpoints.length} endpoint(s)`;
+    connText.textContent = `Connected — ${endpoints.length} endpoint(s)`;
     show(statusBar);
-    $('#status-dot').className = 'dot dot-connected';
 
     const select = $('#endpoint-select');
     select.innerHTML = '<option value="">-- select endpoint --</option>';
-    data.endpoints.forEach(ep => {
+    endpoints.forEach(ep => {
       const opt = document.createElement('option');
       opt.value = ep.id;
-      opt.textContent = `${ep.trigger_path || ep.name} — ${ep.url}`;
+      opt.textContent = `${ep.name || ep.trigger_path} — ${ep.url}`;
       if (String(ep.id) === String(endpointId)) opt.selected = true;
       select.appendChild(opt);
     });
 
     show($('#endpoint-section'));
-    if (endpointId) show($('#capture-section'));
+    updateActiveState();
 
     $('#link-dashboard').href = `${djangoUrl}/admin/polysniffer/dashboard/`;
     show($('#link-dashboard'));
-
   } catch (err) {
     statusBar.className = 'status-bar err';
     connText.textContent = `Failed: ${err.message}`;
     show(statusBar);
     $('#status-dot').className = 'dot dot-idle';
     hide($('#endpoint-section'));
-    hide($('#capture-section'));
+    hide($('#active-section'));
   }
 }
 
-async function startCapture() {
-  if (!endpointId) return;
-  capturing = true;
-
-  hide($('#btn-start'));
-  show($('#btn-stop'));
-  show($('#capture-stats'));
-  hide($('#btn-send'));
-  hide($('#btn-generate'));
-  hide($('#result-section'));
-  $('#status-dot').className = 'dot dot-capturing';
-
-  $('#stat-requests').textContent = '0';
-  $('#stat-forms').textContent = '0';
-  $('#stat-cookies').textContent = '0';
-
-  chrome.storage.local.set({ capturing: true, endpointId });
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) {
-    chrome.tabs.sendMessage(tab.id, { action: 'startCapture', endpointId });
+function updateActiveState() {
+  if (endpointId) {
+    const ep = endpoints.find(ep => String(ep.id) === String(endpointId));
+    $('#active-endpoint-name').textContent = ep ? `${ep.name || ep.trigger_path} (${ep.url})` : `Endpoint #${endpointId}`;
+    $('#status-dot').className = 'dot dot-capturing';
+    show($('#active-section'));
+  } else {
+    $('#status-dot').className = 'dot dot-connected';
+    hide($('#active-section'));
   }
-
-  chrome.runtime.sendMessage({ action: 'startNetworkCapture', tabId: tab?.id, endpointId });
-
-  pollStats();
 }
 
-async function stopCapture() {
-  capturing = false;
-  chrome.storage.local.set({ capturing: false });
-
-  show($('#btn-start'));
-  hide($('#btn-stop'));
-  show($('#btn-send'));
-  show($('#btn-generate'));
-  $('#status-dot').className = 'dot dot-connected';
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab) {
-    chrome.tabs.sendMessage(tab.id, { action: 'stopCapture' });
-  }
-  chrome.runtime.sendMessage({ action: 'stopNetworkCapture' });
-}
-
-async function pollStats() {
-  if (!capturing) return;
+async function updateStats() {
   try {
     const data = await chrome.storage.local.get(['captureData']);
     const cd = data.captureData || {};
@@ -136,7 +105,11 @@ async function pollStats() {
     $('#stat-forms').textContent = (cd.forms || []).length;
     $('#stat-cookies').textContent = Object.keys(cd.cookies || {}).length;
   } catch {}
-  setTimeout(pollStats, 1000);
+}
+
+function pollStats() {
+  updateStats();
+  setTimeout(pollStats, 1500);
 }
 
 async function sendCaptures() {
@@ -149,7 +122,7 @@ async function sendCaptures() {
 
     if (!(cd.requests || []).length && !(cd.forms || []).length) {
       resultText.className = 'result-box error';
-      resultText.textContent = 'No captures to send. Start a capture first.';
+      resultText.textContent = 'No captures to send. Browse the target site first.';
       show(resultSection);
       return;
     }

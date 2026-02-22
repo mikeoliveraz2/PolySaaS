@@ -1,3 +1,23 @@
+const configEl = document.getElementById('polysniffer-config');
+if (configEl) {
+  const djangoUrl = configEl.dataset.djangoUrl;
+  const endpointId = configEl.dataset.endpointId;
+  const endpointUrl = configEl.dataset.endpointUrl;
+
+  if (djangoUrl && endpointId && endpointUrl) {
+    chrome.runtime.sendMessage({
+      action: 'autoConfig',
+      djangoUrl,
+      endpointId,
+      endpointUrl
+    }, (resp) => {
+      if (resp && resp.ok) {
+        window.postMessage({ type: 'polysniffer-ext-ready' }, '*');
+      }
+    });
+  }
+}
+
 let isCapturing = false;
 let originalFetch = null;
 let originalXHROpen = null;

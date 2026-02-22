@@ -9,7 +9,7 @@
             onclick="openPolySnifferCapture({{ original.id }})"
             class="button"
             style="background: #417ccc; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box;">
-        🔍 Sniff (PolySniffer - for debugging)
+        🔍 PolySniffer Analysis
     </button>
 </div>
 <div class="submit-row" style="margin-top: 10px;">
@@ -30,12 +30,6 @@
 </div>
 <script>
 function openPolySnifferCapture(endpointId) {
-    let endpointUrl = document.querySelector('[name="endpoint_url"]').value;
-    if (!endpointUrl) {
-        return alert('Please set an endpoint URL first');
-    }
-
-    // Open toolbar page first - user can demo toolbar, then navigate to OS Ticket
     window.open(`/admin/polysniffer/capture/${endpointId}/`, '_blank');
 }
 

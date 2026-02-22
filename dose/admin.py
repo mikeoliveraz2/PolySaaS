@@ -293,22 +293,20 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     # Media removed - using integrated Django view instead of external PolySniffer
 
     def debug_button(self, obj):
-        """Render Sniff button for debugging with integrated PolySniffer"""
+        """Render PolySniffer Analysis button that opens the live capture viewer"""
         from django.utils.html import format_html
         from django.utils.safestring import mark_safe
         if obj and obj.endpoint_url:
-            # Use integrated PolySniffer (Django view, not external)
-            # Construct URL directly to avoid namespace issues
-            sniffer_url = f'/admin/polysniffer/sniff/{obj.id}/'
+            capture_url = f'/admin/polysniffer/capture/{obj.id}/'
             return format_html(
                 '<a href="{}" target="_blank" '
                 'style="padding: 6px 12px; font-size: 13px; font-weight: bold; cursor: pointer; background: #417ccc; color: white; border: none; border-radius: 4px; text-decoration: none; display: inline-block; white-space: nowrap;">'
-                '🔍 Sniff'
+                '🔍 PolySniffer Analysis'
                 '</a>',
-                sniffer_url
+                capture_url
             )
         return mark_safe('<span style="color: #999;">-</span>')
-    debug_button.short_description = '🔍 Sniff'
+    debug_button.short_description = '🔍 PolySniffer'
     debug_button.allow_tags = True
     debug_button.admin_order_field = None
 

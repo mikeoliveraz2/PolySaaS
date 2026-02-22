@@ -38,8 +38,7 @@ def open_sniffer(request, endpoint_id):
         </body></html>
         """
         return HttpResponse(error_html, status=400)
-        # Restore correct behavior: Sniff button opens two-button popup (navigate_with_toolbar)
-    return redirect('polysniffer:navigate_with_toolbar', endpoint_id=endpoint_id)
+    return redirect('polysniffer:live_capture', endpoint_id=endpoint_id)
 
 @staff_member_required
 def navigate_with_toolbar(request, endpoint_id):
@@ -223,82 +222,82 @@ def live_capture(request, endpoint_id):
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a1a; color: #f0f0f0; margin: 0; padding: 0; }}
-            .header {{ background: #2a2a2a; padding: 20px; border-bottom: 1px solid #444; }}
-            .header h1 {{ margin: 0; font-size: 24px; color: #0f0; }}
-            .header p {{ margin: 5px 0 0 0; color: #ccc; }}
-            .container {{ display: flex; height: calc(100vh - 80px); }}
-            .sidebar {{ width: 400px; background: #2a2a2a; border-right: 1px solid #444; padding: 20px; overflow-y: auto; }}
-            .main {{ flex: 1; padding: 20px; overflow-y: auto; }}
-            .capture-item {{ background: #333; border: 1px solid #555; border-radius: 8px; padding: 15px; margin-bottom: 10px; }}
-            .capture-item:hover {{ background: #3a3a3a; }}
-            .capture-method {{ font-weight: bold; color: #0f0; }}
-            .capture-url {{ color: #ccc; font-size: 14px; margin: 5px 0; word-break: break-all; }}
-            .capture-status {{ color: #ffa500; }}
-            .capture-time {{ color: #888; font-size: 12px; }}
-            .capture-data {{ margin-top: 10px; }}
-            .capture-data pre {{ background: #1a1a1a; padding: 10px; border-radius: 4px; font-size: 12px; overflow-x: auto; max-height: 200px; overflow-y: auto; }}
-            .clear-btn {{ background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }}
-            .clear-btn:hover {{ background: #c82333; }}
-            .iframe-container {{ width: 100%; height: 100%; border: none; }}
+            .header {{ background: #2a2a2a; padding: 15px 20px; border-bottom: 2px solid #0f0; display: flex; justify-content: space-between; align-items: center; }}
+            .header-left h1 {{ margin: 0; font-size: 22px; color: #0f0; }}
+            .header-left p {{ margin: 4px 0 0 0; color: #ccc; font-size: 14px; }}
+            .header-right {{ display: flex; gap: 10px; align-items: center; }}
+            .status {{ padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; }}
+            .status.polling {{ background: #1b5e20; color: #4caf50; }}
+            .status.paused {{ background: #4a1010; color: #f44336; }}
+            .btn {{ padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; }}
+            .btn-open {{ background: #2196f3; color: white; }}
+            .btn-open:hover {{ background: #1976d2; }}
+            .btn-clear {{ background: #dc3545; color: white; }}
+            .btn-clear:hover {{ background: #c82333; }}
+            .btn-pause {{ background: #ff9800; color: white; }}
+            .btn-pause:hover {{ background: #f57c00; }}
+            .stats {{ background: #2a2a2a; padding: 10px 20px; border-bottom: 1px solid #444; display: flex; gap: 30px; font-size: 13px; color: #aaa; }}
+            .stats span {{ color: #0f0; font-weight: bold; }}
+            .captures {{ padding: 10px 20px; overflow-y: auto; height: calc(100vh - 130px); }}
+            .capture-item {{ background: #2a2a2a; border: 1px solid #444; border-radius: 6px; padding: 12px 15px; margin-bottom: 8px; cursor: pointer; transition: background 0.15s; }}
+            .capture-item:hover {{ background: #333; border-color: #0f0; }}
+            .capture-item.new {{ animation: flash 0.5s; }}
+            @keyframes flash {{ 0% {{ background: #1b3a1b; }} 100% {{ background: #2a2a2a; }} }}
+            .capture-row {{ display: flex; justify-content: space-between; align-items: center; }}
+            .capture-method {{ font-weight: bold; padding: 2px 8px; border-radius: 3px; font-size: 12px; }}
+            .capture-method.GET {{ background: #1565c0; color: #bbdefb; }}
+            .capture-method.POST {{ background: #2e7d32; color: #c8e6c9; }}
+            .capture-method.PUT {{ background: #e65100; color: #ffe0b2; }}
+            .capture-method.DELETE {{ background: #b71c1c; color: #ffcdd2; }}
+            .capture-method.UNKNOWN {{ background: #555; color: #ccc; }}
+            .capture-path {{ color: #ccc; font-size: 13px; margin-left: 10px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+            .capture-status {{ font-size: 12px; margin-left: 10px; }}
+            .capture-status.s2xx {{ color: #4caf50; }}
+            .capture-status.s3xx {{ color: #ff9800; }}
+            .capture-status.s4xx {{ color: #f44336; }}
+            .capture-status.s5xx {{ color: #e91e63; }}
+            .capture-status.s0 {{ color: #888; }}
+            .capture-time {{ color: #666; font-size: 11px; margin-left: 10px; white-space: nowrap; }}
+            .capture-detail {{ margin-top: 10px; padding-top: 10px; border-top: 1px solid #444; display: none; }}
+            .capture-detail.open {{ display: block; }}
+            .capture-detail pre {{ background: #1a1a1a; padding: 10px; border-radius: 4px; font-size: 11px; overflow-x: auto; max-height: 200px; overflow-y: auto; margin: 5px 0; }}
+            .capture-detail h4 {{ margin: 8px 0 4px 0; color: #0f0; font-size: 12px; }}
+            .empty {{ text-align: center; color: #666; padding: 60px 20px; font-size: 16px; }}
+            .empty p {{ margin: 10px 0; }}
         </style>
     </head>
     <body>
+        <div id="polysniffer-config"
+             data-django-url="{request.scheme}://{request.get_host()}"
+             data-endpoint-id="{endpoint_id}"
+             data-endpoint-url="{endpoint.endpoint_url}"
+             data-endpoint-name="{endpoint_name}"
+             style="display:none;"></div>
         <div class="header">
-            <h1>🔍 PolySniffer Live Capture</h1>
-            <p>Endpoint: {endpoint_name} | URL: {endpoint.endpoint_url}</p>
-        </div>
-        <div class="container">
-            <div class="sidebar">
-                <h3>Captured Requests</h3>
-                <div id="captures-list"></div>
-                <button class="clear-btn" onclick="clearCaptures()">Clear All</button>
+            <div class="header-left">
+                <h1>PolySniffer Live Capture</h1>
+                <p>{endpoint_name}</p>
             </div>
-            <div class="main">
-                <iframe id="proxy-iframe" class="iframe-container" src="/admin/polysniffer/proxy/{endpoint_id}/"></iframe>
+            <div class="header-right">
+                <span id="status" class="status polling">POLLING</span>
+                <span id="ext-status" class="status" style="display:none;"></span>
+                <button class="btn btn-open" onclick="window.open('{endpoint.endpoint_url}', '_blank')">Open {endpoint_name}</button>
+                <button id="pause-btn" class="btn btn-pause" onclick="togglePoll()">Pause</button>
+                <button class="btn btn-clear" onclick="clearAll()">Clear</button>
             </div>
         </div>
-        <script>
-            let captures = [];
-            const capturesList = document.getElementById('captures-list');
-            window.addEventListener('message', function(event) {{
-                if (event.data.type === 'polysniffer-capture') {{
-                    addCapture(event.data.payload);
-                }}
-            }});
-            function addCapture(data) {{
-                captures.unshift(data);
-                if (captures.length > 100) captures.pop();
-                updateCapturesList();
-            }}
-            function updateCapturesList() {{
-                capturesList.innerHTML = captures.map((capture, index) => `
-                    <div class="capture-item">
-                        <div class="capture-method">${{capture.method || 'GET'}}</div>
-                        <div class="capture-url">${{capture.url || 'N/A'}}</div>
-                        <div class="capture-status">Status: ${{capture.status || 'N/A'}}</div>
-                        <div class="capture-time">${{new Date(capture.timestamp || Date.now()).toLocaleTimeString()}}</div>
-                        ${{(capture.data && Object.keys(capture.data).length > 0) ? `
-                            <div class="capture-data">
-                                <strong>Data:</strong>
-                                <pre>${{JSON.stringify(capture.data, null, 2)}}</pre>
-                            </div>
-                        ` : ''}}
-                    </div>
-                `).join('');
-            }}
-            function clearCaptures() {{
-                captures = [];
-                updateCapturesList();
-            }}
-            const observer = new MutationObserver(() => {{
-                capturesList.scrollTop = 0;
-            }});
-            observer.observe(capturesList, {{ childList: true }});
-        </script>
+        <div class="stats">
+            Captured: <span id="count">0</span> &nbsp;|&nbsp;
+            Last update: <span id="last-update">-</span> &nbsp;|&nbsp;
+            Target: <span>{endpoint.endpoint_url}</span>
+        </div>
+        <div class="captures" id="captures"></div>
+
+        <script src="/static/polysniffer/live_capture.js"></script>
     </body>
     </html>
     """
-    return HttpResponse(capture_html)
+    return HttpResponse(capture_html, content_type='text/html; charset=utf-8')
 
 @staff_member_required
 def capture_interface_view(request, endpoint_id):

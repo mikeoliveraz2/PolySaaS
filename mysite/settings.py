@@ -42,6 +42,8 @@ JAZZMIN_SETTINGS = {
         {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},
 
         {"name": "Toggle light/dark", "url": "/admin/select-theme/", "permissions": ["auth.view_user"]},
+
+        {"name": "API Docs", "url": "/swagger/", "new_window": True, "icon": "fas fa-book"},
     ],
     "usermenu_links": [
         {"name": "My Profile",  "url": "/profile/", "icon": "fas fa-user"},

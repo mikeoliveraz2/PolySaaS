@@ -28,20 +28,19 @@
     </select>
   </div>
 
-  <div id="capture-section" class="section hidden">
-    <div class="btn-row">
-      <button id="btn-start" class="btn btn-primary">Start Capture</button>
-      <button id="btn-stop" class="btn btn-danger hidden">Stop Capture</button>
+  <div id="active-section" class="section hidden">
+    <div class="active-box">
+      <strong>Auto-capturing</strong> traffic for<br>
+      <span id="active-endpoint-name"></span>
     </div>
-
-    <div id="capture-stats" class="stats hidden">
+    <div id="capture-stats" class="stats">
       <div><strong>Requests:</strong> <span id="stat-requests">0</span></div>
       <div><strong>Forms:</strong> <span id="stat-forms">0</span></div>
       <div><strong>Cookies:</strong> <span id="stat-cookies">0</span></div>
     </div>
-
-    <button id="btn-send" class="btn btn-success hidden">Send to Django</button>
-    <button id="btn-generate" class="btn btn-accent hidden">Generate Handler</button>
+    <button id="btn-send" class="btn btn-success">Send Batch to Django</button>
+    <button id="btn-generate" class="btn btn-accent">Generate Handler</button>
+    <button id="btn-clear" class="btn btn-sm" style="margin-top:6px">Clear Local Captures</button>
   </div>
 
   <div id="result-section" class="section hidden">
