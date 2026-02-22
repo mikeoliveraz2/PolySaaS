@@ -307,7 +307,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend for session-based tenancy
         'NAME': 'dosedbsaas',
         'USER': 'dosedbadmin',
-        'PASSWORD': os.environ.get('DOSE_DB_PASSWORD', ''),
+        'PASSWORD': env('DOSE_DB_PASSWORD', default=''),
         'HOST': 'localhost',
         'PORT': '5433',
     }
