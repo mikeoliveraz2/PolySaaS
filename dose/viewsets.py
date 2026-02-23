@@ -154,3 +154,60 @@ class IgnorePathViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(operation_description="Retrieve an ignore path by ID.")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+
+from .models import PassThroughEndpoint
+from .serializers import PassThroughEndpointSerializer
+
+class PassThroughEndpointViewSet(viewsets.ModelViewSet):
+    """
+    CRUD API for Pass Through Endpoints.
+
+    Each endpoint represents an external service (Nextcloud, Liferay, etc.)
+    that PolySaaS proxies and integrates. Responses include computed proxy_url,
+    admin_url, and polysniffer_url links.
+    """
+    queryset = PassThroughEndpoint.objects.all().order_by('menu_sort_order')
+    serializer_class = PassThroughEndpointSerializer
+
+    @swagger_auto_schema(
+        operation_description="List all passthrough endpoints with proxy links.",
+        tags=['Passthrough Endpoints']
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a passthrough endpoint by ID, including proxy and PolySniffer URLs.",
+        tags=['Passthrough Endpoints']
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Create a new passthrough endpoint for an external service.",
+        tags=['Passthrough Endpoints']
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Update a passthrough endpoint.",
+        tags=['Passthrough Endpoints']
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Partially update a passthrough endpoint.",
+        tags=['Passthrough Endpoints']
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Delete a passthrough endpoint.",
+        tags=['Passthrough Endpoints']
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)

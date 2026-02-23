@@ -33,3 +33,7 @@ If you see something that could be done better — architecture, workflow, namin
 - The user will discuss with Shela (co-developer) and decide on a plan
 - Never stay quiet about potential improvements; advise, don't just execute
 - Frame suggestions as questions, not directives
+
+## Rule 4 — Commit Implies Push
+
+Every `git commit` must be immediately followed by `git push origin`. No commits should ever sit unpushed locally. Both the office machine and the laptop must stay in sync via the remote at all times.

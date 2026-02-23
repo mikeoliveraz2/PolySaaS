@@ -84,6 +84,35 @@ class ErrorLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ErrorLog
         fields = '__all__'
+
+from .models import PassThroughEndpoint
+
+class PassThroughEndpointSerializer(serializers.ModelSerializer):
+    proxy_url = serializers.SerializerMethodField()
+    admin_url = serializers.SerializerMethodField()
+    polysniffer_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PassThroughEndpoint
+        fields = [
+            'id', 'is_enabled', 'provider', 'endpoint_url', 'description',
+            'trigger_path', 'menu_title', 'menu_icon', 'menu_sort_order',
+            'show_in_menu', 'passthrough_type', 'integration_mode',
+            'api_endpoint', 'api_auth_type', 'api_key_header',
+            'inject_proxy_script', 'created_at',
+            'proxy_url', 'admin_url', 'polysniffer_url',
+        ]
+        read_only_fields = ['created_at', 'proxy_url', 'admin_url', 'polysniffer_url']
+
+    def get_proxy_url(self, obj):
+        return f'/admin/polysniffer/proxy/{obj.id}/'
+
+    def get_admin_url(self, obj):
+        return f'/admin/dose/passthroughendpoint/{obj.id}/change/'
+
+    def get_polysniffer_url(self, obj):
+        return f'/admin/polysniffer/capture/{obj.id}/'
+
 from rest_framework import serializers
 
 

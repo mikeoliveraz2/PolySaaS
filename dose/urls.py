@@ -45,7 +45,8 @@ from . import jira_integration
 from .viewsets import (
     TenantViewSet, UserProfileViewSet, MLEngineViewSet, MLTaxonomyViewSet, MLDatasetViewSet,
     CallBackDataViewSet, InstructionViewSet, TaskViewSet, NavigationPanelViewSet,
-    NavigationItemViewSet, DashboardButtonViewSet, IgnorePathViewSet
+    NavigationItemViewSet, DashboardButtonViewSet, IgnorePathViewSet,
+    PassThroughEndpointViewSet
 )
 from dose.views import connect_social_after_subscribe
 from dose.views.callbackdata import callbackdata_view
@@ -87,6 +88,7 @@ router.register(r'subscriptions', SubscriptionApiViewSet)
 router.register(r'atomicservices', AtomicServiceViewSet)
 router.register(r'requestlogs', RequestLogViewSet)
 router.register(r'errorlogs', ErrorLogViewSet)
+router.register(r'passthroughendpoints', PassThroughEndpointViewSet)
 
 urlpatterns = [
     path('test/', test_post, name='test_post'),
