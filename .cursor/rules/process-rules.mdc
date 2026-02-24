@@ -40,11 +40,11 @@ Every git operation follows a three-step sequence: `git pull origin main`, then 
 
 ## Rule 5 — Morning Sync on Go
 
-`go.ps1` runs a morning sync after the daily backup. The sequence is:
+`go.ps1` runs a morning sync then backup. The sequence is:
 
-1. Daily backup zip (skip if today's already exists)
-2. Morning sync:
+1. Morning sync (git first, so backup captures the fully merged state):
    a. `git pull origin main` — get anything the other machine pushed
    b. Commit any leftover local changes from the previous session
    c. `git push origin main` — push to remote
+2. Daily backup zip (skip if today's already exists) — captures the synced codebase
 3. Activate venv and start services

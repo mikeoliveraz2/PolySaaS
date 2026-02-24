@@ -1,4 +1,4 @@
-# go.ps1 — PolySaaS Launcher with Daily Source Backup
+# go.ps1 — PolySaaS Launcher: Morning Sync → Backup → Services
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venvActivate = Join-Path $scriptDir "venv\Scripts\Activate.ps1"
@@ -74,8 +74,6 @@ function Invoke-DailyBackup {
     $sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
     Write-Host "  Backup complete: $zipName ($sizeMB MB)" -ForegroundColor Green
 }
-
-Invoke-DailyBackup
 
 # ── Morning Documentation Commit & Push ──────────────────────────────
 
@@ -154,6 +152,8 @@ function Invoke-MorningSync {
 }
 
 Invoke-MorningSync
+
+Invoke-DailyBackup
 
 # ── Virtual Environment ──────────────────────────────────────────────
 
