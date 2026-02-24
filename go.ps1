@@ -85,6 +85,18 @@ function Invoke-MorningSync {
 
     Push-Location $scriptDir
 
+    # Step 1: Pull from remote first (other machine may have pushed)
+    Write-Host "  Pulling latest from origin/main..." -ForegroundColor Cyan
+    git pull origin main 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Pull failed — resolve conflicts before continuing" -ForegroundColor Red
+        Write-Host "  Run 'git status' to see what needs attention" -ForegroundColor Red
+        Pop-Location
+        return
+    }
+    Write-Host "  Pull complete" -ForegroundColor Green
+
+    # Step 2: Check for local uncommitted changes
     $gitStatus = git status --porcelain 2>&1
     if (-Not $gitStatus) {
         Write-Host "  Working tree clean — nothing to commit" -ForegroundColor Green
@@ -118,6 +130,7 @@ function Invoke-MorningSync {
         return
     }
 
+    # Step 3: Commit and push
     $today = Get-Date -Format "yyyy-MM-dd"
     $stagedCount = ($staged | Measure-Object).Count
     git commit -m "Morning sync $today — $stagedCount file(s) from previous session"
