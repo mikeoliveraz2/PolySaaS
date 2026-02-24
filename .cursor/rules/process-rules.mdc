@@ -37,3 +37,11 @@ If you see something that could be done better — architecture, workflow, namin
 ## Rule 4 — Commit Implies Push
 
 Every `git commit` must be immediately followed by `git push origin`. No commits should ever sit unpushed locally. Both the office machine and the laptop must stay in sync via the remote at all times.
+
+## Rule 5 — Morning Sync on Go
+
+`go.ps1` runs a morning sync after the daily backup: any uncommitted changes (docs, coordination notes, code) from the previous session are auto-committed and pushed before services start. This ensures both machines begin each day from a clean, pushed baseline. The sequence is:
+
+1. Daily backup zip (skip if today's already exists)
+2. Morning sync — commit + push any leftover changes
+3. Activate venv and start services
