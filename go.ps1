@@ -6,7 +6,7 @@ $venvActivate = Join-Path $scriptDir "venv\Scripts\Activate.ps1"
 # ── Daily Source Backup ──────────────────────────────────────────────
 
 function Invoke-DailyBackup {
-    $backupRoot = "E:\backups"
+    $backupRoot = "D:\backups"
     $today = Get-Date -Format "yyyy-MM-dd"
     $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 
