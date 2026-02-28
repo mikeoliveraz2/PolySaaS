@@ -1,7 +1,9 @@
-# go.ps1 — PolySaaS Launcher: Morning Sync → Backup → Services
+# go.ps1 — PolySaaS Launcher: Pull → App check → (if OK) Backup + Commit/Push → Services
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$venvActivate = Join-Path $scriptDir "venv\Scripts\Activate.ps1"
+$venvFolder = if (Test-Path (Join-Path $scriptDir ".venv")) { ".venv" } else { "venv" }
+$venvActivate = Join-Path $scriptDir "$venvFolder\Scripts\Activate.ps1"
+$venvPython = Join-Path $scriptDir "$venvFolder\Scripts\python.exe"
 
 # ── Daily Source Backup ──────────────────────────────────────────────
 
@@ -28,7 +30,7 @@ function Invoke-DailyBackup {
     Write-Host "Creating daily source backup..." -ForegroundColor Yellow
 
     $excludeDirs = @(
-        'venv', 'node_modules', '.git', '__pycache__', '*.pyc',
+        'venv', '.venv', 'node_modules', '.git', '__pycache__', '*.pyc',
         'media', 'large_files_backup', 'var', '.mypy_cache',
         '.pytest_cache', '*.egg-info'
     )
@@ -131,18 +133,21 @@ function Invoke-MorningSync {
     # Step 3: Commit and push
     $today = Get-Date -Format "yyyy-MM-dd"
     $stagedCount = ($staged | Measure-Object).Count
-    git commit -m "Morning sync $today — $stagedCount file(s) from previous session"
+    git commit -m "Morning sync $today - $stagedCount file(s) from previous session"
+    $commitOk = ($LASTEXITCODE -eq 0)
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($commitOk) {
         Write-Host "  Committed. Pushing to origin..." -ForegroundColor Cyan
         git push origin main
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  Pushed to origin/main" -ForegroundColor Green
-        } else {
-            Write-Host "  Push failed — run 'git push origin main' manually" -ForegroundColor Red
         }
-    } else {
-        Write-Host "  Commit failed — check git status manually" -ForegroundColor Red
+        else {
+            Write-Host "  Push failed - run 'git push origin main' manually" -ForegroundColor Red
+        }
+    }
+    if (-not $commitOk) {
+        Write-Host "  Commit failed - check git status manually" -ForegroundColor Red
     }
 
     Write-Host "──────────────────────────────────────────────────" -ForegroundColor Cyan
@@ -151,11 +156,22 @@ function Invoke-MorningSync {
     Pop-Location
 }
 
-Invoke-MorningSync
+# ── Pull (always) ─────────────────────────────────────────────────────
 
-Invoke-DailyBackup
+Write-Host ""
+Write-Host "── Pull ───────────────────────────────────────────────" -ForegroundColor Cyan
+Push-Location $scriptDir
+git pull origin main 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Pull failed - resolve conflicts before continuing" -ForegroundColor Red
+}
+else {
+    Write-Host "  Pull complete" -ForegroundColor Green
+}
+Pop-Location
+Write-Host ""
 
-# ── Virtual Environment ──────────────────────────────────────────────
+# ── Virtual Environment (required for app check) ───────────────────────
 
 if (-Not (Test-Path $venvActivate)) {
     Write-Host "VENV NOT FOUND" -ForegroundColor Red
@@ -163,7 +179,30 @@ if (-Not (Test-Path $venvActivate)) {
     exit
 }
 
-& $venvActivate
+# ── App load check: only if this passes do we backup and commit/push ───
+
+Write-Host "── App check (runserver must load clean) ─────────────" -ForegroundColor Cyan
+Push-Location $scriptDir
+$checkOutput = & $venvPython manage.py check 2>&1
+$appLoadOk = ($LASTEXITCODE -eq 0)
+Pop-Location
+if ($appLoadOk) {
+    Write-Host "  App loads OK - will backup and commit/push" -ForegroundColor Green
+}
+else {
+    Write-Host "  App failed to load - skipping backup and commit/push" -ForegroundColor Yellow
+    Write-Host "  Fix errors above, run 'pip freeze > requirements.txt' when clean, then .\go again" -ForegroundColor Yellow
+}
+Write-Host ""
+
+if ($appLoadOk) {
+    Invoke-MorningSync
+    Invoke-DailyBackup
+}
+
+# ── Virtual Environment (activate for services) ─────────────────────────
+
+. $venvActivate
 
 # ── Service Launcher ─────────────────────────────────────────────────
 
@@ -195,7 +234,8 @@ if (-Not (Get-NetTCPConnection -State Listen -LocalPort 9001 -ErrorAction Silent
 }
 
 # LIFERAY CE — Docker container on port 8181
-if (-Not (Get-NetTCPConnection -State Listen -LocalPort 8181 -ErrorAction SilentlyContinue)) {
+$liferayListening = Get-NetTCPConnection -State Listen -LocalPort 8181 -ErrorAction SilentlyContinue
+if (-Not $liferayListening) {
     $liferayCompose = Join-Path $scriptDir "docker-compose.liferay.yml"
     if (Test-Path $liferayCompose) {
         Write-Host "Starting Liferay CE on port 8181..." -ForegroundColor Yellow
@@ -215,4 +255,28 @@ Write-Host "POLYSNIFFER → http://127.0.0.1:5002" -ForegroundColor Green
 Write-Host "LIFERAY CE  → http://localhost:8181" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-python -u manage.py runserver
+try {
+    & $venvPython -u manage.py runserver
+}
+finally {
+    Write-Host ""
+    Write-Host "── Freeze venv to requirements.txt ─────────────────" -ForegroundColor Cyan
+    Push-Location $scriptDir
+    & $venvPython -m pip freeze > requirements.txt
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  requirements.txt updated from venv" -ForegroundColor Green
+        $status = git status --porcelain requirements.txt 2>&1
+        if ($status) {
+            git add requirements.txt
+            git commit -m "Update requirements.txt from pip freeze (post-runserver)"
+            if ($LASTEXITCODE -eq 0) {
+                git push origin main 2>&1
+                Write-Host "  Committed and pushed requirements.txt" -ForegroundColor Green
+            }
+        }
+        else {
+            Write-Host "  No change to requirements.txt" -ForegroundColor DarkGray
+        }
+    }
+    Pop-Location
+}
