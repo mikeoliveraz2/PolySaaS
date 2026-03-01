@@ -1,49 +1,95 @@
 # PolySaaS Online – Business Plan
 
 ## Executive Summary
-**February 2026**
+**March 2026**
+**Seeking $750K–$1.5M Seed**
 
-PolySaaS is the unified, AI-powered SaaS platform that ends tool sprawl for growing teams. One subscription gives access to enterprise-grade applications (Nextcloud, Odoo, Mattermost, Liferay CE, Dolibarr, WordPress, and more) — fully proxied, orchestrated, and enhanced by AI peers that collaborate as real teammates in Mattermost channels.
+### The Problem
 
-We solve two massive pain points:
+Mid-market and enterprise teams (50–1,000+ employees) manage 100–300+ SaaS applications on average in 2026, leading to massive tool sprawl, integration debt, fragmented data, and wasted productivity. Traditional integration platforms (iPaaS like Zapier) offer point-to-point automation but lack deep, real-time orchestration across self-hosted/open-source stacks. Meanwhile, no platform delivers **visible, collaborative AI teammates** that reason, code, and act as equals alongside humans in shared channels.
 
-1. **Businesses waste time, money, and focus managing fragmented SaaS tools.**
-2. **Traditional platforms lack intelligent automation and meaningful AI integration.**
+Businesses lose millions annually to inefficiency, compliance risk, and vendor lock-in — especially in regulated or sovereignty-sensitive sectors (manufacturing, finance, government, professional services) that favor self-hosted or hybrid deployments.
 
-Our core innovation is a data-driven, event-orchestrated architecture built on Google Cloud Platform:
+### The Solution: PolySaaS – The AI-Powered Operating Layer for SaaS Stacks
 
-- **Atomic Services** — zero-code connectors that integrate and automate across apps in real time.
-- **PolySniffer** — auto-discovers endpoints and generates secure passthrough handlers.
-- **AI As Peers** — multiple AIs (Grok, Claude, Gemini) work together visibly, reasoning, coding, and reviewing as equals.
-- **Message-oriented middleware (Pub/Sub) + BigQuery analytics** — asynchronous, scalable, auditable.
+PolySaaS is the unified subscription platform that ends sprawl by bundling and intelligently orchestrating enterprise-grade open-source applications (Nextcloud file sync, Odoo ERP, Mattermost chat, Liferay CE portals, Dolibarr CRM, WordPress sites, and more) under one roof.
 
-### Business Model: Tiered Subscription with App Choice
+Core differentiators include:
 
-| Tier | Apps | Price |
-|------|------|-------|
-| **Starter** | 1 app | $29/user/month |
-| **Professional** | Up to 3 apps | $49/user/month |
-| **Enterprise** | Unlimited | $99/user/month |
+- **Atomic Services** — Zero-code, event-driven connectors that automate cross-app workflows in real time via Google Cloud Pub/Sub + BigQuery.
+- **PolySniffer** — Automatically discovers API endpoints and generates secure proxy handlers, enabling seamless integration without custom code.
+- **AI As Peers** — Multiple frontier models (Grok, Claude, Gemini) collaborate visibly as "teammates" in Mattermost channels — reasoning together, drafting content, reviewing code, and triggering actions.
+- **Apps As Peers** (roadmap) — Autonomous app-to-app collaboration (e.g., Odoo flags a stalled invoice → Mattermost notifies → AI drafts follow-up → WordPress updates portal), turning tools into proactive infrastructure.
 
-14-day free trial, no credit card required to start.
+Fully proxied, self-hostable-capable, and GDPR-ready, PolySaaS preserves existing investments (especially Liferay/Django ecosystems) while adding intelligent, auditable automation.
 
-### Current Traction (Feb 2026)
+### Market Opportunity
 
-- 8+ bundled apps fully proxied & sniffed
-- PolySniffer live, handler generation working
-- OpenAPI/Swagger docs for endpoints
-- Liferay CE integrated with portlet generation
-- Waitlist growing, demo videos in production
-- Consolidated repo, hardened workflow, daily backups
+We sit at the intersection of exploding markets:
 
-### Funding
+- **Digital Experience Platforms (DXP):** $15–16B in 2026, growing to $35–59B by 2033 (CAGR 12–16%).
+- **Self-hosted / private cloud platforms:** ~$20.6B in 2026, reaching $46B by 2033 (CAGR 12.2%), driven by data sovereignty, cost control, and AI privacy needs.
+- **Broader SaaS ecosystem:** $375B+ in 2026, with mid-market organizations averaging 100–335 apps (down slightly from prior peaks but still fragmented).
 
-We are seeking [$X – placeholder] in funding to:
+Liferay alone powers ~13,000–14,000 active companies (strong in manufacturing, finance, government) and supports a global network of 200–400+ Solution Partners across 67+ countries — ideal early channel for bundling and upsell.
 
-- Accelerate go-to-market & waitlist conversion
-- Expand bundled apps & AI peer capabilities
-- Scale infrastructure & team
-- Target [$Y] ARR in 18–24 months
+### Business Model
+
+Tiered per-user/month subscription with flexible app choice:
+
+| Tier | Apps Included | Price (/user/mo) |
+|------|---------------|-------------------|
+| **Starter** | 1 app | $29 |
+| **Professional** | Up to 3 apps | $49 |
+| **Enterprise** | Unlimited | $99 |
+
+14-day free trial (no card required). Blended ARPU target: ~$49. High stickiness from integration depth and AI workflows → expected NRR >120% long-term.
+
+### Traction (March 2026)
+
+- 8+ core apps fully proxied and orchestrated (Nextcloud, Odoo, Mattermost, Liferay CE, etc.).
+- PolySniffer live with auto-handler generation and OpenAPI exposure.
+- Liferay CE integration with dynamic portlet support.
+- Growing waitlist + demo videos in production.
+- Consolidated monorepo, CI/CD hardening, daily backups.
+- Early partner conversations underway (Liferay/Django SIs).
+
+### Go-to-Market & Channel Strategy
+
+Partner-led distribution via Liferay resellers/SIs (first focus), then Django firms, Odoo/Nextcloud ecosystems.
+
+- **Phase 1 (2026):** Integration pain → 19 partners, ~45 customers, ~$800K ARR run-rate.
+- **Phase 2 (2027):** AI As Peers as lead narrative → 71 partners, ~275 customers, ~$4.9M ARR.
+- **Phase 3 (2028+):** Apps As Peers autonomy → multi-channel scale, targeting $15M+ ARR.
+
+Conservative/moderate/optimistic bands show clear path from $0.4M–$1.2M ARR (end-2026) to $8M–$25M+ (end-2028).
+
+### The Ask & Use of Funds
+
+Seeking **$750K–$1.5M seed** (18-month runway at ~$1M raise):
+
+- **40% Go-to-market ($400K):** Outsourced GTM via Katapult Digital ($5K/mo), conferences, partner recruitment, waitlist conversion.
+- **35% Product/Engineering ($350K):** 3 developers, AI hardening, PolySniffer scale, Apps As Peers R&D.
+- **15% Infra/Ops ($150K):** GCP production, security audit.
+- **10% Legal/Admin ($100K):** Entity, contracts, GDPR posture.
+
+Milestones unlocked: $1M+ ARR at 18 months, 50–70 active partners, enterprise pilots, production-grade security → position for Series A or cash-flow positivity.
+
+### Team & Vision
+
+Founded by **Michael Oliver**, with deep experience in open-source orchestration, AI integration, and self-hosted ecosystems. Small, execution-focused team supplemented by outsourced GTM and contract developers.
+
+**Endgame:** PolySaaS becomes the de facto operating system for modern SaaS stacks — where apps, data, and AI collaborate autonomously, eliminating sprawl and unlocking intelligent operations at scale.
+
+We are building the infrastructure layer the next generation of enterprises will run on.
+
+**Michael Oliver**
+*Founder, PolySaaS Online*
+*Makati City / Global Remote*
+
+---
+
+# Main Body
 
 ---
 
@@ -373,8 +419,3 @@ The following outreach plan is focused, low-effort, and high-conversion. We star
 This market could be even bigger than Liferay/Django SIs long-term — vendors are multipliers (they bring their customers to us).
 
 ---
-
-PolySaaS is not another SaaS tool — it's the operating system for modern SaaS stacks, where data drives decisions, apps talk to each other, and AI peers become real contributors.
-
-**Michael Oliver**
-*Founder, PolySaaS Online*
