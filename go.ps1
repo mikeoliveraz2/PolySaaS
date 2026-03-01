@@ -259,31 +259,34 @@ try {
     & $venvPython -u manage.py runserver
 }
 finally {
-    Write-Host ""
-    Write-Host "── Freeze venv to requirements.txt ─────────────────" -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '── Freeze venv to requirements.txt ─────────────────' -ForegroundColor Cyan
     Push-Location $scriptDir
 
     $freezeOutput = & $venvPython -m pip freeze 2>&1
     $freezeLines = ($freezeOutput | Where-Object { $_ -match '==' } | Measure-Object).Count
 
     if ($freezeLines -lt 20) {
-        Write-Host "  SAFETY CHECK FAILED: pip freeze returned only $freezeLines packages (expected 20+)" -ForegroundColor Red
-        Write-Host "  Skipping requirements.txt update to avoid overwriting with empty/broken venv" -ForegroundColor Red
+        $failMsg = '  SAFETY CHECK FAILED: pip freeze returned only ' + $freezeLines + ' packages (expected 20+)'
+        Write-Host $failMsg -ForegroundColor Red
+        Write-Host '  Skipping requirements.txt update to avoid overwriting with empty/broken venv' -ForegroundColor Red
     }
     elseif ($LASTEXITCODE -eq 0) {
         $freezeOutput | Out-File -FilePath requirements.txt -Encoding utf8
-        Write-Host "  requirements.txt updated from venv ($freezeLines packages)" -ForegroundColor Green
+        $okMsg = '  requirements.txt updated from venv (' + $freezeLines + ' packages)'
+        Write-Host $okMsg -ForegroundColor Green
         $status = git status --porcelain requirements.txt 2>&1
         if ($status) {
             git add requirements.txt
-            git commit -m "Update requirements.txt from pip freeze (post-runserver, $freezeLines packages)"
+            $commitMsg = 'Update requirements.txt from pip freeze (post-runserver, ' + $freezeLines + ' packages)'
+            git commit -m $commitMsg
             if ($LASTEXITCODE -eq 0) {
                 git push origin main 2>&1
-                Write-Host "  Committed and pushed requirements.txt" -ForegroundColor Green
+                Write-Host '  Committed and pushed requirements.txt' -ForegroundColor Green
             }
         }
         else {
-            Write-Host "  No change to requirements.txt" -ForegroundColor DarkGray
+            Write-Host '  No change to requirements.txt' -ForegroundColor DarkGray
         }
     }
 

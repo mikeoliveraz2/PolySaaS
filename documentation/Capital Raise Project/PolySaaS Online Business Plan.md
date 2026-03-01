@@ -1,5 +1,7 @@
 # PolySaaS Online – Business Plan
 
+*Updated Feb 2026 with stakeholder feedback: risk table, competitive landscape, pricing sensitivity, traction milestones, data updates, and recommended next steps.*
+
 ## Executive Summary
 **March 2026**
 **Seeking $750K–$1.5M Seed**
@@ -27,69 +29,143 @@ Fully proxied, self-hostable-capable, and GDPR-ready, PolySaaS preserves existin
 
 We sit at the intersection of exploding markets:
 
+**Pricing & ARPU sensitivity (investor view)**
+
+| Scenario | Blended ARPU | Driver |
+|----------|---------------|--------|
+| **Conservative** | $35–40/user/mo | Mostly Starter tier early; minimal AI usage |
+| **Base (forecast)** | $49/user/mo | Professional tier dominant; current plan |
+| **Optimistic** | $65+/user/mo | Enterprise tier + AI usage uplift post-2027 |
+
+*Consider:* Freemium / self-serve entry (e.g. 1 app free tier, limited users) to accelerate waitlist → paid conversion.
+
+### Current Traction & Milestones (Feb 2026)
+
+**Product / technical**
+- 8+ bundled apps fully proxied & sniffed
+- PolySniffer live, handler generation working
+- OpenAPI/Swagger docs for endpoints
+- Liferay CE integrated with portlet generation
+- Consolidated repo, hardened workflow, daily backups
+- Demo videos in production
+
+**Pre-money metrics to quantify (for investor discussions)**
+- Waitlist: *[e.g. 320 sign-ups]*
+- Demo requests: *[e.g. 45]*
+- MRR today: *[e.g. $0–5K]*
+- Conversion funnel: waitlist → demo → pilot *[add conversion % when available]*
+- Beta / paid pilots: target **5–10 paid pilots** pre-raise close
+
+
 - **Digital Experience Platforms (DXP):** $15–16B in 2026, growing to $35–59B by 2033 (CAGR 12–16%).
 - **Self-hosted / private cloud platforms:** ~$20.6B in 2026, reaching $46B by 2033 (CAGR 12.2%), driven by data sovereignty, cost control, and AI privacy needs.
 - **Broader SaaS ecosystem:** $375B+ in 2026, with mid-market organizations averaging 100–335 apps (down slightly from prior peaks but still fragmented).
 
 Liferay alone powers ~13,000–14,000 active companies (strong in manufacturing, finance, government) and supports a global network of 200–400+ Solution Partners across 67+ countries — ideal early channel for bundling and upsell.
 
-### Business Model
+**We are seeking $750K–$1.5M in seed funding** to accelerate go-to-market, prove partner-led distribution, and scale the platform to support the Liferay and Django channel forecasts below.
 
-Tiered per-user/month subscription with flexible app choice:
+#### Use of Funds (18-month runway)
 
-| Tier | Apps Included | Price (/user/mo) |
-|------|---------------|-------------------|
-| **Starter** | 1 app | $29 |
-| **Professional** | Up to 3 apps | $49 |
-| **Enterprise** | Unlimited | $99 |
+| Category | % | Amount ($1M raise) | Purpose |
+|----------|---|--------------------|---------|
+| **Go-to-market & sales** | 40% | $400K | **Katapult Digital (GTM outsourced) @ $5,000/mo** ($90K over 18 mo); **conference budget $45K**; partner recruitment, demos, waitlist conversion; Liferay/Django conference presence |
+| **Product & engineering** | 35% | $350K | **3 developers @ $3,000/mo each** ($162K over 18 mo); **Cursor Ultra, 3 seats @ $200/mo each** ($10.8K over 18 mo); **dev hardware upgrades $25K**; remainder: AI As Peers hardening, Apps As Peers roadmap, PolySniffer scale, tooling |
+| **Infrastructure & ops** | 15% | $150K | GCP production, BigQuery, networking, security hardening. **Offset by up to $350K Google for Startups Cloud credits (AI Tier qualification targeted post-deployment), targeting near-zero net GCP burn in first 18–24 months.** |
+| **Legal, compliance & admin** | 10% | $100K | Entity, contracts, IP; early GDPR/data-residency posture |
 
-14-day free trial (no card required). Blended ARPU target: ~$49. High stickiness from integration depth and AI workflows → expected NRR >120% long-term.
+#### Committed line items ($1M raise, 18 months)
 
-### Traction (March 2026)
+| Line item | Amount | Category |
+|-----------|--------|----------|
+| Katapult Digital (GTM) @ $5K/mo | $90K | Go-to-market |
+| Conference budget | $45K | Go-to-market |
+| CRM + pipeline tools (Apollo, HubSpot Starter) | $20K | Go-to-market |
+| Demo & waitlist conversion (landing pages, paid test, assets) | $40K | Go-to-market |
+| Partner recruitment (travel, swag, partner events) | $55K | Go-to-market |
+| GTM reserve / flexible pipeline | $150K | Go-to-market |
+| 3 developers @ $3K/mo each | $162K | Product & engineering |
+| Cursor Ultra, 3 seats @ $200/mo each | $10.8K | Product & engineering |
+| Dev hardware upgrades | $25K | Product & engineering |
+| Product contractor or bonus buffer | $30K | Product & engineering |
+| CI/CD, monitoring, API tooling | $25K | Product & engineering |
+| Product backlog (AI As Peers, Apps As Peers, PolySniffer) | $97K | Product & engineering |
+| GCP production (compute, BigQuery, networking) @ ~$4K/mo | $72K | Infrastructure & ops |
+| Security review / audit (one-time) | $25K | Infrastructure & ops |
+| DevOps tooling or part-time contractor | $28K | Infrastructure & ops |
+| Infra reserve | $25K | Infrastructure & ops |
+| Entity formation + cap table | $15K | Legal & admin |
+| Customer contracts / terms of service | $20K | Legal & admin |
+| IP review / counsel | $25K | Legal & admin |
+| GDPR / privacy counsel | $25K | Legal & admin |
+| Legal reserve | $15K | Legal & admin |
+| **Total committed** | **$1,000K** | |
 
-- 8+ core apps fully proxied and orchestrated (Nextcloud, Odoo, Mattermost, Liferay CE, etc.).
-- PolySniffer live with auto-handler generation and OpenAPI exposure.
-- Liferay CE integration with dynamic portlet support.
-- Growing waitlist + demo videos in production.
-- Consolidated monorepo, CI/CD hardening, daily backups.
-- Early partner conversations underway (Liferay/Django SIs).
+*GCP infra line assumes partial offset via **Google for Startups Cloud Program** credits ($200–350K expected post-approval). Actual net spend lower; credits extend runway and accelerate AI feature velocity.*
 
-### Go-to-Market & Channel Strategy
+#### Non-Dilutive Capital & Google for Startups Cloud Program
 
-Partner-led distribution via Liferay resellers/SIs (first focus), then Django firms, Odoo/Nextcloud ecosystems.
+PolySaaS is built natively on Google Cloud Platform (GCP)—Pub/Sub, BigQuery, Vertex AI (for future model fine-tuning), Compute/Networking for proxy orchestration. Immediately after production deployment (target Q2 2026), we will apply to the **Google for Startups Cloud Program** (Scale Tier, AI-first qualification).
 
-- **Phase 1 (2026):** Integration pain → 19 partners, ~45 customers, ~$800K ARR run-rate.
-- **Phase 2 (2027):** AI As Peers as lead narrative → 71 partners, ~275 customers, ~$4.9M ARR.
-- **Phase 3 (2028+):** Apps As Peers autonomy → multi-channel scale, targeting $15M+ ARR.
+**Program benefits (2026 — AI-first Scale Tier):**
+- Up to **$350,000 USD in Google Cloud credits** over 2 years (Year 1 up to $250K including base Scale + $150K AI uplift; Year 2 up to additional $100K at 20% coverage).
+- **$12,000 USD in Enhanced Support credits** (1 year) — production reliability and security posture.
+- Additional: 12 months free Google Workspace Business Plus, $600/mo Google Maps credits (if needed for geo features), dedicated Startup Success Manager, technical mentorship (Google Cloud + AI ecosystem), exclusive events, Google-wide offers.
+- **Eligibility fit:** Pre-seed/seed stage, equity-funded (post-this raise), AI-central product (multi-AI peers + orchestration), founded <10 years, <$5K prior GCP credits.
 
-Conservative/moderate/optimistic bands show clear path from $0.4M–$1.2M ARR (end-2026) to $8M–$25M+ (end-2028).
+**Financial impact on runway & burn:**
+- Our 18-month infra budget allocates ~$72K for GCP production (~$4K/mo).
+- $350K credits (conservatively $200–250K usable in first 18–24 months) cover **100–200%+ of projected GCP spend** during seed → **extends effective runway by 6–12+ months** or frees budget for faster feature velocity (e.g. Apps As Peers roadmap).
+- Non-dilutive: Reduces equity needed for infra, improves unit economics early, de-risks scaling to enterprise trials.
 
-### The Ask & Use of Funds
+**Timeline:** Apply immediately after GCP production deployment (PolySniffer scale + initial bundled apps live). Expected approval 4–8 weeks for qualified AI startups. Credits applied/eligible post-acceptance.
 
-Seeking **$750K–$1.5M seed** (18-month runway at ~$1M raise):
+*Why investors care:* Runway extension without dilution; Google acceptance = external validation of tech/AI focus; AI tier aligns with multi-model peers (Grok/Claude/Gemini) and Vertex AI roadmap; low execution risk (online form + deck; high approval odds for GCP-native, AI-centric seed stage).
 
-- **40% Go-to-market ($400K):** Outsourced GTM via Katapult Digital ($5K/mo), conferences, partner recruitment, waitlist conversion.
-- **35% Product/Engineering ($350K):** 3 developers, AI hardening, PolySniffer scale, Apps As Peers R&D.
-- **15% Infra/Ops ($150K):** GCP production, security audit.
-- **10% Legal/Admin ($100K):** Entity, contracts, GDPR posture.
+**Application:** [Google for Startups Cloud Program](https://cloud.google.com/startup/apply) — AI tier: [cloud.google.com/startup/ai](https://cloud.google.com/startup/ai).
 
-Milestones unlocked: $1M+ ARR at 18 months, 50–70 active partners, enterprise pilots, production-grade security → position for Series A or cash-flow positivity.
+**Application teaser (for Google form / pitch):**  
+*PolySaaS is a GCP-native, AI-first SaaS platform that unifies enterprise apps (Liferay, Odoo, Nextcloud, Mattermost, etc.) behind a single subscription. We use Pub/Sub and BigQuery for event orchestration, multi-model AI (Grok, Claude, Gemini) as visible "peers" in Mattermost channels, and auto-generated proxy handlers (PolySniffer) for zero-code integration. Post-seed, we are deploying production on GCP and scaling AI workflows with Vertex AI. We are applying for the AI-first Scale Tier to extend runway and accelerate enterprise readiness.*
 
-### Team & Vision
+#### Targets (18–24 months)
 
-Founded by **Michael Oliver**, with deep experience in open-source orchestration, AI integration, and self-hosted ecosystems. Small, execution-focused team supplemented by outsourced GTM and contract developers.
+- **ARR at 18 months:** $1.2M–$2M (aligns with Phase 1 + early Phase 2 in the Liferay forecast).
+- **ARR at 24 months:** $2.5M–$4.5M (Phase 2 scaling, AI As Peers as lead message).
+- **Runway:** 18 months to reach $1M+ ARR and partner activation metrics; then path to cash-flow positive or Series A based on traction.
 
-**Endgame:** PolySaaS becomes the de facto operating system for modern SaaS stacks — where apps, data, and AI collaborate autonomously, eliminating sprawl and unlocking intelligent operations at scale.
+#### What the capital unlocks
 
-We are building the infrastructure layer the next generation of enterprises will run on.
-
-**Michael Oliver**
-*Founder, PolySaaS Online*
-*Makati City / Global Remote*
+- **Accelerate go-to-market** — Systematic outreach to 20–30 Liferay/Django partners (see Go-to-Market section), demo pipeline, and first paid pilots.
+- **Expand product** — AI As Peers GA in Mattermost, more bundled apps, and first Apps As Peers use cases.
+- **Scale infrastructure** — Production-grade GCP deployment, monitoring, and security to support enterprise trials.
+- **De-risk infra & accelerate AI roadmap** — Secure $200–350K non-dilutive GCP credits via Google for Startups Cloud Program (AI Tier), covering production costs and enabling faster hardening of AI As Peers (multi-model collaboration) and PolySniffer at enterprise scale.
+- **Small core team** — 3 developers (avg $3K/mo each); **GTM outsourced to Katapult Digital ($5K/mo)**. Execute partner and product roadmap.
 
 ---
 
-# Main Body
+## Competitive Landscape
+
+| Alternative | Self-hosted / multi-app | AI / orchestration | Bundled apps | AI as visible peers | PolySaaS differentiator |
+|-------------|-------------------------|--------------------|--------------|---------------------|--------------------------|
+| **Cloudron / YunoHost** | Yes | No | Yes (basic) | No | We add AI peers, atomic services, proxy/sniffer — they are app hosting only. |
+| **n8n / Make / Zapier** | No (mostly cloud) | Automation only | No | No | We bundle apps + visible AI teammates; they are automation connectors only. |
+| **Liferay native + custom integrations** | Yes | No (custom build) | Varies | No | We offer zero-code handlers, PolySniffer, AI peers; custom is slow/expensive. |
+| **Salesforce AppExchange / broad platforms** | No | Varies | Marketplace | No | We are self-hosted, multi-app, open-core option; they are vendor-locked. |
+
+*Summary:* PolySaaS is the only option combining self-hosted multi-app, proxy/sniffer architecture, and **AI as visible teammates in Mattermost** — a category shift, not just automation or hosting.
+
+---
+
+## Risks & Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Slow partner activation (&lt;60% generate first deal in 90 days) | Medium–High | High | Pilot incentives (first 3 customers revenue-share free), joint demos at Liferay events, success-based tiered onboarding |
+| Multi-AI cost explosion (Grok/Claude/Gemini tokens) | Medium | Medium | Usage-based tier pricing uplift, caching + prompt optimization, fallback to cheaper models |
+| **GCP cost overrun during scale (BigQuery, AI token usage)** | **Medium** | **Medium** | **Immediate application to Google for Startups Cloud Program post-deployment (up to $350K credits, AI Tier); usage monitoring and prompt optimization from day 1** |
+| Proxy/sniffer security or compliance issues (enterprise red flags) | Medium | High | Early third-party pen-test + SOC 2 Type 1 target in first 6 months; data-residency options via GCP regions |
+| Competitive response (Liferay native integrations, Zapier AI agents) | Low–Medium | Medium | Patent filing on PolySniffer handler generation + AI-peer orchestration pattern; emphasize self-hosted / open-core option |
+| Churn from integration complexity during onboarding | Medium | Medium | Dedicated partner success playbook + video library; target ACV starts at 30 users to ensure stickiness |
 
 ---
 
@@ -97,7 +173,7 @@ We are building the infrastructure layer the next generation of enterprises will
 
 ### Number of Partners/Resellers
 
-Liferay maintains a global partner network of trusted Solution Partners (system integrators, consultancies, and resellers) across over 67 countries. The public Partner Directory lists hundreds of active partners — exact number not disclosed publicly, but estimates from directory browsing and reports place it at **200–400+ global partners**, with a mix of Silver, Gold, and Platinum tiers.
+Liferay maintains a global partner network of trusted Solution Partners (system integrators, consultancies, and resellers) across over 67 countries. The public Partner Directory lists hundreds of active partners — exact number not disclosed publicly, but estimates from directory browsing and recent awards place it at **300–400+ global partners**, with a mix of Silver, Gold, and Platinum tiers.
 
 This includes regional leaders such as:
 - **AIMDek Technologies** — North America
@@ -279,7 +355,7 @@ Based on Django's niche but loyal ecosystem (10k–100k devs, 200–400 SIs), se
 
 ## Target Markets by SaaS Sprawl
 
-The following markets typically run 10–130+ SaaS accounts per organization and are therefore excellent candidates for PolySaaS (unified platform, atomic services, proxy handlers, AI peers). Ranked by average number of SaaS tools used, based on 2024–2026 data from Blissfully/Ottho, Productiv, Zylo, and Gartner reports.
+The following markets typically run 10–200+ SaaS accounts per organization (2025–2026 data: overall **106–112 apps/company**; mid-market **110–200**; enterprise **187–473**) and are therefore excellent candidates for PolySaaS. Ranked by average number of SaaS tools used, based on Blissfully/Otto, Productiv, Zylo, and Gartner reports.
 
 ### Top Targets with High SaaS Sprawl (Beyond Liferay & Django)
 
@@ -316,8 +392,10 @@ The following markets typically run 10–130+ SaaS accounts per organization and
 ### Market Size Gauge
 
 - Global companies with 50–999 employees: ~millions (SaaS spend ~$50–$100B/year)
-- Average SaaS apps: 80–130 → massive opportunity for consolidation
+- Average SaaS apps: 80–130 (conservative) to 110–200 mid-market (2025–2026 data) → massive opportunity for consolidation
 - If we capture 1% of mid-market → tens of thousands of potential customers
+
+**Data & assumption updates (Feb 2026):** Self-hosted / private cloud platform market ~$18.5–20B in 2025–2026, growing to ~$46B by 2033 at ~12% CAGR. Liferay partner count refined to **300–400+** (directory + recent awards). SaaS sprawl ranges above updated to reflect 2025–2026 reports; our plan remains conservative for credibility. Cloudron/YunoHost remain niche (low thousands of active instances), reinforcing differentiation opportunity.
 
 ---
 
@@ -419,3 +497,18 @@ The following outreach plan is focused, low-effort, and high-conversion. We star
 This market could be even bigger than Liferay/Django SIs long-term — vendors are multipliers (they bring their customers to us).
 
 ---
+
+## Recommended Next Steps (Investor Readiness)
+
+1. **Pitch deck** — Convert this plan into a 15–20 slide deck (Problem, Solution, Product, Traction, Market, Business Model, GTM, Team, Financials/Ask, Risks). Use visuals for ARR ramp and partner/customer growth.
+2. **Validate assumptions** — Run small experiments: (a) Outreach to 10–15 Liferay/Django partners using the template → report response/demo rate. (b) Beta onboard 3–5 waitlist companies → document onboarding time, first value, NPS.
+3. **Financial model** — Build a simple bottoms-up Excel: partners recruited × activation % × clients/partner × users/client × ARPU × churn. Show monthly burn and milestones; optional tranches if raising in rounds.
+4. **Team slide** — Expand on founder background + advisors/part-time contributors (e.g. Katapult relationship, dev contractors).
+5. **Legal / IP** — Prioritize entity formation + basic IP assignment before raising.
+
+---
+
+PolySaaS is not another SaaS tool — it's the operating system for modern SaaS stacks, where data drives decisions, apps talk to each other, and AI peers become real contributors.
+
+**Michael Oliver**
+*Founder, PolySaaS Online*
