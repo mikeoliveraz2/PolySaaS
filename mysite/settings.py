@@ -21,9 +21,7 @@ JAZZMIN_SETTINGS = {
     "copyright": "DoseSaaS 2025",
     "show_ui_builder": True,
     "index_template": "jazzmin/admin/index.html",
-    # Example: set a custom logo (put your logo in static directory)
-    # "site_logo": "img/dose_logo.png",
-    # Example: set a custom favicon
+    "site_logo": "img/PolySaaS-Industrial-Logo.png",
     # "site_icon": "img/favicon.ico",
     # Example: set a custom color theme
     "PRIMARY_COLOR": "#007bff",
