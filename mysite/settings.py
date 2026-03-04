@@ -15,7 +15,7 @@ DEBUG = True
 JAZZMIN_SETTINGS = {
     "custom_links": {},
     "SITE_TITLE": "Dose Admin",
-    "SITE_HEADER": '<img src="/static/img/PolySaaS-Logo.png" style="height: 40px; margin-right: 10px; vertical-align: middle;" alt="PolySaaS"/> Dose Admin Portal',
+    "SITE_HEADER": '<img src="/static/img/PolySaaS-Industrial-Logo.png" style="height: 50px; margin-right: 10px; vertical-align: middle;" alt="PolySaaS"/> Dose Admin Portal',
     "SITE_BRAND": "PolySaaS",
     "WELCOME_SIGN": "Welcome to DoseSaaS Admin",
     "copyright": "DoseSaaS 2025",

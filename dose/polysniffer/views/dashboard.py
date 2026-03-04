@@ -420,9 +420,21 @@ def silent_capture(request, endpoint_id):
         except Exception:
             raw_path = raw_url[:500]
 
-        # URLField requires a valid URL; fall back to placeholder if invalid
         if not raw_url.startswith(('http://', 'https://')):
             raw_url = endpoint.endpoint_url or f'http://localhost/{raw_url}'
+
+        rpc_event = data.get('rpcEvent') or data.get('rpc_event')
+        har_rpc_data = None
+        if rpc_event:
+            har_rpc_data = {
+                'rpc_model': rpc_event.get('model', ''),
+                'rpc_method': rpc_event.get('method', ''),
+                'event_tag': rpc_event.get('eventTag', ''),
+                'category': rpc_event.get('category', ''),
+                'is_business_event': rpc_event.get('isBusinessEvent', False),
+                'priority': rpc_event.get('priority', 4),
+            }
+            raw_path = f"{raw_path} [{rpc_event.get('eventTag', '')}]"[:500]
 
         TrafficLog.objects.create(
             endpoint_name=endpoint_name,
@@ -435,6 +447,7 @@ def silent_capture(request, endpoint_id):
             status_code=int(data.get('status', 0) or 0),
             response_headers={},
             response_body='',
+            har_data=har_rpc_data,
             user=request.user if request.user.is_authenticated else None,
             captured_at=timezone.now()
         )

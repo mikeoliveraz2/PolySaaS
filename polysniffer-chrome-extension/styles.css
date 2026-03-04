@@ -104,7 +104,7 @@ input:focus, select:focus {
 
 .stats {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 6px;
   padding: 8px;
   background: #0f0f23;
@@ -138,5 +138,40 @@ input:focus, select:focus {
   font-size: 12px;
 }
 .footer a:hover { text-decoration: underline; }
+
+.event-feed {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #0f0f23;
+  border-radius: 4px;
+  padding: 6px;
+  margin-top: 8px;
+  border: 1px solid #2a2a4a;
+}
+.event-feed-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #2a2a4a;
+}
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+  color: #999;
+}
+.event-row.event-biz {
+  color: #e0e0e0;
+  font-weight: 600;
+}
+.ev-icon { flex-shrink: 0; width: 16px; text-align: center; }
+.ev-tag { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Consolas', 'Courier New', monospace; font-size: 10px; }
+.ev-cat { flex-shrink: 0; font-size: 9px; padding: 1px 4px; border-radius: 3px; background: #2a2a4a; color: #aaa; text-transform: uppercase; letter-spacing: 0.3px; }
+.ev-time { flex-shrink: 0; font-size: 10px; color: #666; }
 
 .hidden { display: none !important; }
