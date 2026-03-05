@@ -15,15 +15,13 @@ DEBUG = True
 JAZZMIN_SETTINGS = {
     "custom_links": {},
     "SITE_TITLE": "Dose Admin",
-    "SITE_HEADER": '<img src="/static/img/PolySaaS-Logo.png" style="height: 40px; margin-right: 10px; vertical-align: middle;" alt="PolySaaS"/> Dose Admin Portal',
+    "SITE_HEADER": '<img src="/static/img/PolySaaS-Industrial-Logo.png" style="height: 50px; margin-right: 10px; vertical-align: middle;" alt="PolySaaS"/> Dose Admin Portal',
     "SITE_BRAND": "PolySaaS",
     "WELCOME_SIGN": "Welcome to DoseSaaS Admin",
     "copyright": "DoseSaaS 2025",
     "show_ui_builder": True,
     "index_template": "jazzmin/admin/index.html",
-    # Example: set a custom logo (put your logo in static directory)
-    # "site_logo": "img/dose_logo.png",
-    # Example: set a custom favicon
+    "site_logo": "img/PolySaaS-Industrial-Logo.png",
     # "site_icon": "img/favicon.ico",
     # Example: set a custom color theme
     "PRIMARY_COLOR": "#007bff",

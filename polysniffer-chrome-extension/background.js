@@ -27,6 +27,70 @@ function shouldCapture(url) {
   }
 }
 
+const ODOO_RPC_PATHS = ['/web/dataset/call_kw', '/web/dataset/call_button',
+  '/web/dataset/call', '/web/action/load', '/web/action/run'];
+
+const RPC_EVENT_CATEGORIES = {
+  create:           { icon: '🔴', label: 'CREATE',   priority: 1 },
+  write:            { icon: '🔴', label: 'WRITE',    priority: 1 },
+  unlink:           { icon: '🔴', label: 'DELETE',   priority: 1 },
+  action_post:      { icon: '🟠', label: 'ACTION',   priority: 2 },
+  action_confirm:   { icon: '🟠', label: 'ACTION',   priority: 2 },
+  action_done:      { icon: '🟠', label: 'ACTION',   priority: 2 },
+  action_cancel:    { icon: '🟠', label: 'ACTION',   priority: 2 },
+  button_validate:  { icon: '⭐', label: 'WORKFLOW', priority: 2 },
+  button_confirm:   { icon: '⭐', label: 'WORKFLOW', priority: 2 },
+  button_approve:   { icon: '⭐', label: 'WORKFLOW', priority: 2 },
+  search_read:      { icon: '⚪', label: 'READ',     priority: 4 },
+  read:             { icon: '⚪', label: 'READ',     priority: 4 },
+  name_get:         { icon: '⚪', label: 'READ',     priority: 4 },
+  fields_get:       { icon: '⚪', label: 'READ',     priority: 4 },
+  default_get:      { icon: '⚪', label: 'READ',     priority: 4 },
+  onchange:         { icon: '🔵', label: 'FORM',     priority: 3 },
+  name_search:      { icon: '⚪', label: 'READ',     priority: 4 },
+};
+
+function classifyOdooRpc(url, bodyStr) {
+  try {
+    const path = new URL(url).pathname;
+    if (!ODOO_RPC_PATHS.some(p => path.startsWith(p))) return null;
+
+    let parsed;
+    if (typeof bodyStr === 'string') {
+      parsed = JSON.parse(bodyStr);
+    } else if (typeof bodyStr === 'object') {
+      parsed = bodyStr;
+    } else {
+      return null;
+    }
+
+    const params = parsed.params || parsed;
+    const model = params.model || params.args?.[0] || '';
+    const method = params.method || '';
+
+    if (!model || !method) return null;
+
+    let cat = RPC_EVENT_CATEGORIES[method];
+    if (!cat) {
+      if (method.startsWith('action_')) cat = { icon: '🟠', label: 'ACTION', priority: 2 };
+      else if (method.startsWith('button_')) cat = { icon: '⭐', label: 'WORKFLOW', priority: 2 };
+      else cat = { icon: '🔹', label: 'RPC', priority: 3 };
+    }
+
+    return {
+      model,
+      method,
+      eventTag: `odoo:${model}.${method}`,
+      category: cat.label,
+      icon: cat.icon,
+      priority: cat.priority,
+      isBusinessEvent: cat.priority <= 2
+    };
+  } catch {
+    return null;
+  }
+}
+
 function sendToDjango(capture) {
   if (!djangoUrl || !endpointId) return;
   fetch(`${djangoUrl}/admin/polysniffer/silent-capture/${endpointId}/`, {
@@ -46,7 +110,8 @@ chrome.webRequest.onBeforeRequest.addListener(
       method: details.method,
       type: details.type,
       timestamp: new Date().toISOString(),
-      requestBody: null
+      requestBody: null,
+      rpcEvent: null
     };
 
     if (details.requestBody) {
@@ -60,11 +125,24 @@ chrome.webRequest.onBeforeRequest.addListener(
       }
     }
 
+    if (details.method === 'POST' && capture.requestBody) {
+      capture.rpcEvent = classifyOdooRpc(details.url, capture.requestBody);
+    }
+
     sendToDjango(capture);
 
     chrome.storage.local.get(['captureData'], (data) => {
-      const cd = data.captureData || { requests: [], forms: [], cookies: {} };
+      const cd = data.captureData || { requests: [], forms: [], cookies: {}, rpcEvents: [] };
       cd.requests.push(capture);
+      if (capture.rpcEvent) {
+        if (!cd.rpcEvents) cd.rpcEvents = [];
+        cd.rpcEvents.push({
+          ...capture.rpcEvent,
+          timestamp: capture.timestamp,
+          url: capture.url
+        });
+        if (cd.rpcEvents.length > 200) cd.rpcEvents = cd.rpcEvents.slice(-200);
+      }
       if (cd.requests.length > 500) cd.requests = cd.requests.slice(-500);
       chrome.storage.local.set({ captureData: cd });
     });

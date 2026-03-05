@@ -101,9 +101,27 @@ async function updateStats() {
   try {
     const data = await chrome.storage.local.get(['captureData']);
     const cd = data.captureData || {};
-    $('#stat-requests').textContent = (cd.requests || []).length;
+    const requests = cd.requests || [];
+    const rpcEvents = cd.rpcEvents || [];
+
+    $('#stat-requests').textContent = requests.length;
     $('#stat-forms').textContent = (cd.forms || []).length;
     $('#stat-cookies').textContent = Object.keys(cd.cookies || {}).length;
+    $('#stat-events').textContent = rpcEvents.length;
+
+    const feedEl = $('#event-feed');
+    if (rpcEvents.length > 0) {
+      const recent = rpcEvents.slice(-15).reverse();
+      feedEl.innerHTML = '<div class="event-feed-title">RPC Event Feed</div>' +
+        recent.map(ev => {
+          const time = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '';
+          const cls = ev.isBusinessEvent ? 'event-row event-biz' : 'event-row';
+          return `<div class="${cls}"><span class="ev-icon">${ev.icon}</span><span class="ev-tag">${ev.eventTag}</span><span class="ev-cat">${ev.category}</span><span class="ev-time">${time}</span></div>`;
+        }).join('');
+      show(feedEl);
+    } else {
+      hide(feedEl);
+    }
   } catch {}
 }
 
@@ -138,7 +156,8 @@ async function sendCaptures() {
       forms: cd.forms || [],
       page_url: cd.pageUrl || '',
       page_title: cd.pageTitle || '',
-      timestamp: r.timestamp || new Date().toISOString()
+      timestamp: r.timestamp || new Date().toISOString(),
+      rpc_event: r.rpcEvent || null
     }));
 
     const csrfResp = await fetch(`${djangoUrl}/admin/polysniffer/api/csrf-token/`, {
