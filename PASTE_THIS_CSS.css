@@ -1,0 +1,44 @@
+/* ================================================================
+   PolySaaS Site-Wide Brand Uniformity CSS
+   Applied by Cursor — 2026-03-05
+   ================================================================ */
+
+/* SITE-WIDE: Match Home page gradient on all inner pages */
+body:not(.home) #brx-content {
+    background-image: linear-gradient(180deg, #e0e0e0, #81d4fa, #e0e0e0) !important;
+}
+
+/* HOME: Green stripe removal */
+#brxe-9d3229 { background-image: none !important; background-color: transparent !important; }
+
+/* HOME: Lime/mint buttons → brand blue */
+#brxe-spdnfe { background-color: #003399 !important; color: #ffffff !important; }
+#brxe-spdnfe:hover { background-color: #03a9f4 !important; }
+#brxe-108a27 { background-color: #003399 !important; color: #ffffff !important; }
+#brxe-108a27:hover { background-color: #03a9f4 !important; }
+
+/* HOME: Gradient fixes */
+#brxe-5a8e5d { background-image: linear-gradient(180deg, #e0e0e0, #81d4fa) !important; }
+#brxe-a41c97 { background-image: linear-gradient(180deg, #81d4fa, #e0e0e0) !important; }
+#brxe-d09dd8 { background-image: linear-gradient(180deg, #e0e0e0, #81d4fa) !important; }
+
+/* HOME: Card backgrounds → brand surface */
+#brxe-48433c, #brxe-ebdc99, #brxe-c34c6b, #brxe-c42948, #brxe-3d9d44, #brxe-212ef4, #brxe-c84666, #brxe-d99909, #brxe-5043f6, #brxe-bb6825 { background-color: #f5f5f5 !important; }
+
+/* HOME: Teal icons → brand accent */
+#brxe-77ca79 .icon, #brxe-77ca79 .icon a, #brxe-f81cf6 .icon, #brxe-f81cf6 .icon a, #brxe-16b8fe .icon, #brxe-16b8fe .icon a, #brxe-1088c8 .icon, #brxe-1088c8 .icon a, #brxe-9a18af .icon, #brxe-9a18af .icon a, #brxe-444777 .icon, #brxe-444777 .icon a { color: #03a9f4 !important; }
+
+/* HOME: Teal headings → brand accent */
+#brxe-d5dad2, #brxe-454ad3, #brxe-f09dcf { color: #03a9f4 !important; }
+
+/* ALL PAGES: Mint green CTA buttons → brand blue */
+#brxe-lxtgtl, #brxe-klbakr, #brxe-azcciv, #brxe-jzzqut, #brxe-knhbzg, #brxe-moougs, #brxe-vfwohf, #brxe-furbff, #brxe-mhyjsp, #brxe-pnmgpm, #brxe-hhhbrs, #brxe-llvriy, #brxe-jfoddi, #brxe-rdjkmy, #brxe-lqyjnf, #brxe-clefgx, #brxe-1c174a { background-color: #003399 !important; color: #ffffff !important; }
+#brxe-lxtgtl:hover, #brxe-klbakr:hover, #brxe-azcciv:hover, #brxe-jzzqut:hover, #brxe-knhbzg:hover, #brxe-moougs:hover, #brxe-vfwohf:hover, #brxe-furbff:hover, #brxe-mhyjsp:hover, #brxe-pnmgpm:hover, #brxe-hhhbrs:hover, #brxe-llvriy:hover, #brxe-jfoddi:hover, #brxe-rdjkmy:hover, #brxe-lqyjnf:hover, #brxe-clefgx:hover, #brxe-1c174a:hover { background-color: #03a9f4 !important; }
+
+/* ODOO: One-off green button → brand blue */
+#brxe-wjsthw { background-color: #003399 !important; color: #ffffff !important; }
+#brxe-wjsthw:hover { background-color: #03a9f4 !important; }
+
+/* ABOUT US: Purple link → brand accent */
+#brxe-tszryz, #brxe-tszryz a { color: #03a9f4 !important; }
+#brxe-tszryz a:hover { color: #003399 !important; }
