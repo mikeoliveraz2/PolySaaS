@@ -1,4 +1,4 @@
-# go.ps1 — PolySaaS Launcher: Pull → App check → (if OK) Backup + Commit/Push → Services
+# go.ps1 — PolySaaS Launcher: Pull → App check → (if OK) Commit/Push → Services → runserver → (on exit) pip freeze + Backup
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venvFolder = if (Test-Path (Join-Path $scriptDir ".venv")) { ".venv" } else { "venv" }
@@ -187,17 +187,16 @@ $checkOutput = & $venvPython manage.py check 2>&1
 $appLoadOk = ($LASTEXITCODE -eq 0)
 Pop-Location
 if ($appLoadOk) {
-    Write-Host "  App loads OK - will backup and commit/push" -ForegroundColor Green
+    Write-Host "  App loads OK - will commit/push now; backup runs when you exit runserver" -ForegroundColor Green
 }
 else {
-    Write-Host "  App failed to load - skipping backup and commit/push" -ForegroundColor Yellow
+    Write-Host "  App failed to load - skipping commit/push and backup" -ForegroundColor Yellow
     Write-Host "  Fix errors above, run 'pip freeze > requirements.txt' when clean, then .\go again" -ForegroundColor Yellow
 }
 Write-Host ""
 
 if ($appLoadOk) {
     Invoke-MorningSync
-    Invoke-DailyBackup
 }
 
 # ── Virtual Environment (activate for services) ─────────────────────────
@@ -289,6 +288,13 @@ finally {
             Write-Host '  No change to requirements.txt' -ForegroundColor DarkGray
         }
     }
+
+    Write-Host ''
+    Write-Host '── Daily backup (end of session) ─────────────────────' -ForegroundColor Cyan
+    Write-Host '  Running backup now — you will see output below.' -ForegroundColor Yellow
+    Invoke-DailyBackup
+    Write-Host '── Backup step complete ───────────────────────────────' -ForegroundColor Cyan
+    Write-Host ''
 
     Pop-Location
 }

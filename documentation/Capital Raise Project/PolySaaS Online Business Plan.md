@@ -63,6 +63,10 @@ We sit at the intersection of exploding markets:
 
 Liferay alone powers ~13,000–14,000 active companies (strong in manufacturing, finance, government) and supports a global network of 200–400+ Solution Partners across 67+ countries — ideal early channel for bundling and upsell.
 
+---
+
+# Main Body
+
 **We are seeking $750K–$1.5M in seed funding** to accelerate go-to-market, prove partner-led distribution, and scale the platform to support the Liferay and Django channel forecasts below.
 
 #### Use of Funds (18-month runway)
