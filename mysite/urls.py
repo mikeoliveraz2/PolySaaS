@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from dose.views import subscribe_view
 from dose.views_custom_login import CustomLoginView
 from test_decompression_view import test_decompression, simple_html_test, external_direct_test
+from dose.views.oauth_consent import TenantAwareAuthorizationView
 
 # profile_view is now in this file — not dose.views
 @login_required
@@ -53,6 +54,8 @@ urlpatterns = [
     path('test-decompress/', test_decompression, name='test_decompression'),
     path('simple-test/', simple_html_test, name='simple_html_test'),
     path('external-direct/', external_direct_test, name='external_direct_test'),
+    path('o/authorize/', TenantAwareAuthorizationView.as_view(), name='authorize'),
+    path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     path('dose/', include('dose.urls')),
     path('parameters/', include('parameters.urls')),
     path('atomic_service_names/', __import__('dose.views.atomic_service_names', fromlist=['atomic_service_names']).atomic_service_names, name='atomic_service_names'),
