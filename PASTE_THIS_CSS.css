@@ -1,7 +1,20 @@
 /* ================================================================
    PolySaaS Site-Wide Brand Uniformity CSS
    Applied by Cursor — 2026-03-05
+   Updated 2026-03-06: New animated logo swap
    ================================================================ */
+
+/* LOGO: Replace old static logo with new animated GIF — home page hero */
+#brxe-a24611 {
+    content: url('https://azure-nightingale-589250.hostingersite.com/wp-content/uploads/2026/03/ezgif-logo-final.gif') !important;
+    max-width: 316px;
+}
+
+/* LOGO: Replace old static logo with new animated GIF — footer (all pages) */
+#brxe-qupvnj {
+    content: url('https://azure-nightingale-589250.hostingersite.com/wp-content/uploads/2026/03/ezgif-logo-final.gif') !important;
+    max-width: 150px;
+}
 
 /* SITE-WIDE: Match Home page gradient on all inner pages */
 body:not(.home) #brx-content {
