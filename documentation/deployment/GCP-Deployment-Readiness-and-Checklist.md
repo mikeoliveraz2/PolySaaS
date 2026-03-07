@@ -22,17 +22,17 @@
 
 **Bundled apps (from architecture):**
 
-| App            | Port  | OAuth2/SSO status | Notes |
-|----------------|-------|-------------------|--------|
-| Odoo           | 8069  | [ ]               | Native OAuth possible; passthrough auth alternative |
-| Nextcloud      | 8888  | [ ]               | OIDC/OAuth2 plugin; or header-based from PolySaaS |
-| Mattermost     | 8065  | [ ]               | Built-in OAuth; or passthrough |
-| WordPress      | 8980  | [ ]               | Plugin or passthrough |
-| Liferay CE     | 8181  | [ ]               | OAuth2/OIDC support; or passthrough |
-| Dolibarr       | 8889  | [ ]               | OAuth/SSO or passthrough |
-| PolySysMon     | 9001  | [ ]               | Demo; define minimal auth |
-| Focalboard     | 8111  | [ ]               | Mattermost auth or passthrough |
-| AI As Peers    | 8990  | [ ]               | Placeholder; define when implemented |
+| App            | Port  | OAuth2/SSO status | Recommended approach (Shela) | Notes |
+|----------------|-------|-------------------|-------------------------------|--------|
+| Odoo           | 8069  | [ ]               | **Native OAuth2/OIDC**        | auth_oauth module; Google/custom OIDC; native preferred over passthrough |
+| Nextcloud      | 8888  | [ ]               | **Native OIDC**              | user_oidc app; discovery + client ID/secret; auto-provisioning |
+| Mattermost     | 8065  | [ ]               | **Native OAuth2/OIDC**        | Built-in GitLab/Google/Office 365/custom OIDC; no good header-based option |
+| WordPress      | 8980  | [ ]               | **Passthrough (headers)**     | HTTP Header Auth / REMOTE_USER plugins; fastest with PolySaaS middleware |
+| Liferay CE     | 8181  | [ ]               | **Native or passthrough**     | Strong OAuth2/OIDC; header auth also supported |
+| Dolibarr       | 8889  | [ ]               | **Passthrough** (or native)   | Native OAuth modules exist but passthrough often easier |
+| PolySysMon     | 9001  | [ ]               | **Header/session**            | Custom/demo; implement simplest (header → session) |
+| Focalboard     | 8111  | [ ]               | **Via Mattermost**            | Inherits Mattermost auth; treat as part of Mattermost |
+| AI As Peers    | 8990  | [ ]               | **TBD**                      | Placeholder; header or OIDC when implemented |
 
 **Gate checklist (all must be done before “ready for GCP”):**
 
@@ -43,6 +43,13 @@
 - [ ] **POL-5** Manual test: one user logs in once at PolySaaS and opens each app without a second login. *Owner: Michael*
 
 When **POL-1** through **POL-5** are done → **Ready for GCP deployment phase.**
+
+**Recommended order to hit readiness gate (Shela):**  
+1. **POL-1** — PolySaaS already on django-allauth + Google/GitHub.  
+2. **R-2** — Build/test passthrough middleware on 1–2 easy apps (WordPress + one custom).  
+3. **Native OIDC** — Configure Nextcloud, Mattermost, Odoo (and Liferay if desired) to use same upstream IdP as PolySaaS (e.g. Google) for Option B SSO.  
+4. **R-4 / POL-4** — Document choice per app early.  
+5. **POL-5 / R-5** — End-to-end manual test.
 
 ---
 
@@ -125,11 +132,39 @@ Use **Owner** as: **Michael** (human), **Laptop** (Cursor on laptop), **Desktop*
 
 ---
 
-## 5. Document History
+## 5. Shela Feedback (March 2026)
+
+Shela reviewed the plan and checklist; summary below (captured so we don’t lose it).
+
+**Overall:** Plan and phased approach endorsed. Readiness gate (full SSO across bundled apps before GCP) makes sense as the main UX and security prerequisite. **Hybrid model** recommended: use **passthrough (headers/JWT)** where it’s simple and reliable (WordPress, Dolibarr, custom apps), and **native OIDC/OAuth** where support is mature (Nextcloud, Mattermost, Odoo, Liferay).
+
+**Passthrough middleware (POL-2 / R-2):**  
+In Django, middleware can: (1) rely on allauth/IdP for PolySaaS login; (2) on requests to app routes (e.g. `/app/<slug>/*`), inject headers such as `X-User-ID`, `X-User-Email`, `X-User-Name`, or preferably `Authorization: Bearer <short-lived-JWT>` signed by PolySaaS (downstream apps verify signature + claims); (3) use e.g. PyJWT to generate tokens. Works well behind Cloud Run (with IAP off or configured to trust these headers).
+
+**Per-app feasibility (short):**  
+- **Odoo** — Native OAuth2/OIDC preferred (auth_oauth; Google/custom OIDC).  
+- **Nextcloud** — Native OIDC via `user_oidc` app (discovery + client ID/secret).  
+- **Mattermost** — Native OAuth2/OIDC; no robust header-based auto-login.  
+- **WordPress** — Passthrough via headers (e.g. HTTP Header Auth / REMOTE_USER) is often easiest.  
+- **Liferay CE** — Native or header auth both viable.  
+- **Dolibarr** — Passthrough often faster; native OAuth modules exist.  
+- **Focalboard** — Tied to Mattermost; covered by Mattermost auth.  
+- **PolySysMon / AI As Peers** — Custom; header check → session or full OIDC as needed.
+
+**Optional deep dives Shela offered:**  
+- Sample Django middleware for header/JWT injection  
+- Nextcloud `user_oidc` config steps  
+- Pros/cons of same-project vs multi-project topology (B-1)  
+- Cloud Run + Cloud SQL multi-tenant schema tips  
+
+---
+
+## 6. Document History
 
 | Date       | Change | By |
 |------------|--------|-----|
 | 2026-03-08 | Initial plan and checklist; readiness gate = OAuth2/SSO for all bundled apps. | Laptop Cursor |
+| 2026-03-08 | Added Shela feedback: hybrid model, per-app recommended approach, prioritization order, middleware hint; new Section 5. | Laptop Cursor |
 
 ---
 
