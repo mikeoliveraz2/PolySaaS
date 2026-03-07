@@ -30,12 +30,12 @@ Source of truth is **GitHub**; no external clone drive needed. Develop from eith
 
 ---
 
-## Current status (laptop – 2026-02-28)
+## Current status (laptop – 2026-03-08)
 
 - Laptop: PolySaaS on **D:\PolySaaS** (internal SSD, healthy). Branch `main` up to date with `origin/main`.
 - Desktop: PolySaaS on **Imation 1TB** (stable). Pull from `origin/main` to match laptop; push when desktop has commits.
-- Old external (fake Seagate) no longer used; sync is laptop ↔ desktop via GitHub only.
+- **GCP deployment:** Shared plan and checklist → `documentation/deployment/GCP-Deployment-Readiness-and-Checklist.md`. Note for desktop-cc → `notes-from-laptop.md` (this folder).
 
 ---
 
-*Last updated: 2026-02-28 (laptop).*
+*Last updated: 2026-03-08 (laptop).*
