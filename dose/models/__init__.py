@@ -26,3 +26,4 @@ from .mq_input import MQInput
 from .mq_output import MQOutput
 from .mq_config import MQConfig
 from .polysniffer_run import PolySnifferRun
+from .tenant_app import TenantApp

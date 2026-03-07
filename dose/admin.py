@@ -108,7 +108,7 @@ from dose.services.atomic_services_registry import init_atomic_services_registry
 
 # Try to import new session-based models (they may not exist yet)
 try:
-    from .models import Tenant, UserProfile, MLTaxonomy, MLDataset, NavigationPanel, NavigationItem, DashboardButton, IgnorePath, UserRequestTracker, MQInput, MQOutput, MQConfig
+    from .models import Tenant, UserProfile, MLTaxonomy, MLDataset, NavigationPanel, NavigationItem, DashboardButton, IgnorePath, UserRequestTracker, MQInput, MQOutput, MQConfig, TenantApp
     NEW_MODELS_AVAILABLE = True
 except ImportError:
     NEW_MODELS_AVAILABLE = False
@@ -506,6 +506,14 @@ if NEW_MODELS_AVAILABLE:
             """Optimize queryset to include tenant information."""
             queryset = super().get_queryset(request)
             return queryset.select_related('tenant')
+
+    @admin.register(TenantApp)
+    class TenantAppAdmin(admin.ModelAdmin):
+        list_display = ('tenant', 'app_name', 'status', 'app_url', 'provisioned_at')
+        list_filter = ('app_name', 'status')
+        search_fields = ('tenant__name', 'app_name', 'app_url')
+        readonly_fields = ('provisioned_at',)
+        raw_id_fields = ('oauth_application',)
 
     # Custom User Form to include tenant selection
     class UserProfileInlineForm(forms.ModelForm):

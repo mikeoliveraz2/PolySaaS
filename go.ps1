@@ -199,6 +199,21 @@ if ($appLoadOk) {
     Invoke-MorningSync
 }
 
+# ── Blog Archive Refresh ─────────────────────────────────────────────────
+
+$blogScript = Join-Path $scriptDir "wp_build_blog_page.py"
+if (Test-Path $blogScript) {
+    Write-Host "── Blog Archive Refresh ────────────────────────────" -ForegroundColor Cyan
+    $blogOutput = & $venvPython $blogScript 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Blog archive page refreshed with latest posts" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  Blog refresh skipped (network/API error — non-blocking)" -ForegroundColor DarkYellow
+    }
+    Write-Host ""
+}
+
 # ── Virtual Environment (activate for services) ─────────────────────────
 
 . $venvActivate

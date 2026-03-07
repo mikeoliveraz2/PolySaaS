@@ -1,4 +1,4 @@
-"""Apply CSS overrides to WordPress via custom_css post type."""
+"""Apply the updated CSS to WordPress Customizer Additional CSS."""
 import requests
 import json
 
@@ -9,119 +9,86 @@ APP_PASS = "vlop MpGU Os2V xDSI C6T7 2fAN"
 session = requests.Session()
 session.auth = (USER, APP_PASS)
 
-CSS_FIXES = """/* PolySaaS Home Page Fixes — Applied by Cursor 2026-03-04 */
+with open("PASTE_THIS_CSS.css", "r") as f:
+    css_content = f.read()
 
-/* FIX 1: Remove green stripe on Value Proposition container */
-#brxe-9d3229 {
-    background-image: none !important;
-    background-color: transparent !important;
-}
+# Try method 1: Find the active custom_css post for the current theme
+print("=== Method 1: Find and update custom_css post ===")
+r = session.get(f"{SITE}/wp-json/wp/v2/themes", params={"status": "active"})
+if r.status_code == 200 and r.json():
+    theme = r.json()[0]
+    theme_slug = theme.get("stylesheet", "")
+    print(f"  Active theme: {theme_slug}")
 
-/* FIX 2: Fix Sign Up button — lime green to brand blue */
-#brxe-spdnfe {
-    background-color: #003399 !important;
-    color: #ffffff !important;
-}
-#brxe-spdnfe:hover {
-    background-color: #03a9f4 !important;
-}
+    # Search for custom_css post type
+    r2 = session.get(f"{SITE}/wp-json/wp/v2/posts",
+                     params={"type": "custom_css", "per_page": 50})
+    if r2.status_code == 200:
+        print(f"  Found {len(r2.json())} custom_css posts")
+    else:
+        print(f"  custom_css via posts: {r2.status_code}")
+else:
+    print(f"  Themes API: {r.status_code}")
+    theme_slug = ""
 
-/* FIX 3: Fix Get Early Access button — mint green to brand blue */
-#brxe-108a27 {
-    background-color: #003399 !important;
-    color: #ffffff !important;
-}
-#brxe-108a27:hover {
-    background-color: #03a9f4 !important;
-}
+# Try method 2: Direct custom CSS endpoint
+print("\n=== Method 2: Try wp/v2/custom-css ===")
+for endpoint in ["custom-css", "custom_css"]:
+    r = session.get(f"{SITE}/wp-json/wp/v2/{endpoint}")
+    print(f"  /wp/v2/{endpoint}: {r.status_code}")
+    if r.status_code == 200:
+        print(f"    Response: {r.text[:300]}")
 
-/* FIX 4: Fix Value Proposition split background */
-#brxe-5a8e5d {
-    background-image: linear-gradient(180deg, #e0e0e0, #81d4fa) !important;
-}
+# Try method 3: Global Styles API
+print("\n=== Method 3: Check global styles ===")
+r = session.get(f"{SITE}/wp-json/wp/v2/global-styles")
+if r.status_code == 200:
+    styles = r.json()
+    print(f"  Found {len(styles)} global style entries")
+    for s in styles:
+        print(f"    ID={s.get('id')} title={s.get('title',{}).get('rendered','')}")
+else:
+    print(f"  Global styles: {r.status_code}")
 
-/* FIX 5: Fix Articles section split background */
-#brxe-a41c97 {
-    background-image: linear-gradient(180deg, #81d4fa, #e0e0e0) !important;
-}
+# Try method 4: Search for any post with custom_css type via generic search
+print("\n=== Method 4: Search for custom CSS in all post types ===")
+for post_type in ["custom_css"]:
+    r = session.get(f"{SITE}/wp-json/wp/v2/types/{post_type}")
+    if r.status_code == 200:
+        type_info = r.json()
+        rest_base = type_info.get("rest_base", "")
+        print(f"  custom_css type exists, rest_base='{rest_base}'")
+        if rest_base:
+            r2 = session.get(f"{SITE}/wp-json/wp/v2/{rest_base}", params={"per_page": 50})
+            print(f"    {rest_base}: {r2.status_code}")
+            if r2.status_code == 200:
+                for item in r2.json():
+                    print(f"      ID={item['id']} content_preview={str(item.get('content',{}))[:200]}")
+    else:
+        print(f"  custom_css type: {r.status_code}")
 
-/* FIX 6: Subscription Plans gradient fix */
-#brxe-d09dd8 {
-    background-image: linear-gradient(180deg, #e0e0e0, #81d4fa) !important;
-}"""
-
-# Method 1: Try to find existing custom_css post for bricks theme
-# WordPress uses wp_get_custom_css_post() which looks for post_type=custom_css, post_name=<theme>
-print("Looking for existing custom CSS post...")
-
-# We need to search via the database-level approach
-# Try using the WordPress REST API to search all post types
-resp = session.get(f"{SITE}/wp-json/wp/v2/search", 
-                   params={"search": "custom_css", "type": "post", "per_page": 10})
-print(f"Search: HTTP {resp.status_code}")
-
-# Method 2: Try the WordPress customizer changeset approach
-# Create a changeset that modifies custom_css
-print("\nTrying customizer changeset approach...")
+# Try method 5: Use the WordPress Customizer changeset API
+print("\n=== Method 5: Try changeset approach ===")
+# Create a changeset with custom CSS
 changeset_data = {
-    "title": "Cursor CSS Fixes",
-    "status": "draft",
-    "content": json.dumps({
-        "custom_css[bricks]": {
-            "value": CSS_FIXES,
-            "type": "custom_css",
-            "user_id": 1,
-        }
-    })
+    f"custom_css[{theme_slug}]": {
+        "value": css_content,
+        "type": "custom_css",
+    }
 }
-resp = session.post(f"{SITE}/wp-json/wp/v2/changesets", json=changeset_data)
-print(f"Changeset: HTTP {resp.status_code}")
-if resp.status_code in (200, 201):
-    print(f"  Created changeset: {resp.json().get('id')}")
+r = session.post(f"{SITE}/wp-json/customize/v1/changesets",
+                 json=changeset_data)
+print(f"  Changeset API: {r.status_code}")
+if r.status_code in [200, 201]:
+    print(f"  Response: {r.text[:300]}")
 
-# Method 3: Direct approach — try posting to pages endpoint with custom meta
-# Or create a simple HTML/JS snippet page
+# Try method 6: Options API
+print("\n=== Method 6: Try settings/options for custom CSS ===")
+r = session.get(f"{SITE}/wp-json/wp/v2/settings")
+if r.status_code == 200:
+    settings = r.json()
+    for key in settings:
+        if 'css' in key.lower() or 'custom' in key.lower() or 'style' in key.lower():
+            print(f"  {key}: {str(settings[key])[:200]}")
 
-# Method 4: Use wp-admin AJAX to save custom CSS (most reliable)
-# First get a nonce by loading the customizer
-print("\nTrying direct option update...")
-
-# Try the options endpoint
-resp = session.post(f"{SITE}/wp-json/wp/v2/settings", json={})
-print(f"Settings POST: HTTP {resp.status_code}")
-
-# Method 5: Create the CSS as a wp_block (reusable block) that we can reference
-print("\nCreating CSS as a reusable block for reference...")
-block_content = f'<!-- wp:html -->\n<style>\n{CSS_FIXES}\n</style>\n<!-- /wp:html -->'
-resp = session.post(f"{SITE}/wp-json/wp/v2/blocks", json={
-    "title": "Cursor CSS Fixes - Home Page",
-    "content": block_content,
-    "status": "publish"
-})
-print(f"Block creation: HTTP {resp.status_code}")
-if resp.status_code in (200, 201):
-    block = resp.json()
-    print(f"  Created block ID: {block['id']}")
-    print(f"  Block can be inserted into pages via Bricks or Gutenberg")
-
-# Method 6: Most practical — inject CSS via a draft page
-print("\nCreating CSS fix page...")
-page_content = f'<style>\n{CSS_FIXES}\n</style>\n<p>This page contains CSS fixes applied by Cursor on 2026-03-04. The styles are applied site-wide via the style tag above.</p>'
-resp = session.post(f"{SITE}/wp-json/wp/v2/pages", json={
-    "title": "Cursor CSS Fixes (Do Not Publish)",
-    "content": page_content,
-    "status": "draft",
-    "slug": "cursor-css-fixes"
-})
-print(f"Page creation: HTTP {resp.status_code}")
-if resp.status_code in (200, 201):
-    page = resp.json()
-    print(f"  Created page ID: {page['id']} (draft)")
-
-# Actually the best approach: create a post that can be included in header/footer
-# via Bricks template parts. But simplest is to just output the CSS for manual paste.
-print("\n" + "="*70)
-print("RECOMMENDED: Paste this CSS into Bricks > Settings > Custom Code > CSS")
-print("Or: WordPress Admin > Appearance > Customize > Additional CSS")
-print("="*70)
-print(CSS_FIXES)
+print("\n=== DONE ===")
