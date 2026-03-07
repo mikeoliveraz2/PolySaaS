@@ -9,6 +9,8 @@ from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.suitecrm_tenant_provisioner import provision_suitecrm_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
+from dose.services.mattermost_tenant_provisioner import provision_mattermost_tenant
+from dose.services.oauth2_registration import register_oauth2_app_for_tenant
 
 stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
 
@@ -188,15 +190,19 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
             # Check if Odoo provisioning is requested
             if data.get('enable_odoo'):
-                # Get tenant info for provisioning
                 tenant = Tenant.objects.get(id=tenant_id)
-                # Trigger Odoo tenant provisioning
-                provision_odoo_tenant.delay(
+                odoo_kwargs = dict(
                     tenant_schema=tenant.schema_name,
                     tenant_name=tenant.name,
                     admin_email=user_obj.email if user_obj else data.get('email'),
-                    company_name=tenant.name
+                    company_name=tenant.name,
                 )
+                try:
+                    cid, csecret, tapp = register_oauth2_app_for_tenant(tenant_id, 'odoo', user_obj)
+                    odoo_kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                except Exception as e:
+                    logger.warning("OAuth2 registration for Odoo skipped: %s", e)
+                provision_odoo_tenant.delay(**odoo_kwargs)
 
             # Check if SuiteCRM provisioning is requested
             if data.get('enable_suitecrm'):
@@ -212,15 +218,19 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
             # Check if Nextcloud provisioning is requested
             if data.get('enable_nextcloud'):
-                # Get tenant info for provisioning
                 tenant = Tenant.objects.get(id=tenant_id)
-                # Trigger Nextcloud tenant provisioning
-                provision_nextcloud_tenant.delay(
+                nc_kwargs = dict(
                     tenant_schema=tenant.schema_name,
                     tenant_name=tenant.name,
                     admin_email=user_obj.email if user_obj else data.get('email'),
-                    company_name=tenant.name
+                    company_name=tenant.name,
                 )
+                try:
+                    cid, csecret, tapp = register_oauth2_app_for_tenant(tenant_id, 'nextcloud', user_obj)
+                    nc_kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                except Exception as e:
+                    logger.warning("OAuth2 registration for Nextcloud skipped: %s", e)
+                provision_nextcloud_tenant.delay(**nc_kwargs)
 
             # Check if Dolibarr provisioning is requested
             if data.get('enable_dolibarr'):
@@ -233,6 +243,22 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     admin_email=user_obj.email if user_obj else data.get('email'),
                     company_name=tenant.name
                 )
+
+            # Check if Mattermost provisioning is requested
+            if data.get('enable_mattermost'):
+                tenant = Tenant.objects.get(id=tenant_id)
+                mm_kwargs = dict(
+                    tenant_schema=tenant.schema_name,
+                    tenant_name=tenant.name,
+                    admin_email=user_obj.email if user_obj else data.get('email'),
+                    company_name=tenant.name,
+                )
+                try:
+                    cid, csecret, tapp = register_oauth2_app_for_tenant(tenant_id, 'mattermost', user_obj)
+                    mm_kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                except Exception as e:
+                    logger.warning("OAuth2 registration for Mattermost skipped: %s", e)
+                provision_mattermost_tenant.delay(**mm_kwargs)
 
             # Use the model serializer for the response
             from dose.serializers import SubscriptionSerializer
