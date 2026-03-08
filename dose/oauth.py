@@ -17,15 +17,31 @@ class TenantAwareValidator(OAuth2Validator):
 
     oidc_claim_scope = OAuth2Validator.oidc_claim_scope
     oidc_claim_scope.update({
+        'email': 'email',
+        'email_verified': 'email',
+        'name': 'profile',
+        'given_name': 'profile',
+        'family_name': 'profile',
+        'preferred_username': 'profile',
         'tenant_id': 'tenant',
         'tenant_name': 'tenant',
         'tenant_slug': 'tenant',
     })
 
     def get_additional_claims(self, request):
-        """Include tenant information in OIDC ID tokens and UserInfo responses."""
+        """Include standard OIDC + tenant claims in ID tokens and UserInfo."""
         user = request.user
         claims = {}
+
+        if user.email:
+            claims['email'] = user.email
+            claims['email_verified'] = True
+
+        full_name = user.get_full_name() or user.username
+        claims['name'] = full_name
+        claims['given_name'] = user.first_name or user.username
+        claims['family_name'] = user.last_name or ''
+        claims['preferred_username'] = user.username
 
         try:
             profile = getattr(user, 'userprofile', None)
