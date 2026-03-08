@@ -9,3 +9,6 @@ venv/
 *.log
 *.pem
 ~$*
+
+# WordPress site — managed by Hostinger, covered by daily backups
+dose/website/
