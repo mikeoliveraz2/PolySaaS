@@ -249,7 +249,7 @@ OAUTH2_PROVIDER_GRANT_MODEL = 'oauth2_provider.Grant'
 OAUTH2_PROVIDER = {
     'OIDC_ENABLED': True,
     'OIDC_RSA_PRIVATE_KEY': _OIDC_RSA_PRIVATE_KEY,
-    'OIDC_ISS_ENDPOINT': 'http://localhost:8000/o',
+    'OIDC_ISS_ENDPOINT': os.environ.get('OIDC_ISS_ENDPOINT', 'http://host.docker.internal:8000/o'),
     'SCOPES': {
         'openid': 'OpenID Connect',
         'email': 'Email address',

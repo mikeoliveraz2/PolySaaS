@@ -34,11 +34,7 @@ class Command(BaseCommand):
         parser.add_argument('--mm-token', default='', help='Mattermost admin personal access token')
         parser.add_argument(
             '--polysaas-url', default='http://host.docker.internal:8000',
-            help='PolySaaS base URL as seen from Mattermost container',
-        )
-        parser.add_argument(
-            '--polysaas-public-url', default='http://localhost:8000',
-            help='PolySaaS base URL as seen from the browser',
+            help='PolySaaS base URL as seen from both browser and Mattermost container',
         )
         parser.add_argument('--dry-run', action='store_true', help='Show config without applying')
 
@@ -47,7 +43,6 @@ class Command(BaseCommand):
         mm_url = options['mm_url'].rstrip('/')
         mm_token = options['mm_token'] or os.environ.get('MATTERMOST_ADMIN_TOKEN', '')
         polysaas_url = options['polysaas_url'].rstrip('/')
-        polysaas_public = options['polysaas_public_url'].rstrip('/')
         dry_run = options['dry_run']
 
         # 1. Resolve tenant
@@ -67,7 +62,7 @@ class Command(BaseCommand):
             raise CommandError('No superuser found — create one with createsuperuser first')
 
         app_name = f'{tenant.name}-mattermost'
-        redirect_uri = f'{polysaas_public}/o/callback/'
+        redirect_uri = f'{polysaas_url}/o/callback/'
         mm_redirect = f'{mm_url}/signup/openid/complete'
 
         oauth_app, created = Application.objects.get_or_create(
@@ -137,8 +132,8 @@ class Command(BaseCommand):
         headers = {'Authorization': f'Bearer {mm_token}'}
 
         try:
-            resp = requests.patch(
-                f'{mm_url}/api/v4/config',
+            resp = requests.put(
+                f'{mm_url}/api/v4/config/patch',
                 headers=headers,
                 json=oidc_config,
                 timeout=15,
@@ -150,7 +145,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS('Mattermost OIDC configured successfully!'))
                 self.stdout.write(
                     f'\nPOL-5 test ready:\n'
-                    f'  1. Log in to PolySaaS at {polysaas_public}\n'
+                    f'  1. Log in to PolySaaS at {polysaas_url}\n'
                     f'  2. Open Mattermost at {mm_url}\n'
                     f'  3. Click "Log in with PolySaaS"\n'
                     f'  4. You should be logged in without entering MM credentials'

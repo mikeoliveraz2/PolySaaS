@@ -270,7 +270,7 @@ Write-Host "LIFERAY CE  → http://localhost:8181" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
 try {
-    & $venvPython -u manage.py runserver
+    & $venvPython -u manage.py runserver 0.0.0.0:8000
 }
 finally {
     Write-Host ''

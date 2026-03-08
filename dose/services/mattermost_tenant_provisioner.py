@@ -85,8 +85,8 @@ def provision_mattermost_tenant(
 
         # 2. Configure OIDC if credentials provided
         if oauth_client_id and oauth_client_secret:
-            oidc_resp = requests.patch(
-                f"{mm_url}/api/v4/config",
+            oidc_resp = requests.put(
+                f"{mm_url}/api/v4/config/patch",
                 headers=headers,
                 json={
                     "OpenIdSettings": {
