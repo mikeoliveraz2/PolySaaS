@@ -68,6 +68,25 @@
 - `dose/management/commands/migrate.py` — Windows encoding fix
 - `dose/management/commands/migrate_all_schemas.py` — Windows encoding fix
 
+## Laptop Sync Notes (IMPORTANT)
+
+After `git pull origin main` on the laptop, you MUST update the laptop's `.env` file manually — it is gitignored and does not sync via git.
+
+Add these three lines to the bottom of the laptop's `.env`:
+
+```
+STRIPE_SECRET_KEY=sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg
+STRIPE_PUBLISHABLE_KEY=pk_test_51S3owgPQWnaGoDqyVMAyU9sTOrv763E4CP8t1hhlOHeYDMEDoxTrEMO3ylp0xaofCEF3QGCjSJAgIpRXrRVxBs2200j6Yuabiv
+STRIPE_WEBHOOK_SECRET=whsec_PLACEHOLDER_SET_FROM_STRIPE_CLI_OR_DASHBOARD
+```
+
+Then run migrations on the laptop DB:
+```
+python manage.py migrate_all_schemas
+```
+
+The migration `0023_add_plan_tier_to_subscription` will add the `plan_tier` column to the laptop's database schemas. If the laptop DB already has the column (unlikely unless you ran it there too), the migration will either apply cleanly or you can fake it.
+
 ## Manual Steps Remaining
 1. Create Team ($79.99) and Unlimited ($199.99) prices in Stripe Dashboard (test mode)
 2. Paste Price IDs into `STRIPE_PRICE_IDS` in `settings.py`
@@ -76,5 +95,5 @@
 
 ## Verification
 - `python manage.py check` — System check identified no issues (0 silenced)
-- Migration applied to both `public` and `olient` schemas
+- Migration applied to both `public` and `olient` schemas on desktop
 - Zero linter errors on all modified files
