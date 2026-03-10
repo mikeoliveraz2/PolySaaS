@@ -128,3 +128,8 @@ class SubscriptionCreateSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     card_name = serializers.CharField(max_length=255)
     stripe_token = serializers.CharField(max_length=255)
+    plan_tier = serializers.ChoiceField(
+        choices=['starter', 'team', 'unlimited'],
+        default='starter',
+        required=False
+    )

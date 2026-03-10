@@ -198,9 +198,6 @@ def font_controls(request):
     request.session['show_font_controls'] = True
     return redirect('/admin/')
 
-@login_required
-def osticket_view(request):
-    return render(request, 'passthrough/osticket_simple.html', {})
 
 def _rewrite_css_selectors(css_text, prefix):
     import re

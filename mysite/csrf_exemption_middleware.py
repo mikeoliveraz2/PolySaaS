@@ -47,16 +47,11 @@ class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
         - /pt/admin/odoo/web/login
         - /pt/dose/gmail/
 
-        Also exempts /admin/osticket/ paths since OSTicket handles its own CSRF.
         """
         import re
 
         # Match /pt/ format paths
         if re.match(r'^/pt/\w+/\w+/?', path_info):
-            return True
-
-        # Also exempt /admin/osticket/ paths (OSTicket has its own CSRF protection)
-        if path_info.startswith('/admin/osticket/'):
             return True
 
         return False

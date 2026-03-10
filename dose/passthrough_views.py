@@ -47,10 +47,9 @@ def direct_service_view(request, endpoint_id):
     # The middleware will handle requests to this path
     trigger = endpoint.trigger_path.strip('/')
 
-    # If trigger_path contains slashes (like 'dose/osticket'), use it as-is
+    # If trigger_path contains slashes, use it as-is
     # Otherwise, default to /dose/{trigger}/ for regular users or /admin/{trigger}/ for admin
     if '/' in trigger:
-        # Full path like 'dose/osticket' or 'admin/osticket'
         passthrough_url = f'/{trigger}/'
     else:
         # Simple name - default to /dose/{trigger}/ (middleware handles both /dose/ and /admin/)
@@ -80,8 +79,6 @@ def passthrough_service(request, service, page=None):
     # Service routing
     service_handlers = {
         'gmail': handle_gmail_passthrough,
-        'osticket': handle_osticket_passthrough,
-        # Future services can be added here
     }
 
     handler = service_handlers.get(service.lower())
@@ -110,22 +107,6 @@ def handle_gmail_passthrough(request):
     return TemplateResponse(request, 'admin/passthrough.html', context)
 
 
-def handle_osticket_passthrough(request):
-    """
-    OSTicket service passthrough handler
-    Fetches HTML from real OSTicket and serves it with form/link rewrites
-    """
-    logger.info(f"OSTicket passthrough for user: {request.user.username}, path: {request.path}")
-    # Placeholder - use direct_service_view instead for OS Ticket
-    from django.contrib.admin import site
-    context = site.each_context(request)
-    context.update({
-        'service_name': 'OSTicket',
-        'service_type': 'osticket',
-        'page_title': 'OSTicket Support System',
-        'service_content': '<p>OSTicket passthrough - use direct service view instead</p>',
-    })
-    return TemplateResponse(request, 'admin/passthrough.html', context)
 
 
 @csrf_exempt

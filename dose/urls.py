@@ -8,7 +8,6 @@ from .views.airtable_passthrough import airtable_passthrough_view
 from .views.airtable_dashboard import airtable_tickets_view, airtable_tickets_api
 from .passthrough_views import passthrough_service, passthrough_api, direct_service_view
 #from .generic_passthrough_views import GenericAPIPassthroughView
-from .views.osticket_subscription import osticket_subscription_view
 from dose.subscription_views import SubscriptionApiViewSet
 from dose.views import subscribe_view
 from dose.unread_dosemessages_api import unread_dosemessages_api
@@ -52,6 +51,8 @@ from dose.views import connect_social_after_subscribe
 from dose.views.callbackdata import callbackdata_view
 from dose.theme_views import toggle_theme
 from dose.admin_views import set_theme, select_theme, test_post
+from dose.views.upgrade import upgrade_view
+from dose.views.stripe_webhook import stripe_webhook
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -105,6 +106,8 @@ urlpatterns = [
     path('debug-session/', debug_session_view, name='debug_session'),
     path('debug-tenant-session/', debug_tenant_session, name='debug_tenant_session'),
     path('subscribe/', subscribe_view, name='subscribe'),
+    path('upgrade/', upgrade_view, name='upgrade'),
+    path('webhook/stripe/', stripe_webhook, name='stripe_webhook'),
     path('connect-social-after-subscribe/', connect_social_after_subscribe, name='connect_social_after_subscribe'),
     path('unread-messages/', unread_messages_view, name='unread_messages'),
     # Core views

@@ -69,3 +69,29 @@ def create_schema_and_copy_tables(schema_name):
 
 # Example usage:
 # create_schema_and_copy_tables('alpha')
+
+
+def check_user_limit(tenant):
+    """
+    Check if a tenant can add another user based on their subscription plan.
+    Returns (allowed: bool, message: str).
+    """
+    from dose.models import Subscription
+    try:
+        sub = Subscription.objects.get(tenant=tenant)
+    except Subscription.DoesNotExist:
+        return False, 'No active subscription. Please subscribe first.'
+
+    if not sub.active:
+        return False, 'Subscription is inactive. Please renew your subscription.'
+
+    if sub.can_add_user():
+        return True, ''
+
+    max_users = sub.get_max_users()
+    tier_label = dict(Subscription.PLAN_TIER_CHOICES).get(sub.plan_tier, sub.plan_tier)
+    return False, (
+        f'User limit reached for your {tier_label} plan '
+        f'({max_users} user{"s" if max_users != 1 else ""}). '
+        f'Please upgrade your plan to add more users.'
+    )

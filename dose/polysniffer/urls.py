@@ -8,7 +8,7 @@ from .views.proxy import proxy_capture, scp_catchall
 from .views.dashboard import (
     debug_dashboard, view_log, export_har, capture_traffic, save_capture,
     log_capture_to_services, get_captures, apply_latest_capture,
-    test_osticket_access, silent_capture, sync_v0_cookies
+    silent_capture, sync_v0_cookies
 )
 from .views.api import list_endpoints, csrf_token
 from .views_ai import ai_analyze_endpoint, ai_generate_handler
@@ -58,13 +58,9 @@ urlpatterns = [
     path('get-captures/<int:endpoint_id>/', get_captures, name='get_captures'),
     # Apply latest capture from standalone PolySniffer
     path('apply-capture/<int:endpoint_id>/', apply_latest_capture, name='apply_capture'),
-    # Diagnostic endpoint - test OS Ticket access
-    path('test-osticket/', test_osticket_access, name='test_osticket_access'),
     # Silent capture endpoint - receives data from stealth PolySniffer
     path('silent-capture/<int:endpoint_id>/', silent_capture, name='silent_capture'),
     # V0.dev cookie sync endpoint - syncs cookies from v0.dev after auth callback
     path('sync-v0-cookies/<int:endpoint_id>/', sync_v0_cookies, name='sync_v0_cookies'),
-    # FINAL OS TICKET ROUTING FIX — Catch /scp/ requests (when included from mysite.urls)
-    # This MUST be last to catch any unmatched paths
     path('<path:path>', scp_catchall, name='scp_catchall'),
 ]
