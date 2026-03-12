@@ -86,8 +86,8 @@ Stored in `PASTE_THIS_CSS.css` and applied via WordPress Customizer > Additional
 
 ## Still Pending (from previous session)
 
-- **Typo**: "For **Parners**, Resellers and Large Enterprises" → "Partners" (page title + Home page CTA link)
-- **Typo**: "nnew and intereting" → "new and interesting" (Home page Articles section)
+- **Typo**: "For **Parners**, Resellers and Large Enterprises" → "Partners" (page title + Home page CTA link - fixed)
+- **Typo**: "nnew and intereting" → "new and interesting" (Home page Articles section - fixed)
 - These require Bricks editor access (manual fix)
 
 ## Status

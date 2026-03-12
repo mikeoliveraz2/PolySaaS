@@ -33,9 +33,6 @@ JAZZMIN_SETTINGS = {
         # Url that gets reversed (Permissions can be added)
         {"name": "Home",  "url": "/dose/", "permissions": ["auth.view_user"]},
 
-        # NOTE: OSTicket link dynamically added by JazzminTenantThemeMiddleware per tenant
-        # DO NOT ADD STATIC OSTICKET LINK HERE
-
         # external url that opens in a new window (Permissions can be added)
         {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},
 
@@ -89,11 +86,33 @@ JAZZMIN_SETTINGS = {
     },
 }
 
+# --- STRIPE CONFIGURATION ---
+STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
+STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+
 STRIPE_PRICE_ID = 'price_1S5faDPQWnaGoDqywwIEPGUA'
-# Subscription price in USD per month
-SUBSCRIPTION_AMOUNT = 29.99
-# Free trial period in days
 STRIPE_TRIAL_PERIOD_DAYS = 14
+
+STRIPE_PRICE_IDS = {
+    'starter': 'price_1S5faDPQWnaGoDqywwIEPGUA',
+    'team': '',      # Create in Stripe Dashboard and fill in
+    'unlimited': '', # Create in Stripe Dashboard and fill in
+}
+
+PLAN_PRICES = {
+    'starter': 29.99,
+    'team': 79.99,
+    'unlimited': 199.99,
+}
+
+PLAN_MAX_USERS = {
+    'starter': 1,
+    'team': 3,
+    'unlimited': None,
+}
+
+SUBSCRIPTION_AMOUNT = 29.99
 
 # --- SESSION SETTINGS ---
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
@@ -250,7 +269,7 @@ OAUTH2_PROVIDER_GRANT_MODEL = 'oauth2_provider.Grant'
 OAUTH2_PROVIDER = {
     'OIDC_ENABLED': True,
     'OIDC_RSA_PRIVATE_KEY': _OIDC_RSA_PRIVATE_KEY,
-    'OIDC_ISS_ENDPOINT': 'http://localhost:8000/o',
+    'OIDC_ISS_ENDPOINT': os.environ.get('OIDC_ISS_ENDPOINT', 'http://host.docker.internal:8000/o'),
     'SCOPES': {
         'openid': 'OpenID Connect',
         'email': 'Email address',
@@ -264,6 +283,12 @@ OAUTH2_PROVIDER = {
     'PKCE_REQUIRED': False,
     'ALLOWED_REDIRECT_URI_SCHEMES': ['https', 'http'],
 }
+
+# --- Passthrough Auth (POL-2) ---
+# 'header' = simple HTTP headers (REMOTE_USER, X-User-Email, etc.)
+# 'jwt'    = signed JWT in Authorization: Bearer header (uses OIDC RSA key if available)
+PASSTHROUGH_AUTH_MODE = 'header'
+PASSTHROUGH_JWT_EXPIRY = 300  # seconds (5 minutes) — only used in jwt mode
 
 # Django settings for mysite project.
 
@@ -292,6 +317,7 @@ MIDDLEWARE = [
     'dose.doserequestcontroller.DoseRequestController',
     'dose.middleware.jazzmin_tenant_theme.JazzminTenantThemeMiddleware',
     'dose.doseresponsecontroller.DoseResponseController',
+    'dose.middleware.passthrough_auth.PassthroughAuthMiddleware',
     # CRITICAL: ExternalPassthroughMiddleware must run BEFORE CsrfViewMiddleware
     # so it can return a response before CSRF validation occurs
     'dose.passthrough.middleware.ExternalPassthroughMiddleware',
@@ -475,11 +501,6 @@ LOGGING = {
             'class': 'logging.FileHandler',
             'filename': './info.log',
         },
-        'osticket_file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': './osticket.log',
-        },
     },
     'loggers': {
         'django': {
@@ -491,11 +512,6 @@ LOGGING = {
             'handlers': ['console', 'file', 'info_file'],
             'level': 'INFO',
             'propagate': True,
-        },
-        'osticket': {
-            'handlers': ['osticket_file'],
-            'level': 'INFO',
-            'propagate': False,
         },
     },
     'root': {

@@ -4,13 +4,13 @@ from rest_framework.response import Response
 from dose.models import Subscription, Tenant
 from dose.serializers import SubscriptionSerializer
 import stripe
-from dose.services.osticket_tenant_provisioner import provision_osticket_tenant
 from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
-from dose.services.suitecrm_tenant_provisioner import provision_suitecrm_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
+from dose.services.mattermost_tenant_provisioner import provision_mattermost_tenant
+from dose.services.oauth2_registration import register_oauth2_app_for_tenant
 
-stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 class SubscriptionApiViewSet(viewsets.ModelViewSet):
@@ -119,10 +119,15 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 tenant_id = None
 
+            plan_tier = data.get('plan_tier', 'starter')
+            if plan_tier not in ('starter', 'team', 'unlimited'):
+                plan_tier = 'starter'
+
             # For testing: skip Stripe logic if tenant_name starts with 'A'
             if tenant_name and tenant_name.lower().startswith('a'):
                 sub = Subscription.objects.create(
                     tenant_id=tenant_id,
+                    plan_tier=plan_tier,
                     stripe_customer_id=None,
                     stripe_subscription_id=None,
                     card_name=card_name,
@@ -144,6 +149,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
             # Create Stripe customer and subscription
             try:
+                price_ids = getattr(settings, 'STRIPE_PRICE_IDS', {})
+                stripe_price = price_ids.get(plan_tier) or getattr(settings, 'STRIPE_PRICE_ID', 'price_xxx')
+                logger.info(f"Using Stripe price '{stripe_price}' for plan_tier '{plan_tier}'")
+
                 customer = stripe.Customer.create(
                     source=token,
                     name=card_name,
@@ -151,7 +160,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )
                 subscription = stripe.Subscription.create(
                     customer=customer.id,
-                    items=[{'price': getattr(settings, 'STRIPE_PRICE_ID', 'price_xxx')}],
+                    items=[{'price': stripe_price}],
                     trial_period_days=getattr(settings, 'STRIPE_TRIAL_PERIOD_DAYS', 14)
                 )
                 stripe_customer_id = customer.id
@@ -168,59 +177,44 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             # Save subscription to DB
             sub = Subscription.objects.create(
                 tenant_id=tenant_id,
+                plan_tier=plan_tier,
                 stripe_customer_id=stripe_customer_id,
                 stripe_subscription_id=stripe_subscription_id,
                 card_name=card_name,
                 active=active
             )
 
-            # Check if OSTicket provisioning is requested
-            if data.get('enable_osticket'):
-                # Get tenant info for provisioning
-                tenant = Tenant.objects.get(id=tenant_id)
-                # Trigger OSTicket tenant provisioning
-                provision_osticket_tenant.delay(
-                    tenant_schema=tenant.schema_name,
-                    tenant_name=tenant.name,
-                    admin_email=user_obj.email if user_obj else data.get('email'),
-                    company_name=tenant.name
-                )
-
             # Check if Odoo provisioning is requested
             if data.get('enable_odoo'):
-                # Get tenant info for provisioning
                 tenant = Tenant.objects.get(id=tenant_id)
-                # Trigger Odoo tenant provisioning
-                provision_odoo_tenant.delay(
+                odoo_kwargs = dict(
                     tenant_schema=tenant.schema_name,
                     tenant_name=tenant.name,
                     admin_email=user_obj.email if user_obj else data.get('email'),
-                    company_name=tenant.name
+                    company_name=tenant.name,
                 )
-
-            # Check if SuiteCRM provisioning is requested
-            if data.get('enable_suitecrm'):
-                # Get tenant info for provisioning
-                tenant = Tenant.objects.get(id=tenant_id)
-                # Trigger SuiteCRM tenant provisioning
-                provision_suitecrm_tenant.delay(
-                    tenant_schema=tenant.schema_name,
-                    tenant_name=tenant.name,
-                    admin_email=user_obj.email if user_obj else data.get('email'),
-                    company_name=tenant.name
-                )
+                try:
+                    cid, csecret, tapp = register_oauth2_app_for_tenant(tenant_id, 'odoo', user_obj)
+                    odoo_kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                except Exception as e:
+                    logger.warning("OAuth2 registration for Odoo skipped: %s", e)
+                provision_odoo_tenant.delay(**odoo_kwargs)
 
             # Check if Nextcloud provisioning is requested
             if data.get('enable_nextcloud'):
-                # Get tenant info for provisioning
                 tenant = Tenant.objects.get(id=tenant_id)
-                # Trigger Nextcloud tenant provisioning
-                provision_nextcloud_tenant.delay(
+                nc_kwargs = dict(
                     tenant_schema=tenant.schema_name,
                     tenant_name=tenant.name,
                     admin_email=user_obj.email if user_obj else data.get('email'),
-                    company_name=tenant.name
+                    company_name=tenant.name,
                 )
+                try:
+                    cid, csecret, tapp = register_oauth2_app_for_tenant(tenant_id, 'nextcloud', user_obj)
+                    nc_kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                except Exception as e:
+                    logger.warning("OAuth2 registration for Nextcloud skipped: %s", e)
+                provision_nextcloud_tenant.delay(**nc_kwargs)
 
             # Check if Dolibarr provisioning is requested
             if data.get('enable_dolibarr'):
@@ -233,6 +227,22 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     admin_email=user_obj.email if user_obj else data.get('email'),
                     company_name=tenant.name
                 )
+
+            # Check if Mattermost provisioning is requested
+            if data.get('enable_mattermost'):
+                tenant = Tenant.objects.get(id=tenant_id)
+                mm_kwargs = dict(
+                    tenant_schema=tenant.schema_name,
+                    tenant_name=tenant.name,
+                    admin_email=user_obj.email if user_obj else data.get('email'),
+                    company_name=tenant.name,
+                )
+                try:
+                    cid, csecret, tapp = register_oauth2_app_for_tenant(tenant_id, 'mattermost', user_obj)
+                    mm_kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                except Exception as e:
+                    logger.warning("OAuth2 registration for Mattermost skipped: %s", e)
+                provision_mattermost_tenant.delay(**mm_kwargs)
 
             # Use the model serializer for the response
             from dose.serializers import SubscriptionSerializer

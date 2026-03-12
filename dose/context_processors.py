@@ -198,7 +198,7 @@ def admin_navigation(request):
         print(f"[ADMIN_NAV] Tenant: {tenant.name if tenant else 'None'}")
 
         # All PassThroughEndpoint records are passthrough services
-        passthrough_services = []  # Gmail, OSTicket, HubSpot, etc. (passthrough endpoints)
+        passthrough_services = []  # Passthrough endpoints (Gmail, HubSpot, etc.)
         external_services = []     # Other external integrations (from NavigationPanel if added later)
 
         # Use endpoints from middleware if available (already queried and filtered)
@@ -300,7 +300,7 @@ def admin_navigation(request):
             from django.urls import reverse
 
             # Determine context based on service type
-            if endpoint.trigger_path.lower() in ['osticket', 'gmail']:
+            if endpoint.trigger_path.lower() in ['gmail']:
                 # Admin-accessible services
                 context = 'admin'
             else:

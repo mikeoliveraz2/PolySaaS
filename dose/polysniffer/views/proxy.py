@@ -15,44 +15,7 @@ from .core import get_endpoint_any_schema, is_static_asset, rewrite_static_url, 
 @xframe_options_exempt
 @staff_member_required
 def scp_catchall(request, path=''):
-    if not request.user.is_staff:
-        return HttpResponseForbidden('Staff access required')
-    from dose.models import PassThroughEndpoint
-    from django.db import connection
-    from dose.utils import get_current_tenant
-    endpoint = None
-    tenant = get_current_tenant(request) if request else None
-    search_paths = []
-    if tenant and tenant.schema_name:
-        search_paths.append(tenant.schema_name)
-    search_paths.append('public')
-    try:
-        from dose.models.tenant import Tenant
-        tenants = Tenant.objects.all()
-        for tenant_obj in tenants:
-            if tenant_obj.schema_name and tenant_obj.schema_name not in search_paths:
-                search_paths.append(tenant_obj.schema_name)
-    except:
-        pass
-    for schema in search_paths:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f"SET search_path TO {schema},public;")
-                endpoints = PassThroughEndpoint.objects.filter(
-                    trigger_path__icontains='osticket'
-                ) | PassThroughEndpoint.objects.filter(
-                    endpoint_url__icontains='/scp/'
-                ) | PassThroughEndpoint.objects.filter(
-                    endpoint_url__icontains='supportsystem'
-                )
-                endpoint = endpoints.first()
-                if endpoint:
-                    break
-        except Exception:
-            continue
-    if not endpoint:
-        return HttpResponse("osTicket endpoint not found", status=404)
-    return proxy_capture(request, endpoint.id, path)
+    return HttpResponse("Not found", status=404)
 
 @csrf_exempt
 @xframe_options_exempt
@@ -104,11 +67,6 @@ def proxy_capture(request, endpoint_id, path=''):
         # Forward v0.dev cookies if available
         if 'v0_dev_cookies' in request.session:
             for name, value in request.session['v0_dev_cookies'].items():
-                session.cookies.set(name, value, domain=parsed_endpoint.netloc)
-
-        # Forward osTicket cookies if available
-        if 'osticket_cookies' in request.session:
-            for name, value in request.session['osticket_cookies'].items():
                 session.cookies.set(name, value, domain=parsed_endpoint.netloc)
 
     # Forward current request cookies

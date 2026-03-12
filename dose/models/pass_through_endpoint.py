@@ -10,11 +10,11 @@ class PassThroughEndpoint(models.Model):
 
     PASSTHROUGH_TYPE_CHOICES = [
         ('api', 'API - REST/GraphQL endpoints (e.g., Gmail API)'),
-        ('scraper', 'Scraper - HTML screen scraping (e.g., OSTicket)'),
+        ('scraper', 'Scraper - HTML screen scraping (e.g., Nextcloud)'),
     ]
 
     INTEGRATION_MODE_CHOICES = [
-        ('web_only', 'Web UI Only - No API (e.g., OSTicket)'),
+        ('web_only', 'Web UI Only - No API'),
         ('web_api', 'Web UI + API - Both available (e.g., Gmail)'),
         ('api_only', 'API Only - Custom Dose UI via atomic services'),
     ]
@@ -29,16 +29,16 @@ class PassThroughEndpoint(models.Model):
     is_enabled = models.BooleanField(default=True, help_text="Enable or disable passthrough for this endpoint")
     bypass_middleware = models.BooleanField(
         default=False,
-        help_text="If True, this trigger_path will NOT be processed by passthrough middleware (use for dedicated views like Gmail/OSTicket that handle their own routing)"
+        help_text="If True, this trigger_path will NOT be processed by passthrough middleware (use for dedicated views like Gmail that handle their own routing)"
     )
     passthrough_type = models.CharField(
         max_length=20,
         choices=PASSTHROUGH_TYPE_CHOICES,
         default='scraper',
-        help_text="Type of passthrough: 'api' for REST APIs (Gmail), 'scraper' for HTML content (OSTicket)"
+        help_text="Type of passthrough: 'api' for REST APIs (Gmail), 'scraper' for HTML content"
     )
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='custom', help_text="OAuth2 provider or passthrough method")
-    endpoint_url = models.URLField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://osticket.polysaas.online/scp/login.php)")
+    endpoint_url = models.URLField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online)")
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
     trigger_path = models.CharField(max_length=200, blank=True, default="", help_text="One word, no slashes please", verbose_name="Trigger Word")
@@ -133,9 +133,8 @@ class PassThroughEndpoint(models.Model):
         else:
             # Extract a reasonable title from trigger_path or URL
             if self.trigger_path:
-                # Convert /dose/osticket/ to "OSTicket"
                 path_parts = self.trigger_path.strip('/').split('/')
-                if len(path_parts) >= 2:  # ['dose', 'osticket']
+                if len(path_parts) >= 2:
                     return path_parts[-1].replace('-', ' ').replace('_', ' ').title()
             # Fallback to domain from URL
             try:
@@ -157,14 +156,14 @@ class PassThroughEndpoint(models.Model):
 
         # Validate trigger_path format
         # Allow:
-        #   - Simple names without slashes: 'gmail', 'osticket', 'meets' (middleware adds /dose/ or /admin/ prefix dynamically)
-        #   - Full paths: '/dose/gmail/', '/admin/osticket/' (explicit routing)
+        #   - Simple names without slashes: 'gmail', 'meets' (middleware adds /dose/ or /admin/ prefix dynamically)
+        #   - Full paths: '/dose/gmail/', '/admin/nextcloud/' (explicit routing)
         if self.trigger_path:
             trigger = self.trigger_path.strip().strip('/')
 
             # If trigger contains slashes, normalize and validate it's a proper structure
             if '/' in trigger:
-                # Multi-part path like 'dose/gmail' or 'admin/osticket' - auto-prefix with /
+                # Multi-part path like 'dose/gmail' or 'admin/nextcloud' - auto-prefix with /
                 if not trigger.startswith('dose/') and not trigger.startswith('admin/'):
                     errors['trigger_path'] = "Path-based triggers must start with 'dose/' or 'admin/'. Use simple names like 'gmail' for dynamic routing."
                 # Normalize to have / prefix

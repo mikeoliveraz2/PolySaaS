@@ -604,7 +604,7 @@ def landing_page(request):
     ).order_by('id')
 
     # All PassThroughEndpoint records are passthrough services
-    passthrough_services = []  # Gmail, OSTicket, HubSpot, etc. (passthrough endpoints)
+    passthrough_services = []  # Passthrough endpoints (Gmail, HubSpot, etc.)
     external_services = []     # Other external integrations (from NavigationPanel if added later)
 
     for endpoint in passthrough_endpoints:
@@ -612,7 +612,7 @@ def landing_page(request):
         from django.urls import reverse
         
         # Determine context based on service type
-        if endpoint.trigger_path.lower() in ['osticket', 'gmail']:
+        if endpoint.trigger_path.lower() in ['gmail']:
             # Admin-accessible services
             context = 'admin'
         else:
@@ -689,7 +689,7 @@ def landing_page(request):
         'theme_info': theme_info,
         'theme_colors': theme_colors,
         'status_info': status_info,
-        'passthrough_services': passthrough_services,  # Gmail, OSTicket (AJAX-loaded)
+        'passthrough_services': passthrough_services,  # Gmail, etc. (AJAX-loaded)
         'external_services': external_services,  # Other PassThroughEndpoint items (per-tenant)
         'navigation_panels': filtered_panels,     # NavigationItem items (per-user)
         'dashboard_buttons': dashboard_buttons,
@@ -1027,14 +1027,13 @@ from django.shortcuts import render
 from django.conf import settings
 
 def subscribe_view(request):
-    # If this is a POST, assume subscription succeeded and redirect to connect_social
+    plan_context = {
+        'SUBSCRIPTION_AMOUNT': getattr(settings, 'SUBSCRIPTION_AMOUNT', 29.99),
+        'STRIPE_PUBLISHABLE_KEY': getattr(settings, 'STRIPE_PUBLISHABLE_KEY', ''),
+        'PLAN_PRICES': getattr(settings, 'PLAN_PRICES', {}),
+    }
     if request.method == 'POST':
-        return render(request, 'dose/connect_social.html', {
-            'SUBSCRIPTION_AMOUNT': getattr(settings, 'SUBSCRIPTION_AMOUNT', 29.99)
-        })
-    # Otherwise, show the subscription form
-    return render(request, 'dose/subscribe.html', {
-        'SUBSCRIPTION_AMOUNT': getattr(settings, 'SUBSCRIPTION_AMOUNT', 29.99)
-    })
+        return render(request, 'dose/connect_social.html', plan_context)
+    return render(request, 'dose/subscribe.html', plan_context)
 
 # ...other views from dose/views.py will be moved here...

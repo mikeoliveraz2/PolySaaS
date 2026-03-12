@@ -36,6 +36,8 @@ services:
     volumes:
       - ./dose/website:/var/www/html
       - wordpress_data:/var/www/html/wp-content
+      - ./dose/wordpress/mu-plugins:/var/www/html/wp-content/mu-plugins
+      - ./dose/wordpress/mu-plugins:/var/www/html/wp-content/mu-plugins
     restart: unless-stopped
     networks:
       - wordpress-network

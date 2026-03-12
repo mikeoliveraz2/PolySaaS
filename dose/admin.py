@@ -102,6 +102,17 @@ class UserProfileAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+    def save_model(self, request, obj, form, change):
+        if not change and obj.tenant:
+            from dose.utils import check_user_limit
+            allowed, msg = check_user_limit(obj.tenant)
+            if not allowed:
+                from django.contrib import messages
+                messages.error(request, msg)
+                return
+        super().save_model(request, obj, form, change)
+
 admin.site.register(UserProfile, UserProfileAdmin)
 
 from django import forms
@@ -314,7 +325,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     fieldsets = [
         ('Endpoint Configuration', {
             'fields': ('provider', 'endpoint_url', 'trigger_path', 'is_enabled'),
-            'description': '<strong>Trigger Word:</strong> One word, no slashes please. Examples: <code>osticket</code>, <code>gmail</code>, <code>monitor-logger</code>. System automatically builds URLs like /pt/admin/{trigger_word}/ and /pt/dose/{trigger_word}/'
+            'description': '<strong>Trigger Word:</strong> One word, no slashes please. Examples: <code>gmail</code>, <code>monitor-logger</code>, <code>nextcloud</code>. System automatically builds URLs like /pt/admin/{trigger_word}/ and /pt/dose/{trigger_word}/'
         }),
         ('Menu Integration', {
             'fields': ('show_in_menu', 'menu_title', 'menu_icon', 'menu_sort_order', 'description'),

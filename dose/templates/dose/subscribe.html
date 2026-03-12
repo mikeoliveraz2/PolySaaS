@@ -1,13 +1,142 @@
 {% extends "dose/dosebase.html" %}
+{% load static %}
 <!-- DEBUG: subscribe -->
 {% block content %}
-<h2>Subscribe to Dose SaaS...testing</h2>
+<h2 style="text-align:center;">Choose Your Plan</h2>
 
-<p style="text-align:center; font-size:1.2em; margin-bottom:1em; color:#1976d2;">
-    Subscription: ${{ SUBSCRIPTION_AMOUNT }} / Month<br>
-    <small style="color:#666; font-size:0.9em;">14-day free trial included</small>
+<p style="text-align:center; font-size:1.1em; margin-bottom:1.5em; color:#555;">
+    All plans include a <strong>14-day free trial</strong>. Upgrade anytime.
 </p>
+
+<!-- Plan Selection Cards -->
+<div class="plan-cards">
+    <div class="plan-card selected" data-tier="starter" data-price="29.99">
+        <div class="plan-badge">Most Popular</div>
+        <h3>Starter</h3>
+        <div class="plan-price">$29.99<span>/mo</span></div>
+        <ul class="plan-features">
+            <li>1 user</li>
+            <li>All integrations</li>
+            <li>14-day free trial</li>
+        </ul>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('starter', 29.99)">Selected</button>
+    </div>
+    <div class="plan-card" data-tier="team" data-price="79.99">
+        <h3>Team</h3>
+        <div class="plan-price">$79.99<span>/mo</span></div>
+        <ul class="plan-features">
+            <li>Up to 3 users</li>
+            <li>All integrations</li>
+            <li>14-day free trial</li>
+        </ul>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('team', 79.99)">Select</button>
+    </div>
+    <div class="plan-card" data-tier="unlimited" data-price="199.99">
+        <h3>Unlimited</h3>
+        <div class="plan-price">$199.99<span>/mo</span></div>
+        <ul class="plan-features">
+            <li>Unlimited users</li>
+            <li>All integrations</li>
+            <li>14-day free trial</li>
+            <li>Priority support</li>
+        </ul>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('unlimited', 199.99)">Select</button>
+    </div>
+</div>
+
 <style>
+    .plan-cards {
+        display: flex;
+        justify-content: center;
+        gap: 1.5em;
+        margin-bottom: 2em;
+        flex-wrap: wrap;
+    }
+    .plan-card {
+        background: #fff;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 1.5em;
+        width: 220px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+        position: relative;
+    }
+    .plan-card:hover {
+        border-color: #90caf9;
+        box-shadow: 0 4px 16px rgba(25,118,210,0.12);
+        transform: translateY(-2px);
+    }
+    .plan-card.selected {
+        border-color: #1976d2;
+        box-shadow: 0 4px 20px rgba(25,118,210,0.2);
+    }
+    .plan-badge {
+        position: absolute;
+        top: -12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1976d2;
+        color: #fff;
+        font-size: 0.75em;
+        font-weight: 600;
+        padding: 0.25em 0.75em;
+        border-radius: 12px;
+        white-space: nowrap;
+    }
+    .plan-card h3 {
+        margin: 0.5em 0 0.25em;
+        color: #333;
+        font-size: 1.2em;
+    }
+    .plan-price {
+        font-size: 1.8em;
+        font-weight: 700;
+        color: #1976d2;
+        margin: 0.25em 0 0.5em;
+    }
+    .plan-price span {
+        font-size: 0.45em;
+        font-weight: 400;
+        color: #888;
+    }
+    .plan-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 1em;
+        font-size: 0.9em;
+        color: #555;
+    }
+    .plan-features li {
+        padding: 0.3em 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .plan-features li:last-child {
+        border-bottom: none;
+    }
+    .plan-select-btn {
+        width: 100%;
+        padding: 0.5em;
+        border: 2px solid #1976d2;
+        border-radius: 4px;
+        background: transparent;
+        color: #1976d2;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+    }
+    .plan-card.selected .plan-select-btn {
+        background: #1976d2;
+        color: #fff;
+    }
+    .plan-select-btn:hover {
+        background: #e3f2fd;
+    }
+    .plan-card.selected .plan-select-btn:hover {
+        background: #1565c0;
+    }
+
     .subscription-form {
         max-width: 400px;
         margin: 2em auto;
@@ -70,6 +199,7 @@
 <form id="subscription-form" class="subscription-form">
     <div id="stripe-load-error" style="display:none;color:#d32f2f;margin-bottom:1em;font-size:1em;text-align:center;">Unable to load secure card fields. Please check your internet connection or contact support.</div>
     {% csrf_token %}
+    <input type="hidden" id="plan-tier" name="plan_tier" value="starter">
     <div class="form-group">
         <label for="tenant-name" class="form-label">Tenant Name</label>
         <input type="text" id="tenant-name" name="tenant_name" class="form-input" required placeholder="Your organization or tenant name" value="">
@@ -105,7 +235,7 @@
     </div>
     <div class="form-group">
         <label for="amount" class="form-label">Amount (USD)</label>
-        <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="{{ SUBSCRIPTION_AMOUNT }}" required readonly>
+        <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="{{ SUBSCRIPTION_AMOUNT }}" required readonly style="background:#eee;cursor:not-allowed;">
         <div class="field-error" id="amount-error" style="color:#d32f2f;font-size:0.95em;"></div>
     </div>
     <div class="form-group">
@@ -122,19 +252,9 @@
     <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
         <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Optional Add-ons (Instant Provisioning)</h4>
         <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-osticket" name="enable_osticket" checked style="margin-right: 0.5em;">
-            <label for="enable-osticket" style="font-weight: normal; color: #555;">OSTicket Helpdesk System</label>
-            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated OSTicket instance for your tenant</small>
-        </div>
-        <div style="margin-bottom: 0.5em;">
             <input type="checkbox" id="enable-odoo" name="enable_odoo" checked style="margin-right: 0.5em;">
             <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP System</label>
             <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Odoo ERP instance for your tenant</small>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-suitecrm" name="enable_suitecrm" checked style="margin-right: 0.5em;">
-            <label for="enable-suitecrm" style="font-weight: normal; color: #555;">SuiteCRM System</label>
-            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated SuiteCRM instance for your tenant</small>
         </div>
         <div style="margin-bottom: 0.5em;">
             <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" checked style="margin-right: 0.5em;">
@@ -154,14 +274,37 @@
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 console.log('Subscription JS loaded: form script running');
+
+function selectPlan(tier, price) {
+    document.getElementById('plan-tier').value = tier;
+    document.getElementById('amount').value = price;
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        card.classList.remove('selected');
+        card.querySelector('.plan-select-btn').textContent = 'Select';
+    });
+    var selected = document.querySelector('.plan-card[data-tier="' + tier + '"]');
+    if (selected) {
+        selected.classList.add('selected');
+        selected.querySelector('.plan-select-btn').textContent = 'Selected';
+    }
+    checkFormFields();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Subscription form DOM fully loaded');
-    const btn = document.getElementById('subscribe-btn');
+    var btn = document.getElementById('subscribe-btn');
     if (btn) {
         btn.addEventListener('click', function() {
             console.log('Subscribe button clicked');
         });
     }
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var tier = card.getAttribute('data-tier');
+            var price = card.getAttribute('data-price');
+            selectPlan(tier, parseFloat(price));
+        });
+    });
 });
 function checkFormFields() {
     const requiredFields = [
@@ -274,7 +417,7 @@ document.addEventListener('DOMContentLoaded', function() {
 let stripeLoaded = false;
 let stripe, elements, card;
 try {
-    stripe = Stripe('pk_test_51S3owgPQWnaGoDqyVMAyU9sTOrv763E4CP8t1hhlOHeYDMEDoxTrEMO3ylp0xaofCEF3QGCjSJAgIpRXrRVxBs2200j6Yuabiv');
+    stripe = Stripe('{{ STRIPE_PUBLISHABLE_KEY }}');
     elements = stripe.elements();
     stripeLoaded = true;
     card = elements.create('card', { hidePostalCode: true });
@@ -338,6 +481,7 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     console.log('Stripe token:', token);
 
     // Prepare payload
+    const planTier = document.getElementById('plan-tier').value;
     const payload = {
         stripe_token: token.id,
         tenant_name: tenantName,
@@ -347,7 +491,8 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         email: email,
         zip: zip,
         username: username,
-        password: password
+        password: password,
+        plan_tier: planTier
     };
     console.log('Sending fetch to /dose/api/subscriptions/ with payload:', payload);
 

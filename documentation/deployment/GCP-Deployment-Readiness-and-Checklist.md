@@ -24,9 +24,9 @@
 
 | App            | Port  | OAuth2/SSO status | Recommended approach (Shela) | Notes |
 |----------------|-------|-------------------|-------------------------------|--------|
-| Odoo           | 8069  | [ ]               | **Native OAuth2/OIDC**        | auth_oauth module; Google/custom OIDC; native preferred over passthrough |
-| Nextcloud      | 8888  | [ ]               | **Native OIDC**              | user_oidc app; discovery + client ID/secret; auto-provisioning |
-| Mattermost     | 8065  | [ ]               | **Native OAuth2/OIDC**        | Built-in GitLab/Google/Office 365/custom OIDC; no good header-based option |
+| Odoo           | 8069  | [~] Phase 2b      | **Native OAuth2/OIDC**        | auth_oauth module; DOT OIDC provider ready; provisioner enhancement in progress |
+| Nextcloud      | 8888  | [~] Phase 2c      | **Native OIDC**              | user_oidc app; DOT OIDC provider ready; provisioner enhancement in progress |
+| Mattermost     | 8065  | [~] Phase 2a      | **Native OAuth2/OIDC**        | Built-in OIDC; DOT OIDC provider ready; provisioner enhancement in progress |
 | WordPress      | 8980  | [ ]               | **Passthrough (headers)**     | HTTP Header Auth / REMOTE_USER plugins; fastest with PolySaaS middleware |
 | Liferay CE     | 8181  | [ ]               | **Native or passthrough**     | Strong OAuth2/OIDC; header auth also supported |
 | Dolibarr       | 8889  | [ ]               | **Passthrough** (or native)   | Native OAuth modules exist but passthrough often easier |
@@ -36,9 +36,9 @@
 
 **Gate checklist (all must be done before “ready for GCP”):**
 
-- [ ] **POL-1** PolySaaS portal: users can sign in with OAuth2 (e.g. Google/GitHub via django-allauth). *Owner: __*
+- [x] **POL-1** PolySaaS portal: users can sign in with OAuth2 (e.g. Google/GitHub via django-allauth). *Owner: Desktop* — allauth (Google/GitHub) + DOT OIDC provider live (commit `cadd450`, 2026-03-07).
 - [ ] **POL-2** Passthrough auth: middleware injects identity (e.g. JWT or headers) into requests to bundled apps so they can auto-login. *Owner: __*
-- [ ] **POL-3** Per-app SSO: each bundled app in the table above either (A) accepts PolySaaS-injected auth, or (B) is configured for OAuth2/OIDC with the same IdP. *Owner: __*
+- [ ] **POL-3** Per-app SSO: each bundled app in the table above either (A) accepts PolySaaS-injected auth, or (B) is configured for OAuth2/OIDC with the same IdP. *Owner: Desktop (in progress)* — Phase 2a/2b/2c wiring Mattermost, Odoo, Nextcloud to DOT.
 - [ ] **POL-4** Document which apps use “passthrough auth” vs “native OAuth2” and where config lives. *Owner: __*
 - [ ] **POL-5** Manual test: one user logs in once at PolySaaS and opens each app without a second login. *Owner: Michael*
 
@@ -75,7 +75,7 @@ Use **Owner** as: **Michael** (human), **Laptop** (Cursor on laptop), **Desktop*
 |-------|------|--------|
 | R-1   | [ ] Confirm list of bundled apps that must have SSO (match table in Section 1 or adjust). | Michael |
 | R-2   | [ ] Implement or extend passthrough auth middleware (inject JWT or headers for downstream apps). | Laptop or Desktop |
-| R-3   | [ ] For each app: either enable passthrough-based auto-login or configure native OAuth2/OIDC; document in POL-4. | Laptop or Desktop |
+| R-3   | [~] For each app: either enable passthrough-based auto-login or configure native OAuth2/OIDC; document in POL-4. Desktop: DOT OIDC provider live (`cadd450`); Phase 2a/2b/2c provisioner enhancement in progress. | Desktop |
 | R-4   | [ ] Add/update doc: “SSO and Passthrough Auth” (where config lives, which app uses which method). | Laptop or Desktop |
 | R-5   | [ ] Michael: run through POL-5 (one user, one login, open each app). | Michael |
 
@@ -165,6 +165,7 @@ In Django, middleware can: (1) rely on allauth/IdP for PolySaaS login; (2) on re
 |------------|--------|-----|
 | 2026-03-08 | Initial plan and checklist; readiness gate = OAuth2/SSO for all bundled apps. | Laptop Cursor |
 | 2026-03-08 | Added Shela feedback: hybrid model, per-app recommended approach, prioritization order, middleware hint; new Section 5. | Laptop Cursor |
+| 2026-03-08 | Marked POL-1 done (DOT OIDC provider live); updated R-3 and app table with Phase 2 progress; Desktop-CC picking up Phase 2a/2b/2c. | Desktop-CC |
 
 ---
 

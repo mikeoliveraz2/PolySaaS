@@ -1,0 +1,157 @@
+{% extends "dose/dosebase.html" %}
+{% block content %}
+<h2 style="text-align:center;">Manage Your Plan</h2>
+
+{% if messages %}
+<div style="max-width:700px; margin:0 auto 1.5em;">
+    {% for message in messages %}
+    <div style="padding:0.75em 1em; border-radius:6px; margin-bottom:0.5em;
+        {% if message.tags == 'success' %}background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7;
+        {% elif message.tags == 'error' %}background:#ffebee; color:#c62828; border:1px solid #ef9a9a;
+        {% else %}background:#fff3e0; color:#e65100; border:1px solid #ffcc80;{% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<p style="text-align:center; color:#555; margin-bottom:2em;">
+    Current plan: <strong>{{ subscription.get_plan_tier_display }}</strong>
+    {% if subscription.active %}<span style="color:#2e7d32;">(Active)</span>{% else %}<span style="color:#c62828;">(Inactive)</span>{% endif %}
+</p>
+
+<style>
+    .upgrade-cards {
+        display: flex;
+        justify-content: center;
+        gap: 1.5em;
+        flex-wrap: wrap;
+        margin-bottom: 2em;
+    }
+    .upgrade-card {
+        background: #fff;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 1.5em;
+        width: 220px;
+        text-align: center;
+        position: relative;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .upgrade-card.current {
+        border-color: #1976d2;
+        box-shadow: 0 4px 20px rgba(25,118,210,0.15);
+    }
+    .upgrade-card.upgrade-available:hover {
+        border-color: #43a047;
+        box-shadow: 0 4px 16px rgba(67,160,71,0.15);
+        transform: translateY(-2px);
+    }
+    .current-badge {
+        position: absolute;
+        top: -12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1976d2;
+        color: #fff;
+        font-size: 0.75em;
+        font-weight: 600;
+        padding: 0.25em 0.75em;
+        border-radius: 12px;
+        white-space: nowrap;
+    }
+    .upgrade-card h3 {
+        margin: 0.5em 0 0.25em;
+        color: #333;
+        font-size: 1.2em;
+    }
+    .upgrade-price {
+        font-size: 1.8em;
+        font-weight: 700;
+        color: #1976d2;
+        margin: 0.25em 0 0.5em;
+    }
+    .upgrade-price span {
+        font-size: 0.45em;
+        font-weight: 400;
+        color: #888;
+    }
+    .upgrade-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 1em;
+        font-size: 0.9em;
+        color: #555;
+    }
+    .upgrade-features li {
+        padding: 0.3em 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .upgrade-features li:last-child {
+        border-bottom: none;
+    }
+    .upgrade-btn {
+        width: 100%;
+        padding: 0.6em;
+        border: none;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 0.95em;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .upgrade-btn.btn-upgrade {
+        background: #43a047;
+        color: #fff;
+    }
+    .upgrade-btn.btn-upgrade:hover {
+        background: #388e3c;
+    }
+    .upgrade-btn.btn-current {
+        background: #e3f2fd;
+        color: #1976d2;
+        cursor: default;
+    }
+    .upgrade-btn.btn-disabled {
+        background: #f5f5f5;
+        color: #bbb;
+        cursor: not-allowed;
+    }
+</style>
+
+<div class="upgrade-cards">
+    {% for plan in plans %}
+    <div class="upgrade-card {% if plan.is_current %}current{% elif plan.is_upgrade %}upgrade-available{% endif %}">
+        {% if plan.is_current %}<div class="current-badge">Current Plan</div>{% endif %}
+        <h3>{{ plan.label }}</h3>
+        <div class="upgrade-price">${{ plan.price }}<span>/mo</span></div>
+        <ul class="upgrade-features">
+            {% if plan.max_users %}
+            <li>{{ plan.max_users }} user{{ plan.max_users|pluralize }}</li>
+            {% else %}
+            <li>Unlimited users</li>
+            {% endif %}
+            <li>All integrations</li>
+            <li>14-day free trial</li>
+            {% if plan.tier == 'unlimited' %}<li>Priority support</li>{% endif %}
+        </ul>
+        {% if plan.is_current %}
+            <button class="upgrade-btn btn-current" disabled>Current Plan</button>
+        {% elif plan.is_upgrade %}
+            <form method="post" action="{% url 'dose:upgrade' %}" style="margin:0;"
+                  onsubmit="return confirm('Upgrade to {{ plan.label }}? Prorated charges will apply to your next invoice.');">
+                {% csrf_token %}
+                <input type="hidden" name="new_tier" value="{{ plan.tier }}">
+                <button type="submit" class="upgrade-btn btn-upgrade">Upgrade</button>
+            </form>
+        {% else %}
+            <button class="upgrade-btn btn-disabled" disabled>--</button>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<div style="text-align:center; margin-top:1em;">
+    <a href="{% url 'dose:dashboard' %}" style="color:#1976d2; text-decoration:none;">&larr; Back to Dashboard</a>
+</div>
+{% endblock %}
