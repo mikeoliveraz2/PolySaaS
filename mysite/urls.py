@@ -8,7 +8,15 @@ from django.contrib.auth.decorators import login_required
 from dose.views import subscribe_view
 from dose.views_custom_login import CustomLoginView
 from test_decompression_view import test_decompression, simple_html_test, external_direct_test
-from dose.views.oauth_consent import TenantAwareAuthorizationView
+
+try:
+    from dose.views.oauth_consent import TenantAwareAuthorizationView
+    from oauth2_provider import urls as oauth2_provider_urls
+    _oauth2_available = True
+except ImportError:
+    TenantAwareAuthorizationView = None
+    oauth2_provider_urls = None
+    _oauth2_available = False
 
 # profile_view is now in this file — not dose.views
 @login_required
@@ -54,8 +62,6 @@ urlpatterns = [
     path('test-decompress/', test_decompression, name='test_decompression'),
     path('simple-test/', simple_html_test, name='simple_html_test'),
     path('external-direct/', external_direct_test, name='external_direct_test'),
-    path('o/authorize/', TenantAwareAuthorizationView.as_view(), name='authorize'),
-    path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     path('dose/', include('dose.urls')),
     path('parameters/', include('parameters.urls')),
     path('atomic_service_names/', __import__('dose.views.atomic_service_names', fromlist=['atomic_service_names']).atomic_service_names, name='atomic_service_names'),
@@ -63,6 +69,12 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
+
+if _oauth2_available:
+    urlpatterns += [
+        path('o/authorize/', TenantAwareAuthorizationView.as_view(), name='authorize'),
+        path('o/', include((oauth2_provider_urls, 'oauth2_provider'))),
+    ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

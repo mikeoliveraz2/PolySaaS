@@ -15,7 +15,7 @@ class Command(DjangoMigrateCommand):
         set_schema('public')
         self.stdout.write(self.style.SUCCESS('Migrating public schema...'))
         super().handle(*args, **options)
-        self.stdout.write(self.style.SUCCESS('✓ Public schema migrated'))
+        self.stdout.write(self.style.SUCCESS('[OK] Public schema migrated'))
 
         set_schema('public')
         tenants = Tenant.objects.all().order_by('schema_name')
@@ -39,8 +39,8 @@ class Command(DjangoMigrateCommand):
             set_schema(schema)
             try:
                 super().handle(*args, **options)
-                self.stdout.write(self.style.SUCCESS(f'  ✓ {schema} migrated'))
+                self.stdout.write(self.style.SUCCESS(f'  [OK] {schema} migrated'))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'  ✗ {schema} error: {e}'))
+                self.stdout.write(self.style.ERROR(f'  [FAIL] {schema} error: {e}'))
 
-        self.stdout.write(self.style.SUCCESS('\n✓ All schemas migrated.'))
+        self.stdout.write(self.style.SUCCESS('\n[OK] All schemas migrated.'))

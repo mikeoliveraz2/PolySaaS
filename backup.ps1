@@ -25,7 +25,7 @@ Write-Host "Creating daily source backup..." -ForegroundColor Yellow
 $excludeDirs = @(
     'venv', '.venv', 'node_modules', '.git', '__pycache__', '*.pyc',
     'media', 'large_files_backup', 'var', '.mypy_cache',
-    '.pytest_cache', '*.egg-info'
+    '.pytest_cache', '*.egg-info', 'dose\website'
 )
 
 $sourceFiles = Get-ChildItem -Path $scriptDir -Recurse -File -ErrorAction SilentlyContinue | Where-Object {

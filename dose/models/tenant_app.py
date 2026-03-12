@@ -1,3 +1,4 @@
+from django.apps import apps
 from django.db import models
 
 
@@ -26,14 +27,15 @@ class TenantApp(models.Model):
     )
     app_name = models.CharField(max_length=50, choices=APP_CHOICES)
     app_url = models.URLField(blank=True, default='')
-    oauth_application = models.OneToOneField(
-        'oauth2_provider.Application',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='tenant_app',
-        help_text='The OAuth2 application registered in DOT for this tenant+app pair',
-    )
+    if apps.is_installed('oauth2_provider'):
+        oauth_application = models.OneToOneField(
+            'oauth2_provider.Application',
+            on_delete=models.SET_NULL,
+            null=True,
+            blank=True,
+            related_name='tenant_app',
+            help_text='The OAuth2 application registered in DOT for this tenant+app pair',
+        )
     provisioned_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='provisioning')
     last_error = models.TextField(blank=True, default='', help_text='Last provisioning error message')

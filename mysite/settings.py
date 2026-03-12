@@ -155,14 +155,15 @@ def _filter_installed_apps(apps):
     return valid
 
 INSTALLED_APPS = _filter_installed_apps(INSTALLED_APPS)
+_oauth2_available = 'oauth2_provider' in INSTALLED_APPS
 
 # `active_urls` removed from `INSTALLED_APPS` per user request.
 # Django Allauth settings for OAuth2 SSO
 SITE_ID = 1
 AUTHENTICATION_BACKENDS = (
-    'oauth2_provider.backends.OAuth2Backend',
-    'django.contrib.auth.backends.ModelBackend',
-    'allauth.account.auth_backends.AuthenticationBackend',
+    ('oauth2_provider.backends.OAuth2Backend', 'django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend')
+    if _oauth2_available else
+    ('django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend')
 )
 
 LOGIN_REDIRECT_URL = '/'
@@ -283,7 +284,6 @@ MIDDLEWARE = [
     'mysite.csrf_exemption_middleware.CSRFExemptionMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'oauth2_provider.middleware.OAuth2TokenMiddleware',
     'mysite.middleware.user_request_tracking.UserRequestTrackingMiddleware',
     'dose.debug_middleware.DebugRequestMiddleware',
     'dose.middleware.admin_unauthorized.AdminUnauthorizedMiddleware',
@@ -300,6 +300,11 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+if _oauth2_available:
+    MIDDLEWARE.insert(
+        MIDDLEWARE.index('django.contrib.auth.middleware.AuthenticationMiddleware') + 1,
+        'oauth2_provider.middleware.OAuth2TokenMiddleware',
+    )
 
 ROOT_URLCONF = 'mysite.urls'
 

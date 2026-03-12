@@ -22,7 +22,7 @@ class Command(BaseCommand):
         set_schema('public')
         try:
             call_command('migrate', verbosity=0)
-            self.stdout.write(self.style.SUCCESS('✓ Public schema migrated'))
+            self.stdout.write(self.style.SUCCESS('[OK] Public schema migrated'))
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Public schema migration error: {e}'))
 
@@ -45,9 +45,9 @@ class Command(BaseCommand):
                 set_schema(schema_name)
                 try:
                     call_command('migrate', verbosity=0)
-                    self.stdout.write(self.style.SUCCESS(f'  ✓ {schema_name} migrated successfully'))
+                    self.stdout.write(self.style.SUCCESS(f'  [OK] {schema_name} migrated successfully'))
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f'  ✗ {schema_name} migration error: {e}'))
+                    self.stdout.write(self.style.ERROR(f'  [FAIL] {schema_name} migration error: {e}'))
                     # Continue with other tenants even if one fails
 
-        self.stdout.write(self.style.SUCCESS('\n✓ All migrations completed for all schemas.'))
+        self.stdout.write(self.style.SUCCESS('\n[OK] All migrations completed for all schemas.'))
