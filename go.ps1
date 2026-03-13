@@ -32,7 +32,7 @@ function Invoke-DailyBackup {
     $excludeDirs = @(
         'venv', '.venv', 'node_modules', '.git', '__pycache__', '*.pyc',
         'media', 'large_files_backup', 'var', '.mypy_cache',
-        '.pytest_cache', '*.egg-info'
+        '.pytest_cache', '*.egg-info', 'dose\website'
     )
 
     $sourceFiles = Get-ChildItem -Path $scriptDir -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
@@ -187,7 +187,7 @@ $checkOutput = & $venvPython manage.py check 2>&1
 $appLoadOk = ($LASTEXITCODE -eq 0)
 Pop-Location
 if ($appLoadOk) {
-    Write-Host "  App loads OK - will commit/push now; backup runs when you exit runserver" -ForegroundColor Green
+    Write-Host '  App loads OK - will commit/push now; backup runs when you exit runserver' -ForegroundColor Green
 }
 else {
     Write-Host "  App failed to load - skipping commit/push and backup" -ForegroundColor Yellow
@@ -209,7 +209,7 @@ if (Test-Path $blogScript) {
         Write-Host "  Blog archive page refreshed with latest posts" -ForegroundColor Green
     }
     else {
-        Write-Host "  Blog refresh skipped (network/API error — non-blocking)" -ForegroundColor DarkYellow
+        Write-Host "  Blog refresh skipped (network/API error; non-blocking)" -ForegroundColor DarkYellow
     }
     Write-Host ""
 }

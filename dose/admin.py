@@ -1,4 +1,5 @@
 # --- Gmail Admin View Integration ---
+from django.apps import apps
 from django.contrib import admin
 from django.urls import path
 from django.contrib.admin.views.decorators import staff_member_required
@@ -524,7 +525,7 @@ if NEW_MODELS_AVAILABLE:
         list_filter = ('app_name', 'status')
         search_fields = ('tenant__name', 'app_name', 'app_url')
         readonly_fields = ('provisioned_at',)
-        raw_id_fields = ('oauth_application',)
+        raw_id_fields = ('oauth_application',) if apps.is_installed('oauth2_provider') else ()
 
     # Custom User Form to include tenant selection
     class UserProfileInlineForm(forms.ModelForm):
