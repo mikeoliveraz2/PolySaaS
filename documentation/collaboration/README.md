@@ -30,12 +30,12 @@ Source of truth is **GitHub**; no external clone drive needed. Develop from eith
 
 ---
 
-## Current status (laptop – 2026-03-08)
+## Current status (laptop – 2026-02-28)
 
-- Laptop: PolySaaS on **D:\PolySaaS** (internal SSD, healthy). Branch `main` up to date with `origin/main`.
-- Desktop: PolySaaS on **Imation 1TB** (stable). Pull from `origin/main` to match laptop; push when desktop has commits.
-- **GCP deployment:** Shared plan and checklist → `documentation/deployment/GCP-Deployment-Readiness-and-Checklist.md`. Note for desktop-cc → `notes-from-laptop.md` (this folder).
+- Laptop: PolySaaS on **D:\PolySaaS** (internal SSD, healthy). Desktop machine **in shop for upgrade** — laptop-only for now; pull often; push when you commit.
+- **Cross-app sync POC (Dolibarr → Odoo):** Public page [cross-app-sync](https://polysaas.online/cross-app-sync/). Repo copy of narrative → **`documentation/website/cross-app-sync-poc.md`**. Handoff for Desktop-CC → latest section in **`notes-from-laptop.md`**.
+- **GCP deployment:** Shared plan and checklist → `documentation/deployment/GCP-Deployment-Readiness-and-Checklist.md`. Older notes → `notes-from-laptop.md` (this folder).
 
 ---
 
-*Last updated: 2026-03-08 (laptop).*
+*Last updated: 2026-02-28 (laptop).*
