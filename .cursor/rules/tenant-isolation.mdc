@@ -1,0 +1,62 @@
+---
+description: Tenant schema isolation — all records must be created in the user's tenant schema, never in public
+alwaysApply: true
+---
+
+# Tenant Schema Isolation
+
+PolySaaS is a multi-tenant Django application using PostgreSQL schema-based isolation.
+
+## The Rule
+
+**No user action should rely on or create any record in the `public` schema.** All data belongs in the user's tenant schema.
+
+## How It Works
+
+- Each tenant has a dedicated PostgreSQL schema (e.g. `olient` for Oliver Enterprises).
+- The `SessionTenantMiddleware` sets `search_path` based on the logged-in user's tenant.
+- The `public` schema holds only shared system tables (Tenant, User, etc.), never tenant-specific data like Instructions, Mappings, PassThroughEndpoints, CallBackData, MQConfig, etc.
+
+## Migrations Must Hit All Schemas
+
+Every migration must be applied to **all** tenant schemas, every time. Use `python manage.py migrate` which redirects to `migrate_all_schemas`. Never run a migration against only `public` or only one tenant. If a new table or column is added, verify it exists in every schema before proceeding.
+
+## When Writing Scripts or Management Commands
+
+Always set the search_path to the target tenant schema before creating or querying tenant-scoped records:
+
+```python
+from django.db import connection
+
+SCHEMA = 'olient'  # or resolve from Tenant model
+with connection.cursor() as cur:
+    cur.execute(f"SET search_path TO {SCHEMA},public;")
+```
+
+## When Creating Demo/Seed Data
+
+1. Identify the target tenant (e.g. `olient`)
+2. Set search_path BEFORE any ORM operations
+3. Verify records exist in the correct schema after creation
+
+## Common Tenant-Scoped Models
+
+These models live in tenant schemas, NOT public:
+- `Instruction`
+- `Mapping` / `InstructionMapping`
+- `PassThroughEndpoint`
+- `MQConfig`
+- `CallBackData`
+- `TrafficLog`
+- `TenantApp`
+
+## Current Tenants
+
+| Schema | Name |
+|--------|------|
+| `public` | Public Tenant (system only) |
+| `olient` | Oliver Enterprises (primary demo tenant) |
+
+## WordPress Editing Target
+
+All WordPress page edits go to **polysaas.online** (production). The azure-nightingale staging site is NOT the edit target. The workflow is: edit polysaas.online until satisfied, then migrate guru down to azure, then resume azure as staging. Never edit azure directly.

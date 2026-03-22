@@ -422,6 +422,57 @@ class PolySnifferRunAdmin(TenantAwareModelAdmin):
     ordering = ('-run_timestamp',)
 
 from .models import RequestLog, ErrorLog
+from .models import Mapping, InstructionMapping
+
+
+class InstructionMappingInline(admin.TabularInline):
+    model = InstructionMapping
+    extra = 1
+    fields = ('mapping', 'order', 'enabled')
+    autocomplete_fields = ['mapping']
+
+
+InstructionAdmin.inlines = [InstructionMappingInline]
+
+
+class MappingAdmin(TenantAwareModelAdmin):
+    list_display = ('name', 'slug', 'direction', 'source_endpoint', 'target_endpoint',
+                    'is_active', 'version', 'updated_at')
+    list_filter = ('direction', 'is_active', 'source_endpoint', 'target_endpoint')
+    search_fields = ('name', 'slug', 'description')
+    readonly_fields = ('created_at', 'updated_at')
+    prepopulated_fields = {'slug': ('name',)}
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'slug', 'description', 'direction', 'is_active', 'version')
+        }),
+        ('Endpoints', {
+            'fields': ('source_endpoint', 'target_endpoint', 'tenant'),
+            'classes': ('collapse',),
+        }),
+        ('Field Mappings', {
+            'fields': ('field_mappings',),
+            'description': (
+                'JSON dict: {"target_field": "source_expression"}. '
+                'Expressions: request.POST.name|strip, payload.email|lower|default:None, '
+                'now:iso, \'literal\''
+            ),
+        }),
+        ('Transformations', {
+            'fields': ('transformations',),
+            'classes': ('collapse',),
+            'description': (
+                'JSON list of post-mapping rules. '
+                '[{"field": "full_name", "concat": ["first", "last"], "separator": " "}]'
+            ),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+
 # Register existing models
 admin.site.register(Task, TaskAdmin)
 admin.site.register(Instruction, InstructionAdmin)
@@ -432,6 +483,7 @@ admin.site.register(DoseMessage, DoseMessageAdmin)
 admin.site.register(PolySnifferRun, PolySnifferRunAdmin)
 admin.site.register(RequestLog)
 admin.site.register(ErrorLog)
+admin.site.register(Mapping, MappingAdmin)
 
 # Add session-based tenant admin classes if models are available
 if NEW_MODELS_AVAILABLE:

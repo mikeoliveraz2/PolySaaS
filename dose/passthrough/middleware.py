@@ -16,22 +16,24 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         """
         REQUEST PHASE — runs for every request
         This is the LAST middleware before the request leaves Django
-        → Perfect place for PASSTHROUGH-OUT
+        -> Perfect place for PASSTHROUGH-OUT
         """
         if request.path_info.startswith("/pt/"):
             parts = request.path_info.strip("/").split("/")
+            print(f"[PT-MIDDLEWARE] path={request.path_info} parts={parts}")
             if len(parts) >= 3 and parts[0] == "pt":
                 trigger = parts[2]
+                print(f"[PT-MIDDLEWARE] trigger={trigger}")
 
                 endpoint = PassThroughEndpoint.objects.filter(
                     trigger_path__iexact=trigger,
                     is_enabled=True
                 ).first()
+                print(f"[PT-MIDDLEWARE] endpoint={endpoint}")
 
                 if endpoint:
-                    # PASSTHROUGH-OUT → LAST THING BEFORE WE DO BEFORE SENDING
                     print("\n" + "="*120)
-                    print("PASSTHROUGH-OUT → SENDING TO EXTERNAL SERVICE (LAST BEFORE EXIT)")
+                    print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (LAST BEFORE EXIT)")
                     print(f"TARGET URL: {endpoint.endpoint_url}")
                     print(f"PATH      : {request.path_info}")
                     print(f"USER      : {request.user}")
@@ -53,11 +55,11 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         """
         RESPONSE PHASE — runs for every response
         This is the FIRST middleware that sees the response coming back
-        → Perfect place for PASSTHROUGH-IN
+        -> Perfect place for PASSTHROUGH-IN
         """
         if getattr(request, '_passthrough_handled', False):
             print("\n" + "="*120)
-            print("PASSTHROUGH-IN ← RESPONSE RECEIVED (FIRST ON RETURN)")
+            print("PASSTHROUGH-IN <- RESPONSE RECEIVED (FIRST ON RETURN)")
             print(f"STATUS: {response.status_code}")
             print(f"CONTENT LENGTH: {len(response.content) if hasattr(response, 'content') else 'unknown'} bytes")
             preview = response.content[:500].decode('utf-8', errors='ignore') if hasattr(response, 'content') else "No content"

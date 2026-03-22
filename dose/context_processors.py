@@ -580,11 +580,11 @@ def admin_navigation(request):
                             panel_id=panel_id,
                             is_active=True
                         ).order_by('sort_order'))
-                        print(f"[ADMIN_NAV] ✅ Found {len(external_items)} active items in panel '{panel_title}' (queried in schema {panel_schema})")
+                        print(f"[ADMIN_NAV] Found {len(external_items)} active items in panel '{panel_title}' (queried in schema {panel_schema})")
                         for item in external_items:
                             print(f"[ADMIN_NAV]   - Item: '{item.title}' (ID: {item.id}, URL: {item.url})")
                 except Exception as e:
-                    print(f"[ADMIN_NAV] ❌ Error querying NavigationItem in schema {panel_schema}: {e}")
+                    print(f"[ADMIN_NAV] Error querying NavigationItem in schema {panel_schema}: {e}")
                     import traceback
                     print(traceback.format_exc())
 
@@ -644,10 +644,14 @@ def admin_navigation(request):
 
     except Exception as e:
         import traceback
-        print(f"[ADMIN_NAV] ERROR getting navigation data: {e}")
-        print(traceback.format_exc())
+        tb = traceback.format_exc()
+        try:
+            print(f"[ADMIN_NAV] ERROR getting navigation data: {e}")
+            print(tb)
+        except UnicodeEncodeError:
+            print(f"[ADMIN_NAV] ERROR getting navigation data (encoding issue, see log)")
         logger.error(f"[ADMIN_NAV] Error: {e}")
-        logger.error(traceback.format_exc())
+        logger.error(tb)
         # Always return the expected structure, even on error
         return {
             'passthrough_services': [],
