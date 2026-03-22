@@ -58,12 +58,11 @@ Please pull to get this file. When you pick up a task, mark it in the checklist 
 
 **What we did on laptop to sync the repo:**
 
-- Added **`documentation/website/cross-app-sync-poc.md`** — textual mirror of the public page (flow, tables, instructions, mapping notes, maintenance checklist). **Screenshots stay on the live site.**
+- Added **`documentation/website/cross-app-sync-poc.md`** and later **re-synced it to match the live WordPress page** (full tables, mapping rows, **12 screenshot URLs** `crossapp-*.png` / `.jpg`, alt text). The **page** is canonical for layout; the **markdown** should be updated whenever WP changes.
+- Helper: **`documentation/website/_extract_cross_app_sync_wp.py`** — re-fetch image list from WP REST (writes local `_cross_app_sync_extract.txt`, gitignored).
 
 **Please do when you’re back on desktop:**
 
-1. Confirm **https://polysaas.online/cross-app-sync/** shows the new screenshots.  
-2. If the narrative changed, either edit **`cross-app-sync-poc.md`** to match or reply in **`notes-from-desktop.md`**.  
-3. **`git commit`** + **`git push origin main`** so laptop picks up any doc/code you have.
+1. After any WP edit, run the script (or pull) and align **`cross-app-sync-poc.md`** if needed, then **push**.
 
 — Laptop Cursor
