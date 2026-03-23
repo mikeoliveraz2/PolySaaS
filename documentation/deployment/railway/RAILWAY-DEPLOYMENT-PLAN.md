@@ -1,6 +1,6 @@
 # PolySaaS — Railway-first deployment (internal stack)
 
-**Goal:** Run **PostgreSQL**, **RabbitMQ**, **Elasticsearch**, **Grafana**, **OpenObserve**, and the **Django (DOSE)** app **inside one Railway project** (all containerized / self-defined), with **Stripe** wired for `subscribe_view`, webhooks, and future OpenAPI-exposed payment flows.
+**Goal:** Run **PostgreSQL**, **RabbitMQ**, **Elasticsearch**, **Grafana**, **MonitorLogger**, and the **Django (DOSE)** app **inside one Railway project** (all containerized / self-defined), with **Stripe** wired for `subscribe_view`, webhooks, and future OpenAPI-exposed payment flows.
 
 **Status:** Planning + local parity compose. **Not yet:** production `settings_railway.py` or a committed Django `Dockerfile` (see gaps below).
 
@@ -17,7 +17,7 @@
 | **Celery / broker** | `CELERY_BROKER_URL = amqp://guest:guest@localhost` — expects **RabbitMQ** on localhost |
 | **MQ in app** | `dose/mq/adapters/rabbitmq_adapter.py` — **pika**, host/port/user/pass from **MQConfig** (DB) |
 | **Stripe** | `STRIPE_*` in `settings.py`; `dose/subscription_views.py`, `dose/views/stripe_webhook.py` → `/dose/webhook/stripe/` |
-| **Elasticsearch / Grafana / OpenObserve** | **No app integration** in code yet — infra-only for now |
+| **Elasticsearch / Grafana / MonitorLogger** | **No app integration** in code yet — infra-only for now |
 
 **Action before Railway:** Add a **Django-oriented Dockerfile** (e.g. `Dockerfile.django` or replace strategy) and point Railway’s **web service** build at it. Gunicorn (or waitress on Windows-only dev) + `mysite.wsgi:application` is the usual pattern.
 
@@ -33,10 +33,10 @@ Deploy each as its **own Railway service** (or one compose-based deployment if y
 | 2 | **RabbitMQ** | `rabbitmq:3-management-alpine` | 5672 (AMQP), 15672 (mgmt UI) | Celery broker + cross-app MQ (`pika`) |
 | 3 | **Elasticsearch** | `docker.elastic.co/elasticsearch/elasticsearch:8.11.0` | 9200, 9300 | Search / analytics (single-node for phase 1) |
 | 4 | **Grafana** | `grafana/grafana:10.4.3` | 3000 | Dashboards (add Prometheus/Loki/ES datasources later) |
-| 5 | **OpenObserve** | `public.ecr.aws/zinclabs/openobserve:latest` (or `openobserve/openobserve:latest`) | 5080 | Logs / traces / metrics ingestion |
+| 5 | **MonitorLogger** | `public.ecr.aws/zinclabs/openobserve:latest` (OpenObserve-based image; PolySaaS branding: **MonitorLogger**) | 5080 | Logs / traces / metrics ingestion |
 | 6 | **Django (PolySaaS)** | **Your Dockerfile** | 8000 (internal) → Railway HTTPS | Web + API + admin |
 
-**Memory:** ES + OpenObserve + Grafana together are heavy. On Railway, set **explicit plan limits**; consider **phase 1** = Postgres + RabbitMQ + Django + **one** of {OpenObserve, Grafana}, then add Elasticsearch when search is wired.
+**Memory:** ES + MonitorLogger + Grafana together are heavy. On Railway, set **explicit plan limits**; consider **phase 1** = Postgres + RabbitMQ + Django + **one** of {MonitorLogger, Grafana}, then add Elasticsearch when search is wired.
 
 ---
 
@@ -45,7 +45,7 @@ Deploy each as its **own Railway service** (or one compose-based deployment if y
 1. **PostgreSQL** (health: `pg_isready`)  
 2. **RabbitMQ** (health: `rabbitmq-diagnostics ping`)  
 3. **Elasticsearch** (health: `/_cluster/health` — optional until app uses it)  
-4. **OpenObserve** / **Grafana** (parallel; no hard dependency for Django v1)  
+4. **MonitorLogger** / **Grafana** (parallel; no hard dependency for Django v1)  
 5. **Django** — `migrate`, `collectstatic` (if not using object storage), then **gunicorn**
 
 Celery worker / beat: **separate Railway services** (same image as web, different `command`), `depends_on` RabbitMQ + Postgres.
@@ -93,7 +93,7 @@ Use Railway **variables**; mirror names in `.env.railway.example` (this folder).
 **Elasticsearch / observability (when integrated)**
 
 - `ELASTICSEARCH_URL=http://elasticsearch.railway.internal:9200`  
-- OpenObserve / OTEL endpoints — add when Django logging or APM is wired.
+- **MonitorLogger** (OTEL / ingest URLs per upstream image) — add when Django logging or APM is wired.
 
 ---
 
@@ -117,7 +117,7 @@ From repo root:
 docker compose -f docker-compose.railway-stack.yml up -d
 ```
 
-Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, OpenObserve for integration testing. **Does not** start Django (run `manage.py` on host or add an app service later).
+Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger** for integration testing. **Does not** start Django (run `manage.py` on host or add an app service later).
 
 ---
 
@@ -133,7 +133,7 @@ Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, OpenObserve for integratio
 5. **Celery beat** — third service (optional), **`/celery-beat.sh`** or `celery -A mysite beat -l INFO`. Requires **`django_celery_beat`** + **`django_celery_results`** in `INSTALLED_APPS` and **`python manage.py migrate`** for their tables (`CELERY_RESULT_BACKEND` uses `django-db`).  
 6. **Stripe on Railway** — see **`STRIPE-RAILWAY.md`** (webhook URL, env vars, Swagger note).  
 7. **Elasticsearch** client + indexes (when a feature needs search).  
-8. **Grafana + OpenObserve** — scrape / OTLP from Django (optional phase 2).
+8. **Grafana + MonitorLogger** — scrape / OTLP from Django (optional phase 2).
 
 ---
 

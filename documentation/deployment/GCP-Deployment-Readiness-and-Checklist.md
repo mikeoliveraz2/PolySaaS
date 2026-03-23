@@ -11,7 +11,7 @@
 - [GCP Deployment Q&A](../Doc-76-Doc-76-GCP_DEPLOYMENT_QA.md)
 - Business plan: Google for Startups Cloud Program (apply post–production deploy)
 
-**Railway (first deploy):** Primary hosting target is **Railway** with an internal container stack (Postgres, RabbitMQ, Elasticsearch, Grafana, OpenObserve) before GCP. See **`documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md`** and root **`docker-compose.railway-stack.yml`**.
+**Railway (first deploy):** Primary hosting target is **Railway** with an internal container stack (Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger**) before GCP. See **`documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md`** and root **`docker-compose.railway-stack.yml`**.
 
 ---
 

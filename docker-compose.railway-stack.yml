@@ -1,4 +1,4 @@
-# Local / lab stack mirroring Railway "internal" services (Postgres, RabbitMQ, ES, Grafana, OpenObserve).
+# Local / lab stack mirroring Railway "internal" services (Postgres, RabbitMQ, ES, Grafana, MonitorLogger).
 # Does NOT include the Django app — run manage.py against these ports from the host.
 #
 # Usage: docker compose -f docker-compose.railway-stack.yml up -d
@@ -65,21 +65,22 @@ services:
       - railway_grafana_data:/var/lib/grafana
     # No hard dependency on ES; add datasources in Grafana UI when ready.
 
-  openobserve:
+  # MonitorLogger — PolySaaS product name; container image is upstream OpenObserve-compatible.
+  monitorlogger:
     image: public.ecr.aws/zinclabs/openobserve:latest
-    container_name: ps-railway-openobserve
+    container_name: ps-railway-monitorlogger
     environment:
-      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_USER:-admin@example.com}
-      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASS:-changeme}
+      ZO_ROOT_USER_EMAIL: ${MONITORLOGGER_ROOT_USER_EMAIL:-admin@example.com}
+      ZO_ROOT_USER_PASSWORD: ${MONITORLOGGER_ROOT_USER_PASSWORD:-changeme}
       ZO_LOCAL_MODE: "true"
     ports:
       - "5080:5080"
     volumes:
-      - railway_o2_data:/data
+      - railway_monitorlogger_data:/data
 
 volumes:
   railway_pg_data:
   railway_rmq_data:
   railway_es_data:
   railway_grafana_data:
-  railway_o2_data:
+  railway_monitorlogger_data:

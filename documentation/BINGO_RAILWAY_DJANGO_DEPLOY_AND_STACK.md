@@ -8,7 +8,7 @@
 
 ## Summary
 
-PolySaaS is **ready to deploy Django on Railway** using a **dedicated Dockerfile** (not the legacy FastAPI root `Dockerfile`), **`mysite.settings_railway`** (12-factor env), **Gunicorn + Whitenoise**, and **documented internal services** (Postgres, RabbitMQ, Elasticsearch, Grafana, OpenObserve) via **`docker-compose.railway-stack.yml`**. **Stripe** subscription path in `dose/views.py` no longer embeds a secret key.
+PolySaaS is **ready to deploy Django on Railway** using a **dedicated Dockerfile** (not the legacy FastAPI root `Dockerfile`), **`mysite.settings_railway`** (12-factor env), **Gunicorn + Whitenoise**, and **documented internal services** (Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger**) via **`docker-compose.railway-stack.yml`**. **Stripe** subscription path in `dose/views.py` no longer embeds a secret key.
 
 **Backup:** Per project rules, daily source backup runs with **`.\go.ps1`** (after runserver exit) or your backup script; ensure `git push origin main` after this commit so both machines stay in sync.
 
@@ -19,7 +19,7 @@ PolySaaS is **ready to deploy Django on Railway** using a **dedicated Dockerfile
 | Deliverable | Purpose |
 |-------------|---------|
 | `documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md` | Service list, boot order, env vars, Stripe webhook path, Celery/MQ notes, GCP checklist cross-link |
-| `docker-compose.railway-stack.yml` | Local parity: Postgres (host `5433`), RabbitMQ + management UI, Elasticsearch (single-node), Grafana, OpenObserve |
+| `docker-compose.railway-stack.yml` | Local parity: Postgres (host `5433`), RabbitMQ + management UI, Elasticsearch (single-node), Grafana, **MonitorLogger** (compose service `monitorlogger`) |
 | `documentation/deployment/railway/.env.railway.example` | Variable names for compose + Railway UI |
 | `documentation/website/.gitignore` | Ignore `_cross_app_sync_extract.txt` |
 | `documentation/website/cross-app-sync-poc.md` + `_extract_cross_app_sync_wp.py` | POC narrative synced to live WP page (separate certification) |
