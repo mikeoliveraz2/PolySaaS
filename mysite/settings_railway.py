@@ -87,6 +87,18 @@ _csrf_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "").strip()
 if _csrf_origins:
     CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(",") if o.strip()]
 
+# --- OAuth2 / OIDC (Railway): public issuer URL + optional PEM via env ---
+# See documentation/deployment/railway/OAUTH2-RAILWAY.md
+_oidc_iss = os.environ.get("OIDC_ISS_ENDPOINT", "").strip()
+_oidc_pem = os.environ.get("OIDC_RSA_PRIVATE_KEY", "").strip()
+if (_oidc_iss or _oidc_pem) and isinstance(OAUTH2_PROVIDER, dict):
+    _oauth2_provider = dict(OAUTH2_PROVIDER)
+    if _oidc_iss:
+        _oauth2_provider["OIDC_ISS_ENDPOINT"] = _oidc_iss.rstrip("/")
+    if _oidc_pem:
+        _oauth2_provider["OIDC_RSA_PRIVATE_KEY"] = _oidc_pem.replace("\\n", "\n")
+    OAUTH2_PROVIDER = _oauth2_provider
+
 # --- Logging: stdout only ---
 LOGGING = {
     "version": 1,

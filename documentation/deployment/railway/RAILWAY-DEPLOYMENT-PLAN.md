@@ -143,7 +143,7 @@ Optional: copy **`documentation/deployment/railway/.env.railway.example`** to **
    - **Health:** `GET /health/` (liveness), `GET /health/ready/` (DB check, 503 if DB down).  
 4. **Celery worker** — second Railway service, **same image**, start: `celery -A mysite worker -l INFO --concurrency 2` or **`/celery-worker.sh`**. Same env as web. **`mysite/celery.py`** defines the app; do not import Celery from `mysite/__init__.py` (avoids circular imports).  
 5. **Celery beat** — third service (optional), **`/celery-beat.sh`** or `celery -A mysite beat -l INFO`. Requires **`django_celery_beat`** + **`django_celery_results`** in `INSTALLED_APPS` and **`python manage.py migrate`** for their tables (`CELERY_RESULT_BACKEND` uses `django-db`).  
-6. **Stripe on Railway** — see **`STRIPE-RAILWAY.md`** (webhook URL, env vars, Swagger note).  
+6. **Stripe** — **`STRIPE-RAILWAY.md`**. **OAuth2 / OIDC** — **`OAUTH2-RAILWAY.md`** (`OIDC_ISS_ENDPOINT`, RSA key, allauth callbacks); **`django-oauth-toolkit`** in **`requirements.txt`**.  
 7. **Elasticsearch** client + indexes (when a feature needs search).  
 8. **Grafana + MonitorLogger** — scrape / OTLP from Django (optional phase 2).
 
