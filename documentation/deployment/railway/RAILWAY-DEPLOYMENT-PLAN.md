@@ -129,10 +129,11 @@ Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, OpenObserve for integratio
    - **`railway.toml`** — `dockerfilePath = Dockerfile.django`, `healthcheckPath = /health/`.  
    - **`PORT`** — Gunicorn binds `0.0.0.0:${PORT:-8000}` (Railway injects `PORT`).  
    - **Health:** `GET /health/` (liveness), `GET /health/ready/` (DB check, 503 if DB down).  
-4. **Celery worker** — second Railway service, **same image**, start: `celery -A mysite worker -l INFO --concurrency 2` or **`/celery-worker.sh`**. Same env as web. **`mysite/celery.py`** defines the app; do not import Celery from `mysite/__init__.py` (avoids circular imports). Optional **beat** later (`django-celery-beat` not yet in `INSTALLED_APPS`).  
-5. **Stripe** — production webhook; hardcoded test key removed from `dose/views.py` (uses `STRIPE_SECRET_KEY` only).  
-6. **Elasticsearch** client + indexes (when a feature needs search).  
-7. **Grafana + OpenObserve** — scrape / OTLP from Django (optional phase 2).
+4. **Celery worker** — second Railway service, **same image**, start: `celery -A mysite worker -l INFO --concurrency 2` or **`/celery-worker.sh`**. Same env as web. **`mysite/celery.py`** defines the app; do not import Celery from `mysite/__init__.py` (avoids circular imports).  
+5. **Celery beat** — third service (optional), **`/celery-beat.sh`** or `celery -A mysite beat -l INFO`. Requires **`django_celery_beat`** + **`django_celery_results`** in `INSTALLED_APPS` and **`python manage.py migrate`** for their tables (`CELERY_RESULT_BACKEND` uses `django-db`).  
+6. **Stripe on Railway** — see **`STRIPE-RAILWAY.md`** (webhook URL, env vars, Swagger note).  
+7. **Elasticsearch** client + indexes (when a feature needs search).  
+8. **Grafana + OpenObserve** — scrape / OTLP from Django (optional phase 2).
 
 ---
 
