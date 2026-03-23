@@ -1,8 +1,10 @@
 # PolySaaS — Railway-first deployment (internal stack)
 
-**Goal:** Run **PostgreSQL**, **RabbitMQ**, **Elasticsearch**, **Grafana**, **MonitorLogger**, and the **Django (DOSE)** app **inside one Railway project** (all containerized / self-defined), with **Stripe** wired for `subscribe_view`, webhooks, and future OpenAPI-exposed payment flows.
+**Goal:** Run **PostgreSQL**, **RabbitMQ**, **Elasticsearch**, **Grafana**, **MonitorLogger**, and the **PolySaaS core (DOSE)** **inside one Railway project** (all containerized / self-defined), with **Stripe** wired for `subscribe_view`, webhooks, and future OpenAPI-exposed payment flows.
 
-**Status:** Django Railway path in repo (`Dockerfile.django`, `settings_railway.py`, health, Celery scripts). **Operator:** follow **§7 Railway deployment checklist** (incl. Stripe + OAuth2).
+**Platform model:** **DOSE runs inside Django** — Django is the application server for PolySaaS, not a separate product or optional “sidecar.” There is **no** desired standalone Django deployment apart from this platform. **Dockerizing the stack** (e.g. **`Dockerfile.django`** on Railway) is for **ops and scaling** (same codebase, containerized web + workers); it does not mean a second, parallel Django app.
+
+**Status:** Railway path in repo (`Dockerfile.django`, `settings_railway.py`, health, Celery scripts). **Operator:** follow **§7 Railway deployment checklist** (incl. Stripe + OAuth2).
 
 ---
 
@@ -10,7 +12,7 @@
 
 | Item | What the repo has today |
 |------|-------------------------|
-| **App runtime** | **Django** — `manage.py`, `mysite/wsgi.py`, `DJANGO_SETTINGS_MODULE=mysite.settings` |
+| **App runtime** | **Django** hosts **DOSE** (PolySaaS core) — `manage.py`, `mysite/wsgi.py`, `DJANGO_SETTINGS_MODULE=mysite.settings` |
 | **Root `Dockerfile`** | Builds **`uvicorn polysaas.main:app`** from `src/` — **FastAPI stub**, **not** the Django app |
 | **Root `docker-compose.yml`** | Wires that FastAPI image + Postgres + Redis — **not** DOSE Django |
 | **Database** | `mysite/settings.py` → PostgreSQL `dosedbsaas` on `localhost:5433` + `DOSE_DB_PASSWORD` |
@@ -19,7 +21,7 @@
 | **Stripe** | `STRIPE_*` in `settings.py`; `dose/subscription_views.py`, `dose/views/stripe_webhook.py` → `/dose/webhook/stripe/` |
 | **Elasticsearch / Grafana / MonitorLogger** | **No app integration** in code yet — infra-only for now |
 
-**Action before Railway:** Add a **Django-oriented Dockerfile** (e.g. `Dockerfile.django` or replace strategy) and point Railway’s **web service** build at it. Gunicorn (or waitress on Windows-only dev) + `mysite.wsgi:application` is the usual pattern.
+**Railway web service:** Build from **`Dockerfile.django`**; entrypoint runs Gunicorn + `mysite.wsgi:application` (see **`railway.toml`**). Local dev on Windows may use `manage.py runserver` / Waitress without Docker.
 
 ---
 
@@ -34,7 +36,7 @@ Deploy each as its **own Railway service** (or one compose-based deployment if y
 | 3 | **Elasticsearch** | `docker.elastic.co/elasticsearch/elasticsearch:8.11.0` | 9200, 9300 | Search / analytics (single-node for phase 1) |
 | 4 | **Grafana** | `grafana/grafana:10.4.3` | 3000 | Dashboards (add Prometheus/Loki/ES datasources later) |
 | 5 | **MonitorLogger** | `public.ecr.aws/zinclabs/openobserve:latest` (OpenObserve-based image; PolySaaS branding: **MonitorLogger**) | 5080 | Logs / traces / metrics ingestion |
-| 6 | **Django (PolySaaS)** | **Your Dockerfile** | 8000 (internal) → Railway HTTPS | Web + API + admin |
+| 6 | **PolySaaS web (DOSE in Django)** | **`Dockerfile.django`** | 8000 (internal) → Railway HTTPS | Same platform; container = scaling/ops, not a separate “Django-only” product |
 
 **Memory:** ES + MonitorLogger + Grafana together are heavy. On Railway, set **explicit plan limits**; consider **phase 1** = Postgres + RabbitMQ + Django + **one** of {MonitorLogger, Grafana}, then add Elasticsearch when search is wired.
 
@@ -46,7 +48,7 @@ Deploy each as its **own Railway service** (or one compose-based deployment if y
 2. **RabbitMQ** (health: `rabbitmq-diagnostics ping`)  
 3. **Elasticsearch** (health: `/_cluster/health` — optional until app uses it)  
 4. **MonitorLogger** / **Grafana** (parallel; no hard dependency for Django v1)  
-5. **Django** — `migrate`, `collectstatic` (if not using object storage), then **gunicorn**
+5. **PolySaaS web (DOSE in Django)** — `migrate`, `collectstatic` (if not using object storage), then **gunicorn**
 
 Celery worker / beat: **separate Railway services** (same image as web, different `command`), `depends_on` RabbitMQ + Postgres.
 
@@ -123,7 +125,7 @@ From repo root:
 docker compose -f docker-compose.railway-stack.yml up -d
 ```
 
-Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger** for integration testing. **Does not** start Django (run `manage.py` on host or add an app service later).
+Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger** for integration testing. **Does not** start a **web container** here — **DOSE still runs in Django**: use **`manage.py`** on the host against this stack, or deploy the **same** app via **`Dockerfile.django`** on Railway. This split is for local backing services only, not a second platform.
 
 ### Windows morning startup (`.\go.ps1`)
 

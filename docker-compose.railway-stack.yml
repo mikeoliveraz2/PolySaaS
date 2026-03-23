@@ -1,5 +1,6 @@
 # Local / lab stack mirroring Railway "internal" services (Postgres, RabbitMQ, ES, Grafana, MonitorLogger).
-# Does NOT include the Django app — run manage.py against these ports from the host.
+# PolySaaS core (DOSE) runs inside Django — not a separate product. This file only starts backing services;
+# run DOSE via manage.py on the host against these ports, or use Dockerfile.django on Railway (same codebase).
 #
 # Usage: docker compose -f docker-compose.railway-stack.yml up -d
 # See: documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md
