@@ -1,4 +1,5 @@
-# go.ps1 — PolySaaS Launcher: Pull → App check → (if OK) Commit/Push → Services → runserver → (on exit) pip freeze + Backup
+# go.ps1 — PolySaaS Launcher: Pull → Railway Docker stack → App check → (if OK) Commit/Push → Services → runserver → (on exit) pip freeze + Backup
+# Skip internal stack: $env:POLYSAAS_SKIP_RAILWAY_DOCKER = '1'
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venvFolder = if (Test-Path (Join-Path $scriptDir ".venv")) { ".venv" } else { "venv" }
@@ -156,7 +157,77 @@ function Invoke-MorningSync {
     Pop-Location
 }
 
-# ── Pull (always) ─────────────────────────────────────────────────────
+# ── Railway Docker stack (Postgres:5433, RabbitMQ, ES, Grafana, MonitorLogger) ─
+
+function Invoke-RailwayDockerStack {
+    param([string]$RootDir)
+
+    $composeFile = Join-Path $RootDir "docker-compose.railway-stack.yml"
+    if (-Not (Test-Path $composeFile)) {
+        Write-Host "  docker-compose.railway-stack.yml not found → SKIPPING" -ForegroundColor DarkYellow
+        return
+    }
+
+    Write-Host "  docker compose up -d (railway-stack)..." -ForegroundColor Cyan
+    Push-Location $RootDir
+    docker compose -f "docker-compose.railway-stack.yml" up -d 2>&1
+    $upOk = ($LASTEXITCODE -eq 0)
+    Pop-Location
+
+    if (-not $upOk) {
+        Write-Host "  docker compose up failed — fix Docker / compose errors; Django may not reach DB on 5433" -ForegroundColor Red
+        return
+    }
+
+    Write-Host "  Waiting for TCP/HTTP endpoints (Elasticsearch may need up to ~90s)..." -ForegroundColor DarkGray
+    $deadline = (Get-Date).AddSeconds(95)
+    $stackReady = $false
+    while ((Get-Date) -lt $deadline) {
+        $pg = Test-NetConnection -ComputerName localhost -Port 5433 -WarningAction SilentlyContinue | Select-Object -ExpandProperty TcpTestSucceeded
+        $rmq = Test-NetConnection -ComputerName localhost -Port 5672 -WarningAction SilentlyContinue | Select-Object -ExpandProperty TcpTestSucceeded
+        $esOk = $false
+        try {
+            $es = Invoke-WebRequest -Uri "http://127.0.0.1:9200/" -UseBasicParsing -TimeoutSec 3
+            $esOk = ($es.StatusCode -eq 200)
+        } catch { $esOk = $false }
+        $gfOk = $false
+        try {
+            $gf = Invoke-WebRequest -Uri "http://127.0.0.1:3000/login" -UseBasicParsing -TimeoutSec 3
+            $gfOk = ($gf.StatusCode -ge 200 -and $gf.StatusCode -lt 500)
+        } catch { $gfOk = $false }
+        $mlOk = $false
+        try {
+            $ml = Invoke-WebRequest -Uri "http://127.0.0.1:5080/" -UseBasicParsing -TimeoutSec 3
+            $mlOk = ($ml.StatusCode -ge 200 -and $ml.StatusCode -lt 500)
+        } catch { $mlOk = $false }
+
+        if ($pg -and $rmq -and $esOk -and $gfOk -and $mlOk) {
+            $stackReady = $true
+            break
+        }
+        Start-Sleep -Seconds 3
+    }
+
+    $testScript = Join-Path $RootDir "scripts\test-railway-stack.ps1"
+    if (Test-Path $testScript) {
+        Write-Host "── Railway stack probe ───────────────────────────────" -ForegroundColor Cyan
+        & $testScript
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  One or more probes failed — check containers: docker compose -f docker-compose.railway-stack.yml ps" -ForegroundColor Yellow
+        } else {
+            Write-Host "  Railway stack probes: all OK" -ForegroundColor Green
+        }
+    }
+    elseif ($stackReady) {
+        Write-Host "  Railway stack: core endpoints responded (no test-railway-stack.ps1)" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  Railway stack: timeout waiting for all services — run: docker compose -f docker-compose.railway-stack.yml ps" -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
+
+# ── Pull first (so documentation/collaboration/README and notes are current) ─
 
 Write-Host ""
 Write-Host "── Pull ───────────────────────────────────────────────" -ForegroundColor Cyan
@@ -177,6 +248,22 @@ if (-Not (Test-Path $venvActivate)) {
     Write-Host "VENV NOT FOUND" -ForegroundColor Red
     pause
     exit
+}
+
+# ── Railway Docker stack (before app check — Django expects Postgres on 5433) ─
+
+Write-Host ""
+Write-Host "── Railway Docker stack (internal services) ───────────" -ForegroundColor Cyan
+if ($env:POLYSAAS_SKIP_RAILWAY_DOCKER -eq '1') {
+    Write-Host "  SKIPPED — POLYSAAS_SKIP_RAILWAY_DOCKER=1" -ForegroundColor DarkYellow
+    Write-Host ""
+}
+elseif (-Not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host "  SKIPPED — docker not in PATH (install Docker Desktop)" -ForegroundColor DarkYellow
+    Write-Host ""
+}
+else {
+    Invoke-RailwayDockerStack -RootDir $scriptDir
 }
 
 # ── App load check: only if this passes do we backup and commit/push ───
@@ -263,10 +350,15 @@ if (-Not $liferayListening) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
-Write-Host "DJANGO      → http://localhost:8000" -ForegroundColor Green
-Write-Host "MONITOR     → http://localhost:5000" -ForegroundColor Green
-Write-Host "POLYSNIFFER → http://127.0.0.1:5002" -ForegroundColor Green
-Write-Host "LIFERAY CE  → http://localhost:8181" -ForegroundColor Green
+Write-Host "DJANGO          → http://localhost:8000" -ForegroundColor Green
+Write-Host "POSTGRES (stack)→ localhost:5433  (dosedbadmin / DOSE_DB_PASSWORD)" -ForegroundColor Green
+Write-Host "RABBITMQ        → amqp://localhost:5672  (mgmt http://localhost:15672)" -ForegroundColor Green
+Write-Host "ELASTICSEARCH   → http://localhost:9200" -ForegroundColor Green
+Write-Host "GRAFANA         → http://localhost:3000" -ForegroundColor Green
+Write-Host "MONITORLOGGER   → http://localhost:5080" -ForegroundColor Green
+Write-Host "MONITOR (app)   → http://localhost:5000" -ForegroundColor Green
+Write-Host "POLYSNIFFER     → http://127.0.0.1:5002" -ForegroundColor Green
+Write-Host "LIFERAY CE      → http://localhost:8181" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
 try {

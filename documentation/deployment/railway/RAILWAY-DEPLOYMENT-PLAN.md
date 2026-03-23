@@ -119,6 +119,18 @@ docker compose -f docker-compose.railway-stack.yml up -d
 
 Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger** for integration testing. **Does not** start Django (run `manage.py` on host or add an app service later).
 
+### Windows morning startup (`.\go.ps1`)
+
+`go.ps1` runs **after git pull** and **before** `manage.py check`:
+
+1. **`docker compose -f docker-compose.railway-stack.yml up -d`**
+2. Waits (poll, up to ~95s) until Postgres **5433**, RabbitMQ **5672**, Elasticsearch **9200**, Grafana **3000**, MonitorLogger **5080** respond.
+3. Runs **`scripts/test-railway-stack.ps1`** for a printed pass/fail line per service.
+
+**Skip the stack** (e.g. no Docker): set environment variable **`POLYSAAS_SKIP_RAILWAY_DOCKER=1`** before `.\go`.
+
+Optional: copy **`documentation/deployment/railway/.env.railway.example`** to **`.env`** in the repo root so Compose picks up **`DOSE_DB_PASSWORD`**, RabbitMQ creds, Grafana, MonitorLogger admin (Docker Compose loads `.env` automatically).
+
 ---
 
 ## 7. Next implementation tasks (suggested order)
