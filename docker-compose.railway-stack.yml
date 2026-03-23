@@ -1,0 +1,85 @@
+# Local / lab stack mirroring Railway "internal" services (Postgres, RabbitMQ, ES, Grafana, OpenObserve).
+# Does NOT include the Django app — run manage.py against these ports from the host.
+#
+# Usage: docker compose -f docker-compose.railway-stack.yml up -d
+# See: documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ps-railway-pg
+    environment:
+      POSTGRES_USER: dosedbadmin
+      POSTGRES_PASSWORD: ${DOSE_DB_PASSWORD:-changeme}
+      POSTGRES_DB: dosedbsaas
+    ports:
+      - "5433:5432"
+    volumes:
+      - railway_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dosedbadmin -d dosedbsaas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ps-railway-rmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - railway_rmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: ps-railway-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - railway_es_data:/usr/share/elasticsearch/data
+    mem_limit: 1g
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: ps-railway-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - railway_grafana_data:/var/lib/grafana
+    # No hard dependency on ES; add datasources in Grafana UI when ready.
+
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    container_name: ps-railway-openobserve
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_USER:-admin@example.com}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASS:-changeme}
+      ZO_LOCAL_MODE: "true"
+    ports:
+      - "5080:5080"
+    volumes:
+      - railway_o2_data:/data
+
+volumes:
+  railway_pg_data:
+  railway_rmq_data:
+  railway_es_data:
+  railway_grafana_data:
+  railway_o2_data:
