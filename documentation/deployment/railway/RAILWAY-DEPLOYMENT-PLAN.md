@@ -2,7 +2,7 @@
 
 **Goal:** Run **PostgreSQL**, **RabbitMQ**, **Elasticsearch**, **Grafana**, **MonitorLogger**, and the **Django (DOSE)** app **inside one Railway project** (all containerized / self-defined), with **Stripe** wired for `subscribe_view`, webhooks, and future OpenAPI-exposed payment flows.
 
-**Status:** Planning + local parity compose. **Not yet:** production `settings_railway.py` or a committed Django `Dockerfile` (see gaps below).
+**Status:** Django Railway path in repo (`Dockerfile.django`, `settings_railway.py`, health, Celery scripts). **Operator:** follow **§7 Railway deployment checklist** (incl. Stripe + OAuth2).
 
 ---
 
@@ -82,9 +82,15 @@ Use Railway **variables**; mirror names in `.env.railway.example` (this folder).
 - **Webhook URL (production):** `https://<your-domain>/dose/webhook/stripe/`  
 - Register endpoint in **Stripe Dashboard**; use signing secret above.
 
-**Security cleanup (recommended)**
+**OAuth2 / OIDC (django-oauth-toolkit)**
 
-- `dose/views.py` contains a **fallback Stripe test key** in code — remove and use **only** `settings.STRIPE_SECRET_KEY` before production.
+- **`OIDC_ISS_ENDPOINT`** — public issuer, e.g. `https://yourapp.up.railway.app/o` (applied in **`settings_railway.py`**)
+- **`OIDC_RSA_PRIVATE_KEY`** — optional PEM in env if not using **`oidc_rsa_key.pem`** file; see **`OAUTH2-RAILWAY.md`**
+- Full checklist: **§7 Railway deployment checklist** in this document
+
+**Stripe (secrets)**
+
+- Use **only** env vars (`STRIPE_SECRET_KEY`, etc.); see **`STRIPE-RAILWAY.md`**.
 
 **HTTPS / CSRF**
 
@@ -133,7 +139,47 @@ Optional: copy **`documentation/deployment/railway/.env.railway.example`** to **
 
 ---
 
-## 7. Next implementation tasks (suggested order)
+## 7. Railway deployment checklist (operator)
+
+Use this on the Railway dashboard and after first deploy. Details: **`STRIPE-RAILWAY.md`**, **`OAUTH2-RAILWAY.md`**.
+
+### Core web + database
+
+- [ ] **Service** built from **`Dockerfile.django`**; **`DJANGO_SETTINGS_MODULE=mysite.settings_railway`**
+- [ ] **`DJANGO_SECRET_KEY`** set
+- [ ] **`DATABASE_URL`** (or `DB_*` + `DOSE_DB_PASSWORD`) points at Railway Postgres
+- [ ] **`ALLOWED_HOSTS`** includes public hostname(s)
+- [ ] **`CSRF_TRUSTED_ORIGINS`** = `https://<your-host>` (comma-separated if several)
+- [ ] **`CELERY_BROKER_URL`** set when using workers (RabbitMQ on Railway or internal hostname)
+- [ ] **Migrate** run at least once (`RUN_MIGRATIONS=1` on boot or release command) — includes **django-oauth-toolkit**, **django_celery_***, etc.
+- [ ] **`GET /health/`** returns 200; **`GET /health/ready/`** returns 200 when DB is up
+
+### Stripe (payments)
+
+- [ ] **`STRIPE_SECRET_KEY`**, **`STRIPE_PUBLISHABLE_KEY`**, **`STRIPE_WEBHOOK_SECRET`** set
+- [ ] Stripe **Webhook** endpoint → `https://<your-host>/dose/webhook/stripe/` (see **`STRIPE-RAILWAY.md`**)
+
+### OAuth2 / OIDC (PolySaaS as IdP — django-oauth-toolkit)
+
+- [ ] **`django-oauth-toolkit`** present in deployed image (**`requirements.txt`**)
+- [ ] **`OIDC_ISS_ENDPOINT`** = `https://<your-host>/o` (no trailing slash beyond `/o`; see **`OAUTH2-RAILWAY.md`**)
+- [ ] **Signing key:** **`oidc_rsa_key.pem`** on disk in container **or** **`OIDC_RSA_PRIVATE_KEY`** env (multiline PEM); never commit the private key
+- [ ] **Django admin:** OAuth2 **Applications** created for each client (Odoo, Nextcloud, Mattermost, etc.) with correct redirect URIs
+- [ ] **django-allauth (Google/GitHub):** IdP consoles updated with **Railway** callback URLs, e.g. `https://<your-host>/accounts/google/login/callback/`
+- [ ] **Smoke:** `/o/authorize/` (with valid client) or OIDC discovery as applicable
+
+### Celery (optional but recommended if you use async tasks)
+
+- [ ] **Worker** service: same image, **`/celery-worker.sh`** or `celery -A mysite worker …`
+- [ ] **Beat** service (optional): **`/celery-beat.sh`** or `celery -A mysite beat …`
+
+### Internal stack (optional separate services)
+
+- [ ] Postgres / RabbitMQ / Elasticsearch / Grafana / **MonitorLogger** per **`docker-compose.railway-stack.yml`** parity, or Railway plugins — as needed
+
+---
+
+## 8. Next implementation tasks (suggested order)
 
 1. ~~**Django Dockerfile**~~ — **`Dockerfile.django`** + **`scripts/railway-entrypoint.sh`** (`collectstatic` on boot; set `RUN_MIGRATIONS=1` to migrate). **`gunicorn`** in `requirements.txt`.  
 2. ~~**`mysite/settings_railway.py`**~~ — env-driven `DATABASE_URL` / discrete DB vars, `CELERY_BROKER_URL`, `ALLOWED_HOSTS`, **Whitenoise** static, DB sessions, stdout logging, proxy TLS headers. Set **`DJANGO_SETTINGS_MODULE=mysite.settings_railway`** (see `Dockerfile.django`).  
@@ -149,10 +195,11 @@ Optional: copy **`documentation/deployment/railway/.env.railway.example`** to **
 
 ---
 
-## 8. References
+## 9. References
 
 - [Railway: Deployments](https://docs.railway.app/guides/deployments)  
 - [Railway: Private networking](https://docs.railway.app/reference/private-networking)  
 - [Stripe webhooks](https://stripe.com/docs/webhooks)  
+- **This repo:** **`STRIPE-RAILWAY.md`**, **`OAUTH2-RAILWAY.md`**, **§7 Railway deployment checklist** (above)
 
-*Document version: initial Railway plan aligned with repo scan.*
+*Document version: Railway plan + operator checklist (incl. OAuth2).*
