@@ -27,6 +27,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 from dose.polysniffer import urls as polysniffer_urls
+from mysite.health import health_live, health_ready
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -39,6 +40,8 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    path('health/', health_live, name='health_live'),
+    path('health/ready/', health_ready, name='health_ready'),
     path('subscribe/', subscribe_view, name='subscribe'),
     path('admin/select-theme/', __import__('dose.admin_views').admin_views.select_theme, name='select_theme'),
     path('admin/set-theme/', __import__('dose.admin_views').admin_views.set_theme, name='set_theme'),
