@@ -95,7 +95,14 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
             # Create Stripe customer and subscription
             try:
                 import stripe
-                stripe.api_key = getattr(settings, 'STRIPE_API_KEY', 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg')
+                stripe.api_key = getattr(settings, "STRIPE_SECRET_KEY", None) or getattr(
+                    settings, "STRIPE_API_KEY", ""
+                )
+                if not stripe.api_key:
+                    return Response(
+                        {"error": "Stripe is not configured (STRIPE_SECRET_KEY missing)"},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
                 customer = stripe.Customer.create(
                     source=token,
                     name=card_name,
