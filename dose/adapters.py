@@ -129,11 +129,42 @@ if _original_site_get_current:
 logger.debug("[CUSTOM ADAPTER] Patched Site model to always query from public schema using raw SQL")
 
 
+def _maybe_promote_superuser_from_settings(user, sociallogin):
+    """If user email is listed in POLYSAAS_SUPERUSER_EMAILS, grant staff + superuser (dev / bootstrap)."""
+    from django.conf import settings
+
+    allowed = getattr(settings, "POLYSAAS_SUPERUSER_EMAILS", None) or []
+    if not allowed or not user:
+        return
+    email = (getattr(user, "email", None) or "").strip().lower()
+    if not email and sociallogin and getattr(sociallogin, "account", None):
+        extra = sociallogin.account.extra_data or {}
+        email = (extra.get("email") or "").strip().lower()
+    allow_norm = {str(x).strip().lower() for x in allowed if x and str(x).strip()}
+    if not email or email not in allow_norm:
+        return
+    if user.is_staff and user.is_superuser:
+        return
+    user.is_staff = True
+    user.is_superuser = True
+    user.save(update_fields=["is_staff", "is_superuser"])
+    logger.info(
+        "[CUSTOM ADAPTER] Granted staff/superuser to %s (POLYSAAS_SUPERUSER_EMAILS)",
+        email,
+    )
+
+
 class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
     """
     Custom adapter that ensures Site queries use the public schema
     in multi-tenant setups.
     """
+
+    def pre_social_login(self, request, sociallogin):
+        super().pre_social_login(request, sociallogin)
+        u = sociallogin.user
+        if u is not None and getattr(u, "pk", None):
+            _maybe_promote_superuser_from_settings(u, sociallogin)
 
     def get_site(self, request):
         """
@@ -341,6 +372,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
 
         # Call parent to save user and account
         user = super().save_user(request, sociallogin, form)
+        _maybe_promote_superuser_from_settings(user, sociallogin)
 
         # Log token information
         if hasattr(sociallogin, 'token') and sociallogin.token:

@@ -190,6 +190,16 @@ AUTHENTICATION_BACKENDS = (
 LOGIN_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
+# Staff default redirect: / would go to dose landing; CustomAccountAdapter sends staff to /admin/
+ACCOUNT_ADAPTER = 'dose.account_adapter.CustomAccountAdapter'
+
+# Comma-separated emails (e.g. you@domain.com): Google sign-in sets is_staff + is_superuser. Empty = off.
+POLYSAAS_SUPERUSER_EMAILS = [
+    x.strip().lower()
+    for x in env('POLYSAAS_SUPERUSER_EMAILS', default='').split(',')
+    if x.strip()
+]
+
 # Custom adapter to handle OAuth return URLs
 SOCIALACCOUNT_ADAPTER = 'dose.adapters.CustomSocialAccountAdapter'
 
