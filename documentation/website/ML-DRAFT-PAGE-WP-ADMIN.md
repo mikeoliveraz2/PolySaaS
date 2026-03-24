@@ -53,6 +53,17 @@ If a page with slug **`ml-platform-internal`** already exists, the script exits 
 
 ---
 
+## Standard pattern (inner / working pages — recreate anytime)
+
+Use this for **Machine Learning** and any similar page: draft or published, in or out of menus.
+
+1. **Source of truth in git:** one HTML file under **`documentation/website/`** per page (e.g. `machine-learning-page-content.html`). Scoped wrapper class (here: `ps-ml-wrap`) + embedded `<style>` keeps layout self-contained for Bricks **HTML** / **Code** paste.
+2. **Recreate in wp-admin:** replace the page body by pasting the latest file from `main` (pull first). No need to preserve old Bricks blocks if you are standardizing on this pattern.
+3. **Footer:** Prefer the **theme’s global footer** when the page template includes it—then **delete** the `<footer class="ps-ml-footer">` block from the paste. If the template is blank (no footer), **keep** the pasted footer so the page still matches **polysaas.online** link columns and legal links.
+4. **New pages:** copy `machine-learning-page-content.html`, rename (e.g. `feature-xyz-page-content.html`), replace the main content inside `.ps-ml-wrap`, **reuse the same footer block** unless the theme supplies the footer.
+
+---
+
 ## Repo cross-reference
 
 - Full technical draft (models, API paths): **`documentation/product/ML-PLATFORM-CONCEPT-AND-TABLES.md`**

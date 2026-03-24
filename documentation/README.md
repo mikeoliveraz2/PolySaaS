@@ -7,7 +7,7 @@ Index of high-signal docs. **Not** the public marketing site.
 | Doc | Purpose |
 |-----|---------|
 | [product/ML-PLATFORM-CONCEPT-AND-TABLES.md](product/ML-PLATFORM-CONCEPT-AND-TABLES.md) | Internal draft: ML/AI platform vision, `MLEngine` / `MLTaxonomy` / `MLDataset` schema, API/admin pointers. **Do not** use for public Features copy until reviewed. |
-| [website/ML-DRAFT-PAGE-WP-ADMIN.md](website/ML-DRAFT-PAGE-WP-ADMIN.md) | Create a **Draft** ML page on polysaas.online (wp-admin or REST script)—not in menus; for Shela/Michael to flesh out before going public. |
+| [website/ML-DRAFT-PAGE-WP-ADMIN.md](website/ML-DRAFT-PAGE-WP-ADMIN.md) | WP inner pages: draft workflow, paste-ready HTML, **standard pattern** (recreate from repo; theme footer vs pasted footer). |
 | [website/machine-learning-page-content.html](website/machine-learning-page-content.html) | Paste-ready HTML: styled ML section + **standard site footer** (or omit footer if theme already provides it). |
 
 ## Deployment
