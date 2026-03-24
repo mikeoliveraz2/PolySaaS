@@ -1,0 +1,138 @@
+<!--
+  PolySaaS — Machine Learning (inner page)
+  Paste into WordPress: Bricks → HTML / Code element, or block editor "Custom HTML".
+  If your template already shows the global footer, omit the <footer class="ps-ml-footer">…</footer> block
+  to avoid a duplicate footer.
+-->
+<div class="ps-ml-wrap">
+  <style>
+    .ps-ml-wrap { --ps-ml-accent: #0d6efd; --ps-ml-text: #1a1a2e; --ps-ml-muted: #5c5c6b; --ps-ml-line: #e8e8ef; max-width: 920px; margin: 0 auto; padding: 2rem 1.25rem 3rem; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ps-ml-text); line-height: 1.6; }
+    .ps-ml-wrap * { box-sizing: border-box; }
+    .ps-ml-hero { margin-bottom: 2.5rem; padding-bottom: 2rem; border-bottom: 1px solid var(--ps-ml-line); }
+    .ps-ml-hero h1 { font-size: clamp(1.75rem, 4vw, 2.35rem); font-weight: 700; line-height: 1.2; margin: 0 0 0.75rem; letter-spacing: -0.02em; }
+    .ps-ml-lead { font-size: 1.125rem; color: var(--ps-ml-muted); margin: 0; max-width: 52ch; }
+    .ps-ml-badge { display: inline-block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ps-ml-accent); margin-bottom: 0.75rem; }
+    .ps-ml-grid { display: grid; gap: 1.25rem; margin: 2rem 0; }
+    @media (min-width: 640px) { .ps-ml-grid { grid-template-columns: repeat(2, 1fr); } }
+    .ps-ml-card { border: 1px solid var(--ps-ml-line); border-radius: 12px; padding: 1.25rem 1.35rem; background: #fafbfc; transition: box-shadow 0.2s; }
+    .ps-ml-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+    .ps-ml-card h3 { margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 650; }
+    .ps-ml-card p { margin: 0; font-size: 0.95rem; color: var(--ps-ml-muted); }
+    .ps-ml-section-title { font-size: 1.25rem; font-weight: 700; margin: 2.5rem 0 1rem; }
+    .ps-ml-list { margin: 0; padding-left: 1.2rem; color: var(--ps-ml-muted); }
+    .ps-ml-list li { margin-bottom: 0.65rem; }
+    .ps-ml-list strong { color: var(--ps-ml-text); }
+    .ps-ml-tech { background: linear-gradient(135deg, #f8f9fb 0%, #f0f4f8 100%); border: 1px solid var(--ps-ml-line); border-radius: 12px; padding: 1.35rem 1.5rem; margin: 2rem 0; }
+    .ps-ml-tech h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+    .ps-ml-tech ul { margin: 0; padding-left: 1.2rem; font-size: 0.9rem; color: var(--ps-ml-muted); }
+    .ps-ml-tech code { font-size: 0.85em; background: #fff; padding: 0.12em 0.35em; border-radius: 4px; border: 1px solid var(--ps-ml-line); }
+    .ps-ml-note { font-size: 0.88rem; color: var(--ps-ml-muted); border-left: 4px solid var(--ps-ml-accent); padding: 0.75rem 1rem; margin: 2rem 0; background: #f6f9ff; border-radius: 0 8px 8px 0; }
+    /* Footer — mirrors polysaas.online global footer structure */
+    .ps-ml-footer { margin-top: 3.5rem; padding-top: 2.5rem; border-top: 1px solid var(--ps-ml-line); font-size: 0.9rem; color: var(--ps-ml-muted); }
+    .ps-ml-footer a { color: var(--ps-ml-text); text-decoration: none; }
+    .ps-ml-footer a:hover { text-decoration: underline; color: var(--ps-ml-accent); }
+    .ps-ml-footer-inner { display: grid; gap: 2rem; margin-bottom: 2rem; }
+    @media (min-width: 768px) { .ps-ml-footer-inner { grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 1.5rem; } }
+    .ps-ml-footer-col h4 { margin: 0 0 0.85rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ps-ml-text); }
+    .ps-ml-footer-col p { margin: 0 0 0.5rem; line-height: 1.5; }
+    .ps-ml-footer-links { list-style: none; margin: 0; padding: 0; }
+    .ps-ml-footer-links li { margin-bottom: 0.4rem; }
+    .ps-ml-footer-legal { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: center; padding-top: 1.5rem; border-top: 1px solid var(--ps-ml-line); font-size: 0.85rem; }
+  </style>
+
+  <header class="ps-ml-hero">
+    <span class="ps-ml-badge">Platform capability</span>
+    <h1>Machine learning &amp; AI — built into your tenant</h1>
+    <p class="ps-ml-lead">PolySaaS is designed so administrators can define engines, datasets, and taxonomies per tenant, then tie them to <strong>dynamic orchestration</strong>—so ML and AI workflows stay <strong>inside your platform</strong>, not locked in a separate notebook stack or vendor-only model.</p>
+  </header>
+
+  <div class="ps-ml-grid">
+    <div class="ps-ml-card">
+      <h3>Model the world</h3>
+      <p>Represent your environment in structured data—for example, devices and relationships across a large org (e.g. PolySysMon-style monitoring)—so downstream analytics and models have a consistent picture.</p>
+    </div>
+    <div class="ps-ml-card">
+      <h3>Capture &amp; store</h3>
+      <p>Scanning and telemetry can feed search- and analytics-ready stores (Elasticsearch, BigQuery, or sinks you choose). Clean pipelines reduce export/import round-trips.</p>
+    </div>
+    <div class="ps-ml-card">
+      <h3>Train &amp; serve</h3>
+      <p>Connect frameworks such as TensorFlow, PyTorch, or scikit-learn via endpoints and orchestration rules you control—parameters and runs stay tied to tenant configuration.</p>
+    </div>
+    <div class="ps-ml-card">
+      <h3>Prompts &amp; agents</h3>
+      <p>Design and version prompts, chain workflows, and route to <strong>your</strong> models or <strong>optional</strong> external LLMs only when you explicitly allow—ownership, compliance, and cost stay yours.</p>
+    </div>
+  </div>
+
+  <h2 class="ps-ml-section-title">Why this matters</h2>
+  <ul class="ps-ml-list">
+    <li><strong>Full loop in one place:</strong> configuration, data, orchestration, and execution aligned with DOSE—not a bolt-on “AI feature” with opaque limits.</li>
+    <li><strong>Framework-agnostic core:</strong> first-class tables and APIs are not tied to a single vendor model.</li>
+    <li><strong>Enterprise posture:</strong> sensitive workloads can stay on infrastructure you operate; external AI is opt-in.</li>
+  </ul>
+
+  <div class="ps-ml-tech">
+    <h2>In the product today (technical)</h2>
+    <ul>
+      <li>Tenant-scoped models: <code>MLEngine</code>, <code>MLTaxonomy</code>, <code>MLDataset</code> (Django / PostgreSQL).</li>
+      <li>REST API (authenticated): <code>/dose/api/mlengines/</code>, <code>/dose/api/mltaxonomies/</code>, <code>/dose/api/mldatasets/</code>.</li>
+      <li><code>matchingEventKey</code> fields link rows to orchestration and events (contract documented in repo).</li>
+      <li>Related configuration: <code>parameters.Parameter</code> with <code>matchingKey</code> for ordered, keyed parameter sets.</li>
+    </ul>
+  </div>
+
+  <p class="ps-ml-note"><strong>Internal / draft:</strong> This page is for refining messaging before it appears in main navigation or the public feature list. Claims here should stay aligned with <code>documentation/product/ML-PLATFORM-CONCEPT-AND-TABLES.md</code> in the PolySaaS repository.</p>
+
+  <footer class="ps-ml-footer" aria-label="Site footer">
+    <div class="ps-ml-footer-inner">
+      <div class="ps-ml-footer-col">
+        <p><a href="https://polysaas.online/">PolySaaS Online</a></p>
+        <p>5900 Balcones Drive, Suite 100<br>Austin, TX 78731</p>
+        <p><a href="mailto:michael.oliver@polysaas.online">michael.oliver@polysaas.online</a></p>
+        <p>+1-713-913-0434 · +63-947-992-7462</p>
+      </div>
+      <div class="ps-ml-footer-col">
+        <h4>Applications</h4>
+        <ul class="ps-ml-footer-links">
+          <li><a href="https://polysaas.online/liferay-2/">Liferay</a></li>
+          <li><a href="https://polysaas.online/mattermost/">MatterMost</a></li>
+          <li><a href="https://polysaas.online/nextcloud/">NextCloud</a></li>
+          <li><a href="https://polysaas.online/odoo/">Odoo</a></li>
+          <li><a href="https://polysaas.online/polysysmon/">PolySysMon</a></li>
+          <li><a href="https://polysaas.online/wordpress-3/">WordPress</a></li>
+          <li><a href="https://polysaas.online/dolibarr-3/">Dolibarr</a></li>
+          <li><a href="https://polysaas.online/monitor-logger-4/">Monitor Logger</a></li>
+        </ul>
+      </div>
+      <div class="ps-ml-footer-col">
+        <h4>Features</h4>
+        <ul class="ps-ml-footer-links">
+          <li><a href="https://polysaas.online/bundled-applications/">Bundled Applications</a></li>
+          <li><a href="https://polysaas.online/external-applications/">External Applications</a></li>
+          <li><a href="https://polysaas.online/ai-as-peers/">AI As Peers</a></li>
+          <li><a href="https://polysaas.online/apps-as-peers/">Apps As Peers</a></li>
+          <li><a href="https://polysaas.online/polysniffer/">PolySniffer</a></li>
+          <li><a href="https://polysaas.online/dynamic-orchestration/">Dynamic Orchestration</a></li>
+          <li><a href="https://polysaas.online/atomic-services/">Atomic Services</a></li>
+          <li><a href="https://polysaas.online/openapi-2/">OpenAPI</a></li>
+          <li><a href="https://polysaas.online/portal/">Portal</a></li>
+          <li><a href="https://polysaas.online/architecture/">Architecture</a></li>
+        </ul>
+      </div>
+      <div class="ps-ml-footer-col">
+        <h4>Gallery</h4>
+        <ul class="ps-ml-footer-links">
+          <li><a href="https://polysaas.online/gallery-images/">Images</a></li>
+          <li><a href="https://polysaas.online/gallery-videos/">Videos</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="ps-ml-footer-legal">
+      <span>© 2026 PolySaaS Online</span>
+      <a href="https://polysaas.online/privacy-policy/">Privacy Policy</a>
+      <a href="https://polysaas.online/terms-of-service/">Terms of Service</a>
+      <a href="https://polysaas.online/disclaimer/">Disclaimer</a>
+    </div>
+  </footer>
+</div>
