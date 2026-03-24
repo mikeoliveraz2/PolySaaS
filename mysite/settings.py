@@ -19,7 +19,8 @@ JAZZMIN_SETTINGS = {
     "SITE_BRAND": "PolySaaS",
     "WELCOME_SIGN": "Welcome to DoseSaaS Admin",
     "copyright": "DoseSaaS 2025",
-    "show_ui_builder": True,
+    # Full UI builder panel is noisy; use /admin/select-theme/ / profile themes instead.
+    "show_ui_builder": False,
     "index_template": "jazzmin/admin/index.html",
     "site_logo": "img/PolySaaS-Industrial-Logo.png",
     # "site_icon": "img/favicon.ico",
@@ -48,10 +49,6 @@ JAZZMIN_SETTINGS = {
         {"name": "Help", "url": "/help/", "icon": "fas fa-question-circle"},
 
     ],
-    "ui_tweaks": {
-        "theme": "{{ JAZZMIN_UI_TWEAKS.theme }}",
-        "dark_mode_theme": "{{ JAZZMIN_UI_TWEAKS.dark_mode_theme }}",
-    },
     "custom_css": "admin/css/theme-toggle.css",
     "custom_js": "admin/js/theme-toggle.js",
     # Removed "order" list to show all registered apps in sidebar
@@ -74,6 +71,7 @@ JAZZMIN_SETTINGS = {
         "dose.tenant": "fas fa-building",  # Tenant
         "dose.mltaxonomy": "fas fa-project-diagram",  # MLTaxonomy
         "dose.mldataset": "fas fa-database",  # MLDataset
+        "dose.mlprompt": "fas fa-comment-dots",  # MLPrompt
         "dose.navigationpanel": "fas fa-th-large",  # NavigationPanel
         "dose.navigationitem": "fas fa-link",  # NavigationItem
     "dose.dashboardbutton": "fas fa-chart-line",  # DashboardButton (graph)
@@ -84,6 +82,15 @@ JAZZMIN_SETTINGS = {
     "socialaccount.socialapp": "fab fa-facebook",  # Social Applications (Facebook)
     "account.emailaddress": "fas fa-envelope",  # Email Addresses
     },
+}
+
+# Jazzmin 3 reads this (not JAZZMIN_SETTINGS["ui_tweaks"] template strings).
+JAZZMIN_UI_TWEAKS = {
+    "theme": "flatly",
+    "navbar": "navbar-white border-bottom",
+    "accent": "accent-primary",
+    "sidebar_nav_child_indent": True,
+    "sidebar_nav_compact_style": True,
 }
 
 # --- STRIPE CONFIGURATION ---

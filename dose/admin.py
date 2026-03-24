@@ -82,7 +82,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, PassThroughEndpoint, DoseMessage, UserProfile, PolySnifferRun, Subscription
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, PolySnifferRun, Subscription
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -165,6 +165,25 @@ class MLEngineAdmin(admin.ModelAdmin):
     list_display = ('engineName', 'matchingEventKey', 'description')
     list_filter = ['engineName']
     search_fields = ['engineName']
+
+
+class MLPromptAdmin(TenantAwareModelAdmin):
+    fieldsets = [
+        (
+            None,
+            {
+                'fields': ['tenant', 'key', 'description'],
+                'description': (
+                    'Named prompts for this tenant. Use the same key string in matchingEventKey '
+                    'on engines, taxonomies, or datasets when you want to align them.'
+                ),
+            },
+        ),
+        ('Prompt text', {'fields': ['prompt_text']}),
+    ]
+    list_display = ('key', 'description', 'tenant')
+    list_filter = ('tenant',)
+    search_fields = ('key', 'description', 'prompt_text')
 
 class InstructionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
@@ -427,6 +446,7 @@ admin.site.register(Task, TaskAdmin)
 admin.site.register(Instruction, InstructionAdmin)
 admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
+admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)
 admin.site.register(DoseMessage, DoseMessageAdmin)
 admin.site.register(PolySnifferRun, PolySnifferRunAdmin)

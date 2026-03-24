@@ -69,9 +69,21 @@ All three extend **`TenantAwareModel`** (`tenant` FK → `dose.Tenant`). Default
 
 **Code:** `dose/models/ml_dataset.py`
 
-### 2.4 `matchingEventKey` (cross-cutting)
+### 2.4 `MLPrompt` (`dose.models.ml_prompt`)
 
-Repeated on all three models: intended as a **stable string key** so orchestration, MQ, atomic services, or scanners can **route events** to the right engine / taxonomy / dataset row without hard-coding IDs. **Exact contract** (who emits, who consumes, naming convention) — *to be documented by Michael*.
+| Field | Type | Notes |
+|-------|------|--------|
+| `id` | BigAutoField | PK |
+| `key` | CharField(150) | Stable identifier; **unique together with `tenant`** |
+| `description` | CharField(255) | Short label |
+| `prompt_text` | TextField | Full prompt body |
+| `tenant` | FK Tenant | |
+
+**Code:** `dose/models/ml_prompt.py`
+
+### 2.5 `matchingEventKey` (cross-cutting)
+
+Repeated on engine, taxonomy, and dataset models: intended as a **stable string key** so orchestration, MQ, atomic services, or scanners can **route events** to the right engine / taxonomy / dataset row without hard-coding IDs. You can use the **same string** as an `MLPrompt.key` for the tenant to associate prompt text with that integration point. **Exact contract** (who emits, who consumes, naming convention) — *to be documented by Michael*.
 
 ---
 
@@ -89,9 +101,9 @@ Repeated on all three models: intended as a **stable string key** so orchestrati
 
 | Surface | Location |
 |---------|----------|
-| **Django admin** | `MLEngine`, `MLTaxonomy`, `MLDataset` registered (see `dose/admin.py`) |
-| **DRF API** (under site prefix `dose/`) | `GET/POST/... /dose/api/mlengines/`, `/dose/api/mltaxonomies/`, `/dose/api/mldatasets/` (router in `dose/urls.py`) |
-| **Serializers** | `dose/serializers.py` — `MLEngineSerializer`, `MLTaxonomySerializer`, `MLDatasetSerializer` |
+| **Django admin** | `MLEngine`, `MLTaxonomy`, `MLDataset`, `MLPrompt` registered (see `dose/admin.py`) |
+| **DRF API** (under site prefix `dose/`) | `GET/POST/... /dose/api/mlengines/`, `/dose/api/mltaxonomies/`, `/dose/api/mldatasets/`, `/dose/api/mlprompts/` (router in `dose/urls.py`) |
+| **Serializers** | `dose/serializers.py` — `MLEngineSerializer`, `MLTaxonomySerializer`, `MLDatasetSerializer`, `MLPromptSerializer` |
 | **Swagger** | Staff-gated schema may list these resources when authenticated |
 
 **Security note:** ViewSets use default DRF behavior; **tightening permissions / tenant scoping** for production is a separate hardening task—do not assume “safe by default” for multi-tenant exposure.

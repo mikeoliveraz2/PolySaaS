@@ -427,8 +427,8 @@
   <div class="ps-ml-tech">
     <h2>In the product today (technical)</h2>
     <ul>
-      <li>Tenant-scoped models: <code>MLEngine</code>, <code>MLTaxonomy</code>, <code>MLDataset</code> (Django / PostgreSQL).</li>
-      <li>REST API (authenticated): <code>/dose/api/mlengines/</code>, <code>/dose/api/mltaxonomies/</code>, <code>/dose/api/mldatasets/</code>.</li>
+      <li>Tenant-scoped models: <code>MLEngine</code>, <code>MLTaxonomy</code>, <code>MLDataset</code>, <code>MLPrompt</code> (Django / PostgreSQL). <code>MLPrompt</code> stores <code>key</code>, <code>description</code>, and <code>prompt_text</code>; align <code>matchingEventKey</code> on the other ML rows with the same key string when you want them tied together.</li>
+      <li>REST API (authenticated): <code>/dose/api/mlengines/</code>, <code>/dose/api/mltaxonomies/</code>, <code>/dose/api/mldatasets/</code>, <code>/dose/api/mlprompts/</code>.</li>
       <li><code>matchingEventKey</code> fields link rows to orchestration and events (contract documented in repo).</li>
       <li>Related configuration: <code>parameters.Parameter</code> with <code>matchingKey</code> for ordered, keyed parameter sets.</li>
     </ul>

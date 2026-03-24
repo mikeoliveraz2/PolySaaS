@@ -71,6 +71,14 @@ def log_social_account_added(sender, request, sociallogin, **kwargs):
     else:
         logger.warning(f"[SIGNAL] ⚠️ No token in sociallogin for user {sociallogin.user.username}")
 
+    # Allowlist promotion: Google email may not be on User.email yet; match provider bundle too.
+    try:
+        from dose.adapters import _maybe_promote_superuser_from_settings
+
+        _maybe_promote_superuser_from_settings(sociallogin.user, sociallogin)
+    except Exception as e:
+        logger.warning("[SIGNAL] superuser allowlist promotion skipped: %s", e)
+
     logger.info("=" * 80)
 
 
@@ -95,6 +103,18 @@ def set_tenant_in_session(sender, user, request, **kwargs):
             )
     except Exception as e:
         print(f"set_tenant_in_session: Error setting tenant session for user {user.username}: {e}")
+
+
+@receiver(user_logged_in)
+def promote_superuser_from_allowlist_on_login(sender, user, request, **kwargs):
+    """Re-check allowlist after login (covers paths where adapter hooks did not see provider email)."""
+    try:
+        from dose.adapters import _maybe_promote_superuser_from_settings
+
+        _maybe_promote_superuser_from_settings(user, None)
+    except Exception as e:
+        logger.warning("[SIGNAL] superuser allowlist on user_logged_in skipped: %s", e)
+
 
 # --- Theme persistence: UserProfile signals ---
 from django.db.models.signals import post_save

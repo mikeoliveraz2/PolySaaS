@@ -10,7 +10,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
         model = Subscription
         fields = '__all__'
 from .models import (
-    Tenant, UserProfile, MLEngine, MLTaxonomy, MLDataset, CallBackData, Instruction, Task,
+    Tenant, UserProfile, MLEngine, MLTaxonomy, MLDataset, MLPrompt, CallBackData, Instruction, Task,
     NavigationPanel, NavigationItem, DashboardButton, IgnorePath, RequestLog, ErrorLog
 )
 
@@ -38,6 +38,13 @@ class MLDatasetSerializer(serializers.ModelSerializer):
     class Meta:
         model = MLDataset
         fields = '__all__'
+
+
+class MLPromptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MLPrompt
+        fields = '__all__'
+
 
 class CallBackDataSerializer(serializers.ModelSerializer):
     class Meta:

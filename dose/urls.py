@@ -43,6 +43,7 @@ from dose.views import (
 from . import jira_integration
 from .viewsets import (
     TenantViewSet, UserProfileViewSet, MLEngineViewSet, MLTaxonomyViewSet, MLDatasetViewSet,
+    MLPromptViewSet,
     CallBackDataViewSet, InstructionViewSet, TaskViewSet, NavigationPanelViewSet,
     NavigationItemViewSet, DashboardButtonViewSet, IgnorePathViewSet,
     PassThroughEndpointViewSet
@@ -76,6 +77,7 @@ router.register(r'userprofiles', UserProfileViewSet)
 router.register(r'mlengines', MLEngineViewSet)
 router.register(r'mltaxonomies', MLTaxonomyViewSet)
 router.register(r'mldatasets', MLDatasetViewSet)
+router.register(r'mlprompts', MLPromptViewSet)
 router.register(r'callbackdata', CallBackDataViewSet)
 router.register(r'instructions', InstructionViewSet)
 router.register(r'tasks', TaskViewSet)

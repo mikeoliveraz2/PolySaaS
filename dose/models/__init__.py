@@ -16,6 +16,7 @@ from .task import Task
 from .ml_engine import MLEngine
 from .ml_taxonomy import MLTaxonomy
 from .ml_dataset import MLDataset
+from .ml_prompt import MLPrompt
 from .callback_data import CallBackData
 from .dose_message import DoseMessage
 from .deepseek_prompt import DeepSeekPrompt
