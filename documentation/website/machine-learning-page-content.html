@@ -3,15 +3,74 @@
   Paste into WordPress: Bricks → HTML / Code element, or block editor "Custom HTML".
   If your template already shows the global footer, omit the <footer class="ps-ml-footer">…</footer> block
   to avoid a duplicate footer.
+
+  Icon: inline SVG in .ps-ml-icon-wrap (matches documentation/website/assets/ml-icon.svg).
+  Banner: CSS gradient hero (.ps-ml-hero--banner). Optional raster overlay on .ps-ml-wrap:
+    style="--ps-ml-banner-image: url(https://polysaas.online/wp-content/uploads/.../banner.jpg);"
+  Standalone SVGs for Media Library: documentation/website/assets/
 -->
 <div class="ps-ml-wrap">
   <style>
-    .ps-ml-wrap { --ps-ml-accent: #0d6efd; --ps-ml-text: #1a1a2e; --ps-ml-muted: #5c5c6b; --ps-ml-line: #e8e8ef; max-width: 920px; margin: 0 auto; padding: 2rem 1.25rem 3rem; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ps-ml-text); line-height: 1.6; }
+    .ps-ml-wrap { --ps-ml-accent: #0d6efd; --ps-ml-text: #1a1a2e; --ps-ml-muted: #5c5c6b; --ps-ml-line: #e8e8ef; --ps-ml-hero-fg: #f1f5f9; --ps-ml-hero-muted: #94a3b8; max-width: 920px; margin: 0 auto; padding: 2rem 1.25rem 3rem; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ps-ml-text); line-height: 1.6; }
     .ps-ml-wrap * { box-sizing: border-box; }
-    .ps-ml-hero { margin-bottom: 2.5rem; padding-bottom: 2rem; border-bottom: 1px solid var(--ps-ml-line); }
-    .ps-ml-hero h1 { font-size: clamp(1.75rem, 4vw, 2.35rem); font-weight: 700; line-height: 1.2; margin: 0 0 0.75rem; letter-spacing: -0.02em; }
-    .ps-ml-lead { font-size: 1.125rem; color: var(--ps-ml-muted); margin: 0; max-width: 52ch; }
-    .ps-ml-badge { display: inline-block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ps-ml-accent); margin-bottom: 0.75rem; }
+    /* Hero banner: dark ML/tech backdrop (no external image required). Optional: set --ps-ml-banner-image: url(https://polysaas.online/.../your-banner.jpg) for Bricks-uploaded raster */
+    .ps-ml-hero--banner {
+      margin: -2rem -1.25rem 2.5rem;
+      padding: 2.5rem 1.5rem 2.25rem;
+      border-radius: 0 0 18px 18px;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-top: none;
+      background-color: #0b1220;
+      background-image:
+        var(--ps-ml-banner-image, none),
+        radial-gradient(ellipse 90% 70% at 92% 8%, rgba(59,130,246,0.35), transparent 52%),
+        radial-gradient(ellipse 55% 45% at 8% 88%, rgba(37,99,235,0.22), transparent 50%),
+        linear-gradient(152deg, #070b14 0%, #0f2847 42%, #0c1929 100%);
+      background-size: cover, auto, auto, auto;
+      background-position: center, top right, bottom left, center;
+      background-repeat: no-repeat;
+      box-shadow: 0 12px 40px rgba(15,23,42,0.35);
+    }
+    .ps-ml-hero-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1.25rem 1.5rem; }
+    .ps-ml-icon-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.65rem;
+      flex-shrink: 0;
+      width: 6.75rem;
+    }
+    @media (min-width: 480px) { .ps-ml-icon-col { align-items: flex-start; } }
+    .ps-ml-icon-wrap {
+      width: 4.75rem;
+      height: 4.75rem;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .ps-ml-icon-wrap svg { width: 3.25rem; height: 3.25rem; display: block; }
+    .ps-ml-icon-caption {
+      margin: 0;
+      font-size: 0.7rem;
+      line-height: 1.4;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #cbd5e1;
+      text-align: center;
+      max-width: 11rem;
+    }
+    @media (min-width: 480px) { .ps-ml-icon-caption { text-align: left; max-width: 6.75rem; } }
+    .ps-ml-icon-caption .ps-ml-icon-caption-sub { display: block; font-weight: 500; color: #94a3b8; margin-top: 0.25rem; font-size: 0.65rem; line-height: 1.35; }
+    .ps-ml-hero-copy { flex: 1; min-width: min(100%, 16rem); }
+    .ps-ml-hero--banner .ps-ml-badge { color: #93c5fd; margin-bottom: 0.65rem; }
+    .ps-ml-hero--banner h1 { color: #fff; font-size: clamp(1.65rem, 4vw, 2.35rem); font-weight: 700; line-height: 1.15; margin: 0 0 0.85rem; letter-spacing: -0.02em; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .ps-ml-hero--banner .ps-ml-lead { color: var(--ps-ml-hero-muted); font-size: 1.05rem; max-width: 58ch; margin: 0; }
+    .ps-ml-hero--banner .ps-ml-lead + .ps-ml-lead { margin-top: 0.9rem; }
+    .ps-ml-hero--banner .ps-ml-lead strong { color: var(--ps-ml-hero-fg); }
     .ps-ml-grid { display: grid; gap: 1.25rem; margin: 2rem 0; }
     @media (min-width: 640px) { .ps-ml-grid { grid-template-columns: repeat(2, 1fr); } }
     .ps-ml-card { border: 1px solid var(--ps-ml-line); border-radius: 12px; padding: 1.25rem 1.35rem; background: #fafbfc; transition: box-shadow 0.2s; }
@@ -40,10 +99,37 @@
     .ps-ml-footer-legal { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: center; padding-top: 1.5rem; border-top: 1px solid var(--ps-ml-line); font-size: 0.85rem; }
   </style>
 
-  <header class="ps-ml-hero">
-    <span class="ps-ml-badge">Platform capability</span>
-    <h1>Machine learning &amp; AI — built into your tenant</h1>
-    <p class="ps-ml-lead">PolySaaS is designed so administrators can define engines, datasets, and taxonomies per tenant, then tie them to <strong>dynamic orchestration</strong>—so ML and AI workflows stay <strong>inside your platform</strong>, not locked in a separate notebook stack or vendor-only model.</p>
+  <header class="ps-ml-hero ps-ml-hero--banner">
+    <div class="ps-ml-hero-row">
+      <div class="ps-ml-icon-col">
+        <div class="ps-ml-icon-wrap" aria-hidden="true" title="Machine learning">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" focusable="false">
+            <defs>
+              <linearGradient id="ps-ml-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#60a5fa"/>
+                <stop offset="100%" style="stop-color:#2563eb"/>
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="20" r="5" fill="url(#ps-ml-grad)"/>
+            <circle cx="18" cy="40" r="5" fill="url(#ps-ml-grad)"/>
+            <circle cx="46" cy="40" r="5" fill="url(#ps-ml-grad)"/>
+            <circle cx="32" cy="52" r="4" fill="#94a3b8" opacity="0.95"/>
+            <path d="M32 25v10M27 36l-5-8M37 36l5-8M28 44h8" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+            <path d="M32 25L18 35M32 25L46 35M18 40l8 8M46 40l-8 8" stroke="url(#ps-ml-grad)" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+          </svg>
+        </div>
+        <p class="ps-ml-icon-caption">
+          Mapping Engine
+          <span class="ps-ml-icon-caption-sub">Discover, normalize, and route data across apps.</span>
+        </p>
+      </div>
+      <div class="ps-ml-hero-copy">
+        <span class="ps-ml-badge">Dynamic orchestration</span>
+        <h1>Dynamic Orchestration Powered by Machine Learning</h1>
+        <p class="ps-ml-lead">Leveraging advanced machine learning and our intelligent Mapping Engine, PolySaaS automatically discovers, normalizes, and routes data between disparate business applications.</p>
+        <p class="ps-ml-lead">Deploy powerful cross-app workflows (like Dolibarr → Odoo customer sync) in minutes — fully configurable from the database, <strong>no code changes required</strong>.</p>
+      </div>
+    </div>
   </header>
 
   <div class="ps-ml-grid">
