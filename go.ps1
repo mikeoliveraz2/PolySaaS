@@ -1,4 +1,4 @@
-# go.ps1 — PolySaaS Launcher: Pull → Railway Docker stack → App check → (if OK) Commit/Push → Services → runserver → (on exit) pip freeze + Backup
+# go.ps1 - PolySaaS Launcher: Pull -> Railway Docker stack -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) pip freeze + Backup
 # Skip internal stack: $env:POLYSAAS_SKIP_RAILWAY_DOCKER = '1'
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -20,7 +20,7 @@ function Invoke-DailyBackup {
 
     $existingToday = Get-ChildItem -Path $backupRoot -Filter "polysaas-backup-${today}*.zip" -ErrorAction SilentlyContinue
     if ($existingToday) {
-        Write-Host "Backup already exists for $today → SKIPPING" -ForegroundColor Green
+        Write-Host "Backup already exists for $today -> SKIPPING" -ForegroundColor Green
         Write-Host "  $($existingToday[0].Name)" -ForegroundColor DarkGray
         return
     }
@@ -90,7 +90,7 @@ function Invoke-MorningSync {
     Write-Host "  Pulling latest from origin/main..." -ForegroundColor Cyan
     git pull origin main 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "  Pull failed — resolve conflicts before continuing" -ForegroundColor Red
+        Write-Host "  Pull failed - resolve conflicts before continuing" -ForegroundColor Red
         Write-Host "  Run 'git status' to see what needs attention" -ForegroundColor Red
         Pop-Location
         return
@@ -100,7 +100,7 @@ function Invoke-MorningSync {
     # Step 2: Check for local uncommitted changes
     $gitStatus = git status --porcelain 2>&1
     if (-Not $gitStatus) {
-        Write-Host "  Working tree clean — nothing to commit" -ForegroundColor Green
+        Write-Host "  Working tree clean - nothing to commit" -ForegroundColor Green
         Pop-Location
         return
     }
@@ -120,13 +120,13 @@ function Invoke-MorningSync {
     }
 
     if ($codeChanges) {
-        Write-Host "  Code changes detected — staging all for morning commit" -ForegroundColor Yellow
+        Write-Host "  Code changes detected - staging all for morning commit" -ForegroundColor Yellow
         git add -A
     }
 
     $staged = git diff --cached --name-only 2>&1
     if (-Not $staged) {
-        Write-Host "  Nothing staged — skipping commit" -ForegroundColor Green
+        Write-Host "  Nothing staged - skipping commit" -ForegroundColor Green
         Pop-Location
         return
     }
@@ -142,8 +142,7 @@ function Invoke-MorningSync {
         git push origin main
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  Pushed to origin/main" -ForegroundColor Green
-        }
-        else {
+        } else {
             Write-Host "  Push failed - run 'git push origin main' manually" -ForegroundColor Red
         }
     }
@@ -164,7 +163,7 @@ function Invoke-RailwayDockerStack {
 
     $composeFile = Join-Path $RootDir "docker-compose.railway-stack.yml"
     if (-Not (Test-Path $composeFile)) {
-        Write-Host "  docker-compose.railway-stack.yml not found → SKIPPING" -ForegroundColor DarkYellow
+        Write-Host "  docker-compose.railway-stack.yml not found -> SKIPPING" -ForegroundColor DarkYellow
         return
     }
 
@@ -175,7 +174,7 @@ function Invoke-RailwayDockerStack {
     Pop-Location
 
     if (-not $upOk) {
-        Write-Host "  docker compose up failed — fix Docker / compose errors; Django may not reach DB on 5433" -ForegroundColor Red
+        Write-Host "  docker compose up failed - fix Docker / compose errors; Django may not reach DB on 5433" -ForegroundColor Red
         return
     }
 
@@ -213,16 +212,16 @@ function Invoke-RailwayDockerStack {
         Write-Host "── Railway stack probe ───────────────────────────────" -ForegroundColor Cyan
         & $testScript
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "  One or more probes failed — check containers: docker compose -f docker-compose.railway-stack.yml ps" -ForegroundColor Yellow
+            Write-Host "  One or more probes failed - check containers: docker compose -f docker-compose.railway-stack.yml ps" -ForegroundColor Yellow
         } else {
             Write-Host "  Railway stack probes: all OK" -ForegroundColor Green
         }
-    }
-    elseif ($stackReady) {
-        Write-Host "  Railway stack: core endpoints responded (no test-railway-stack.ps1)" -ForegroundColor Green
-    }
-    else {
-        Write-Host "  Railway stack: timeout waiting for all services — run: docker compose -f docker-compose.railway-stack.yml ps" -ForegroundColor Yellow
+    } else {
+        if ($stackReady) {
+            Write-Host "  Railway stack: core endpoints responded (no test-railway-stack.ps1)" -ForegroundColor Green
+        } else {
+            Write-Host "  Railway stack: timeout waiting for all services - run: docker compose -f docker-compose.railway-stack.yml ps" -ForegroundColor Yellow
+        }
     }
     Write-Host ""
 }
@@ -235,8 +234,7 @@ Push-Location $scriptDir
 git pull origin main 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Pull failed - resolve conflicts before continuing" -ForegroundColor Red
-}
-else {
+} else {
     Write-Host "  Pull complete" -ForegroundColor Green
 }
 Pop-Location
@@ -250,20 +248,21 @@ if (-Not (Test-Path $venvActivate)) {
     exit
 }
 
-# ── Railway Docker stack (before app check — Django expects Postgres on 5433) ─
+# ── Railway Docker stack (before app check - Django expects Postgres on 5433) ─
 
 Write-Host ""
 Write-Host "── Railway Docker stack (internal services) ───────────" -ForegroundColor Cyan
 if ($env:POLYSAAS_SKIP_RAILWAY_DOCKER -eq '1') {
-    Write-Host "  SKIPPED — POLYSAAS_SKIP_RAILWAY_DOCKER=1" -ForegroundColor DarkYellow
+    Write-Host "  SKIPPED - POLYSAAS_SKIP_RAILWAY_DOCKER=1" -ForegroundColor DarkYellow
     Write-Host ""
-}
-elseif (-Not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host "  SKIPPED — docker not in PATH (install Docker Desktop)" -ForegroundColor DarkYellow
-    Write-Host ""
-}
-else {
-    Invoke-RailwayDockerStack -RootDir $scriptDir
+} else {
+    $dockerCli = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $dockerCli) {
+        Write-Host "  SKIPPED - docker not in PATH (install Docker Desktop)" -ForegroundColor DarkYellow
+        Write-Host ""
+    } else {
+        Invoke-RailwayDockerStack -RootDir $scriptDir
+    }
 }
 
 # ── App load check: only if this passes do we backup and commit/push ───
@@ -275,8 +274,7 @@ $appLoadOk = ($LASTEXITCODE -eq 0)
 Pop-Location
 if ($appLoadOk) {
     Write-Host '  App loads OK - will commit/push now; backup runs when you exit runserver' -ForegroundColor Green
-}
-else {
+} else {
     Write-Host "  App failed to load - skipping commit/push and backup" -ForegroundColor Yellow
     Write-Host "  Fix errors above, run 'pip freeze > requirements.txt' when clean, then .\go again" -ForegroundColor Yellow
 }
@@ -294,8 +292,7 @@ if (Test-Path $blogScript) {
     $blogOutput = & $venvPython $blogScript 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  Blog archive page refreshed with latest posts" -ForegroundColor Green
-    }
-    else {
+    } else {
         Write-Host "  Blog refresh skipped (network/API error; non-blocking)" -ForegroundColor DarkYellow
     }
     Write-Host ""
@@ -311,30 +308,30 @@ function Start-IfNotRunning {
     param([int]$Port, [string]$ScriptBlock, [string]$Name)
     $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
     if ($listener) {
-        Write-Host "$Name already running on port $Port → SKIPPING" -ForegroundColor Green
+        Write-Host "$Name already running on port $Port -> SKIPPING" -ForegroundColor Green
     } else {
         Write-Host "Starting $Name on port $Port..." -ForegroundColor Yellow
         Start-Process powershell -ArgumentList "-NoExit", "-Command", $ScriptBlock
     }
 }
 
-# MONITOR LOGGER — pass_through_service
+# MONITOR LOGGER - pass_through_service
 $monitorFolder = Join-Path $scriptDir "pass_through_service"
 Start-IfNotRunning -Port 5000 -Name "Monitor Logger" -ScriptBlock "cd '$monitorFolder'; & '$venvActivate'; python app.py"
 
-# POLYSNIFFER — root
+# POLYSNIFFER - root
 Start-IfNotRunning -Port 5002 -Name "PolySniffer" -ScriptBlock "cd '$scriptDir'; & '$venvActivate'; python polysniffer_simple.py"
 
-# POLYSYSMON — placeholder Docker container (Tomcat)
+# POLYSYSMON - placeholder Docker container (Tomcat)
 $polysysmonFolder = Join-Path $scriptDir "placeholders\polysysmon"
 if (-Not (Get-NetTCPConnection -State Listen -LocalPort 9001 -ErrorAction SilentlyContinue)) {
     Write-Host "Starting PolySysMon (Tomcat Docker) on port 9001..." -ForegroundColor Yellow
     Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$polysysmonFolder'; docker build -t polysysmon-demo .; docker run -d -p 9001:8080 polysysmon-demo"
 } else {
-    Write-Host "PolySysMon already running on port 9001 → SKIPPING" -ForegroundColor Green
+    Write-Host "PolySysMon already running on port 9001 -> SKIPPING" -ForegroundColor Green
 }
 
-# LIFERAY CE — Docker container on port 8181
+# LIFERAY CE - Docker container on port 8181
 $liferayListening = Get-NetTCPConnection -State Listen -LocalPort 8181 -ErrorAction SilentlyContinue
 if (-Not $liferayListening) {
     $liferayCompose = Join-Path $scriptDir "docker-compose.liferay.yml"
@@ -342,29 +339,28 @@ if (-Not $liferayListening) {
         Write-Host "Starting Liferay CE on port 8181..." -ForegroundColor Yellow
         Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir'; docker compose -f docker-compose.liferay.yml up"
     } else {
-        Write-Host "Liferay compose file not found → SKIPPING" -ForegroundColor DarkYellow
+        Write-Host "Liferay compose file not found -> SKIPPING" -ForegroundColor DarkYellow
     }
 } else {
-    Write-Host "Liferay CE already running on port 8181 → SKIPPING" -ForegroundColor Green
+    Write-Host "Liferay CE already running on port 8181 -> SKIPPING" -ForegroundColor Green
 }
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
-Write-Host "DJANGO          → http://localhost:8000" -ForegroundColor Green
-Write-Host "POSTGRES (stack)→ localhost:5433  (dosedbadmin / DOSE_DB_PASSWORD)" -ForegroundColor Green
-Write-Host "RABBITMQ        → amqp://localhost:5672  (mgmt http://localhost:15672)" -ForegroundColor Green
-Write-Host "ELASTICSEARCH   → http://localhost:9200" -ForegroundColor Green
-Write-Host "GRAFANA         → http://localhost:3000" -ForegroundColor Green
-Write-Host "MONITORLOGGER   → http://localhost:5080" -ForegroundColor Green
-Write-Host "MONITOR (app)   → http://localhost:5000" -ForegroundColor Green
-Write-Host "POLYSNIFFER     → http://127.0.0.1:5002" -ForegroundColor Green
-Write-Host "LIFERAY CE      → http://localhost:8181" -ForegroundColor Green
+Write-Host "DJANGO          -> http://localhost:8000" -ForegroundColor Green
+Write-Host "POSTGRES (stack)-> localhost:5433  (dosedbadmin / DOSE_DB_PASSWORD)" -ForegroundColor Green
+Write-Host "RABBITMQ        -> amqp://localhost:5672  (mgmt http://localhost:15672)" -ForegroundColor Green
+Write-Host "ELASTICSEARCH   -> http://localhost:9200" -ForegroundColor Green
+Write-Host "GRAFANA         -> http://localhost:3000" -ForegroundColor Green
+Write-Host "MONITORLOGGER   -> http://localhost:5080" -ForegroundColor Green
+Write-Host "MONITOR (app)   -> http://localhost:5000" -ForegroundColor Green
+Write-Host "POLYSNIFFER     -> http://127.0.0.1:5002" -ForegroundColor Green
+Write-Host "LIFERAY CE      -> http://localhost:8181" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
 try {
     & $venvPython -u manage.py runserver 0.0.0.0:8000
-}
-finally {
+} finally {
     Write-Host ''
     Write-Host '── Freeze venv to requirements.txt ─────────────────' -ForegroundColor Cyan
     Push-Location $scriptDir
@@ -376,29 +372,29 @@ finally {
         $failMsg = '  SAFETY CHECK FAILED: pip freeze returned only ' + $freezeLines + ' packages (expected 20+)'
         Write-Host $failMsg -ForegroundColor Red
         Write-Host '  Skipping requirements.txt update to avoid overwriting with empty/broken venv' -ForegroundColor Red
-    }
-    elseif ($LASTEXITCODE -eq 0) {
-        $freezeOutput | Out-File -FilePath requirements.txt -Encoding utf8
-        $okMsg = '  requirements.txt updated from venv (' + $freezeLines + ' packages)'
-        Write-Host $okMsg -ForegroundColor Green
-        $status = git status --porcelain requirements.txt 2>&1
-        if ($status) {
-            git add requirements.txt
-            $commitMsg = 'Update requirements.txt from pip freeze (post-runserver, ' + $freezeLines + ' packages)'
-            git commit -m $commitMsg
-            if ($LASTEXITCODE -eq 0) {
-                git push origin main 2>&1
-                Write-Host '  Committed and pushed requirements.txt' -ForegroundColor Green
+    } else {
+        if ($LASTEXITCODE -eq 0) {
+            $freezeOutput | Out-File -FilePath requirements.txt -Encoding utf8
+            $okMsg = '  requirements.txt updated from venv (' + $freezeLines + ' packages)'
+            Write-Host $okMsg -ForegroundColor Green
+            $status = git status --porcelain requirements.txt 2>&1
+            if ($status) {
+                git add requirements.txt
+                $commitMsg = 'Update requirements.txt from pip freeze (post-runserver, ' + $freezeLines + ' packages)'
+                git commit -m $commitMsg
+                if ($LASTEXITCODE -eq 0) {
+                    git push origin main 2>&1
+                    Write-Host '  Committed and pushed requirements.txt' -ForegroundColor Green
+                }
+            } else {
+                Write-Host '  No change to requirements.txt' -ForegroundColor DarkGray
             }
-        }
-        else {
-            Write-Host '  No change to requirements.txt' -ForegroundColor DarkGray
         }
     }
 
     Write-Host ''
     Write-Host '── Daily backup (end of session) ─────────────────────' -ForegroundColor Cyan
-    Write-Host '  Running backup now — you will see output below.' -ForegroundColor Yellow
+    Write-Host '  Running backup now - you will see output below.' -ForegroundColor Yellow
     Invoke-DailyBackup
     Write-Host '── Backup step complete ───────────────────────────────' -ForegroundColor Cyan
     Write-Host ''

@@ -6,6 +6,7 @@
 
   Hero: dark banner band (.ps-ml-hero-banner) centers ml-icon.svg + grid pattern; title and body copy live in .ps-ml-hero-intro below. Assets: documentation/website/assets/ml-icon.svg (keep SVG in sync).
   Optional photo overlay on .ps-ml-wrap: style="--ps-ml-banner-image: url(https://polysaas.online/wp-content/uploads/.../banner.jpg);"
+  Theme: scoped rules use body.page-slug-machine-learning and body.page-id-2708 (update id if the WP page is recreated).
 -->
 <div class="ps-ml-wrap">
   <style>
@@ -18,8 +19,8 @@
       --ps-ml-hero-muted: #94a3b8;
       --ps-ml-footer-bg: #f8fafc;
       max-width: 960px;
-      margin: 0 auto;
-      padding: 2rem 1.25rem 3.5rem;
+      margin: -1.35rem auto 0;
+      padding: 0 1.25rem 3.5rem;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       color: var(--ps-ml-text);
       line-height: 1.65;
@@ -31,8 +32,8 @@
     .ps-ml-hero-banner {
       position: relative;
       overflow: hidden;
-      margin: -2rem -1.25rem 0;
-      padding: 2.35rem 1.5rem 2.85rem;
+      margin: 0 -1.25rem 0;
+      padding: 1.35rem 1.5rem 2.1rem;
       border-radius: 0 0 22px 22px;
       border: 1px solid rgba(255,255,255,0.1);
       border-top: none;
@@ -265,6 +266,65 @@
       font-size: 0.84rem;
       color: var(--ps-ml-muted);
     }
+
+    /* Kadence / theme — Machine Learning page only: tighter header, remove duplicate title hero, close gap to custom banner */
+    body.page-slug-machine-learning #masthead,
+    body.page-id-2708 #masthead {
+      padding-top: 0.25rem !important;
+      padding-bottom: 0.25rem !important;
+    }
+    body.page-slug-machine-learning .site-header-inner-wrap,
+    body.page-slug-machine-learning .site-main-header-inner-wrap,
+    body.page-id-2708 .site-header-inner-wrap,
+    body.page-id-2708 .site-main-header-inner-wrap {
+      padding-top: 0.35rem !important;
+      padding-bottom: 0.35rem !important;
+      min-height: 0 !important;
+    }
+    body.page-slug-machine-learning .site-branding,
+    body.page-id-2708 .site-branding {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+    body.page-slug-machine-learning .site-header-item .main-navigation,
+    body.page-id-2708 .site-header-item .main-navigation {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+    /* Gray page-title band: hidden — H1 lives in .ps-ml-hero-intro inside this block */
+    body.page-slug-machine-learning .entry-hero-section,
+    body.page-slug-machine-learning .kadence-page-hero,
+    body.page-slug-machine-learning .entry-hero,
+    body.page-id-2708 .entry-hero-section,
+    body.page-id-2708 .kadence-page-hero,
+    body.page-id-2708 .entry-hero {
+      display: none !important;
+    }
+    body.page-slug-machine-learning .content-area,
+    body.page-slug-machine-learning .site-main,
+    body.page-id-2708 .content-area,
+    body.page-id-2708 .site-main {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+    body.page-slug-machine-learning .entry-content-wrap,
+    body.page-slug-machine-learning .entry-content,
+    body.page-id-2708 .entry-content-wrap,
+    body.page-id-2708 .entry-content {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+    }
+    body.page-slug-machine-learning .hentry,
+    body.page-id-2708 .hentry {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+    }
+    body.page-slug-machine-learning .wp-block-post-title,
+    body.page-id-2708 .wp-block-post-title {
+      display: none !important;
+    }
   </style>
 
   <header class="ps-ml-hero">
@@ -276,10 +336,34 @@
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#psMlHeroGrid)"/>
-        <circle cx="320" cy="40" r="3" fill="rgba(96,165,250,0.4)"/>
-        <circle cx="280" cy="90" r="2" fill="rgba(96,165,250,0.28)"/>
-        <circle cx="350" cy="120" r="2.5" fill="rgba(96,165,250,0.32)"/>
-        <path d="M320 40 L280 90 L350 120" fill="none" stroke="rgba(96,165,250,0.22)" stroke-width="1"/>
+        <!-- Neural-style clusters: nodes + edges (keep subtle; icon sits centered above) -->
+        <g opacity="0.92">
+          <!-- Original right cluster -->
+          <circle cx="320" cy="40" r="3" fill="rgba(96,165,250,0.4)"/>
+          <circle cx="280" cy="90" r="2" fill="rgba(96,165,250,0.28)"/>
+          <circle cx="350" cy="120" r="2.5" fill="rgba(96,165,250,0.32)"/>
+          <path d="M320 40 L280 90 L350 120" fill="none" stroke="rgba(96,165,250,0.22)" stroke-width="1" stroke-linecap="round"/>
+          <circle cx="305" cy="72" r="1.8" fill="rgba(96,165,250,0.26)"/>
+          <path d="M280 90 L305 72 L320 40" fill="none" stroke="rgba(96,165,250,0.16)" stroke-width="0.85" stroke-linecap="round"/>
+          <!-- Upper-left small graph -->
+          <circle cx="48" cy="38" r="2.4" fill="rgba(96,165,250,0.3)"/>
+          <circle cx="88" cy="52" r="2" fill="rgba(96,165,250,0.24)"/>
+          <circle cx="62" cy="78" r="2.2" fill="rgba(96,165,250,0.26)"/>
+          <path d="M48 38 L88 52 M88 52 L62 78 M48 38 L62 78" fill="none" stroke="rgba(96,165,250,0.18)" stroke-width="0.9" stroke-linecap="round"/>
+          <!-- Mid-left chain -->
+          <circle cx="115" cy="115" r="2" fill="rgba(96,165,250,0.22)"/>
+          <circle cx="145" cy="98" r="2.3" fill="rgba(96,165,250,0.27)"/>
+          <circle cx="128" cy="138" r="1.9" fill="rgba(96,165,250,0.2)"/>
+          <path d="M115 115 L145 98 L128 138 L115 115" fill="none" stroke="rgba(96,165,250,0.15)" stroke-width="0.85" stroke-linecap="round"/>
+          <!-- Bottom band -->
+          <circle cx="185" cy="168" r="2" fill="rgba(96,165,250,0.22)"/>
+          <circle cx="220" cy="158" r="2.2" fill="rgba(96,165,250,0.24)"/>
+          <circle cx="248" cy="178" r="2" fill="rgba(96,165,250,0.22)"/>
+          <path d="M185 168 L220 158 L248 178" fill="none" stroke="rgba(96,165,250,0.16)" stroke-width="0.9" stroke-linecap="round"/>
+          <!-- Far-right tail -->
+          <circle cx="368" cy="88" r="1.8" fill="rgba(96,165,250,0.24)"/>
+          <path d="M350 120 L368 88" fill="none" stroke="rgba(96,165,250,0.14)" stroke-width="0.8" stroke-linecap="round"/>
+        </g>
       </svg>
       <div class="ps-ml-hero-banner-inner">
         <div class="ps-ml-icon-wrap" aria-hidden="true">
