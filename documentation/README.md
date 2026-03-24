@@ -2,6 +2,10 @@
 
 Index of high-signal docs. **Not** the public marketing site.
 
+## Multi-tenant invariant (PostgreSQL)
+
+Never treat the PostgreSQL **`public`** schema as a tenant. Shared registry tables (for example **`dose_tenant`**) live in **`public`**; tenant-isolated application data lives in each row’s **`Tenant.schema_name`**, and the active workspace is **`request.session['tenant_id']`** (middleware sets `search_path` to that schema with `public` only as a fallback for shared tables). Do not add a `Tenant` with `schema_name='public'`, and do not read or write tenant-owned models through `public` as if it were a customer org.
+
 ## Product & concept drafts
 
 | Doc | Purpose |

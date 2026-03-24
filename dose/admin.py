@@ -535,31 +535,10 @@ if NEW_MODELS_AVAILABLE:
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            # If editing/creating a superuser, restrict tenant to public only
-            user = getattr(self.instance, 'user', None)
-            public_tenant = Tenant.objects.filter(schema_name='public').first()
-            # Fix indentation: declare is_superuser at correct scope
-            is_superuser = False
-            # Check if editing existing UserProfile
-            if user and hasattr(user, 'is_superuser'):
-                is_superuser = user.is_superuser
-            # Check if creating new UserProfile
-            elif 'user' in self.initial:
-                try:
-                    initial_user = User.objects.get(pk=self.initial['user'])
-                    is_superuser = initial_user.is_superuser
-                except User.DoesNotExist:
-                    pass
-            # Fallback: check if user_id in data
-            elif 'user' in self.data:
-                try:
-                    data_user = User.objects.get(pk=self.data['user'])
-                    is_superuser = data_user.is_superuser
-                except User.DoesNotExist:
-                    pass
-            # Allow all users (including superusers) to be assigned to any active tenant
-            # Special case: if user already has a tenant assignment, respect it
-            self.fields['tenant'].queryset = Tenant.objects.filter(is_active=True)
+            from dose.tenant_utils import tenants_for_user_assignment
+
+            # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
+            self.fields['tenant'].queryset = tenants_for_user_assignment()
             self.fields['tenant'].empty_label = "Select a tenant..."
             self.fields['tenant'].required = True
 
@@ -568,17 +547,10 @@ if NEW_MODELS_AVAILABLE:
                 # Don't override existing tenant assignment
                 pass
             elif not self.instance.pk:
-                # For new UserProfiles, default to first active tenant
-                active_tenants = Tenant.objects.filter(is_active=True)
-                if active_tenants.exists():
-                    self.fields['tenant'].initial = active_tenants.first()
-
-            # Special handling for superusers created via management commands
-            # (but allow tenant-specific superusers from subscription process)
-            if is_superuser and public_tenant and user and user.username in ['admin', 'superuser']:
-                self.fields['tenant'].queryset = Tenant.objects.filter(pk=public_tenant.pk)
-                self.fields['tenant'].initial = public_tenant
-                self.fields['tenant'].empty_label = None
+                # For new UserProfiles, default to first assignable tenant
+                qs = tenants_for_user_assignment()
+                if qs.exists():
+                    self.fields['tenant'].initial = qs.first()
 
     # Removed signal that auto-creates UserProfile for superusers to prevent duplicate key errors
 

@@ -49,21 +49,24 @@ def set_theme(request):
         print(f"[DEBUG] set_theme: invalid method {request.method}")
         return JsonResponse({"status": "error", "message": "Invalid method"}, status=400)
     from django.contrib.auth import get_user_model
-    from dose.models import Tenant
     User = get_user_model()
     user = getattr(request, 'user', None)
-    public_tenant = Tenant.objects.filter(schema_name='public').first()
-    print(f"[DEBUG] public_tenant: {public_tenant}")
-    if not public_tenant:
-        print("[ERROR] No public tenant found!")
-        return JsonResponse({"status": "error", "message": "No public tenant found"}, status=400)
+    if not tenant:
+        print("[ERROR] set_theme: no tenant in session / request")
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "No tenant in session. Open a tenant workspace first (tenant isolation).",
+            },
+            status=400,
+        )
     profile = None
     if user and user.is_authenticated:
         try:
-            profile = UserProfile.objects.get(user=user, tenant=public_tenant)
+            profile = UserProfile.objects.get(user=user, tenant=tenant)
         except UserProfile.DoesNotExist:
-            print(f"[DEBUG] UserProfile not found for user={user}, tenant={public_tenant}. Creating new.")
-            profile = UserProfile(user=user, tenant=public_tenant)
+            print(f"[DEBUG] UserProfile not found for user={user}, tenant={tenant}. Creating new.")
+            profile = UserProfile(user=user, tenant=tenant)
     print(f"[DEBUG] profile: {profile}")
     import logging
     # Main POST logic
@@ -106,7 +109,7 @@ def set_theme(request):
         print(f"[ThemePicker] Save successful.")
     except Exception as e:
         print(f"[ThemePicker] Save failed: {e}")
-    refreshed = UserProfile.objects.get(user=user, tenant=public_tenant)
+    refreshed = UserProfile.objects.get(user=user, tenant=tenant)
     print(f"[ThemePicker] After save: last_selected_theme={refreshed.last_selected_theme}, light={refreshed.light_theme}, dark={refreshed.dark_theme}")
     return JsonResponse({"status": "ok", "updated_fields": updated_fields, "light_theme": profile.light_theme, "dark_theme": profile.dark_theme, "display_mode": display_mode, "last_selected_theme": profile.last_selected_theme})
 
@@ -124,7 +127,6 @@ def select_theme(request):
     import logging
     from django.contrib import messages
     from dose.tenant_utils import get_current_tenant
-    from dose.models import Tenant
 
     # Debug session contents
     print(f"[DEBUG] Session contents: {dict(request.session.items())}")
@@ -138,17 +140,22 @@ def select_theme(request):
     if not tenant:
         try:
             existing_profile = getattr(request.user, 'userprofile', None)
-            if existing_profile:
-                tenant = existing_profile.tenant
-                print(f"[DEBUG] Fallback to tenant from user profile: {tenant}")
-                request.session['tenant_id'] = tenant.id
-                request.session['tenant_name'] = tenant.name
-            else:
-                tenant = Tenant.objects.filter(schema_name='public').first()
-                print(f"[DEBUG] Final fallback to public tenant: {tenant}")
+            if existing_profile and existing_profile.tenant:
+                t = existing_profile.tenant
+                if t.schema_name and t.schema_name.lower() != "public":
+                    tenant = t
+                    print(f"[DEBUG] Fallback to tenant from user profile: {tenant}")
+                    request.session['tenant_id'] = tenant.id
+                    request.session['tenant_name'] = tenant.name
         except Exception as e:
             print(f"[DEBUG] Error getting tenant from user profile: {e}")
-            tenant = Tenant.objects.filter(schema_name='public').first()
+
+    if not tenant:
+        messages.error(
+            request,
+            "No tenant selected. The shared public schema is not a tenant; choose your workspace first.",
+        )
+        return redirect("/dose/")
 
     print(f"[DEBUG] Using tenant: {tenant.name} (schema: {tenant.schema_name})")
     profile, created = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)

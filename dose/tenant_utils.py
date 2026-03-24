@@ -59,6 +59,16 @@ def get_tenant_theme_colors(theme_name):
     }
     return theme_palettes.get(theme_name, theme_palettes['tech_blue'])
 
+def tenants_for_user_assignment():
+    """
+    Active tenants that are allowed to hold tenant-isolated app data.
+    The PostgreSQL catalog schema 'public' is never a tenant (shared registry only).
+    """
+    from dose.models import Tenant
+
+    return Tenant.objects.filter(is_active=True).exclude(schema_name__iexact="public")
+
+
 def get_current_tenant(request):
     import logging
     logger = logging.getLogger(__name__)

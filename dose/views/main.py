@@ -283,10 +283,9 @@ from dose.models import UserProfile, Tenant
 from django.contrib.auth.models import User
 def debug_view(request):
     """Debug view to check system status"""
-    # Only show user_profiles if in public schema and user is superadmin
+    # Debug: only aggregate profiles when a real tenant is selected (never treat DB public as a tenant)
     show_profiles = False
-    current_schema = request.session.get('current_schema', 'public')
-    if current_schema == 'public' and request.user.is_superuser:
+    if request.user.is_superuser and request.session.get("tenant_id"):
         show_profiles = True
     context = {
         'users': User.objects.all(),
