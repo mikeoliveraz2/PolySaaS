@@ -53,7 +53,7 @@ Home | About | Applications ▼ | Features ▼ | Blog | Gallery | Pricing | Sign
 ```
 
 - **Applications dropdown:** Odoo, Nextcloud, Mattermost, WordPress, Liferay, SuiteCRM
-- **Features dropdown:** Architecture, Portal, Dynamic Orchestration, Atomic Services, PolySniffer, AI Agents, OpenAPI
+- **Features dropdown:** Architecture, Portal, Dynamic Orchestration, **Machine Learning**, Atomic Services, PolySniffer, AI Agents, OpenAPI
 - **Gallery:** Images, Videos (combined into one page or tabbed)
 - Sticky header, clean white background, navy text
 - Mobile: hamburger menu
@@ -110,8 +110,10 @@ Home | About | Applications ▼ | Features ▼ | Blog | Gallery | Pricing | Sign
 | 5 | Right | Left | PolySniffer (traffic intelligence) |
 | 6 | Left | Right | AI Agents (AI as Peers) |
 | 7 | Right | Left | OpenAPI (extensibility) |
+| 8 | Left | Right | Machine Learning (Mapping Engine, cross-app workflows — link `/machine-learning/`) |
 
 - Each row: image/screenshot on one side, heading + 2-3 sentences + "Learn More →" link on the other
+- **Homepage shortcut:** A compact icon + text teaser linking to `/machine-learning/` is in `documentation/website/home-ml-teaser-block.html` (paste as Custom HTML or Kadence section). Full wp-admin steps: `documentation/website/WORDPRESS-ML-NAV-HOME.md`.
 - White background, clean lines
 
 ### Section 6: Latest Blog Posts (Optional)

@@ -2,6 +2,8 @@
 
 **Status:** Internal working document only. **Do not** link this from the public marketing site or the main Features list until the concept and claims are fully agreed and accurate.
 
+**WordPress working copy:** To edit ML messaging in **wp-admin on polysaas.online** (draft page, not in menus), see **`documentation/website/ML-DRAFT-PAGE-WP-ADMIN.md`** and **`scripts/wp_sync_ml_page.py`** (pushes `machine-learning-page-content.html` from the repo).
+
 **Audience:** Michael, Shela, builders. Expand this page gradually; when ready, derive customer-facing copy (website, deck) from here—not the other way around.
 
 ---
@@ -126,3 +128,4 @@ When ready to go public, themes like **“own the full loop,”** **framework-ag
 | Date | Change |
 |------|--------|
 | 2026-02-28 | Initial internal draft: concept + table inventory from codebase. |
+| 2026-02-28 | Pointer to WordPress draft page workflow (`documentation/website/ML-DRAFT-PAGE-WP-ADMIN.md`). |

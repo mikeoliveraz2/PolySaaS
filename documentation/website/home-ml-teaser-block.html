@@ -1,0 +1,145 @@
+<!--
+  PolySaaS home page — Machine Learning section (paste into WordPress)
+  Block editor: add a Custom HTML block (or Kadence HTML), paste everything below this comment.
+
+  Layout: LEFT = dark banner background + ML icon | RIGHT = headline, copy, Learn more → /machine-learning/
+  Icon matches documentation/website/assets/ml-icon.svg — keep in sync.
+
+  If this block appears twice on one page, change ids psHmlGrad / psHmlHomeGrid to unique names (e.g. psHmlGrad2).
+-->
+<div class="ps-home-ml-teaser">
+  <style>
+    .ps-home-ml-teaser {
+      --ps-hml-navy: #001f3f;
+      --ps-hml-accent: #2563eb;
+      --ps-hml-muted: #64748b;
+      --ps-hml-line: #e2e8f0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+      max-width: 1100px;
+      margin: 2.5rem auto;
+      padding: 0 1rem;
+      box-sizing: border-box;
+    }
+    .ps-home-ml-teaser * { box-sizing: border-box; }
+
+    .ps-home-ml-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--ps-hml-line);
+      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+    }
+
+    /* Left: icon on ML-style backdrop */
+    .ps-home-ml-visual {
+      position: relative;
+      flex: 1 1 260px;
+      min-height: 220px;
+      min-width: min(100%, 260px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2.25rem 1.75rem;
+      background-color: #030712;
+      background-image:
+        radial-gradient(ellipse 100% 80% at 100% 0%, rgba(59, 130, 246, 0.45), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 0% 100%, rgba(99, 102, 241, 0.2), transparent 50%),
+        linear-gradient(158deg, #020617 0%, #0f2847 45%, #0a1628 100%);
+    }
+    .ps-home-ml-visual::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.4;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 200'%3E%3Cdefs%3E%3Cpattern id='g' width='40' height='40' patternUnits='userSpaceOnUse'%3E%3Cpath d='M40 0H0V40' fill='none' stroke='rgba(148,163,184,0.14)' stroke-width='0.5'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g)'/%3E%3C/svg%3E");
+      background-size: cover;
+    }
+    .ps-home-ml-icon-wrap {
+      position: relative;
+      z-index: 1;
+      width: 5.75rem;
+      height: 5.75rem;
+      border-radius: 18px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+    .ps-home-ml-icon-wrap svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+    }
+
+    /* Right: text */
+    .ps-home-ml-copy {
+      flex: 1 1 320px;
+      padding: 2rem 2rem 2.25rem;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .ps-home-ml-copy h2 {
+      margin: 0 0 0.65rem;
+      font-size: clamp(1.35rem, 2.8vw, 1.65rem);
+      font-weight: 700;
+      color: var(--ps-hml-navy);
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .ps-home-ml-copy p {
+      margin: 0 0 1.15rem;
+      font-size: 1.02rem;
+      line-height: 1.65;
+      color: var(--ps-hml-muted);
+    }
+    .ps-home-ml-copy p strong { color: #0f172a; font-weight: 600; }
+
+    .ps-home-ml-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--ps-hml-accent);
+      text-decoration: none;
+      margin-top: 0.15rem;
+    }
+    .ps-home-ml-cta:hover { text-decoration: underline; color: #1d4ed8; }
+    .ps-home-ml-cta span { font-size: 1.15em; line-height: 1; }
+  </style>
+
+  <div class="ps-home-ml-row">
+    <div class="ps-home-ml-visual" aria-hidden="true">
+      <div class="ps-home-ml-icon-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" focusable="false">
+          <defs>
+            <linearGradient id="psHmlGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#60a5fa"/>
+              <stop offset="100%" style="stop-color:#2563eb"/>
+            </linearGradient>
+          </defs>
+          <rect width="64" height="64" rx="14" fill="#0f172a"/>
+          <circle cx="32" cy="20" r="5" fill="url(#psHmlGrad)"/>
+          <circle cx="18" cy="40" r="5" fill="url(#psHmlGrad)"/>
+          <circle cx="46" cy="40" r="5" fill="url(#psHmlGrad)"/>
+          <circle cx="32" cy="52" r="4" fill="#94a3b8" opacity="0.9"/>
+          <path d="M32 25v10M27 36l-5-8M37 36l5-8M28 44h8" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+          <path d="M32 25L18 35M32 25L46 35M18 40l8 8M46 40l-8 8" stroke="url(#psHmlGrad)" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
+        </svg>
+      </div>
+    </div>
+    <div class="ps-home-ml-copy">
+      <h2>Machine Learning</h2>
+      <p>
+        Our <strong>Mapping Engine</strong> uses machine learning to discover, normalize, and route data between your applications.
+        Ship cross-app workflows (like <strong>Dolibarr → Odoo</strong> customer sync) from configuration—<strong>no code deploys</strong> for each mapping change.
+      </p>
+      <a class="ps-home-ml-cta" href="https://polysaas.online/machine-learning/">
+        Learn more <span aria-hidden="true">→</span>
+      </a>
+    </div>
+  </div>
+</div>

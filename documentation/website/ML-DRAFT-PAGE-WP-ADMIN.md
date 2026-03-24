@@ -21,24 +21,23 @@ You can paste content from the repo doc `documentation/product/ML-PLATFORM-CONCE
 
 ---
 
-## Option B — Create the same draft via REST API (run once from laptop/CI)
+## Option B — Push HTML from the repo (create or update) — preferred
 
-Use when you prefer automation. Requires a **WordPress Application Password** (Users → Profile → Application Passwords).
+**Source of truth:** `documentation/website/machine-learning-page-content.html`. After `git pull`, run one command so you are not pasting into wp-admin every time.
 
-1. In wp-admin, create an application password (e.g. label `polyml-draft-script`). Copy the generated password.
-2. From the **PolySaaS repo root** (venv active), set env vars **only for this shell** (never commit real values):
+Requires a **WordPress Application Password** (Users → Profile → Application Passwords).
+
+1. Copy **`documentation/website/.env.wordpress.example`** to **repo root** as **`.env.wordpress`** (gitignored). Fill `WP_BASE_URL`, `WP_USER`, `WP_APP_PASSWORD`. Never commit that file.
+2. From **repo root** (venv with `requests` installed):
 
 ```powershell
-$env:WP_BASE_URL = "https://polysaas.online"
-$env:WP_USER = "your-wp-username"
-$env:WP_APP_PASSWORD = "xxxx xxxx xxxx xxxx xxxx xxxx"   # paste; script strips spaces
-python scripts/wp_create_ml_draft_page.py
+python scripts/wp_sync_ml_page.py
 ```
 
-3. Open **wp-admin → Pages → Drafts** and edit **Machine Learning**.
+- **No page yet:** creates slug **`machine-learning`** (default status **draft**; override with `WP_PAGE_STATUS` in `.env.wordpress`).
+- **Page exists:** **updates title + body** from the HTML file. Existing **status** is kept unless you set **`WP_FORCE_STATUS`** (e.g. `publish`).
 
-Script path: **`scripts/wp_create_ml_draft_page.py`**.  
-If a page with slug **`machine-learning`** already exists, the script exits with a message (no overwrite).
+Optional: same env vars in the shell instead of `.env.wordpress`. Legacy alias: **`scripts/wp_create_ml_draft_page.py`** runs the same sync.
 
 **Renaming from an old slug:** If you had **`ml-platform-internal`**, edit the page in wp-admin → **Permalink → Edit** → set slug to **`machine-learning`**, then **Update** (WordPress usually redirects the old URL; add a redirect plugin rule if you had shared the old link).
 
@@ -57,8 +56,8 @@ If a page with slug **`machine-learning`** already exists, the script exits with
 **File:** **`documentation/website/machine-learning-page-content.html`**
 
 1. Open that file in the repo (or pull latest `main`).
-2. In wp-admin, edit your **Machine Learning** page.
-3. In **wp-admin → Pages →** your Machine Learning page: open the **block editor**, add a **Custom HTML** block (or use **Code editor** / classic **Text** tab). Paste **the entire file contents** (including the `<div class="ps-ml-wrap">` … `</div>` block).
+2. Prefer **Option B** (`wp_sync_ml_page.py`) so the live page tracks the repo file.
+3. **Manual paste (fallback):** In **wp-admin → Pages →** your Machine Learning page, open the **block editor**, add a **Custom HTML** block (or **Code editor** / classic **Text** tab). Paste **the entire file contents** (including the `<div class="ps-ml-wrap">` … `</div>` block).
 4. **Duplicate footer:** If this page already uses the **theme’s global footer template**, remove the `<footer class="ps-ml-footer">` … `</footer>` block from the paste so the site footer does not appear twice. If the page is a blank template with no footer, keep the footer block—it matches the link structure from **polysaas.online** (Applications, Features, Gallery, legal links).
 
 ---
@@ -68,7 +67,7 @@ If a page with slug **`machine-learning`** already exists, the script exits with
 Use this for **Machine Learning** and any similar page: draft or published, in or out of menus.
 
 1. **Source of truth in git:** one HTML file under **`documentation/website/`** per page (e.g. `machine-learning-page-content.html`). Scoped wrapper class (here: `ps-ml-wrap`) + embedded `<style>` keeps layout self-contained for a single **Custom HTML** block (or equivalent) in WordPress—**no Bricks or other page builder required.**
-2. **Recreate in wp-admin:** replace the page body by pasting the latest file from `main` (pull first). Replace the whole HTML block content when you refresh from the repo.
+2. **Deploy to WordPress:** run **`python scripts/wp_sync_ml_page.py`** after pull (see Option B), or manually paste the latest file from `main` into a **Custom HTML** block.
 3. **Footer:** Prefer the **theme’s global footer** when the page template includes it—then **delete** the `<footer class="ps-ml-footer">` block from the paste. If the template is blank (no footer), **keep** the pasted footer so the page still matches **polysaas.online** link columns and legal links.
 4. **New pages:** copy `machine-learning-page-content.html`, rename (e.g. `feature-xyz-page-content.html`), replace the main content inside `.ps-ml-wrap`, **reuse the same footer block** unless the theme supplies the footer.
 
@@ -78,3 +77,4 @@ Use this for **Machine Learning** and any similar page: draft or published, in o
 
 - Full technical draft (models, API paths): **`documentation/product/ML-PLATFORM-CONCEPT-AND-TABLES.md`**
 - Marketing-ready layout + footer HTML: **`documentation/website/machine-learning-page-content.html`**
+- **Site-wide:** Add ML to top nav / footer / home: **`documentation/website/WORDPRESS-ML-NAV-HOME.md`** and home teaser HTML **`documentation/website/home-ml-teaser-block.html`**
