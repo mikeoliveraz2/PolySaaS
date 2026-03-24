@@ -89,10 +89,12 @@ def set_tenant_in_session(sender, user, request, **kwargs):
                 request.session['tenant_logo_url'] = tenant.logo.url
             print(f"set_tenant_in_session: Set session for user {user.username} with tenant {tenant.name} (ID: {tenant.id})")
         else:
-            print(f"set_tenant_in_session: No tenant found for user {user.username}, using public schema")
+            print(
+                f"set_tenant_in_session: No UserProfile/tenant for user {user.username}; "
+                f"session left without tenant_id (assign a tenant or create a Tenant row)"
+            )
     except Exception as e:
         print(f"set_tenant_in_session: Error setting tenant session for user {user.username}: {e}")
-        # Continue without setting tenant - will default to public schema
 
 # --- Theme persistence: UserProfile signals ---
 from django.db.models.signals import post_save
@@ -101,26 +103,32 @@ from dose.models import UserProfile
 
 @receiver(post_save, sender=User)
 def create_or_update_user_profile(sender, instance, created, **kwargs):
-    from dose.models import Tenant
+    """
+    Attach a UserProfile to a real tenant workspace. Never create slug/schema 'public'
+    (PostgreSQL public is the shared catalog, not a tenant).
+    """
+    from dose.tenant_utils import tenants_for_user_assignment
 
-    # Get or create default tenant
-    default_tenant, _ = Tenant.objects.get_or_create(
-        slug='public',
-        defaults={
-            'name': 'Public Tenant',
-            'description': 'Default tenant for all users',
-            'is_active': True
-        }
+    if UserProfile.objects.filter(user=instance).exists():
+        logger.info(
+            "create_or_update_user_profile: profile already exists for %s",
+            instance.username,
+        )
+        return
+
+    default_tenant = tenants_for_user_assignment().order_by("pk").first()
+    if not default_tenant:
+        logger.warning(
+            "create_or_update_user_profile: no assignable tenant in DB; "
+            "skipping UserProfile auto-create for %s (create a Tenant in admin first)",
+            instance.username,
+        )
+        return
+
+    UserProfile.objects.create(user=instance, tenant=default_tenant)
+    logger.info(
+        "create_or_update_user_profile: created UserProfile for %s -> tenant %s (%s)",
+        instance.username,
+        default_tenant.name,
+        default_tenant.schema_name,
     )
-
-    # Always use get_or_create to avoid duplicate key errors
-    # This handles both new users and existing users being edited
-    profile, created_profile = UserProfile.objects.get_or_create(
-        user=instance,
-        defaults={'tenant': default_tenant}
-    )
-
-    if created_profile:
-        print(f"create_or_update_user_profile: Created UserProfile for {instance.username} with tenant {default_tenant.name}")
-    else:
-        print(f"create_or_update_user_profile: UserProfile already exists for {instance.username}")
