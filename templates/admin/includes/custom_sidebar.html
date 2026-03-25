@@ -559,7 +559,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Find Recent Actions module (various possible selectors)
         const recentActions = document.querySelector('#recent-actions-module') ||
                             document.querySelector('[class*="recent"]') ||
-                            document.querySelector('.card:has(h3:contains("Recent"))') ||
                             Array.from(document.querySelectorAll('.card')).find(card => {
                                 const heading = card.querySelector('h3, .card-header');
                                 return heading && heading.textContent.toLowerCase().includes('recent');
