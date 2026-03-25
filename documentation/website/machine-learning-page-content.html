@@ -477,6 +477,23 @@
     </ul>
   </div>
 
+  <div class="ps-ml-engine-select" style="margin-top: 1.5rem;">
+    <h3 style="margin-bottom: 0.5rem;">ML Engine selector (preview)</h3>
+    <p class="ps-ml-lead" style="margin-bottom: 0.75rem;">
+      Pick an engine profile that PolySaaS can orchestrate for your tenant-scoped ML workflows.
+    </p>
+    <select id="ml-engine-select" class="regular-text" style="width:100%; max-width: 520px; padding: 10px; border-radius: 8px;">
+      <option value="">Select an ML Engine</option>
+      <option value="mlflow">MLflow (Experiment Tracking &amp; Registry)</option>
+      <option value="clearml">ClearML (Experiment &amp; Data Management)</option>
+      <option value="zenml">ZenML (Production Pipelines)</option>
+      <option value="bentoml">BentoML (Model Serving APIs)</option>
+      <option value="metaflow">Metaflow (Workflow Orchestration)</option>
+      <option value="huggingface">Hugging Face Transformers (LLM/NLP)</option>
+      <option value="kedro">Kedro (Modular Pipelines)</option>
+    </select>
+  </div>
+
   <section class="ps-ml-shots" aria-label="Product screenshots">
     <h2>Product screenshots</h2>
     <p class="ps-ml-shots-lead">Captures from the live admin and tenant UI (PolySaaS / DOSE). Sources live in the repo under <code>documentation/website/assets/chat-uploads-for-wp/</code>; below they load from GitHub <code>main</code> for convenience. After upload to WordPress Media Library, swap each <code>src</code> to your <code>wp-content/uploads/…</code> URL if needed.</p>
