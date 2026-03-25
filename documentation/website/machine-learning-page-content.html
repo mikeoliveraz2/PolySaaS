@@ -5,7 +5,7 @@
   to avoid a duplicate footer.
 
   Hero: dark banner band (.ps-ml-hero-banner) centers ml-icon.svg + grid pattern; title and body copy live in .ps-ml-hero-intro below. Assets: documentation/website/assets/ml-icon.svg (keep SVG in sync).
-  Screenshots: section .ps-ml-shots uses raw.githubusercontent.com/.../chat-uploads-for-wp/ (same files as repo). If images 404 (private repo), upload PNGs to Media Library and replace each img src with the wp-content/uploads URL.
+  Screenshots: img src uses raw.githubusercontent.com/.../chat-uploads-for-wp/ in repo; running scripts/wp_sync_ml_page.py uploads each PNG to WordPress Media and rewrites src to source_url (see .wp-ml-screenshots.json cache). Manual Media Library upload is optional.
   Optional photo overlay on .ps-ml-wrap: style="--ps-ml-banner-image: url(https://polysaas.online/wp-content/uploads/.../banner.jpg);"
   Theme: scoped rules use body.page-slug-machine-learning and body.page-id-2708 (update id if the WP page is recreated).
 -->
