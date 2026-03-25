@@ -158,6 +158,29 @@ class TaskAdmin(TenantAwareModelAdmin):
     readonly_fields = ('created_at', 'completed_at')
 
 class MLEngineAdmin(admin.ModelAdmin):
+    class MLEngineForm(forms.ModelForm):
+        ENGINE_CHOICES = [
+            ("MLflow", "MLflow (Experiment Tracking & Registry)"),
+            ("ClearML", "ClearML (Experiment & Data Management)"),
+            ("ZenML", "ZenML (Production Pipelines)"),
+            ("BentoML", "BentoML (Model Serving APIs)"),
+            ("Metaflow", "Metaflow (Workflow Orchestration)"),
+            ("Hugging Face Transformers", "Hugging Face Transformers (LLM/NLP)"),
+            ("Kedro", "Kedro (Modular Pipelines)"),
+        ]
+
+        engineName = forms.ChoiceField(
+            choices=ENGINE_CHOICES,
+            required=True,
+            label="Engine name",
+            help_text="Select one of the recommended ML engines for tenant configuration.",
+        )
+
+        class Meta:
+            model = MLEngine
+            fields = "__all__"
+
+    form = MLEngineForm
     fieldsets = [
         (None, {'fields': ['engineName', 'engineEndPoint', 'matchingEventKey', 'description']}),
     ]
