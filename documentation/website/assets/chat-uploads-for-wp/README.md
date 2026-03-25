@@ -1,6 +1,6 @@
 # Chat screenshots → WordPress Media Library
 
-These PNGs were **saved from Cursor chat** (PolySaaS workspace) and copied here so you can **upload them in wp-admin → Media** and use them on the **Machine Learning** page (or elsewhere). They are **not** referenced by `machine-learning-page-content.html` until you add URLs after upload.
+These PNGs were **saved from Cursor chat** (PolySaaS workspace) and copied here. The file **`machine-learning-page-content.html`** embeds a curated subset via **GitHub `raw.githubusercontent.com`…/main/…/chat-uploads-for-wp/** so the synced WP page can show images without Media upload (works if the GitHub repo is **public**). You can still **upload duplicates to wp-admin → Media** and replace `src` in the HTML with `wp-content/uploads/…` if you prefer hosting on WordPress or the repo is private.
 
 **Suggested filenames in WP:** use the descriptive alt text below when you upload (WordPress will still store under `uploads/YYYY/MM/`).
 

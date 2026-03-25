@@ -5,6 +5,7 @@
   to avoid a duplicate footer.
 
   Hero: dark banner band (.ps-ml-hero-banner) centers ml-icon.svg + grid pattern; title and body copy live in .ps-ml-hero-intro below. Assets: documentation/website/assets/ml-icon.svg (keep SVG in sync).
+  Screenshots: section .ps-ml-shots uses raw.githubusercontent.com/.../chat-uploads-for-wp/ (same files as repo). If images 404 (private repo), upload PNGs to Media Library and replace each img src with the wp-content/uploads URL.
   Optional photo overlay on .ps-ml-wrap: style="--ps-ml-banner-image: url(https://polysaas.online/wp-content/uploads/.../banner.jpg);"
   Theme: scoped rules use body.page-slug-machine-learning and body.page-id-2708 (update id if the WP page is recreated).
 -->
@@ -218,6 +219,48 @@
     .ps-ml-tech h2 { margin: 0 0 0.85rem; font-size: 1.12rem; color: var(--ps-ml-text); }
     .ps-ml-tech ul { margin: 0; padding-left: 1.25rem; font-size: 0.91rem; color: var(--ps-ml-muted); }
     .ps-ml-tech code { font-size: 0.85em; background: #fff; padding: 0.14em 0.38em; border-radius: 5px; border: 1px solid var(--ps-ml-line); }
+
+    .ps-ml-shots {
+      margin: 2.25rem 0;
+      padding: 1.45rem 1.35rem;
+      border: 1px solid var(--ps-ml-line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 4px 18px rgba(15,23,42,0.05);
+    }
+    .ps-ml-shots h2 { margin: 0 0 0.35rem; font-size: 1.12rem; color: var(--ps-ml-text); }
+    .ps-ml-shots > p.ps-ml-shots-lead {
+      margin: 0 0 1.25rem;
+      font-size: 0.9rem;
+      color: var(--ps-ml-muted);
+      line-height: 1.55;
+    }
+    .ps-ml-shots-grid {
+      display: grid;
+      gap: 1.35rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) {
+      .ps-ml-shots-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .ps-ml-shot {
+      margin: 0;
+    }
+    .ps-ml-shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      border: 1px solid var(--ps-ml-line);
+      background: #f8fafc;
+      box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+    }
+    .ps-ml-shot figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: var(--ps-ml-muted);
+    }
 
     .ps-ml-note {
       font-size: 0.89rem;
@@ -433,6 +476,38 @@
       <li>Related configuration: <code>parameters.Parameter</code> with <code>matchingKey</code> for ordered, keyed parameter sets.</li>
     </ul>
   </div>
+
+  <section class="ps-ml-shots" aria-label="Product screenshots">
+    <h2>Product screenshots</h2>
+    <p class="ps-ml-shots-lead">Captures from the live admin and tenant UI (PolySaaS / DOSE). Sources live in the repo under <code>documentation/website/assets/chat-uploads-for-wp/</code>; below they load from GitHub <code>main</code> for convenience. After upload to WordPress Media Library, swap each <code>src</code> to your <code>wp-content/uploads/…</code> URL if needed.</p>
+    <div class="ps-ml-shots-grid">
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-f43cf595-f88e-4f42-bea1-8d9b31bf2554.png" loading="lazy" decoding="async" alt="Django admin dashboard listing Dose Tenant Management models including ML prompts" />
+        <figcaption>Admin dashboard (Jazzmin): tenant-scoped models, including <strong>ML prompts</strong> alongside engines, taxonomies, and datasets.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-3edf34ed-89c1-4365-a433-33221e3b8ee8.png" loading="lazy" decoding="async" alt="Django admin change form for an ML dataset" />
+        <figcaption><strong>ML dataset</strong> — tenant, keys, JSON payload, and publish metadata in admin.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-a39e8eb9-3f3d-4504-a944-2e6d74b879c9.png" loading="lazy" decoding="async" alt="Django admin form for an ML engine" />
+        <figcaption><strong>ML engine</strong> — name, endpoint, optional <code>matchingEventKey</code>, description.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-e1694bf0-4d82-4db1-86b1-70432a867ab8.png" loading="lazy" decoding="async" alt="Django admin form for ML taxonomy" />
+        <figcaption><strong>ML taxonomy</strong> — same pattern: tenant, event key, structured <code>content_json</code>.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-6e8867dc-0741-4020-b5b6-bbbc8fe5a65a.png" loading="lazy" decoding="async" alt="Tenant user dashboard with PolySaaS branding" />
+        <figcaption>Tenant <strong>end-user</strong> view (example): workspace home and navigation context.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-b0c9b0d9-297f-434b-9c3e-0e030c594aec.png" loading="lazy" decoding="async" alt="Jazzmin admin with theme customizer sidebar" />
+        <figcaption>Admin chrome (earlier layout): theme / UI builder — streamlined in current builds; shown for context.</figcaption>
+      </figure>
+    </div>
+    <p class="ps-ml-shots-lead" style="margin-top:1.25rem;margin-bottom:0;">Additional captures (full set) are in the same repo folder; add more <code>&lt;figure&gt;</code> blocks here or link to a gallery page as you prefer.</p>
+  </section>
 
   <p class="ps-ml-note"><strong>Internal / draft:</strong> This page is for refining messaging before it appears in main navigation or the public feature list. Claims here should stay aligned with <code>documentation/product/ML-PLATFORM-CONCEPT-AND-TABLES.md</code> in the PolySaaS repository.</p>
 
