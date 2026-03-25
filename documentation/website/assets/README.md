@@ -6,3 +6,5 @@
 | `ml-banner-pattern.svg` | Optional texture; the HTML page uses a **CSS + data-URI** banner by default so no upload is required. |
 
 Raster icons/banners: generate or commission separately if you need PNG/JPEG for the block editor / Media Library; SVG scales cleanly for retina.
+
+**Chat screenshots (WP staging):** see subdirectory **`chat-uploads-for-wp/`** — PNGs from Cursor chat, ready to upload to **Media Library** when editing the ML page.

@@ -3,6 +3,22 @@
  * Loaded from theme-toggle.css via @import
  */
 
+/* Jazzmin wraps {% block content %} in .row; our admin-main-wrapper must not break Bootstrap columns */
+.app-content .container-fluid > .row:has(> .admin-main-wrapper) {
+  display: contents;
+}
+
+.admin-main-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.admin-content-grid > .content-wrapper {
+  min-width: 0;
+  width: 100%;
+}
+
 /* --- Typography & main content --- */
 .app-main .app-content-header h3 {
   font-weight: 600;

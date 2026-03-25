@@ -294,18 +294,20 @@
 
     /* Content wrapper - no left margin, handled by grid */
     .content-wrapper,
-    .main-footer {
+    .main-footer,
+    .app-footer {
         margin-left: 0 !important;
         transition: none;
     }
 
     /* Menu bar spans full width above grid */
-    .main-header {
+    .main-header,
+    .app-header {
         margin-left: 0 !important;
         width: 100% !important;
     }
 
-    /* Hide Jazzmin's default sidebar completely */
+    /* Legacy AdminLTE2 sidebar (unused under Jazzmin 3) */
     .main-sidebar {
         display: none !important;
     }
@@ -500,7 +502,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[ADMIN SIDEBAR] DOMContentLoaded - setting up grid');
     const grid = document.querySelector('.admin-content-grid');
     const contentWrapper = document.querySelector('.content-wrapper');
-    const mainFooter = document.querySelector('.main-footer');
+    const mainFooter = document.querySelector('.app-footer, .main-footer');
 
     console.log('[ADMIN SIDEBAR] Grid found:', !!grid);
     console.log('[ADMIN SIDEBAR] Content wrapper found:', !!contentWrapper);

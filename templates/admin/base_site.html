@@ -35,7 +35,7 @@
   {{ block.super }}
 
   <style>
-    /* Jazzmin 3: custom grid sidebar — hide default app-sidebar slot (we replace {% block sidebar %}) */
+    /* Jazzmin 3: optional empty app-sidebar hide (custom nav uses separate grid column) */
     .app-sidebar#jazzy-sidebar:empty { display: none !important; }
 
     html, body { overflow-x: hidden; }
@@ -353,7 +353,13 @@
 <div class="admin-main-wrapper">
     {% include "admin/includes/custom_sidebar.html" %}
     <div class="content-wrapper">
+        {% if request.path == '/admin' or request.path == '/admin/' %}
+        <div class="row g-3 w-100 mx-0 align-items-start">
+        {% endif %}
         {{ block.super }}
+        {% if request.path == '/admin' or request.path == '/admin/' %}
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endif %}
