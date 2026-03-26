@@ -1,40 +1,40 @@
-"""Check blog page status"""
-import requests, re, sys
+"""Check blog page and recent posts on polysaas.online."""
+import requests, sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-AZURE = "https://azure-nightingale-589250.hostingersite.com"
-s = requests.Session()
-s.auth = ("mikeoliveraz@gmail.com", "vlop MpGU Os2V xDSI C6T7 2fAN")
+BASE = "https://polysaas.online"
+AUTH = ("mikeoliveraz@gmail.com", "vlop MpGU Os2V xDSI C6T7 2fAN")
 
-# Check pages for blog
-r = s.get(f"{AZURE}/wp-json/wp/v2/pages", params={
-    "per_page": 100, "context": "edit", "_fields": "id,slug,title,content,status"
-})
-for p in r.json():
-    if 'blog' in p['slug'].lower():
-        title = p['title']['raw'] if isinstance(p['title'], dict) else p['title']
-        raw = p['content']['raw']
-        print(f"Page: {p['slug']} (id={p['id']}, status={p['status']})")
-        print(f"  Title: {title}")
-        print(f"  Content length: {len(raw)}")
-        text = re.sub(r'<[^>]+>', ' ', raw)
-        text = re.sub(r'\s+', ' ', text).strip()
-        print(f"  Text: {text[:300]}")
-        print()
-
-# Check posts
-r2 = s.get(f"{AZURE}/wp-json/wp/v2/posts", params={
-    "per_page": 100, "context": "edit", "_fields": "id,slug,title,status,date"
-})
-posts = r2.json()
-print(f"\nFound {len(posts)} blog posts:")
+# Get recent posts
+r = requests.get(BASE + "/wp-json/wp/v2/posts",
+                 params={"per_page": 10, "_fields": "id,title,status,date,link,slug"},
+                 auth=AUTH, timeout=30)
+posts = r.json()
+print(f"=== {len(posts)} posts found ===\n")
 for p in posts:
-    title = p['title']['raw'] if isinstance(p['title'], dict) else p['title']
-    print(f"  {p['slug']} - \"{title}\" (status={p['status']}, date={p['date']})")
+    print(f"  ID: {p['id']}, Status: {p['status']}, Date: {p['date']}")
+    print(f"  Title: {p['title']['rendered']}")
+    print(f"  Link: {p['link']}")
+    print()
 
-# Check what the Blog nav link points to
-r3 = s.get(f"{AZURE}/wp-json/wp/v2/menu-items", params={"menus": 18, "per_page": 50})
+# Check the blog page
+r2 = requests.get(BASE + "/wp-json/wp/v2/pages/1347",
+                  params={"context": "edit", "_fields": "content,title,status"},
+                  auth=AUTH, timeout=30)
+page = r2.json()
+print(f"=== Blog page (ID 1347) ===")
+print(f"Title: {page['title']['raw']}")
+print(f"Status: {page['status']}")
+content = page['content']['raw']
+print(f"Content length: {len(content)} chars")
+print(f"First 500 chars:\n{content[:500]}")
+
+# Check WordPress reading settings (what page is set as blog)
+r3 = requests.get(BASE + "/wp-json/wp/v2/settings",
+                  auth=AUTH, timeout=30)
 if r3.status_code == 200:
-    for item in r3.json():
-        if 'blog' in item.get('title', {}).get('rendered', '').lower():
-            print(f"\nNav menu item: {item['title']['rendered']} -> {item.get('url', 'no url')}")
+    settings = r3.json()
+    print(f"\n=== Site Settings ===")
+    print(f"show_on_front: {settings.get('show_on_front')}")
+    print(f"page_on_front: {settings.get('page_on_front')}")
+    print(f"page_for_posts: {settings.get('page_for_posts')}")
