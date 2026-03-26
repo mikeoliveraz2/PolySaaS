@@ -3,6 +3,7 @@
 
 {% block extrahead %}
   {{ block.super }}
+  <!-- DEBUG: base_site.html loaded at {% now "H:i:s" %} -->
 
   <style>
     /* CRITICAL FIX: Override ALL AdminLTE wrapper positioning */
@@ -10,11 +11,35 @@
       margin: 0 !important;
       padding: 0 !important;
       overflow-x: hidden !important;
+      min-height: 100vh !important;
+      display: block !important;
+      align-items: initial !important;
+      justify-content: initial !important;
     }
 
-    .wrapper {
+    .wrapper, .app-wrapper {
       margin: 0 !important;
       padding: 0 !important;
+      min-height: 100vh !important;
+      display: block !important;
+      position: relative !important;
+      align-items: initial !important;
+      justify-content: initial !important;
+    }
+
+    /* AdminLTE 4 specific - remove layout margins */
+    .layout-fixed .app-wrapper,
+    .layout-navbar-fixed .app-wrapper,
+    .layout-fixed .wrapper,
+    .layout-navbar-fixed .wrapper {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    /* Force app-main to start at top */
+    .app-main {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
     }
 
     .custom-passthrough-menu {
@@ -80,12 +105,43 @@
     }
 
     /* Content pushed right by 250px */
-    .content-wrapper {
+    .content-wrapper,
+    .app-content-wrapper {
       margin-left: 250px !important;
+      margin-top: 0 !important;
+      padding-top: 0 !important;
     }
 
-    .main-header {
+    .main-header,
+    .app-header {
       margin-left: 250px !important;
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+      position: fixed !important;
+      top: 0 !important;
+      right: 0 !important;
+      left: 250px !important;
+      z-index: 999 !important;
+    }
+
+    /* Push content below fixed header */
+    .content-wrapper,
+    .app-content-wrapper {
+      padding-top: 50px !important;
+      margin-top: 0 !important;
+    }
+
+    /* Dashboard content area - remove extra spacing */
+    .content,
+    .app-content,
+    #content {
+      padding-top: 10px !important;
+      margin-top: 0 !important;
+    }
+
+    .content-header {
+      padding: 5px 0 !important;
+      margin: 0 !important;
     }
 
     .main-footer {
