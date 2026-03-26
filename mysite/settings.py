@@ -86,7 +86,19 @@ JAZZMIN_SETTINGS = {
     "socialaccount.socialtoken": "fas fa-cookie",  # Social Tokens (Cookie)
     "socialaccount.socialapp": "fab fa-facebook",  # Social Applications (Facebook)
     "account.emailaddress": "fas fa-envelope",  # Email Addresses
+        # Machine Learning Studio icons
+        "ml_studio.mlengineproxy": "fas fa-brain",
+        "ml_studio.mltaxonomyproxy": "fas fa-project-diagram",
+        "ml_studio.mldatasetproxy": "fas fa-database",
+        "ml_studio.mlpromptproxy": "fas fa-robot",
     },
+    # Hide original ML models from Dose app - they now appear in Machine Learning Studio
+    "hide_models": [
+        "dose.mlengine",
+        "dose.mltaxonomy",
+        "dose.mldataset",
+        "dose.deepseekprompt",
+    ],
 }
 
 # --- STRIPE CONFIGURATION ---
@@ -151,6 +163,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',  # PATCHED: Enable Google OAuth2
     'rest_framework',
     'dose.apps.DoseConfig',
+    'ml_studio',  # Machine Learning Studio - grouped ML models
     'parameters.apps.ParametersConfig',
     'alerts.apps.AlertsConfig',
     'drf_yasg',
