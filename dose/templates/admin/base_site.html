@@ -75,12 +75,23 @@
       font-weight: bold !important;
     }
 
-    /* Hide hamburger menu button */
+    /* Hamburger menu button in navbar - HIDDEN (use sidebar's own toggle instead) */
     [data-widget="pushmenu"],
     [data-lte-toggle="sidebar"],
     .navbar .nav-link[data-widget="pushmenu"],
     .navbar .nav-link[data-lte-toggle="sidebar"] {
       display: none !important;
+    }
+
+    /* Navbar brand logo — constrain to header text height */
+    .navbar .brand-link .brand-image,
+    .navbar .brand-link img,
+    .app-header .brand-image,
+    .app-header .brand-link img {
+      height: 32px !important;
+      width: auto !important;
+      max-height: 32px !important;
+      vertical-align: middle !important;
     }
 
     /* Force body to start at 0 */
@@ -89,41 +100,43 @@
       padding-left: 0 !important;
     }
 
-    /* AdminLTE 4: Sidebar fixed at left - 250px */
+    /* AdminLTE 4: HIDE native .app-sidebar completely
+       The custom sidebar lives inside .app-main via custom_sidebar.html grid */
     aside.app-sidebar,
     .app-sidebar {
-      position: fixed !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 250px !important;
-      height: 100vh !important;
-      z-index: 1038 !important;
-      margin: 0 !important;
-      transform: translateX(0) !important;
+      display: none !important;
+      width: 0 !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
     }
 
-    /* AdminLTE 4: Main content area - positioned absolutely */
+    /* AdminLTE 4: Main content area - full width (no sidebar offset) */
     .app-main {
       position: absolute !important;
       top: 0 !important;
-      left: 260px !important;
+      left: 0 !important;
       right: 0 !important;
       margin: 0 !important;
       padding-top: 60px !important;
-      padding-left: 15px !important;
+      padding-left: 10px !important;
+      padding-right: 10px !important;
       min-height: 100vh !important;
     }
 
-    /* AdminLTE 4: Top navbar fixed */
+    /* AdminLTE 4: Top navbar fixed - full width */
     .app-header {
-      margin-left: 250px !important;
+      margin-left: 0 !important;
       margin-top: 0 !important;
       padding-top: 0 !important;
       position: fixed !important;
       top: 0 !important;
       right: 0 !important;
-      left: 250px !important;
+      left: 0 !important;
       z-index: 1037 !important;
+    }
+
+    .sidebar-overlay {
+      display: none !important;
     }
 
     /* Dashboard content area - minimal spacing */
@@ -144,7 +157,7 @@
 
     .app-footer,
     .main-footer {
-      margin-left: 250px !important;
+      margin-left: 0 !important;
     }
 
     /* Hide breadcrumbs */
@@ -199,37 +212,6 @@
       font-size: 13px;
     }
   </style>
-
-  <script>
-    // Prevent sidebar collapse on any clicks
-    document.addEventListener('DOMContentLoaded', function() {
-      // Remove sidebar-collapse class if it gets added
-      const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-          if (mutation.attributeName === 'class') {
-            if (document.body.classList.contains('sidebar-collapse')) {
-              document.body.classList.remove('sidebar-collapse');
-            }
-          }
-        });
-      });
-
-      observer.observe(document.body, {
-        attributes: true,
-        attributeFilter: ['class']
-      });
-
-      // Also prevent any pushmenu events
-      document.addEventListener('click', function(e) {
-        const target = e.target.closest('[data-widget="pushmenu"]');
-        if (target) {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }
-      }, true);
-    });
-  </script>
 
   <script>
     // Simple debug logging to confirm middleware is working
@@ -327,8 +309,8 @@
 {% endblock %}
 
 {% block sidebar %}
-  <!-- COMPLETELY REPLACE Jazzmin sidebar with custom PollySaaS sidebar -->
-  {% include "admin/includes/custom_sidebar.html" %}
+  {# Empty: AdminLTE .app-sidebar is hidden via CSS.
+     The custom sidebar renders inside the content block via custom_sidebar.html grid. #}
 {% endblock %}
 
 <!-- Font Controls Modal (triggered from topmenu) -->
@@ -540,24 +522,11 @@
   });
 </script>
 
-{% block content_wrapper %}
-  {{ block.super }}
-{% endblock %}
-
-{% block content %}
-{% if external_content %}
-<div class="admin-main-wrapper">
-    {% include "admin/includes/custom_sidebar.html" %}
-    <div class="content-wrapper">
-        {{ external_content|safe }}
-    </div>
-</div>
-{% else %}
+{% block page_content %}
 <div class="admin-main-wrapper">
     {% include "admin/includes/custom_sidebar.html" %}
     <div class="content-wrapper">
         {{ block.super }}
     </div>
 </div>
-{% endif %}
 {% endblock %}

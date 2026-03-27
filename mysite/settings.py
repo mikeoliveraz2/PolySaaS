@@ -20,7 +20,7 @@ JAZZMIN_SETTINGS = {
     "WELCOME_SIGN": "Welcome to DoseSaaS Admin",
     "copyright": "DoseSaaS 2025",
     "show_ui_builder": False,
-    "show_sidebar": True,
+    "show_sidebar": False,
     "navigation_expanded": False,
     "changeform_format": "horizontal_tabs",
     "index_template": "jazzmin/admin/index.html",
