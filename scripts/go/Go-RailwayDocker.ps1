@@ -1,3 +1,48 @@
+function Get-PolySaaSDockerDesktopExe {
+    $desktopPaths = @(
+        "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+        "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe",
+        "$env:LOCALAPPDATA\Docker\Docker Desktop.exe"
+    )
+
+    return $desktopPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+
+function Get-PolySaaSDockerCli {
+    $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
+    if ($dockerCmd) {
+        return $dockerCmd.Source
+    }
+
+    $dockerCliPaths = @(
+        "$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe",
+        "${env:ProgramFiles(x86)}\Docker\Docker\resources\bin\docker.exe",
+        "$env:LOCALAPPDATA\Docker\Docker\resources\bin\docker.exe"
+    )
+
+    return $dockerCliPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+
+function Add-PolySaaSDockerBinToPath {
+    param(
+        [string]$DockerCli
+    )
+
+    if (-not $DockerCli) {
+        return
+    }
+
+    $dockerBinDir = Split-Path -Parent $DockerCli
+    if (-not $dockerBinDir) {
+        return
+    }
+
+    $pathParts = @($env:PATH -split ';' | Where-Object { $_ })
+    if ($pathParts -notcontains $dockerBinDir) {
+        $env:PATH = $dockerBinDir + ';' + $env:PATH
+    }
+}
+
 function Invoke-RailwayDockerStack {
     param([string]$RootDir)
 
@@ -7,9 +52,57 @@ function Invoke-RailwayDockerStack {
         return
     }
 
+    $dockerDesktopExe = Get-PolySaaSDockerDesktopExe
+    $dockerCli = Get-PolySaaSDockerCli
+    if (-not $dockerCli) {
+        if (-not $dockerDesktopExe) {
+            Write-Host '  Docker Desktop not found - install it from https://www.docker.com/products/docker-desktop/' -ForegroundColor Red
+            return
+        }
+    }
+
+    Add-PolySaaSDockerBinToPath -DockerCli $dockerCli
+
+    # ── Ensure Docker Desktop is running ────────────────────────────────
+    $dockerRunning = $false
+    try {
+        & $dockerCli info 2>&1 | Out-Null
+        $dockerRunning = ($LASTEXITCODE -eq 0)
+    } catch { $dockerRunning = $false }
+
+    if (-not $dockerRunning) {
+        Write-Host '  Docker Desktop not running - starting it...' -ForegroundColor DarkYellow
+        if (-not $dockerDesktopExe) {
+            Write-Host '  Docker Desktop executable not found - install it from https://www.docker.com/products/docker-desktop/' -ForegroundColor Red
+            return
+        }
+        Start-Process $dockerDesktopExe
+        Write-Host '  Waiting for Docker engine (up to 60s)...' -ForegroundColor DarkGray
+        $ddDeadline = (Get-Date).AddSeconds(60)
+        while ((Get-Date) -lt $ddDeadline) {
+            Start-Sleep -Seconds 3
+            if (-not $dockerCli) {
+                $dockerCli = Get-PolySaaSDockerCli
+                Add-PolySaaSDockerBinToPath -DockerCli $dockerCli
+            }
+            try {
+                if (-not $dockerCli) {
+                    continue
+                }
+                & $dockerCli info 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { $dockerRunning = $true; break }
+            } catch {}
+        }
+        if (-not $dockerRunning) {
+            Write-Host '  Docker engine did not start in time - skipping stack' -ForegroundColor Red
+            return
+        }
+        Write-Host '  Docker Desktop ready' -ForegroundColor Green
+    }
+
     Write-Host '  docker compose up -d (railway-stack)...' -ForegroundColor Cyan
     Push-Location $RootDir
-    docker compose -f "docker-compose.railway-stack.yml" up -d 2>&1
+    & $dockerCli compose -f "docker-compose.railway-stack.yml" up -d 2>&1
     $upOk = ($LASTEXITCODE -eq 0)
     Pop-Location
 

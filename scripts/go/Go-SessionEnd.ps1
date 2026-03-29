@@ -24,12 +24,16 @@ function Invoke-GoSessionEnd {
             Write-Host $okMsg -ForegroundColor Green
             $status = git status --porcelain requirements.txt 2>&1
             if ($status) {
-                git add requirements.txt
-                $commitMsg = 'Update requirements.txt from pip freeze (post-runserver, ' + $freezeLines + ' packages)'
-                git commit -m $commitMsg
-                if ($LASTEXITCODE -eq 0) {
-                    git push origin main 2>&1
-                    Write-Host '  Committed and pushed requirements.txt' -ForegroundColor Green
+                if (Test-PolySaaSGitHasUnmergedFiles -RepoRoot $ScriptRoot) {
+                    Write-Host '  requirements.txt changed but auto-commit skipped because merge conflicts are unresolved' -ForegroundColor Yellow
+                } else {
+                    git add requirements.txt
+                    $commitMsg = 'Update requirements.txt from pip freeze (post-runserver, ' + $freezeLines + ' packages)'
+                    git commit -m $commitMsg
+                    if ($LASTEXITCODE -eq 0) {
+                        git push origin main 2>&1
+                        Write-Host '  Committed and pushed requirements.txt' -ForegroundColor Green
+                    }
                 }
             } else {
                 Write-Host '  No change to requirements.txt' -ForegroundColor DarkGray

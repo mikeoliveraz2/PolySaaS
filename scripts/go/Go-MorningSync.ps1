@@ -7,6 +7,16 @@ function Invoke-MorningSync {
     Write-Host ""
     Write-Host "── Morning Sync ──────────────────────────────────" -ForegroundColor Cyan
 
+    $unmergedPaths = Get-PolySaaSGitUnmergedPaths -RepoRoot $ScriptRoot
+    if ($unmergedPaths.Count -gt 0) {
+        Write-Host "  SKIPPED - unresolved merge conflicts present" -ForegroundColor Yellow
+        $unmergedPaths | ForEach-Object { Write-Host ('    U ' + $_) -ForegroundColor Yellow }
+        Write-Host "  Resolve and stage those files before running sync again" -ForegroundColor Yellow
+        Write-Host "──────────────────────────────────────────────────" -ForegroundColor Cyan
+        Write-Host ""
+        return
+    }
+
     Push-Location $ScriptRoot
 
     Write-Host "  Pulling latest from origin/main..." -ForegroundColor Cyan

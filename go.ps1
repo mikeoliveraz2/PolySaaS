@@ -19,14 +19,20 @@ $goDir = Join-Path $scriptDir "scripts\go"
 
 Write-Host ""
 Write-Host "── Pull ───────────────────────────────────────────────" -ForegroundColor Cyan
-Push-Location $scriptDir
-git pull origin main 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  Pull failed - resolve conflicts before continuing" -ForegroundColor Red
+$unmergedPaths = Get-PolySaaSGitUnmergedPaths -RepoRoot $scriptDir
+if ($unmergedPaths.Count -gt 0) {
+    Write-Host "  SKIPPED - unresolved merge conflicts present" -ForegroundColor Yellow
+    $unmergedPaths | ForEach-Object { Write-Host ('    U ' + $_) -ForegroundColor Yellow }
 } else {
-    Write-Host "  Pull complete" -ForegroundColor Green
+    Push-Location $scriptDir
+    git pull origin main 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Pull failed - resolve conflicts before continuing" -ForegroundColor Red
+    } else {
+        Write-Host "  Pull complete" -ForegroundColor Green
+    }
+    Pop-Location
 }
-Pop-Location
 Write-Host ""
 
 # ── Virtual Environment (required for app check) ───────────────────────
@@ -45,13 +51,7 @@ if ($env:POLYSAAS_SKIP_RAILWAY_DOCKER -eq '1') {
     Write-Host "  SKIPPED - POLYSAAS_SKIP_RAILWAY_DOCKER=1" -ForegroundColor DarkYellow
     Write-Host ""
 } else {
-    $dockerCli = Get-Command docker -ErrorAction SilentlyContinue
-    if (-not $dockerCli) {
-        Write-Host '  SKIPPED - docker not in PATH (install Docker Desktop)' -ForegroundColor DarkYellow
-        Write-Host ""
-    } else {
-        Invoke-RailwayDockerStack -RootDir $scriptDir
-    }
+    Invoke-RailwayDockerStack -RootDir $scriptDir
 }
 
 # ── App load check: only if this passes do we backup and commit/push ───
@@ -65,7 +65,11 @@ if ($checkOutput) {
 $appLoadOk = ($LASTEXITCODE -eq 0)
 Pop-Location
 if ($appLoadOk) {
-    Write-Host '  App loads OK - will commit/push now; backup runs when you exit runserver' -ForegroundColor Green
+    if (Test-PolySaaSGitHasUnmergedFiles -RepoRoot $scriptDir) {
+        Write-Host '  App loads OK - git sync skipped because merge conflicts are unresolved; backup runs when you exit runserver' -ForegroundColor Yellow
+    } else {
+        Write-Host '  App loads OK - will commit/push now; backup runs when you exit runserver' -ForegroundColor Green
+    }
 } else {
     Write-Host "  App failed to load - skipping commit/push and backup" -ForegroundColor Yellow
     Write-Host "  Fix errors above, run 'pip freeze > requirements.txt' when clean, then .\go again" -ForegroundColor Yellow
