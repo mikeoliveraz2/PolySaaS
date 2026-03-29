@@ -13,9 +13,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='tenantapp',
-            name='oauth_application',
-            field=models.OneToOneField(blank=True, help_text='The OAuth2 application registered in DOT for this tenant+app pair', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tenant_app', to=settings.OAUTH2_PROVIDER_APPLICATION_MODEL),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AddField(
+                    model_name='tenantapp',
+                    name='oauth_application',
+                    field=models.OneToOneField(blank=True, help_text='The OAuth2 application registered in DOT for this tenant+app pair', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tenant_app', to=settings.OAUTH2_PROVIDER_APPLICATION_MODEL),
+                ),
+            ],
         ),
     ]

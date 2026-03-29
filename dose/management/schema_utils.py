@@ -50,6 +50,52 @@ def set_search_path_for_migrations(schema_name: str) -> None:
         cursor.execute(f"SET search_path TO {schema_name}, pg_catalog;")
 
 
+def reset_sequences_in_current_schema() -> None:
+    """
+    Bring all serial/identity-backed sequences in the active schema up to the current
+    max(pk) values. This is required for older tenant schemas that were cloned with rows
+    but without advancing their sequences.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT current_schema()")
+        schema_name = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+                        SELECT tbl.relname, att.attname
+                        FROM pg_class seq
+                        JOIN pg_depend dep ON dep.objid = seq.oid AND dep.deptype IN ('a', 'i')
+                        JOIN pg_class tbl ON dep.refobjid = tbl.oid
+                        JOIN pg_namespace tbl_ns ON tbl.relnamespace = tbl_ns.oid
+                        JOIN pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = dep.refobjsubid
+                        WHERE seq.relkind = 'S'
+                            AND tbl_ns.nspname = current_schema()
+                        ORDER BY tbl.relname, att.attnum
+            """
+        )
+        serial_columns = cursor.fetchall()
+
+        for table_name, column_name in serial_columns:
+            qualified_table = f'"{schema_name}"."{table_name}"'
+            quoted_column = column_name.replace('"', '""')
+
+            cursor.execute(
+                "SELECT pg_get_serial_sequence(%s, %s)",
+                [f'{schema_name}.{table_name}', column_name],
+            )
+            seq_name = cursor.fetchone()[0]
+            if not seq_name:
+                continue
+
+            cursor.execute(f'SELECT COALESCE(MAX("{quoted_column}"), 0) FROM {qualified_table}')
+            max_value = cursor.fetchone()[0]
+
+            if max_value > 0:
+                cursor.execute("SELECT setval(%s, %s, true)", [seq_name, max_value])
+            else:
+                cursor.execute("SELECT setval(%s, %s, false)", [seq_name, 1])
+
+
 def create_tenant_schema_if_missing(schema_name: str) -> None:
     """
     Create an empty tenant schema only. Do NOT copy table DDL from public:

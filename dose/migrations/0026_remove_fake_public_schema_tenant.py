@@ -4,6 +4,13 @@ from django.db import migrations
 
 
 def remove_public_named_tenants(apps, schema_editor):
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("SELECT current_schema()")
+        current_schema = cursor.fetchone()[0]
+
+    if current_schema != "public":
+        return
+
     Tenant = apps.get_model("dose", "Tenant")
     UserProfile = apps.get_model("dose", "UserProfile")
     bad_ids = list(

@@ -1,7 +1,7 @@
 from django.core.management.commands.migrate import Command as DjangoMigrateCommand
 from django.db import connection
 from dose.models import Tenant
-from dose.management.schema_utils import set_search_path, set_search_path_for_migrations
+from dose.management.schema_utils import reset_sequences_in_current_schema, set_search_path, set_search_path_for_migrations
 
 
 class Command(DjangoMigrateCommand):
@@ -51,6 +51,7 @@ class Command(DjangoMigrateCommand):
             connection.close()
             set_search_path_for_migrations(schema)
             try:
+                reset_sequences_in_current_schema()
                 super().handle(*args, **options)
                 self.stdout.write(self.style.SUCCESS(f"  [OK] {schema} migrated"))
             except Exception as e:
