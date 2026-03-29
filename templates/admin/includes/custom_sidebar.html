@@ -1,11 +1,15 @@
 {% load static %}
 <!-- Custom PollySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <style>
+    /* Header height — must match AdminLTE fixed navbar */
+    :root { --pss-header-h: 57px; }
+
     /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
     .admin-content-grid {
         display: grid;
         grid-template-columns: 280px 1fr 320px;
         gap: 0;
+        margin-top: var(--pss-header-h);
         transition: grid-template-columns 0.3s ease;
     }
 
@@ -13,7 +17,7 @@
         grid-template-columns: 60px 1fr 320px;
     }
 
-    body.sidebar-collapse .admin-content-grid,
+    /* Use only our own class — do not rely on AdminLTE body classes */
     body.polysaas-collapsed .admin-content-grid {
         grid-template-columns: 60px 1fr 320px;
     }
@@ -52,9 +56,9 @@
         border-radius: 0;
         overflow: hidden;
         box-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
-        height: calc(100vh - 50px); /* Account for menu bar height */
+        height: calc(100vh - var(--pss-header-h));
         position: sticky;
-        top: 0;
+        top: var(--pss-header-h); /* stick just below the fixed header */
         transition: width 0.3s ease;
         display: flex;
         flex-direction: column;
@@ -572,6 +576,11 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             console.log('[ADMIN SIDEBAR] Moving content-wrapper into grid');
             grid.appendChild(contentWrapper);
+            // Hide the now-empty app-main so it doesn't block pointer events
+            const appMain = document.querySelector('.app-main');
+            if (appMain) {
+                appMain.style.cssText = 'display:none!important';
+            }
         }
     }
 
@@ -581,7 +590,7 @@ document.addEventListener('DOMContentLoaded', function() {
         rightSidebar = document.createElement('div');
         rightSidebar.id = 'recent-actions-sidebar';
         rightSidebar.style.position = 'sticky';
-        rightSidebar.style.top = '20px';
+        rightSidebar.style.top = 'var(--pss-header-h, 57px)';
         rightSidebar.style.height = 'fit-content';
         rightSidebar.style.padding = '0 15px';
         
@@ -622,11 +631,18 @@ document.addEventListener('DOMContentLoaded', function() {
         sidebar.style.display = 'flex';
         sidebar.style.visibility = 'visible';
         console.log('[ADMIN SIDEBAR] Sidebar display set to flex, visibility set to visible');
+
+        // Restore collapsed state from localStorage
+        if (localStorage.getItem('pss_sidebar_collapsed') === '1') {
+            sidebar.classList.add('collapsed');
+            document.body.classList.add('polysaas-collapsed');
+            if (grid) grid.classList.add('sidebar-collapse');
+            const toggle = document.getElementById('dose-nav-toggle');
+            if (toggle) toggle.style.transform = 'rotate(90deg)';
+        }
     } else {
         console.error('[ADMIN SIDEBAR] ERROR: dose-custom-sidebar not found!');
     }
-
-    // Sidebar starts EXPANDED to show all items (same as home sidebar)
 
     // Attach Font Controls button handler
     const sidebarFontControlsBtn = document.getElementById('sidebarFontControlsBtn');
@@ -843,24 +859,18 @@ document.addEventListener('DOMContentLoaded', function() {
 function toggleDoseSidebar() {
     const navContainer = document.getElementById('dose-custom-sidebar');
     const navToggle = document.getElementById('dose-nav-toggle');
-    const body = document.body;
     const grid = document.querySelector('.admin-content-grid');
-
-    // Toggle classes
-    body.classList.toggle('polysaas-collapsed');
-    body.classList.toggle('sidebar-collapse');
-    body.classList.remove('sidebar-open');
 
     navContainer.classList.toggle('collapsed');
     if (grid) {
         grid.classList.toggle('sidebar-collapse');
     }
 
+    const isCollapsed = navContainer.classList.contains('collapsed');
+    document.body.classList.toggle('polysaas-collapsed', isCollapsed);
+    localStorage.setItem('pss_sidebar_collapsed', isCollapsed ? '1' : '0');
+
     // Rotate hamburger icon
-    if (navContainer.classList.contains('collapsed')) {
-        navToggle.style.transform = 'rotate(90deg)';
-    } else {
-        navToggle.style.transform = 'rotate(0deg)';
-    }
+    navToggle.style.transform = isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 </script>
