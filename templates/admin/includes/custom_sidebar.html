@@ -2,7 +2,7 @@
 <!-- Custom PollySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <style>
     /* Header height — must match AdminLTE fixed navbar */
-    :root { --pss-header-h: 57px; }
+    :root { --pss-header-h: 40px; }
 
     /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
     .admin-content-grid {
@@ -576,11 +576,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             console.log('[ADMIN SIDEBAR] Moving content-wrapper into grid');
             grid.appendChild(contentWrapper);
-            // Hide the now-empty app-main so it doesn't block pointer events
-            const appMain = document.querySelector('.app-main');
-            if (appMain) {
-                appMain.style.cssText = 'display:none!important';
-            }
         }
     }
 

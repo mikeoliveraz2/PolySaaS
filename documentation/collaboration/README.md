@@ -4,7 +4,72 @@ Notes between **Laptop Cursor** and **Desktop Claude** for PolySaaS (canonical r
 
 ---
 
-## Two-machine sync (storage & workflow)
+## Handoff — Desktop → Laptop (2026-03-29)
+
+### Branch
+Working on **`commit-changes`** (39+ commits ahead of origin, not yet pushed to remote).
+
+### What was completed this session
+
+#### 1. Merge-conflict guard in launcher scripts
+Files: `go.ps1`, `scripts/go/Go-Env.ps1`, `scripts/go/Go-MorningSync.ps1`, `scripts/go/Go-SessionEnd.ps1`
+- Added `Get-PolySaaSGitUnmergedPaths` / `Test-PolySaaSGitHasUnmergedFiles` helpers
+- `go.ps1` skips `git pull` when unresolved conflicts exist; warns user
+- Morning sync and session-end auto-commit are also gated on clean conflict state
+
+#### 2. Docker PATH fix
+File: `scripts/go/Go-RailwayDocker.ps1`
+- Added `Add-PolySaaSDockerBinToPath` — prepends `C:\Program Files\Docker\Docker\resources\bin` to `$env:PATH` before any Docker call
+- Root cause: `docker-credential-desktop.exe` was not on system PATH in the launcher process
+- All 5 Railway stack containers confirmed healthy: Postgres 5433, RabbitMQ 5672/15672, Elasticsearch 9200, Grafana 3000, MonitorLogger 5080
+
+#### 3. Template merge conflict resolved
+File: `templates/admin/base_site.html`
+- Resolved conflict between AdminLTE vs Jazzmin 3 CSS — kept merged CSS from both sides
+- File was staged; now committed
+
+#### 4. Django migration cascade fixes (4 sub-problems)
+- **Dual-leaf graph** (`0025_add_mapping_and_instruction_mapping` + `0028_mlprompt`): resolved via `0029_merge_20260329_1635.py` (user ran `makemigrations --merge`)
+- **Duplicate `oauth_application_id` column**: `dose/migrations/0025_tenantapp_oauth_application.py` converted to `SeparateDatabaseAndState(database_operations=[])` — state-only, no DDL; duplicate `AddField` removed from `0025_add_mapping_and_instruction_mapping.py`
+- **`relation "dose_mqinput" does not exist` in tenant schema**: `dose/migrations/0026_remove_fake_public_schema_tenant.py` now reads `SELECT current_schema()` via `schema_editor.connection.cursor()` and returns early if not `public`
+- **`duplicate key violates auth_permission_pkey`**: `dose/management/schema_utils.py` — added `reset_sequences_in_current_schema()` using `pg_class`/`pg_depend` catalog join (works on copied tables where `column_default` is NULL); called in `dose/management/commands/migrate.py` before each tenant migrate
+- `migrate_all_schemas` runs clean: both `public` and `olient` schemas show `[OK]`
+
+#### 5. Admin dashboard layout fixes
+Files: `templates/admin/base_site.html`, `templates/admin/includes/custom_sidebar.html`
+- **White-out fix**: `.app-main` set to `display: contents` — eliminates the white covering box before JS runs
+- **Header gap**: `--pss-header-h: 40px` CSS variable controls grid `margin-top` and sidebar sticky `top` — value matches AdminLTE 4 rendered navbar height; tunable
+- **Content top padding**: `.content-wrapper` gets `padding-top: 20px`
+- **Hamburger toggle**: removed `body.sidebar-collapse` / `body.sidebar-open` (were triggering AdminLTE's own sidebar JS causing conflicts); toggle now uses only `polysaas-collapsed` on body + `sidebar-collapse` on the grid element; state persisted to `localStorage('pss_sidebar_collapsed')`; collapsed state restored on every page load
+
+### What still needs doing
+
+- **Push to remote**: `git push origin commit-changes` — 39+ commits not yet pushed
+- **PR / merge to `main`**: review and merge `commit-changes` into `main`
+- **Tune `--pss-header-h`**: if sidebar top or grid still looks off, adjust this variable in `custom_sidebar.html` line ~5 (currently `40px`)
+- **Verify `MLPrompt` model**: `0028_mlprompt` was applied to `olient` — confirm the `MLPrompt` admin section appears and the API viewset is accessible
+- **Test `.\go` full startup**: confirm no migration warnings at startup and Docker stack comes up cleanly every time
+
+### Key file map
+| File | What changed |
+|---|---|
+| `go.ps1` | conflict guard before git pull |
+| `scripts/go/Go-Env.ps1` | git conflict helper functions |
+| `scripts/go/Go-MorningSync.ps1` | skip sync on conflicts |
+| `scripts/go/Go-SessionEnd.ps1` | skip auto-commit on conflicts |
+| `scripts/go/Go-RailwayDocker.ps1` | Docker PATH fix |
+| `templates/admin/base_site.html` | merge resolution + layout CSS |
+| `templates/admin/includes/custom_sidebar.html` | grid layout, toggle, localStorage, header var |
+| `dose/migrations/0025_tenantapp_oauth_application.py` | state-only migration |
+| `dose/migrations/0025_add_mapping_and_instruction_mapping.py` | removed duplicate AddField |
+| `dose/migrations/0026_remove_fake_public_schema_tenant.py` | public-schema-only guard |
+| `dose/migrations/0029_merge_20260329_1635.py` | new merge migration |
+| `dose/management/schema_utils.py` | `reset_sequences_in_current_schema()` |
+| `dose/management/commands/migrate.py` | calls sequence reset before tenant migrate |
+
+---
+
+
 
 **Storage (as of 2026-02):**
 

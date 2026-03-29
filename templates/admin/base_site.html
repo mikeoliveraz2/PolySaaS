@@ -103,16 +103,7 @@
     }
 
     .app-main {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      margin: 0 !important;
-      padding-top: 60px !important;
-      padding-left: 10px !important;
-      padding-right: 10px !important;
-      min-height: 100vh !important;
-      pointer-events: none !important; /* grid layout owns the content; app-main is a temp shell */
+      display: contents !important; /* no box — kills the white overlay; children flow into grid normally */
     }
 
     .app-header {
@@ -136,10 +127,14 @@
       margin: 0 !important;
     }
 
+    .content-wrapper {
+      padding-top: 20px !important;
+    }
+
     .app-content,
     .content,
     #content {
-      padding-top: 5px !important;
+      padding-top: 0 !important;
       margin-top: 0 !important;
     }
 
