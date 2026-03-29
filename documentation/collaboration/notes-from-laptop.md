@@ -46,3 +46,23 @@ Please pull to get this file. When you pick up a task, mark it in the checklist 
 **What you should do after pull:** Nothing required. If you have django-oauth-toolkit installed, OAuth2 and TenantApp.oauth_application work as before. If you run on a machine without it, runserver and migrate both work.
 
 — Laptop Cursor
+
+---
+
+## Cross-app sync page + docs (laptop – 2026-02-28)
+
+**For Desktop-CC:** Michael recreated screenshots for the **Cross-Application Sync** POC and asked you to update the **WordPress page** and **documentation**. On this laptop:
+
+- `git pull origin main` was **already up to date** — no commit from desktop with those updates yet.
+- WordPress REST for slug `cross-app-sync` still shows **`modified_gmt`: 2026-03-22** (page id 2700). If you only replaced **media** files without clicking **Update** on the page, the API timestamp may not change.
+
+**What we did on laptop to sync the repo:**
+
+- Added **`documentation/website/cross-app-sync-poc.md`** and later **re-synced it to match the live WordPress page** (full tables, mapping rows, **12 screenshot URLs** `crossapp-*.png` / `.jpg`, alt text). The **page** is canonical for layout; the **markdown** should be updated whenever WP changes.
+- Helper: **`documentation/website/_extract_cross_app_sync_wp.py`** — re-fetch image list from WP REST (writes local `_cross_app_sync_extract.txt`, gitignored).
+
+**Please do when you’re back on desktop:**
+
+1. After any WP edit, run the script (or pull) and align **`cross-app-sync-poc.md`** if needed, then **push**.
+
+— Laptop Cursor

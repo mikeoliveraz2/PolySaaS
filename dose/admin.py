@@ -82,7 +82,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, PassThroughEndpoint, DoseMessage, UserProfile, PolySnifferRun, Subscription
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, PolySnifferRun, Subscription
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -158,6 +158,29 @@ class TaskAdmin(TenantAwareModelAdmin):
     readonly_fields = ('created_at', 'completed_at')
 
 class MLEngineAdmin(admin.ModelAdmin):
+    class MLEngineForm(forms.ModelForm):
+        ENGINE_CHOICES = [
+            ("MLflow", "MLflow (Experiment Tracking & Registry)"),
+            ("ClearML", "ClearML (Experiment & Data Management)"),
+            ("ZenML", "ZenML (Production Pipelines)"),
+            ("BentoML", "BentoML (Model Serving APIs)"),
+            ("Metaflow", "Metaflow (Workflow Orchestration)"),
+            ("Hugging Face Transformers", "Hugging Face Transformers (LLM/NLP)"),
+            ("Kedro", "Kedro (Modular Pipelines)"),
+        ]
+
+        engineName = forms.ChoiceField(
+            choices=ENGINE_CHOICES,
+            required=True,
+            label="Engine name",
+            help_text="Select one of the recommended ML engines for tenant configuration.",
+        )
+
+        class Meta:
+            model = MLEngine
+            fields = "__all__"
+
+    form = MLEngineForm
     fieldsets = [
         (None, {'fields': ['engineName', 'engineEndPoint', 'matchingEventKey', 'description']}),
     ]
@@ -165,6 +188,25 @@ class MLEngineAdmin(admin.ModelAdmin):
     list_display = ('engineName', 'matchingEventKey', 'description')
     list_filter = ['engineName']
     search_fields = ['engineName']
+
+
+class MLPromptAdmin(TenantAwareModelAdmin):
+    fieldsets = [
+        (
+            None,
+            {
+                'fields': ['tenant', 'key', 'description'],
+                'description': (
+                    'Named prompts for this tenant. Use the same key string in matchingEventKey '
+                    'on engines, taxonomies, or datasets when you want to align them.'
+                ),
+            },
+        ),
+        ('Prompt text', {'fields': ['prompt_text']}),
+    ]
+    list_display = ('key', 'description', 'tenant')
+    list_filter = ('tenant',)
+    search_fields = ('key', 'description', 'prompt_text')
 
 class InstructionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
@@ -478,6 +520,7 @@ admin.site.register(Task, TaskAdmin)
 admin.site.register(Instruction, InstructionAdmin)
 admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
+admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)
 admin.site.register(DoseMessage, DoseMessageAdmin)
 admin.site.register(PolySnifferRun, PolySnifferRunAdmin)
@@ -587,31 +630,10 @@ if NEW_MODELS_AVAILABLE:
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            # If editing/creating a superuser, restrict tenant to public only
-            user = getattr(self.instance, 'user', None)
-            public_tenant = Tenant.objects.filter(schema_name='public').first()
-            # Fix indentation: declare is_superuser at correct scope
-            is_superuser = False
-            # Check if editing existing UserProfile
-            if user and hasattr(user, 'is_superuser'):
-                is_superuser = user.is_superuser
-            # Check if creating new UserProfile
-            elif 'user' in self.initial:
-                try:
-                    initial_user = User.objects.get(pk=self.initial['user'])
-                    is_superuser = initial_user.is_superuser
-                except User.DoesNotExist:
-                    pass
-            # Fallback: check if user_id in data
-            elif 'user' in self.data:
-                try:
-                    data_user = User.objects.get(pk=self.data['user'])
-                    is_superuser = data_user.is_superuser
-                except User.DoesNotExist:
-                    pass
-            # Allow all users (including superusers) to be assigned to any active tenant
-            # Special case: if user already has a tenant assignment, respect it
-            self.fields['tenant'].queryset = Tenant.objects.filter(is_active=True)
+            from dose.tenant_utils import tenants_for_user_assignment
+
+            # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
+            self.fields['tenant'].queryset = tenants_for_user_assignment()
             self.fields['tenant'].empty_label = "Select a tenant..."
             self.fields['tenant'].required = True
 
@@ -620,17 +642,10 @@ if NEW_MODELS_AVAILABLE:
                 # Don't override existing tenant assignment
                 pass
             elif not self.instance.pk:
-                # For new UserProfiles, default to first active tenant
-                active_tenants = Tenant.objects.filter(is_active=True)
-                if active_tenants.exists():
-                    self.fields['tenant'].initial = active_tenants.first()
-
-            # Special handling for superusers created via management commands
-            # (but allow tenant-specific superusers from subscription process)
-            if is_superuser and public_tenant and user and user.username in ['admin', 'superuser']:
-                self.fields['tenant'].queryset = Tenant.objects.filter(pk=public_tenant.pk)
-                self.fields['tenant'].initial = public_tenant
-                self.fields['tenant'].empty_label = None
+                # For new UserProfiles, default to first assignable tenant
+                qs = tenants_for_user_assignment()
+                if qs.exists():
+                    self.fields['tenant'].initial = qs.first()
 
     # Removed signal that auto-creates UserProfile for superusers to prevent duplicate key errors
 

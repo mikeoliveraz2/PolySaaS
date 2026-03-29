@@ -1,0 +1,48 @@
+# PolySaaS Django (DOSE) — Railway / container deploy
+# Build: docker build -f Dockerfile.django -t polysaas-django .
+# Run:   docker run -e DJANGO_SECRET_KEY=... -e DATABASE_URL=... -p 8000:8000 polysaas-django
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DJANGO_SETTINGS_MODULE=mysite.settings_railway
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY manage.py test_decompression_view.py ./
+COPY mysite ./mysite
+COPY dose ./dose
+COPY parameters ./parameters
+COPY alerts ./alerts
+COPY static ./static
+COPY templates ./templates
+
+RUN mkdir -p /app/var/static_root /app/var/media_root \
+    && adduser --disabled-password --gecos '' --uid 1000 django \
+    && chown -R django:django /app/var
+
+COPY scripts/railway-entrypoint.sh /entrypoint.sh
+COPY scripts/railway-celery-worker.sh /celery-worker.sh
+COPY scripts/railway-celery-beat.sh /celery-beat.sh
+RUN chmod +x /entrypoint.sh /celery-worker.sh /celery-beat.sh
+
+USER django
+EXPOSE 8000
+
+# Railway sets PORT; local default 8000. Healthcheck uses same port.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD python -c "import os,urllib.request; p=os.environ.get('PORT','8000'); urllib.request.urlopen('http://127.0.0.1:%s/health/'%p, timeout=4)" || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 4 --timeout 120 mysite.wsgi:application"]

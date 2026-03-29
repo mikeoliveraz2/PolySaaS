@@ -21,7 +21,7 @@ def jazzmin_theme(request):
     jazzmin_dark_theme = ""
     theme = "flatly"
     if request.user.is_authenticated:
-        from dose.models import Tenant, UserProfile
+        from dose.models import UserProfile
         from dose.tenant_utils import get_current_tenant
 
         # Get the user's actual tenant, not hardcoded public
@@ -31,16 +31,12 @@ def jazzmin_theme(request):
         if not tenant:
             try:
                 existing_profile = getattr(request.user, 'userprofile', None)
-                if existing_profile:
-                    tenant = existing_profile.tenant
-                    # print(f"[CTXPROC] Fallback to tenant from user profile: {tenant}")
-                else:
-                    # Final fallback to public tenant
-                    tenant = Tenant.objects.filter(schema_name='public').first()
-                    # print(f"[CTXPROC] Final fallback to public tenant: {tenant}")
-            except Exception as e:
-                # print(f"[CTXPROC] Error getting tenant from user profile: {e}")
-                tenant = Tenant.objects.filter(schema_name='public').first()
+                if existing_profile and existing_profile.tenant:
+                    t = existing_profile.tenant
+                    if t.schema_name and t.schema_name.lower() != "public":
+                        tenant = t
+            except Exception:
+                tenant = None
 
         if tenant:
             try:
@@ -87,14 +83,24 @@ def jazzmin_ui_tweaks(request):
     if not request.user.is_authenticated:
         return context
 
-    from dose.models import Tenant, UserProfile
-    public_tenant = Tenant.objects.filter(schema_name='public').first()
+    from dose.models import UserProfile
+    from dose.tenant_utils import get_current_tenant
+
     profile = None
-    if request.user.is_authenticated and public_tenant:
-        try:
-            profile = UserProfile.objects.get(user=request.user, tenant=public_tenant)
-        except UserProfile.DoesNotExist:
-            return context
+    if request.user.is_authenticated:
+        tenant = get_current_tenant(request)
+        if not tenant:
+            try:
+                up = getattr(request.user, "userprofile", None)
+                if up and up.tenant and (up.tenant.schema_name or "").lower() != "public":
+                    tenant = up.tenant
+            except Exception:
+                tenant = None
+        if tenant:
+            try:
+                profile = UserProfile.objects.get(user=request.user, tenant=tenant)
+            except UserProfile.DoesNotExist:
+                return context
     if not profile:
         return context
 
@@ -322,12 +328,10 @@ def admin_navigation(request):
             # All PassThroughEndpoint records go to passthrough_services
             passthrough_services.append(service_data)
 
-        # User Navigation Panels (tenant-based, not user-based)
-        # Query NavigationPanel - use same approach as landing_page but schema-aware
+        # User Navigation Panels — current tenant schema only (no cross-tenant or public-schema menus)
         navigation_panels = []
         from django.db import connection
 
-        # Collect panels from all schemas (like landing_page but across all tenants)
         all_panels = []
         seen_panel_ids = set()
 
@@ -360,33 +364,6 @@ def admin_navigation(request):
                     seen_panel_ids.add(panel.id)
             print(f"[ADMIN_NAV] Found {len(panels)} panels in current tenant schema {tenant.schema_name}")
 
-        # Try public schema
-        public_tenant = Tenant.objects.filter(schema_name='public').first()
-        if public_tenant:
-            panels = query_panels_from_schema('public', public_tenant)
-            for panel in panels:
-                if panel.id not in seen_panel_ids:
-                    all_panels.append(panel)
-                    seen_panel_ids.add(panel.id)
-            print(f"[ADMIN_NAV] Found {len(panels)} panels in public schema")
-
-        # Try all other tenant schemas (including "olient")
-        try:
-            all_tenants = Tenant.objects.all()
-            for tenant_obj in all_tenants:
-                if tenant_obj.schema_name and tenant_obj.schema_name != 'public' and tenant_obj != tenant:
-                    panels = query_panels_from_schema(tenant_obj.schema_name, tenant_obj)
-                    for panel in panels:
-                        if panel.id not in seen_panel_ids:
-                            all_panels.append(panel)
-                            seen_panel_ids.add(panel.id)
-                    if panels:
-                        print(f"[ADMIN_NAV] Found {len(panels)} panels in tenant schema {tenant_obj.schema_name} ({tenant_obj.name})")
-        except Exception as e:
-            print(f"[ADMIN_NAV] Error querying all tenant schemas for NavigationPanel: {e}")
-            import traceback
-            print(traceback.format_exc())
-
         print(f"[ADMIN_NAV] Total panels found: {len(all_panels)}")
 
         # Process panels - use same approach as landing_page
@@ -395,7 +372,9 @@ def admin_navigation(request):
         for panel in all_panels:
             # Store panel attributes before any schema operations
             panel_tenant = panel.tenant if hasattr(panel, 'tenant') and panel.tenant else None
-            panel_schema = panel_tenant.schema_name if panel_tenant and panel_tenant.schema_name else 'public'
+            panel_schema = (
+                panel_tenant.schema_name if panel_tenant and panel_tenant.schema_name else ""
+            )
 
             panels_data.append({
                 'panel': panel,
@@ -533,33 +512,7 @@ def admin_navigation(request):
                 external_panel_schema = tenant.schema_name
                 print(f"[ADMIN_NAV] Found External Services panel in current tenant schema: {tenant.schema_name} (tenant: {tenant.name})")
 
-        # Try public schema (with tenant filter - panels might be in public schema but belong to current tenant)
-        if not external_panel and tenant:
-            external_panel = query_navigation_panels('public', filter_tenant=tenant)
-            if external_panel:
-                external_panel_schema = 'public'
-                print(f"[ADMIN_NAV] Found External Services panel in public schema (tenant: {tenant.name})")
-
-        # Try public schema without tenant filter (fallback)
-        if not external_panel:
-            external_panel = query_navigation_panels('public', filter_tenant=None)
-            if external_panel:
-                external_panel_schema = 'public'
-                print(f"[ADMIN_NAV] Found External Services panel in public schema (no tenant filter)")
-
-        # Try all other tenant schemas (with tenant filter)
-        if not external_panel and tenant:
-            try:
-                all_tenants = Tenant.objects.all()
-                for tenant_obj in all_tenants:
-                    if tenant_obj.schema_name and tenant_obj.schema_name != 'public' and tenant_obj != tenant:
-                        external_panel = query_navigation_panels(tenant_obj.schema_name, filter_tenant=tenant)
-                        if external_panel:
-                            external_panel_schema = tenant_obj.schema_name
-                            print(f"[ADMIN_NAV] Found External Services panel in other tenant schema: {tenant_obj.schema_name} (tenant: {tenant.name})")
-                            break
-            except Exception as e:
-                print(f"[ADMIN_NAV] Error querying all tenant schemas for NavigationPanel: {e}")
+        # Do not load navigation from public or from other tenants' schemas (strict workspace isolation).
 
         if external_panel and external_panel_schema:
             try:

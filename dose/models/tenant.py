@@ -1,5 +1,8 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+
 from dose.utils import create_schema_and_copy_tables
+
 
 class Tenant(models.Model):
     primary_color = models.CharField(
@@ -46,16 +49,22 @@ class Tenant(models.Model):
         help_text="When this tenant was created"
     )
     is_active = models.BooleanField(default=True)
-    
+
+    def clean(self):
+        super().clean()
+        from dose.management.schema_utils import tenant_schema_disallowed_reason
+
+        sn = (self.schema_name or "").strip()
+        if sn:
+            msg = tenant_schema_disallowed_reason(sn)
+            if msg:
+                raise ValidationError({"schema_name": msg})
+
     def save(self, *args, **kwargs):
+        # --- PATCHED: schema_name from slug; never use reserved PostgreSQL schema "public" as a tenant. ---
         if not self.schema_name and self.slug:
-            self.schema_name = self.slug.replace('-', '_').lower()
-# --- PATCHED: Annotated for schema/shortname logic ---
-# This file defines the Tenant model and schema_name logic for multi-tenant SaaS.
-# Key fields: tenant_name, tenant_shortname, schema_name
-# Ensure tenant_shortname is used for schema_name and slug.
-# Do NOT manipulate tenant_name for schema logic.
-# If you change schema logic, update context processors and templates accordingly.
+            self.schema_name = self.slug.replace("-", "_").lower()
+        self.full_clean()
         is_new = self.pk is None
         super().save(*args, **kwargs)
         if is_new and self.schema_name:

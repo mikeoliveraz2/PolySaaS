@@ -64,11 +64,13 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
                     logger.warning(f"[DEBUG] Could not set request.tenant from session tenant_id={tenant_id}: {e}")
             else:
                 logger.warning("[DEBUG] No tenant_id in session; request.tenant remains None.")
-        # Exclude public subscription page, DoseMessage, and i18n paths from passthrough and logging
+        # Exclude public subscription page, load-balancer health, DoseMessage, and i18n paths
         if (
-            request.path == '/subscribe/' or
-            'dosemessages' in request.path or
-            request.path.startswith('/jis18n')
+            request.path == '/subscribe/'
+            or request.path == '/health/'
+            or request.path == '/health/ready/'
+            or 'dosemessages' in request.path
+            or request.path.startswith('/jis18n')
         ):
             return self.get_response(request)
         # Optionally process the request before passing to view

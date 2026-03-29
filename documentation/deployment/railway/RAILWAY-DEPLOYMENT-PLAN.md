@@ -1,0 +1,207 @@
+# PolySaaS — Railway-first deployment (internal stack)
+
+**Goal:** Run **PostgreSQL**, **RabbitMQ**, **Elasticsearch**, **Grafana**, **MonitorLogger**, and the **PolySaaS core (DOSE)** **inside one Railway project** (all containerized / self-defined), with **Stripe** wired for `subscribe_view`, webhooks, and future OpenAPI-exposed payment flows.
+
+**Platform model:** **DOSE runs inside Django** — Django is the application server for PolySaaS, not a separate product or optional “sidecar.” There is **no** desired standalone Django deployment apart from this platform. **Dockerizing the stack** (e.g. **`Dockerfile.django`** on Railway) is for **ops and scaling** (same codebase, containerized web + workers); it does not mean a second, parallel Django app.
+
+**Status:** Railway path in repo (`Dockerfile.django`, `settings_railway.py`, health, Celery scripts). **Operator:** follow **§7 Railway deployment checklist** (incl. Stripe + OAuth2).
+
+---
+
+## 1. Repo reality check (important)
+
+| Item | What the repo has today |
+|------|-------------------------|
+| **App runtime** | **Django** hosts **DOSE** (PolySaaS core) — `manage.py`, `mysite/wsgi.py`, `DJANGO_SETTINGS_MODULE=mysite.settings` |
+| **Root `Dockerfile`** | Builds **`uvicorn polysaas.main:app`** from `src/` — **FastAPI stub**, **not** the Django app |
+| **Root `docker-compose.yml`** | Wires that FastAPI image + Postgres + Redis — **not** DOSE Django |
+| **Database** | `mysite/settings.py` → PostgreSQL `dosedbsaas` on `localhost:5433` + `DOSE_DB_PASSWORD` |
+| **Celery / broker** | `CELERY_BROKER_URL = amqp://guest:guest@localhost` — expects **RabbitMQ** on localhost |
+| **MQ in app** | `dose/mq/adapters/rabbitmq_adapter.py` — **pika**, host/port/user/pass from **MQConfig** (DB) |
+| **Stripe** | `STRIPE_*` in `settings.py`; `dose/subscription_views.py`, `dose/views/stripe_webhook.py` → `/dose/webhook/stripe/` |
+| **Elasticsearch / Grafana / MonitorLogger** | **No app integration** in code yet — infra-only for now |
+
+**Railway web service:** Build from **`Dockerfile.django`**; entrypoint runs Gunicorn + `mysite.wsgi:application` (see **`railway.toml`**). Local dev on Windows may use `manage.py runserver` / Waitress without Docker.
+
+---
+
+## 2. Target services (all “internal” to the project)
+
+Deploy each as its **own Railway service** (or one compose-based deployment if you use Railway’s Docker Compose path). Use **private networking** and **reference variables** so secrets never hit the repo.
+
+| # | Service | Image / build | Default ports | Role |
+|---|---------|---------------|---------------|------|
+| 1 | **PostgreSQL** | `postgres:16-alpine` (or 15) | 5432 | Django + Celery results (`django-db` backend) |
+| 2 | **RabbitMQ** | `rabbitmq:3-management-alpine` | 5672 (AMQP), 15672 (mgmt UI) | Celery broker + cross-app MQ (`pika`) |
+| 3 | **Elasticsearch** | `docker.elastic.co/elasticsearch/elasticsearch:8.11.0` | 9200, 9300 | Search / analytics (single-node for phase 1) |
+| 4 | **Grafana** | `grafana/grafana:10.4.3` | 3000 | Dashboards (add Prometheus/Loki/ES datasources later) |
+| 5 | **MonitorLogger** | `public.ecr.aws/zinclabs/openobserve:latest` (OpenObserve-based image; PolySaaS branding: **MonitorLogger**) | 5080 | Logs / traces / metrics ingestion |
+| 6 | **PolySaaS web (DOSE in Django)** | **`Dockerfile.django`** | 8000 (internal) → Railway HTTPS | Same platform; container = scaling/ops, not a separate “Django-only” product |
+
+**Memory:** ES + MonitorLogger + Grafana together are heavy. On Railway, set **explicit plan limits**; consider **phase 1** = Postgres + RabbitMQ + Django + **one** of {MonitorLogger, Grafana}, then add Elasticsearch when search is wired.
+
+---
+
+## 3. Boot / dependency order
+
+1. **PostgreSQL** (health: `pg_isready`)  
+2. **RabbitMQ** (health: `rabbitmq-diagnostics ping`)  
+3. **Elasticsearch** (health: `/_cluster/health` — optional until app uses it)  
+4. **MonitorLogger** / **Grafana** (parallel; no hard dependency for Django v1)  
+5. **PolySaaS web (DOSE in Django)** — `migrate`, `collectstatic` (if not using object storage), then **gunicorn**
+
+Celery worker / beat: **separate Railway services** (same image as web, different `command`), `depends_on` RabbitMQ + Postgres.
+
+---
+
+## 4. Environment variables (Django web / worker)
+
+Use Railway **variables**; mirror names in `.env.railway.example` (this folder).
+
+**Core**
+
+- `DJANGO_SETTINGS_MODULE` — e.g. `mysite.settings` until `settings_railway.py` exists  
+- `DJANGO_SECRET_KEY`  
+- `DEBUG=False`  
+- `ALLOWED_HOSTS` — your Railway domain + custom domain  
+
+**PostgreSQL**
+
+- Prefer a single `DATABASE_URL` and parse in settings, **or** mirror `settings_production.py` style:  
+  `DB_NAME`, `DB_USER`, `DOSE_DB_PASSWORD`, `DB_HOST`, `DB_PORT`
+
+**RabbitMQ / Celery**
+
+- `CELERY_BROKER_URL=amqp://USER:PASS@rabbitmq.railway.internal:5672//`  
+- Align **MQConfig** rows in Django admin with the same host/user/pass for `RabbitMQAdapter`.
+
+**Stripe**
+
+- `STRIPE_SECRET_KEY`  
+- `STRIPE_PUBLISHABLE_KEY`  
+- `STRIPE_WEBHOOK_SECRET`  
+- `STRIPE_PRICE_ID` / populate `STRIPE_PRICE_IDS` for tiers  
+- **Webhook URL (production):** `https://<your-domain>/dose/webhook/stripe/`  
+- Register endpoint in **Stripe Dashboard**; use signing secret above.
+
+**OAuth2 / OIDC (django-oauth-toolkit)**
+
+- **`OIDC_ISS_ENDPOINT`** — public issuer, e.g. `https://yourapp.up.railway.app/o` (applied in **`settings_railway.py`**)
+- **`OIDC_RSA_PRIVATE_KEY`** — optional PEM in env if not using **`oidc_rsa_key.pem`** file; see **`OAUTH2-RAILWAY.md`**
+- Full checklist: **§7 Railway deployment checklist** in this document
+
+**Stripe (secrets)**
+
+- Use **only** env vars (`STRIPE_SECRET_KEY`, etc.); see **`STRIPE-RAILWAY.md`**.
+
+**HTTPS / CSRF**
+
+- Set `CSRF_TRUSTED_ORIGINS=https://yourapp.up.railway.app,https://polysaas.online` (example).
+
+**Elasticsearch / observability (when integrated)**
+
+- `ELASTICSEARCH_URL=http://elasticsearch.railway.internal:9200`  
+- **MonitorLogger** (OTEL / ingest URLs per upstream image) — add when Django logging or APM is wired.
+
+---
+
+## 5. Stripe + OpenAPI / Swagger
+
+Today: **drf-yasg / swagger** at `/swagger/` (staff-gated per `urls.py` patterns).
+
+**Plan**
+
+1. Document **subscription** and **webhook** flows in OpenAPI descriptions (tags, summaries, `STRIPE_PUBLISHABLE_KEY` usage on client).  
+2. For “charges in Dynamic Orchestration” — define **atomic services** or **REST endpoints** that call Stripe with **server-side** secret only; never expose `STRIPE_SECRET_KEY` to browsers.  
+3. WordPress: **separate** Stripe keys or same Stripe account with **metadata** / **Connect** later — document in integration guide.
+
+---
+
+## 6. Local parity
+
+From repo root:
+
+```bash
+docker compose -f docker-compose.railway-stack.yml up -d
+```
+
+Brings up Postgres, RabbitMQ, Elasticsearch, Grafana, **MonitorLogger** for integration testing. **Does not** start a **web container** here — **DOSE still runs in Django**: use **`manage.py`** on the host against this stack, or deploy the **same** app via **`Dockerfile.django`** on Railway. This split is for local backing services only, not a second platform.
+
+### Windows morning startup (`.\go.ps1`)
+
+`go.ps1` runs **after git pull** and **before** `manage.py check`:
+
+1. **`docker compose -f docker-compose.railway-stack.yml up -d`**
+2. Waits (poll, up to ~95s) until Postgres **5433**, RabbitMQ **5672**, Elasticsearch **9200**, Grafana **3000**, MonitorLogger **5080** respond.
+3. Runs **`scripts/test-railway-stack.ps1`** for a printed pass/fail line per service.
+
+**Skip the stack** (e.g. no Docker): set environment variable **`POLYSAAS_SKIP_RAILWAY_DOCKER=1`** before `.\go`.
+
+Optional: copy **`documentation/deployment/railway/.env.railway.example`** to **`.env`** in the repo root so Compose picks up **`DOSE_DB_PASSWORD`**, RabbitMQ creds, Grafana, MonitorLogger admin (Docker Compose loads `.env` automatically).
+
+---
+
+## 7. Railway deployment checklist (operator)
+
+Use this on the Railway dashboard and after first deploy. Details: **`STRIPE-RAILWAY.md`**, **`OAUTH2-RAILWAY.md`**.
+
+### Core web + database
+
+- [ ] **Service** built from **`Dockerfile.django`**; **`DJANGO_SETTINGS_MODULE=mysite.settings_railway`**
+- [ ] **`DJANGO_SECRET_KEY`** set
+- [ ] **`DATABASE_URL`** (or `DB_*` + `DOSE_DB_PASSWORD`) points at Railway Postgres
+- [ ] **`ALLOWED_HOSTS`** includes public hostname(s)
+- [ ] **`CSRF_TRUSTED_ORIGINS`** = `https://<your-host>` (comma-separated if several)
+- [ ] **`CELERY_BROKER_URL`** set when using workers (RabbitMQ on Railway or internal hostname)
+- [ ] **Migrate** run at least once (`RUN_MIGRATIONS=1` on boot or release command) — includes **django-oauth-toolkit**, **django_celery_***, etc.
+- [ ] **`GET /health/`** returns 200; **`GET /health/ready/`** returns 200 when DB is up
+
+### Stripe (payments)
+
+- [ ] **`STRIPE_SECRET_KEY`**, **`STRIPE_PUBLISHABLE_KEY`**, **`STRIPE_WEBHOOK_SECRET`** set
+- [ ] Stripe **Webhook** endpoint → `https://<your-host>/dose/webhook/stripe/` (see **`STRIPE-RAILWAY.md`**)
+
+### OAuth2 / OIDC (PolySaaS as IdP — django-oauth-toolkit)
+
+- [ ] **`django-oauth-toolkit`** present in deployed image (**`requirements.txt`**)
+- [ ] **`OIDC_ISS_ENDPOINT`** = `https://<your-host>/o` (no trailing slash beyond `/o`; see **`OAUTH2-RAILWAY.md`**)
+- [ ] **Signing key:** **`oidc_rsa_key.pem`** on disk in container **or** **`OIDC_RSA_PRIVATE_KEY`** env (multiline PEM); never commit the private key
+- [ ] **Django admin:** OAuth2 **Applications** created for each client (Odoo, Nextcloud, Mattermost, etc.) with correct redirect URIs
+- [ ] **django-allauth (Google/GitHub):** IdP consoles updated with **Railway** callback URLs, e.g. `https://<your-host>/accounts/google/login/callback/`
+- [ ] **Smoke:** `/o/authorize/` (with valid client) or OIDC discovery as applicable
+
+### Celery (optional but recommended if you use async tasks)
+
+- [ ] **Worker** service: same image, **`/celery-worker.sh`** or `celery -A mysite worker …`
+- [ ] **Beat** service (optional): **`/celery-beat.sh`** or `celery -A mysite beat …`
+
+### Internal stack (optional separate services)
+
+- [ ] Postgres / RabbitMQ / Elasticsearch / Grafana / **MonitorLogger** per **`docker-compose.railway-stack.yml`** parity, or Railway plugins — as needed
+
+---
+
+## 8. Next implementation tasks (suggested order)
+
+1. ~~**Django Dockerfile**~~ — **`Dockerfile.django`** + **`scripts/railway-entrypoint.sh`** (`collectstatic` on boot; set `RUN_MIGRATIONS=1` to migrate). **`gunicorn`** in `requirements.txt`.  
+2. ~~**`mysite/settings_railway.py`**~~ — env-driven `DATABASE_URL` / discrete DB vars, `CELERY_BROKER_URL`, `ALLOWED_HOSTS`, **Whitenoise** static, DB sessions, stdout logging, proxy TLS headers. Set **`DJANGO_SETTINGS_MODULE=mysite.settings_railway`** (see `Dockerfile.django`).  
+3. **Railway project** — create services, paste envs, connect private networking. **Build:** `docker build -f Dockerfile.django -t polysaas .`  
+   - **`railway.toml`** — `dockerfilePath = Dockerfile.django`, `healthcheckPath = /health/`.  
+   - **`PORT`** — Gunicorn binds `0.0.0.0:${PORT:-8000}` (Railway injects `PORT`).  
+   - **Health:** `GET /health/` (liveness), `GET /health/ready/` (DB check, 503 if DB down).  
+4. **Celery worker** — second Railway service, **same image**, start: `celery -A mysite worker -l INFO --concurrency 2` or **`/celery-worker.sh`**. Same env as web. **`mysite/celery.py`** defines the app; do not import Celery from `mysite/__init__.py` (avoids circular imports).  
+5. **Celery beat** — third service (optional), **`/celery-beat.sh`** or `celery -A mysite beat -l INFO`. Requires **`django_celery_beat`** + **`django_celery_results`** in `INSTALLED_APPS` and **`python manage.py migrate`** for their tables (`CELERY_RESULT_BACKEND` uses `django-db`).  
+6. **Stripe** — **`STRIPE-RAILWAY.md`**. **OAuth2 / OIDC** — **`OAUTH2-RAILWAY.md`** (`OIDC_ISS_ENDPOINT`, RSA key, allauth callbacks); **`django-oauth-toolkit`** in **`requirements.txt`**.  
+7. **Elasticsearch** client + indexes (when a feature needs search).  
+8. **Grafana + MonitorLogger** — scrape / OTLP from Django (optional phase 2).
+
+---
+
+## 9. References
+
+- [Railway: Deployments](https://docs.railway.app/guides/deployments)  
+- [Railway: Private networking](https://docs.railway.app/reference/private-networking)  
+- [Stripe webhooks](https://stripe.com/docs/webhooks)  
+- **This repo:** **`STRIPE-RAILWAY.md`**, **`OAUTH2-RAILWAY.md`**, **§7 Railway deployment checklist** (above)
+
+*Document version: Railway plan + operator checklist (incl. OAuth2).*

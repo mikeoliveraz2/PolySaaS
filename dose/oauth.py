@@ -4,61 +4,69 @@ PolySaaS OAuth2/OIDC Provider — Tenant-Aware Validator & Helpers
 Extends django-oauth-toolkit to inject tenant claims into OIDC ID tokens,
 so downstream apps (Mattermost, Odoo, Nextcloud) know which tenant a user
 belongs to without a second lookup.
+
+When django-oauth-toolkit (oauth2_provider) is not installed, this module
+still provides get_redirect_uri(); TenantAwareValidator is not defined.
 """
 import logging
 
-from oauth2_provider.oauth2_validators import OAuth2Validator
+try:
+    from oauth2_provider.oauth2_validators import OAuth2Validator
+except ImportError:
+    OAuth2Validator = None
 
 logger = logging.getLogger(__name__)
 
 
-class TenantAwareValidator(OAuth2Validator):
-    """Custom OAuth2 validator that includes tenant info in OIDC claims."""
+if OAuth2Validator is not None:
 
-    oidc_claim_scope = OAuth2Validator.oidc_claim_scope
-    oidc_claim_scope.update({
-        'email': 'email',
-        'email_verified': 'email',
-        'name': 'profile',
-        'given_name': 'profile',
-        'family_name': 'profile',
-        'preferred_username': 'profile',
-        'tenant_id': 'tenant',
-        'tenant_name': 'tenant',
-        'tenant_slug': 'tenant',
-    })
+    class TenantAwareValidator(OAuth2Validator):
+        """Custom OAuth2 validator that includes tenant info in OIDC claims."""
 
-    def get_additional_claims(self, request):
-        """Include standard OIDC + tenant claims in ID tokens and UserInfo."""
-        user = request.user
-        claims = {}
+        oidc_claim_scope = OAuth2Validator.oidc_claim_scope
+        oidc_claim_scope.update({
+            'email': 'email',
+            'email_verified': 'email',
+            'name': 'profile',
+            'given_name': 'profile',
+            'family_name': 'profile',
+            'preferred_username': 'profile',
+            'tenant_id': 'tenant',
+            'tenant_name': 'tenant',
+            'tenant_slug': 'tenant',
+        })
 
-        if user.email:
-            claims['email'] = user.email
-            claims['email_verified'] = True
+        def get_additional_claims(self, request):
+            """Include standard OIDC + tenant claims in ID tokens and UserInfo."""
+            user = request.user
+            claims = {}
 
-        full_name = user.get_full_name() or user.username
-        claims['name'] = full_name
-        claims['given_name'] = user.first_name or user.username
-        claims['family_name'] = user.last_name or ''
-        claims['preferred_username'] = user.username
+            if user.email:
+                claims['email'] = user.email
+                claims['email_verified'] = True
 
-        try:
-            profile = getattr(user, 'userprofile', None)
-            if profile and profile.tenant_id:
-                claims['tenant_id'] = profile.tenant_id
-                claims['tenant_name'] = profile.tenant.name
-                claims['tenant_slug'] = profile.tenant.slug
-        except Exception:
-            logger.warning("Could not resolve tenant for user %s", user.pk)
+            full_name = user.get_full_name() or user.username
+            claims['name'] = full_name
+            claims['given_name'] = user.first_name or user.username
+            claims['family_name'] = user.last_name or ''
+            claims['preferred_username'] = user.username
 
-        return claims
+            try:
+                profile = getattr(user, 'userprofile', None)
+                if profile and profile.tenant_id:
+                    claims['tenant_id'] = profile.tenant_id
+                    claims['tenant_name'] = profile.tenant.name
+                    claims['tenant_slug'] = profile.tenant.slug
+            except Exception:
+                logger.warning("Could not resolve tenant for user %s", user.pk)
 
-    def get_userinfo_claims(self, request):
-        """Extend the standard UserInfo response with tenant data."""
-        claims = super().get_userinfo_claims(request)
-        claims.update(self.get_additional_claims(request))
-        return claims
+            return claims
+
+        def get_userinfo_claims(self, request):
+            """Extend the standard UserInfo response with tenant data."""
+            claims = super().get_userinfo_claims(request)
+            claims.update(self.get_additional_claims(request))
+            return claims
 
 
 def get_redirect_uri(app_name, tenant_schema):

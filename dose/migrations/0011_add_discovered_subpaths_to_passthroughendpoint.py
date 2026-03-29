@@ -31,7 +31,8 @@ class Migration(migrations.Migration):
             name='is_personal',
         ),
         migrations.RunSQL(
-            # Forward: No-op since column already exists in DB
+            # BUG (historical): forward SQL was noop; state had the field but DB often did not.
+            # Real DDL: dose.0027_passthroughendpoint_discovered_subpaths_ddl
             sql=migrations.RunSQL.noop,
             # Reverse: No-op
             reverse_sql=migrations.RunSQL.noop,

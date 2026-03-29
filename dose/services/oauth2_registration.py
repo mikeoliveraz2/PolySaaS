@@ -4,10 +4,20 @@ and creating the corresponding TenantApp record.
 
 Called from subscription_views.py during tenant provisioning. Each bundled
 app gets its own OAuth2 Application (Client ID + Secret) scoped to the tenant.
+
+When django-oauth-toolkit (oauth2_provider) is not installed, this module
+still loads; register_oauth2_app_for_tenant will raise if called.
+mark_tenant_app_active and mark_tenant_app_error do not require oauth2_provider.
 """
 import logging
 
-from oauth2_provider.models import Application
+from django.apps import apps
+
+try:
+    from oauth2_provider.models import Application
+except ImportError:
+    Application = None
+
 from dose.models import Tenant, TenantApp
 from dose.oauth import get_redirect_uri
 
@@ -19,7 +29,13 @@ def register_oauth2_app_for_tenant(tenant_id, app_name, user):
     Register an OAuth2 Application in DOT for a tenant+app pair.
 
     Returns (client_id, client_secret, tenant_app) or raises on failure.
+    Requires django-oauth-toolkit (oauth2_provider) to be installed.
     """
+    if Application is None:
+        raise RuntimeError(
+            "django-oauth-toolkit is not installed; install it to use OAuth2 app registration."
+        )
+
     tenant = Tenant.objects.get(id=tenant_id)
 
     redirect_uri = get_redirect_uri(app_name, tenant.schema_name)
@@ -33,13 +49,14 @@ def register_oauth2_app_for_tenant(tenant_id, app_name, user):
         algorithm='RS256',
     )
 
+    defaults = {'status': 'provisioning'}
+    if apps.is_installed('oauth2_provider'):
+        defaults['oauth_application'] = oauth_app
+
     tenant_app, _ = TenantApp.objects.update_or_create(
         tenant=tenant,
         app_name=app_name,
-        defaults={
-            'oauth_application': oauth_app,
-            'status': 'provisioning',
-        },
+        defaults=defaults,
     )
 
     logger.info(

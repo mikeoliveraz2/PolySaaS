@@ -1,0 +1,587 @@
+<!--
+  PolySaaS — Machine Learning (inner page)
+  Paste into WordPress: block editor → Custom HTML block, or classic editor Text/Code mode (no Bricks required).
+  If your template already shows the global footer, omit the <footer class="ps-ml-footer">…</footer> block
+  to avoid a duplicate footer.
+
+  Hero: dark banner band (.ps-ml-hero-banner) centers ml-icon.svg + grid pattern; title and body copy live in .ps-ml-hero-intro below. Assets: documentation/website/assets/ml-icon.svg (keep SVG in sync).
+  Screenshots: img src uses raw.githubusercontent.com/.../chat-uploads-for-wp/ in repo; running scripts/wp_sync_ml_page.py uploads each PNG to WordPress Media and rewrites src to source_url (see .wp-ml-screenshots.json cache). Manual Media Library upload is optional.
+  Optional photo overlay on .ps-ml-wrap: style="--ps-ml-banner-image: url(https://polysaas.online/wp-content/uploads/.../banner.jpg);"
+  Theme: scoped rules use body.page-slug-machine-learning and body.page-id-2708 (update id if the WP page is recreated).
+-->
+<div class="ps-ml-wrap">
+  <style>
+    .ps-ml-wrap {
+      --ps-ml-accent: #2563eb;
+      --ps-ml-text: #0f172a;
+      --ps-ml-muted: #64748b;
+      --ps-ml-line: #e2e8f0;
+      --ps-ml-hero-fg: #f8fafc;
+      --ps-ml-hero-muted: #94a3b8;
+      --ps-ml-footer-bg: #f8fafc;
+      max-width: 960px;
+      margin: -1.35rem auto 0;
+      padding: 0 1.25rem 3.5rem;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--ps-ml-text);
+      line-height: 1.65;
+    }
+    .ps-ml-wrap * { box-sizing: border-box; }
+
+    /* Hero: dark banner band (icon + pattern only), then light intro card below */
+    .ps-ml-hero { margin: 0 0 2.5rem; }
+    .ps-ml-hero-banner {
+      position: relative;
+      overflow: hidden;
+      margin: 0 -1.25rem 0;
+      padding: 1.35rem 1.5rem 2.1rem;
+      border-radius: 0 0 22px 22px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-top: none;
+      background-color: #030712;
+      background-image:
+        var(--ps-ml-banner-image, none),
+        radial-gradient(ellipse 110% 85% at 100% -10%, rgba(59,130,246,0.45), transparent 52%),
+        radial-gradient(ellipse 70% 55% at -5% 110%, rgba(99,102,241,0.2), transparent 48%),
+        linear-gradient(158deg, #020617 0%, #0f2847 40%, #0c1929 100%);
+      background-size: cover, auto, auto, auto;
+      background-position: center, top right, bottom left, center;
+      background-repeat: no-repeat;
+      box-shadow: 0 16px 48px rgba(15,23,42,0.42), inset 0 1px 0 rgba(255,255,255,0.06);
+      text-align: center;
+    }
+    .ps-ml-hero-banner::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, rgba(96,165,250,0.7), rgba(59,130,246,0.4), transparent);
+      opacity: 0.85;
+      pointer-events: none;
+    }
+    .ps-ml-hero-pattern {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .ps-ml-hero-banner-inner {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      max-width: 28rem;
+      margin: 0 auto;
+    }
+    .ps-ml-icon-wrap {
+      width: 7.5rem;
+      height: 7.5rem;
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow:
+        0 20px 56px rgba(0,0,0,0.55),
+        0 0 0 1px rgba(255,255,255,0.12),
+        0 0 48px rgba(59,130,246,0.15);
+    }
+    .ps-ml-icon-wrap svg { width: 7.5rem; height: 7.5rem; display: block; border-radius: 14px; }
+    .ps-ml-icon-caption {
+      margin: 0;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: #e2e8f0;
+      text-align: center;
+      max-width: 22rem;
+    }
+    .ps-ml-icon-caption .ps-ml-icon-caption-sub {
+      display: block;
+      font-weight: 500;
+      color: #94a3b8;
+      margin-top: 0.35rem;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      letter-spacing: 0;
+    }
+    .ps-ml-hero-intro {
+      position: relative;
+      z-index: 2;
+      margin: -1.35rem -0.25rem 0;
+      padding: 1.65rem 1.35rem 1.85rem;
+      border-radius: 16px;
+      border: 1px solid var(--ps-ml-line);
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+      box-shadow: 0 12px 40px rgba(15,23,42,0.08), 0 1px 0 rgba(255,255,255,0.9) inset;
+    }
+    @media (min-width: 480px) {
+      .ps-ml-hero-intro { margin-left: 0; margin-right: 0; padding: 1.85rem 1.65rem 2rem; }
+    }
+    .ps-ml-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.68rem;
+      font-weight: 650;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+    }
+    .ps-ml-hero-intro .ps-ml-badge {
+      color: #1d4ed8;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      box-shadow: 0 1px 2px rgba(37,99,235,0.06);
+    }
+    .ps-ml-hero-intro h1 {
+      color: var(--ps-ml-text);
+      font-size: clamp(1.65rem, 4vw, 2.35rem);
+      font-weight: 700;
+      line-height: 1.14;
+      margin: 0 0 1rem;
+      letter-spacing: -0.03em;
+    }
+    .ps-ml-hero-intro .ps-ml-lead {
+      color: var(--ps-ml-muted);
+      font-size: 1.05rem;
+      max-width: 62ch;
+      margin: 0;
+      line-height: 1.62;
+    }
+    .ps-ml-hero-intro .ps-ml-lead + .ps-ml-lead { margin-top: 1rem; }
+    .ps-ml-hero-intro .ps-ml-lead strong { color: var(--ps-ml-text); font-weight: 600; }
+    body.dark-mode .ps-ml-hero-intro {
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      border-color: #334155;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    body.dark-mode .ps-ml-hero-intro h1 { color: #f1f5f9; }
+    body.dark-mode .ps-ml-hero-intro .ps-ml-lead { color: #94a3b8; }
+    body.dark-mode .ps-ml-hero-intro .ps-ml-lead strong { color: #e2e8f0; }
+    body.dark-mode .ps-ml-hero-intro .ps-ml-badge {
+      color: #93c5fd;
+      background: rgba(37,99,235,0.2);
+      border-color: rgba(96,165,250,0.35);
+    }
+
+    .ps-ml-grid { display: grid; gap: 1.35rem; margin: 2.25rem 0; }
+    @media (min-width: 640px) { .ps-ml-grid { grid-template-columns: repeat(2, 1fr); } }
+    .ps-ml-card {
+      position: relative;
+      border: 1px solid var(--ps-ml-line);
+      border-radius: 14px;
+      padding: 1.35rem 1.4rem;
+      background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
+      transition: box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s ease;
+      overflow: hidden;
+    }
+    .ps-ml-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--ps-ml-accent), #60a5fa);
+      opacity: 0;
+      transition: opacity 0.22s ease;
+    }
+    .ps-ml-card:hover {
+      box-shadow: 0 12px 36px rgba(15,23,42,0.08);
+      border-color: #cbd5e1;
+      transform: translateY(-2px);
+    }
+    .ps-ml-card:hover::before { opacity: 1; }
+    .ps-ml-card h3 { margin: 0 0 0.55rem; font-size: 1.08rem; font-weight: 650; color: var(--ps-ml-text); }
+    .ps-ml-card p { margin: 0; font-size: 0.95rem; color: var(--ps-ml-muted); }
+
+    .ps-ml-section-title { font-size: 1.3rem; font-weight: 700; margin: 2.75rem 0 1.1rem; letter-spacing: -0.02em; }
+    .ps-ml-list { margin: 0; padding-left: 1.25rem; color: var(--ps-ml-muted); }
+    .ps-ml-list li { margin-bottom: 0.7rem; }
+    .ps-ml-list strong { color: var(--ps-ml-text); }
+
+    .ps-ml-tech {
+      background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #f1f5f9 100%);
+      border: 1px solid var(--ps-ml-line);
+      border-radius: 14px;
+      padding: 1.45rem 1.55rem;
+      margin: 2.25rem 0;
+      box-shadow: 0 4px 20px rgba(37,99,235,0.04);
+    }
+    .ps-ml-tech h2 { margin: 0 0 0.85rem; font-size: 1.12rem; color: var(--ps-ml-text); }
+    .ps-ml-tech ul { margin: 0; padding-left: 1.25rem; font-size: 0.91rem; color: var(--ps-ml-muted); }
+    .ps-ml-tech code { font-size: 0.85em; background: #fff; padding: 0.14em 0.38em; border-radius: 5px; border: 1px solid var(--ps-ml-line); }
+
+    .ps-ml-shots {
+      margin: 2.25rem 0;
+      padding: 1.45rem 1.35rem;
+      border: 1px solid var(--ps-ml-line);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 4px 18px rgba(15,23,42,0.05);
+    }
+    .ps-ml-shots h2 { margin: 0 0 0.35rem; font-size: 1.12rem; color: var(--ps-ml-text); }
+    .ps-ml-shots > p.ps-ml-shots-lead {
+      margin: 0 0 1.25rem;
+      font-size: 0.9rem;
+      color: var(--ps-ml-muted);
+      line-height: 1.55;
+    }
+    .ps-ml-shots-grid {
+      display: grid;
+      gap: 1.35rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) {
+      .ps-ml-shots-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .ps-ml-shot {
+      margin: 0;
+    }
+    .ps-ml-shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      border: 1px solid var(--ps-ml-line);
+      background: #f8fafc;
+      box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+    }
+    .ps-ml-shot figcaption {
+      margin-top: 0.5rem;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: var(--ps-ml-muted);
+    }
+
+    .ps-ml-note {
+      font-size: 0.89rem;
+      color: var(--ps-ml-muted);
+      border-left: 4px solid var(--ps-ml-accent);
+      padding: 0.85rem 1.1rem;
+      margin: 2.25rem 0;
+      background: linear-gradient(90deg, #eff6ff 0%, #f8fafc 100%);
+      border-radius: 0 10px 10px 0;
+    }
+
+    .ps-ml-footer {
+      margin: 3.5rem -1.25rem 0;
+      padding: 2.85rem 1.6rem 2.1rem;
+      border-radius: 22px 22px 0 0;
+      border: 1px solid var(--ps-ml-line);
+      border-bottom: none;
+      background: linear-gradient(180deg, #eef2f7 0%, var(--ps-ml-footer-bg) 22%, #fff 72%);
+      font-size: 0.9rem;
+      color: var(--ps-ml-muted);
+      box-shadow: 0 -12px 40px rgba(15,23,42,0.06);
+    }
+    .ps-ml-footer a { color: var(--ps-ml-text); text-decoration: none; transition: color 0.15s ease; }
+    .ps-ml-footer a:hover { color: var(--ps-ml-accent); text-decoration: underline; }
+    .ps-ml-footer-brand { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ps-ml-text); margin: 0 0 0.35rem; }
+    .ps-ml-footer-inner { display: grid; gap: 2.25rem; margin-bottom: 2rem; }
+    @media (min-width: 768px) { .ps-ml-footer-inner { grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 1.6rem; } }
+    .ps-ml-footer-col h4 {
+      margin: 0 0 0.9rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ps-ml-text);
+      font-weight: 700;
+    }
+    .ps-ml-footer-col p { margin: 0 0 0.5rem; line-height: 1.55; }
+    .ps-ml-footer-links { list-style: none; margin: 0; padding: 0; }
+    .ps-ml-footer-links li { margin-bottom: 0.42rem; }
+    .ps-ml-footer-legal {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1.35rem;
+      align-items: center;
+      padding-top: 1.6rem;
+      border-top: 1px solid var(--ps-ml-line);
+      font-size: 0.84rem;
+      color: var(--ps-ml-muted);
+    }
+
+    /* Kadence / theme — Machine Learning page only: tighter header, remove duplicate title hero, close gap to custom banner */
+    body.page-slug-machine-learning #masthead,
+    body.page-id-2708 #masthead {
+      padding-top: 0.25rem !important;
+      padding-bottom: 0.25rem !important;
+    }
+    body.page-slug-machine-learning .site-header-inner-wrap,
+    body.page-slug-machine-learning .site-main-header-inner-wrap,
+    body.page-id-2708 .site-header-inner-wrap,
+    body.page-id-2708 .site-main-header-inner-wrap {
+      padding-top: 0.35rem !important;
+      padding-bottom: 0.35rem !important;
+      min-height: 0 !important;
+    }
+    body.page-slug-machine-learning .site-branding,
+    body.page-id-2708 .site-branding {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+    }
+    body.page-slug-machine-learning .site-header-item .main-navigation,
+    body.page-id-2708 .site-header-item .main-navigation {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+    /* Gray page-title band: hidden — H1 lives in .ps-ml-hero-intro inside this block */
+    body.page-slug-machine-learning .entry-hero-section,
+    body.page-slug-machine-learning .kadence-page-hero,
+    body.page-slug-machine-learning .entry-hero,
+    body.page-id-2708 .entry-hero-section,
+    body.page-id-2708 .kadence-page-hero,
+    body.page-id-2708 .entry-hero {
+      display: none !important;
+    }
+    body.page-slug-machine-learning .content-area,
+    body.page-slug-machine-learning .site-main,
+    body.page-id-2708 .content-area,
+    body.page-id-2708 .site-main {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+    body.page-slug-machine-learning .entry-content-wrap,
+    body.page-slug-machine-learning .entry-content,
+    body.page-id-2708 .entry-content-wrap,
+    body.page-id-2708 .entry-content {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+    }
+    body.page-slug-machine-learning .hentry,
+    body.page-id-2708 .hentry {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+    }
+    body.page-slug-machine-learning .wp-block-post-title,
+    body.page-id-2708 .wp-block-post-title {
+      display: none !important;
+    }
+  </style>
+
+  <header class="ps-ml-hero">
+    <div class="ps-ml-hero-banner" aria-label="Machine Learning">
+      <svg class="ps-ml-hero-pattern" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+        <defs>
+          <pattern id="psMlHeroGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0H0V40" fill="none" stroke="rgba(148,163,184,0.14)" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#psMlHeroGrid)"/>
+        <!-- Neural-style clusters: nodes + edges (keep subtle; icon sits centered above) -->
+        <g opacity="0.92">
+          <!-- Original right cluster -->
+          <circle cx="320" cy="40" r="3" fill="rgba(96,165,250,0.4)"/>
+          <circle cx="280" cy="90" r="2" fill="rgba(96,165,250,0.28)"/>
+          <circle cx="350" cy="120" r="2.5" fill="rgba(96,165,250,0.32)"/>
+          <path d="M320 40 L280 90 L350 120" fill="none" stroke="rgba(96,165,250,0.22)" stroke-width="1" stroke-linecap="round"/>
+          <circle cx="305" cy="72" r="1.8" fill="rgba(96,165,250,0.26)"/>
+          <path d="M280 90 L305 72 L320 40" fill="none" stroke="rgba(96,165,250,0.16)" stroke-width="0.85" stroke-linecap="round"/>
+          <!-- Upper-left small graph -->
+          <circle cx="48" cy="38" r="2.4" fill="rgba(96,165,250,0.3)"/>
+          <circle cx="88" cy="52" r="2" fill="rgba(96,165,250,0.24)"/>
+          <circle cx="62" cy="78" r="2.2" fill="rgba(96,165,250,0.26)"/>
+          <path d="M48 38 L88 52 M88 52 L62 78 M48 38 L62 78" fill="none" stroke="rgba(96,165,250,0.18)" stroke-width="0.9" stroke-linecap="round"/>
+          <!-- Mid-left chain -->
+          <circle cx="115" cy="115" r="2" fill="rgba(96,165,250,0.22)"/>
+          <circle cx="145" cy="98" r="2.3" fill="rgba(96,165,250,0.27)"/>
+          <circle cx="128" cy="138" r="1.9" fill="rgba(96,165,250,0.2)"/>
+          <path d="M115 115 L145 98 L128 138 L115 115" fill="none" stroke="rgba(96,165,250,0.15)" stroke-width="0.85" stroke-linecap="round"/>
+          <!-- Bottom band -->
+          <circle cx="185" cy="168" r="2" fill="rgba(96,165,250,0.22)"/>
+          <circle cx="220" cy="158" r="2.2" fill="rgba(96,165,250,0.24)"/>
+          <circle cx="248" cy="178" r="2" fill="rgba(96,165,250,0.22)"/>
+          <path d="M185 168 L220 158 L248 178" fill="none" stroke="rgba(96,165,250,0.16)" stroke-width="0.9" stroke-linecap="round"/>
+          <!-- Far-right tail -->
+          <circle cx="368" cy="88" r="1.8" fill="rgba(96,165,250,0.24)"/>
+          <path d="M350 120 L368 88" fill="none" stroke="rgba(96,165,250,0.14)" stroke-width="0.8" stroke-linecap="round"/>
+        </g>
+      </svg>
+      <div class="ps-ml-hero-banner-inner">
+        <div class="ps-ml-icon-wrap" aria-hidden="true">
+          <!-- Sync with documentation/website/assets/ml-icon.svg -->
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="psMlIconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#60a5fa"/>
+                <stop offset="100%" style="stop-color:#2563eb"/>
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" rx="14" fill="#0f172a"/>
+            <circle cx="32" cy="20" r="5" fill="url(#psMlIconGrad)"/>
+            <circle cx="18" cy="40" r="5" fill="url(#psMlIconGrad)"/>
+            <circle cx="46" cy="40" r="5" fill="url(#psMlIconGrad)"/>
+            <circle cx="32" cy="52" r="4" fill="#94a3b8" opacity="0.9"/>
+            <path d="M32 25v10M27 36l-5-8M37 36l5-8M28 44h8" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+            <path d="M32 25L18 35M32 25L46 35M18 40l8 8M46 40l-8 8" stroke="url(#psMlIconGrad)" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
+          </svg>
+        </div>
+        <p class="ps-ml-icon-caption">
+          Machine Learning
+          <span class="ps-ml-icon-caption-sub">Mapping Engine — discover, normalize, and route data across your applications.</span>
+        </p>
+      </div>
+    </div>
+    <div class="ps-ml-hero-intro">
+      <span class="ps-ml-badge">Dynamic orchestration</span>
+      <h1>Dynamic Orchestration Powered by Machine Learning</h1>
+      <p class="ps-ml-lead">Leveraging advanced machine learning and our intelligent Mapping Engine, PolySaaS automatically discovers, normalizes, and routes data between disparate business applications.</p>
+      <p class="ps-ml-lead">Deploy powerful cross-app workflows (like Dolibarr → Odoo customer sync) in minutes — fully configurable from the database, <strong>no code changes required</strong>.</p>
+    </div>
+  </header>
+
+  <div class="ps-ml-grid">
+    <div class="ps-ml-card">
+      <h3>Model the world</h3>
+      <p>Represent your environment in structured data—for example, devices and relationships across a large org (e.g. PolySysMon-style monitoring)—so downstream analytics and models have a consistent picture.</p>
+    </div>
+    <div class="ps-ml-card">
+      <h3>Capture &amp; store</h3>
+      <p>Scanning and telemetry can feed search- and analytics-ready stores (Elasticsearch, BigQuery, or sinks you choose). Clean pipelines reduce export/import round-trips.</p>
+    </div>
+    <div class="ps-ml-card">
+      <h3>Train &amp; serve</h3>
+      <p>Connect frameworks such as TensorFlow, PyTorch, or scikit-learn via endpoints and orchestration rules you control—parameters and runs stay tied to tenant configuration.</p>
+    </div>
+    <div class="ps-ml-card">
+      <h3>Prompts &amp; agents</h3>
+      <p>Design and version prompts, chain workflows, and route to <strong>your</strong> models or <strong>optional</strong> external LLMs only when you explicitly allow—ownership, compliance, and cost stay yours.</p>
+    </div>
+  </div>
+
+  <h2 class="ps-ml-section-title">Why this matters</h2>
+  <ul class="ps-ml-list">
+    <li><strong>Full loop in one place:</strong> configuration, data, orchestration, and execution aligned with DOSE—not a bolt-on “AI feature” with opaque limits.</li>
+    <li><strong>Framework-agnostic core:</strong> first-class tables and APIs are not tied to a single vendor model.</li>
+    <li><strong>Enterprise posture:</strong> sensitive workloads can stay on infrastructure you operate; external AI is opt-in.</li>
+  </ul>
+
+  <div class="ps-ml-tech">
+    <h2>In the product today (technical)</h2>
+    <ul>
+      <li>Tenant-scoped models: <code>MLEngine</code>, <code>MLTaxonomy</code>, <code>MLDataset</code>, <code>MLPrompt</code> (Django / PostgreSQL). <code>MLPrompt</code> stores <code>key</code>, <code>description</code>, and <code>prompt_text</code>; align <code>matchingEventKey</code> on the other ML rows with the same key string when you want them tied together.</li>
+      <li>REST API (authenticated): <code>/dose/api/mlengines/</code>, <code>/dose/api/mltaxonomies/</code>, <code>/dose/api/mldatasets/</code>, <code>/dose/api/mlprompts/</code>.</li>
+      <li><code>matchingEventKey</code> fields link rows to orchestration and events (contract documented in repo).</li>
+      <li>Related configuration: <code>parameters.Parameter</code> with <code>matchingKey</code> for ordered, keyed parameter sets.</li>
+    </ul>
+  </div>
+
+  <div class="ps-ml-engine-select" style="margin-top: 1.5rem;">
+    <h3 style="margin-bottom: 0.5rem;">ML Engine selector (preview)</h3>
+    <p class="ps-ml-lead" style="margin-bottom: 0.75rem;">
+      Pick an engine profile that PolySaaS can orchestrate for your tenant-scoped ML workflows.
+    </p>
+    <select id="ml-engine-select" class="regular-text" style="width:100%; max-width: 520px; padding: 10px; border-radius: 8px;">
+      <option value="">Select an ML Engine</option>
+      <option value="mlflow">MLflow (Experiment Tracking &amp; Registry)</option>
+      <option value="clearml">ClearML (Experiment &amp; Data Management)</option>
+      <option value="zenml">ZenML (Production Pipelines)</option>
+      <option value="bentoml">BentoML (Model Serving APIs)</option>
+      <option value="metaflow">Metaflow (Workflow Orchestration)</option>
+      <option value="huggingface">Hugging Face Transformers (LLM/NLP)</option>
+      <option value="kedro">Kedro (Modular Pipelines)</option>
+    </select>
+  </div>
+
+  <section class="ps-ml-shots" aria-label="Product screenshots">
+    <h2>Product screenshots</h2>
+    <p class="ps-ml-shots-lead">Captures from the live admin and tenant UI (PolySaaS / DOSE). Sources live in the repo under <code>documentation/website/assets/chat-uploads-for-wp/</code>; below they load from GitHub <code>main</code> for convenience. After upload to WordPress Media Library, swap each <code>src</code> to your <code>wp-content/uploads/…</code> URL if needed.</p>
+    <div class="ps-ml-shots-grid">
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-f43cf595-f88e-4f42-bea1-8d9b31bf2554.png" loading="lazy" decoding="async" alt="Django admin dashboard listing Dose Tenant Management models including ML prompts" />
+        <figcaption>Admin dashboard (Jazzmin): tenant-scoped models, including <strong>ML prompts</strong> alongside engines, taxonomies, and datasets.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-3edf34ed-89c1-4365-a433-33221e3b8ee8.png" loading="lazy" decoding="async" alt="Django admin change form for an ML dataset" />
+        <figcaption><strong>ML dataset</strong> — tenant, keys, JSON payload, and publish metadata in admin.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-a39e8eb9-3f3d-4504-a944-2e6d74b879c9.png" loading="lazy" decoding="async" alt="Django admin form for an ML engine" />
+        <figcaption><strong>ML engine</strong> — name, endpoint, optional <code>matchingEventKey</code>, description.</figcaption>
+      </figure>
+        <figure class="ps-ml-shot">
+          <img src="https://polysaas.online/wp-content/uploads/2026/03/Add-ML-prompt-D-O-S-E-Administration-03-25-2026_06_21_PM.png-mlprompt.png" loading="lazy" decoding="async" alt="Django admin form for an ML prompt" />
+          <figcaption><strong>ML prompt</strong> — tenant-scoped prompt key, description, and prompt text.</figcaption>
+        </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-e1694bf0-4d82-4db1-86b1-70432a867ab8.png" loading="lazy" decoding="async" alt="Django admin form for ML taxonomy" />
+        <figcaption><strong>ML taxonomy</strong> — same pattern: tenant, event key, structured <code>content_json</code>.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-6e8867dc-0741-4020-b5b6-bbbc8fe5a65a.png" loading="lazy" decoding="async" alt="Tenant user dashboard with PolySaaS branding" />
+        <figcaption>Tenant <strong>end-user</strong> view (example): workspace home and navigation context.</figcaption>
+      </figure>
+      <figure class="ps-ml-shot">
+        <img src="https://raw.githubusercontent.com/mikeoliveraz2/PolySaaS/main/documentation/website/assets/chat-uploads-for-wp/polysaas-chat-b0c9b0d9-297f-434b-9c3e-0e030c594aec.png" loading="lazy" decoding="async" alt="Jazzmin admin with theme customizer sidebar" />
+        <figcaption>Admin chrome (earlier layout): theme / UI builder — streamlined in current builds; shown for context.</figcaption>
+      </figure>
+    </div>
+    <p class="ps-ml-shots-lead" style="margin-top:1.25rem;margin-bottom:0;">Additional captures (full set) are in the same repo folder; add more <code>&lt;figure&gt;</code> blocks here or link to a gallery page as you prefer.</p>
+  </section>
+
+  <p class="ps-ml-note"><strong>Internal / draft:</strong> This page is for refining messaging before it appears in main navigation or the public feature list. Claims here should stay aligned with <code>documentation/product/ML-PLATFORM-CONCEPT-AND-TABLES.md</code> in the PolySaaS repository.</p>
+
+  <footer class="ps-ml-footer" aria-label="Site footer">
+    <div class="ps-ml-footer-inner">
+      <div class="ps-ml-footer-col">
+        <p class="ps-ml-footer-brand"><a href="https://polysaas.online/">PolySaaS Online</a></p>
+        <p>5900 Balcones Drive, Suite 100<br>Austin, TX 78731</p>
+        <p><a href="mailto:michael.oliver@polysaas.online">michael.oliver@polysaas.online</a></p>
+        <p>+1-713-913-0434 · +63-947-992-7462</p>
+      </div>
+      <div class="ps-ml-footer-col">
+        <h4>Applications</h4>
+        <ul class="ps-ml-footer-links">
+          <li><a href="https://polysaas.online/liferay-2/">Liferay</a></li>
+          <li><a href="https://polysaas.online/mattermost/">MatterMost</a></li>
+          <li><a href="https://polysaas.online/nextcloud/">NextCloud</a></li>
+          <li><a href="https://polysaas.online/odoo/">Odoo</a></li>
+          <li><a href="https://polysaas.online/polysysmon/">PolySysMon</a></li>
+          <li><a href="https://polysaas.online/wordpress-3/">WordPress</a></li>
+          <li><a href="https://polysaas.online/dolibarr-3/">Dolibarr</a></li>
+          <li><a href="https://polysaas.online/monitor-logger-4/">Monitor Logger</a></li>
+        </ul>
+      </div>
+      <div class="ps-ml-footer-col">
+        <h4>Features</h4>
+        <ul class="ps-ml-footer-links">
+          <li><a href="https://polysaas.online/bundled-applications/">Bundled Applications</a></li>
+          <li><a href="https://polysaas.online/external-applications/">External Applications</a></li>
+          <li><a href="https://polysaas.online/ai-as-peers/">AI As Peers</a></li>
+          <li><a href="https://polysaas.online/apps-as-peers/">Apps As Peers</a></li>
+          <li><a href="https://polysaas.online/polysniffer/">PolySniffer</a></li>
+          <li><a href="https://polysaas.online/dynamic-orchestration/">Dynamic Orchestration</a></li>
+          <li><a href="https://polysaas.online/machine-learning/">Machine Learning</a></li>
+          <li><a href="https://polysaas.online/atomic-services/">Atomic Services</a></li>
+          <li><a href="https://polysaas.online/openapi-2/">OpenAPI</a></li>
+          <li><a href="https://polysaas.online/portal/">Portal</a></li>
+          <li><a href="https://polysaas.online/architecture/">Architecture</a></li>
+        </ul>
+      </div>
+      <div class="ps-ml-footer-col">
+        <h4>Gallery</h4>
+        <ul class="ps-ml-footer-links">
+          <li><a href="https://polysaas.online/gallery-images/">Images</a></li>
+          <li><a href="https://polysaas.online/gallery-videos/">Videos</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="ps-ml-footer-legal">
+      <span>© 2026 PolySaaS Online</span>
+      <a href="https://polysaas.online/privacy-policy/">Privacy Policy</a>
+      <a href="https://polysaas.online/terms-of-service/">Terms of Service</a>
+      <a href="https://polysaas.online/disclaimer/">Disclaimer</a>
+    </div>
+  </footer>
+</div>

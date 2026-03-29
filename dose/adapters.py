@@ -129,11 +129,91 @@ if _original_site_get_current:
 logger.debug("[CUSTOM ADAPTER] Patched Site model to always query from public schema using raw SQL")
 
 
+def _emails_from_extra_data(extra_data):
+    """Best-effort emails from provider JSON (Google and others vary shape)."""
+    if not extra_data or not isinstance(extra_data, dict):
+        return []
+    found = []
+    v = extra_data.get("email")
+    if isinstance(v, str) and "@" in v:
+        found.append(v)
+    user_blob = extra_data.get("user")
+    if isinstance(user_blob, dict):
+        v2 = user_blob.get("email")
+        if isinstance(v2, str) and "@" in v2:
+            found.append(v2)
+    return found
+
+
+def _collect_candidate_emails(user, sociallogin=None):
+    """
+    Every place we might learn the Google/workspace email: User row, SocialLogin bundle,
+    and persisted SocialAccount (for user_logged_in when sociallogin is not passed).
+    """
+    out = []
+    if user is not None:
+        e = getattr(user, "email", None)
+        if e:
+            out.append(e)
+    if sociallogin is not None:
+        for ea in getattr(sociallogin, "email_addresses", None) or []:
+            em = getattr(ea, "email", None)
+            if em:
+                out.append(em)
+        acc = getattr(sociallogin, "account", None)
+        if acc is not None:
+            out.extend(_emails_from_extra_data(getattr(acc, "extra_data", None) or {}))
+    if sociallogin is None and user is not None and getattr(user, "pk", None):
+        try:
+            from allauth.socialaccount.models import SocialAccount
+
+            for sa in SocialAccount.objects.filter(user=user).only("extra_data"):
+                out.extend(_emails_from_extra_data(sa.extra_data or {}))
+        except Exception:
+            logger.debug(
+                "[CUSTOM ADAPTER] Could not load SocialAccount emails for user pk=%s",
+                user.pk,
+                exc_info=True,
+            )
+    return {str(x).strip().lower() for x in out if x and str(x).strip()}
+
+
+def _maybe_promote_superuser_from_settings(user, sociallogin=None):
+    """If any known email is listed in POLYSAAS_SUPERUSER_EMAILS, grant staff + superuser (dev / bootstrap)."""
+    from django.conf import settings
+
+    allowed = getattr(settings, "POLYSAAS_SUPERUSER_EMAILS", None) or []
+    if not allowed or not user:
+        return
+    allow_norm = {str(x).strip().lower() for x in allowed if x and str(x).strip()}
+    candidates = _collect_candidate_emails(user, sociallogin)
+    if not (candidates & allow_norm):
+        return
+    if not getattr(user, "pk", None):
+        return
+    if user.is_staff and user.is_superuser:
+        return
+    user.is_staff = True
+    user.is_superuser = True
+    user.save(update_fields=["is_staff", "is_superuser"])
+    matched = next(iter(candidates & allow_norm))
+    logger.info(
+        "[CUSTOM ADAPTER] Granted staff/superuser (matched %s, POLYSAAS_SUPERUSER_EMAILS)",
+        matched,
+    )
+
+
 class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
     """
     Custom adapter that ensures Site queries use the public schema
     in multi-tenant setups.
     """
+
+    def pre_social_login(self, request, sociallogin):
+        super().pre_social_login(request, sociallogin)
+        u = sociallogin.user
+        if u is not None and getattr(u, "pk", None):
+            _maybe_promote_superuser_from_settings(u, sociallogin)
 
     def get_site(self, request):
         """
@@ -341,6 +421,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
 
         # Call parent to save user and account
         user = super().save_user(request, sociallogin, form)
+        _maybe_promote_superuser_from_settings(user, sociallogin)
 
         # Log token information
         if hasattr(sociallogin, 'token') and sociallogin.token:

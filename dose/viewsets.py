@@ -2,11 +2,12 @@ from rest_framework import viewsets
 from drf_yasg.utils import swagger_auto_schema
 from dose.models import UserProfile
 from .models import (
-    Tenant, MLEngine, MLTaxonomy, MLDataset, CallBackData, Instruction, Task,
+    Tenant, MLEngine, MLTaxonomy, MLDataset, MLPrompt, CallBackData, Instruction, Task,
     NavigationPanel, NavigationItem, DashboardButton, IgnorePath
 )
 from .serializers import (
     TenantSerializer, UserProfileSerializer, MLEngineSerializer, MLTaxonomySerializer, MLDatasetSerializer,
+    MLPromptSerializer,
     CallBackDataSerializer, InstructionSerializer, TaskSerializer, NavigationPanelSerializer,
     NavigationItemSerializer, DashboardButtonSerializer, IgnorePathSerializer
 )
@@ -70,6 +71,20 @@ class MLDatasetViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(operation_description="Retrieve an ML dataset by ID.")
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+
+class MLPromptViewSet(viewsets.ModelViewSet):
+    queryset = MLPrompt.objects.all()
+    serializer_class = MLPromptSerializer
+
+    @swagger_auto_schema(operation_description="List all tenant-scoped ML prompts (key, description, prompt text).")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(operation_description="Retrieve an ML prompt by ID.")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
 
 class CallBackDataViewSet(viewsets.ModelViewSet):
     queryset = CallBackData.objects.all()
