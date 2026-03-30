@@ -1,7 +1,13 @@
+from django.conf import settings
 from rest_framework import exceptions, permissions, viewsets
 
 from dose.models import UserTenantMembership
 from dose.utils import get_current_tenant
+
+
+def _strict_tenant_enforcement():
+    """If True, superusers must also have membership and satisfy role rules."""
+    return getattr(settings, "STRICT_TENANT_ENFORCEMENT", False)
 
 # Higher number = more privilege
 ROLE_RANK = {
@@ -26,6 +32,10 @@ def role_at_least(role, minimum):
 class TenantScopedViewSetMixin(viewsets.ModelViewSet):
     """
     Enforce tenant context, membership in user_tenant_memberships, and per-tenant role.
+
+    Override on subclasses:
+    - ``read_min_role`` / ``write_min_role`` — default viewer reads, member+ writes.
+    - Stricter views (e.g. tenant admin APIs) may set ``write_min_role = Role.ADMIN``.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -43,7 +53,7 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
         user = self.request.user
         if not user.is_authenticated:
             raise exceptions.NotAuthenticated()
-        if user.is_superuser:
+        if user.is_superuser and not _strict_tenant_enforcement():
             return None
         try:
             return UserTenantMembership.objects.get(user=user, tenant=tenant)
@@ -58,7 +68,7 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
         return self.write_min_role
 
     def _require_role_for_action(self, membership):
-        if self.request.user.is_superuser:
+        if self.request.user.is_superuser and not _strict_tenant_enforcement():
             return
         if membership is None:
             raise exceptions.PermissionDenied(
