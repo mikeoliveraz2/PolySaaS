@@ -1,5 +1,6 @@
 {% load static %}
 <!-- Custom PollySaaS Sidebar - Below Menu Bar with Grid Layout -->
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
     /* Header height — must match AdminLTE fixed navbar */
     :root { --pss-header-h: 40px; }
@@ -256,6 +257,16 @@
         border-radius: 6px;
         font-size: 0.85rem;
         flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    /* Material Icons ligature support */
+    .nav-icon.material-icon {
+        font-family: 'Material Icons';
+        font-size: 1.2rem;
+        font-style: normal;
+        line-height: 1;
+        overflow: visible;
     }
 
     .nav-item:hover .nav-icon {
@@ -494,7 +505,7 @@
                            data-item-type="{{ item.item_type }}"
                            title="{{ item.description }}">
                             {% if item.icon_style == 'emoji' and item.icon_value %}
-                                <span class="nav-icon">{{ item.icon_value }}</span>
+                                <span class="nav-icon material-icon">{{ item.icon_value }}</span>
                             {% elif item.icon_style == 'fontawesome' and item.icon_value %}
                                 <span class="nav-icon"><i class="fa {{ item.icon_value }}"></i></span>
                             {% elif item.icon_style == 'bootstrap' and item.icon_value %}

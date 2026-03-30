@@ -451,6 +451,51 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
                 'Passthrough endpoint saved. Menu integration is disabled - no navigation item will be created.'
             )
 
+    actions = ['create_sniffer_stream_actions']
+
+    def create_sniffer_stream_actions(self, request, queryset):
+        """
+        Admin action: for each selected PassThroughEndpoint, scan its PolySniffer
+        TrafficLog for POST requests and auto-create an Instruction + MQOutput
+        (topic: {trigger}-{post-path}) for every unique POST path found.
+        """
+        from django.contrib import messages
+        from dose.services.sniffer_stream_actions import create_stream_actions_for_endpoint
+        from dose.utils import get_current_tenant
+
+        tenant = get_current_tenant(request) or getattr(request, 'tenant', None)
+
+        created_count = 0
+        skipped_count = 0
+        endpoint_count = 0
+
+        for endpoint in queryset:
+            endpoint_count += 1
+            results = create_stream_actions_for_endpoint(endpoint, tenant)
+            for r in results:
+                status = r.get('status', '')
+                if status == 'created':
+                    created_count += 1
+                elif status in ('already_exists', 'no_posts_found', 'dry_run'):
+                    skipped_count += 1
+
+        if created_count:
+            messages.success(
+                request,
+                f'✅ Created {created_count} Instruction + MQOutput pair(s) across '
+                f'{endpoint_count} endpoint(s). {skipped_count} already existed or had no POST traffic.'
+            )
+        else:
+            messages.warning(
+                request,
+                f'No new actions created for {endpoint_count} endpoint(s). '
+                f'{skipped_count} paths already existed or no POST traffic was found in PolySniffer.'
+            )
+
+    create_sniffer_stream_actions.short_description = (
+        '🔁 Create stream actions from sniffer POST traffic'
+    )
+
 class DoseMessageAdmin(TenantAwareModelAdmin):
     list_display = ('user', 'message', 'level', 'created_at', 'is_read')
     list_filter = ('level', 'is_read', 'created_at')
