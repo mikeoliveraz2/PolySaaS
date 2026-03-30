@@ -1,3 +1,11 @@
+"""
+Subscription / Stripe signup API.
+
+``SubscriptionApiViewSet`` is intentionally open (``permission_classes = []``) for
+**new** tenant + user registration without an existing session. Access control
+for authenticated tenants uses :class:`dose.models.UserTenantMembership` elsewhere —
+do not use ``UserProfile`` for authorization on secured endpoints.
+"""
 from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.response import Response

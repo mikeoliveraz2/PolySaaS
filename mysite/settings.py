@@ -132,6 +132,9 @@ PLAN_MAX_USERS = {
 
 SUBSCRIPTION_AMOUNT = 29.99
 
+# When True, superusers must satisfy UserTenantMembership + role like normal users.
+STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
+
 # --- SESSION SETTINGS ---
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
 SESSION_COOKIE_AGE = 86400  # 1 day in seconds

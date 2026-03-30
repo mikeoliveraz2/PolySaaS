@@ -19,6 +19,7 @@ def debug_session_view(request):
 from django.shortcuts import render, redirect
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.http import HttpResponseForbidden
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from dose.models import (
@@ -30,6 +31,7 @@ from dose.models import (
     RequestLog,
     ErrorLog,
 )
+from dose.tenant_fbv import require_tenant_membership_for_fbv, user_can_manage_tenant_settings
 from dose.serializers import AtomicServiceSerializer, SubscriptionSerializer, RequestLogSerializer, ErrorLogSerializer
 import stripe
 stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
@@ -108,11 +110,14 @@ def health_check(request):
 from django.http import JsonResponse
 from dose.models import DashboardButton
 from dose.utils import get_current_tenant
+@login_required
 def create_sample_dashboard_buttons(request):
     """Create sample dashboard buttons for testing (Development only)"""
-    current_tenant = get_current_tenant(request)
-    if not current_tenant:
-        return JsonResponse({'success': False, 'error': 'No active tenant'}, status=400)
+    current_tenant, _, err = require_tenant_membership_for_fbv(
+        request, min_role=UserTenantMembership.Role.MEMBER
+    )
+    if err:
+        return err
     # Check if user already has buttons
     existing_buttons = DashboardButton.objects.filter(
         user=request.user,
@@ -315,11 +320,15 @@ def track_dashboard_button_click(request):
     """Track dashboard button clicks for analytics"""
     if request.method == 'POST' and request.user.is_authenticated:
         try:
+            current_tenant, _, err = require_tenant_membership_for_fbv(
+                request, min_role=UserTenantMembership.Role.MEMBER
+            )
+            if err:
+                return err
             data = json.loads(request.body)
             button_id = data.get('button_id')
             if button_id:
                 # Get the dashboard button and verify it belongs to the current user and tenant
-                current_tenant = get_current_tenant(request)
                 try:
                     dashboard_button = DashboardButton.objects.get(
                         id=button_id,
@@ -352,11 +361,15 @@ def track_navigation_click(request):
     """Track navigation item clicks for analytics"""
     if request.method == 'POST' and request.user.is_authenticated:
         try:
+            current_tenant, _, err = require_tenant_membership_for_fbv(
+                request, min_role=UserTenantMembership.Role.MEMBER
+            )
+            if err:
+                return err
             data = json.loads(request.body)
             item_id = data.get('item_id')
             if item_id:
                 # Get the navigation item and verify it belongs to user's tenant
-                current_tenant = get_current_tenant(request)
                 try:
                     nav_item = NavigationItem.objects.select_related('panel').get(
                         id=item_id,
@@ -390,11 +403,11 @@ def update_tenant_api(request):
     """API endpoint to update tenant information"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'POST method required'})
-    if not request.user.is_staff:
-        return JsonResponse({'success': False, 'error': 'Staff access required'})
-    current_tenant = get_current_tenant(request)
-    if not current_tenant:
-        return JsonResponse({'success': False, 'error': 'No active tenant'})
+    current_tenant, _, err = require_tenant_membership_for_fbv(
+        request, min_role=UserTenantMembership.Role.ADMIN
+    )
+    if err:
+        return err
     try:
         data = json.loads(request.body)
         # Update allowed fields
@@ -425,6 +438,8 @@ from django.http import JsonResponse
 from dose.utils import get_current_tenant
 def get_tenant_info_api(request):
     """API endpoint to get current tenant information"""
+    from dose.utils import get_current_tenant_role
+
     current_tenant = get_current_tenant(request)
     if not current_tenant:
         return JsonResponse({'success': False, 'error': 'No tenant found for this session.'}, status=404)
@@ -439,7 +454,8 @@ def get_tenant_info_api(request):
             'tagline': current_tenant.tagline,
             'created_at': current_tenant.created_at.isoformat(),
             'is_active': current_tenant.is_active
-        }
+        },
+        'current_tenant_role': get_current_tenant_role(request),
     })
 # Get user tenants API view moved from views.py
 from django.http import JsonResponse
@@ -482,12 +498,18 @@ from dose.utils import get_current_tenant
 def tenant_users(request):
     """View for managing tenant users"""
     current_tenant = get_current_tenant(request)
-    # Get all users for this tenant
-    tenant_users = User.objects.filter(userprofile__tenant=current_tenant)
+    if not current_tenant:
+        return HttpResponseForbidden("No active tenant")
+    user_ids = UserTenantMembership.objects.filter(
+        tenant_id=current_tenant.id
+    ).values_list("user_id", flat=True)
+    tenant_users = User.objects.filter(id__in=user_ids)
     context = {
         'tenant': current_tenant,
         'users': tenant_users,
-        'can_manage': request.user.is_staff
+        'can_manage': user_can_manage_tenant_settings(request, current_tenant)
+        if current_tenant
+        else False
     }
     return render(request, 'dose/tenant_users.html', context)
 # Tenant settings view moved from views.py
@@ -501,7 +523,7 @@ def tenant_settings(request):
     logger.info(f"tenant_settings: current_tenant={current_tenant}")
     logger.info(f"tenant_settings: session keys={dict(request.session.items())}")
 
-    can_edit = request.user.is_staff
+    can_edit = user_can_manage_tenant_settings(request, current_tenant) if current_tenant else False
     if request.method == 'POST' and can_edit:
         current_tenant.name = request.POST.get('name', current_tenant.name)
         current_tenant.description = request.POST.get('description', current_tenant.description)
@@ -518,7 +540,6 @@ def tenant_settings(request):
             'can_edit': can_edit
         })
 # Switch tenant view moved from views.py
-from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
 from dose.tenant_session import apply_tenant_to_session
 def switch_tenant(request, tenant_id):

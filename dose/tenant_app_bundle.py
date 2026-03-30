@@ -41,3 +41,19 @@ class TenantAppBundlePermission(BasePermission):
         if not tenant:
             return False
         return tenant_has_active_bundle(tenant, app_name)
+
+
+class TenantAppBundledViewSetMixin:
+    """
+    Combine with a DRF viewset (after ``TenantScopedViewSetMixin`` or any
+    viewset that defines ``get_permissions``). Set ``required_tenant_app`` to a
+    :class:`dose.models.TenantApp` ``app_name`` value (e.g. ``'mattermost'``).
+
+    Appends :class:`TenantAppBundlePermission` only when ``required_tenant_app`` is set.
+    """
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        if getattr(self, "required_tenant_app", None):
+            perms.append(TenantAppBundlePermission())
+        return perms
