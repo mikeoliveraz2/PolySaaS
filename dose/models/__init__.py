@@ -4,6 +4,7 @@ from django.db import models
 from .tenant import Tenant
 from .subscription import Subscription
 from .user_profile import UserProfile
+from .user_tenant_membership import UserTenantMembership
 from .atomic_service import AtomicService
 from .dashboard_button import DashboardButton
 from .navigation_panel import NavigationPanel

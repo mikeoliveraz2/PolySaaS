@@ -46,3 +46,5 @@ from dose.views.orchestration import (
 orchestration_dashboard,
 create_instruction,
 )
+
+from dose.views.tenant_switch_api import switch_tenant_api

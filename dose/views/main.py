@@ -21,7 +21,15 @@ from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from dose.models import AtomicService, Subscription, UserProfile, Tenant, RequestLog, ErrorLog
+from dose.models import (
+    AtomicService,
+    Subscription,
+    UserProfile,
+    UserTenantMembership,
+    Tenant,
+    RequestLog,
+    ErrorLog,
+)
 from dose.serializers import AtomicServiceSerializer, SubscriptionSerializer, RequestLogSerializer, ErrorLogSerializer
 import stripe
 stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
@@ -435,37 +443,38 @@ def get_tenant_info_api(request):
     })
 # Get user tenants API view moved from views.py
 from django.http import JsonResponse
-from dose.models import UserProfile
 from django.contrib.auth.decorators import login_required
 # Get user tenants API view moved from views.py
 from django.http import JsonResponse
-from dose.models import UserProfile
 @login_required
 def get_user_tenants_api(request):
-    """API endpoint to get user's available tenants"""
-    try:
-        user_profile = request.user.userprofile
-        tenant = user_profile.tenant
-        current_tenant_id = request.session.get('tenant_id')
-        tenants = [{
-            'id': tenant.id,
-            'name': tenant.name,
-            'slug': tenant.slug,
-            'description': tenant.description,
-            'logo': tenant.logo.url if tenant.logo else None,
-            'is_current': current_tenant_id == tenant.id
-        }]
-        return JsonResponse({
-            'success': True,
-            'tenants': tenants,
-            'current_tenant_id': current_tenant_id
-        })
-    except UserProfile.DoesNotExist:
-        return JsonResponse({
-            'success': False,
-            'error': 'No tenant profile found',
-            'tenants': []
-        })
+    """API endpoint to get user's available tenants (from user_tenant_memberships)."""
+    current_tenant_id = request.session.get("tenant_id")
+    memberships = UserTenantMembership.objects.filter(user=request.user).select_related(
+        "tenant"
+    )
+    tenants = []
+    for m in memberships:
+        t = m.tenant
+        tenants.append(
+            {
+                "id": t.id,
+                "name": t.name,
+                "slug": t.slug,
+                "description": t.description,
+                "logo": t.logo.url if t.logo else None,
+                "role": m.role,
+                "is_current": current_tenant_id == t.id,
+            }
+        )
+    return JsonResponse(
+        {
+            "success": True,
+            "tenants": tenants,
+            "current_tenant_id": current_tenant_id,
+            "current_tenant_role": request.session.get("tenant_role"),
+        }
+    )
 # Tenant users view moved from views.py
 from django.shortcuts import render
 from django.contrib.auth.models import User
@@ -511,23 +520,19 @@ def tenant_settings(request):
 # Switch tenant view moved from views.py
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
-from dose.models import Tenant
+from dose.tenant_session import apply_tenant_to_session
 def switch_tenant(request, tenant_id):
-    """Allow users to switch between available tenants"""
+    """Allow users to switch between available tenants (membership required)."""
     if request.user.is_authenticated:
         try:
-            # Check if user has access to this tenant
-            tenant = Tenant.objects.get(id=tenant_id, userprofile__user=request.user)
-            request.session['tenant_id'] = tenant.id
-            request.session['tenant_name'] = tenant.name
-            request.session['tenant_slug'] = tenant.slug
-            request.session['tenant_description'] = getattr(tenant, 'description', '')
-            if hasattr(tenant, 'logo') and tenant.logo:
-                request.session['tenant_logo_url'] = tenant.logo.url
-            return redirect('dose:dashboard')
-        except Tenant.DoesNotExist:
+            m = UserTenantMembership.objects.select_related("tenant").get(
+                user=request.user, tenant_id=tenant_id
+            )
+            apply_tenant_to_session(request, m.tenant, m)
+            return redirect("dose:dashboard")
+        except UserTenantMembership.DoesNotExist:
             return HttpResponseForbidden("You do not have access to this tenant")
-    return redirect('dose:login')
+    return redirect("dose:login")
 # Landing page view moved from views.py
 from django.shortcuts import render, redirect
 from django.utils import timezone
@@ -756,6 +761,7 @@ from django.contrib.auth import authenticate, login
 from django.shortcuts import render, redirect
 import logging
 from dose.models import UserProfile
+from dose.tenant_session import apply_tenant_to_session
 
 def login_view(request):
     if request.method == 'POST':
@@ -772,15 +778,18 @@ def login_view(request):
                 schema_name = tenant.slug if hasattr(tenant, 'slug') else tenant.schema_name
                 with connection.cursor() as cursor:
                     cursor.execute(f"SET search_path TO {schema_name},public;")
-                    request.session['tenant_id'] = tenant.id
-                    request.session['tenant_name'] = tenant.name
-                    request.session['tenant_slug'] = tenant.slug
-                    request.session['tenant_description'] = getattr(tenant, 'description', '')
-                    if hasattr(tenant, 'logo') and tenant.logo:
-                        request.session['tenant_logo_url'] = tenant.logo.url
-                    logger.info(f"login_view: Set tenant session keys for user {user.username}: tenant_id={tenant.id}, tenant_name={tenant.name}")
-                    logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
-                    request.session.save()
+                m = UserTenantMembership.objects.filter(user=user, tenant=tenant).first()
+                if not m:
+                    m, _ = UserTenantMembership.objects.get_or_create(
+                        user=user,
+                        tenant=tenant,
+                        defaults={"role": UserTenantMembership.Role.MEMBER},
+                    )
+                apply_tenant_to_session(request, tenant, m)
+                logger.info(
+                    f"login_view: Set tenant session keys for user {user.username}: tenant_id={tenant.id}, tenant_name={tenant.name}"
+                )
+                logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
             except UserProfile.DoesNotExist:
                 logger.warning(f"login_view: No UserProfile found for user {user.username}")
                 pass

@@ -1,9 +1,10 @@
 # dose/passthrough/middleware.py — FINAL — OUT = LAST, IN = FIRST — CHIEF ARCHITECT APPROVED
 import logging
 from django.utils.deprecation import MiddlewareMixin
-from dose.models import PassThroughEndpoint
+from dose.models import PassThroughEndpoint, UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.handlers.registry import get_handler_for_endpoint
+from dose.utils import get_current_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,17 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         -> Perfect place for PASSTHROUGH-OUT
         """
         if request.path_info.startswith("/pt/"):
+            if not getattr(request, "user", None) or not request.user.is_authenticated:
+                return self.get_response(request)
+
+            tenant = get_current_tenant(request)
+            if not tenant:
+                return self.get_response(request)
+            if not request.user.is_superuser and not UserTenantMembership.objects.filter(
+                user=request.user, tenant=tenant
+            ).exists():
+                return self.get_response(request)
+
             parts = request.path_info.strip("/").split("/")
             print(f"[PT-MIDDLEWARE] path={request.path_info} parts={parts}")
             if len(parts) >= 3 and parts[0] == "pt":

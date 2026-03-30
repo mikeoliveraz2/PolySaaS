@@ -38,7 +38,7 @@ from dose.views import (
     tenant_users, get_user_tenants_api, get_tenant_info_api, update_tenant_api,
     track_navigation_click, track_dashboard_button_click, debug_view, setup_demo_view,
     create_sample_dashboard_buttons, health_check, custom_swagger_view, debug_session_view, about_page,
-    orchestration_dashboard, create_instruction
+    orchestration_dashboard, create_instruction, switch_tenant_api,
 )
 from . import jira_integration
 from .viewsets import (
@@ -124,6 +124,8 @@ urlpatterns = [
     path('about/', about_page, name='about'),
     # Tenant management
     path('tenant/switch/<int:tenant_id>/', switch_tenant, name='switch_tenant'),
+    path('switch-tenant/<int:tenant_id>/', switch_tenant, name='switch_tenant_short'),
+    path('api/switch-tenant/', switch_tenant_api, name='api_switch_tenant'),
     path('tenantsettings/', tenant_settings, name='tenantsettings'),
     path('tenant/users/', tenant_users, name='tenant_users'),
     # API endpoints

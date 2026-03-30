@@ -2,7 +2,9 @@
 def get_current_tenant(request):
     import logging
     logger = logging.getLogger(__name__)
-    tenant_id = request.session.get('tenant_id')
+    tenant_id = getattr(request, "current_tenant_id", None)
+    if tenant_id is None:
+        tenant_id = request.session.get("tenant_id")
     logger.info(f"get_current_tenant: tenant_id from session = {tenant_id}")
     logger.info(f"get_current_tenant: session keys = {dict(request.session.items())}")
     if tenant_id:

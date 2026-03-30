@@ -85,16 +85,21 @@ def log_social_account_added(sender, request, sociallogin, **kwargs):
 @receiver(user_logged_in)
 def set_tenant_in_session(sender, user, request, **kwargs):
     try:
+        from dose.models import UserTenantMembership
+        from dose.tenant_session import apply_tenant_to_session
+
         # Try to get UserProfile and tenant
         profile = getattr(user, 'userprofile', None)
         if profile and profile.tenant:
             tenant = profile.tenant
-            request.session['tenant_id'] = tenant.id
-            request.session['tenant_name'] = tenant.name
-            request.session['tenant_slug'] = tenant.slug
-            request.session['tenant_description'] = getattr(tenant, 'description', '')
-            if hasattr(tenant, 'logo') and tenant.logo:
-                request.session['tenant_logo_url'] = tenant.logo.url
+            m = UserTenantMembership.objects.filter(user=user, tenant=tenant).first()
+            if not m:
+                m, _ = UserTenantMembership.objects.get_or_create(
+                    user=user,
+                    tenant=tenant,
+                    defaults={"role": UserTenantMembership.Role.MEMBER},
+                )
+            apply_tenant_to_session(request, tenant, m)
             print(f"set_tenant_in_session: Set session for user {user.username} with tenant {tenant.name} (ID: {tenant.id})")
         else:
             print(
@@ -119,7 +124,17 @@ def promote_superuser_from_allowlist_on_login(sender, user, request, **kwargs):
 # --- Theme persistence: UserProfile signals ---
 from django.db.models.signals import post_save
 from django.contrib.auth.models import User
-from dose.models import UserProfile
+from dose.models import UserProfile, UserTenantMembership
+
+@receiver(post_save, sender=UserProfile)
+def sync_membership_from_user_profile(sender, instance, **kwargs):
+    """Keep user_tenant_memberships aligned when UserProfile.tenant changes."""
+    UserTenantMembership.objects.get_or_create(
+        user_id=instance.user_id,
+        tenant_id=instance.tenant_id,
+        defaults={"role": UserTenantMembership.Role.MEMBER},
+    )
+
 
 @receiver(post_save, sender=User)
 def create_or_update_user_profile(sender, instance, created, **kwargs):
@@ -146,6 +161,11 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
         return
 
     UserProfile.objects.create(user=instance, tenant=default_tenant)
+    UserTenantMembership.objects.get_or_create(
+        user=instance,
+        tenant=default_tenant,
+        defaults={"role": UserTenantMembership.Role.MEMBER},
+    )
     logger.info(
         "create_or_update_user_profile: created UserProfile for %s -> tenant %s (%s)",
         instance.username,

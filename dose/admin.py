@@ -82,7 +82,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, PolySnifferRun, Subscription
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -114,6 +114,16 @@ class UserProfileAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 admin.site.register(UserProfile, UserProfileAdmin)
+
+
+class UserTenantMembershipAdmin(admin.ModelAdmin):
+    list_display = ("user", "tenant", "role", "updated_at")
+    list_filter = ("role",)
+    search_fields = ("user__username", "tenant__name")
+    raw_id_fields = ("user", "tenant")
+
+
+admin.site.register(UserTenantMembership, UserTenantMembershipAdmin)
 
 from django import forms
 from dose.services.atomic_services_registry import init_atomic_services_registry, ATOMIC_SERVICE_REGISTRY

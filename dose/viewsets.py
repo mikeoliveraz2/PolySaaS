@@ -11,8 +11,9 @@ from .serializers import (
     CallBackDataSerializer, InstructionSerializer, TaskSerializer, NavigationPanelSerializer,
     NavigationItemSerializer, DashboardButtonSerializer, IgnorePathSerializer
 )
+from .tenant_enforcement import TenantScopedViewSetMixin
 
-class TenantViewSet(viewsets.ModelViewSet):
+class TenantViewSet(TenantScopedViewSetMixin):
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
 
@@ -24,7 +25,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class UserProfileViewSet(viewsets.ModelViewSet):
+class UserProfileViewSet(TenantScopedViewSetMixin):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
 
@@ -36,7 +37,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class MLEngineViewSet(viewsets.ModelViewSet):
+class MLEngineViewSet(TenantScopedViewSetMixin):
     queryset = MLEngine.objects.all()
     serializer_class = MLEngineSerializer
 
@@ -48,7 +49,7 @@ class MLEngineViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class MLTaxonomyViewSet(viewsets.ModelViewSet):
+class MLTaxonomyViewSet(TenantScopedViewSetMixin):
     queryset = MLTaxonomy.objects.all()
     serializer_class = MLTaxonomySerializer
 
@@ -60,7 +61,7 @@ class MLTaxonomyViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class MLDatasetViewSet(viewsets.ModelViewSet):
+class MLDatasetViewSet(TenantScopedViewSetMixin):
     queryset = MLDataset.objects.all()
     serializer_class = MLDatasetSerializer
 
@@ -73,7 +74,7 @@ class MLDatasetViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
 
-class MLPromptViewSet(viewsets.ModelViewSet):
+class MLPromptViewSet(TenantScopedViewSetMixin):
     queryset = MLPrompt.objects.all()
     serializer_class = MLPromptSerializer
 
@@ -86,7 +87,7 @@ class MLPromptViewSet(viewsets.ModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
 
-class CallBackDataViewSet(viewsets.ModelViewSet):
+class CallBackDataViewSet(TenantScopedViewSetMixin):
     queryset = CallBackData.objects.all()
     serializer_class = CallBackDataSerializer
 
@@ -98,7 +99,7 @@ class CallBackDataViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class InstructionViewSet(viewsets.ModelViewSet):
+class InstructionViewSet(TenantScopedViewSetMixin):
     queryset = Instruction.objects.all()
     serializer_class = InstructionSerializer
 
@@ -110,7 +111,7 @@ class InstructionViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class TaskViewSet(viewsets.ModelViewSet):
+class TaskViewSet(TenantScopedViewSetMixin):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
@@ -122,7 +123,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class NavigationPanelViewSet(viewsets.ModelViewSet):
+class NavigationPanelViewSet(TenantScopedViewSetMixin):
     queryset = NavigationPanel.objects.all()
     serializer_class = NavigationPanelSerializer
 
@@ -134,7 +135,7 @@ class NavigationPanelViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class NavigationItemViewSet(viewsets.ModelViewSet):
+class NavigationItemViewSet(TenantScopedViewSetMixin):
     queryset = NavigationItem.objects.all()
     serializer_class = NavigationItemSerializer
 
@@ -146,7 +147,7 @@ class NavigationItemViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class DashboardButtonViewSet(viewsets.ModelViewSet):
+class DashboardButtonViewSet(TenantScopedViewSetMixin):
     queryset = DashboardButton.objects.all()
     serializer_class = DashboardButtonSerializer
 
@@ -158,7 +159,7 @@ class DashboardButtonViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-class IgnorePathViewSet(viewsets.ModelViewSet):
+class IgnorePathViewSet(TenantScopedViewSetMixin):
     queryset = IgnorePath.objects.all()
     serializer_class = IgnorePathSerializer
 
@@ -174,7 +175,7 @@ class IgnorePathViewSet(viewsets.ModelViewSet):
 from .models import PassThroughEndpoint
 from .serializers import PassThroughEndpointSerializer
 
-class PassThroughEndpointViewSet(viewsets.ModelViewSet):
+class PassThroughEndpointViewSet(TenantScopedViewSetMixin):
     """
     CRUD API for Pass Through Endpoints.
 

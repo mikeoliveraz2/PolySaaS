@@ -95,36 +95,15 @@ def convert_relative_static_to_absolute(match, base_url):
 
 def get_endpoint_any_schema(endpoint_id, request=None):
     tenant = get_current_tenant(request) if request else None
-    if tenant and tenant.schema_name:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f"SET search_path TO {tenant.schema_name},public;")
-                endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
-                if endpoint:
-                    return endpoint
-        except Exception:
-            pass
+    if not tenant or not tenant.schema_name:
+        raise Http404("No active tenant context for endpoint lookup")
+
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SET search_path TO public;")
+            cursor.execute(f"SET search_path TO {tenant.schema_name},public;")
             endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
             if endpoint:
                 return endpoint
-    except Exception:
-        pass
-    try:
-        from dose.models.tenant import Tenant
-        with connection.cursor() as cursor:
-            tenants = Tenant.objects.all()
-            for tenant_obj in tenants:
-                if tenant_obj.schema_name:
-                    try:
-                        cursor.execute(f"SET search_path TO {tenant_obj.schema_name},public;")
-                        endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
-                        if endpoint:
-                            return endpoint
-                    except Exception:
-                        continue
     except Exception:
         pass
     raise Http404(f"PassThroughEndpoint with id={endpoint_id} does not exist")

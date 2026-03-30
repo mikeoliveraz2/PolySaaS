@@ -52,11 +52,25 @@ if OAuth2Validator is not None:
             claims['preferred_username'] = user.username
 
             try:
-                profile = getattr(user, 'userprofile', None)
-                if profile and profile.tenant_id:
-                    claims['tenant_id'] = profile.tenant_id
-                    claims['tenant_name'] = profile.tenant.name
-                    claims['tenant_slug'] = profile.tenant.slug
+                from dose.models import UserTenantMembership
+
+                m = (
+                    UserTenantMembership.objects.select_related("tenant")
+                    .filter(user_id=user.pk)
+                    .order_by("tenant_id")
+                    .first()
+                )
+                if not m:
+                    profile = getattr(user, "userprofile", None)
+                    if profile and profile.tenant_id:
+                        claims["tenant_id"] = profile.tenant_id
+                        claims["tenant_name"] = profile.tenant.name
+                        claims["tenant_slug"] = profile.tenant.slug
+                else:
+                    claims["tenant_id"] = m.tenant_id
+                    claims["tenant_name"] = m.tenant.name
+                    claims["tenant_slug"] = m.tenant.slug
+                    claims["tenant_role"] = m.role
             except Exception:
                 logger.warning("Could not resolve tenant for user %s", user.pk)
 
