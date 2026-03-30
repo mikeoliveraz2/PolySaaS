@@ -152,3 +152,119 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
         default_tenant.name,
         default_tenant.schema_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# PolySniffer: auto-create stream actions on new POST traffic
+# ---------------------------------------------------------------------------
+
+def _on_trafficlog_created(sender, instance, created, **kwargs):
+    """
+    When a new POST TrafficLog is saved, immediately create (or ensure) the
+    matching Instruction + MQOutput for that path.
+
+    This runs synchronously after save so it stays within the same DB
+    transaction/search_path context that wrote the TrafficLog.
+    """
+    if not created or instance.method != "POST":
+        return
+
+    try:
+        from dose.models.pass_through_endpoint import PassThroughEndpoint
+        from dose.models.tenant import Tenant
+        from dose.services.sniffer_stream_actions import (
+            _topic_name,
+            _set_schema,
+        )
+        from dose.models.instruction import Instruction
+        from dose.models.mq_output import MQOutput
+        from django.db import transaction
+
+        endpoint_name = (instance.endpoint_name or "").strip()
+        if not endpoint_name:
+            return
+
+        # Find the matching PassThroughEndpoint (case-insensitive)
+        ep = PassThroughEndpoint.objects.filter(
+            trigger_path__iexact=endpoint_name
+        ).first()
+        if not ep:
+            ep = PassThroughEndpoint.objects.filter(
+                trigger_path__icontains=endpoint_name
+            ).first()
+        if not ep:
+            return
+
+        # Resolve tenant — prefer one whose schema already has this table
+        from django.db import connection
+        schema = connection.settings_dict.get("SEARCH_PATH") or "public"
+        tenant = Tenant.objects.filter(schema_name=schema).first()
+        if not tenant:
+            tenant = Tenant.objects.order_by("pk").first()
+        if not tenant:
+            return
+
+        trigger = (ep.trigger_path or "").strip("/")
+        path = (instance.path or "/").strip()
+        topic = _topic_name(trigger, path)
+        instruction_path = (
+            f"/{trigger}/{path.lstrip('/')}"
+            if not path.startswith(f"/{trigger}")
+            else path
+        )
+
+        with transaction.atomic():
+            Instruction.objects.get_or_create(
+                tenant=tenant,
+                requestpath=instruction_path,
+                requestmethod="POST",
+                defaults={
+                    "eventKey": topic,
+                    "description": f"Auto-generated from sniffer: {ep.get_menu_title()} POST {path}",
+                    "direction": "REQ",
+                    "appusername": "sniffer",
+                    "urllist": ep.endpoint_url,
+                    "save_callbackdata": False,
+                },
+            )
+            MQOutput.objects.get_or_create(
+                tenant=tenant,
+                name=f"sniffer-{topic}"[:200],
+                defaults={
+                    "provider": "rabbitmq",
+                    "is_active": True,
+                    "instruction_path": instruction_path,
+                    "rabbitmq_host": "localhost",
+                    "rabbitmq_port": 5672,
+                    "rabbitmq_username": "guest",
+                    "rabbitmq_password": "guest",
+                    "rabbitmq_vhost": "/",
+                    "rabbitmq_exchange": "sniffer",
+                    "rabbitmq_queue": topic,
+                    "rabbitmq_routing_key": topic,
+                    "message_format": "json",
+                    "include_request_metadata": True,
+                    "include_response_data": False,
+                    "description": (
+                        f"Auto-generated: publish {ep.get_menu_title()} "
+                        f"POST {path} as JSON to topic '{topic}'"
+                    ),
+                },
+            )
+
+        logger.info(
+            "[sniffer] stream action ensured: endpoint=%s path=%s topic=%s",
+            trigger, path, topic,
+        )
+
+    except Exception:
+        # Never let a signal crash a live request
+        logger.exception("[sniffer] on_trafficlog_created failed — skipping stream action creation")
+
+
+# Connect after the model is ready (avoids AppRegistryNotReady at import time)
+try:
+    from dose.polysniffer.models import TrafficLog as _TrafficLog
+    post_save.connect(_on_trafficlog_created, sender=_TrafficLog, weak=False)
+except Exception:
+    pass  # polysniffer not yet migrated — signal will be unavailable
