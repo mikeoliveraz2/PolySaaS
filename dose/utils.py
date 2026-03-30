@@ -23,6 +23,15 @@ def get_current_tenant(request):
     else:
         logger.warning("get_current_tenant: No tenant_id in session")
 
+
+def get_current_tenant_role(request):
+    """Active tenant role from middleware or session (for UI / API)."""
+    role = getattr(request, "current_tenant_role", None)
+    if role is not None:
+        return role
+    return request.session.get("tenant_role")
+
+
 # Get theme colors based on tenant's selected theme
 def get_tenant_theme_colors(theme_name):
     theme_palettes = {

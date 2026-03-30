@@ -1,4 +1,4 @@
-from dose.utils import get_current_tenant
+from dose.utils import get_current_tenant, get_current_tenant_role
 from dose.models import UserProfile, Tenant
 from django.db.models import Count, Max, Q
 import logging
@@ -6,8 +6,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 def tenant_context(request):
+    """
+    Req 5: expose tenant + role for templates.
+
+    Use: ``{{ current_tenant.name }} ({{ current_tenant_role_display }})`` or
+    ``{{ current_tenant_header_label }}`` for a single header string.
+    """
     tenant = get_current_tenant(request)
-    return {'current_tenant': tenant}
+    role = get_current_tenant_role(request) if tenant else None
+    role_display = ""
+    if role:
+        role_display = role.replace("_", " ").strip().title()
+    header_label = ""
+    if tenant and role_display:
+        header_label = f"{tenant.name} ({role_display})"
+    elif tenant:
+        header_label = tenant.name or ""
+    return {
+        "current_tenant": tenant,
+        "current_tenant_role": role,
+        "current_tenant_role_display": role_display,
+        "current_tenant_header_label": header_label,
+    }
 
 def jazzmin_theme(request):
     import logging
