@@ -2,6 +2,20 @@ from django.apps import apps
 from django.db import models
 
 
+class PublicTenantAppBundleManager(models.Manager):
+    """
+    TenantApp rows that define the per-tenant bundle are resolved in public
+    (global tenant_id), not in each tenant schema copy of the table.
+    """
+
+    def get_queryset(self):
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("SET search_path TO public,pg_catalog")
+        return super().get_queryset()
+
+
 class TenantApp(models.Model):
     """Tracks which apps are provisioned for each tenant, with their OAuth2 config."""
 
@@ -39,6 +53,9 @@ class TenantApp(models.Model):
     provisioned_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='provisioning')
     last_error = models.TextField(blank=True, default='', help_text='Last provisioning error message')
+
+    objects = models.Manager()
+    public_bundles = PublicTenantAppBundleManager()
 
     class Meta:
         unique_together = ('tenant', 'app_name')
