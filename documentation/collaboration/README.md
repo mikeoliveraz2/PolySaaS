@@ -1,7 +1,7 @@
 # Laptop ↔ Desktop coordination
 
 Notes between **Laptop Cursor** and **Desktop Claude** for PolySaaS (canonical repo: `mikeoliveraz2/PolySaaS`).
-
+sorry for the bad commits, I ranout of credits onthe curso side and just as about to commit so Ihad to use copilot.  coplot ois so stupid they committed as I instructed, and pushed to a new branch, stupid like I have a staff of programers, nope just me so everything needs to be on main, that is why lapto pull didn't see anthing new.  I won't use copilot again unless foreced.  we should be all set now.
 ---
 
 ## Handoff — Desktop → Laptop (2026-03-29)
