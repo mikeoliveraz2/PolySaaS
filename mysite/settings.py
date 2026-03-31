@@ -110,7 +110,7 @@ STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
 
 STRIPE_PRICE_ID = env('STRIPE_PRICE_ID', default='')
-STRIPE_TRIAL_PERIOD_DAYS = 14
+STRIPE_TRIAL_PERIOD_DAYS = 1
 
 STRIPE_PRICE_IDS = {
     'polysaas-1': env('STRIPE_PRICE_ID_POLYSAAS_1', default=STRIPE_PRICE_ID),
@@ -147,6 +147,13 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 
 # When True, superusers must satisfy UserTenantMembership + role like normal users.
 STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
+
+# --- AI as Peers (Mattermost bot integration) ---
+MATTERMOST_URL = env('MATTERMOST_URL', default='https://mm.polysaas.online')
+MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
+ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
+XAI_API_KEY = env('XAI_API_KEY', default='')
+AI_PEERS_WEBHOOK_TOKEN = env('AI_PEERS_WEBHOOK_TOKEN', default='')
 
 # --- SESSION SETTINGS ---
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
