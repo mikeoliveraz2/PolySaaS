@@ -75,8 +75,8 @@ After `git pull origin main` on the laptop, you MUST update the laptop's `.env` 
 Add these three lines to the bottom of the laptop's `.env`:
 
 ```
-STRIPE_SECRET_KEY=sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg
-STRIPE_PUBLISHABLE_KEY=pk_test_51S3owgPQWnaGoDqyVMAyU9sTOrv763E4CP8t1hhlOHeYDMEDoxTrEMO3ylp0xaofCEF3QGCjSJAgIpRXrRVxBs2200j6Yuabiv
+STRIPE_SECRET_KEY=sk_test_YOUR_KEY_HERE
+STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_KEY_HERE
 STRIPE_WEBHOOK_SECRET=whsec_PLACEHOLDER_SET_FROM_STRIPE_CLI_OR_DASHBOARD
 ```
 

@@ -33,8 +33,9 @@ from dose.models import (
 )
 from dose.tenant_fbv import require_tenant_membership_for_fbv, user_can_manage_tenant_settings
 from dose.serializers import AtomicServiceSerializer, SubscriptionSerializer, RequestLogSerializer, ErrorLogSerializer
+from django.conf import settings
 import stripe
-stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 @login_required
 def debug_tenant_session(request):
@@ -924,7 +925,7 @@ class ErrorLogViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]
 
 import stripe
-stripe.api_key = 'sk_test_51S3owgPQWnaGoDqycASnxwA8ua34YdBAy1Dz0C2v2REFHgAUqXM4fJrGToWd93Kpn6YUHrKaMgimbHfPzm3yONOn00xKxopkQg'
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class SubscriptionViewSet(viewsets.ModelViewSet):
     queryset = Subscription.objects.all()
