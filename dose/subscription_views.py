@@ -95,9 +95,9 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 tenant_id = None
 
-            plan_tier = data.get('plan_tier', 'starter')
-            if plan_tier not in ('starter', 'team', 'unlimited'):
-                plan_tier = 'starter'
+            plan_tier = data.get('plan_tier', 'polysaas-1')
+            if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited'):
+                plan_tier = 'polysaas-1'
 
             # Test bypass: skip Stripe for tenant names starting with 'A'
             if tenant_name and tenant_name.lower().startswith('a'):

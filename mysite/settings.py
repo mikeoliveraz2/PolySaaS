@@ -113,22 +113,27 @@ STRIPE_PRICE_ID = env('STRIPE_PRICE_ID', default='')
 STRIPE_TRIAL_PERIOD_DAYS = 14
 
 STRIPE_PRICE_IDS = {
-    'starter': env('STRIPE_PRICE_ID_STARTER', default=STRIPE_PRICE_ID),
-    'team': env('STRIPE_PRICE_ID_TEAM', default=''),
-    'unlimited': env('STRIPE_PRICE_ID_UNLIMITED', default=''),
+    'polysaas-1': env('STRIPE_PRICE_ID_POLYSAAS_1', default=STRIPE_PRICE_ID),
+    'polysaas-3': env('STRIPE_PRICE_ID_POLYSAAS_3', default=''),
+    'polysaas-unlimited': env('STRIPE_PRICE_ID_POLYSAAS_UNLIMITED', default=''),
 }
 
+# Per-user/month price for each plan (display only — actual billing is in Stripe)
 PLAN_PRICES = {
-    'starter': 29.99,
-    'team': 79.99,
-    'unlimited': 199.99,
+    'polysaas-1': 29.99,
+    'polysaas-3': 79.99,
+    'polysaas-unlimited': 199.99,
 }
 
-PLAN_MAX_USERS = {
-    'starter': 1,
-    'team': 3,
-    'unlimited': None,
+# Max bundled or external applications per plan
+PLAN_MAX_APPS = {
+    'polysaas-1': 1,
+    'polysaas-3': 3,
+    'polysaas-unlimited': None,
 }
+
+# Usage-based storage pricing (NextCloud / WordPress) — metered in Stripe
+STRIPE_PRICE_ID_STORAGE = env('STRIPE_PRICE_ID_STORAGE', default='')
 
 SUBSCRIPTION_AMOUNT = 29.99
 

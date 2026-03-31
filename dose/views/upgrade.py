@@ -13,7 +13,7 @@ from dose.utils import get_current_tenant
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
-TIER_ORDER = ['starter', 'team', 'unlimited']
+TIER_ORDER = ['polysaas-1', 'polysaas-3', 'polysaas-unlimited']
 
 
 def _get_subscription_for_user(request):

@@ -10,37 +10,37 @@
 
 <!-- Plan Selection Cards -->
 <div class="plan-cards">
-    <div class="plan-card selected" data-tier="starter" data-price="29.99">
+    <div class="plan-card selected" data-tier="polysaas-1" data-price="29.99">
         <div class="plan-badge">Most Popular</div>
-        <h3>Starter</h3>
-        <div class="plan-price">$29.99<span>/mo</span></div>
+        <h3>PolySaaS-1</h3>
+        <div class="plan-price">$29.99<span>/user/mo</span></div>
         <ul class="plan-features">
-            <li>1 user</li>
+            <li>1 application (bundled or external)</li>
             <li>All integrations</li>
             <li>14-day free trial</li>
         </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('starter', 29.99)">Selected</button>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-1', 29.99)">Selected</button>
     </div>
-    <div class="plan-card" data-tier="team" data-price="79.99">
-        <h3>Team</h3>
-        <div class="plan-price">$79.99<span>/mo</span></div>
+    <div class="plan-card" data-tier="polysaas-3" data-price="79.99">
+        <h3>PolySaaS-3</h3>
+        <div class="plan-price">$79.99<span>/user/mo</span></div>
         <ul class="plan-features">
-            <li>Up to 3 users</li>
+            <li>Up to 3 applications (bundled or external)</li>
             <li>All integrations</li>
             <li>14-day free trial</li>
         </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('team', 79.99)">Select</button>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-3', 79.99)">Select</button>
     </div>
-    <div class="plan-card" data-tier="unlimited" data-price="199.99">
-        <h3>Unlimited</h3>
-        <div class="plan-price">$199.99<span>/mo</span></div>
+    <div class="plan-card" data-tier="polysaas-unlimited" data-price="199.99">
+        <h3>PolySaaS-Unlimited</h3>
+        <div class="plan-price">$199.99<span>/user/mo</span></div>
         <ul class="plan-features">
-            <li>Unlimited users</li>
+            <li>Unlimited applications</li>
             <li>All integrations</li>
             <li>14-day free trial</li>
             <li>Priority support</li>
         </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('unlimited', 199.99)">Select</button>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-unlimited', 199.99)">Select</button>
     </div>
 </div>
 
@@ -199,7 +199,7 @@
 <form id="subscription-form" class="subscription-form">
     <div id="stripe-load-error" style="display:none;color:#d32f2f;margin-bottom:1em;font-size:1em;text-align:center;">Unable to load secure card fields. Please check your internet connection or contact support.</div>
     {% csrf_token %}
-    <input type="hidden" id="plan-tier" name="plan_tier" value="starter">
+    <input type="hidden" id="plan-tier" name="plan_tier" value="polysaas-1">
     <div class="form-group">
         <label for="tenant-name" class="form-label">Tenant Name</label>
         <input type="text" id="tenant-name" name="tenant_name" class="form-input" required placeholder="Your organization or tenant name" value="">
