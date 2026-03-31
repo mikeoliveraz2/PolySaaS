@@ -4,6 +4,18 @@ Sniffer Stream Actions Service
 For every PassThroughEndpoint that has captured traffic (TrafficLog entries),
 creates an Instruction + MQOutput for each unique POST path discovered.
 
+Pub/Sub Flow (GCP — primary broker):
+  1. PolySniffer captures POST traffic → TrafficLog row.
+  2. This service (or signal) creates:
+     - an Instruction (POST, path, executescript=EndpointDataExtractorService)
+     - an MQOutput (provider=google_pubsub, topic="{trigger}-{path_slug}")
+  3. On a live passthrough POST, DoseRequestController matches the Instruction
+     (substring match on requestpath) and runs EndpointDataExtractorService.
+  4. EndpointDataExtractorService._publish_to_pubsub reads the active MQConfig
+     with provider=google_pubsub and publishes the POST body to the topic.
+  5. Any number of subscribers on that Pub/Sub topic receive the message
+     for parallel processing.
+
 Topic naming convention:  {trigger_path}-{post_path_slug}
   e.g. endpoint trigger "odoo", POST path "/web/dataset/call_kw"
        → topic "odoo-web-dataset-call_kw"
@@ -19,7 +31,6 @@ logger = logging.getLogger(__name__)
 def _slugify_path(path: str) -> str:
     """Convert a URL path to a safe topic-name segment, e.g. /web/login → web-login"""
     slug = path.strip("/").replace("/", "-").replace("_", "_")
-    # Remove any characters that aren't alphanumeric, dash or underscore
     slug = re.sub(r"[^a-zA-Z0-9\-_]", "", slug)
     return slug.lower() or "root"
 
@@ -33,14 +44,37 @@ def _topic_name(trigger: str, path: str) -> str:
 
 def _set_schema(tenant):
     """Point the DB search_path at the tenant schema so TrafficLog is visible."""
-    import re
+    import re as _re
     from django.db import connection
     schema = tenant.schema_name if tenant and tenant.schema_name else "public"
-    # Validate schema name: only alphanumeric, underscore — no injection risk
-    if not re.match(r"^[a-zA-Z0-9_]+$", schema):
+    if not _re.match(r"^[a-zA-Z0-9_]+$", schema):
         raise ValueError(f"Invalid schema name: {schema!r}")
     with connection.cursor() as cur:
         cur.execute(f"SET search_path TO {schema}, public;")
+
+
+def _resolve_pubsub_defaults(tenant):
+    """
+    Look up the tenant's active GCP Pub/Sub MQConfig to populate MQOutput
+    defaults (project_id, credentials). Returns a dict or empty dict if none.
+    """
+    from dose.models.mq_config import MQConfig
+    cfg = MQConfig.objects.filter(
+        tenant=tenant,
+        provider="google_pubsub",
+        is_active=True,
+    ).first()
+    if not cfg:
+        cfg = MQConfig.objects.filter(
+            provider="google_pubsub",
+            is_active=True,
+        ).first()
+    if cfg:
+        return {
+            "pubsub_project_id": cfg.pubsub_project_id or "",
+            "pubsub_credentials_json": cfg.pubsub_credentials_json or "",
+        }
+    return {}
 
 
 def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
@@ -59,7 +93,6 @@ def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
     trigger = (endpoint.trigger_path or "").strip("/") or str(endpoint.id)
 
     try:
-        # Find all POST TrafficLogs for this endpoint
         logs = list(
             TrafficLog.objects.filter(
                 endpoint_name__icontains=trigger,
@@ -67,10 +100,9 @@ def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
             ).values_list("path", flat=True).distinct()
         )
 
-        # Also check by endpoint URL domain if trigger didn't match anything
         if not logs:
             parsed = urlparse(endpoint.endpoint_url)
-            domain_fragment = parsed.netloc.split(":")[0]  # strip port
+            domain_fragment = parsed.netloc.split(":")[0]
             logs = list(
                 TrafficLog.objects.filter(
                     url__icontains=domain_fragment,
@@ -81,13 +113,14 @@ def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
         logger.warning(f"TrafficLog query failed for {trigger}: {e}")
         return [{"endpoint": trigger, "status": "no_posts_found", "note": str(e)}]
 
-    # Deduplicate in Python as a safety net
     logs = list(dict.fromkeys(logs))
 
     results = []
 
     if not logs:
         return [{"endpoint": endpoint.trigger_path, "status": "no_posts_found"}]
+
+    pubsub_defaults = _resolve_pubsub_defaults(tenant)
 
     for raw_path in logs:
         path = raw_path.strip() or "/"
@@ -105,7 +138,6 @@ def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
             continue
 
         with transaction.atomic():
-            # --- Instruction ---
             instruction, instr_created = Instruction.objects.get_or_create(
                 tenant=tenant,
                 requestpath=instruction_path,
@@ -114,36 +146,29 @@ def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
                     "eventKey": topic,
                     "description": f"Auto-generated from sniffer: {endpoint.get_menu_title()} POST {path}",
                     "direction": "REQ",
+                    "executescript": "EndpointDataExtractorService",
                     "appusername": "sniffer",
                     "urllist": endpoint.endpoint_url,
-                    "save_callbackdata": False,
+                    "save_callbackdata": True,
                 },
             )
 
-            # --- MQOutput ---
             mq_output, mq_created = MQOutput.objects.get_or_create(
                 tenant=tenant,
                 name=f"sniffer-{topic}"[:200],
                 defaults={
-                    "provider": "rabbitmq",
+                    "provider": "google_pubsub",
                     "is_active": True,
                     "instruction_path": instruction_path,
-                    # Connection — intentionally left blank so user fills in their broker details.
-                    # Defaults will use the local Railway RabbitMQ if configured.
-                    "rabbitmq_host": "localhost",
-                    "rabbitmq_port": 5672,
-                    "rabbitmq_username": "guest",
-                    "rabbitmq_password": "guest",
-                    "rabbitmq_vhost": "/",
-                    "rabbitmq_exchange": "sniffer",
-                    "rabbitmq_queue": topic,
-                    "rabbitmq_routing_key": topic,
+                    "pubsub_project_id": pubsub_defaults.get("pubsub_project_id", ""),
+                    "pubsub_topic": topic,
+                    "pubsub_credentials_json": pubsub_defaults.get("pubsub_credentials_json", ""),
                     "message_format": "json",
                     "include_request_metadata": True,
                     "include_response_data": False,
                     "description": (
                         f"Auto-generated: publish {endpoint.get_menu_title()} "
-                        f"POST {path} as JSON to topic '{topic}'"
+                        f"POST {path} as JSON to Pub/Sub topic '{topic}'"
                     ),
                 },
             )
@@ -175,7 +200,6 @@ def create_stream_actions_for_all_sniffed(tenant, dry_run=False):
 
     _set_schema(tenant)
 
-    # Endpoints that have at least one POST TrafficLog
     try:
         sniffed_triggers = list(
             TrafficLog.objects.filter(method="POST")
@@ -186,7 +210,6 @@ def create_stream_actions_for_all_sniffed(tenant, dry_run=False):
         logger.warning(f"TrafficLog scan failed: {e}")
         sniffed_triggers = []
 
-    # Match to PassThroughEndpoint records by trigger_path substring
     endpoints = PassThroughEndpoint.objects.all()
     sniffed_lower = [(sn or "").lower() for sn in sniffed_triggers]
     matched = []
@@ -194,7 +217,6 @@ def create_stream_actions_for_all_sniffed(tenant, dry_run=False):
         trigger = (ep.trigger_path or "").strip("/")
         if any(trigger and trigger.lower() in sn for sn in sniffed_lower):
             matched.append(ep)
-        # Also match by domain
         elif ep.endpoint_url:
             domain = urlparse(ep.endpoint_url).netloc.split(":")[0]
             if any(domain and domain.lower() in sn for sn in sniffed_lower):

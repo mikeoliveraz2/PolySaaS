@@ -183,8 +183,8 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
     When a new POST TrafficLog is saved, immediately create (or ensure) the
     matching Instruction + MQOutput for that path.
 
-    This runs synchronously after save so it stays within the same DB
-    transaction/search_path context that wrote the TrafficLog.
+    The Instruction's executescript is set to EndpointDataExtractorService so
+    DoseRequestController triggers Pub/Sub publishing on live passthrough POSTs.
     """
     if not created or instance.method != "POST":
         return
@@ -194,7 +194,7 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
         from dose.models.tenant import Tenant
         from dose.services.sniffer_stream_actions import (
             _topic_name,
-            _set_schema,
+            _resolve_pubsub_defaults,
         )
         from dose.models.instruction import Instruction
         from dose.models.mq_output import MQOutput
@@ -204,7 +204,6 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
         if not endpoint_name:
             return
 
-        # Find the matching PassThroughEndpoint (case-insensitive)
         ep = PassThroughEndpoint.objects.filter(
             trigger_path__iexact=endpoint_name
         ).first()
@@ -215,7 +214,6 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
         if not ep:
             return
 
-        # Resolve tenant — prefer one whose schema already has this table
         from django.db import connection
         schema = connection.settings_dict.get("SEARCH_PATH") or "public"
         tenant = Tenant.objects.filter(schema_name=schema).first()
@@ -233,6 +231,8 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
             else path
         )
 
+        pubsub_defaults = _resolve_pubsub_defaults(tenant)
+
         with transaction.atomic():
             Instruction.objects.get_or_create(
                 tenant=tenant,
@@ -242,38 +242,34 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
                     "eventKey": topic,
                     "description": f"Auto-generated from sniffer: {ep.get_menu_title()} POST {path}",
                     "direction": "REQ",
+                    "executescript": "EndpointDataExtractorService",
                     "appusername": "sniffer",
                     "urllist": ep.endpoint_url,
-                    "save_callbackdata": False,
+                    "save_callbackdata": True,
                 },
             )
             MQOutput.objects.get_or_create(
                 tenant=tenant,
                 name=f"sniffer-{topic}"[:200],
                 defaults={
-                    "provider": "rabbitmq",
+                    "provider": "google_pubsub",
                     "is_active": True,
                     "instruction_path": instruction_path,
-                    "rabbitmq_host": "localhost",
-                    "rabbitmq_port": 5672,
-                    "rabbitmq_username": "guest",
-                    "rabbitmq_password": "guest",
-                    "rabbitmq_vhost": "/",
-                    "rabbitmq_exchange": "sniffer",
-                    "rabbitmq_queue": topic,
-                    "rabbitmq_routing_key": topic,
+                    "pubsub_project_id": pubsub_defaults.get("pubsub_project_id", ""),
+                    "pubsub_topic": topic,
+                    "pubsub_credentials_json": pubsub_defaults.get("pubsub_credentials_json", ""),
                     "message_format": "json",
                     "include_request_metadata": True,
                     "include_response_data": False,
                     "description": (
                         f"Auto-generated: publish {ep.get_menu_title()} "
-                        f"POST {path} as JSON to topic '{topic}'"
+                        f"POST {path} as JSON to Pub/Sub topic '{topic}'"
                     ),
                 },
             )
 
         logger.info(
-            "[sniffer] stream action ensured: endpoint=%s path=%s topic=%s",
+            "[sniffer] stream action ensured: endpoint=%s path=%s topic=%s provider=google_pubsub",
             trigger, path, topic,
         )
 
