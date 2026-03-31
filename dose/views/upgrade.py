@@ -5,6 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.contrib import messages
 
+import djstripe.models
+
 from dose.models import Subscription
 from dose.utils import get_current_tenant
 
@@ -75,14 +77,12 @@ def upgrade_view(request):
             stripe_sub = stripe.Subscription.retrieve(sub.stripe_subscription_id)
             current_item_id = stripe_sub['items']['data'][0].id
 
-            stripe.Subscription.modify(
+            modified = stripe.Subscription.modify(
                 sub.stripe_subscription_id,
-                items=[{
-                    'id': current_item_id,
-                    'price': new_price_id,
-                }],
+                items=[{'id': current_item_id, 'price': new_price_id}],
                 proration_behavior='create_prorations',
             )
+            djstripe.models.Subscription.sync_from_stripe_data(modified)
 
             old_tier = sub.plan_tier
             sub.plan_tier = new_tier

@@ -924,27 +924,6 @@ class ErrorLogViewSet(viewsets.ModelViewSet):
     serializer_class = ErrorLogSerializer
     permission_classes = [permissions.IsAdminUser]
 
-import stripe
-stripe.api_key = settings.STRIPE_SECRET_KEY
-
-class SubscriptionViewSet(viewsets.ModelViewSet):
-    queryset = Subscription.objects.all()
-    serializer_class = SubscriptionSerializer
-    permission_classes = [permissions.AllowAny]
-    def create(self, request, *args, **kwargs):
-        import logging
-        logger = logging.getLogger(__name__)
-        import json as pyjson
-        print("SubscriptionViewSet.create called")
-        print(f"Request content_type: {request.content_type}")
-        if request.content_type == 'application/json':
-            try:
-                data = request.data
-            except Exception:
-                data = {}
-        else:
-            data = {}
-        # ...existing logic...
 # GitHub profile passthrough view
 from allauth.socialaccount.models import SocialToken
 import requests

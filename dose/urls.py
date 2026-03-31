@@ -53,7 +53,7 @@ from dose.views.callbackdata import callbackdata_view
 from dose.theme_views import toggle_theme
 from dose.admin_views import set_theme, select_theme, test_post
 from dose.views.upgrade import upgrade_view
-from dose.views.stripe_webhook import stripe_webhook
+from djstripe.views import ProcessWebhookView
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -109,7 +109,7 @@ urlpatterns = [
     path('debug-tenant-session/', debug_tenant_session, name='debug_tenant_session'),
     path('subscribe/', subscribe_view, name='subscribe'),
     path('upgrade/', upgrade_view, name='upgrade'),
-    path('webhook/stripe/', stripe_webhook, name='stripe_webhook'),
+    path('webhook/stripe/', ProcessWebhookView.as_view(), name='stripe_webhook'),
     path('connect-social-after-subscribe/', connect_social_after_subscribe, name='connect_social_after_subscribe'),
     path('unread-messages/', unread_messages_view, name='unread_messages'),
     # Core views

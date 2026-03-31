@@ -65,6 +65,7 @@ urlpatterns = [
     path('test-decompress/', test_decompression, name='test_decompression'),
     path('simple-test/', simple_html_test, name='simple_html_test'),
     path('external-direct/', external_direct_test, name='external_direct_test'),
+    path('stripe/', include('djstripe.urls', namespace='djstripe')),
     path('dose/', include('dose.urls')),
     path('parameters/', include('parameters.urls')),
     path('atomic_service_names/', __import__('dose.views.atomic_service_names', fromlist=['atomic_service_names']).atomic_service_names, name='atomic_service_names'),

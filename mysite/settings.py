@@ -109,13 +109,13 @@ STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
 STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
 
-STRIPE_PRICE_ID = 'price_1S5faDPQWnaGoDqywwIEPGUA'
+STRIPE_PRICE_ID = env('STRIPE_PRICE_ID', default='')
 STRIPE_TRIAL_PERIOD_DAYS = 14
 
 STRIPE_PRICE_IDS = {
-    'starter': 'price_1S5faDPQWnaGoDqywwIEPGUA',
-    'team': '',      # Create in Stripe Dashboard and fill in
-    'unlimited': '', # Create in Stripe Dashboard and fill in
+    'starter': env('STRIPE_PRICE_ID_STARTER', default=STRIPE_PRICE_ID),
+    'team': env('STRIPE_PRICE_ID_TEAM', default=''),
+    'unlimited': env('STRIPE_PRICE_ID_UNLIMITED', default=''),
 }
 
 PLAN_PRICES = {
@@ -131,6 +131,14 @@ PLAN_MAX_USERS = {
 }
 
 SUBSCRIPTION_AMOUNT = 29.99
+
+# --- dj-stripe configuration ---
+STRIPE_LIVE_SECRET_KEY = env('STRIPE_LIVE_SECRET_KEY', default='')
+STRIPE_TEST_SECRET_KEY = env('STRIPE_TEST_SECRET_KEY', default=STRIPE_SECRET_KEY)
+STRIPE_LIVE_MODE = env.bool('STRIPE_LIVE_MODE', default=False)
+DJSTRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+DJSTRIPE_USE_NATIVE_JSONFIELD = True
+DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 
 # When True, superusers must satisfy UserTenantMembership + role like normal users.
 STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
@@ -179,6 +187,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_extensions',  # For ERD generation
     'oauth2_provider',    # Django OAuth Toolkit — OIDC provider for SSO
+    'djstripe',           # dj-stripe — Stripe models, webhooks, sync
 ]
 
 # Filter out apps that cannot be imported (helps when files are missing or
