@@ -25,6 +25,10 @@ from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
 from dose.services.mattermost_tenant_provisioner import provision_mattermost_tenant
+try:
+    from dose.services.wordpress_tenant_provisioner import provision_wordpress_tenant
+except ImportError:
+    provision_wordpress_tenant = None
 from dose.services.oauth2_registration import register_oauth2_app_for_tenant
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -99,6 +103,18 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited'):
                 plan_tier = 'polysaas-1'
 
+            app_keys = [
+                'enable_odoo', 'enable_nextcloud', 'enable_dolibarr',
+                'enable_mattermost', 'enable_wordpress',
+            ]
+            selected_apps = [k for k in app_keys if data.get(k)]
+            max_apps = getattr(settings, 'PLAN_MAX_APPS', {}).get(plan_tier)
+            if max_apps is not None and len(selected_apps) > max_apps:
+                return Response(
+                    {'error': f'{plan_tier} allows up to {max_apps} application(s). You selected {len(selected_apps)}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Test bypass: skip Stripe for tenant names starting with 'A'
             if tenant_name and tenant_name.lower().startswith('a'):
                 sub = Subscription.objects.create(
@@ -122,10 +138,21 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     djstripe_customer.subscriber = user_obj
                     djstripe_customer.save()
 
+                sub_items = [{'price': stripe_price}]
+                needs_storage = data.get('enable_nextcloud') or data.get('enable_wordpress')
+                storage_price_id = getattr(settings, 'STRIPE_PRICE_ID_STORAGE', '')
+                if needs_storage and storage_price_id:
+                    sub_items.append({'price': storage_price_id})
+
                 stripe_sub = stripe.Subscription.create(
                     customer=customer.id,
-                    items=[{'price': stripe_price}],
+                    items=sub_items,
                     trial_period_days=getattr(settings, 'STRIPE_TRIAL_PERIOD_DAYS', 14),
+                    metadata={
+                        'plan_tier': plan_tier,
+                        'tenant_name': tenant_name or '',
+                        'selected_apps': ','.join(selected_apps),
+                    },
                 )
                 djstripe.models.Subscription.sync_from_stripe_data(stripe_sub)
 
@@ -159,12 +186,16 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         base = dict(tenant_schema=tenant.schema_name, tenant_name=tenant.name,
                      admin_email=admin_email, company_name=tenant.name)
 
-        for app_key, provisioner in [
+        provisioners = [
             ('enable_odoo', provision_odoo_tenant),
             ('enable_nextcloud', provision_nextcloud_tenant),
             ('enable_dolibarr', provision_dolibarr_tenant),
             ('enable_mattermost', provision_mattermost_tenant),
-        ]:
+        ]
+        if provision_wordpress_tenant is not None:
+            provisioners.append(('enable_wordpress', provision_wordpress_tenant))
+
+        for app_key, provisioner in provisioners:
             if not data.get(app_key):
                 continue
             kwargs = dict(base)

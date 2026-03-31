@@ -1036,10 +1036,17 @@ from django.shortcuts import render
 from django.conf import settings
 
 def subscribe_view(request):
+    import json
+    plan_prices = getattr(settings, 'PLAN_PRICES', {})
+    plan_max_apps = getattr(settings, 'PLAN_MAX_APPS', {})
     plan_context = {
-        'SUBSCRIPTION_AMOUNT': getattr(settings, 'SUBSCRIPTION_AMOUNT', 29.99),
+        'SUBSCRIPTION_AMOUNT': plan_prices.get('polysaas-1', 29.99),
         'STRIPE_PUBLISHABLE_KEY': getattr(settings, 'STRIPE_PUBLISHABLE_KEY', ''),
-        'PLAN_PRICES': getattr(settings, 'PLAN_PRICES', {}),
+        'PRICE_1': plan_prices.get('polysaas-1', 29.99),
+        'PRICE_3': plan_prices.get('polysaas-3', 79.99),
+        'PRICE_UNLIMITED': plan_prices.get('polysaas-unlimited', 199.99),
+        'PLAN_PRICES_JSON': json.dumps(plan_prices),
+        'PLAN_MAX_APPS_JSON': json.dumps(plan_max_apps),
     }
     if request.method == 'POST':
         return render(request, 'dose/connect_social.html', plan_context)

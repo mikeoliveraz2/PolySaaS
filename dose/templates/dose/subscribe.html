@@ -10,37 +10,37 @@
 
 <!-- Plan Selection Cards -->
 <div class="plan-cards">
-    <div class="plan-card selected" data-tier="polysaas-1" data-price="29.99">
+    <div class="plan-card selected" data-tier="polysaas-1" data-price="{{ PRICE_1 }}">
         <div class="plan-badge">Most Popular</div>
         <h3>PolySaaS-1</h3>
-        <div class="plan-price">$29.99<span>/user/mo</span></div>
+        <div class="plan-price">${{ PRICE_1 }}<span>/user/mo</span></div>
         <ul class="plan-features">
             <li>1 application (bundled or external)</li>
             <li>All integrations</li>
             <li>14-day free trial</li>
         </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-1', 29.99)">Selected</button>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-1', {{ PRICE_1 }})">Selected</button>
     </div>
-    <div class="plan-card" data-tier="polysaas-3" data-price="79.99">
+    <div class="plan-card" data-tier="polysaas-3" data-price="{{ PRICE_3 }}">
         <h3>PolySaaS-3</h3>
-        <div class="plan-price">$79.99<span>/user/mo</span></div>
+        <div class="plan-price">${{ PRICE_3 }}<span>/user/mo</span></div>
         <ul class="plan-features">
             <li>Up to 3 applications (bundled or external)</li>
             <li>All integrations</li>
             <li>14-day free trial</li>
         </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-3', 79.99)">Select</button>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-3', {{ PRICE_3 }})">Select</button>
     </div>
-    <div class="plan-card" data-tier="polysaas-unlimited" data-price="199.99">
+    <div class="plan-card" data-tier="polysaas-unlimited" data-price="{{ PRICE_UNLIMITED }}">
         <h3>PolySaaS-Unlimited</h3>
-        <div class="plan-price">$199.99<span>/user/mo</span></div>
+        <div class="plan-price">${{ PRICE_UNLIMITED }}<span>/user/mo</span></div>
         <ul class="plan-features">
             <li>Unlimited applications</li>
             <li>All integrations</li>
             <li>14-day free trial</li>
             <li>Priority support</li>
         </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-unlimited', 199.99)">Select</button>
+        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-unlimited', {{ PRICE_UNLIMITED }})">Select</button>
     </div>
 </div>
 
@@ -248,24 +248,37 @@
         <div id="card-element"></div>
     </div>
 
-    <!-- Optional Services Checkboxes -->
+    <!-- Bundled Applications -->
     <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
-        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Optional Add-ons (Instant Provisioning)</h4>
+        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Applications <span id="app-limit-label" style="font-size:0.85em; color:#888;">(select up to <span id="app-limit-count">1</span>)</span></h4>
+        <small style="display: block; color: #666; margin-bottom: 0.75em;">Each selected app counts toward your plan's application limit. Bundled apps are instantly provisioned; external apps connect via passthrough.</small>
         <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-odoo" name="enable_odoo" checked style="margin-right: 0.5em;">
-            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP System</label>
-            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Odoo ERP instance for your tenant</small>
+            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
         </div>
         <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" checked style="margin-right: 0.5em;">
-            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage</label>
-            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Nextcloud instance for your tenant</small>
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
         </div>
         <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" checked style="margin-right: 0.5em;">
-            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM (lightweight)</label>
-            <small style="display: block; color: #666; margin-left: 1.5em;">Instantly provision a dedicated Dolibarr instance for your tenant</small>
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
         </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-mattermost" style="font-weight: normal; color: #555;">Mattermost Team Chat <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
+        </div>
+        <div id="app-limit-warning" style="display:none; color:#d32f2f; font-size:0.9em; margin-top:0.5em;">You've reached the application limit for your selected plan. Upgrade to add more apps.</div>
+    </div>
+
+    <!-- Storage Add-on -->
+    <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
+        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">File Storage <span style="font-size:0.85em; color:#888;">(usage-based)</span></h4>
+        <small style="display: block; color: #666; margin-bottom: 0.5em;">Storage for Nextcloud and WordPress files is billed at <strong>$0.12/GB per month</strong> based on actual usage. No charge if you don't use file storage.</small>
     </div>
 
     <button type="submit" id="subscribe-btn" class="subscription-btn">Subscribe & Pay</button>
@@ -274,6 +287,9 @@
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 console.log('Subscription JS loaded: form script running');
+
+const APP_LIMITS = JSON.parse('{{ PLAN_MAX_APPS_JSON|escapejs }}');
+const PLAN_PRICES = JSON.parse('{{ PLAN_PRICES_JSON|escapejs }}');
 
 function selectPlan(tier, price) {
     document.getElementById('plan-tier').value = tier;
@@ -287,8 +303,44 @@ function selectPlan(tier, price) {
         selected.classList.add('selected');
         selected.querySelector('.plan-select-btn').textContent = 'Selected';
     }
+    var limit = APP_LIMITS[tier];
+    var countEl = document.getElementById('app-limit-count');
+    var labelEl = document.getElementById('app-limit-label');
+    if (limit === null) {
+        labelEl.style.display = 'none';
+    } else {
+        labelEl.style.display = '';
+        countEl.textContent = limit;
+    }
+    enforceAppLimit();
     checkFormFields();
 }
+
+function enforceAppLimit() {
+    var tier = document.getElementById('plan-tier').value;
+    var limit = APP_LIMITS[tier];
+    var boxes = document.querySelectorAll('.app-checkbox');
+    var checked = document.querySelectorAll('.app-checkbox:checked').length;
+    var warning = document.getElementById('app-limit-warning');
+
+    if (limit === null) {
+        boxes.forEach(function(cb) { cb.disabled = false; });
+        warning.style.display = 'none';
+        return;
+    }
+    boxes.forEach(function(cb) {
+        if (!cb.checked && checked >= limit) {
+            cb.disabled = true;
+        } else {
+            cb.disabled = false;
+        }
+    });
+    warning.style.display = (checked >= limit) ? '' : 'none';
+}
+
+document.querySelectorAll('.app-checkbox').forEach(function(cb) {
+    cb.addEventListener('change', enforceAppLimit);
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Subscription form DOM fully loaded');
@@ -492,7 +544,12 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         zip: zip,
         username: username,
         password: password,
-        plan_tier: planTier
+        plan_tier: planTier,
+        enable_odoo: !!document.getElementById('enable-odoo').checked,
+        enable_nextcloud: !!document.getElementById('enable-nextcloud').checked,
+        enable_dolibarr: !!document.getElementById('enable-dolibarr').checked,
+        enable_mattermost: !!document.getElementById('enable-mattermost').checked,
+        enable_wordpress: !!document.getElementById('enable-wordpress').checked,
     };
     console.log('Sending fetch to /dose/api/subscriptions/ with payload:', payload);
 
