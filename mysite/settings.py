@@ -7,7 +7,7 @@ import importlib
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env = environ.Env()
 #environ.Env.read_env()  # This loads .env file
-env.read_env(os.path.join(BASE_DIR, '.env'))
+env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=True)
 print("Loaded .env:", env('DJANGO_SECRET_KEY', default='NOT FOUND'))
 SECRET_KEY = env('DJANGO_SECRET_KEY')
 DEBUG = True
@@ -149,10 +149,14 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 
 # --- AI as Peers (Mattermost bot integration) ---
-MATTERMOST_URL = env('MATTERMOST_URL', default='https://mm.polysaas.online')
+MATTERMOST_URL = env('MATTERMOST_URL', default='http://localhost:8065')
 MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
 ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
 XAI_API_KEY = env('XAI_API_KEY', default='')
+GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
+BOT_TOKEN_CC = env('BOT_TOKEN_CC', default='')
+BOT_TOKEN_SUPERGROK = env('BOT_TOKEN_SUPERGROK', default='')
+BOT_TOKEN_GEM = env('BOT_TOKEN_GEM', default='')
 AI_PEERS_WEBHOOK_TOKEN = env('AI_PEERS_WEBHOOK_TOKEN', default='')
 
 # --- SESSION SETTINGS ---

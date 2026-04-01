@@ -29,25 +29,32 @@ _peers_loaded = False
 
 def _ensure_peers_loaded():
     """
-    Lazily register AI peer identities from env vars on first webhook call.
-    Bot tokens must be set as BOT_TOKEN_CC / BOT_TOKEN_SUPERGROK in env.
-    The management command setup_ai_peers creates these tokens in Mattermost.
+    Lazily register AI peer identities from settings on first webhook call.
+    Bot tokens must be set as BOT_TOKEN_CC / BOT_TOKEN_SUPERGROK in settings.
     """
     global _peers_loaded
-    if _peers_loaded:
+    # We allow re-loading if we detect tokens are missing but exist in settings
+    from django.conf import settings
+    from dose.services.ai_peer_service import register_peer, PEER_REGISTRY
+
+    cc_token = getattr(settings, 'BOT_TOKEN_CC', '')
+    grok_token = getattr(settings, 'BOT_TOKEN_SUPERGROK', '')
+    gem_token = getattr(settings, 'BOT_TOKEN_GEM', '')
+
+    if _peers_loaded and 'cc' in PEER_REGISTRY and 'supergrok' in PEER_REGISTRY:
         return
+    
     _peers_loaded = True
 
-    import os
-    from dose.services.ai_peer_service import register_peer
-
-    cc_token = os.environ.get('BOT_TOKEN_CC', '')
     if cc_token:
-        register_peer('cc', 'CC (Claude Opus)', 'anthropic', cc_token)
+        provider = 'gemini' if getattr(settings, 'GEMINI_API_KEY', '') else 'anthropic'
+        register_peer('cc', 'CC (Claude)', provider, cc_token)
 
-    grok_token = os.environ.get('BOT_TOKEN_SUPERGROK', '')
     if grok_token:
         register_peer('supergrok', 'SuperGrok', 'xai', grok_token)
+
+    if gem_token:
+        register_peer('gem', 'Gem (Gemini)', 'gemini', gem_token)
 
 
 @csrf_exempt
@@ -57,6 +64,8 @@ def ai_peers_webhook(request):
     Receive Mattermost outgoing webhook, dispatch to AI peer(s) in background.
     Returns 200 immediately so Mattermost doesn't retry.
     """
+    print(f"[DEBUG] AI Peers Webhook hit: {request.method} {request.path}")
+    print(f"[DEBUG] Request body: {request.body.decode('utf-8')}")
     _ensure_peers_loaded()
 
     webhook_token = getattr(settings, 'AI_PEERS_WEBHOOK_TOKEN', '')
@@ -78,14 +87,17 @@ def ai_peers_webhook(request):
     if not text or not channel_id:
         return JsonResponse({'error': 'Missing text or channel_id'}, status=400)
 
-    mentioned_peers = [
-        m.group(1).lower()
-        for m in MENTION_PATTERN.finditer(text)
-        if m.group(1).lower() in PEER_REGISTRY
-    ]
+    mentioned_peers = []
+    for m in MENTION_PATTERN.finditer(text):
+        peer_name = m.group(1).lower()
+        print(f"[DEBUG] Found mention: @{peer_name}")
+        if peer_name in PEER_REGISTRY:
+            mentioned_peers.append(peer_name)
+        else:
+            print(f"[DEBUG] Peer @{peer_name} NOT in PEER_REGISTRY. Available: {list(PEER_REGISTRY.keys())}")
 
     if not mentioned_peers:
-        return JsonResponse({'status': 'no_peers_mentioned'})
+        return JsonResponse({'status': 'no_peers_mentioned', 'available': list(PEER_REGISTRY.keys())})
 
     for peer_username in mentioned_peers:
         thread = threading.Thread(

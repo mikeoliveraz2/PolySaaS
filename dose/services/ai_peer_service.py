@@ -148,9 +148,46 @@ def _call_xai(messages: list, system_prompt: str) -> str:
         return f"[SuperGrok] Error calling xAI: {e}"
 
 
+def _call_gemini(messages: list, system_prompt: str) -> str:
+    api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    if not api_key:
+        return "[CC] Gemini API key not configured."
+    conversation = []
+    for m in messages:
+        role = 'model' if m.get('is_bot') else 'user'
+        prefix = f"@{m['username']}: " if m.get('username') else ''
+        conversation.append({'role': role, 'parts': [{'text': f"{prefix}{m['content']}"}]})
+
+    try:
+        print(f"[DEBUG] Gemini request to: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key[:5]}...")
+        resp = requests.post(
+            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}',
+            headers={'Content-Type': 'application/json'},
+            json={
+                'system_instruction': {'parts': [{'text': system_prompt or (
+                    "You are CC, an AI peer collaborating in a Mattermost channel "
+                    "with humans and other AI agents on the PolySaaS platform. Be concise, "
+                    "helpful, and collaborative. You can @mention other peers to loop them in."
+                )}]},
+                'contents': conversation,
+                'generationConfig': {'maxOutputTokens': 1024},
+            },
+            timeout=60,
+        )
+        print(f"[DEBUG] Gemini response status: {resp.status_code}")
+        resp.raise_for_status()
+        data = resp.json()
+        return data['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        print(f"[DEBUG] Gemini error: {e}")
+        logger.error("Gemini API error: %s", e)
+        return f"[CC] Error calling Gemini: {e}"
+
+
 LLM_PROVIDERS = {
     'anthropic': _call_anthropic,
     'xai': _call_xai,
+    'gemini': _call_gemini,
 }
 
 
@@ -161,6 +198,7 @@ def handle_mention(peer_username: str, channel_id: str,
     Main entry point. Called when someone @mentions an AI peer.
     Returns the response text (also posts it to the channel).
     """
+    print(f"[DEBUG] handle_mention: peer={peer_username}, channel={channel_id}")
     peer = PEER_REGISTRY.get(peer_username.lower())
     if not peer:
         logger.warning("Unknown AI peer mentioned: @%s", peer_username)
@@ -169,6 +207,7 @@ def handle_mention(peer_username: str, channel_id: str,
     context = get_channel_context(channel_id)
 
     if not context:
+        print(f"[DEBUG] No context found for channel {channel_id}, using trigger message")
         context = [{'role': 'user', 'username': trigger_user, 'content': trigger_message}]
 
     provider_fn = LLM_PROVIDERS.get(peer['provider'])
@@ -176,7 +215,9 @@ def handle_mention(peer_username: str, channel_id: str,
         logger.error("No LLM provider '%s' for peer @%s", peer['provider'], peer_username)
         return None
 
+    print(f"[DEBUG] Calling provider {peer['provider']} for @{peer_username}")
     response_text = provider_fn(context, peer.get('system_prompt', ''))
+    print(f"[DEBUG] AI Response: {response_text[:100]}...")
 
     _post_as_bot(peer['bot_token'], channel_id, response_text, root_id=post_id)
 
@@ -185,6 +226,7 @@ def handle_mention(peer_username: str, channel_id: str,
 
 def _post_as_bot(bot_token: str, channel_id: str, message: str, root_id: str = ''):
     """Post a message to a Mattermost channel as a specific bot user."""
+    print(f"[DEBUG] _post_as_bot: channel={channel_id}, token={bot_token[:5]}...")
     payload = {
         'channel_id': channel_id,
         'message': message,
