@@ -47,8 +47,8 @@ def _ensure_peers_loaded():
     _peers_loaded = True
 
     if cc_token:
-        provider = 'gemini' if getattr(settings, 'GEMINI_API_KEY', '') else 'anthropic'
-        register_peer('cc', 'CC (Claude)', provider, cc_token)
+        # Credits are now available, so CC is Cursor Claude (anthropic)
+        register_peer('cc', 'CC (Claude)', 'anthropic', cc_token)
 
     if grok_token:
         register_peer('supergrok', 'SuperGrok', 'xai', grok_token)

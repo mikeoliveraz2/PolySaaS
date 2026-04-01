@@ -90,7 +90,7 @@ def _call_anthropic(messages: list, system_prompt: str) -> str:
                 'content-type': 'application/json',
             },
             json={
-                'model': 'claude-sonnet-4-20250514',
+                'model': 'claude-3-5-sonnet-20241022',
                 'max_tokens': 1024,
                 'system': system_prompt or (
                     "You are CC (Claude), an AI peer collaborating in a Mattermost channel "
