@@ -14,6 +14,7 @@ class Subscription(TenantAwareModel):
     stripe_customer_id = models.CharField(max_length=128, blank=True, null=True)
     stripe_subscription_id = models.CharField(max_length=128, blank=True, null=True)
     card_name = models.CharField(max_length=128, blank=True, null=True, help_text="Name on card")
+    selected_apps = models.JSONField(default=list, blank=True, help_text="App keys selected at subscribe time")
     active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

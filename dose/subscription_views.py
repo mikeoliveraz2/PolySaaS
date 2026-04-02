@@ -26,8 +26,12 @@ from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
-import djstripe.models
 import stripe
+
+try:
+    import djstripe.models as _djstripe_models
+except Exception:
+    _djstripe_models = None
 
 from dose.models import Subscription, Tenant, UserProfile
 from dose.serializers import SubscriptionSerializer
@@ -303,12 +307,12 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 except (TypeError, ValueError):
                     tenant_id = None
 
-                if not test_bypass:
-                    djstripe_customer = djstripe.models.Customer.sync_from_stripe_data(customer)
+                if not test_bypass and _djstripe_models is not None:
+                    djstripe_customer = _djstripe_models.Customer.sync_from_stripe_data(customer)
                     if user_obj:
                         djstripe_customer.subscriber = user_obj
                         djstripe_customer.save()
-                    djstripe.models.Subscription.sync_from_stripe_data(stripe_sub)
+                    _djstripe_models.Subscription.sync_from_stripe_data(stripe_sub)
 
                 sub = Subscription.objects.create(
                     tenant_id=tenant_id,
@@ -317,6 +321,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     stripe_subscription_id=stripe_subscription_id,
                     card_name=card_name,
                     active=active,
+                    selected_apps=selected_apps,
                 )
 
                 if not test_bypass:

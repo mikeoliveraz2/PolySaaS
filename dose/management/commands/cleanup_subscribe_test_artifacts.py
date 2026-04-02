@@ -141,6 +141,7 @@ class Command(BaseCommand):
                 self._strip_djstripe_by_id(user_id)
                 with connection.cursor() as cursor:
                     cursor.execute("SET search_path TO public, pg_catalog")
+                    self._purge_djstripe_for_user(cursor, user_id)
                     self._hard_delete_auth_user_row(cursor, user_id)
                 self.stdout.write(self.style.SUCCESS(f"Deleted auth user id={user_id} username={username!r}."))
             else:
@@ -179,6 +180,65 @@ class Command(BaseCommand):
                         self.stdout.write(f"  … {schema_name}.{tbl}: deleted {n} row(s) with user_id={user_id}")
                 except Exception as exc:
                     self.stdout.write(self.style.WARNING(f"  … skip {schema_name}.{tbl}: {exc}"))
+
+    def _purge_djstripe_for_user(self, cursor, user_id: int) -> None:
+        """Raw SQL cleanup of djstripe tables for a user (works even when djstripe package is missing)."""
+        cursor.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_name='djstripe_customer')"
+        )
+        if not cursor.fetchone()[0]:
+            return
+        cursor.execute(
+            "SELECT id FROM public.djstripe_customer WHERE subscriber_id = %s", [user_id]
+        )
+        cust_ids = [r[0] for r in cursor.fetchall()]
+        if not cust_ids:
+            return
+        placeholders = ','.join(['%s'] * len(cust_ids))
+        cursor.execute(
+            f"SELECT id FROM public.djstripe_subscription WHERE customer_id IN ({placeholders})",
+            cust_ids,
+        )
+        sub_ids = [r[0] for r in cursor.fetchall()]
+
+        if sub_ids:
+            sub_ph = ','.join(['%s'] * len(sub_ids))
+            for child_table, fk_col in [
+                ('djstripe_subscriptionitem', 'subscription_id'),
+                ('djstripe_invoiceitem', 'subscription_id'),
+            ]:
+                try:
+                    with transaction.atomic():
+                        cursor.execute(
+                            f'DELETE FROM public."{child_table}" WHERE "{fk_col}" IN ({sub_ph})',
+                            sub_ids,
+                        )
+                        if cursor.rowcount:
+                            self.stdout.write(f"  … djstripe: {child_table}: deleted {cursor.rowcount} row(s)")
+                except Exception:
+                    pass
+
+        for child_table in [
+            'djstripe_subscription',
+            'djstripe_invoice', 'djstripe_charge',
+            'djstripe_paymentintent', 'djstripe_paymentmethod', 'djstripe_source',
+        ]:
+            try:
+                with transaction.atomic():
+                    cursor.execute(
+                        f'DELETE FROM public."{child_table}" WHERE customer_id IN ({placeholders})',
+                        cust_ids,
+                    )
+                    if cursor.rowcount:
+                        self.stdout.write(f"  … djstripe: {child_table}: deleted {cursor.rowcount} row(s)")
+            except Exception:
+                pass
+        cursor.execute(
+            f'DELETE FROM public.djstripe_customer WHERE id IN ({placeholders})', cust_ids
+        )
+        if cursor.rowcount:
+            self.stdout.write(f"  … djstripe: djstripe_customer: deleted {cursor.rowcount} row(s)")
 
     def _strip_djstripe_by_id(self, user_id: int) -> None:
         try:
@@ -222,32 +282,36 @@ class Command(BaseCommand):
 
     def _hard_delete_auth_user_row(self, cursor, user_id: int) -> None:
         """
-        Delete public.auth_user after removing referencing rows.
-        ORM User.delete() is unsafe when tenant-only tables (e.g. dose_trafficlog) are not in public.
-        Discover FK children via pg_catalog so new models (e.g. dose_userrequesttracker) are covered.
+        Delete public.auth_user after removing all referencing rows.
+        Handles multi-level FK chains (e.g. djstripe_subscription → djstripe_customer → auth_user)
+        by repeated DELETE passes — each pass clears leaf-level rows that block the next level.
         """
         pairs = self._public_fk_columns_referencing_auth_user(cursor)
-        for round_i in range(30):
-            deleted_children = 0
+        for round_i in range(50):
+            deleted_any = False
             for relname, attname in pairs:
                 assert_safe_schema_identifier(relname)
                 assert_safe_schema_identifier(attname)
-                cursor.execute(
-                    f'DELETE FROM public."{relname}" WHERE "{attname}" = %s',
-                    [user_id],
-                )
-                deleted_children += cursor.rowcount
-            cursor.execute("DELETE FROM auth_user WHERE id = %s", [user_id])
-            if cursor.rowcount == 1:
-                return
-            if deleted_children == 0:
+                try:
+                    with transaction.atomic():
+                        cursor.execute(
+                            f'DELETE FROM public."{relname}" WHERE "{attname}" = %s', [user_id]
+                        )
+                        if cursor.rowcount:
+                            self.stdout.write(f"  … public.{relname}: deleted {cursor.rowcount} row(s)")
+                            deleted_any = True
+                except Exception:
+                    pass
+            try:
+                with transaction.atomic():
+                    cursor.execute("DELETE FROM auth_user WHERE id = %s", [user_id])
+                    if cursor.rowcount == 1:
+                        return
+            except Exception:
+                pass
+            if not deleted_any:
                 break
-            self.stdout.write(
-                self.style.NOTICE(
-                    f"  … auth_user delete retry round {round_i + 1} (removed {deleted_children} dependent row(s))"
-                )
-            )
         raise CommandError(
             f"Could not DELETE auth_user id={user_id} after clearing public FK children; "
-            "check for composite FKs, non-public references, or manual DB rules."
+            "check for multi-level FK chains not reachable from auth_user."
         )
