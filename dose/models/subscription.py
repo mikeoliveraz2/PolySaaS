@@ -46,4 +46,4 @@ class Subscription(TenantAwareModel):
 
     def get_price_per_user(self):
         from django.conf import settings
-        return settings.PLAN_PRICES.get(self.plan_tier, 29.99)
+        return settings.PLAN_PRICES.get(self.plan_tier, 26.00)

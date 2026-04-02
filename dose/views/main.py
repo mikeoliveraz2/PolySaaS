@@ -1040,11 +1040,11 @@ def subscribe_view(request):
     plan_prices = getattr(settings, 'PLAN_PRICES', {})
     plan_max_apps = getattr(settings, 'PLAN_MAX_APPS', {})
     plan_context = {
-        'SUBSCRIPTION_AMOUNT': plan_prices.get('polysaas-1', 29.99),
+        'SUBSCRIPTION_AMOUNT': plan_prices.get('polysaas-1', 26.00),
         'STRIPE_PUBLISHABLE_KEY': getattr(settings, 'STRIPE_PUBLISHABLE_KEY', ''),
-        'PRICE_1': plan_prices.get('polysaas-1', 29.99),
-        'PRICE_3': plan_prices.get('polysaas-3', 79.99),
-        'PRICE_UNLIMITED': plan_prices.get('polysaas-unlimited', 199.99),
+        'PRICE_1': plan_prices.get('polysaas-1', 26.00),
+        'PRICE_3': plan_prices.get('polysaas-3', 49.00),
+        'PRICE_UNLIMITED': plan_prices.get('polysaas-unlimited', 99.00),
         'PLAN_PRICES_JSON': json.dumps(plan_prices),
         'PLAN_MAX_APPS_JSON': json.dumps(plan_max_apps),
     }

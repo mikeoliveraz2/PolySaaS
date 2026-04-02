@@ -120,9 +120,9 @@ STRIPE_PRICE_IDS = {
 
 # Per-user/month price for each plan (display only — actual billing is in Stripe)
 PLAN_PRICES = {
-    'polysaas-1': 29.99,
-    'polysaas-3': 79.99,
-    'polysaas-unlimited': 199.99,
+    'polysaas-1': 26.00,
+    'polysaas-3': 49.00,
+    'polysaas-unlimited': 99.00,
 }
 
 # Max bundled or external applications per plan
@@ -135,7 +135,7 @@ PLAN_MAX_APPS = {
 # Usage-based storage pricing (NextCloud / WordPress) — metered in Stripe
 STRIPE_PRICE_ID_STORAGE = env('STRIPE_PRICE_ID_STORAGE', default='')
 
-SUBSCRIPTION_AMOUNT = 29.99
+SUBSCRIPTION_AMOUNT = 26.00
 
 # --- dj-stripe configuration ---
 STRIPE_LIVE_SECRET_KEY = env('STRIPE_LIVE_SECRET_KEY', default='')
