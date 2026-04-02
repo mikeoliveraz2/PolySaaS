@@ -1,159 +1,18 @@
 {% extends "dose/dosebase.html" %}
 {% load static %}
-<!-- DEBUG: subscribe -->
 {% block content %}
-<h2 style="text-align:center;">Choose Your Plan</h2>
-
-<p style="text-align:center; font-size:1.1em; margin-bottom:1.5em; color:#555;">
-    All plans include a <strong>14-day free trial</strong>. Upgrade anytime.
-</p>
-
-<!-- Plan Selection Cards -->
-<div class="plan-cards">
-    <div class="plan-card selected" data-tier="polysaas-1" data-price="{{ PRICE_1 }}">
-        <div class="plan-badge">Most Popular</div>
-        <h3>PolySaaS-1</h3>
-        <div class="plan-price">${{ PRICE_1 }}<span>/user/mo</span></div>
-        <ul class="plan-features">
-            <li>1 application (bundled or external)</li>
-            <li>All integrations</li>
-            <li>14-day free trial</li>
-        </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-1', {{ PRICE_1 }})">Selected</button>
-    </div>
-    <div class="plan-card" data-tier="polysaas-3" data-price="{{ PRICE_3 }}">
-        <h3>PolySaaS-3</h3>
-        <div class="plan-price">${{ PRICE_3 }}<span>/user/mo</span></div>
-        <ul class="plan-features">
-            <li>Up to 3 applications (bundled or external)</li>
-            <li>All integrations</li>
-            <li>14-day free trial</li>
-        </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-3', {{ PRICE_3 }})">Select</button>
-    </div>
-    <div class="plan-card" data-tier="polysaas-unlimited" data-price="{{ PRICE_UNLIMITED }}">
-        <h3>PolySaaS-Unlimited</h3>
-        <div class="plan-price">${{ PRICE_UNLIMITED }}<span>/user/mo</span></div>
-        <ul class="plan-features">
-            <li>Unlimited applications</li>
-            <li>All integrations</li>
-            <li>14-day free trial</li>
-            <li>Priority support</li>
-        </ul>
-        <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-unlimited', {{ PRICE_UNLIMITED }})">Select</button>
-    </div>
-</div>
 
 <style>
-    .plan-cards {
-        display: flex;
-        justify-content: center;
-        gap: 1.5em;
-        margin-bottom: 2em;
-        flex-wrap: wrap;
-    }
-    .plan-card {
-        background: #fff;
-        border: 2px solid #e0e0e0;
-        border-radius: 10px;
-        padding: 1.5em;
-        width: 220px;
-        text-align: center;
-        cursor: pointer;
-        transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
-        position: relative;
-    }
-    .plan-card:hover {
-        border-color: #90caf9;
-        box-shadow: 0 4px 16px rgba(25,118,210,0.12);
-        transform: translateY(-2px);
-    }
-    .plan-card.selected {
-        border-color: #1976d2;
-        box-shadow: 0 4px 20px rgba(25,118,210,0.2);
-    }
-    .plan-badge {
-        position: absolute;
-        top: -12px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #1976d2;
-        color: #fff;
-        font-size: 0.75em;
-        font-weight: 600;
-        padding: 0.25em 0.75em;
-        border-radius: 12px;
-        white-space: nowrap;
-    }
-    .plan-card h3 {
-        margin: 0.5em 0 0.25em;
-        color: #333;
-        font-size: 1.2em;
-    }
-    .plan-price {
-        font-size: 1.8em;
-        font-weight: 700;
-        color: #1976d2;
-        margin: 0.25em 0 0.5em;
-    }
-    .plan-price span {
-        font-size: 0.45em;
-        font-weight: 400;
-        color: #888;
-    }
-    .plan-features {
-        list-style: none;
-        padding: 0;
-        margin: 0 0 1em;
-        font-size: 0.9em;
-        color: #555;
-    }
-    .plan-features li {
-        padding: 0.3em 0;
-        border-bottom: 1px solid #f0f0f0;
-    }
-    .plan-features li:last-child {
-        border-bottom: none;
-    }
-    .plan-select-btn {
-        width: 100%;
-        padding: 0.5em;
-        border: 2px solid #1976d2;
-        border-radius: 4px;
-        background: transparent;
-        color: #1976d2;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.2s, color 0.2s;
-    }
-    .plan-card.selected .plan-select-btn {
-        background: #1976d2;
-        color: #fff;
-    }
-    .plan-select-btn:hover {
-        background: #e3f2fd;
-    }
-    .plan-card.selected .plan-select-btn:hover {
-        background: #1565c0;
-    }
-
     .subscription-form {
-        max-width: 400px;
+        max-width: 440px;
         margin: 2em auto;
         padding: 2em;
         background: #fff;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
-    .form-group {
-        margin-bottom: 1.5em;
-    }
-    .form-label {
-        display: block;
-        margin-bottom: 0.5em;
-        font-weight: 500;
-        color: #333;
-    }
+    .form-group { margin-bottom: 1.5em; }
+    .form-label { display: block; margin-bottom: 0.5em; font-weight: 500; color: #333; }
     .form-input {
         width: 100%;
         padding: 0.75em;
@@ -164,10 +23,7 @@
         transition: border-color 0.2s;
         background: #f9f9f9;
     }
-    .form-input:focus {
-        border-color: #1565c0;
-        background: #fff;
-    }
+    .form-input:focus { border-color: #1565c0; background: #fff; }
     #card-element {
         border: 2px solid #1976d2;
         border-radius: 4px;
@@ -187,31 +43,62 @@
         cursor: pointer;
         transition: background 0.2s;
     }
-    .subscription-btn:hover {
-        background: #1565c0;
+    .subscription-btn:hover { background: #1565c0; }
+    .subscription-btn:disabled { opacity: 0.65; cursor: not-allowed; background: #90a4ae; }
+    #subscribe-hint { color: #d32f2f; font-size: 0.95em; margin-top: 0.75em; text-align: center; min-height: 1.25em; }
+    #card-errors { color: #d32f2f; margin-top: 1em; font-size: 0.95em; }
+
+    /* ── Plan cards ── */
+    .plan-cards { display: flex; justify-content: center; gap: 1.25em; flex-wrap: wrap; margin: 0.75em 0 0.5em; }
+    .plan-card {
+        background: #fff; border: 2px solid #e0e0e0; border-radius: 10px;
+        padding: 1.25em; width: 200px; text-align: center; cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s; position: relative;
     }
-    .subscription-btn:disabled {
-        opacity: 0.65;
-        cursor: not-allowed;
-        background: #90a4ae;
+    .plan-card:hover { border-color: #90caf9; box-shadow: 0 4px 16px rgba(25,118,210,0.12); transform: translateY(-2px); }
+    .plan-card.selected { border-color: #1976d2; box-shadow: 0 4px 20px rgba(25,118,210,0.2); }
+    .plan-card.recommended { border-color: #43a047; box-shadow: 0 4px 16px rgba(67,160,71,0.18); }
+    .plan-card.selected.recommended { border-color: #1976d2; }
+    .plan-badge {
+        position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+        background: #43a047; color: #fff; font-size: 0.72em; font-weight: 600;
+        padding: 0.2em 0.65em; border-radius: 12px; white-space: nowrap;
     }
-    #subscribe-hint {
-        color: #d32f2f;
-        font-size: 0.95em;
-        margin-top: 0.75em;
-        text-align: center;
-        min-height: 1.25em;
+    .plan-card h3 { margin: 0.4em 0 0.2em; color: #333; font-size: 1.1em; }
+    .plan-price { font-size: 1.6em; font-weight: 700; color: #1976d2; margin: 0.2em 0 0.4em; }
+    .plan-price span { font-size: 0.45em; font-weight: 400; color: #888; }
+    .plan-features { list-style: none; padding: 0; margin: 0 0 0.75em; font-size: 0.85em; color: #555; }
+    .plan-features li { padding: 0.25em 0; border-bottom: 1px solid #f0f0f0; }
+    .plan-features li:last-child { border-bottom: none; }
+    .plan-select-btn {
+        width: 100%; padding: 0.45em; border: 2px solid #1976d2; border-radius: 4px;
+        background: transparent; color: #1976d2; font-weight: 600; cursor: pointer;
+        transition: background 0.2s, color 0.2s;
     }
-    #card-errors {
-        color: #d32f2f;
-        margin-top: 1em;
-        font-size: 0.95em;
+    .plan-card.selected .plan-select-btn { background: #1976d2; color: #fff; }
+    .plan-select-btn:hover { background: #e3f2fd; }
+    .plan-card.selected .plan-select-btn:hover { background: #1565c0; }
+
+    /* ── Slot advisory messages ── */
+    #slot-advisory {
+        margin: 0.5em 0; padding: 0.75em 1em; border-radius: 6px;
+        font-size: 0.92em; line-height: 1.45; display: none;
     }
+    #slot-advisory.info { background: #e3f2fd; border: 1px solid #90caf9; color: #1565c0; }
+    #slot-advisory.warn { background: #fff3e0; border: 1px solid #ffb74d; color: #e65100; }
 </style>
+
+<h2 style="text-align:center; margin-bottom:0.25em;">Subscribe to PolySaaS</h2>
+<p style="text-align:center; font-size:1.05em; margin-bottom:1.5em; color:#555;">
+    All plans include a <strong>14-day free trial</strong>. Upgrade anytime.
+</p>
+
 <form id="subscription-form" class="subscription-form" method="post" action="" novalidate>
     <div id="stripe-load-error" style="display:none;color:#d32f2f;margin-bottom:1em;font-size:1em;text-align:center;">Unable to load secure card fields. Please check your internet connection or contact support.</div>
     {% csrf_token %}
-    <input type="hidden" id="plan-tier" name="plan_tier" value="polysaas-1">
+    <input type="hidden" id="plan-tier" name="plan_tier" value="">
+
+    <!-- ═══ Section 1: Tenant & Account ═══ -->
     <div class="form-group">
         <label for="tenant-name" class="form-label">Tenant Name</label>
         <input type="text" id="tenant-name" name="tenant_name" class="form-input" required placeholder="Your organization or tenant name" value="">
@@ -231,7 +118,7 @@
     <div class="form-group">
         <label for="password" class="form-label">Password</label>
         <input type="password" id="password" name="password" class="form-input" required placeholder="Choose a password" minlength="9" title="Password must be at least 9 characters, cannot start with a number, and must include at least one special character." value="" autocomplete="new-password">
-        <small style="color:#666;">Password must be at least 9 characters, cannot start with a number, and must include at least one special character.</small>
+        <small style="color:#666;">At least 9 characters, cannot start with a number, must include a special character.</small>
         <div class="field-error" id="password-error" style="color:#d32f2f;font-size:0.95em;"></div>
     </div>
     <div class="form-group">
@@ -239,6 +126,99 @@
         <input type="email" id="email" name="email" class="form-input" required placeholder="Your email address" value="">
         <div class="field-error" id="email-error" style="color:#d32f2f;font-size:0.95em;"></div>
     </div>
+
+    <!-- ═══ Section 2: Applications (pick first, plan follows) ═══ -->
+    <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
+        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">
+            Select Your Applications
+            <span id="slot-count-label" style="font-size:0.82em; color:#888; margin-left:0.5em;"></span>
+        </h4>
+        <small style="display: block; color: #666; margin-bottom: 0.75em;">
+            Pick the applications you need. WordPress and PolySysMon each count as <strong>2 slots</strong>; all others count as 1.
+            A plan that fits will be recommended below.
+            Bundled apps are queued after subscribe; you will get email when each is ready.
+        </small>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-mattermost" style="font-weight: normal; color: #555;">Mattermost Team Chat <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
+            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(2 slots)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-liferay" style="font-weight: normal; color: #555;">Liferay <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-monitor-logger" style="font-weight: normal; color: #555;">Monitor Logger <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
+            <label for="enable-polysysmon" style="font-weight: normal; color: #555;">PolySysMon <span style="color:#1976d2; font-size:0.85em;">(2 slots)</span></label>
+        </div>
+        <div id="slot-advisory"></div>
+    </div>
+
+    <!-- ═══ Section 3: Plan Selection (driven by app choices) ═══ -->
+    <div class="form-group">
+        <h4 style="margin: 0 0 0.25em; color: #333; font-size: 1.1em;">Choose Your Plan</h4>
+        <p id="plan-suggestion" style="font-size:0.92em; color:#555; margin: 0 0 0.75em;"></p>
+        <div class="plan-cards">
+            <div class="plan-card" data-tier="polysaas-1" data-price="{{ PRICE_1 }}">
+                <h3>PolySaaS-1</h3>
+                <div class="plan-price">${{ PRICE_1 }}<span>/user/mo</span></div>
+                <ul class="plan-features">
+                    <li>1 application slot</li>
+                    <li>All integrations</li>
+                    <li>14-day free trial</li>
+                </ul>
+                <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-1')">Select</button>
+            </div>
+            <div class="plan-card" data-tier="polysaas-3" data-price="{{ PRICE_3 }}">
+                <h3>PolySaaS-3</h3>
+                <div class="plan-price">${{ PRICE_3 }}<span>/user/mo</span></div>
+                <ul class="plan-features">
+                    <li>Up to 3 application slots</li>
+                    <li>All integrations</li>
+                    <li>14-day free trial</li>
+                </ul>
+                <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-3')">Select</button>
+            </div>
+            <div class="plan-card" data-tier="polysaas-unlimited" data-price="{{ PRICE_UNLIMITED }}">
+                <h3>PolySaaS-Unlimited</h3>
+                <div class="plan-price">${{ PRICE_UNLIMITED }}<span>/user/mo</span></div>
+                <ul class="plan-features">
+                    <li>Unlimited applications</li>
+                    <li>All integrations</li>
+                    <li>14-day free trial</li>
+                    <li>Priority support</li>
+                </ul>
+                <button type="button" class="plan-select-btn" onclick="selectPlan('polysaas-unlimited')">Select</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Storage Add-on -->
+    <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
+        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">File Storage <span style="font-size:0.85em; color:#888;">(usage-based)</span></h4>
+        <small style="display: block; color: #666; margin-bottom: 0.5em;">Storage for Nextcloud and WordPress files is billed at <strong>$0.12/GB per month</strong> based on actual usage. No charge if you don't use file storage.</small>
+    </div>
+
+    <!-- ═══ Section 4: Payment ═══ -->
     <div class="form-group">
         <label for="zip" class="form-label">ZIP Code</label>
         <input type="text" id="zip" name="zip" class="form-input" required pattern="\d{4,5}" maxlength="5" placeholder="ZIP code (4 or 5 digits)" value="">
@@ -247,7 +227,7 @@
     </div>
     <div class="form-group">
         <label for="amount" class="form-label">Amount (USD)</label>
-        <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="{{ SUBSCRIPTION_AMOUNT }}" required readonly style="background:#eee;cursor:not-allowed;">
+        <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="" required readonly style="background:#eee;cursor:not-allowed;">
         <div class="field-error" id="amount-error" style="color:#d32f2f;font-size:0.95em;"></div>
     </div>
     <div class="form-group">
@@ -260,74 +240,26 @@
         <div id="card-element"></div>
     </div>
 
-    <!-- Bundled Applications -->
-    <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
-        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Applications <span id="app-limit-label" style="font-size:0.85em; color:#888;">(up to <span id="app-limit-count"></span>)</span></h4>
-        <small style="display: block; color: #666; margin-bottom: 0.75em;">Limits are counted in <strong>slots</strong>: WordPress and PolySysMon each use <strong>2 slots</strong>; every other bundled app uses 1. PolySaaS-1 (1 slot): WordPress and PolySysMon are not available. PolySaaS-3 (3 slots): you may choose <strong>at most one</strong> of WordPress or PolySysMon. Bundled apps are queued after subscribe; you will get email when each is ready.</small>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-mattermost" style="font-weight: normal; color: #555;">Mattermost Team Chat <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
-            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(bundled, 2 slots)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-liferay" style="font-weight: normal; color: #555;">Liferay <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-monitor-logger" style="font-weight: normal; color: #555;">Monitor Logger <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
-        </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
-            <label for="enable-polysysmon" style="font-weight: normal; color: #555;">PolySysMon <span style="color:#1976d2; font-size:0.85em;">(bundled, 2 slots)</span></label>
-        </div>
-        <div id="app-limit-warning" style="display:none; color:#d32f2f; font-size:0.9em; margin-top:0.5em;">You've used all application slots for your selected plan. Upgrade to add more.</div>
-    </div>
-
-    <!-- Storage Add-on -->
-    <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
-        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">File Storage <span style="font-size:0.85em; color:#888;">(usage-based)</span></h4>
-        <small style="display: block; color: #666; margin-bottom: 0.5em;">Storage for Nextcloud and WordPress files is billed at <strong>$0.12/GB per month</strong> based on actual usage. No charge if you don't use file storage.</small>
-    </div>
-
     <div id="subscribe-submit-status" role="alert" aria-live="assertive" style="min-height:1.25em;margin:0.75em 0 0.5em;font-size:0.98em;line-height:1.4;"></div>
     <div id="card-errors" role="alert" style="margin-bottom:0.5em;font-size:0.95em;"></div>
-    <button type="submit" id="subscribe-btn" class="subscription-btn">Subscribe & Pay</button>
+    <button type="submit" id="subscribe-btn" class="subscription-btn" disabled>Subscribe &amp; Pay</button>
     <div id="subscribe-hint" aria-live="polite"></div>
 </form>
+
 {{ plan_max_apps|json_script:"ps-plan-max-apps" }}
 {{ plan_prices|json_script:"ps-plan-prices" }}
 <script src="https://js.stripe.com/v3/"></script>
 <script>
-console.log('Subscription JS loaded: form script running');
-
-var APP_LIMITS;
-var PLAN_PRICES;
+/* ================================================================
+   Subscribe page logic — apps-first flow
+   ================================================================ */
+var APP_LIMITS, PLAN_PRICES;
 (function () {
     function readJsonScript(id, fallback) {
         var el = document.getElementById(id);
         if (!el || !el.textContent) return fallback;
-        try {
-            return JSON.parse(el.textContent);
-        } catch (e) {
-            console.error('JSON parse failed for', id, e);
-            return fallback;
-        }
+        try { return JSON.parse(el.textContent); }
+        catch (e) { return fallback; }
     }
     APP_LIMITS = readJsonScript('ps-plan-max-apps', {
         'polysaas-1': 1, 'polysaas-3': 3, 'polysaas-unlimited': null
@@ -336,6 +268,163 @@ var PLAN_PRICES;
         'polysaas-1': 26, 'polysaas-3': 49, 'polysaas-unlimited': 99
     });
 })();
+
+/* ── Slot arithmetic ──────────────────────────────────────────── */
+
+function appCheckboxSlots(cb) {
+    var s = cb.getAttribute('data-app-slots');
+    return s ? parseInt(s, 10) : 1;
+}
+function totalSelectedSlots() {
+    var t = 0;
+    document.querySelectorAll('.app-checkbox:checked').forEach(function(cb) {
+        t += appCheckboxSlots(cb);
+    });
+    return t;
+}
+
+/* ── Plan suggestion based on slot count ─────────────────────── */
+
+var PLAN_TIERS_ASC = ['polysaas-1', 'polysaas-3', 'polysaas-unlimited'];
+
+function cheapestPlanForSlots(slots) {
+    if (slots <= 0) return 'polysaas-1';
+    for (var i = 0; i < PLAN_TIERS_ASC.length; i++) {
+        var lim = APP_LIMITS[PLAN_TIERS_ASC[i]];
+        if (lim === null || slots <= lim) return PLAN_TIERS_ASC[i];
+    }
+    return 'polysaas-unlimited';
+}
+
+function updateSlotAdvisory() {
+    var slots = totalSelectedSlots();
+    var adv = document.getElementById('slot-advisory');
+    var label = document.getElementById('slot-count-label');
+    label.textContent = slots > 0 ? '(' + slots + ' slot' + (slots === 1 ? '' : 's') + ' selected)' : '';
+
+    if (slots === 0) {
+        adv.style.display = 'none';
+        adv.className = '';
+        return;
+    }
+    if (slots > 3) {
+        adv.style.display = '';
+        adv.className = 'warn';
+        adv.innerHTML = '<strong>You have selected more than 3 application slots.</strong> ' +
+            'This requires the <strong>PolySaaS-Unlimited</strong> plan ($' + PLAN_PRICES['polysaas-unlimited'] + '/user/mo). ' +
+            'Select fewer apps to qualify for a less expensive plan.';
+    } else if (slots > 1) {
+        adv.style.display = '';
+        adv.className = 'info';
+        adv.textContent = 'Your selections need the PolySaaS-3 plan or higher.';
+    } else {
+        adv.style.display = '';
+        adv.className = 'info';
+        adv.textContent = 'Fits the PolySaaS-1 plan.';
+    }
+}
+
+function suggestAndSelectPlan() {
+    var slots = totalSelectedSlots();
+    var recommended = cheapestPlanForSlots(slots);
+    var suggestion = document.getElementById('plan-suggestion');
+
+    if (slots === 0) {
+        suggestion.textContent = 'Select applications above, then pick a plan here.';
+    } else {
+        var price = PLAN_PRICES[recommended] || '—';
+        var label = recommended.replace('polysaas-', 'PolySaaS-').replace('unlimited', 'Unlimited');
+        suggestion.innerHTML = 'Based on your selections (<strong>' + slots + ' slot' +
+            (slots === 1 ? '' : 's') + '</strong>), we recommend <strong>' + label +
+            '</strong> ($' + price + '/user/mo).';
+    }
+
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        var badge = card.querySelector('.plan-badge');
+        if (badge) badge.remove();
+        card.classList.remove('recommended');
+    });
+
+    var recCard = document.querySelector('.plan-card[data-tier="' + recommended + '"]');
+    if (recCard && slots > 0) {
+        recCard.classList.add('recommended');
+        var badge = document.createElement('div');
+        badge.className = 'plan-badge';
+        badge.textContent = 'Recommended';
+        recCard.appendChild(badge);
+    }
+
+    var wp = document.getElementById('enable-wordpress');
+    var ps = document.getElementById('enable-polysysmon');
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        var tier = card.getAttribute('data-tier');
+        var lim = APP_LIMITS[tier];
+        var tooSmall = (lim !== null && slots > lim);
+        var wpPsConflict = (tier === 'polysaas-3' && wp.checked && ps.checked);
+        var btn = card.querySelector('.plan-select-btn');
+        if (tooSmall || wpPsConflict) {
+            card.style.opacity = '0.5';
+            card.style.pointerEvents = 'none';
+            btn.disabled = true;
+        } else {
+            card.style.opacity = '';
+            card.style.pointerEvents = '';
+            btn.disabled = false;
+        }
+    });
+
+    var currentTier = document.getElementById('plan-tier').value;
+    var currentLimit = APP_LIMITS[currentTier];
+    if (!currentTier || (currentLimit !== null && slots > currentLimit)) {
+        selectPlan(recommended);
+    }
+}
+
+/* ── Plan selection ───────────────────────────────────────────── */
+
+function selectPlan(tier) {
+    var card = document.querySelector('.plan-card[data-tier="' + tier + '"]');
+    if (!card || card.style.pointerEvents === 'none') return;
+    var price = card.getAttribute('data-price');
+
+    document.getElementById('plan-tier').value = tier;
+    document.getElementById('amount').value = price;
+
+    document.querySelectorAll('.plan-card').forEach(function(c) {
+        c.classList.remove('selected');
+        c.querySelector('.plan-select-btn').textContent = 'Select';
+    });
+    card.classList.add('selected');
+    card.querySelector('.plan-select-btn').textContent = 'Selected';
+
+    checkFormFields();
+}
+
+/* ── App checkbox change handler ─────────────────────────────── */
+
+document.querySelectorAll('.app-checkbox').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        updateSlotAdvisory();
+        suggestAndSelectPlan();
+        checkFormFields();
+    });
+});
+
+/* ── Plan card click handler ─────────────────────────────────── */
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var tier = card.getAttribute('data-tier');
+            selectPlan(tier);
+        });
+    });
+    updateSlotAdvisory();
+    suggestAndSelectPlan();
+    checkFormFields();
+});
+
+/* ── Feedback helpers ─────────────────────────────────────────── */
 
 function showSubscribeFeedback(message, options) {
     options = options || {};
@@ -366,274 +455,111 @@ function showSubscribeFeedback(message, options) {
         }
         toast.textContent = message;
         toast.style.display = 'block';
-        if (isError) {
-            toast.style.background = '#ffebee';
-            toast.style.color = '#b71c1c';
-            toast.style.borderColor = '#c62828';
-        } else {
-            toast.style.background = '#e8f5e9';
-            toast.style.color = '#1b5e20';
-            toast.style.borderColor = '#2e7d32';
-        }
+        if (isError) { toast.style.background = '#ffebee'; toast.style.color = '#b71c1c'; toast.style.borderColor = '#c62828'; }
+        else { toast.style.background = '#e8f5e9'; toast.style.color = '#1b5e20'; toast.style.borderColor = '#2e7d32'; }
     } else {
         var t2 = document.getElementById('subscribe-fallback-toast');
         if (t2 && !message) t2.style.display = 'none';
-    }
-    if (message) {
-        try { console[isError ? 'error' : 'log']('Subscribe:', message); } catch (e) {}
     }
     if (message && options.scroll !== false && statusEl) {
         try { statusEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
     }
 }
 
-/** DRF + our API: error string, detail, field errors — not subscription success objects. */
 function payloadErrorMessage(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     if (typeof data.error === 'string' && data.error) return data.error;
     if (typeof data.detail === 'string' && data.detail) return data.detail;
     if (Array.isArray(data.detail) && data.detail.length) {
-        return data.detail.map(function (x) {
-            return typeof x === 'string' ? x : JSON.stringify(x);
-        }).join(' ');
+        return data.detail.map(function (x) { return typeof x === 'string' ? x : JSON.stringify(x); }).join(' ');
     }
-    if (data.non_field_errors && data.non_field_errors.length) {
-        return [].concat(data.non_field_errors).join(' ');
-    }
+    if (data.non_field_errors && data.non_field_errors.length) return [].concat(data.non_field_errors).join(' ');
     var parts = [];
     Object.keys(data).forEach(function (k) {
         var v = data[k];
         if (v == null) return;
-        if (Array.isArray(v) && v.length && typeof v[0] === 'string') {
-            parts.push(k + ': ' + v.join(' '));
-        }
+        if (Array.isArray(v) && v.length && typeof v[0] === 'string') parts.push(k + ': ' + v.join(' '));
     });
     return parts.length ? parts.join(' | ') : null;
 }
 
-function selectPlan(tier, price) {
-    document.getElementById('plan-tier').value = tier;
-    document.getElementById('amount').value = price;
-    document.querySelectorAll('.plan-card').forEach(function(card) {
-        card.classList.remove('selected');
-        card.querySelector('.plan-select-btn').textContent = 'Select';
-    });
-    var selected = document.querySelector('.plan-card[data-tier="' + tier + '"]');
-    if (selected) {
-        selected.classList.add('selected');
-        selected.querySelector('.plan-select-btn').textContent = 'Selected';
-    }
-    var limit = APP_LIMITS[tier];
-    var countEl = document.getElementById('app-limit-count');
-    var labelEl = document.getElementById('app-limit-label');
-    if (limit === null) {
-        labelEl.style.display = 'none';
-    } else {
-        labelEl.style.display = '';
-        countEl.textContent = limit + (limit === 1 ? ' slot' : ' slots');
-    }
-    enforceAppLimit();
-    checkFormFields();
-}
+/* ── Field validation ─────────────────────────────────────────── */
 
-function appCheckboxSlots(cb) {
-    var s = cb.getAttribute('data-app-slots');
-    return s ? parseInt(s, 10) : 1;
-}
-
-function totalSelectedSlots() {
-    var t = 0;
-    document.querySelectorAll('.app-checkbox:checked').forEach(function(cb) {
-        t += appCheckboxSlots(cb);
-    });
-    return t;
-}
-
-function enforceAppLimit() {
-    var tier = document.getElementById('plan-tier').value;
-    var limit = APP_LIMITS[tier];
-    var boxes = document.querySelectorAll('.app-checkbox');
-    var warning = document.getElementById('app-limit-warning');
-    var wp = document.getElementById('enable-wordpress');
-    var ps = document.getElementById('enable-polysysmon');
-
-    if (limit === null) {
-        boxes.forEach(function(cb) { cb.disabled = false; });
-        warning.style.display = 'none';
-        return;
-    }
-
-    if (limit === 1) {
-        wp.checked = false;
-        ps.checked = false;
-        wp.disabled = true;
-        ps.disabled = true;
-    } else {
-        wp.disabled = false;
-        ps.disabled = false;
-    }
-
-    if (limit === 3) {
-        if (wp.checked) {
-            ps.checked = false;
-            ps.disabled = true;
-        } else if (ps.checked) {
-            wp.checked = false;
-            wp.disabled = true;
-        }
-    }
-
-    var used = totalSelectedSlots();
-    boxes.forEach(function(cb) {
-        if (cb.checked) {
-            cb.disabled = false;
-            return;
-        }
-        if (limit === 1 && (cb === wp || cb === ps)) {
-            return;
-        }
-        if (limit === 3 && cb === ps && wp.checked) {
-            cb.disabled = true;
-            return;
-        }
-        if (limit === 3 && cb === wp && ps.checked) {
-            cb.disabled = true;
-            return;
-        }
-        var need = appCheckboxSlots(cb);
-        if (used + need > limit) {
-            cb.disabled = true;
-        } else {
-            cb.disabled = false;
-        }
-    });
-
-    if (limit === 3) {
-        if (wp.checked) {
-            ps.disabled = true;
-        } else if (ps.checked) {
-            wp.disabled = true;
-        }
-    }
-
-    warning.style.display = (used >= limit) ? '' : 'none';
-}
-
-document.querySelectorAll('.app-checkbox').forEach(function(cb) {
-    cb.addEventListener('change', function() {
-        var wp = document.getElementById('enable-wordpress');
-        var ps = document.getElementById('enable-polysysmon');
-        var tier = document.getElementById('plan-tier').value;
-        var limit = APP_LIMITS[tier];
-        if (limit === 3) {
-            if (cb === wp && wp.checked) {
-                ps.checked = false;
-            }
-            if (cb === ps && ps.checked) {
-                wp.checked = false;
-            }
-        }
-        enforceAppLimit();
-    });
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Subscription form DOM fully loaded');
-    var btn = document.getElementById('subscribe-btn');
-    if (btn) {
-        btn.addEventListener('click', function() {
-            console.log('Subscribe button clicked');
-        });
-    }
-    document.querySelectorAll('.plan-card').forEach(function(card) {
-        card.addEventListener('click', function() {
-            var tier = card.getAttribute('data-tier');
-            var price = card.getAttribute('data-price');
-            selectPlan(tier, parseFloat(price));
-        });
-    });
-    var preSelected = document.querySelector('.plan-card.selected');
-    if (preSelected) {
-        selectPlan(preSelected.getAttribute('data-tier'), parseFloat(preSelected.getAttribute('data-price')));
-    } else {
-        enforceAppLimit();
-    }
-});
 function subscribeHintForFailure(failedField) {
-    const map = {
+    var map = {
         'tenant-name': 'Enter your organization / tenant name.',
-        'tenant-shortname': 'Enter a valid short name (lowercase letters, numbers, hyphens; 3–32 characters).',
-        'tenant-shortname (slug validation)': 'Short name must use only lowercase letters, numbers, and hyphens (3–32 characters).',
+        'tenant-shortname': 'Enter a valid short name (lowercase letters, numbers, hyphens; 3\u201332 characters).',
+        'tenant-shortname (slug validation)': 'Short name must use only lowercase letters, numbers, and hyphens (3\u201332 characters).',
         'username': 'Choose a username.',
         'password': 'Enter a password (at least 9 characters).',
         'password (validation)': 'Password: at least 9 characters, cannot start with a number, and must include a special character.',
         'email': 'Enter a valid email address.',
         'zip': 'Enter a ZIP or postal code (4 or 5 digits).',
-        'amount': 'Plan amount is missing — select a plan again.',
+        'amount': 'Select a plan first.',
         'card-name': 'Enter the name as it appears on the card.',
+        'plan-tier': 'Select a plan.',
     };
     return map[failedField] || 'Please complete all required fields above.';
 }
 
 function checkFormFields() {
-    const requiredFields = [
-        'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'amount', 'card-name'
+    var requiredFields = [
+        'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'card-name'
     ];
-    let allFilled = true;
-    let failedField = null;
-    for (const id of requiredFields) {
-        const el = document.getElementById(id);
+    var allFilled = true;
+    var failedField = null;
+    for (var i = 0; i < requiredFields.length; i++) {
+        var el = document.getElementById(requiredFields[i]);
         if (!el || !el.value || (el.type === 'password' && el.value.length < 9)) {
             allFilled = false;
-            failedField = id;
+            failedField = requiredFields[i];
             break;
         }
     }
-    const password = document.getElementById('password').value;
-    const specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
-    if (password.length < 9 || /^[0-9]/.test(password) || !specialCharRegex.test(password)) {
-        allFilled = false;
-        failedField = 'password (validation)';
+    if (allFilled) {
+        var pw = document.getElementById('password').value;
+        var specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
+        if (pw.length < 9 || /^[0-9]/.test(pw) || !specialCharRegex.test(pw)) {
+            allFilled = false;
+            failedField = 'password (validation)';
+        }
     }
-    const shortname = document.getElementById('tenant-shortname').value;
-    if (!/^[a-z0-9-]+$/.test(shortname) || shortname.length < 3 || shortname.length > 32) {
-        allFilled = false;
-        failedField = 'tenant-shortname (slug validation)';
+    if (allFilled) {
+        var sn = document.getElementById('tenant-shortname').value;
+        if (!/^[a-z0-9-]+$/.test(sn) || sn.length < 3 || sn.length > 32) {
+            allFilled = false;
+            failedField = 'tenant-shortname (slug validation)';
+        }
     }
-    const btn = document.getElementById('subscribe-btn');
-    const hint = document.getElementById('subscribe-hint');
-    if (btn) {
-        btn.disabled = false;
-        btn.removeAttribute('title');
+    if (allFilled) {
+        var tier = document.getElementById('plan-tier').value;
+        if (!tier) { allFilled = false; failedField = 'plan-tier'; }
     }
-    if (hint) {
-        hint.textContent = allFilled ? '' : subscribeHintForFailure(failedField);
+    if (allFilled) {
+        var amt = document.getElementById('amount').value;
+        if (!amt || isNaN(amt) || Number(amt) < 1) { allFilled = false; failedField = 'amount'; }
     }
-    if (!allFilled) {
-        console.warn('Subscribe form not ready:', failedField);
-    }
+    var btn = document.getElementById('subscribe-btn');
+    var hint = document.getElementById('subscribe-hint');
+    if (btn) { btn.disabled = !allFilled; }
+    if (hint) { hint.textContent = allFilled ? '' : subscribeHintForFailure(failedField); }
 }
 
-// Per-field validation on blur (exit) event
 function validateField(id) {
-    let error = '';
-    const el = document.getElementById(id);
-    const val = el ? el.value : '';
+    var error = '';
+    var el = document.getElementById(id);
+    var val = el ? el.value : '';
     if (!el) return;
     switch (id) {
-        case 'tenant-name':
-            if (!val.trim()) error = 'Tenant name is required.';
-            break;
+        case 'tenant-name': if (!val.trim()) error = 'Tenant name is required.'; break;
         case 'tenant-shortname':
             if (!val.trim()) error = 'Short name is required.';
             else if (!/^[a-z0-9-]+$/.test(val)) error = 'Only lowercase letters, numbers, hyphens.';
             else if (val.length < 3 || val.length > 32) error = 'Must be 3-32 characters.';
             break;
-        case 'username':
-            if (!val.trim()) error = 'Username is required.';
-            break;
+        case 'username': if (!val.trim()) error = 'Username is required.'; break;
         case 'password':
-            const specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
+            var specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
             if (!val) error = 'Password is required.';
             else if (val.length < 9) error = 'At least 9 characters.';
             else if (/^[0-9]/.test(val)) error = 'Cannot start with a number.';
@@ -647,43 +573,31 @@ function validateField(id) {
             if (!val.trim()) error = 'ZIP code is required.';
             else if (!/^\d{4,5}$/.test(val)) error = 'ZIP must be 4 or 5 digits.';
             break;
-        case 'amount':
-            if (!val || isNaN(val) || Number(val) < 1) error = 'Amount must be at least 1.';
-            break;
-        case 'card-name':
-            if (!val.trim()) error = 'Name on card is required.';
-            break;
+        case 'card-name': if (!val.trim()) error = 'Name on card is required.'; break;
     }
-    const errorDiv = document.getElementById(id + '-error');
+    var errorDiv = document.getElementById(id + '-error');
     if (errorDiv) errorDiv.textContent = error;
     return !error;
 }
 
-const fieldIds = [
-    'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'amount', 'card-name'
-];
-fieldIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-        el.addEventListener('blur', function() {
-            validateField(id);
-        });
-    }
+var fieldIds = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'card-name'];
+fieldIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('blur', function() { validateField(id); });
 });
-
 document.addEventListener('input', function(e) {
-    if (fieldIds.includes(e.target.id)) {
-        validateField(e.target.id);
-    }
+    if (fieldIds.indexOf(e.target.id) !== -1) validateField(e.target.id);
     checkFormFields();
 });
 document.addEventListener('DOMContentLoaded', function() {
-    fieldIds.forEach(id => validateField(id));
+    fieldIds.forEach(function(id) { validateField(id); });
     checkFormFields();
 });
 
-let stripeLoaded = false;
-let stripe, elements, card;
+/* ── Stripe ───────────────────────────────────────────────────── */
+
+var stripeLoaded = false;
+var stripe, elements, card;
 try {
     stripe = Stripe('{{ STRIPE_PUBLISHABLE_KEY }}');
     elements = stripe.elements();
@@ -696,8 +610,10 @@ try {
 } catch (e) {
     document.getElementById('stripe-load-error').style.display = 'block';
 }
-let subscribeSubmitInFlight = false;
 
+/* ── Submit handler ───────────────────────────────────────────── */
+
+var subscribeSubmitInFlight = false;
 function resetSubscribeButton() {
     subscribeSubmitInFlight = false;
     var b = document.getElementById('subscribe-btn');
@@ -705,57 +621,36 @@ function resetSubscribeButton() {
 }
 
 document.getElementById('subscription-form').addEventListener('submit', async function(e) {
-    console.log('==== FORM SUBMIT HANDLER: START ====');
-    console.log('Subscribe & Pay button clicked, submit handler firing');
     e.preventDefault();
-    const btn = document.getElementById('subscribe-btn');
-
-    if (subscribeSubmitInFlight) {
-        return;
-    }
+    var btn = document.getElementById('subscribe-btn');
+    if (subscribeSubmitInFlight) return;
 
     checkFormFields();
-    const requiredFields = [
-        'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'amount', 'card-name'
-    ];
-    let fail = null;
-    for (const id of requiredFields) {
-        const el = document.getElementById(id);
-        if (!el || !String(el.value || '').trim()) {
-            fail = id;
-            break;
-        }
+    var requiredFields = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'card-name'];
+    var fail = null;
+    for (var i = 0; i < requiredFields.length; i++) {
+        var el = document.getElementById(requiredFields[i]);
+        if (!el || !String(el.value || '').trim()) { fail = requiredFields[i]; break; }
     }
-    const password = document.getElementById('password').value;
-    const specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
-    if (!fail && (password.length < 9 || /^[0-9]/.test(password) || !specialCharRegex.test(password))) {
-        fail = 'password (validation)';
-    }
-    const shortname = document.getElementById('tenant-shortname').value;
-    if (!fail && (!/^[a-z0-9-]+$/.test(shortname) || shortname.length < 3 || shortname.length > 32)) {
-        fail = 'tenant-shortname (slug validation)';
-    }
-    const zipVal = document.getElementById('zip').value;
-    if (!fail && !/^\d{4,5}$/.test(zipVal)) {
-        fail = 'zip';
-    }
-    const amt = document.getElementById('amount').value;
-    if (!fail && (!amt || isNaN(amt) || Number(amt) < 1)) {
-        fail = 'amount';
-    }
+    var password = document.getElementById('password').value;
+    var specialCharRegex = /[!@#$%^&*()_+=\-\[\]{};':",.<>/?`~]/;
+    if (!fail && (password.length < 9 || /^[0-9]/.test(password) || !specialCharRegex.test(password))) fail = 'password (validation)';
+    var shortname = document.getElementById('tenant-shortname').value;
+    if (!fail && (!/^[a-z0-9-]+$/.test(shortname) || shortname.length < 3 || shortname.length > 32)) fail = 'tenant-shortname (slug validation)';
+    var zipVal = document.getElementById('zip').value;
+    if (!fail && !/^\d{4,5}$/.test(zipVal)) fail = 'zip';
+    var planTier = document.getElementById('plan-tier').value;
+    if (!fail && !planTier) fail = 'plan-tier';
+    var amt = document.getElementById('amount').value;
+    if (!fail && (!amt || isNaN(amt) || Number(amt) < 1)) fail = 'amount';
+
     if (fail) {
-        var msg = subscribeHintForFailure(fail);
-        showSubscribeFeedback(msg, { isError: true });
-        var sh = document.getElementById('subscribe-hint');
-        if (sh) sh.textContent = msg;
+        showSubscribeFeedback(subscribeHintForFailure(fail), { isError: true });
         return;
     }
 
     if (typeof stripe === 'undefined' || !card) {
-        showSubscribeFeedback(
-            'Payment form did not load. Check your connection, disable blockers, refresh the page, or verify the Stripe publishable key.',
-            { isError: true }
-        );
+        showSubscribeFeedback('Payment form did not load. Check your connection, disable blockers, refresh the page, or verify the Stripe publishable key.', { isError: true });
         return;
     }
 
@@ -763,46 +658,32 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     subscribeSubmitInFlight = true;
     if (btn) btn.disabled = true;
 
-    const cardholderName = document.getElementById('card-name').value;
-    const tenantName = document.getElementById('tenant-name').value;
-    const email = document.getElementById('email').value;
-    const zip = document.getElementById('zip').value;
-    const amount = document.getElementById('amount').value;
-    const username = document.getElementById('username').value;
-    const tenantShortname = document.getElementById('tenant-shortname').value;
+    var cardholderName = document.getElementById('card-name').value;
+    var tenantName = document.getElementById('tenant-name').value;
+    var email = document.getElementById('email').value;
+    var zip = document.getElementById('zip').value;
+    var amount = document.getElementById('amount').value;
+    var username = document.getElementById('username').value;
+    var tenantShortname = document.getElementById('tenant-shortname').value;
 
-    console.log('Form values:', {
-        cardholderName, tenantName, tenantShortname, email, zip, amount, username, password: '(redacted)'
-    });
-
-    let token, error;
+    var tokenResult;
     try {
-        const result = await stripe.createToken(card, { name: cardholderName });
-        token = result.token;
-        error = result.error;
+        tokenResult = await stripe.createToken(card, { name: cardholderName });
     } catch (err) {
-        showSubscribeFeedback(
-            'Stripe could not read the card. If you used Link or a saved card, try entering test card 4242 4242 4242 4242 manually, or refresh the page.',
-            { isError: true }
-        );
+        showSubscribeFeedback('Stripe could not read the card. If you used Link or a saved card, try entering test card 4242 4242 4242 4242 manually, or refresh the page.', { isError: true });
         resetSubscribeButton();
         if (card) card.clear();
-        console.error('Stripe tokenization exception:', err);
         return;
     }
-    if (error) {
-        showSubscribeFeedback(error.message || 'Card was declined or invalid.', { isError: true });
+    if (tokenResult.error) {
+        showSubscribeFeedback(tokenResult.error.message || 'Card was declined or invalid.', { isError: true });
         resetSubscribeButton();
         if (card) card.clear();
-        console.warn('Stripe tokenization error:', error);
         return;
     }
-    console.log('Stripe token:', token);
 
-    // Prepare payload
-    const planTier = document.getElementById('plan-tier').value;
-    const payload = {
-        stripe_token: token.id,
+    var payload = {
+        stripe_token: tokenResult.token.id,
         tenant_name: tenantName,
         tenant_shortname: tenantShortname,
         card_name: cardholderName,
@@ -821,11 +702,10 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_monitor_logger: !!document.getElementById('enable-monitor-logger').checked,
         enable_polysysmon: !!document.getElementById('enable-polysysmon').checked,
     };
-    console.log('Sending fetch to /dose/api/subscriptions/ with payload:', payload);
 
     var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
     if (!csrfInput || !csrfInput.value) {
-        showSubscribeFeedback('Security token missing — refresh the page and try again.', { isError: true });
+        showSubscribeFeedback('Security token missing \u2014 refresh the page and try again.', { isError: true });
         resetSubscribeButton();
         return;
     }
@@ -833,88 +713,52 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     fetch('/dose/api/subscriptions/', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfInput.value
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfInput.value },
         body: JSON.stringify(payload)
     }).then(async function(response) {
         var rawText = '';
-        try {
-            rawText = await response.text();
-        } catch (readErr) {
-            console.error(readErr);
+        try { rawText = await response.text(); } catch (readErr) {
             showSubscribeFeedback('Could not read server response.', { isError: true });
-            resetSubscribeButton();
-            if (card) card.clear();
-            return;
+            resetSubscribeButton(); if (card) card.clear(); return;
         }
-        console.log('Subscribe API HTTP', response.status, rawText.slice(0, 800));
-
         var data = null;
-        if (rawText) {
-            try {
-                data = JSON.parse(rawText);
-            } catch (parseErr) {
-                data = null;
-            }
-        }
+        if (rawText) { try { data = JSON.parse(rawText); } catch (e) {} }
 
         if (!response.ok) {
             var errMsg = data ? payloadErrorMessage(data) : null;
-            if (!errMsg && rawText) {
-                errMsg = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700);
-            }
+            if (!errMsg && rawText) errMsg = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700);
             if (!errMsg) errMsg = 'Request failed (HTTP ' + response.status + ').';
             showSubscribeFeedback(errMsg, { isError: true });
-            resetSubscribeButton();
-            if (card) card.clear();
-            return;
+            resetSubscribeButton(); if (card) card.clear(); return;
         }
-
         var apiErr = data ? payloadErrorMessage(data) : null;
         if (apiErr) {
             showSubscribeFeedback(apiErr, { isError: true });
-            resetSubscribeButton();
-            if (card) card.clear();
-            return;
+            resetSubscribeButton(); if (card) card.clear(); return;
         }
-
         var looksOk = false;
         if (data && typeof data === 'object') {
-            if (data.plan_tier && (typeof data.id === 'number' || typeof data.id === 'string')) {
-                looksOk = true;
-            }
-            if (data.trial_welcome || data.provisioning_notice) {
-                looksOk = true;
-            }
+            if (data.plan_tier && (typeof data.id === 'number' || typeof data.id === 'string')) looksOk = true;
+            if (data.trial_welcome || data.provisioning_notice) looksOk = true;
         }
         if (!looksOk) {
-            showSubscribeFeedback(
-                'Unexpected response from server. Check the browser console (Subscribe API log) or contact support. Snippet: ' + (rawText || '').slice(0, 220),
-                { isError: true }
-            );
-            resetSubscribeButton();
-            return;
+            showSubscribeFeedback('Unexpected response from server. Check the browser console or contact support. Snippet: ' + (rawText || '').slice(0, 220), { isError: true });
+            resetSubscribeButton(); return;
         }
-
         if (data.trial_welcome || data.provisioning_notice) {
             try {
                 sessionStorage.setItem('polysaas_subscribe_notice', JSON.stringify({
                     trial_welcome: data.trial_welcome || '',
                     provisioning_notice: data.provisioning_notice || ''
                 }));
-            } catch (e) { console.warn('sessionStorage notice skipped', e); }
+            } catch (e) {}
         }
-        showSubscribeFeedback('Subscription saved — opening sign-in…', { isError: false });
+        showSubscribeFeedback('Subscription saved \u2014 opening sign-in\u2026', { isError: false });
         window.location.assign('/accounts/login/?next=' + encodeURIComponent('/dose/connect-social-after-subscribe/'));
     }).catch(function(err) {
-        console.error('Fetch error:', err);
         showSubscribeFeedback('Network error: ' + (err && err.message ? err.message : String(err)), { isError: true });
-        resetSubscribeButton();
-        if (card) card.clear();
+        resetSubscribeButton(); if (card) card.clear();
     });
-    console.log('==== FORM SUBMIT HANDLER: END (after fetch) ====');
 });
 </script>
 {% endblock %}

@@ -1,7 +1,15 @@
 """
-Subscription / Stripe signup API.
+Subscription / Stripe signup API — saga pattern.
 
-Uses dj-stripe for Stripe object syncing and webhook processing.
+All local DB writes (User, Tenant, UserProfile, Subscription, dj-stripe mirror rows,
+OAuth apps) are wrapped in a single ``transaction.atomic()`` block so they succeed or
+fail as a unit.
+
+External Stripe objects are created **before** the DB commit. If the atomic block
+fails the Stripe subscription and customer are cancelled/deleted as compensation.
+
+Celery provisioning tasks are enqueued via ``transaction.on_commit`` so workers never
+see a rolled-back tenant.
 
 ``SubscriptionApiViewSet`` is intentionally open (``permission_classes = []``) for
 **new** tenant + user registration without an existing session. Access control
@@ -10,9 +18,11 @@ do not use ``UserProfile`` for authorization on secured endpoints.
 """
 import logging
 import traceback
+from functools import partial
 
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
@@ -99,6 +109,29 @@ def _subscription_response_payload(subscription, selected_apps, *, tenant_name='
     return body
 
 
+# ---------------------------------------------------------------------------
+# Stripe compensation helpers — called when the DB commit fails after Stripe
+# objects were already created.
+# ---------------------------------------------------------------------------
+
+def _compensate_stripe(stripe_subscription_id, stripe_customer_id):
+    """Best-effort cancel/delete of Stripe objects created before a failed DB commit."""
+    if stripe_subscription_id:
+        try:
+            stripe.Subscription.cancel(stripe_subscription_id)
+            logger.info("Stripe compensation: cancelled subscription %s", stripe_subscription_id)
+        except Exception as exc:
+            logger.error("Stripe compensation: failed to cancel subscription %s: %s",
+                         stripe_subscription_id, exc)
+    if stripe_customer_id:
+        try:
+            stripe.Customer.delete(stripe_customer_id)
+            logger.info("Stripe compensation: deleted customer %s", stripe_customer_id)
+        except Exception as exc:
+            logger.error("Stripe compensation: failed to delete customer %s: %s",
+                         stripe_customer_id, exc)
+
+
 class SubscriptionApiViewSet(viewsets.ModelViewSet):
     queryset = Subscription.objects.all()
     from dose.serializers import SubscriptionCreateSerializer
@@ -111,127 +144,109 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
     permission_classes = []
 
+    # ------------------------------------------------------------------
+    # POST /api/subscriptions/  — saga-style create
+    #
+    # Phase 1  Validate (pure — no side effects)
+    # Phase 2  Stripe   (external, reversible via compensation)
+    # Phase 3  DB       (single atomic block — all or nothing)
+    # Phase 4  Login    (session store, after commit)
+    # Phase 5  Celery   (enqueued via on_commit only)
+    # ------------------------------------------------------------------
+
     def create(self, request, *args, **kwargs):
         try:
-            data = request.data
-            tenant_name = data.get('tenant_name')
-            tenant_shortname = data.get('tenant_shortname')
-            token = data.get('stripe_token')
-            card_name = data.get('card_name')
-            tenant_id = data.get('tenant')
-            username = data.get('username')
-            email = data.get('email')
-            password = data.get('password')
-            user_obj = None
+            return self._create_saga(request)
+        except Exception as e:
+            logger.error("Subscription create error: %s", traceback.format_exc())
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            if username and email and password:
-                if User.objects.filter(username=username).exists():
-                    return Response({
-                        'error': (
-                            f'The username "{username}" is already taken in this system (not a login session issue). '
-                            'Pick a different admin username for this new tenant, or sign in with that account. '
-                            'Subscribe always creates a brand-new admin user for the new tenant.'
-                        ),
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                user_obj = User.objects.create_user(username=username, email=email, password=password)
-                user_obj.is_staff = True
-                user_obj.is_superuser = True
-                user_obj.save()
-                user_obj.backend = 'django.contrib.auth.backends.ModelBackend'
-                login(request, user_obj)
+    def _create_saga(self, request):
+        data = request.data
 
-            if tenant_name and tenant_shortname:
-                slug = tenant_shortname.lower()
-                schema_name = slug.replace('-', '_')
-                if Tenant.objects.filter(name=tenant_name).exists():
-                    return Response({'error': f"Tenant name '{tenant_name}' already exists."}, status=status.HTTP_400_BAD_REQUEST)
-                if Tenant.objects.filter(schema_name=schema_name).exists():
-                    return Response({'error': f"Tenant schema '{schema_name}' already exists."}, status=status.HTTP_400_BAD_REQUEST)
-                tenant_obj, _ = Tenant.objects.get_or_create(
-                    name=tenant_name,
-                    defaults={'slug': slug, 'schema_name': schema_name, 'description': 'Created via subscribe.'},
-                )
-                tenant_id = tenant_obj.id
+        # ── Phase 1: validate ────────────────────────────────────────
+        tenant_name = data.get('tenant_name')
+        tenant_shortname = data.get('tenant_shortname')
+        token = data.get('stripe_token')
+        card_name = data.get('card_name')
+        tenant_id = data.get('tenant')
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
 
-            if user_obj and tenant_id:
-                try:
-                    user_profile = UserProfile.objects.get(user=user_obj)
-                    user_profile.tenant_id = tenant_id
-                    user_profile.save()
-                except UserProfile.DoesNotExist:
-                    UserProfile.objects.create(user=user_obj, tenant_id=tenant_id)
+        needs_new_user = bool(username and email and password)
+        needs_new_tenant = bool(tenant_name and tenant_shortname)
 
-            try:
-                tenant_id = int(tenant_id)
-            except (TypeError, ValueError):
-                tenant_id = None
+        if needs_new_user and User.objects.filter(username=username).exists():
+            return Response({
+                'error': (
+                    f'The username "{username}" is already taken in this system (not a login session issue). '
+                    'Pick a different admin username for this new tenant, or sign in with that account. '
+                    'Subscribe always creates a brand-new admin user for the new tenant.'
+                ),
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-            plan_tier = data.get('plan_tier', 'polysaas-1')
-            if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited'):
-                plan_tier = 'polysaas-1'
+        slug = schema_name = None
+        if needs_new_tenant:
+            slug = tenant_shortname.lower()
+            schema_name = slug.replace('-', '_')
+            if Tenant.objects.filter(name=tenant_name).exists():
+                return Response({'error': f"Tenant name '{tenant_name}' already exists."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if Tenant.objects.filter(schema_name=schema_name).exists():
+                return Response({'error': f"Tenant schema '{schema_name}' already exists."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-            app_keys = [
-                'enable_odoo', 'enable_nextcloud', 'enable_dolibarr',
-                'enable_mattermost', 'enable_wordpress',
-                'enable_liferay', 'enable_monitor_logger', 'enable_polysysmon',
-            ]
-            selected_apps = [k for k in app_keys if data.get(k)]
-            max_apps = getattr(settings, 'PLAN_MAX_APPS', {}).get(plan_tier)
-            slot_weights = getattr(settings, 'PLAN_BUNDLED_APP_SLOTS', {})
-            slot_count = sum(slot_weights.get(k, 1) for k in selected_apps)
-            if (
-                plan_tier == 'polysaas-3'
+        plan_tier = data.get('plan_tier', 'polysaas-1')
+        if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited'):
+            plan_tier = 'polysaas-1'
+
+        app_keys = [
+            'enable_odoo', 'enable_nextcloud', 'enable_dolibarr',
+            'enable_mattermost', 'enable_wordpress',
+            'enable_liferay', 'enable_monitor_logger', 'enable_polysysmon',
+        ]
+        selected_apps = [k for k in app_keys if data.get(k)]
+        max_apps = getattr(settings, 'PLAN_MAX_APPS', {}).get(plan_tier)
+        slot_weights = getattr(settings, 'PLAN_BUNDLED_APP_SLOTS', {})
+        slot_count = sum(slot_weights.get(k, 1) for k in selected_apps)
+
+        if (plan_tier == 'polysaas-3'
                 and data.get('enable_wordpress')
-                and data.get('enable_polysysmon')
-            ):
-                return Response(
-                    {
-                        'error': (
-                            'PolySaaS-3 includes at most one of WordPress or PolySysMon '
-                            '(each counts as 2 slots; together they exceed the plan).'
-                        ),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if max_apps is not None and slot_count > max_apps:
-                return Response(
-                    {
-                        'error': (
-                            f'{plan_tier} allows up to {max_apps} application slot(s). '
-                            f'Your selections use {slot_count} slot(s). '
-                            'WordPress and PolySysMon each count as 2 slots; all other bundled apps count as 1.'
-                        ),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                and data.get('enable_polysysmon')):
+            return Response(
+                {'error': ('PolySaaS-3 includes at most one of WordPress or PolySysMon '
+                           '(each counts as 2 slots; together they exceed the plan).')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if max_apps is not None and slot_count > max_apps:
+            return Response(
+                {'error': (f'{plan_tier} allows up to {max_apps} application slot(s). '
+                           f'Your selections use {slot_count} slot(s). '
+                           'WordPress and PolySysMon each count as 2 slots; all other bundled apps count as 1.')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-            # Test bypass: skip Stripe for tenant names starting with 'A'
-            if tenant_name and tenant_name.lower().startswith('a'):
-                sub = Subscription.objects.create(
-                    tenant_id=tenant_id, plan_tier=plan_tier,
-                    stripe_customer_id=None, stripe_subscription_id=None,
-                    card_name=card_name, active=False,
-                )
-                return Response(
-                    _subscription_response_payload(
-                        sub, selected_apps, tenant_name=tenant_name or '', stripe_trial_started=False,
-                    ),
-                    status=status.HTTP_201_CREATED,
-                )
+        test_bypass = tenant_name and tenant_name.lower().startswith('a')
 
-            if not tenant_id or not token:
+        if not test_bypass:
+            if not tenant_id and not needs_new_tenant:
+                return Response({'error': 'Missing tenant or stripe_token'}, status=status.HTTP_400_BAD_REQUEST)
+            if not token:
                 return Response({'error': 'Missing tenant or stripe_token'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # --- Stripe via dj-stripe ---
+        # ── Phase 2: Stripe (external, before DB commit) ────────────
+        stripe_customer_id = None
+        stripe_subscription_id = None
+        active = False
+
+        if not test_bypass:
             try:
                 price_ids = getattr(settings, 'STRIPE_PRICE_IDS', {})
                 stripe_price = price_ids.get(plan_tier) or getattr(settings, 'STRIPE_PRICE_ID', '')
 
                 customer = stripe.Customer.create(source=token, name=card_name, email=email)
-                djstripe_customer = djstripe.models.Customer.sync_from_stripe_data(customer)
-                if user_obj:
-                    djstripe_customer.subscriber = user_obj
-                    djstripe_customer.save()
+                stripe_customer_id = customer.id
 
                 sub_items = [{'price': stripe_price}]
                 needs_storage = data.get('enable_nextcloud') or data.get('enable_wordpress')
@@ -249,42 +264,93 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                         'selected_apps': ','.join(selected_apps),
                     },
                 )
-                djstripe.models.Subscription.sync_from_stripe_data(stripe_sub)
-
-                stripe_customer_id = customer.id
                 stripe_subscription_id = stripe_sub.id
                 active = True
             except Exception as e:
-                logger.error(f"Stripe error: {e}")
+                _compensate_stripe(stripe_subscription_id, stripe_customer_id)
+                logger.error("Stripe error: %s", e)
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-            sub = Subscription.objects.create(
-                tenant_id=tenant_id, plan_tier=plan_tier,
-                stripe_customer_id=stripe_customer_id,
-                stripe_subscription_id=stripe_subscription_id,
-                card_name=card_name, active=active,
-            )
+        # ── Phase 3: all DB writes in one atomic block ───────────────
+        try:
+            with transaction.atomic():
+                user_obj = None
+                if needs_new_user:
+                    user_obj = User.objects.create_user(username=username, email=email, password=password)
+                    user_obj.is_staff = True
+                    user_obj.is_superuser = True
+                    user_obj.save()
+                    user_obj.backend = 'django.contrib.auth.backends.ModelBackend'
 
-            self._provision_services(data, tenant_id, user_obj)
+                if needs_new_tenant:
+                    tenant_obj, _ = Tenant.objects.get_or_create(
+                        name=tenant_name,
+                        defaults={'slug': slug, 'schema_name': schema_name,
+                                  'description': 'Created via subscribe.'},
+                    )
+                    tenant_id = tenant_obj.id
 
-            return Response(
-                _subscription_response_payload(
-                    sub, selected_apps, tenant_name=tenant_name or '', stripe_trial_started=True,
-                ),
-                status=status.HTTP_201_CREATED,
-            )
+                if user_obj and tenant_id:
+                    try:
+                        user_profile = UserProfile.objects.get(user=user_obj)
+                        user_profile.tenant_id = tenant_id
+                        user_profile.save()
+                    except UserProfile.DoesNotExist:
+                        UserProfile.objects.create(user=user_obj, tenant_id=tenant_id)
 
-        except Exception as e:
-            logger.error(f"Subscription create error: {traceback.format_exc()}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                try:
+                    tenant_id = int(tenant_id)
+                except (TypeError, ValueError):
+                    tenant_id = None
+
+                if not test_bypass:
+                    djstripe_customer = djstripe.models.Customer.sync_from_stripe_data(customer)
+                    if user_obj:
+                        djstripe_customer.subscriber = user_obj
+                        djstripe_customer.save()
+                    djstripe.models.Subscription.sync_from_stripe_data(stripe_sub)
+
+                sub = Subscription.objects.create(
+                    tenant_id=tenant_id,
+                    plan_tier=plan_tier,
+                    stripe_customer_id=stripe_customer_id,
+                    stripe_subscription_id=stripe_subscription_id,
+                    card_name=card_name,
+                    active=active,
+                )
+
+                if not test_bypass:
+                    self._register_provisioning_on_commit(data, tenant_id, user_obj)
+
+        except Exception:
+            if not test_bypass:
+                _compensate_stripe(stripe_subscription_id, stripe_customer_id)
+            raise
+
+        # ── Phase 4: login (session — outside DB transaction) ────────
+        if user_obj:
+            login(request, user_obj)
+
+        return Response(
+            _subscription_response_payload(
+                sub, selected_apps,
+                tenant_name=tenant_name or '',
+                stripe_trial_started=not test_bypass,
+            ),
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ------------------------------------------------------------------
+    # Celery provisioning — enqueued only after a successful DB commit
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _provision_services(data, tenant_id, user_obj):
-        """Kick off async provisioning for selected bundled apps."""
+    def _register_provisioning_on_commit(data, tenant_id, user_obj):
+        """Register Celery tasks via on_commit so workers never see rolled-back data."""
         tenant = Tenant.objects.get(id=tenant_id)
         admin_email = user_obj.email if user_obj else data.get('email')
         base = dict(tenant_schema=tenant.schema_name, tenant_name=tenant.name,
-                     admin_email=admin_email, company_name=tenant.name)
+                    admin_email=admin_email, company_name=tenant.name)
 
         provisioners = [
             ('enable_odoo', provision_odoo_tenant),
@@ -311,4 +377,4 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
-            provisioner.delay(**kwargs)
+            transaction.on_commit(partial(provisioner.delay, **kwargs))
