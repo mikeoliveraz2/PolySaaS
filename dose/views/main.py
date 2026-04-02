@@ -1045,6 +1045,9 @@ def subscribe_view(request):
         'PRICE_1': plan_prices.get('polysaas-1', 26.00),
         'PRICE_3': plan_prices.get('polysaas-3', 49.00),
         'PRICE_UNLIMITED': plan_prices.get('polysaas-unlimited', 99.00),
+        # Prefer dicts + |json_script in template (escapejs on JSON breaks JSON.parse).
+        'plan_prices': plan_prices,
+        'plan_max_apps': plan_max_apps,
         'PLAN_PRICES_JSON': json.dumps(plan_prices),
         'PLAN_MAX_APPS_JSON': json.dumps(plan_max_apps),
     }

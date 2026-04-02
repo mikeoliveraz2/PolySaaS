@@ -208,7 +208,7 @@
         font-size: 0.95em;
     }
 </style>
-<form id="subscription-form" class="subscription-form" novalidate>
+<form id="subscription-form" class="subscription-form" method="post" action="" novalidate>
     <div id="stripe-load-error" style="display:none;color:#d32f2f;margin-bottom:1em;font-size:1em;text-align:center;">Unable to load secure card fields. Please check your internet connection or contact support.</div>
     {% csrf_token %}
     <input type="hidden" id="plan-tier" name="plan_tier" value="polysaas-1">
@@ -310,12 +310,32 @@
     <button type="submit" id="subscribe-btn" class="subscription-btn">Subscribe & Pay</button>
     <div id="subscribe-hint" aria-live="polite"></div>
 </form>
+{{ plan_max_apps|json_script:"ps-plan-max-apps" }}
+{{ plan_prices|json_script:"ps-plan-prices" }}
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 console.log('Subscription JS loaded: form script running');
 
-const APP_LIMITS = JSON.parse('{{ PLAN_MAX_APPS_JSON|escapejs }}');
-const PLAN_PRICES = JSON.parse('{{ PLAN_PRICES_JSON|escapejs }}');
+var APP_LIMITS;
+var PLAN_PRICES;
+(function () {
+    function readJsonScript(id, fallback) {
+        var el = document.getElementById(id);
+        if (!el || !el.textContent) return fallback;
+        try {
+            return JSON.parse(el.textContent);
+        } catch (e) {
+            console.error('JSON parse failed for', id, e);
+            return fallback;
+        }
+    }
+    APP_LIMITS = readJsonScript('ps-plan-max-apps', {
+        'polysaas-1': 1, 'polysaas-3': 3, 'polysaas-unlimited': null
+    });
+    PLAN_PRICES = readJsonScript('ps-plan-prices', {
+        'polysaas-1': 26, 'polysaas-3': 49, 'polysaas-unlimited': 99
+    });
+})();
 
 function showSubscribeFeedback(message, options) {
     options = options || {};
@@ -323,14 +343,44 @@ function showSubscribeFeedback(message, options) {
     var statusEl = document.getElementById('subscribe-submit-status');
     var cardErr = document.getElementById('card-errors');
     var c = isError ? '#c62828' : '#2e7d32';
+    var shown = false;
     if (statusEl) {
         statusEl.textContent = message || '';
         statusEl.style.color = message ? c : '';
         statusEl.style.fontWeight = message ? '600' : '';
+        if (message) shown = true;
     }
     if (cardErr) {
         cardErr.textContent = message || '';
         cardErr.style.color = message ? c : '';
+        if (message) shown = true;
+    }
+    if (message && !shown) {
+        var toast = document.getElementById('subscribe-fallback-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'subscribe-fallback-toast';
+            toast.setAttribute('role', 'alert');
+            toast.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;max-height:40vh;overflow:auto;padding:14px 16px;border-radius:8px;z-index:2147483647;font-size:15px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,0.25);border:2px solid;';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.style.display = 'block';
+        if (isError) {
+            toast.style.background = '#ffebee';
+            toast.style.color = '#b71c1c';
+            toast.style.borderColor = '#c62828';
+        } else {
+            toast.style.background = '#e8f5e9';
+            toast.style.color = '#1b5e20';
+            toast.style.borderColor = '#2e7d32';
+        }
+    } else {
+        var t2 = document.getElementById('subscribe-fallback-toast');
+        if (t2 && !message) t2.style.display = 'none';
+    }
+    if (message) {
+        try { console[isError ? 'error' : 'log']('Subscribe:', message); } catch (e) {}
     }
     if (message && options.scroll !== false && statusEl) {
         try { statusEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
