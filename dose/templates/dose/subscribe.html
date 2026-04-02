@@ -250,8 +250,8 @@
 
     <!-- Bundled Applications -->
     <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
-        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Applications <span id="app-limit-label" style="font-size:0.85em; color:#888;">(select up to <span id="app-limit-count">1</span>)</span></h4>
-        <small style="display: block; color: #666; margin-bottom: 0.75em;">Each selected app counts toward your plan limit. Bundled apps are queued for setup after you subscribe (not instant); you will get email when each is ready. External apps connect via passthrough from your admin.</small>
+        <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Applications <span id="app-limit-label" style="font-size:0.85em; color:#888;">(up to <span id="app-limit-count"></span>)</span></h4>
+        <small style="display: block; color: #666; margin-bottom: 0.75em;">Limits are counted in <strong>slots</strong>: WordPress and PolySysMon each use <strong>2 slots</strong>; every other bundled app uses 1. PolySaaS-1 (1 slot): WordPress and PolySysMon are not available. PolySaaS-3 (3 slots): you may choose <strong>at most one</strong> of WordPress or PolySysMon. Bundled apps are queued after subscribe; you will get email when each is ready.</small>
         <div style="margin-bottom: 0.5em;">
             <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
             <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
@@ -269,10 +269,22 @@
             <label for="enable-mattermost" style="font-weight: normal; color: #555;">Mattermost Team Chat <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
         </div>
         <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
+            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(bundled, 2 slots)</span></label>
         </div>
-        <div id="app-limit-warning" style="display:none; color:#d32f2f; font-size:0.9em; margin-top:0.5em;">You've reached the application limit for your selected plan. Upgrade to add more apps.</div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-liferay" style="font-weight: normal; color: #555;">Liferay <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" style="margin-right: 0.5em;">
+            <label for="enable-monitor-logger" style="font-weight: normal; color: #555;">Monitor Logger <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
+        </div>
+        <div style="margin-bottom: 0.5em;">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
+            <label for="enable-polysysmon" style="font-weight: normal; color: #555;">PolySysMon <span style="color:#1976d2; font-size:0.85em;">(bundled, 2 slots)</span></label>
+        </div>
+        <div id="app-limit-warning" style="display:none; color:#d32f2f; font-size:0.9em; margin-top:0.5em;">You've used all application slots for your selected plan. Upgrade to add more.</div>
     </div>
 
     <!-- Storage Add-on -->
@@ -310,36 +322,111 @@ function selectPlan(tier, price) {
         labelEl.style.display = 'none';
     } else {
         labelEl.style.display = '';
-        countEl.textContent = limit;
+        countEl.textContent = limit + (limit === 1 ? ' slot' : ' slots');
     }
     enforceAppLimit();
     checkFormFields();
+}
+
+function appCheckboxSlots(cb) {
+    var s = cb.getAttribute('data-app-slots');
+    return s ? parseInt(s, 10) : 1;
+}
+
+function totalSelectedSlots() {
+    var t = 0;
+    document.querySelectorAll('.app-checkbox:checked').forEach(function(cb) {
+        t += appCheckboxSlots(cb);
+    });
+    return t;
 }
 
 function enforceAppLimit() {
     var tier = document.getElementById('plan-tier').value;
     var limit = APP_LIMITS[tier];
     var boxes = document.querySelectorAll('.app-checkbox');
-    var checked = document.querySelectorAll('.app-checkbox:checked').length;
     var warning = document.getElementById('app-limit-warning');
+    var wp = document.getElementById('enable-wordpress');
+    var ps = document.getElementById('enable-polysysmon');
 
     if (limit === null) {
         boxes.forEach(function(cb) { cb.disabled = false; });
         warning.style.display = 'none';
         return;
     }
+
+    if (limit === 1) {
+        wp.checked = false;
+        ps.checked = false;
+        wp.disabled = true;
+        ps.disabled = true;
+    } else {
+        wp.disabled = false;
+        ps.disabled = false;
+    }
+
+    if (limit === 3) {
+        if (wp.checked) {
+            ps.checked = false;
+            ps.disabled = true;
+        } else if (ps.checked) {
+            wp.checked = false;
+            wp.disabled = true;
+        }
+    }
+
+    var used = totalSelectedSlots();
     boxes.forEach(function(cb) {
-        if (!cb.checked && checked >= limit) {
+        if (cb.checked) {
+            cb.disabled = false;
+            return;
+        }
+        if (limit === 1 && (cb === wp || cb === ps)) {
+            return;
+        }
+        if (limit === 3 && cb === ps && wp.checked) {
+            cb.disabled = true;
+            return;
+        }
+        if (limit === 3 && cb === wp && ps.checked) {
+            cb.disabled = true;
+            return;
+        }
+        var need = appCheckboxSlots(cb);
+        if (used + need > limit) {
             cb.disabled = true;
         } else {
             cb.disabled = false;
         }
     });
-    warning.style.display = (checked >= limit) ? '' : 'none';
+
+    if (limit === 3) {
+        if (wp.checked) {
+            ps.disabled = true;
+        } else if (ps.checked) {
+            wp.disabled = true;
+        }
+    }
+
+    warning.style.display = (used >= limit) ? '' : 'none';
 }
 
 document.querySelectorAll('.app-checkbox').forEach(function(cb) {
-    cb.addEventListener('change', enforceAppLimit);
+    cb.addEventListener('change', function() {
+        var wp = document.getElementById('enable-wordpress');
+        var ps = document.getElementById('enable-polysysmon');
+        var tier = document.getElementById('plan-tier').value;
+        var limit = APP_LIMITS[tier];
+        if (limit === 3) {
+            if (cb === wp && wp.checked) {
+                ps.checked = false;
+            }
+            if (cb === ps && ps.checked) {
+                wp.checked = false;
+            }
+        }
+        enforceAppLimit();
+    });
 });
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -357,6 +444,12 @@ document.addEventListener('DOMContentLoaded', function() {
             selectPlan(tier, parseFloat(price));
         });
     });
+    var preSelected = document.querySelector('.plan-card.selected');
+    if (preSelected) {
+        selectPlan(preSelected.getAttribute('data-tier'), parseFloat(preSelected.getAttribute('data-price')));
+    } else {
+        enforceAppLimit();
+    }
 });
 function checkFormFields() {
     const requiredFields = [
@@ -550,6 +643,9 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_dolibarr: !!document.getElementById('enable-dolibarr').checked,
         enable_mattermost: !!document.getElementById('enable-mattermost').checked,
         enable_wordpress: !!document.getElementById('enable-wordpress').checked,
+        enable_liferay: !!document.getElementById('enable-liferay').checked,
+        enable_monitor_logger: !!document.getElementById('enable-monitor-logger').checked,
+        enable_polysysmon: !!document.getElementById('enable-polysysmon').checked,
     };
     console.log('Sending fetch to /dose/api/subscriptions/ with payload:', payload);
 

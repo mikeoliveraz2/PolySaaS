@@ -36,13 +36,22 @@ class Subscription(TenantAwareModel):
         from django.conf import settings
         return settings.PLAN_MAX_APPS.get(self.plan_tier)
 
-    def can_add_app(self):
+    def get_bundled_app_slots_used(self):
+        """Sum of plan slots consumed by provisioned bundled apps (WP & PolySysMon = 2 each)."""
+        from django.conf import settings
+        from dose.models.tenant_app import TenantApp
+
+        weights = getattr(settings, 'TENANT_APP_BUNDLED_SLOTS', {})
+        total = 0
+        for ta in TenantApp.objects.filter(tenant=self.tenant):
+            total += weights.get(ta.app_name, 1)
+        return total
+
+    def can_add_app(self, slots_needed=1):
         max_apps = self.get_max_apps()
         if max_apps is None:
             return True
-        from dose.models.tenant_app import TenantApp
-        current_count = TenantApp.objects.filter(tenant=self.tenant).count()
-        return current_count < max_apps
+        return self.get_bundled_app_slots_used() + slots_needed <= max_apps
 
     def get_price_per_user(self):
         from django.conf import settings

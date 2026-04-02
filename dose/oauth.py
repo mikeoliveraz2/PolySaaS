@@ -89,11 +89,21 @@ def get_redirect_uri(app_name, tenant_schema):
         'mattermost': 'https://mm.polysaas.online',
         'odoo': 'https://odoo.polysaas.online',
         'nextcloud': 'https://nextcloud.polysaas.online',
+        'liferay': 'https://liferay.polysaas.online',
+        'monitor_logger': 'https://logger.polysaas.online',
+        'polysysmon': 'https://polysysmon.polysaas.online',
+        'dolibarr': 'https://dolibarr.polysaas.online',
+        'wordpress': 'https://polysaas.online',
     }
     redirect_paths = {
         'mattermost': '/signup/openid/complete',
         'odoo': '/auth_oauth/signin',
         'nextcloud': '/apps/user_oidc/code',
+        'liferay': '/callback',
+        'monitor_logger': '/callback',
+        'polysysmon': '/callback',
+        'dolibarr': '/callback',
+        'wordpress': '/callback',
     }
     base = base_urls.get(app_name, '')
     path = redirect_paths.get(app_name, '/callback')

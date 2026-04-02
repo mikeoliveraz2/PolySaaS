@@ -23,7 +23,10 @@ class TenantApp(models.Model):
         ('mattermost', 'Mattermost'),
         ('odoo', 'Odoo'),
         ('nextcloud', 'Nextcloud'),
+        ('dolibarr', 'Dolibarr'),
+        ('wordpress', 'WordPress'),
         ('liferay', 'Liferay'),
+        ('monitor_logger', 'Monitor Logger'),
         ('polysysmon', 'PolySysMon'),
     ]
 

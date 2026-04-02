@@ -125,11 +125,23 @@ PLAN_PRICES = {
     'polysaas-unlimited': 99.00,
 }
 
-# Max bundled or external applications per plan
+# Max bundled or external applications per plan (counted in "slots" below)
 PLAN_MAX_APPS = {
     'polysaas-1': 1,
     'polysaas-3': 3,
     'polysaas-unlimited': None,
+}
+
+# Subscribe form keys: WordPress & PolySysMon each consume 2 slots toward PLAN_MAX_APPS
+PLAN_BUNDLED_APP_SLOTS = {
+    'enable_wordpress': 2,
+    'enable_polysysmon': 2,
+}
+
+# TenantApp.app_name values: same weights for in-product limits
+TENANT_APP_BUNDLED_SLOTS = {
+    'wordpress': 2,
+    'polysysmon': 2,
 }
 
 # Usage-based storage pricing (NextCloud / WordPress) — metered in Stripe

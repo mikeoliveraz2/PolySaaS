@@ -25,6 +25,11 @@ from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
 from dose.services.mattermost_tenant_provisioner import provision_mattermost_tenant
+from dose.services.extended_bundle_provisioner import (
+    provision_liferay_tenant,
+    provision_monitor_logger_tenant,
+    provision_polysysmon_tenant,
+)
 try:
     from dose.services.wordpress_tenant_provisioner import provision_wordpress_tenant
 except ImportError:
@@ -41,6 +46,9 @@ _BUNDLED_APP_LABELS = {
     'enable_dolibarr': 'Dolibarr',
     'enable_mattermost': 'Mattermost',
     'enable_wordpress': 'WordPress',
+    'enable_liferay': 'Liferay',
+    'enable_monitor_logger': 'Monitor Logger',
+    'enable_polysysmon': 'PolySysMon',
 }
 
 
@@ -161,12 +169,35 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             app_keys = [
                 'enable_odoo', 'enable_nextcloud', 'enable_dolibarr',
                 'enable_mattermost', 'enable_wordpress',
+                'enable_liferay', 'enable_monitor_logger', 'enable_polysysmon',
             ]
             selected_apps = [k for k in app_keys if data.get(k)]
             max_apps = getattr(settings, 'PLAN_MAX_APPS', {}).get(plan_tier)
-            if max_apps is not None and len(selected_apps) > max_apps:
+            slot_weights = getattr(settings, 'PLAN_BUNDLED_APP_SLOTS', {})
+            slot_count = sum(slot_weights.get(k, 1) for k in selected_apps)
+            if (
+                plan_tier == 'polysaas-3'
+                and data.get('enable_wordpress')
+                and data.get('enable_polysysmon')
+            ):
                 return Response(
-                    {'error': f'{plan_tier} allows up to {max_apps} application(s). You selected {len(selected_apps)}.'},
+                    {
+                        'error': (
+                            'PolySaaS-3 includes at most one of WordPress or PolySysMon '
+                            '(each counts as 2 slots; together they exceed the plan).'
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if max_apps is not None and slot_count > max_apps:
+                return Response(
+                    {
+                        'error': (
+                            f'{plan_tier} allows up to {max_apps} application slot(s). '
+                            f'Your selections use {slot_count} slot(s). '
+                            'WordPress and PolySysMon each count as 2 slots; all other bundled apps count as 1.'
+                        ),
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -259,6 +290,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         ]
         if provision_wordpress_tenant is not None:
             provisioners.append(('enable_wordpress', provision_wordpress_tenant))
+        provisioners.extend([
+            ('enable_liferay', provision_liferay_tenant),
+            ('enable_monitor_logger', provision_monitor_logger_tenant),
+            ('enable_polysysmon', provision_polysysmon_tenant),
+        ])
 
         for app_key, provisioner in provisioners:
             if not data.get(app_key):
