@@ -127,7 +127,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             if username and email and password:
                 if User.objects.filter(username=username).exists():
                     return Response({
-                        'error': f'User {username} already exists. Subscribe is for new tenants with new users only.',
+                        'error': (
+                            f'The username "{username}" is already taken in this system (not a login session issue). '
+                            'Pick a different admin username for this new tenant, or sign in with that account. '
+                            'Subscribe always creates a brand-new admin user for the new tenant.'
+                        ),
                     }, status=status.HTTP_400_BAD_REQUEST)
                 user_obj = User.objects.create_user(username=username, email=email, password=password)
                 user_obj.is_staff = True
