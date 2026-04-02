@@ -1050,6 +1050,8 @@ def subscribe_view(request):
         'plan_max_apps': plan_max_apps,
         'PLAN_PRICES_JSON': json.dumps(plan_prices),
         'PLAN_MAX_APPS_JSON': json.dumps(plan_max_apps),
+        # Header: do not imply session tenant is the tenant being created on this form.
+        'subscribe_new_tenant_flow': True,
     }
     if request.method == 'POST':
         return render(request, 'dose/connect_social.html', plan_context)
