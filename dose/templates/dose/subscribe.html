@@ -305,16 +305,61 @@
         <small style="display: block; color: #666; margin-bottom: 0.5em;">Storage for Nextcloud and WordPress files is billed at <strong>$0.12/GB per month</strong> based on actual usage. No charge if you don't use file storage.</small>
     </div>
 
+    <div id="subscribe-submit-status" role="alert" aria-live="assertive" style="min-height:1.25em;margin:0.75em 0 0.5em;font-size:0.98em;line-height:1.4;"></div>
+    <div id="card-errors" role="alert" style="margin-bottom:0.5em;font-size:0.95em;"></div>
     <button type="submit" id="subscribe-btn" class="subscription-btn">Subscribe & Pay</button>
     <div id="subscribe-hint" aria-live="polite"></div>
 </form>
-<div id="card-errors" role="alert"></div>
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 console.log('Subscription JS loaded: form script running');
 
 const APP_LIMITS = JSON.parse('{{ PLAN_MAX_APPS_JSON|escapejs }}');
 const PLAN_PRICES = JSON.parse('{{ PLAN_PRICES_JSON|escapejs }}');
+
+function showSubscribeFeedback(message, options) {
+    options = options || {};
+    var isError = options.isError !== false;
+    var statusEl = document.getElementById('subscribe-submit-status');
+    var cardErr = document.getElementById('card-errors');
+    var c = isError ? '#c62828' : '#2e7d32';
+    if (statusEl) {
+        statusEl.textContent = message || '';
+        statusEl.style.color = message ? c : '';
+        statusEl.style.fontWeight = message ? '600' : '';
+    }
+    if (cardErr) {
+        cardErr.textContent = message || '';
+        cardErr.style.color = message ? c : '';
+    }
+    if (message && options.scroll !== false && statusEl) {
+        try { statusEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
+    }
+}
+
+/** DRF + our API: error string, detail, field errors — not subscription success objects. */
+function payloadErrorMessage(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    if (typeof data.error === 'string' && data.error) return data.error;
+    if (typeof data.detail === 'string' && data.detail) return data.detail;
+    if (Array.isArray(data.detail) && data.detail.length) {
+        return data.detail.map(function (x) {
+            return typeof x === 'string' ? x : JSON.stringify(x);
+        }).join(' ');
+    }
+    if (data.non_field_errors && data.non_field_errors.length) {
+        return [].concat(data.non_field_errors).join(' ');
+    }
+    var parts = [];
+    Object.keys(data).forEach(function (k) {
+        var v = data[k];
+        if (v == null) return;
+        if (Array.isArray(v) && v.length && typeof v[0] === 'string') {
+            parts.push(k + ': ' + v.join(' '));
+        }
+    });
+    return parts.length ? parts.join(' | ') : null;
+}
 
 function selectPlan(tier, price) {
     document.getElementById('plan-tier').value = tier;
@@ -603,11 +648,16 @@ try {
 }
 let subscribeSubmitInFlight = false;
 
+function resetSubscribeButton() {
+    subscribeSubmitInFlight = false;
+    var b = document.getElementById('subscribe-btn');
+    if (b) b.disabled = false;
+}
+
 document.getElementById('subscription-form').addEventListener('submit', async function(e) {
     console.log('==== FORM SUBMIT HANDLER: START ====');
     console.log('Subscribe & Pay button clicked, submit handler firing');
     e.preventDefault();
-    const errEl = document.getElementById('card-errors');
     const btn = document.getElementById('subscribe-btn');
 
     if (subscribeSubmitInFlight) {
@@ -644,19 +694,22 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         fail = 'amount';
     }
     if (fail) {
-        if (errEl) errEl.textContent = subscribeHintForFailure(fail);
+        var msg = subscribeHintForFailure(fail);
+        showSubscribeFeedback(msg, { isError: true });
         var sh = document.getElementById('subscribe-hint');
-        if (sh) sh.textContent = subscribeHintForFailure(fail);
+        if (sh) sh.textContent = msg;
         return;
     }
 
     if (typeof stripe === 'undefined' || !card) {
-        if (errEl) {
-            errEl.textContent = 'Payment form did not load. Check your connection, disable blockers, refresh the page, or verify Stripe publishable key.';
-        }
+        showSubscribeFeedback(
+            'Payment form did not load. Check your connection, disable blockers, refresh the page, or verify the Stripe publishable key.',
+            { isError: true }
+        );
         return;
     }
 
+    showSubscribeFeedback('', {});
     subscribeSubmitInFlight = true;
     if (btn) btn.disabled = true;
 
@@ -678,17 +731,18 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         token = result.token;
         error = result.error;
     } catch (err) {
-        errEl.textContent = 'Stripe could not read the card. If you used Link or a saved card, try entering a test card manually (e.g. 4242 4242 4242 4242) or refresh the page.';
-        subscribeSubmitInFlight = false;
-        if (btn) btn.disabled = false;
+        showSubscribeFeedback(
+            'Stripe could not read the card. If you used Link or a saved card, try entering test card 4242 4242 4242 4242 manually, or refresh the page.',
+            { isError: true }
+        );
+        resetSubscribeButton();
         if (card) card.clear();
         console.error('Stripe tokenization exception:', err);
         return;
     }
     if (error) {
-        errEl.textContent = error.message;
-        subscribeSubmitInFlight = false;
-        if (btn) btn.disabled = false;
+        showSubscribeFeedback(error.message || 'Card was declined or invalid.', { isError: true });
+        resetSubscribeButton();
         if (card) card.clear();
         console.warn('Stripe tokenization error:', error);
         return;
@@ -719,69 +773,95 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     };
     console.log('Sending fetch to /dose/api/subscriptions/ with payload:', payload);
 
+    var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (!csrfInput || !csrfInput.value) {
+        showSubscribeFeedback('Security token missing — refresh the page and try again.', { isError: true });
+        resetSubscribeButton();
+        return;
+    }
+
     fetch('/dose/api/subscriptions/', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            'X-CSRFToken': csrfInput.value
         },
         body: JSON.stringify(payload)
-    }).then(async response => {
-        console.log('Fetch response status:', response.status);
-        const contentType = response.headers.get('content-type');
-        if (response.ok) {
-            if (contentType && contentType.indexOf('application/json') !== -1) {
-                const data = await response.json();
-                console.log('Parsed response JSON:', data);
-                if (data.error) {
-                    console.error('Backend error:', data.error);
-                    let errorDiv = document.getElementById('card-errors');
-                    if (errorDiv) {
-                        errorDiv.textContent = data.error;
-                        errorDiv.style.display = 'block';
-                        errorDiv.style.color = 'red';
-                    } else {
-                        alert(data.error);
-                    }
-                    subscribeSubmitInFlight = false;
-                    if (btn) btn.disabled = false;
-                    if (card) card.clear();
-                } else {
-                    if (data.trial_welcome || data.provisioning_notice) {
-                        try {
-                            sessionStorage.setItem('polysaas_subscribe_notice', JSON.stringify({
-                                trial_welcome: data.trial_welcome || '',
-                                provisioning_notice: data.provisioning_notice || ''
-                            }));
-                        } catch (e) { console.warn('sessionStorage notice skipped', e); }
-                    }
-                    console.log('Subscription successful, redirecting to Login.');
-                    window.location.href = '/accounts/login/?next=/dose/connect-social-after-subscribe/';
-                }
-            } else {
-                // If not JSON, assume HTML and redirect to login page
-                console.log('Non-JSON response, redirecting to Login.');
-                window.location.href = '/accounts/login/?next=/dose/connect-social-after-subscribe/';
-            }
-        } else {
-            // Not OK (error status)
-            let errorMsg = 'Unexpected server error. Please try again or contact support.';
-            if (contentType && contentType.indexOf('application/json') !== -1) {
-                try {
-                    const data = await response.json();
-                    if (data.error) errorMsg = data.error;
-                } catch (e) {}
-            }
-            document.getElementById('card-errors').textContent = errorMsg;
-            subscribeSubmitInFlight = false;
-            if (btn) btn.disabled = false;
+    }).then(async function(response) {
+        var rawText = '';
+        try {
+            rawText = await response.text();
+        } catch (readErr) {
+            console.error(readErr);
+            showSubscribeFeedback('Could not read server response.', { isError: true });
+            resetSubscribeButton();
             if (card) card.clear();
+            return;
         }
-    }).catch(err => {
+        console.log('Subscribe API HTTP', response.status, rawText.slice(0, 800));
+
+        var data = null;
+        if (rawText) {
+            try {
+                data = JSON.parse(rawText);
+            } catch (parseErr) {
+                data = null;
+            }
+        }
+
+        if (!response.ok) {
+            var errMsg = data ? payloadErrorMessage(data) : null;
+            if (!errMsg && rawText) {
+                errMsg = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700);
+            }
+            if (!errMsg) errMsg = 'Request failed (HTTP ' + response.status + ').';
+            showSubscribeFeedback(errMsg, { isError: true });
+            resetSubscribeButton();
+            if (card) card.clear();
+            return;
+        }
+
+        var apiErr = data ? payloadErrorMessage(data) : null;
+        if (apiErr) {
+            showSubscribeFeedback(apiErr, { isError: true });
+            resetSubscribeButton();
+            if (card) card.clear();
+            return;
+        }
+
+        var looksOk = false;
+        if (data && typeof data === 'object') {
+            if (data.plan_tier && (typeof data.id === 'number' || typeof data.id === 'string')) {
+                looksOk = true;
+            }
+            if (data.trial_welcome || data.provisioning_notice) {
+                looksOk = true;
+            }
+        }
+        if (!looksOk) {
+            showSubscribeFeedback(
+                'Unexpected response from server. Check the browser console (Subscribe API log) or contact support. Snippet: ' + (rawText || '').slice(0, 220),
+                { isError: true }
+            );
+            resetSubscribeButton();
+            return;
+        }
+
+        if (data.trial_welcome || data.provisioning_notice) {
+            try {
+                sessionStorage.setItem('polysaas_subscribe_notice', JSON.stringify({
+                    trial_welcome: data.trial_welcome || '',
+                    provisioning_notice: data.provisioning_notice || ''
+                }));
+            } catch (e) { console.warn('sessionStorage notice skipped', e); }
+        }
+        showSubscribeFeedback('Subscription saved — opening sign-in…', { isError: false });
+        window.location.assign('/accounts/login/?next=' + encodeURIComponent('/dose/connect-social-after-subscribe/'));
+    }).catch(function(err) {
         console.error('Fetch error:', err);
-        document.getElementById('card-errors').textContent = 'Network or server error. Please try again.';
-        subscribeSubmitInFlight = false;
-        if (btn) btn.disabled = false;
+        showSubscribeFeedback('Network error: ' + (err && err.message ? err.message : String(err)), { isError: true });
+        resetSubscribeButton();
         if (card) card.clear();
     });
     console.log('==== FORM SUBMIT HANDLER: END (after fetch) ====');
