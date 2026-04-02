@@ -1,6 +1,7 @@
 {% extends "dose/dosebase.html" %}
 {% block content %}
 <h2>Connect Your Social Account</h2>
+<div id="subscribe-followup-notice" style="display:none; max-width:560px; margin:0 auto 1.25em; padding:1em 1.25em; background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; color:#1565c0; font-size:0.98em; line-height:1.5;"></div>
 <p style="text-align:center; font-size:1.1em; margin-bottom:1.5em; color:#1976d2;">
     Your subscription was successful!<br>
     For enhanced security and single sign-on, connect your Google account now, or skip and connect later from your profile.
@@ -13,4 +14,30 @@
 <div style="text-align:center;">
     <a href="/accounts/login/" style="color:#1976d2;">Skip for now and go to login</a>
 </div>
+<script>
+(function() {
+    try {
+        var raw = sessionStorage.getItem('polysaas_subscribe_notice');
+        if (!raw) return;
+        var o = JSON.parse(raw);
+        sessionStorage.removeItem('polysaas_subscribe_notice');
+        var box = document.getElementById('subscribe-followup-notice');
+        if (!box || (!o.trial_welcome && !o.provisioning_notice)) return;
+        if (o.trial_welcome) {
+            var p1 = document.createElement('p');
+            p1.style.margin = '0 0 0.75em 0';
+            p1.style.fontWeight = '600';
+            p1.textContent = o.trial_welcome;
+            box.appendChild(p1);
+        }
+        if (o.provisioning_notice) {
+            var p2 = document.createElement('p');
+            p2.style.margin = '0';
+            p2.textContent = o.provisioning_notice;
+            box.appendChild(p2);
+        }
+        box.style.display = 'block';
+    } catch (e) {}
+})();
+</script>
 {% endblock %}

@@ -251,7 +251,7 @@
     <!-- Bundled Applications -->
     <div class="form-group" style="border: 1px solid #e0e0e0; padding: 1em; border-radius: 4px; background: #f8f9fa;">
         <h4 style="margin-top: 0; color: #333; font-size: 1.1em;">Applications <span id="app-limit-label" style="font-size:0.85em; color:#888;">(select up to <span id="app-limit-count">1</span>)</span></h4>
-        <small style="display: block; color: #666; margin-bottom: 0.75em;">Each selected app counts toward your plan's application limit. Bundled apps are instantly provisioned; external apps connect via passthrough.</small>
+        <small style="display: block; color: #666; margin-bottom: 0.75em;">Each selected app counts toward your plan limit. Bundled apps are queued for setup after you subscribe (not instant); you will get email when each is ready. External apps connect via passthrough from your admin.</small>
         <div style="margin-bottom: 0.5em;">
             <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
             <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(bundled)</span></label>
@@ -580,7 +580,14 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
                     if (btn) btn.disabled = false;
                     if (card) card.clear();
                 } else {
-                    // Success: redirect to login page
+                    if (data.trial_welcome || data.provisioning_notice) {
+                        try {
+                            sessionStorage.setItem('polysaas_subscribe_notice', JSON.stringify({
+                                trial_welcome: data.trial_welcome || '',
+                                provisioning_notice: data.provisioning_notice || ''
+                            }));
+                        } catch (e) { console.warn('sessionStorage notice skipped', e); }
+                    }
                     console.log('Subscription successful, redirecting to Login.');
                     window.location.href = '/accounts/login/?next=/dose/connect-social-after-subscribe/';
                 }

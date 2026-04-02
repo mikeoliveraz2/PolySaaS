@@ -35,6 +35,61 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+_BUNDLED_APP_LABELS = {
+    'enable_odoo': 'Odoo ERP',
+    'enable_nextcloud': 'Nextcloud',
+    'enable_dolibarr': 'Dolibarr',
+    'enable_mattermost': 'Mattermost',
+    'enable_wordpress': 'WordPress',
+}
+
+
+def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_started=True):
+    """
+    Short copy returned on successful subscribe so the UI can show what new subscribers should expect.
+    Bundled apps are provisioned asynchronously (Celery); set expectations accordingly.
+    """
+    org = (tenant_name or '').strip()
+    org_bit = f' to {org}' if org else ''
+
+    if stripe_trial_started:
+        trial_welcome = (
+            f'Welcome{org_bit}! Your subscription is confirmed and your '
+            f'{getattr(settings, "STRIPE_TRIAL_PERIOD_DAYS", 14)}-day free trial has started.'
+        )
+    else:
+        trial_welcome = (
+            'Your tenant and admin account were created. '
+            'This path skipped live card billing — use the normal subscribe flow for a Stripe trial.'
+        )
+
+    labels = [_BUNDLED_APP_LABELS[k] for k in selected_apps if k in _BUNDLED_APP_LABELS]
+    if labels:
+        provisioning_notice = (
+            f'You selected these bundled applications: {", ".join(labels)}. '
+            'They are queued for setup after signup (not instant) and may take some time. '
+            'We will email you at the address you provided when each environment is ready; '
+            'you can also check status from your PolySaaS admin.'
+        )
+    else:
+        provisioning_notice = (
+            'You did not choose any bundled applications on this form. '
+            'You can add them later from your PolySaaS admin when you are ready.'
+        )
+
+    return {
+        'trial_welcome': trial_welcome,
+        'provisioning_notice': provisioning_notice,
+    }
+
+
+def _subscription_response_payload(subscription, selected_apps, *, tenant_name='', stripe_trial_started=True):
+    body = dict(SubscriptionSerializer(subscription).data)
+    body.update(_subscriber_facing_messages(
+        selected_apps, tenant_name=tenant_name, stripe_trial_started=stripe_trial_started,
+    ))
+    return body
+
 
 class SubscriptionApiViewSet(viewsets.ModelViewSet):
     queryset = Subscription.objects.all()
@@ -122,7 +177,12 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     stripe_customer_id=None, stripe_subscription_id=None,
                     card_name=card_name, active=False,
                 )
-                return Response(SubscriptionSerializer(sub).data, status=status.HTTP_201_CREATED)
+                return Response(
+                    _subscription_response_payload(
+                        sub, selected_apps, tenant_name=tenant_name or '', stripe_trial_started=False,
+                    ),
+                    status=status.HTTP_201_CREATED,
+                )
 
             if not tenant_id or not token:
                 return Response({'error': 'Missing tenant or stripe_token'}, status=status.HTTP_400_BAD_REQUEST)
@@ -172,7 +232,12 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
             self._provision_services(data, tenant_id, user_obj)
 
-            return Response(SubscriptionSerializer(sub).data, status=status.HTTP_201_CREATED)
+            return Response(
+                _subscription_response_payload(
+                    sub, selected_apps, tenant_name=tenant_name or '', stripe_trial_started=True,
+                ),
+                status=status.HTTP_201_CREATED,
+            )
 
         except Exception as e:
             logger.error(f"Subscription create error: {traceback.format_exc()}")
