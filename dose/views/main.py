@@ -1037,6 +1037,8 @@ from django.conf import settings
 
 def subscribe_view(request):
     import json
+    from django.contrib.auth import logout
+
     plan_prices = getattr(settings, 'PLAN_PRICES', {})
     plan_max_apps = getattr(settings, 'PLAN_MAX_APPS', {})
     plan_context = {
@@ -1050,11 +1052,14 @@ def subscribe_view(request):
         'plan_max_apps': plan_max_apps,
         'PLAN_PRICES_JSON': json.dumps(plan_prices),
         'PLAN_MAX_APPS_JSON': json.dumps(plan_max_apps),
-        # Header: do not imply session tenant is the tenant being created on this form.
+        # Public marketing signup only — session cleared on each GET (see below).
         'subscribe_new_tenant_flow': True,
     }
     if request.method == 'POST':
         return render(request, 'dose/connect_social.html', plan_context)
+    # Strip any in-app login / tenant session so subscribe is always an outside, anonymous flow.
+    logout(request)
+    request.session.flush()
     return render(request, 'dose/subscribe.html', plan_context)
 
 # ...other views from dose/views.py will be moved here...

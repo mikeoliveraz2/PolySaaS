@@ -148,17 +148,7 @@
         </div>
         {% if subscribe_new_tenant_flow %}
         <div class="tenant-info" style="max-width:min(52rem,96vw);line-height:1.45;">
-            <strong>New subscription:</strong> This form creates a <em>new</em> tenant and admin user. The line below is your <em>current session</em> only—it is not the company you are signing up unless you intend to reuse this login.
-            {% if user.is_authenticated %}
-            Signed in as <strong>{{ user.username }}</strong>
-            {% if request.session.tenant_name|default:'' or current_tenant %}
-            — session tenant: <strong>{{ request.session.tenant_name|default:tenant_name|default:"—" }}</strong>{% if current_tenant and current_tenant.schema_name %} ({{ current_tenant.schema_name|lower }}){% endif %}
-            {% endif %}
-            <span style="white-space:nowrap;"> —
-            <form method="post" action="{% url 'dose:logout' %}" style="display:inline;">{% csrf_token %}<button type="submit" style="background:none;border:none;color:#ecf0f1;cursor:pointer;padding:0;font:inherit;text-decoration:underline;">Log out first</button></form> for a completely separate signup.</span>
-            {% else %}
-            You are not signed in; the tenant fields below define the new organization.
-            {% endif %}
+            <strong>Public signup</strong> — opening this page clears any prior app session. You are not signed in; the tenant and admin fields below create a <em>new</em> organization.
         </div>
         {% elif request.session.tenant_name|default:'' or current_tenant %}
         <div class="tenant-info">
