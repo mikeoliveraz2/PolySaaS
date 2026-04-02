@@ -90,7 +90,7 @@ def _call_anthropic(messages: list, system_prompt: str) -> str:
                 'content-type': 'application/json',
             },
             json={
-                'model': 'claude-3-5-sonnet-20241022',
+                'model': 'claude-sonnet-4-6',
                 'max_tokens': 1024,
                 'system': system_prompt or (
                     "You are CC (Claude), an AI peer collaborating in a Mattermost channel "
@@ -101,10 +101,15 @@ def _call_anthropic(messages: list, system_prompt: str) -> str:
             },
             timeout=60,
         )
+        print(f"[DEBUG] Anthropic response status: {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"[DEBUG] Anthropic error body: {resp.text}")
+        
         resp.raise_for_status()
         data = resp.json()
         return data['content'][0]['text']
     except Exception as e:
+        print(f"[DEBUG] Anthropic error: {e}")
         logger.error("Anthropic API error: %s", e)
         return f"[CC] Error calling Anthropic: {e}"
 
@@ -140,10 +145,14 @@ def _call_xai(messages: list, system_prompt: str) -> str:
             },
             timeout=60,
         )
+        print(f"[DEBUG] xAI response status: {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"[DEBUG] xAI error body: {resp.text}")
         resp.raise_for_status()
         data = resp.json()
         return data['choices'][0]['message']['content']
     except Exception as e:
+        print(f"[DEBUG] xAI error: {e}")
         logger.error("xAI API error: %s", e)
         return f"[SuperGrok] Error calling xAI: {e}"
 
@@ -219,14 +228,14 @@ def handle_mention(peer_username: str, channel_id: str,
     response_text = provider_fn(context, peer.get('system_prompt', ''))
     print(f"[DEBUG] AI Response: {response_text[:100]}...")
 
-    _post_as_bot(peer['bot_token'], channel_id, response_text, root_id=post_id)
+    _post_as_bot(peer['bot_token'], channel_id, response_text)
 
     return response_text
 
 
 def _post_as_bot(bot_token: str, channel_id: str, message: str, root_id: str = ''):
     """Post a message to a Mattermost channel as a specific bot user."""
-    print(f"[DEBUG] _post_as_bot: channel={channel_id}, token={bot_token[:5]}...")
+    print(f"[DEBUG] _post_as_bot: channel={channel_id}, token={bot_token[:5]}..., root_id={root_id}")
     payload = {
         'channel_id': channel_id,
         'message': message,
@@ -241,6 +250,18 @@ def _post_as_bot(bot_token: str, channel_id: str, message: str, root_id: str = '
             json=payload,
             timeout=15,
         )
+        if resp.status_code == 400 and root_id:
+            print(f"[DEBUG] Mattermost root_id failed, retrying without threading...")
+            payload.pop('root_id')
+            resp = requests.post(
+                f"{_mm_url()}/api/v4/posts",
+                headers=_mm_headers(bot_token),
+                json=payload,
+                timeout=15,
+            )
+
+        if resp.status_code != 201:
+            print(f"[DEBUG] Mattermost post error body: {resp.text}")
         resp.raise_for_status()
         logger.info("AI peer posted to channel %s", channel_id)
     except Exception as e:

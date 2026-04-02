@@ -22,9 +22,10 @@ from dose.services.ai_peer_service import handle_mention, PEER_REGISTRY
 
 logger = logging.getLogger(__name__)
 
-MENTION_PATTERN = re.compile(r'@(\w+)')
+MENTION_PATTERN = re.compile(r'[#@](\w+)')
 
 _peers_loaded = False
+_processed_posts = set()
 
 
 def _ensure_peers_loaded():
@@ -46,15 +47,37 @@ def _ensure_peers_loaded():
     
     _peers_loaded = True
 
+    polysaas_context = (
+        "You are an AI peer collaborating in a Mattermost channel with humans "
+        "(MO = Mike Oliver, founder; Shela = co-developer/business strategist) "
+        "and other AI agents on the PolySaaS platform.\n\n"
+        "PolySaaS is a multi-tenant SaaS orchestration platform that bundles "
+        "open-source apps (Odoo, WordPress, Nextcloud, Mattermost, Liferay, Dolibarr) "
+        "into subscription tiers:\n"
+        "- PolySaaS-1 ($29.99/mo): 1 app\n"
+        "- PolySaaS-3 ($79.99/mo): 3 apps incl. WordPress\n"
+        "- PolySaaS-Unlimited ($199.99/mo): any number of apps + metered storage\n\n"
+        "Key architecture: Django/DOSE passthrough proxy intercepts HTTP traffic, "
+        "Instructions trigger Atomic Services, POST events publish to GCP Pub/Sub topics, "
+        "PostgreSQL schema-per-tenant isolation.\n\n"
+        "The team is preparing for a $15K SAFE raise and Wefunder community round. "
+        "AI as Peers (this feature) is a key differentiator — multiple AI models "
+        "collaborating visibly with humans in Mattermost channels.\n\n"
+        "Be concise, helpful, and collaborative. Keep responses under 150 words unless "
+        "asked for detail. You can mention other peers with #cc, #supergrok, or #gem."
+    )
+
     if cc_token:
-        # Credits are now available, so CC is Cursor Claude (anthropic)
-        register_peer('cc', 'CC (Claude)', 'anthropic', cc_token)
+        register_peer('cc', 'CC (Claude)', 'anthropic', cc_token,
+                       system_prompt=f"You are CC, powered by Anthropic Claude. {polysaas_context}")
 
     if grok_token:
-        register_peer('supergrok', 'SuperGrok', 'xai', grok_token)
+        register_peer('supergrok', 'SuperGrok', 'xai', grok_token,
+                       system_prompt=f"You are SuperGrok, powered by xAI Grok. {polysaas_context}")
 
     if gem_token:
-        register_peer('gem', 'Gem (Gemini)', 'gemini', gem_token)
+        register_peer('gem', 'Gem (Gemini)', 'gemini', gem_token,
+                       system_prompt=f"You are Gem, powered by Google Gemini. {polysaas_context}")
 
 
 @csrf_exempt
@@ -76,7 +99,7 @@ def ai_peers_webhook(request):
 
     incoming_token = data.get('token', '')
     if webhook_token and incoming_token != webhook_token:
-        logger.warning("AI peers webhook: token mismatch")
+        logger.warning(f"AI peers webhook: token mismatch. Expected '{webhook_token}', got '{incoming_token}'")
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     text = data.get('text', '')
@@ -86,6 +109,15 @@ def ai_peers_webhook(request):
 
     if not text or not channel_id:
         return JsonResponse({'error': 'Missing text or channel_id'}, status=400)
+
+    if post_id:
+        if post_id in _processed_posts:
+            print(f"[DEBUG] Already processed post_id {post_id}, skipping.")
+            return JsonResponse({'status': 'already_processed'})
+        _processed_posts.add(post_id)
+        # Keep the set small
+        if len(_processed_posts) > 100:
+            _processed_posts.pop()
 
     mentioned_peers = []
     for m in MENTION_PATTERN.finditer(text):
