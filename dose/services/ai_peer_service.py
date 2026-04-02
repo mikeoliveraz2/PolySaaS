@@ -44,9 +44,11 @@ def register_peer(username: str, display_name: str, provider: str,
     logger.info("Registered AI peer: @%s (%s via %s)", username, display_name, provider)
 
 
-def get_channel_context(channel_id: str, limit: int = 15) -> List[dict]:
+def get_channel_context(channel_id: str, limit: Optional[int] = None) -> List[dict]:
     """Fetch the last N messages from a Mattermost channel for conversation context."""
     admin_token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+    if limit is None:
+        limit = int(getattr(settings, 'AI_PEERS_CHANNEL_MESSAGE_LIMIT', 75))
     if not admin_token:
         return []
     url = f"{_mm_url()}/api/v4/channels/{channel_id}/posts"
@@ -69,6 +71,39 @@ def get_channel_context(channel_id: str, limit: int = 15) -> List[dict]:
     except Exception as e:
         logger.warning("Failed to fetch channel context: %s", e)
         return []
+
+
+def get_pinned_context_for_system(channel_id: str) -> str:
+    """
+    Fetch pinned posts for the channel and return a single text block for the system prompt.
+    Team-maintained pinned messages act as authoritative channel context (Option 2).
+    """
+    admin_token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+    if not admin_token:
+        return ''
+    url = f"{_mm_url()}/api/v4/channels/{channel_id}/pinned"
+    try:
+        resp = requests.get(url, headers=_mm_headers(admin_token), timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        posts = data.get('posts', {})
+        order = data.get('order', [])
+        if not order:
+            return ''
+        chunks = []
+        for post_id in order:
+            p = posts.get(post_id)
+            if not p:
+                continue
+            msg = (p.get('message') or '').strip()
+            if msg:
+                chunks.append(msg)
+        if not chunks:
+            return ''
+        return '\n---\n'.join(chunks)
+    except Exception as e:
+        logger.warning("Failed to fetch pinned channel context: %s", e)
+        return ''
 
 
 def _call_anthropic(messages: list, system_prompt: str) -> str:
@@ -219,13 +254,24 @@ def handle_mention(peer_username: str, channel_id: str,
         print(f"[DEBUG] No context found for channel {channel_id}, using trigger message")
         context = [{'role': 'user', 'username': trigger_user, 'content': trigger_message}]
 
+    pinned_block = get_pinned_context_for_system(channel_id)
+    base_prompt = peer.get('system_prompt', '')
+    if pinned_block:
+        base_prompt = (
+            f"{base_prompt}\n\n"
+            "## Pinned channel context (authoritative for this channel)\n"
+            "The following messages are pinned in this channel. Treat them as ground truth "
+            "for project status, decisions, and terminology unless the user corrects them.\n\n"
+            f"{pinned_block}"
+        )
+
     provider_fn = LLM_PROVIDERS.get(peer['provider'])
     if not provider_fn:
         logger.error("No LLM provider '%s' for peer @%s", peer['provider'], peer_username)
         return None
 
     print(f"[DEBUG] Calling provider {peer['provider']} for @{peer_username}")
-    response_text = provider_fn(context, peer.get('system_prompt', ''))
+    response_text = provider_fn(context, base_prompt)
     print(f"[DEBUG] AI Response: {response_text[:100]}...")
 
     _post_as_bot(peer['bot_token'], channel_id, response_text)

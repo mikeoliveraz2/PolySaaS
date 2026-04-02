@@ -158,6 +158,8 @@ BOT_TOKEN_CC = env('BOT_TOKEN_CC', default='')
 BOT_TOKEN_SUPERGROK = env('BOT_TOKEN_SUPERGROK', default='')
 BOT_TOKEN_GEM = env('BOT_TOKEN_GEM', default='')
 AI_PEERS_WEBHOOK_TOKEN = env('AI_PEERS_WEBHOOK_TOKEN', default='')
+# Recent posts fetched for LLM context (Option 1). Pinned posts are merged into system prompt (Option 2).
+AI_PEERS_CHANNEL_MESSAGE_LIMIT = env.int('AI_PEERS_CHANNEL_MESSAGE_LIMIT', default=75)
 
 # --- SESSION SETTINGS ---
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
