@@ -16,10 +16,54 @@
   ╚══════════════════════════════════════════════════════════════════════╝
 #}
 {% extends "admin/base.html" %}
+{% load static %}
 
 {% block extrahead %}
   {{ block.super }}
   <!-- DEBUG: dose/templates/admin/base_site.html loaded at {% now "H:i:s" %} -->
+
+  {# ── Per-user theme override ───────────────────────────────────────────── #}
+  {# jazzmin_ui reads JAZZMIN_UI_TWEAKS statically; we swap the CSS link here #}
+  {% if jazzmin_theme and jazzmin_theme != 'default' %}
+  <script>
+  (function() {
+    var BOOTSWATCH = {
+      'cerulean':  '{% static "vendor/bootswatch/cerulean/bootstrap.min.css" %}',
+      'cosmo':     '{% static "vendor/bootswatch/cosmo/bootstrap.min.css" %}',
+      'cyborg':    '{% static "vendor/bootswatch/cyborg/bootstrap.min.css" %}',
+      'darkly':    '{% static "vendor/bootswatch/darkly/bootstrap.min.css" %}',
+      'flatly':    '{% static "vendor/bootswatch/flatly/bootstrap.min.css" %}',
+      'journal':   '{% static "vendor/bootswatch/journal/bootstrap.min.css" %}',
+      'litera':    '{% static "vendor/bootswatch/litera/bootstrap.min.css" %}',
+      'lumen':     '{% static "vendor/bootswatch/lumen/bootstrap.min.css" %}',
+      'lux':       '{% static "vendor/bootswatch/lux/bootstrap.min.css" %}',
+      'materia':   '{% static "vendor/bootswatch/materia/bootstrap.min.css" %}',
+      'minty':     '{% static "vendor/bootswatch/minty/bootstrap.min.css" %}',
+      'pulse':     '{% static "vendor/bootswatch/pulse/bootstrap.min.css" %}',
+      'sandstone': '{% static "vendor/bootswatch/sandstone/bootstrap.min.css" %}',
+      'simplex':   '{% static "vendor/bootswatch/simplex/bootstrap.min.css" %}',
+      'sketchy':   '{% static "vendor/bootswatch/sketchy/bootstrap.min.css" %}',
+      'slate':     '{% static "vendor/bootswatch/slate/bootstrap.min.css" %}',
+      'solar':     '{% static "vendor/bootswatch/solar/bootstrap.min.css" %}',
+      'spacelab':  '{% static "vendor/bootswatch/spacelab/bootstrap.min.css" %}',
+      'superhero': '{% static "vendor/bootswatch/superhero/bootstrap.min.css" %}',
+      'united':    '{% static "vendor/bootswatch/united/bootstrap.min.css" %}',
+      'yeti':      '{% static "vendor/bootswatch/yeti/bootstrap.min.css" %}'
+    };
+    var want = '{{ jazzmin_theme|escapejs }}';
+    var src  = BOOTSWATCH[want];
+    if (!src) return;
+    var el = document.getElementById('jazzmin-theme');
+    if (el) {
+      el.href = src;
+    } else {
+      var l = document.createElement('link');
+      l.rel = 'stylesheet'; l.id = 'jazzmin-theme'; l.href = src;
+      document.head.appendChild(l);
+    }
+  })();
+  </script>
+  {% endif %}
 
   <style>
     /* CRITICAL FIX: Override ALL AdminLTE wrapper positioning */
