@@ -1,35 +1,53 @@
 ---
-description: Protects the authoritative admin templates from accidental edits
-globs: templates/admin/base_site.html,templates/admin/includes/custom_sidebar.html
+description: Single source of truth for admin templates — enforces Jazzmin block discipline
 alwaysApply: true
 ---
 
 # Admin Templates — Single Source of Truth
 
-## The Rule
+## The One Rule
 
-**NEVER edit these files — they are stubs and are never loaded by Django:**
-- `templates/admin/base_site.html`
-- `templates/admin/includes/custom_sidebar.html`
+There is **exactly one copy** of each admin template. The stub files have been deleted.
 
-**ALWAYS edit these authoritative files instead:**
-- `dose/templates/admin/base_site.html` ← Django loads this first (DIRS order)
-- `dose/templates/admin/includes/custom_sidebar.html` ← same
+**AUTHORITATIVE files (the ONLY copies):**
+- `dose/templates/admin/base_site.html`
+- `dose/templates/admin/includes/custom_sidebar.html`
 
-## Why
+There is no `templates/admin/base_site.html`. It has been deleted. Do not recreate it.
 
-`mysite/settings.py` TEMPLATES DIRS is ordered:
-1. `dose/templates`  ← wins every time
-2. `templates`       ← never reached for admin/base_site.html or custom_sidebar.html
+## Valid Jazzmin Blocks
 
-Edits to the `templates/` copies are silently ignored at runtime.
+Only these blocks exist in Jazzmin's `admin/base.html` and will actually render:
+
+| Block | Purpose |
+|-------|---------|
+| `extrahead` | CSS/meta in `<head>` |
+| `sidebar` | Replace AdminLTE default sidebar |
+| `page_content` | Main content area (includes breadcrumbs, content) |
+| `extrajs` | Scripts + modal HTML at end of `<body>` |
+| `extrastyle` | Extra styles in `<head>` |
+| `title` | Page title |
+| `footer` | Footer area |
+
+**`{% block nav-global %}` is NOT a Jazzmin block.** Content inside it is silently discarded.
+Any block not in the table above is silently discarded by Django template inheritance.
+
+## All Modals and JS Must Go in `{% block extrajs %}`
+
+- Theme picker modal
+- Font controls modal
+- Any future popup/overlay
+- Any page-level script that depends on the DOM being ready
 
 ## Before Any Edit
 
-1. Confirm you are editing the `dose/templates/admin/` path, not `templates/admin/`
-2. Get explicit approval from Michael or Shela before changing either authoritative file
-3. These files were certified working after a "BINGO" commit — treat them as tested and locked
+1. You are editing `dose/templates/admin/base_site.html` — the ONLY copy
+2. Get explicit approval from Michael or Shela before making any change
+3. After any change: restart server + hard refresh + incognito test
+4. Commit immediately with a clear message
 
-## Approved changes require
-- Explicit "yes, edit the admin template" from the user
-- A commit immediately after with a clear description of what changed and why
+## Do Not
+
+- Add blocks that are not in the valid Jazzmin block table above
+- Put modal HTML or scripts between block tags (they get discarded)
+- Create new copies of these files anywhere else in the project

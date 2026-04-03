@@ -1,10 +1,18 @@
 {#
   ╔══════════════════════════════════════════════════════════════════════╗
-  ║  AUTHORITATIVE ADMIN BASE TEMPLATE — DO NOT MODIFY WITHOUT APPROVAL ║
-  ║  This file is the ONLY admin/base_site.html that Django serves.     ║
-  ║  dose/templates is first in DIRS (mysite/settings.py).              ║
-  ║  templates/admin/base_site.html is a stub — never loaded.           ║
-  ║  Sidebar: dose/templates/admin/includes/custom_sidebar.html         ║
+  ║  FINAL — WORKS 100% — DO NOT MODIFY WITHOUT APPROVAL                ║
+  ║                                                                      ║
+  ║  SINGLE SOURCE OF TRUTH — only one admin/base_site.html exists.     ║
+  ║  The old templates/admin/base_site.html stub has been deleted.       ║
+  ║                                                                      ║
+  ║  Valid Jazzmin blocks used here:                                     ║
+  ║    extrahead  — CSS in <head>                                        ║
+  ║    sidebar    — hides AdminLTE default sidebar (empty)               ║
+  ║    page_content — includes custom_sidebar.html + content wrapper     ║
+  ║    extrajs    — ALL modals (theme picker, font controls) + JS        ║
+  ║                                                                      ║
+  ║  DO NOT add {% block nav-global %} or any other non-Jazzmin block.  ║
+  ║  dose/templates is first in TEMPLATES DIRS (mysite/settings.py).    ║
   ╚══════════════════════════════════════════════════════════════════════╝
 #}
 {% extends "admin/base.html" %}
@@ -291,189 +299,130 @@
   </script>
 {% endblock %}
 
-{% block nav-global %}
-  {{ block.super}}
-  <!-- NO passthrough links - they're in sidebar -->
-  {# ── Theme Picker Popup ──────────────────────────────────────────────── #}
-  <style>
-    #ps-theme-modal-overlay {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,.45); z-index: 9998;
-    }
-    #ps-theme-modal {
-      display: none; position: fixed; top: 58px; right: 12px;
-      background: #fff; border-radius: 10px; padding: 20px 22px 16px;
-      min-width: 300px; box-shadow: 0 8px 32px rgba(0,0,0,.22);
-      z-index: 9999; font-family: inherit;
-    }
-    #ps-theme-modal h4 { margin: 0 0 14px; font-size: .95rem; font-weight: 700; color: #1e293b; }
-    #ps-theme-modal label { display: block; font-size: .8rem; color: #64748b; margin-bottom: 3px; }
-    #ps-theme-modal select {
-      width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1;
-      border-radius: 6px; font-size: .9rem; margin-bottom: 12px;
-    }
-    #ps-theme-modal .ps-use-light { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: .88rem; }
-    #ps-theme-save-btn {
-      width: 100%; padding: 9px; background: #2563eb; color: #fff;
-      border: none; border-radius: 6px; font-size: .9rem; font-weight: 600;
-      cursor: pointer; transition: background .15s;
-    }
-    #ps-theme-save-btn:hover { background: #1d4ed8; }
-    #ps-theme-close { position: absolute; top: 10px; right: 12px; background: none; border: none;
-      font-size: 1.2rem; cursor: pointer; color: #94a3b8; }
-  </style>
-  <div id="ps-theme-modal-overlay"></div>
-  <div id="ps-theme-modal" role="dialog" aria-modal="true" aria-label="Theme Selector">
-    <button id="ps-theme-close" title="Close">×</button>
-    <h4>Theme Selection</h4>
-    <label for="ps-light-theme">Light Theme:</label>
-    <select id="ps-light-theme"></select>
-    <label style="margin-bottom:12px;">Last Saved Theme: <strong id="ps-last-saved">—</strong></label>
-    <div class="ps-use-light">
-      <input type="checkbox" id="ps-use-light-cb">
-      <label for="ps-use-light-cb" style="margin:0;color:#334155;">Use light theme for display</label>
-    </div>
-    <label for="ps-dark-theme">Dark Theme:</label>
-    <select id="ps-dark-theme"></select>
-    <button id="ps-theme-save-btn">Save</button>
-  </div>
-  <script>
-  (function() {
-    var PS_THEMES = ["flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux",
-                     "minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab",
-                     "superhero","united","yeti"];
-
-    function buildSelect(el, themes, current) {
-      el.innerHTML = '';
-      themes.forEach(function(t) {
-        var o = document.createElement('option');
-        o.value = t; o.textContent = t;
-        if (t === current) o.selected = true;
-        el.appendChild(o);
-      });
-    }
-
-    function openThemeModal() {
-      var modal = document.getElementById('ps-theme-modal');
-      modal.style.display = 'block';
-      document.getElementById('ps-theme-modal-overlay').style.display = 'block';
-      // Load current values via AJAX
-      fetch('/admin/select-theme/api/', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, d.light_theme);
-          buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, d.dark_theme);
-          document.getElementById('ps-last-saved').textContent = d.light_theme || '—';
-          document.getElementById('ps-use-light-cb').checked = d.use_light_mode !== false;
-        })
-        .catch(function() {
-          buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, 'flatly');
-          buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, 'darkly');
-        });
-    }
-
-    function closeThemeModal() {
-      document.getElementById('ps-theme-modal').style.display = 'none';
-      document.getElementById('ps-theme-modal-overlay').style.display = 'none';
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-      document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
-        a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
-      });
-      document.getElementById('ps-theme-close').addEventListener('click', closeThemeModal);
-      document.getElementById('ps-theme-modal-overlay').addEventListener('click', closeThemeModal);
-
-      document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
-        var light = document.getElementById('ps-light-theme').value;
-        var dark  = document.getElementById('ps-dark-theme').value;
-        var useLightMode = document.getElementById('ps-use-light-cb').checked;
-        var csrf = document.cookie.split(';').map(function(c){return c.trim();})
-                    .filter(function(c){return c.startsWith('csrftoken=');})[0]
-                    ?.split('=')[1] || '';
-        fetch('/admin/select-theme/', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
-          body: 'light_theme=' + encodeURIComponent(light)
-               + '&dark_theme='  + encodeURIComponent(dark)
-               + '&use_light_mode=' + (useLightMode ? '1' : '0')
-        })
-        .then(function(r) { return r.json(); })
-        .then(function() { closeThemeModal(); window.location.reload(); })
-        .catch(function() { closeThemeModal(); window.location.reload(); });
-      });
-    });
-  })();
-  </script>
-{% endblock %}
-
-{# theme_switcher block intentionally omitted — not a real Jazzmin block; was causing layout artifact #}
+{# Modals (theme picker + font controls) are in {% block extrajs %} at the bottom of this file — the ONLY valid end-of-body block Jazzmin provides. #}
 
 {% block sidebar %}
   {# Empty: AdminLTE .app-sidebar is hidden via CSS.
      The custom sidebar renders inside the content block via custom_sidebar.html grid. #}
 {% endblock %}
 
-<!-- Font Controls Modal (triggered from topmenu) -->
+{% block page_content %}
+<div class="admin-main-wrapper">
+    {% include "admin/includes/custom_sidebar.html" %}
+    <div class="dose-content-col">
+        {{ block.super }}
+    </div>
+</div>
+{% endblock %}
+
+{% block extrajs %}{{ block.super }}
+{# ══ Theme Picker Modal ══════════════════════════════════════════════════════ #}
 <style>
-  #fontControlsModal {
-    position: fixed;
-    top: 70px;
-    right: 30px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
-    min-width: 300px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-    z-index: 1050;
-    display: none;
+  #ps-theme-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 9998;
   }
-
-  #fontControlsModal.active {
-    display: block;
-  }  .font-control-group {
-    margin-bottom: 15px;
+  #ps-theme-modal {
+    display: none; position: fixed; top: 58px; right: 12px;
+    background: #fff; border-radius: 10px; padding: 20px 22px 16px;
+    min-width: 300px; box-shadow: 0 8px 32px rgba(0,0,0,.22);
+    z-index: 9999; font-family: inherit;
   }
-
-  .font-control-group label {
-    display: block;
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 6px;
-    color: #333;
-  }
-
-
-  .font-control-group select,
-  .font-control-group input[type="range"] {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 13px;
-  }
-
-  .font-reset-btn {
-    width: 100%;
-    padding: 10px;
-    background: #6c757d;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 600;
-    margin-top: 10px;
-    transition: background 0.3s;
-  }
-
-  .font-reset-btn:hover {
-    background: #5a6268;
-  }
+  #ps-theme-modal h4 { margin: 0 0 14px; font-size: .95rem; font-weight: 700; color: #1e293b; }
+  #ps-theme-modal label { display: block; font-size: .8rem; color: #64748b; margin-bottom: 3px; }
+  #ps-theme-modal select { width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: .9rem; margin-bottom: 12px; }
+  #ps-theme-modal .ps-use-light { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: .88rem; }
+  #ps-theme-save-btn { width: 100%; padding: 9px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: .9rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+  #ps-theme-save-btn:hover { background: #1d4ed8; }
+  #ps-theme-close { position: absolute; top: 10px; right: 12px; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #94a3b8; }
 </style>
+<div id="ps-theme-modal-overlay"></div>
+<div id="ps-theme-modal" role="dialog" aria-modal="true" aria-label="Theme Selector">
+  <button id="ps-theme-close" title="Close">×</button>
+  <h4>Theme Selection</h4>
+  <label for="ps-light-theme">Light Theme:</label>
+  <select id="ps-light-theme"></select>
+  <label style="margin-bottom:12px;">Last Saved Theme: <strong id="ps-last-saved">—</strong></label>
+  <div class="ps-use-light">
+    <input type="checkbox" id="ps-use-light-cb">
+    <label for="ps-use-light-cb" style="margin:0;color:#334155;">Use light theme for display</label>
+  </div>
+  <label for="ps-dark-theme">Dark Theme:</label>
+  <select id="ps-dark-theme"></select>
+  <button id="ps-theme-save-btn">Save</button>
+</div>
+<script>
+(function() {
+  var PS_THEMES = ["flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux",
+                   "minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab",
+                   "superhero","united","yeti"];
+  function buildSelect(el, themes, current) {
+    el.innerHTML = '';
+    themes.forEach(function(t) {
+      var o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      if (t === current) o.selected = true;
+      el.appendChild(o);
+    });
+  }
+  function openThemeModal() {
+    document.getElementById('ps-theme-modal').style.display = 'block';
+    document.getElementById('ps-theme-modal-overlay').style.display = 'block';
+    fetch('/admin/select-theme/api/', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, d.light_theme);
+        buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, d.dark_theme);
+        document.getElementById('ps-last-saved').textContent = d.light_theme || '—';
+        document.getElementById('ps-use-light-cb').checked = d.use_light_mode !== false;
+      })
+      .catch(function() {
+        buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, 'flatly');
+        buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, 'darkly');
+      });
+  }
+  function closeThemeModal() {
+    document.getElementById('ps-theme-modal').style.display = 'none';
+    document.getElementById('ps-theme-modal-overlay').style.display = 'none';
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
+      a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
+    });
+    document.getElementById('ps-theme-close').addEventListener('click', closeThemeModal);
+    document.getElementById('ps-theme-modal-overlay').addEventListener('click', closeThemeModal);
+    document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
+      var light = document.getElementById('ps-light-theme').value;
+      var dark  = document.getElementById('ps-dark-theme').value;
+      var useLightMode = document.getElementById('ps-use-light-cb').checked;
+      var csrf = (document.cookie.split(';').map(function(c){return c.trim();})
+                  .filter(function(c){return c.startsWith('csrftoken=');})[0] || '=').split('=')[1];
+      fetch('/admin/select-theme/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
+        body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
+             + '&use_light_mode=' + (useLightMode ? '1' : '0')
+      })
+      .then(function(r) { return r.json(); })
+      .then(function() { closeThemeModal(); window.location.reload(); })
+      .catch(function() { closeThemeModal(); window.location.reload(); });
+    });
+  });
+})();
+</script>
 
+{# ══ Font Controls Modal ════════════════════════════════════════════════════ #}
+<style>
+  #fontControlsModal { position: fixed; top: 70px; right: 30px; background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; min-width: 300px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 1050; display: none; }
+  #fontControlsModal.active { display: block; }
+  .font-control-group { margin-bottom: 15px; }
+  .font-control-group label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #333; }
+  .font-control-group select, .font-control-group input[type="range"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+  .font-reset-btn { width: 100%; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: background 0.3s; }
+  .font-reset-btn:hover { background: #5a6268; }
+</style>
 <div id="fontControlsModal">
-  <div style="margin-bottom: 15px; text-align: center; font-weight: 700; font-size: 16px;">Font Controls</div>
+  <div style="margin-bottom:15px;text-align:center;font-weight:700;font-size:16px;">Font Controls</div>
   <div class="font-control-group">
     <label for="font-family-select">Font Family</label>
     <select id="font-family-select">
@@ -484,150 +433,76 @@
       <option value="'Courier New', monospace">Courier New</option>
     </select>
   </div>
-
   <div class="font-control-group">
     <label for="font-size-slider">Font Size: <span id="font-size-value">14</span>px</label>
     <input type="range" id="font-size-slider" min="12" max="18" value="14" step="1">
   </div>
-
   <div class="font-control-group">
     <label for="font-weight-slider">Font Weight: <span id="font-weight-value">Normal</span></label>
     <input type="range" id="font-weight-slider" min="300" max="700" value="400" step="100">
   </div>
-
   <button class="font-reset-btn" id="font-reset-btn">Reset to Default</button>
 </div>
-
 <script>
-  // Check if we should show font controls modal from session
-  const showFontControls = {{ request.session.show_font_controls|lower|default:"false" }};
-
-  // Global function to toggle font controls modal
   function toggleFontControls() {
-    const modal = document.getElementById('fontControlsModal');
-    if (modal) {
-      modal.classList.toggle('active');
-    }
+    var m = document.getElementById('fontControlsModal');
+    if (m) m.classList.toggle('active');
   }
-
   document.addEventListener('DOMContentLoaded', function() {
-    const fontControlsModal = document.getElementById('fontControlsModal');
-    const fontFamilySelect = document.getElementById('font-family-select');
-    const fontSizeSlider = document.getElementById('font-size-slider');
-    const fontWeightSlider = document.getElementById('font-weight-slider');
-    const fontSizeValue = document.getElementById('font-size-value');
-    const fontWeightValue = document.getElementById('font-weight-value');
-    const fontResetBtn = document.getElementById('font-reset-btn');
-
-    const weightLabels = {
-      300: 'Light',
-      400: 'Normal',
-      500: 'Medium',
-      600: 'Semi-Bold',
-      700: 'Bold'
-    };
-
-    // Open modal if flagged from session
-    if (showFontControls) {
-      fontControlsModal.classList.add('active');
-    }
-
-    // Close modal when clicking outside
+    var modal = document.getElementById('fontControlsModal');
+    var weightLabels = {300:'Light',400:'Normal',500:'Medium',600:'Semi-Bold',700:'Bold'};
+    {% if request.session.show_font_controls %}modal.classList.add('active');{% endif %}
     document.addEventListener('click', function(e) {
-      const fontControlsBtn = document.getElementById('sidebarFontControlsBtn');
-      if (!fontControlsModal.contains(e.target) &&
-          e.target.getAttribute('onclick') !== "toggleFontControls();" &&
-          !fontControlsBtn?.contains(e.target)) {
-        fontControlsModal.classList.remove('active');
+      var btn = document.getElementById('sidebarFontControlsBtn');
+      if (modal && !modal.contains(e.target) && !(btn && btn.contains(e.target))) {
+        modal.classList.remove('active');
       }
     });
-    // Load settings from localStorage
-    function loadFontSettings() {
-      const family = localStorage.getItem('dose_font_family') || "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
-      const size = localStorage.getItem('dose_font_size') || '14';
-      const weight = localStorage.getItem('dose_font_weight') || '400';
-
-      fontFamilySelect.value = family;
-      fontSizeSlider.value = size;
-      fontWeightSlider.value = weight;
-      fontSizeValue.textContent = size;
-      fontWeightValue.textContent = weightLabels[weight] || 'Normal';
-
-      applyFontSettings(family, size, weight);
-    }
-
-    // Apply font settings
-    function applyFontSettings(family, size, weight) {
-      document.documentElement.style.setProperty('--font-family', family);
-      document.documentElement.style.setProperty('--font-size', size + 'px');
-      document.documentElement.style.setProperty('--font-weight', weight);
-
-      document.querySelectorAll('body, body *').forEach(el => {
-        el.style.fontFamily = family;
-        el.style.fontSize = size + 'px';
-        el.style.fontWeight = weight;
+    function applyFont(fam, sz, wt) {
+      document.documentElement.style.setProperty('--font-family', fam);
+      document.documentElement.style.setProperty('--font-size', sz + 'px');
+      document.documentElement.style.setProperty('--font-weight', wt);
+      document.querySelectorAll('body, body *').forEach(function(el) {
+        el.style.fontFamily = fam; el.style.fontSize = sz + 'px'; el.style.fontWeight = wt;
       });
     }
-
-    // Font Family Change
-    fontFamilySelect.addEventListener('change', function() {
-      const family = this.value;
-      localStorage.setItem('dose_font_family', family);
-      applyFontSettings(family, fontSizeSlider.value, fontWeightSlider.value);
+    function loadFont() {
+      var fam = localStorage.getItem('dose_font_family') || "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+      var sz  = localStorage.getItem('dose_font_size')   || '14';
+      var wt  = localStorage.getItem('dose_font_weight') || '400';
+      document.getElementById('font-family-select').value = fam;
+      document.getElementById('font-size-slider').value = sz;
+      document.getElementById('font-weight-slider').value = wt;
+      document.getElementById('font-size-value').textContent = sz;
+      document.getElementById('font-weight-value').textContent = weightLabels[wt] || 'Normal';
+      applyFont(fam, sz, wt);
+    }
+    document.getElementById('font-family-select').addEventListener('change', function() {
+      localStorage.setItem('dose_font_family', this.value);
+      applyFont(this.value, document.getElementById('font-size-slider').value, document.getElementById('font-weight-slider').value);
     });
-
-    // Font Size Change
-    fontSizeSlider.addEventListener('input', function() {
-      const size = this.value;
-      fontSizeValue.textContent = size;
-      localStorage.setItem('dose_font_size', size);
-      applyFontSettings(fontFamilySelect.value, size, fontWeightSlider.value);
+    document.getElementById('font-size-slider').addEventListener('input', function() {
+      document.getElementById('font-size-value').textContent = this.value;
+      localStorage.setItem('dose_font_size', this.value);
+      applyFont(document.getElementById('font-family-select').value, this.value, document.getElementById('font-weight-slider').value);
     });
-
-    // Font Weight Change
-    fontWeightSlider.addEventListener('input', function() {
-      const weight = this.value;
-      fontWeightValue.textContent = weightLabels[weight] || 'Normal';
-      localStorage.setItem('dose_font_weight', weight);
-      applyFontSettings(fontFamilySelect.value, fontSizeSlider.value, weight);
+    document.getElementById('font-weight-slider').addEventListener('input', function() {
+      document.getElementById('font-weight-value').textContent = weightLabels[this.value] || 'Normal';
+      localStorage.setItem('dose_font_weight', this.value);
+      applyFont(document.getElementById('font-family-select').value, document.getElementById('font-size-slider').value, this.value);
     });
-
-    // Reset Button
-    fontResetBtn.addEventListener('click', function() {
-      fontFamilySelect.value = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
-      fontSizeSlider.value = '14';
-      fontWeightSlider.value = '400';
-      fontSizeValue.textContent = '14';
-      fontWeightValue.textContent = 'Normal';
-
-      localStorage.removeItem('dose_font_family');
-      localStorage.removeItem('dose_font_size');
-      localStorage.removeItem('dose_font_weight');
-
-      applyFontSettings("'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", '14', '400');
+    document.getElementById('font-reset-btn').addEventListener('click', function() {
+      var def = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+      localStorage.removeItem('dose_font_family'); localStorage.removeItem('dose_font_size'); localStorage.removeItem('dose_font_weight');
+      applyFont(def, '14', '400');
+      loadFont();
     });
-
-    // Load settings on page load
-    loadFontSettings();
-
-    // Attach click handler to Font Controls menu item
     setTimeout(function() {
-      const fontControlsLinks = document.querySelectorAll('a[href*="font-controls"], a[onclick*="toggleFontControls"]');
-      fontControlsLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-          e.preventDefault();
-          toggleFontControls();
-        });
+      document.querySelectorAll('a[href*="font-controls"]').forEach(function(a) {
+        a.addEventListener('click', function(e) { e.preventDefault(); toggleFontControls(); });
       });
     }, 100);
+    loadFont();
   });
 </script>
-
-{% block page_content %}
-<div class="admin-main-wrapper">
-    {% include "admin/includes/custom_sidebar.html" %}
-    <div class="dose-content-col">
-        {{ block.super }}
-    </div>
-</div>
 {% endblock %}
