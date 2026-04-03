@@ -738,12 +738,7 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
             showSubscribeFeedback(errMsg, { isError: true, html: !!(data && data.login_url) });
             resetSubscribeButton(); if (card) card.clear(); return;
         }
-        var apiErr = data ? payloadErrorMessage(data) : null;
-        if (apiErr) {
-            showSubscribeFeedback(apiErr, { isError: true });
-            resetSubscribeButton(); if (card) card.clear(); return;
-        }
-        // Accept any clean 2xx response (no error field) as success
+        // 2xx response — only bail on explicit error/detail fields, not on any array field
         var looksOk = response.ok && data && typeof data === 'object' && !data.error && !data.detail;
         if (data.trial_welcome || data.provisioning_notice) {
             try {
