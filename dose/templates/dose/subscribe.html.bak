@@ -743,15 +743,8 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
             showSubscribeFeedback(apiErr, { isError: true });
             resetSubscribeButton(); if (card) card.clear(); return;
         }
-        var looksOk = false;
-        if (data && typeof data === 'object') {
-            if (data.plan_tier && (typeof data.id === 'number' || typeof data.id === 'string')) looksOk = true;
-            if (data.trial_welcome || data.provisioning_notice) looksOk = true;
-        }
-        if (!looksOk) {
-            showSubscribeFeedback('Unexpected response from server. Check the browser console or contact support. Snippet: ' + (rawText || '').slice(0, 220), { isError: true });
-            resetSubscribeButton(); return;
-        }
+        // Accept any clean 2xx response (no error field) as success
+        var looksOk = response.ok && data && typeof data === 'object' && !data.error && !data.detail;
         if (data.trial_welcome || data.provisioning_notice) {
             try {
                 sessionStorage.setItem('polysaas_subscribe_notice', JSON.stringify({
