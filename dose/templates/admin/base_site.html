@@ -50,6 +50,7 @@
       'united':    '{% static "vendor/bootswatch/united/bootstrap.min.css" %}',
       'yeti':      '{% static "vendor/bootswatch/yeti/bootstrap.min.css" %}'
     };
+    var DARK_THEMES = ['darkly','cyborg','slate','solar','superhero'];
     var want = '{{ jazzmin_theme|escapejs }}';
     var src  = BOOTSWATCH[want];
     if (!src) return;
@@ -60,6 +61,21 @@
       var l = document.createElement('link');
       l.rel = 'stylesheet'; l.id = 'jazzmin-theme'; l.href = src;
       document.head.appendChild(l);
+    }
+    // Fix navbar readability for dark themes
+    if (DARK_THEMES.indexOf(want) !== -1) {
+      var style = document.createElement('style');
+      style.id = 'ps-dark-navbar';
+      style.textContent = [
+        '#jazzy-navbar { background-color: #343a40 !important; border-color: #454d55 !important; }',
+        '#jazzy-navbar .nav-link, #jazzy-navbar .navbar-brand,',
+        '#jazzy-navbar .nav-item a, #jazzy-navbar span, #jazzy-navbar .breadcrumb-item,',
+        '#jazzy-navbar .breadcrumb-item a, #jazzy-navbar .breadcrumb-item.active {',
+        '  color: #f8f9fa !important; }',
+        '#jazzy-navbar .nav-link:hover { color: #ffffff !important; }',
+        '#jazzy-navbar { color: #f8f9fa !important; }'
+      ].join('\n');
+      document.head.appendChild(style);
     }
   })();
   </script>
