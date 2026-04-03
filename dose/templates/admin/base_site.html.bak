@@ -64,16 +64,31 @@
     }
     // Fix navbar readability for dark themes
     if (DARK_THEMES.indexOf(want) !== -1) {
+      document.documentElement.setAttribute('data-ps-theme', want);
       var style = document.createElement('style');
       style.id = 'ps-dark-navbar';
       style.textContent = [
         '#jazzy-navbar { background-color: #343a40 !important; border-color: #454d55 !important; }',
-        '#jazzy-navbar .nav-link, #jazzy-navbar .navbar-brand,',
-        '#jazzy-navbar .nav-item a, #jazzy-navbar span, #jazzy-navbar .breadcrumb-item,',
-        '#jazzy-navbar .breadcrumb-item a, #jazzy-navbar .breadcrumb-item.active {',
-        '  color: #f8f9fa !important; }',
-        '#jazzy-navbar .nav-link:hover { color: #ffffff !important; }',
-        '#jazzy-navbar { color: #f8f9fa !important; }'
+        /* all text/icons in the navbar */
+        '#jazzy-navbar *,',
+        '#jazzy-navbar .nav-link,',
+        '#jazzy-navbar .nav-item a,',
+        '#jazzy-navbar span,',
+        '#jazzy-navbar .breadcrumb-item,',
+        '#jazzy-navbar .breadcrumb-item a,',
+        '#jazzy-navbar .breadcrumb-item.active,',
+        /* user dropdown button and its children */
+        '#jazzy-navbar .usermenu,',
+        '#jazzy-navbar .usermenu *,',
+        '#jazzy-navbar .user-panel,',
+        '#jazzy-navbar .user-panel *,',
+        '.navbar-nav .nav-item .nav-link { color: #f8f9fa !important; }',
+        '#jazzy-navbar .nav-link:hover,',
+        '#jazzy-navbar .nav-item a:hover { color: #ffffff !important; background-color: rgba(255,255,255,0.1) !important; }',
+        /* dropdown menus spawned from navbar */
+        '#jazzy-navbar .dropdown-menu { background-color: #3d4349 !important; border-color: #555 !important; }',
+        '#jazzy-navbar .dropdown-menu .dropdown-item { color: #f8f9fa !important; }',
+        '#jazzy-navbar .dropdown-menu .dropdown-item:hover { background-color: rgba(255,255,255,0.1) !important; }'
       ].join('\n');
       document.head.appendChild(style);
     }
@@ -349,10 +364,13 @@
         // Fix tenant name styling
         const tenantNameSpan = tenantContainer.querySelector('span');
         if (tenantNameSpan) {
-          tenantNameSpan.style.color = '#000'; // Black characters for tenant name
-          tenantNameSpan.style.fontWeight = 'bold'; // Make it bold
-          tenantNameSpan.style.fontSize = '16px'; // Perfect size - winner!
-          tenantNameSpan.style.whiteSpace = 'nowrap'; // Prevent text wrapping
+          // Use white text in dark themes, black in light themes
+          var darkThemes = ['darkly','cyborg','slate','solar','superhero'];
+          var currentTheme = document.documentElement.getAttribute('data-ps-theme') || '{{ jazzmin_theme|escapejs }}';
+          tenantNameSpan.style.color = darkThemes.indexOf(currentTheme) !== -1 ? '#f8f9fa' : '#000';
+          tenantNameSpan.style.fontWeight = 'bold';
+          tenantNameSpan.style.fontSize = '16px';
+          tenantNameSpan.style.whiteSpace = 'nowrap';
         }
       }
     });
