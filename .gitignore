@@ -16,6 +16,3 @@ venv/
 
 # WordPress site — managed by Hostinger, covered by daily backups
 dose/website/
-
-# Local backup files — instant-revert safety net, never commit
-*.bak
