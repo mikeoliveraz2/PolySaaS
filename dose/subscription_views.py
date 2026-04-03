@@ -382,4 +382,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
-            transaction.on_commit(partial(provisioner.delay, **kwargs))
+            def _safe_enqueue(task=provisioner, kw=dict(kwargs), key=app_key):
+                try:
+                    task.delay(**kw)
+                except Exception as exc:
+                    logger.error("Celery enqueue for %s failed (broker down?): %s", key, exc)
+
+            transaction.on_commit(_safe_enqueue)
