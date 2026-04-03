@@ -33,7 +33,7 @@ try:
 except Exception:
     _djstripe_models = None
 
-from dose.models import Subscription, Tenant, UserProfile
+from dose.models import Subscription, Tenant, UserProfile, UserTenantMembership
 from dose.serializers import SubscriptionSerializer
 from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
@@ -302,6 +302,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                         user_profile.save()
                     except UserProfile.DoesNotExist:
                         UserProfile.objects.create(user=user_obj, tenant_id=tenant_id)
+                    UserTenantMembership.objects.get_or_create(
+                        user=user_obj, tenant_id=tenant_id,
+                        defaults={'role': UserTenantMembership.Role.OWNER},
+                    )
 
                 try:
                     tenant_id = int(tenant_id)
@@ -333,9 +337,15 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 _compensate_stripe(stripe_subscription_id, stripe_customer_id)
             raise
 
-        # ── Phase 4: login (session — outside DB transaction) ────────
+        # ── Phase 4: login + tenant session (outside DB transaction) ──
         if user_obj:
             login(request, user_obj)
+            if tenant_obj:
+                from dose.tenant_session import apply_tenant_to_session
+                membership = UserTenantMembership.objects.filter(
+                    user=user_obj, tenant=tenant_obj,
+                ).first()
+                apply_tenant_to_session(request, tenant_obj, membership)
 
         return Response(
             _subscription_response_payload(

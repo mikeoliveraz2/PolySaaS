@@ -757,8 +757,8 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
                 }));
             } catch (e) {}
         }
-        showSubscribeFeedback('Subscription saved \u2014 opening sign-in\u2026', { isError: false });
-        window.location.assign('/accounts/login/?next=' + encodeURIComponent('/dose/connect-social-after-subscribe/'));
+        showSubscribeFeedback('Subscription saved \u2014 redirecting to your admin\u2026', { isError: false });
+        window.location.assign('/admin/');
     }).catch(function(err) {
         showSubscribeFeedback('Network error: ' + (err && err.message ? err.message : String(err)), { isError: true });
         resetSubscribeButton(); if (card) card.clear();

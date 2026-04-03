@@ -253,7 +253,7 @@
         tenantName.style.textTransform = 'uppercase';
         tenantName.style.letterSpacing = '0.5px';
         tenantName.style.marginRight = '10px';
-        tenantName.textContent = '{{ request.tenant.name|default:"Oliver Enterprises"|escapejs }} - {{ user.username|escapejs }}';
+        tenantName.textContent = '{{ request.tenant.name|default:request.session.tenant_name|default:"—"|escapejs }} - {{ user.username|escapejs }}';
         tenantContainer.appendChild(tenantName);
 
         // NO PASSTHROUGH LINKS - They're in the sidebar
