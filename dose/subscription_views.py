@@ -279,6 +279,14 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         # ── Phase 3: all DB writes in one atomic block ───────────────
         try:
             with transaction.atomic():
+                # auth_user and Tenant live in the public schema.
+                # Force search_path=public so a logged-in subscriber's tenant
+                # schema doesn't shadow public tables and land the new user
+                # in the wrong schema.
+                from django.db import connection as _conn
+                with _conn.cursor() as _cur:
+                    _cur.execute("SET search_path TO public;")
+
                 user_obj = None
                 if needs_new_user:
                     user_obj = User.objects.create_user(username=username, email=email, password=password)
