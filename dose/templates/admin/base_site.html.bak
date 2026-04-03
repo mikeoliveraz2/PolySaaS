@@ -350,24 +350,22 @@
         console.log('TENANT INJECT: Container position:', tenantContainer.offsetLeft, tenantContainer.offsetTop);
         console.log('TENANT INJECT: Navbar width:', navbar.offsetWidth);
 
-        // Professional styling
-        tenantContainer.style.backgroundColor = '#f5f5f5'; // Light grey background
-        tenantContainer.style.border = '1px solid #666'; // Dark grey border
+        // Professional styling — theme-aware
+        var isDark = ['darkly','cyborg','slate','solar','superhero'].indexOf('{{ jazzmin_theme|escapejs }}') !== -1;
+        tenantContainer.style.backgroundColor = isDark ? '#3d4349' : '#f5f5f5';
+        tenantContainer.style.border = isDark ? '1px solid #555' : '1px solid #666';
         tenantContainer.style.borderRadius = '4px';
         tenantContainer.style.padding = '5px 10px';
         tenantContainer.style.display = 'flex';
         tenantContainer.style.flexWrap = 'wrap';
         tenantContainer.style.alignItems = 'center';
-        tenantContainer.style.minWidth = 'max-content'; // Prevent clipping
-        tenantContainer.style.maxWidth = '400px'; // Allow reasonable growth
+        tenantContainer.style.minWidth = 'max-content';
+        tenantContainer.style.maxWidth = '400px';
 
         // Fix tenant name styling
         const tenantNameSpan = tenantContainer.querySelector('span');
         if (tenantNameSpan) {
-          // Use white text in dark themes, black in light themes
-          var darkThemes = ['darkly','cyborg','slate','solar','superhero'];
-          var currentTheme = document.documentElement.getAttribute('data-ps-theme') || '{{ jazzmin_theme|escapejs }}';
-          tenantNameSpan.style.color = darkThemes.indexOf(currentTheme) !== -1 ? '#f8f9fa' : '#000';
+          tenantNameSpan.style.color = isDark ? '#f8f9fa' : '#000';
           tenantNameSpan.style.fontWeight = 'bold';
           tenantNameSpan.style.fontSize = '16px';
           tenantNameSpan.style.whiteSpace = 'nowrap';
