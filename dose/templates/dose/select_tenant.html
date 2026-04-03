@@ -1,0 +1,53 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose Your Organization — PolySaaS</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/flatly/bootstrap.min.css">
+  <style>
+    body { background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .picker-card { max-width: 480px; width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.1); padding: 2.5rem; }
+    .picker-card h2 { font-size: 1.35rem; font-weight: 700; margin-bottom: .25rem; }
+    .picker-card p.sub { color: #6c757d; margin-bottom: 1.5rem; }
+    .tenant-btn { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 18px; margin-bottom: 10px;
+                  border: 2px solid #dee2e6; border-radius: 8px; background: #fff; cursor: pointer; transition: .15s; text-align: left; }
+    .tenant-btn:hover { border-color: #2c7be5; background: #f0f7ff; }
+    .tenant-btn .avatar { width: 42px; height: 42px; border-radius: 8px; background: #e9ecef; display: flex; align-items: center;
+                          justify-content: center; font-weight: 700; font-size: 1.1rem; color: #495057; flex-shrink: 0; }
+    .tenant-btn .info { flex: 1; }
+    .tenant-btn .info .name { font-weight: 600; font-size: .95rem; }
+    .tenant-btn .info .role { font-size: .8rem; color: #6c757d; text-transform: capitalize; }
+    .logo { text-align: center; margin-bottom: 1.5rem; }
+    .logo img { height: 48px; }
+  </style>
+</head>
+<body>
+  <div class="picker-card">
+    <div class="logo">
+      <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
+    </div>
+    <h2>Choose Your Organization</h2>
+    <p class="sub">You belong to multiple organizations. Select one to continue.</p>
+    <form method="post">
+      {% csrf_token %}
+      {% for m in memberships %}
+      <button type="submit" name="tenant_id" value="{{ m.tenant.id }}" class="tenant-btn">
+        <div class="avatar">
+          {% if m.tenant.logo %}
+            <img src="{{ m.tenant.logo.url }}" style="width:42px;height:42px;border-radius:8px;object-fit:cover;" alt="">
+          {% else %}
+            {{ m.tenant.name|truncatechars:2|upper }}
+          {% endif %}
+        </div>
+        <div class="info">
+          <div class="name">{{ m.tenant.name }}</div>
+          <div class="role">{{ m.role }}</div>
+        </div>
+      </button>
+      {% endfor %}
+    </form>
+  </div>
+</body>
+</html>

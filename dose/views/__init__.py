@@ -30,6 +30,7 @@ health_check,
 custom_swagger_view,
 index,
 connect_social_after_subscribe,
+select_tenant_view,
 )
 
 from dose.views.about import (

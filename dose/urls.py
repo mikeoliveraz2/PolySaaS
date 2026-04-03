@@ -9,7 +9,7 @@ from .views.airtable_dashboard import airtable_tickets_view, airtable_tickets_ap
 from .passthrough_views import passthrough_service, passthrough_api, direct_service_view
 #from .generic_passthrough_views import GenericAPIPassthroughView
 from dose.subscription_views import SubscriptionApiViewSet
-from dose.views import subscribe_view
+from dose.views import subscribe_view, select_tenant_view
 from dose.unread_dosemessages_api import unread_dosemessages_api
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -125,6 +125,7 @@ urlpatterns = [
     path('create-instruction/', create_instruction, name='create_instruction'),
     path('about/', about_page, name='about'),
     # Tenant management
+    path('select-tenant/', select_tenant_view, name='select_tenant'),
     path('tenant/switch/<int:tenant_id>/', switch_tenant, name='switch_tenant'),
     path('switch-tenant/<int:tenant_id>/', switch_tenant, name='switch_tenant_short'),
     path('api/switch-tenant/', switch_tenant_api, name='api_switch_tenant'),

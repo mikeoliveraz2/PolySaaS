@@ -555,6 +555,35 @@ def switch_tenant(request, tenant_id):
         except UserTenantMembership.DoesNotExist:
             return HttpResponseForbidden("You do not have access to this tenant")
     return redirect("dose:login")
+
+
+@login_required
+def select_tenant_view(request):
+    """Post-login tenant picker when user belongs to multiple tenants."""
+    memberships = (
+        UserTenantMembership.objects.filter(user=request.user)
+        .select_related("tenant")
+        .exclude(tenant__schema_name="public")
+        .order_by("tenant__name")
+    )
+    if request.method == "POST":
+        tenant_id = request.POST.get("tenant_id")
+        if tenant_id:
+            try:
+                m = memberships.get(tenant_id=tenant_id)
+                apply_tenant_to_session(request, m.tenant, m)
+                return redirect("/admin/")
+            except UserTenantMembership.DoesNotExist:
+                pass
+    if memberships.count() == 1:
+        m = memberships.first()
+        apply_tenant_to_session(request, m.tenant, m)
+        return redirect("/admin/")
+    if memberships.count() == 0:
+        return redirect("/admin/")
+    return render(request, "dose/select_tenant.html", {"memberships": memberships})
+
+
 # Landing page view moved from views.py
 from django.shortcuts import render, redirect
 from django.utils import timezone
