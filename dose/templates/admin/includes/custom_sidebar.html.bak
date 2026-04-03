@@ -31,7 +31,7 @@
         overflow: hidden;
     }
 
-    /* Override Bootstrap column widths inside our grid — grid handles the layout */
+    /* Force Bootstrap columns inside content area to full width — grid handles layout */
     .dose-content-col .col-lg-9,
     .dose-content-col .col-lg-3,
     .dose-content-col .col-md-6 {
@@ -40,16 +40,34 @@
         flex: 0 0 100% !important;
     }
 
-    /* Make container-fluid inside dose-content-col truly full width */
+    /* Make container-fluid truly full width */
     .dose-content-col .container-fluid {
         max-width: 100% !important;
-        padding-left: 5px !important;
-        padding-right: 5px !important;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
     }
 
-    /* The row inside content needs to wrap properly */
     .dose-content-col .row {
         margin: 0 !important;
+    }
+
+    /* ── TWO-COLUMN CONTENT AREA ────────────────────────────────────────────
+       #content-main is Django admin's model-group card container.
+       We split it into two equal columns so cards appear side-by-side.    */
+    #content-main {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-content: start;
+    }
+
+    /* Each model-group module fills its grid cell cleanly */
+    #content-main .module,
+    #content-main .app-dose,
+    #content-main [class^="app-"],
+    #content-main [class*=" app-"] {
+        margin: 0 !important;
+        height: fit-content;
     }
 
     /* Sidebar Container - positioned in grid, not fixed */
@@ -371,6 +389,48 @@
     #dose-custom-sidebar {
         display: flex !important;
         visibility: visible !important;
+    }
+
+    /* Right activity sidebar */
+    #recent-actions-sidebar {
+        background: var(--bs-body-bg, #fff);
+        border-left: 1px solid rgba(0,0,0,.08);
+        padding: 16px 14px;
+        height: calc(100vh - var(--pss-header-h));
+        position: sticky;
+        top: var(--pss-header-h);
+        overflow-y: auto;
+        font-size: .85rem;
+    }
+
+    #recent-actions-sidebar h2,
+    #recent-actions-sidebar .module h2 {
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        font-weight: 700;
+        padding: 0 0 8px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid rgba(0,0,0,.1);
+    }
+
+    /* Responsive: single column on narrow screens */
+    @media (max-width: 899px) {
+        .admin-content-grid {
+            grid-template-columns: 1fr !important;
+        }
+        .admin-content-grid.sidebar-collapse {
+            grid-template-columns: 1fr !important;
+        }
+        .collapsible-nav {
+            display: none !important;
+        }
+        #recent-actions-sidebar {
+            display: none !important;
+        }
+        #content-main {
+            grid-template-columns: 1fr !important;
+        }
     }
 </style>
 
