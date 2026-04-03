@@ -388,7 +388,9 @@
         var light = document.getElementById('ps-light-theme').value;
         var dark  = document.getElementById('ps-dark-theme').value;
         var useLightMode = document.getElementById('ps-use-light-cb').checked;
-        var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {value:''}).value;
+        var csrf = document.cookie.split(';').map(function(c){return c.trim();})
+                    .filter(function(c){return c.startsWith('csrftoken=');})[0]
+                    ?.split('=')[1] || '';
         fetch('/admin/select-theme/', {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
