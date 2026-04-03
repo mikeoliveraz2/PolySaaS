@@ -49,4 +49,4 @@ def tenant_search_path_for_request(tenant):
     if not tenant or not tenant.schema_name:
         return
     with connection.cursor() as cursor:
-        cursor.execute(f"SET search_path TO {tenant.schema_name},public;")
+        cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')

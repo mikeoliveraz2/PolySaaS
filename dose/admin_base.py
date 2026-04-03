@@ -21,7 +21,7 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
         if tenant and tenant.schema_name:
             # Set search_path directly on the connection (not in cursor context)
             # This ensures it persists for Django ORM operations
-            connection.cursor().execute(f"SET search_path TO {tenant.schema_name},public;")
+            connection.cursor().execute(f'SET search_path TO "{tenant.schema_name}",public;')
             logger.debug(f"[TenantAwareModelAdmin] Set search_path to {tenant.schema_name} for {self.model.__name__} queryset")
         else:
             connection.cursor().execute("SET search_path TO public;")
@@ -37,7 +37,7 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
         if tenant and tenant.schema_name:
             # Set search_path directly on the connection (not in cursor context)
             # This ensures it persists for Django ORM operations
-            connection.cursor().execute(f"SET search_path TO {tenant.schema_name},public;")
+            connection.cursor().execute(f'SET search_path TO "{tenant.schema_name}",public;')
             logger = logging.getLogger(__name__)
             logger.debug(f"[TenantAwareModelAdmin] Set search_path to {tenant.schema_name} for {self.model.__name__} save")
         else:
@@ -53,7 +53,7 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
         logger = logging.getLogger(__name__)
         if tenant and tenant.schema_name:
             # Set search_path directly on the connection (not in cursor context)
-            connection.cursor().execute(f"SET search_path TO {tenant.schema_name},public;")
+            connection.cursor().execute(f'SET search_path TO "{tenant.schema_name}",public;')
             logger.debug(f"[TenantAwareModelAdmin] Set search_path to {tenant.schema_name} for {self.model.__name__} delete")
         else:
             connection.cursor().execute("SET search_path TO public;")

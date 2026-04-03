@@ -31,7 +31,7 @@ class SessionTenantMiddleware(MiddlewareMixin):
 		if schema_name:
 			# Set search_path - TenantAwareModelAdmin will ensure it's set before each ORM query
 			with connection.cursor() as cursor:
-				cursor.execute(f"SET search_path TO {schema_name},public;")
+				cursor.execute(f'SET search_path TO "{schema_name}",public;')
 			# Store schema name on connection and request for reference
 			connection.schema_name = schema_name
 			request.schema_name = schema_name

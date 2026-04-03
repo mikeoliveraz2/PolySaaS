@@ -50,7 +50,7 @@ def _set_schema(tenant):
     if not _re.match(r"^[a-zA-Z0-9_]+$", schema):
         raise ValueError(f"Invalid schema name: {schema!r}")
     with connection.cursor() as cur:
-        cur.execute(f"SET search_path TO {schema}, public;")
+        cur.execute(f'SET search_path TO "{schema}", public;')
 
 
 def _resolve_pubsub_defaults(tenant):

@@ -109,7 +109,7 @@ class MQQueueMonitor:
             try:
                 # Set tenant schema for this request
                 if mq_config.tenant and mq_config.tenant.schema_name:
-                    connection.cursor().execute(f"SET search_path TO {mq_config.tenant.schema_name},public;")
+                    connection.cursor().execute(f'SET search_path TO "{mq_config.tenant.schema_name}",public;')
 
                 # Consume message from queue
                 message = adapter.consume(timeout=5)  # 5 second timeout

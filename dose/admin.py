@@ -297,7 +297,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             schema = tenant.schema_name if tenant and tenant.schema_name else 'public'
 
             with connection.cursor() as cursor:
-                cursor.execute(f"SET search_path TO {schema},public;")
+                cursor.execute(f'SET search_path TO "{schema}",public;')
 
                 # Define all columns that might be missing (from various migrations)
                 # Format: (column_name, sql_definition)
@@ -872,7 +872,7 @@ if NEW_MODELS_AVAILABLE:
                 schema_name = tenant_obj.schema_name if tenant_obj.schema_name else 'public'
                 try:
                     with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {schema_name},public;")
+                        cursor.execute(f'SET search_path TO "{schema_name}",public;')
                         # Filter by tenant if provided
                         if tenant:
                             items = NavigationItem.objects.filter(panel__tenant=tenant).select_related('panel__tenant')
@@ -919,7 +919,7 @@ if NEW_MODELS_AVAILABLE:
                         schema_name = tenant_obj.schema_name if tenant_obj.schema_name else 'public'
                         try:
                             with connection.cursor() as cursor:
-                                cursor.execute(f"SET search_path TO {schema_name},public;")
+                                cursor.execute(f'SET search_path TO "{schema_name}",public;')
                                 panels = NavigationPanel.objects.filter(tenant=tenant, is_active=True)
                                 for panel in panels:
                                     all_panels.append(panel)
@@ -931,7 +931,7 @@ if NEW_MODELS_AVAILABLE:
                     if all_panels:
                         # Use the current tenant's schema for the queryset
                         with connection.cursor() as cursor:
-                            cursor.execute(f"SET search_path TO {tenant.schema_name if tenant.schema_name else 'public'},public;")
+                            cursor.execute(f'SET search_path TO "{tenant.schema_name if tenant.schema_name else "public"}",public;')
                             # Get panel IDs
                             panel_ids = [p.id for p in all_panels]
                             form.base_fields['panel'].queryset = NavigationPanel.objects.filter(id__in=panel_ids)
@@ -976,7 +976,7 @@ if NEW_MODELS_AVAILABLE:
                         schema_name = tenant_obj.schema_name if tenant_obj.schema_name else 'public'
                         try:
                             with connection.cursor() as cursor:
-                                cursor.execute(f"SET search_path TO {schema_name},public;")
+                                cursor.execute(f'SET search_path TO "{schema_name}",public;')
                                 panel_check = NavigationPanel.objects.filter(id=obj.panel.id).first()
                                 if panel_check:
                                     panel_schema = schema_name
@@ -989,7 +989,7 @@ if NEW_MODELS_AVAILABLE:
                 if panel_schema:
                     # Save the item in the same schema as the panel
                     with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {panel_schema},public;")
+                        cursor.execute(f'SET search_path TO "{panel_schema}",public;')
                         # Get the panel in the correct schema context
                         panel_in_schema = NavigationPanel.objects.filter(id=obj.panel.id).first()
                         if panel_in_schema:

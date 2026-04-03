@@ -32,7 +32,7 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
 
                 # Set search_path to current tenant schema
                 with connection.cursor() as cursor:
-                    cursor.execute(f"SET search_path TO {current_schema},public;")
+                    cursor.execute(f'SET search_path TO "{current_schema}",public;')
 
                     # Get all PassThroughEndpoint records for this schema that should show in menu
                     passthrough_endpoints = PassThroughEndpoint.objects.filter(

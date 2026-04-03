@@ -242,7 +242,7 @@ def admin_navigation(request):
             if tenant and tenant.schema_name:
                 try:
                     with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {tenant.schema_name},public;")
+                        cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
                         # Get endpoints with show_in_menu=True but without menu_title (or with empty menu_title)
                         additional_endpoints = PassThroughEndpoint.objects.filter(
                             show_in_menu=True
@@ -270,7 +270,7 @@ def admin_navigation(request):
             if tenant and tenant.schema_name:
                 try:
                     with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {tenant.schema_name},public;")
+                        cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
                         # First, check total count without filters
                         total_count = PassThroughEndpoint.objects.count()
                         print(f"[ADMIN_NAV] Total PassThroughEndpoints in schema {tenant.schema_name}: {total_count}")
@@ -359,7 +359,7 @@ def admin_navigation(request):
         def query_panels_from_schema(schema_name, check_tenant=None):
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute(f"SET search_path TO {schema_name},public;")
+                    cursor.execute(f'SET search_path TO "{schema_name}",public;')
                     # Use same query as landing_page
                     if check_tenant:
                         panels = NavigationPanel.objects.filter(
@@ -417,7 +417,7 @@ def admin_navigation(request):
             items = []
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute(f"SET search_path TO {panel_schema},public;")
+                    cursor.execute(f'SET search_path TO "{panel_schema}",public;')
                     # Use same query as landing_page - filter by panel
                     items = NavigationItem.objects.filter(
                         panel_id=panel_id,  # Use panel_id to avoid object reference issues
@@ -483,7 +483,7 @@ def admin_navigation(request):
         def query_navigation_panels(schema_name, filter_tenant=None):
             try:
                 with connection.cursor() as cursor:
-                    cursor.execute(f"SET search_path TO {schema_name},public;")
+                    cursor.execute(f'SET search_path TO "{schema_name}",public;')
                     # Build query - filter by tenant if provided
                     base_filter = {'is_active': True}
                     if filter_tenant:
@@ -547,7 +547,7 @@ def admin_navigation(request):
                 external_items = []
                 try:
                     with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {panel_schema},public;")
+                        cursor.execute(f'SET search_path TO "{panel_schema}",public;')
                         # Query items for this panel in the correct schema
                         external_items = list(NavigationItem.objects.filter(
                             panel_id=panel_id,

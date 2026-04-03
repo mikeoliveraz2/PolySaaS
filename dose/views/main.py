@@ -828,7 +828,7 @@ def login_view(request):
                 from django.db import connection
                 schema_name = tenant.slug if hasattr(tenant, 'slug') else tenant.schema_name
                 with connection.cursor() as cursor:
-                    cursor.execute(f"SET search_path TO {schema_name},public;")
+                    cursor.execute(f'SET search_path TO "{schema_name}",public;')
                 m = UserTenantMembership.objects.filter(user=user, tenant=tenant).first()
                 if not m:
                     m, _ = UserTenantMembership.objects.get_or_create(

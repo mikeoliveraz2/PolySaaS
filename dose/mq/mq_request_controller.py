@@ -69,7 +69,7 @@ class MQRequestController:
         if tenant:
             from django.db import connection
             if tenant.schema_name:
-                connection.cursor().execute(f"SET search_path TO {tenant.schema_name},public;")
+                connection.cursor().execute(f'SET search_path TO "{tenant.schema_name}",public;')
                 logger.info(f"MQRequestController: Set search_path to {tenant.schema_name} for tenant {tenant.name}")
 
         # Initialize atomic services registry

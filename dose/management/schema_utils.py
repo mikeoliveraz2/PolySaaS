@@ -36,7 +36,7 @@ def set_search_path(schema_name: str) -> None:
     """search_path = <schema>, public — fall back to public for shared models (runtime / admin)."""
     assert_safe_schema_identifier(schema_name)
     with connection.cursor() as cursor:
-        cursor.execute(f"SET search_path TO {schema_name},public;")
+        cursor.execute(f'SET search_path TO "{schema_name}",public;')
 
 
 def set_search_path_for_migrations(schema_name: str) -> None:
@@ -47,7 +47,7 @@ def set_search_path_for_migrations(schema_name: str) -> None:
     """
     assert_safe_schema_identifier(schema_name)
     with connection.cursor() as cursor:
-        cursor.execute(f"SET search_path TO {schema_name}, pg_catalog;")
+        cursor.execute(f'SET search_path TO "{schema_name}", pg_catalog;')
 
 
 def reset_sequences_in_current_schema() -> None:

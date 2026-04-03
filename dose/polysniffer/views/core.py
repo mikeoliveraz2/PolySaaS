@@ -100,7 +100,7 @@ def get_endpoint_any_schema(endpoint_id, request=None):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f"SET search_path TO {tenant.schema_name},public;")
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
             endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
             if endpoint:
                 return endpoint

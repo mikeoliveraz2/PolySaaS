@@ -110,7 +110,7 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
             tenant_schema = request.tenant.schema_name
         if tenant_schema:
             with connection.cursor() as cursor:
-                cursor.execute(f"SET search_path TO {tenant_schema},public;")
+                cursor.execute(f'SET search_path TO "{tenant_schema}",public;')
                 cursor.execute("SHOW search_path;")
                 search_path = cursor.fetchone()[0]
             print(f"[DEBUG] PostgreSQL search_path SET to: {search_path}")
