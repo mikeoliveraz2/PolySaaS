@@ -299,12 +299,9 @@
   </script>
 {% endblock %}
 
-{# Modals (theme picker + font controls) are in {% block extrajs %} at the bottom of this file — the ONLY valid end-of-body block Jazzmin provides. #}
+{# All modals rendered at end of body in extrajs block below #}
 
-{% block sidebar %}
-  {# Empty: AdminLTE .app-sidebar is hidden via CSS.
-     The custom sidebar renders inside the content block via custom_sidebar.html grid. #}
-{% endblock %}
+{% block sidebar %}{# custom sidebar renders inside page_content via custom_sidebar.html — AdminLTE sidebar hidden by CSS #}{% endblock %}
 
 {% block page_content %}
 <div class="admin-main-wrapper">
@@ -400,8 +397,8 @@
       fetch('/admin/select-theme/', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
-        body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
-             + '&use_light_mode=' + (useLightMode ? '1' : '0')
+      body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
+           + '&display_mode=' + (useLightMode ? 'light' : 'dark')
       })
       .then(function(r) { return r.json(); })
       .then(function() { closeThemeModal(); window.location.reload(); })

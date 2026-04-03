@@ -1,10 +1,4 @@
-{#
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║  AUTHORITATIVE ADMIN SIDEBAR — DO NOT MODIFY WITHOUT APPROVAL       ║
-  ║  Included by dose/templates/admin/base_site.html.                   ║
-  ║  templates/admin/includes/custom_sidebar.html is a stub.            ║
-  ╚══════════════════════════════════════════════════════════════════════╝
-#}
+{# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
 {% load static %}
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
