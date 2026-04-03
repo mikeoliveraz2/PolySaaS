@@ -1,4 +1,12 @@
-{# dose/templates/admin/base_site.html — FINAL — WORKS 100% — NO SYNTAX ERROR #}
+{#
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  AUTHORITATIVE ADMIN BASE TEMPLATE — DO NOT MODIFY WITHOUT APPROVAL ║
+  ║  This file is the ONLY admin/base_site.html that Django serves.     ║
+  ║  dose/templates is first in DIRS (mysite/settings.py).              ║
+  ║  templates/admin/base_site.html is a stub — never loaded.           ║
+  ║  Sidebar: dose/templates/admin/includes/custom_sidebar.html         ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+#}
 {% extends "admin/base.html" %}
 
 {% block extrahead %}
@@ -110,17 +118,10 @@
       overflow: hidden !important;
     }
 
-    /* AdminLTE 4: Main content area - full width (no sidebar offset) */
+    /* AdminLTE 4: Main content area - display:contents kills the white overlay;
+       children flow into the grid normally (from BINGO commit 7fc4a0f) */
     .app-main {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      margin: 0 !important;
-      padding-top: 60px !important;
-      padding-left: 10px !important;
-      padding-right: 10px !important;
-      min-height: 100vh !important;
+      display: contents !important;
     }
 
     /* AdminLTE 4: Top navbar fixed - full width */
@@ -525,7 +526,7 @@
 {% block page_content %}
 <div class="admin-main-wrapper">
     {% include "admin/includes/custom_sidebar.html" %}
-    <div class="content-wrapper">
+    <div class="dose-content-col">
         {{ block.super }}
     </div>
 </div>

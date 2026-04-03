@@ -1,0 +1,35 @@
+---
+description: Protects the authoritative admin templates from accidental edits
+globs: templates/admin/base_site.html,templates/admin/includes/custom_sidebar.html
+alwaysApply: true
+---
+
+# Admin Templates — Single Source of Truth
+
+## The Rule
+
+**NEVER edit these files — they are stubs and are never loaded by Django:**
+- `templates/admin/base_site.html`
+- `templates/admin/includes/custom_sidebar.html`
+
+**ALWAYS edit these authoritative files instead:**
+- `dose/templates/admin/base_site.html` ← Django loads this first (DIRS order)
+- `dose/templates/admin/includes/custom_sidebar.html` ← same
+
+## Why
+
+`mysite/settings.py` TEMPLATES DIRS is ordered:
+1. `dose/templates`  ← wins every time
+2. `templates`       ← never reached for admin/base_site.html or custom_sidebar.html
+
+Edits to the `templates/` copies are silently ignored at runtime.
+
+## Before Any Edit
+
+1. Confirm you are editing the `dose/templates/admin/` path, not `templates/admin/`
+2. Get explicit approval from Michael or Shela before changing either authoritative file
+3. These files were certified working after a "BINGO" commit — treat them as tested and locked
+
+## Approved changes require
+- Explicit "yes, edit the admin template" from the user
+- A commit immediately after with a clear description of what changed and why
