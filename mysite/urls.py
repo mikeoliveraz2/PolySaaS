@@ -44,6 +44,7 @@ urlpatterns = [
     path('health/ready/', health_ready, name='health_ready'),
     path('subscribe/', subscribe_view, name='subscribe'),
     path('admin/select-theme/', __import__('dose.admin_views').admin_views.select_theme, name='select_theme'),
+    path('admin/select-theme/api/', __import__('dose.admin_views').admin_views.select_theme_api, name='select_theme_api'),
     path('admin/set-theme/', __import__('dose.admin_views').admin_views.set_theme, name='set_theme'),
     path('admin/font-controls/', __import__('dose.admin_views').admin_views.font_controls, name='font_controls'),
     path('admin/nextcloud-view/', __import__('dose.admin_views').admin_views.nextcloud_view, name='nextcloud_view'),

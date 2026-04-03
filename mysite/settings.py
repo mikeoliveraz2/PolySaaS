@@ -19,7 +19,7 @@ JAZZMIN_SETTINGS = {
     "SITE_BRAND": "PolySaaS",
     "WELCOME_SIGN": "Welcome to DoseSaaS Admin",
     "copyright": "DoseSaaS 2025",
-    "show_ui_builder": True,
+    "show_ui_builder": False,
     "index_template": "jazzmin/admin/index.html",
     "site_logo": "img/PolySaaS-Industrial-Logo.png",
     # "site_icon": "img/favicon.ico",

@@ -123,6 +123,31 @@ THEMES = [
 ]
 
 @login_required
+def select_theme_api(request):
+    """JSON endpoint — returns current theme settings for the popup modal."""
+    from dose.tenant_utils import get_current_tenant
+    tenant = get_current_tenant(request)
+    if not tenant:
+        try:
+            existing = getattr(request.user, 'userprofile', None)
+            if existing and existing.tenant and existing.tenant.schema_name.lower() != 'public':
+                tenant = existing.tenant
+        except Exception:
+            pass
+    if not tenant:
+        from django.http import JsonResponse as _J
+        return _J({'light_theme': 'flatly', 'dark_theme': 'darkly', 'use_light_mode': True})
+    from dose.models import UserProfile as _UP
+    profile, _ = _UP.objects.get_or_create(user=request.user, tenant=tenant)
+    from django.http import JsonResponse as _J
+    return _J({
+        'light_theme': profile.light_theme or 'flatly',
+        'dark_theme':  profile.dark_theme  or 'darkly',
+        'use_light_mode': not bool(getattr(profile, 'use_dark_mode', False)),
+    })
+
+
+@login_required
 def select_theme(request):
     import logging
     from django.contrib import messages

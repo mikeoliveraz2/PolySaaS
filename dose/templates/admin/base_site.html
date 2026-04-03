@@ -294,20 +294,118 @@
 {% block nav-global %}
   {{ block.super}}
   <!-- NO passthrough links - they're in sidebar -->
+  {# ── Theme Picker Popup ──────────────────────────────────────────────── #}
+  <style>
+    #ps-theme-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.45); z-index: 9998;
+    }
+    #ps-theme-modal {
+      display: none; position: fixed; top: 58px; right: 12px;
+      background: #fff; border-radius: 10px; padding: 20px 22px 16px;
+      min-width: 300px; box-shadow: 0 8px 32px rgba(0,0,0,.22);
+      z-index: 9999; font-family: inherit;
+    }
+    #ps-theme-modal h4 { margin: 0 0 14px; font-size: .95rem; font-weight: 700; color: #1e293b; }
+    #ps-theme-modal label { display: block; font-size: .8rem; color: #64748b; margin-bottom: 3px; }
+    #ps-theme-modal select {
+      width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1;
+      border-radius: 6px; font-size: .9rem; margin-bottom: 12px;
+    }
+    #ps-theme-modal .ps-use-light { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: .88rem; }
+    #ps-theme-save-btn {
+      width: 100%; padding: 9px; background: #2563eb; color: #fff;
+      border: none; border-radius: 6px; font-size: .9rem; font-weight: 600;
+      cursor: pointer; transition: background .15s;
+    }
+    #ps-theme-save-btn:hover { background: #1d4ed8; }
+    #ps-theme-close { position: absolute; top: 10px; right: 12px; background: none; border: none;
+      font-size: 1.2rem; cursor: pointer; color: #94a3b8; }
+  </style>
+  <div id="ps-theme-modal-overlay"></div>
+  <div id="ps-theme-modal" role="dialog" aria-modal="true" aria-label="Theme Selector">
+    <button id="ps-theme-close" title="Close">×</button>
+    <h4>Theme Selection</h4>
+    <label for="ps-light-theme">Light Theme:</label>
+    <select id="ps-light-theme"></select>
+    <label style="margin-bottom:12px;">Last Saved Theme: <strong id="ps-last-saved">—</strong></label>
+    <div class="ps-use-light">
+      <input type="checkbox" id="ps-use-light-cb">
+      <label for="ps-use-light-cb" style="margin:0;color:#334155;">Use light theme for display</label>
+    </div>
+    <label for="ps-dark-theme">Dark Theme:</label>
+    <select id="ps-dark-theme"></select>
+    <button id="ps-theme-save-btn">Save</button>
+  </div>
+  <script>
+  (function() {
+    var PS_THEMES = ["flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux",
+                     "minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab",
+                     "superhero","united","yeti"];
+
+    function buildSelect(el, themes, current) {
+      el.innerHTML = '';
+      themes.forEach(function(t) {
+        var o = document.createElement('option');
+        o.value = t; o.textContent = t;
+        if (t === current) o.selected = true;
+        el.appendChild(o);
+      });
+    }
+
+    function openThemeModal() {
+      var modal = document.getElementById('ps-theme-modal');
+      modal.style.display = 'block';
+      document.getElementById('ps-theme-modal-overlay').style.display = 'block';
+      // Load current values via AJAX
+      fetch('/admin/select-theme/api/', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, d.light_theme);
+          buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, d.dark_theme);
+          document.getElementById('ps-last-saved').textContent = d.light_theme || '—';
+          document.getElementById('ps-use-light-cb').checked = d.use_light_mode !== false;
+        })
+        .catch(function() {
+          buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, 'flatly');
+          buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, 'darkly');
+        });
+    }
+
+    function closeThemeModal() {
+      document.getElementById('ps-theme-modal').style.display = 'none';
+      document.getElementById('ps-theme-modal-overlay').style.display = 'none';
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
+        a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
+      });
+      document.getElementById('ps-theme-close').addEventListener('click', closeThemeModal);
+      document.getElementById('ps-theme-modal-overlay').addEventListener('click', closeThemeModal);
+
+      document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
+        var light = document.getElementById('ps-light-theme').value;
+        var dark  = document.getElementById('ps-dark-theme').value;
+        var useLightMode = document.getElementById('ps-use-light-cb').checked;
+        var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {value:''}).value;
+        fetch('/admin/select-theme/', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
+          body: 'light_theme=' + encodeURIComponent(light)
+               + '&dark_theme='  + encodeURIComponent(dark)
+               + '&use_light_mode=' + (useLightMode ? '1' : '0')
+        })
+        .then(function(r) { return r.json(); })
+        .then(function() { closeThemeModal(); window.location.reload(); })
+        .catch(function() { closeThemeModal(); window.location.reload(); });
+      });
+    });
+  })();
+  </script>
 {% endblock %}
 
-{% block theme_switcher %}
-  <div class="theme-switcher">
-    <select id="jazzmin-theme-picker">
-      {% for t in themes %}
-        <option value="{{ t }}" {% if t == jazzmin_theme %}selected{% endif %}>{{ t }}</option>
-      {% endfor %}
-    </select>
-    {% if jazzmin_theme %}
-      <script>console.log('Picker context:', '{{ jazzmin_theme }}');</script>
-    {% endif %}
-  </div>
-{% endblock %}
+{# theme_switcher block intentionally omitted — not a real Jazzmin block; was causing layout artifact #}
 
 {% block sidebar %}
   {# Empty: AdminLTE .app-sidebar is hidden via CSS.
