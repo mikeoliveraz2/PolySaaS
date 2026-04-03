@@ -33,8 +33,7 @@
 
     /* Force Bootstrap columns inside content area to full width — grid handles layout */
     .dose-content-col .col-lg-9,
-    .dose-content-col .col-lg-3,
-    .dose-content-col .col-md-6 {
+    .dose-content-col .col-lg-3 {
         width: 100% !important;
         max-width: 100% !important;
         flex: 0 0 100% !important;
@@ -51,24 +50,8 @@
         margin: 0 !important;
     }
 
-    /* ── TWO-COLUMN CONTENT AREA ────────────────────────────────────────────
-       #content-main is Django admin's model-group card container.
-       We split it into two equal columns so cards appear side-by-side.    */
-    #content-main {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        align-content: start;
-    }
-
-    /* Each model-group module fills its grid cell cleanly */
-    #content-main .module,
-    #content-main .app-dose,
-    #content-main [class^="app-"],
-    #content-main [class*=" app-"] {
-        margin: 0 !important;
-        height: fit-content;
-    }
+    /* col-md-6 is Jazzmin's two-column card split — let Bootstrap handle it at >=900px.
+       At <900px we override it back to full width (see @media block below). */
 
     /* Sidebar Container - positioned in grid, not fixed */
     .collapsible-nav {
@@ -428,8 +411,11 @@
         #recent-actions-sidebar {
             display: none !important;
         }
-        #content-main {
-            grid-template-columns: 1fr !important;
+        /* At narrow widths collapse Jazzmin's 2-col cards to single column */
+        .dose-content-col .col-md-6 {
+            width: 100% !important;
+            max-width: 100% !important;
+            flex: 0 0 100% !important;
         }
     }
 </style>
