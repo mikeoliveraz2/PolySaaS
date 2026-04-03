@@ -184,10 +184,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         if needs_new_user and User.objects.filter(username=username).exists():
             return Response({
                 'error': (
-                    f'The username "{username}" is already taken in this system (not a login session issue). '
-                    'Pick a different admin username for this new tenant, or sign in with that account. '
-                    'Subscribe always creates a brand-new admin user for the new tenant.'
+                    f'The username "{username}" is already taken. '
+                    'If you already subscribed, sign in instead. '
+                    'Otherwise pick a different admin username for this new tenant.'
                 ),
+                'login_url': '/accounts/login/',
             }, status=status.HTTP_400_BAD_REQUEST)
 
         slug = schema_name = None

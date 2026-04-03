@@ -433,14 +433,15 @@ function showSubscribeFeedback(message, options) {
     var cardErr = document.getElementById('card-errors');
     var c = isError ? '#c62828' : '#2e7d32';
     var shown = false;
+    var useHtml = options.html || false;
     if (statusEl) {
-        statusEl.textContent = message || '';
+        if (useHtml) { statusEl.innerHTML = message || ''; } else { statusEl.textContent = message || ''; }
         statusEl.style.color = message ? c : '';
         statusEl.style.fontWeight = message ? '600' : '';
         if (message) shown = true;
     }
     if (cardErr) {
-        cardErr.textContent = message || '';
+        if (useHtml) { cardErr.innerHTML = message || ''; } else { cardErr.textContent = message || ''; }
         cardErr.style.color = message ? c : '';
         if (message) shown = true;
     }
@@ -728,7 +729,10 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
             var errMsg = data ? payloadErrorMessage(data) : null;
             if (!errMsg && rawText) errMsg = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700);
             if (!errMsg) errMsg = 'Request failed (HTTP ' + response.status + ').';
-            showSubscribeFeedback(errMsg, { isError: true });
+            if (data && data.login_url) {
+                errMsg += ' <a href="' + data.login_url + '" style="color:#1976d2;font-weight:600;text-decoration:underline;">Sign in here</a>';
+            }
+            showSubscribeFeedback(errMsg, { isError: true, html: !!(data && data.login_url) });
             resetSubscribeButton(); if (card) card.clear(); return;
         }
         var apiErr = data ? payloadErrorMessage(data) : null;
