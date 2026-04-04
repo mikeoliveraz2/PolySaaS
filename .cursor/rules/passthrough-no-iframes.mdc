@@ -1,0 +1,32 @@
+---
+description: No iframes for passthrough unless the external app uses them or there is no other way
+alwaysApply: true
+---
+
+# Passthrough iframe Policy
+
+## The Rule
+
+**Do NOT use iframes for passthrough by default.**
+
+Iframes introduce more problems than they solve: broken SSO, X-Frame-Options rejections, scrolling issues, responsive breakage, and context loss.
+
+## When iframes ARE allowed
+
+1. **The external application itself uses iframes in its own UI** — match what the app expects
+2. **There is genuinely no other way** — only after exhausting proper proxy/rewrite approaches
+
+## The Right Approach for SPAs (Mattermost, Odoo, Nextcloud, etc.)
+
+SPAs reference assets as absolute paths (e.g. `/static/main.js`). When proxied raw, the browser resolves those against the PolySaaS host and 404s.
+
+The correct fix is **PolySniffer first** — sniff the application's request/response patterns, then build proper URL rewriting and/or mapping instructions so the passthrough serves assets and API calls correctly.
+
+## Workflow
+
+1. Run PolySniffer on the endpoint to capture traffic patterns
+2. Identify static asset paths, API base URLs, auth headers
+3. Build mappings/instructions to rewrite URLs in the proxy response
+4. Only fall back to iframe if rewriting is proven impossible
+
+## Never suggest iframes as the easy default for SPAs.

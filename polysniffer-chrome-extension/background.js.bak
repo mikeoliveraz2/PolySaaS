@@ -1,8 +1,6 @@
 let djangoUrl = '';
 let endpointId = null;
 let endpointUrl = '';
-/** Live Capture tab: MV3 worker fetch often omits session cookies; relay POSTs through this tab. */
-let pollerTabId = null;
 
 chrome.storage.local.get(['djangoUrl', 'endpointId', 'endpointUrl'], (data) => {
   if (data.djangoUrl) djangoUrl = data.djangoUrl;
@@ -16,42 +14,14 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.endpointUrl) endpointUrl = changes.endpointUrl.newValue || '';
 });
 
-function effectivePort(u) {
-  if (u.port) return u.port;
-  return u.protocol === 'https:' ? '443' : '80';
-}
-
-function loopbackHost(h) {
-  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
-}
-
-function hostsMatch(h1, h2) {
-  if (loopbackHost(h1) && loopbackHost(h2)) return true;
-  return h1 === h2;
-}
-
-/** Same browser session may use http://localhost:8000 vs http://127.0.0.1:8000 */
-function isDjangoSelf(urlStr) {
-  if (!djangoUrl || !urlStr) return false;
-  if (urlStr.includes('/admin/polysniffer/')) return true;
-  try {
-    const d = new URL(djangoUrl);
-    const u = new URL(urlStr);
-    if (!hostsMatch(u.hostname, d.hostname)) return false;
-    return effectivePort(u) === effectivePort(d);
-  } catch {
-    return urlStr.startsWith(djangoUrl);
-  }
-}
-
 function shouldCapture(url) {
   if (!djangoUrl || !endpointId || !endpointUrl) return false;
-  if (isDjangoSelf(url)) return false;
+  if (url.includes('/admin/polysniffer/')) return false;
+  if (url.startsWith(djangoUrl)) return false;
   try {
     const target = new URL(endpointUrl);
     const req = new URL(url);
-    if (!hostsMatch(req.hostname, target.hostname)) return false;
-    return effectivePort(req) === effectivePort(target);
+    return req.hostname === target.hostname && req.port === target.port;
   } catch {
     return false;
   }
@@ -205,17 +175,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     djangoUrl = msg.djangoUrl;
     endpointId = msg.endpointId;
     endpointUrl = msg.endpointUrl;
-    if (sender.tab && sender.tab.id != null) {
-      pollerTabId = sender.tab.id;
-    }
     chrome.storage.local.set({ djangoUrl, endpointId, endpointUrl });
-    console.log(`[PolySniffer] Auto-configured: endpoint=${endpointId}, target=${endpointUrl}, pollerTab=${pollerTabId}`);
-    sendResponse({ ok: true });
-    return true;
-  }
-
-  if (msg.action === 'registerPollerTab' && sender.tab && sender.tab.id != null) {
-    pollerTabId = sender.tab.id;
+    console.log(`[PolySniffer] Auto-configured: endpoint=${endpointId}, url=${endpointUrl}`);
     sendResponse({ ok: true });
     return true;
   }

@@ -13,7 +13,6 @@ if (configEl) {
     }, (resp) => {
       if (resp && resp.ok) {
         window.postMessage({ type: 'polysniffer-ext-ready' }, '*');
-        chrome.runtime.sendMessage({ action: 'registerPollerTab' });
       }
     });
   }
@@ -25,24 +24,6 @@ let originalXHROpen = null;
 let originalXHRSend = null;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === 'postSilentCapture') {
-    fetch(msg.url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: msg.body
-    })
-      .then((r) => {
-        if (!r.ok) {
-          sendResponse({ ok: false, status: r.status });
-          return;
-        }
-        sendResponse({ ok: true });
-      })
-      .catch(() => sendResponse({ ok: false }));
-    return true;
-  }
-
   if (msg.action === 'startCapture') {
     isCapturing = true;
     capturePageState();
