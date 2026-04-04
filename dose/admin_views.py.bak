@@ -609,16 +609,53 @@ def mattermost_view(request):
     })
 
 
+def _split_html_document_for_jazzmin_embed(html: str):
+    """
+    Split a full HTML document into head/body inner HTML for admin/base_site.html.
+    Drops upstream <title> so the admin page title block stays authoritative.
+    """
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    head_inner = ""
+    if soup.head:
+        for t in soup.head.find_all("title"):
+            t.decompose()
+        head_inner = soup.head.decode_contents()
+    body_inner = soup.body.decode_contents() if soup.body else (html or "")
+    return head_inner, body_inner
+
+
+def _process_upstream_html_for_embed(handler, raw_html: str, request, endpoint_url: str):
+    """Same pipeline as passthrough forwarding HTML path; returns a single HTML string."""
+    from django.http import HttpResponse
+
+    processed = raw_html
+    if handler and hasattr(handler, "process_html_response"):
+        out = handler.process_html_response(raw_html, request, endpoint_url=endpoint_url)
+        if isinstance(out, HttpResponse):
+            return raw_html
+        if isinstance(out, tuple):
+            processed = out[0] if out[0] else raw_html
+        else:
+            processed = out if out is not None else raw_html
+    return processed or raw_html
+
+
 @never_cache
 @login_required
 def passthrough_embed_view(request, trigger):
     """
-    Full GET like any admin CRUD page: renders admin/base_site.html with passthrough in {% block content %}.
-    Upstream HTML is fetched once; handlers may inject a fragment (e.g. header) into the content column.
-    Sub-resources still load from /pt/admin/{trigger}/... (iframe src). Normal link navigation — not XHR.
+    Renders admin/base_site.html with the passthrough app in {% block content %} only (no iframe).
+
+    Upstream index HTML is fetched once, run through the same handler as /pt/... (rewrites + shims),
+    then split so <head> fragments go to {% block extrahead %} and <body> inner HTML into the
+    content column. Static assets may still load from the bundled app host; GET/POST API traffic
+    uses the passthrough prefix via the injected client shim and middleware.
     """
     import logging
 
+    from django.utils.html import escape
     from django.utils.safestring import mark_safe
 
     from dose.models import PassThroughEndpoint, TenantApp
@@ -677,20 +714,25 @@ def passthrough_embed_view(request, trigger):
     if endpoint:
         handler = get_handler_for_endpoint(endpoint, request)
         raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/")
-        if raw_html and handler and hasattr(handler, "build_admin_embed_injection"):
-            inj = handler.build_admin_embed_injection(
-                raw_html, request, endpoint_url=endpoint.endpoint_url
+        if raw_html:
+            processed = _process_upstream_html_for_embed(
+                handler, raw_html, request, endpoint.endpoint_url
             )
-            embed_head = mark_safe(inj.get("head") or "")
-            embed_body = mark_safe(inj.get("body") or "")
+            head_html, body_html = _split_html_document_for_jazzmin_embed(processed)
+            embed_head = mark_safe(head_html or "")
+            embed_body = mark_safe(
+                '<div class="polysaas-passthrough-scope" '
+                f'data-polysaas-embed-trigger="{escape(norm)}">'
+                f"{body_html or ''}</div>"
+            )
             print(
-                f"[PSS_SHELL] passthrough_embed injection trigger={norm!r} "
-                f"head_chars={len(inj.get('head') or '')} body_chars={len(inj.get('body') or '')}"
+                f"[PSS_SHELL] passthrough_embed full_document trigger={norm!r} "
+                f"head_chars={len(head_html or '')} body_chars={len(body_html or '')}"
             )
-        elif not raw_html:
+        else:
             embed_body = mark_safe(
                 '<div class="alert alert-warning" style="margin-bottom:12px;">'
-                "Could not load upstream HTML for inline chrome (check endpoint URL and network).</div>"
+                "Could not load upstream HTML (check endpoint URL and network).</div>"
             )
 
     return render(

@@ -1,9 +1,12 @@
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
 
-{# Passthrough app: full upstream document split into extrahead + content column. No iframe. #}
-{# Upstream CSS loads globally; shield block below reduces bleed into PolySaaS chrome. #}
-{# Optional future: scoped CSS / local asset mirror for heavy non-bundled endpoints. #}
+{% comment %}
+Passthrough: full upstream document in extrahead + content column (no iframe).
+Upstream CSS is global; shield styles protect PolySaaS chrome where possible.
+{% endcomment %}
+
+{% block bodyclass %}polysaas-passthrough-embed-page{% endblock %}
 
 {% block extrahead %}
 {{ block.super }}
@@ -14,13 +17,37 @@
  * shadow DOM or server-side prefixing. These rules re-stabilize our grid sidebar and
  * top bar after upstream Bootstrap/app CSS loads.
  */
+/* Jazzmin wraps the main content template block in .row > .col-*; use full width. */
+body.polysaas-passthrough-embed-page .content .container-fluid {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: none !important;
+}
+body.polysaas-passthrough-embed-page .content .row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
+    padding-left: 0;
+    padding-right: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
 .polysaas-passthrough-scope {
     isolation: isolate;
     contain: content;
-    min-height: calc(100vh - 220px);
+    min-height: calc(100vh - var(--pss-header-h, 40px) - 120px);
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+}
+.polysaas-passthrough-scope #root,
+.polysaas-passthrough-scope [id='root'],
+.polysaas-passthrough-scope #app,
+.polysaas-passthrough-scope [id='app'] {
+    min-height: inherit;
+    width: 100%;
 }
 /* PolySaaS left nav (grid column 1) — match custom_sidebar.html */
 .admin-content-grid > .collapsible-nav {
@@ -59,7 +86,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="polysaas-passthrough-embed-wrap polysaas-passthrough-embed-page" style="width:100%;">
+<div class="col-12 polysaas-passthrough-embed-col polysaas-passthrough-embed-wrap">
     {% if embed_body %}
     {{ embed_body }}
     {% endif %}
@@ -72,9 +99,4 @@
 
 {% block extrajs %}
 {{ block.super }}
-<script>
-(function () {
-  document.body.classList.add('polysaas-passthrough-embed-page');
-})();
-</script>
 {% endblock %}
