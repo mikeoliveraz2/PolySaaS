@@ -613,16 +613,53 @@ def _split_html_document_for_jazzmin_embed(html: str):
     """
     Split a full HTML document into head/body inner HTML for admin/base_site.html.
     Drops upstream <title> so the admin page title block stays authoritative.
-    """
-    from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html or "", "html.parser")
-    head_inner = ""
-    if soup.head:
-        for t in soup.head.find_all("title"):
-            t.decompose()
-        head_inner = soup.head.decode_contents()
-    body_inner = soup.body.decode_contents() if soup.body else (html or "")
+    Uses string boundaries only (no BeautifulSoup). BS4/html5lib can rewrite or
+    break huge Mattermost shells (script order, attribute casing, stray tags).
+    """
+    import re
+
+    raw = html or ""
+    if not raw.strip():
+        return "", ""
+
+    lower = raw.lower()
+    hi = lower.find("<head")
+    if hi == -1:
+        return "", raw
+
+    open_gt = raw.find(">", hi)
+    if open_gt == -1:
+        return "", raw
+    start_head_inner = open_gt + 1
+
+    he = lower.find("</head>", start_head_inner)
+    if he == -1:
+        return "", raw
+
+    head_inner = raw[start_head_inner:he]
+    head_inner = re.sub(
+        r"<title\b[^>]*>.*?</title>",
+        "",
+        head_inner,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    bi = lower.find("<body", he)
+    if bi == -1:
+        return head_inner, ""
+
+    body_open_gt = raw.find(">", bi)
+    if body_open_gt == -1:
+        return head_inner, ""
+
+    start_body_inner = body_open_gt + 1
+    bcl = lower.rfind("</body>")
+    if bcl == -1 or bcl < start_body_inner:
+        body_inner = raw[start_body_inner:]
+    else:
+        body_inner = raw[start_body_inner:bcl]
+
     return head_inner, body_inner
 
 

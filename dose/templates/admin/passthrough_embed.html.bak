@@ -27,27 +27,68 @@ body.polysaas-passthrough-embed-page .content .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
 }
+/* Flex column so % / min-height:0 heights resolve inside the grid cell (not viewport). */
+body.polysaas-passthrough-embed-page .admin-content-grid > .dose-content-col {
+    min-height: calc(100vh - var(--pss-header-h, 40px) - 48px);
+}
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding-left: 0;
     padding-right: 0;
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    align-self: stretch;
+}
+/*
+ * Clip + transform: containing block for Mattermost position:fixed / 100vh loading UI.
+ * Without min-height:0 on flex children, inner height:100% never resolves.
+ */
+body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    transform: translateZ(0);
+    clip-path: inset(0);
+    -webkit-clip-path: inset(0);
+    max-height: calc(100vh - var(--pss-header-h, 40px) - 120px);
+    overflow: hidden;
 }
 .polysaas-passthrough-scope {
     isolation: isolate;
-    contain: content;
-    min-height: calc(100vh - var(--pss-header-h, 40px) - 120px);
+    transform: translateZ(0);
+    position: relative;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: auto;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
 }
-.polysaas-passthrough-scope #root,
-.polysaas-passthrough-scope [id='root'],
-.polysaas-passthrough-scope #app,
-.polysaas-passthrough-scope [id='app'] {
-    min-height: inherit;
-    width: 100%;
+/* Override Mattermost 100vh on #root — use column height only */
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope #root,
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [id='root'],
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope #app,
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [id='app'] {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    width: 100% !important;
+}
+/* Initial loading screen (BEM + legacy class names) — pin to scope, not viewport */
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope .LoadingScreen,
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [class*="LoadingScreen"],
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [class*="loading-screen"],
+body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [class*="InitialLoading"] {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
 }
 /* PolySaaS left nav (grid column 1) — match custom_sidebar.html */
 .admin-content-grid > .collapsible-nav {

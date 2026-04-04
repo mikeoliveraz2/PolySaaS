@@ -2,22 +2,17 @@
 {% load i18n static %}
 
 {% comment %}
-Passthrough: full upstream document in extrahead + content column (no iframe).
-Upstream CSS is global; shield styles protect PolySaaS chrome where possible.
+Passthrough: full upstream document rendered inside the content column only.
+ALL upstream HTML (head styles + body) goes in the scope div — nothing in extrahead.
+This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {% endcomment %}
 
 {% block bodyclass %}polysaas-passthrough-embed-page{% endblock %}
 
 {% block extrahead %}
 {{ block.super }}
-{{ embed_head }}
 <style id="polysaas-passthrough-embed-shield">
-/*
- * Global <link> stylesheets from the bundled app cannot be subtree-scoped without
- * shadow DOM or server-side prefixing. These rules re-stabilize our grid sidebar and
- * top bar after upstream Bootstrap/app CSS loads.
- */
-/* Jazzmin wraps the main content template block in .row > .col-*; use full width. */
+/* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
 body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -28,49 +23,25 @@ body.polysaas-passthrough-embed-page .content .row {
     margin-right: 0 !important;
 }
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
-    padding-left: 0;
-    padding-right: 0;
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 100%;
+    padding: 0 !important;
 }
+/* The scope div is the viewport for the embedded app */
 .polysaas-passthrough-scope {
-    isolation: isolate;
-    min-height: calc(100vh - var(--pss-header-h, 40px) - 120px);
+    position: relative;
     width: 100%;
-    max-width: 100%;
+    height: calc(100vh - var(--pss-header-h, 40px) - 90px);
+    overflow: auto;
     box-sizing: border-box;
 }
-.polysaas-passthrough-scope #root,
-.polysaas-passthrough-scope [id='root'],
-.polysaas-passthrough-scope #app,
-.polysaas-passthrough-scope [id='app'] {
-    min-height: inherit;
-    width: 100%;
-}
-/* PolySaaS left nav (grid column 1) — match custom_sidebar.html */
+/* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
-    background-color: #1e293b !important;
-    box-shadow: 2px 0 12px rgba(15, 23, 42, 0.12) !important;
+    z-index: 1040 !important;
+    position: sticky !important;
 }
-.admin-content-grid > .collapsible-nav .nav-header {
-    background-color: #34495e !important;
-    color: #fff !important;
-    border-bottom-color: #2c3e50 !important;
-}
-.admin-content-grid > .collapsible-nav a,
-.admin-content-grid > .collapsible-nav .nav-link {
-    color: #c0c0c0 !important;
-}
-.admin-content-grid > .collapsible-nav a:hover,
-.admin-content-grid > .collapsible-nav .nav-link:hover {
-    background-color: rgba(255, 255, 255, 0.15) !important;
-    color: #ffffff !important;
-}
-/* Jazzmin / AdminLTE top navbar */
-#jazzy-navbar {
-    position: relative !important;
-    z-index: 1030 !important;
+/* Jazzmin top navbar */
+#jazzy-navbar,
+.app-header {
+    z-index: 1050 !important;
 }
 </style>
 {% endblock %}

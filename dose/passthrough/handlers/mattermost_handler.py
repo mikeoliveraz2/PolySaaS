@@ -104,6 +104,25 @@ class MattermostPassthroughHandler:
         path = (urlparse(endpoint_url.rstrip("/")).path or "").rstrip("/")
         return path if path and path != "/" else ""
 
+    def _path_tail_after_site_prefix(self, path: str, site_prefix: str) -> str:
+        """'/mattermost/api/v1' + site '/mattermost' -> '/api/v1'; site root -> '/'."""
+        sp = (site_prefix or "").rstrip("/")
+        p = path or "/"
+        if not p.startswith("/"):
+            p = "/" + p
+        if not sp:
+            return p
+        pl = p.rstrip("/")
+        sl = sp.rstrip("/")
+        if pl == sl:
+            return "/"
+        if pl == "":
+            return "/"
+        if p.startswith(sp + "/"):
+            rest = p[len(sp) :]
+            return rest if rest.startswith("/") else "/" + rest
+        return p
+
     def _strip_base_tags(self, html: str) -> str:
         """
         Mattermost ships <base href="…/mattermost/">. In the Jazzmin embed that tag lives in our
@@ -166,12 +185,6 @@ var P = {prefix_json};
 var B = {base_json};
 var M = {mm_json};
 var O = window.location.origin;
-/* Embed URL is /admin/passthrough-embed/... but MM config expects /pt/.../ — fix pathname before app boot. */
-try {{
-  if (P && location.pathname.indexOf('/admin/passthrough-embed/') === 0) {{
-    history.replaceState(null, '', P + '/' + (location.search || '') + (location.hash || ''));
-  }}
-}} catch (e1) {{}}
 function stripMmSubpath(s) {{
   if (!M) return s;
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
@@ -258,16 +271,16 @@ window.WebSocket = function(url, protocols) {{
         upstream_path: str = "/",
     ):
         """
-        Patch JSON from /api/v4/config/client so SiteURL and websocket URLs point at this
-        passthrough prefix; otherwise the SPA keeps calling the raw upstream host.
+        Patch JSON from /api/v4/config/client so URLs (including nested strings) use this
+        passthrough host; otherwise the SPA hangs on loading (wrong API/WebSocket endpoints).
         """
         if not endpoint_url:
             return None
         ct = (content_type or "").split(";")[0].strip().lower()
         if ct != "application/json":
             return None
-        path_only = (upstream_path or "").split("?")[0]
-        if not path_only.startswith("/api/v4/config/client"):
+        path_pop = (upstream_path or "").split("?")[0]
+        if "/api/v4/config/client" not in path_pop:
             return None
         try:
             text = body.decode("utf-8")
@@ -280,44 +293,73 @@ window.WebSocket = function(url, protocols) {{
 
         prefix = self._passthrough_prefix(request)
         public_root = request.build_absolute_uri(prefix).split("?")[0].rstrip("/")
+        site_prefix = self._site_path_prefix(endpoint_url)
 
         ep = urlparse(endpoint_url.rstrip("/"))
         ws_scheme = "wss" if request.is_secure() else "ws"
-        ws_public = f"{ws_scheme}://{request.get_host()}{prefix}/api/v4/websocket"
-
-        def _same_upstream_host(url_str):
-            if not url_str or not isinstance(url_str, str):
-                return False
-            try:
-                p = urlparse(url_str)
-                return p.netloc == ep.netloc
-            except Exception:
-                return False
 
         changed = False
         site_before = data.get("SiteURL")
-        site = site_before
-        if site and _same_upstream_host(site):
-            data["SiteURL"] = public_root
-            changed = True
 
-        for key in ("WebsocketURL", "WebsocketUrl", "WebsocketSecureURL"):
-            val = data.get(key)
-            if val and isinstance(val, str) and _same_upstream_host(val):
-                data[key] = ws_public
-                changed = True
+        def rewrite_url_string(url_str: str):
+            if not url_str or not isinstance(url_str, str):
+                return None
+            try:
+                pu = urlparse(url_str)
+            except Exception:
+                return None
+            if pu.scheme not in ("http", "https", "ws", "wss"):
+                return None
+            if pu.netloc != ep.netloc:
+                return None
+            path = pu.path or "/"
+            tail = self._path_tail_after_site_prefix(path, site_prefix)
+            qs = ("?" + pu.query) if pu.query else ""
+            frag = ("#" + pu.fragment) if pu.fragment else ""
+            if tail.startswith("/api"):
+                if pu.scheme in ("ws", "wss") or "websocket" in tail:
+                    return f"{ws_scheme}://{request.get_host()}{prefix}{tail}{qs}{frag}"
+                rel = f"{prefix}{tail}{qs}"
+                out = request.build_absolute_uri(rel)
+                return out + frag if frag else out
+            if tail == "/":
+                return public_root + qs + frag
+            return None
+
+        def walk(obj):
+            nonlocal changed
+            if isinstance(obj, dict):
+                for k, v in list(obj.items()):
+                    if isinstance(v, str):
+                        nv = rewrite_url_string(v)
+                        if nv is not None and nv != v:
+                            obj[k] = nv
+                            changed = True
+                    else:
+                        walk(v)
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    if isinstance(item, str):
+                        nv = rewrite_url_string(item)
+                        if nv is not None and nv != item:
+                            obj[i] = nv
+                            changed = True
+                    else:
+                        walk(item)
+
+        walk(data)
 
         if site_before and not changed:
             print(
-                f"[MATTERMOST HANDLER] config/client SiteURL not patched "
-                f"(endpoint host {ep.netloc!r} vs response {site_before!r}) — check PassThrough URL vs Mattermost Site URL"
+                f"[MATTERMOST HANDLER] config/client — no URL fields patched "
+                f"(endpoint host {ep.netloc!r} vs SiteURL {site_before!r}) — check PassThrough endpoint_url host/path vs Mattermost"
             )
 
         if not changed:
             return None
 
         out = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-        msg = f"[MATTERMOST HANDLER] Patched config/client SiteURL {site_before!r} -> {public_root!r} prefix={prefix!r}"
+        msg = f"[MATTERMOST HANDLER] Patched config/client (recursive URLs) prefix={prefix!r} public_root={public_root!r}"
         print(msg)
         logger.info(msg)
         return out.encode("utf-8")
