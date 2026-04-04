@@ -755,16 +755,15 @@ def passthrough_embed_view(request, trigger):
             processed = _process_upstream_html_for_embed(
                 handler, raw_html, request, endpoint.endpoint_url
             )
-            head_html, body_html = _split_html_document_for_jazzmin_embed(processed)
-            embed_head = mark_safe(head_html or "")
+            _head, body_html = _split_html_document_for_jazzmin_embed(processed)
             embed_body = mark_safe(
                 '<div class="polysaas-passthrough-scope" '
                 f'data-polysaas-embed-trigger="{escape(norm)}">'
-                f"{body_html or ''}</div>"
+                f"{_head or ''}{body_html or ''}</div>"
             )
             print(
                 f"[PSS_SHELL] passthrough_embed full_document trigger={norm!r} "
-                f"head_chars={len(head_html or '')} body_chars={len(body_html or '')}"
+                f"head_chars={len(_head or '')} body_chars={len(body_html or '')}"
             )
         else:
             embed_body = mark_safe(

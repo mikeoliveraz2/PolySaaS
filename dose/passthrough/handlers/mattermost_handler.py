@@ -195,6 +195,10 @@ var P = {prefix_json};
 var B = {base_json};
 var M = {mm_json};
 var O = window.location.origin;
+// Save the real embed path for refresh handling, then make MM think we're at "/"
+// so its router doesn't hard-redirect to an unknown route.
+var REAL_EMBED_PATH = window.location.pathname;
+try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
 function stripMmSubpath(s) {{
   if (!M) return s;
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
@@ -288,17 +292,20 @@ Element.prototype.setAttribute = function(name, value) {{
   return _setAttr.call(this, name, value);
 }};
 // === Navigation lock: keep the SPA inside the embed page ===
-// MM's react-router will try pushState/replaceState to /login, /channels/*, etc.
-// Pin the URL bar to the embed page so Django routing isn't disturbed.
-var EMBED_PATH = window.location.pathname;
+// We already set the URL to "/" so MM's router recognises it.
+// Pin pushState/replaceState so MM can't change the URL away.
 var _pushState = history.pushState;
 var _replaceState = history.replaceState;
 history.pushState = function(state, title, url) {{
-  return _pushState.call(this, state, title, EMBED_PATH);
+  return _pushState.call(this, state, title, '/');
 }};
 history.replaceState = function(state, title, url) {{
-  return _replaceState.call(this, state, title, EMBED_PATH);
+  return _replaceState.call(this, state, title, '/');
 }};
+// On unload, restore the real embed URL so browser refresh hits Django correctly
+window.addEventListener('beforeunload', function() {{
+  try {{ _replaceState.call(history, null, '', REAL_EMBED_PATH); }} catch(e) {{}}
+}});
 // Catch hard redirects (location.replace / location.assign)
 var _locReplace = Location.prototype.replace;
 Location.prototype.replace = function(url) {{

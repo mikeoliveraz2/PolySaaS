@@ -771,7 +771,7 @@ def passthrough_embed_view(request, trigger):
                 "Could not load upstream HTML (check endpoint URL and network).</div>"
             )
 
-    return render(
+    response = render(
         request,
         "admin/passthrough_embed.html",
         {
@@ -781,3 +781,7 @@ def passthrough_embed_view(request, trigger):
             "embed_body": embed_body,
         },
     )
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
