@@ -31,6 +31,7 @@ class MattermostPassthroughHandler:
 
         html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix)
         html_str = self._strip_base_tags(html_str)
+        html_str = self._strip_meta_redirects(html_str)
         html_str = self._inject_client_shim(
             html_str, passthrough_prefix, base_origin, site_path_prefix
         )
@@ -131,6 +132,15 @@ class MattermostPassthroughHandler:
         if not html:
             return html
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
+
+    def _strip_meta_redirects(self, html: str) -> str:
+        """Remove <meta http-equiv="refresh"> tags that would navigate the embed away."""
+        if not html:
+            return html
+        return re.sub(
+            r'<meta\s+http-equiv\s*=\s*["\']refresh["\'][^>]*>',
+            "", html, flags=re.IGNORECASE,
+        )
 
     def _rewrite_asset_tags(self, html, base_origin, site_path_prefix=""):
         """Load CSS/JS/fonts from Mattermost origin so large bundles skip Django."""
@@ -306,6 +316,28 @@ Location.prototype.assign = function(url) {{
   }}
   return _locAssign.call(this, url);
 }};
+// Intercept location.href setter (catches `window.location.href = '/login'`)
+try {{
+  var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+  if (hrefDesc && hrefDesc.set) {{
+    Object.defineProperty(Location.prototype, 'href', {{
+      get: hrefDesc.get,
+      set: function(v) {{
+        if (typeof v === 'string' && v.charAt(0) === '/' && !v.startsWith('/admin/')) {{
+          console.log('[PolySaaS] blocked location.href =', v);
+          return;
+        }}
+        if (typeof v === 'string' && v.startsWith(O) && !v.startsWith(O + '/admin/')) {{
+          console.log('[PolySaaS] blocked location.href =', v);
+          return;
+        }}
+        hrefDesc.set.call(this, v);
+      }},
+      configurable: true,
+      enumerable: true
+    }});
+  }}
+}} catch(e) {{ console.warn('[PolySaaS] could not override location.href:', e); }}
 }})();
 </script>
 """
