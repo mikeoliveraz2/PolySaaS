@@ -250,6 +250,33 @@ window.WebSocket = function(url, protocols) {{
   }}
   return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
 }};
+// Intercept dynamically created script/link/img elements (webpack chunk loading).
+// HTML-parser-created elements do NOT go through JS property setters, so this
+// only affects programmatic assignments like `script.src = "/static/chunk.js"`.
+function patchProp(proto, prop) {{
+  var d = Object.getOwnPropertyDescriptor(proto, prop);
+  if (!d || !d.set) return;
+  Object.defineProperty(proto, prop, {{
+    get: d.get,
+    set: function(v) {{ d.set.call(this, absUrl(v)); }},
+    configurable: true, enumerable: true
+  }});
+}}
+patchProp(HTMLScriptElement.prototype, 'src');
+patchProp(HTMLLinkElement.prototype, 'href');
+patchProp(HTMLImageElement.prototype, 'src');
+// Also catch setAttribute('src', ...) / setAttribute('href', ...) calls
+var _setAttr = Element.prototype.setAttribute;
+Element.prototype.setAttribute = function(name, value) {{
+  if (typeof value === 'string') {{
+    var ln = name.toLowerCase();
+    if ((ln === 'src' || ln === 'href') &&
+        (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
+      value = absUrl(value);
+    }}
+  }}
+  return _setAttr.call(this, name, value);
+}};
 }})();
 </script>
 """

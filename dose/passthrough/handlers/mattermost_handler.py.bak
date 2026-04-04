@@ -185,12 +185,6 @@ var P = {prefix_json};
 var B = {base_json};
 var M = {mm_json};
 var O = window.location.origin;
-/* Embed URL is /admin/passthrough-embed/... but MM config expects /pt/.../ — fix pathname before app boot. */
-try {{
-  if (P && location.pathname.indexOf('/admin/passthrough-embed/') === 0) {{
-    history.replaceState(null, '', P + '/' + (location.search || '') + (location.hash || ''));
-  }}
-}} catch (e1) {{}}
 function stripMmSubpath(s) {{
   if (!M) return s;
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
