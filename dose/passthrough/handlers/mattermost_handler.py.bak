@@ -28,19 +28,22 @@ class MattermostPassthroughHandler:
 
         passthrough_prefix = self._passthrough_prefix(request)
 
-        # First slice: global header only — /pt/.../mattermost/?pss_slice=header (no shim, fast to eyeball).
-        if getattr(request, "GET", None) and request.GET.get("pss_slice") == "header":
-            out = self._html_header_slice_only(html_str, base_origin)
-            print("[MATTERMOST HANDLER] pss_slice=header — returning banner + styles only")
-            return out, None
-
         html_str = self._rewrite_asset_tags(html_str, base_origin)
         html_str = self._inject_client_shim(html_str, passthrough_prefix, base_origin)
 
         return html_str, None
 
-    def _html_header_slice_only(self, html_str, base_origin):
-        """Extract top app chrome if present in static HTML; include stylesheet links from head."""
+    def build_admin_embed_injection(self, html_str, request, endpoint_url=None):
+        """
+        Fragments for admin/passthrough_embed.html: upstream banner + head styles only.
+        Injected into the existing Jazzmin layout (not a separate document).
+        """
+        if not endpoint_url or not html_str:
+            return {"head": "", "body": ""}
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(html_str, "html.parser")
@@ -51,7 +54,7 @@ class MattermostPassthroughHandler:
             or soup.select_one("[class*='global-header']")
         )
 
-        head_chunks = ['<meta charset="utf-8">']
+        head_chunks = []
         head = soup.head
         if head:
             for link in head.find_all("link", href=True):
@@ -69,25 +72,19 @@ class MattermostPassthroughHandler:
         head_html = self._rewrite_asset_tags(head_html, base_origin)
 
         if not banner:
-            tip = (
-                "<p><strong>No static header node</strong> in this HTML — Mattermost often paints "
-                "the top bar in React after the app boots.</p>"
-                "<p>Drop <code>?pss_slice=header</code> for the full shell, or keep iterating on "
-                "<code>/api/v4/config/client</code> + assets until the bar appears.</p>"
+            body = (
+                '<div class="alert alert-info" style="margin-bottom:12px;">'
+                "No static &lt;header&gt; in this HTML yet — Mattermost usually mounts the top bar "
+                "in React. Styles from the shell are still injected; full app below.</div>"
             )
-            return (
-                f"<!DOCTYPE html><html><head>{head_html}<title>Mattermost header slice</title></head>"
-                "<body style='margin:0;font-family:system-ui;padding:1rem;background:#1f1f1f;color:#eee;'>"
-                f"{tip}</body></html>"
-            )
+        else:
+            body = self._rewrite_asset_tags(str(banner), base_origin)
 
-        frag = self._rewrite_asset_tags(str(banner), base_origin)
-        return (
-            f"<!DOCTYPE html><html><head>{head_html}"
-            f'<base href="{base_origin}/">'
-            "<title>Mattermost — header slice</title></head>"
-            f"<body style='margin:0;'>{frag}</body></html>"
+        print(
+            f"[MATTERMOST HANDLER] build_admin_embed_injection banner_found={bool(banner)} "
+            f"head_len={len(head_html)} body_len={len(body)}"
         )
+        return {"head": head_html, "body": body}
 
     def _passthrough_prefix(self, request):
         path = getattr(request, "path_info", "") or ""

@@ -27,9 +27,12 @@ class MattermostPassthroughHandler:
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
 
         passthrough_prefix = self._passthrough_prefix(request)
+        site_path_prefix = self._site_path_prefix(endpoint_url)
 
-        html_str = self._rewrite_asset_tags(html_str, base_origin)
-        html_str = self._inject_client_shim(html_str, passthrough_prefix, base_origin)
+        html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix)
+        html_str = self._inject_client_shim(
+            html_str, passthrough_prefix, base_origin, site_path_prefix
+        )
 
         return html_str, None
 
@@ -69,7 +72,7 @@ class MattermostPassthroughHandler:
                     head_chunks.append(str(meta))
 
         head_html = "\n".join(head_chunks)
-        head_html = self._rewrite_asset_tags(head_html, base_origin)
+        head_html = self._rewrite_asset_tags(head_html, base_origin, site_path_prefix)
 
         if not banner:
             body = (
@@ -78,7 +81,7 @@ class MattermostPassthroughHandler:
                 "in React. Styles from the shell are still injected; full app below.</div>"
             )
         else:
-            body = self._rewrite_asset_tags(str(banner), base_origin)
+            body = self._rewrite_asset_tags(str(banner), base_origin, site_path_prefix)
 
         print(
             f"[MATTERMOST HANDLER] build_admin_embed_injection banner_found={bool(banner)} "
@@ -93,8 +96,30 @@ class MattermostPassthroughHandler:
             return m.group(1).rstrip("/")
         return "/pt/admin/mattermost"
 
-    def _rewrite_asset_tags(self, html, base_origin):
+    def _site_path_prefix(self, endpoint_url):
+        """e.g. https://host/mattermost -> '/mattermost'; root install -> ''."""
+        if not endpoint_url:
+            return ""
+        path = (urlparse(endpoint_url.rstrip("/")).path or "").rstrip("/")
+        return path if path and path != "/" else ""
+
+    def _rewrite_asset_tags(self, html, base_origin, site_path_prefix=""):
         """Load CSS/JS/fonts from Mattermost origin so large bundles skip Django."""
+
+        pref = (site_path_prefix or "").rstrip("/")
+
+        def mm_install_tail(url_path):
+            """Strip Mattermost subpath so /mattermost/static matches /static rules."""
+            if not pref:
+                return url_path.split("?")[0].lower()
+            uq = url_path.split("?")[0]
+            if uq == pref or uq.lower() == pref.lower():
+                return "/"
+            low = uq.lower()
+            pl = pref.lower()
+            if low.startswith(pl + "/"):
+                return uq[len(pref) :].split("?")[0].lower()
+            return low
 
         def rewrite_attr(match):
             attr = match.group(1)
@@ -106,7 +131,7 @@ class MattermostPassthroughHandler:
                 return match.group(0)
             if not url.startswith("/"):
                 return match.group(0)
-            path_only = url.split("?")[0].lower()
+            path_only = mm_install_tail(url)
             if (
                 path_only.startswith("/static/")
                 or path_only.startswith("/plugins/")
@@ -120,15 +145,22 @@ class MattermostPassthroughHandler:
         pattern = r'(src|href)=([\"\'])(/[^\"\']*?)\2'
         return re.sub(pattern, rewrite_attr, html)
 
-    def _inject_client_shim(self, html, passthrough_prefix, base_origin):
+    def _inject_client_shim(self, html, passthrough_prefix, base_origin, site_path_prefix=""):
         prefix_json = json.dumps(passthrough_prefix)
         base_json = json.dumps(base_origin)
+        mm_json = json.dumps((site_path_prefix or "").rstrip("/"))
         patch = f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
 var P = {prefix_json};
 var B = {base_json};
+var M = {mm_json};
 var O = window.location.origin;
+function stripMmSubpath(s) {{
+  if (!M) return s;
+  if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
+  return s;
+}}
 function absUrl(s) {{
   if (typeof s !== 'string') return s;
   if (s.startsWith(O + '/') || s === O) {{
@@ -140,8 +172,10 @@ function absUrl(s) {{
   if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
   if (s === P || s.startsWith(P + '/')) return s;
   if (s.charAt(0) !== '/') return s;
+  s = stripMmSubpath(s);
+  if (s.charAt(0) !== '/') return s;
   if (/^\\/(api)\\b/.test(s) || s.startsWith('/api?')) return P + s;
-  if (/^\\/(static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects')) return B + s;
+  if (/^\\/(static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects')) return B + (M || '') + s;
   return s;
 }}
 var _f = window.fetch;
