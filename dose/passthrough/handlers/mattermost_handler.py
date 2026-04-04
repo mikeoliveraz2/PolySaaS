@@ -277,6 +277,35 @@ Element.prototype.setAttribute = function(name, value) {{
   }}
   return _setAttr.call(this, name, value);
 }};
+// === Navigation lock: keep the SPA inside the embed page ===
+// MM's react-router will try pushState/replaceState to /login, /channels/*, etc.
+// Pin the URL bar to the embed page so Django routing isn't disturbed.
+var EMBED_PATH = window.location.pathname;
+var _pushState = history.pushState;
+var _replaceState = history.replaceState;
+history.pushState = function(state, title, url) {{
+  return _pushState.call(this, state, title, EMBED_PATH);
+}};
+history.replaceState = function(state, title, url) {{
+  return _replaceState.call(this, state, title, EMBED_PATH);
+}};
+// Catch hard redirects (location.replace / location.assign)
+var _locReplace = Location.prototype.replace;
+Location.prototype.replace = function(url) {{
+  if (typeof url === 'string' && url.charAt(0) === '/' && !url.startsWith('/admin/')) {{
+    console.log('[PolySaaS] blocked location.replace:', url);
+    return;
+  }}
+  return _locReplace.call(this, url);
+}};
+var _locAssign = Location.prototype.assign;
+Location.prototype.assign = function(url) {{
+  if (typeof url === 'string' && url.charAt(0) === '/' && !url.startsWith('/admin/')) {{
+    console.log('[PolySaaS] blocked location.assign:', url);
+    return;
+  }}
+  return _locAssign.call(this, url);
+}};
 }})();
 </script>
 """
