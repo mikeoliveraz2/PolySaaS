@@ -64,8 +64,6 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
         else:
             self._inject_headers(request)
 
-        self._inject_app_token(request)
-
         return None
 
     def _inject_headers(self, request):
@@ -118,49 +116,3 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
         request.META['HTTP_AUTHORIZATION'] = f'Bearer {token}'
 
         logger.debug("Injected JWT for %s -> %s", user.email, request.path)
-
-    # ------------------------------------------------------------------
-    # App-specific token injection
-    # ------------------------------------------------------------------
-
-    _TOKEN_KEYS = {
-        'mattermost': 'mm_token',
-    }
-
-    def _inject_app_token(self, request):
-        """
-        Look up the app trigger from the path, find the TenantApp,
-        and inject the app-specific auth token if one is stored.
-        """
-        parts = request.path.strip('/').split('/')
-        if len(parts) < 3 or parts[0] != 'pt':
-            return
-
-        trigger = parts[2].lower()
-        token_key = self._TOKEN_KEYS.get(trigger)
-        if not token_key:
-            return
-
-        try:
-            from dose.models import TenantApp
-            from dose.utils import get_current_tenant
-
-            tenant = get_current_tenant(request)
-            if not tenant:
-                return
-
-            ta = TenantApp.objects.filter(
-                tenant=tenant, app_name=trigger, status='active',
-            ).first()
-            if not ta or not ta.extra_config:
-                return
-
-            app_token = ta.extra_config.get(token_key)
-            if app_token:
-                request.META['HTTP_AUTHORIZATION'] = f'Bearer {app_token}'
-                logger.debug(
-                    "Injected %s app token for %s -> %s",
-                    trigger, request.user.email, request.path,
-                )
-        except Exception as exc:
-            logger.warning("App token injection failed for %s: %s", trigger, exc)

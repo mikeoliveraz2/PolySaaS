@@ -6,6 +6,46 @@ from django.http import HttpResponse
 
 logger = logging.getLogger(__name__)
 
+_SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH"})
+
+
+def _outbound_headers_from_request(request):
+    return {
+        k: v
+        for k, v in request.META.items()
+        if (k.startswith("HTTP_") or k in ("CONTENT_TYPE", "CONTENT_LENGTH"))
+        and k not in _SKIP_META
+    }
+
+
+def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/"):
+    """
+    GET upstream HTML (same headers/cookies idea as forward_request_standardized).
+    Used to pull a fragment (e.g. header) into the Jazzmin passthrough embed page.
+    """
+    clean = upstream_subpath or "/"
+    if not clean.startswith("/"):
+        clean = "/" + clean
+    target_url = endpoint_url.rstrip("/") + clean
+    try:
+        resp = requests.get(
+            target_url,
+            headers=_outbound_headers_from_request(request),
+            cookies=request.COOKIES,
+            allow_redirects=True,
+            timeout=60,
+        )
+    except Exception as e:
+        logger.warning("fetch_upstream_index_html %s failed: %s", target_url, e)
+        return ""
+    if resp.status_code != 200:
+        logger.warning(
+            "fetch_upstream_index_html %s -> status %s", target_url, resp.status_code
+        )
+        return ""
+    return resp.content.decode("utf-8", errors="ignore")
+
+
 def forward_request_standardized(request, endpoint_url, handler=None):
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
@@ -40,13 +80,7 @@ def forward_request_standardized(request, endpoint_url, handler=None):
         print(f"SENDING REQUEST TO -> {target_url}")
 
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
-        _skip_meta = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH"})
-        outbound_headers = {
-            k: v
-            for k, v in request.META.items()
-            if (k.startswith("HTTP_") or k in ("CONTENT_TYPE", "CONTENT_LENGTH"))
-            and k not in _skip_meta
-        }
+        outbound_headers = _outbound_headers_from_request(request)
 
         resp = requests.request(
             method=request.method,

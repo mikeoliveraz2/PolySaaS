@@ -29,8 +29,9 @@ class MattermostPassthroughHandler:
         passthrough_prefix = self._passthrough_prefix(request)
         site_path_prefix = self._site_path_prefix(endpoint_url)
 
-        html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix)
+        html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix, passthrough_prefix)
         html_str = self._strip_base_tags(html_str)
+        html_str = self._strip_meta_redirects(html_str)
         html_str = self._inject_client_shim(
             html_str, passthrough_prefix, base_origin, site_path_prefix
         )
@@ -132,10 +133,20 @@ class MattermostPassthroughHandler:
             return html
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
 
-    def _rewrite_asset_tags(self, html, base_origin, site_path_prefix=""):
-        """Load CSS/JS/fonts from Mattermost origin so large bundles skip Django."""
+    def _strip_meta_redirects(self, html: str) -> str:
+        """Remove <meta http-equiv="refresh"> tags that would navigate the embed away."""
+        if not html:
+            return html
+        return re.sub(
+            r'<meta\s+http-equiv\s*=\s*["\']refresh["\'][^>]*>',
+            "", html, flags=re.IGNORECASE,
+        )
+
+    def _rewrite_asset_tags(self, html, base_origin, site_path_prefix="", passthrough_prefix=""):
+        """Rewrite root-relative asset URLs to go through the passthrough proxy."""
 
         pref = (site_path_prefix or "").rstrip("/")
+        pt = (passthrough_prefix or "").rstrip("/")
 
         def mm_install_tail(url_path):
             """Strip Mattermost subpath so /mattermost/static matches /static rules."""
@@ -147,7 +158,7 @@ class MattermostPassthroughHandler:
             low = uq.lower()
             pl = pref.lower()
             if low.startswith(pl + "/"):
-                return uq[len(pref) :].split("?")[0].lower()
+                return uq[len(pref):].split("?")[0].lower()
             return low
 
         def rewrite_attr(match):
@@ -166,9 +177,11 @@ class MattermostPassthroughHandler:
                 or path_only.startswith("/plugins/")
                 or path_only.startswith("/files/")
                 or path_only.startswith("/images/")
+                or path_only.startswith("/api/")
                 or path_only == "/favicon.ico"
             ):
-                return f"{attr}={quote}{base_origin}{url}{quote}"
+                tail = self._path_tail_after_site_prefix(url, pref) if pref else url
+                return f"{attr}={quote}{pt}{tail}{quote}"
             return match.group(0)
 
         pattern = r'(src|href)=([\"\'])(/[^\"\']*?)\2'
@@ -185,6 +198,10 @@ var P = {prefix_json};
 var B = {base_json};
 var M = {mm_json};
 var O = window.location.origin;
+// Save the real embed path for refresh handling, then make MM think we're at "/"
+// so its router doesn't hard-redirect to an unknown route.
+var REAL_EMBED_PATH = window.location.pathname;
+try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
 function stripMmSubpath(s) {{
   if (!M) return s;
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
@@ -202,10 +219,7 @@ function upstreamAbsoluteToPassthrough(s) {{
     var tail = stripMmSubpath(path);
     if (tail.charAt(0) !== '/') return null;
     var suffix = (pu.search || '') + (pu.hash || '');
-    if (/^\\/api\\b/.test(tail) || tail.startsWith('/api?')) return P + tail + suffix;
-    if (/^\\/(static|plugins|files|images)\\b/.test(tail) || tail === '/favicon.ico' || tail.startsWith('/_redirects'))
-      return B + (M || '') + tail + suffix;
-    return null;
+    return P + tail + suffix;
   }} catch (e) {{ return null; }}
 }}
 function absUrl(s) {{
@@ -214,15 +228,16 @@ function absUrl(s) {{
   if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
     var mapped = upstreamAbsoluteToPassthrough(s);
     if (mapped) return mapped;
-    return s;
+    if (s.startsWith(O + '/')) {{ s = s.slice(O.length); }}
+    else if (s === O) {{ s = '/'; }}
+    else {{ return s; }}
   }}
-  if (s.startsWith(O + '/') || s === O) s = (s === O) ? '/' : s.slice(O.length);
   if (s === P || s.startsWith(P + '/')) return s;
   if (s.charAt(0) !== '/') return s;
   s = stripMmSubpath(s);
   if (s.charAt(0) !== '/') return s;
-  if (/^\\/api\\b/.test(s) || s.startsWith('/api?')) return P + s;
-  if (/^\\/(static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects')) return B + (M || '') + s;
+  if (/^\\/(api|static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects'))
+    return P + s;
   return s;
 }}
 var _f = window.fetch;
@@ -250,6 +265,87 @@ window.WebSocket = function(url, protocols) {{
   }}
   return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
 }};
+// Intercept dynamically created script/link/img elements (webpack chunk loading).
+// HTML-parser-created elements do NOT go through JS property setters, so this
+// only affects programmatic assignments like `script.src = "/static/chunk.js"`.
+function patchProp(proto, prop) {{
+  var d = Object.getOwnPropertyDescriptor(proto, prop);
+  if (!d || !d.set) return;
+  Object.defineProperty(proto, prop, {{
+    get: d.get,
+    set: function(v) {{ d.set.call(this, absUrl(v)); }},
+    configurable: true, enumerable: true
+  }});
+}}
+patchProp(HTMLScriptElement.prototype, 'src');
+patchProp(HTMLLinkElement.prototype, 'href');
+patchProp(HTMLImageElement.prototype, 'src');
+// Also catch setAttribute('src', ...) / setAttribute('href', ...) calls
+var _setAttr = Element.prototype.setAttribute;
+Element.prototype.setAttribute = function(name, value) {{
+  if (typeof value === 'string') {{
+    var ln = name.toLowerCase();
+    if ((ln === 'src' || ln === 'href') &&
+        (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
+      value = absUrl(value);
+    }}
+  }}
+  return _setAttr.call(this, name, value);
+}};
+// === Navigation lock: keep the SPA inside the embed page ===
+// We already set the URL to "/" so MM's router recognises it.
+// Pin pushState/replaceState so MM can't change the URL away.
+var _pushState = history.pushState;
+var _replaceState = history.replaceState;
+history.pushState = function(state, title, url) {{
+  return _pushState.call(this, state, title, '/');
+}};
+history.replaceState = function(state, title, url) {{
+  return _replaceState.call(this, state, title, '/');
+}};
+// On unload, restore the real embed URL so browser refresh hits Django correctly
+window.addEventListener('beforeunload', function() {{
+  try {{ _replaceState.call(history, null, '', REAL_EMBED_PATH); }} catch(e) {{}}
+}});
+// Catch hard redirects (location.replace / location.assign)
+var _locReplace = Location.prototype.replace;
+Location.prototype.replace = function(url) {{
+  if (typeof url === 'string' && url.charAt(0) === '/' && !url.startsWith('/admin/')) {{
+    console.log('[PolySaaS] blocked location.replace:', url);
+    return;
+  }}
+  return _locReplace.call(this, url);
+}};
+var _locAssign = Location.prototype.assign;
+Location.prototype.assign = function(url) {{
+  if (typeof url === 'string' && url.charAt(0) === '/' && !url.startsWith('/admin/')) {{
+    console.log('[PolySaaS] blocked location.assign:', url);
+    return;
+  }}
+  return _locAssign.call(this, url);
+}};
+// Intercept location.href setter (catches `window.location.href = '/login'`)
+try {{
+  var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+  if (hrefDesc && hrefDesc.set) {{
+    Object.defineProperty(Location.prototype, 'href', {{
+      get: hrefDesc.get,
+      set: function(v) {{
+        if (typeof v === 'string' && v.charAt(0) === '/' && !v.startsWith('/admin/')) {{
+          console.log('[PolySaaS] blocked location.href =', v);
+          return;
+        }}
+        if (typeof v === 'string' && v.startsWith(O) && !v.startsWith(O + '/admin/')) {{
+          console.log('[PolySaaS] blocked location.href =', v);
+          return;
+        }}
+        hrefDesc.set.call(this, v);
+      }},
+      configurable: true,
+      enumerable: true
+    }});
+  }}
+}} catch(e) {{ console.warn('[PolySaaS] could not override location.href:', e); }}
 }})();
 </script>
 """

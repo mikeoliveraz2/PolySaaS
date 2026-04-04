@@ -167,6 +167,11 @@ def forward_request_standardized(request, endpoint_url, handler=None):
         response["Content-Type"] = resp.headers.get("Content-Type", "text/html; charset=utf-8")
         response["Content-Encoding"] = "identity"
         response["X-Frame-Options"] = "ALLOWALL"
+        for csp_hdr in ("Content-Security-Policy", "Content-Security-Policy-Report-Only"):
+            try:
+                del response[csp_hdr]
+            except KeyError:
+                pass
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")

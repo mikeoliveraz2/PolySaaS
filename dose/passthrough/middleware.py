@@ -20,6 +20,7 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         -> Perfect place for PASSTHROUGH-OUT
         """
         if request.path_info.startswith("/pt/"):
+            print(f"[PT-MW-TOP] ExternalPassthroughMiddleware HIT for {request.path_info}")
             user = getattr(request, "user", None)
             is_auth = user and user.is_authenticated
             print(f"[PT-MW] /pt/ hit | user={user} auth={is_auth}")

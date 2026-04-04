@@ -56,6 +56,7 @@ class TenantApp(models.Model):
     provisioned_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='provisioning')
     last_error = models.TextField(blank=True, default='', help_text='Last provisioning error message')
+    extra_config = models.JSONField(blank=True, default=dict, help_text='App-specific config (tokens, team IDs, etc.)')
 
     objects = models.Manager()
     public_bundles = PublicTenantAppBundleManager()
