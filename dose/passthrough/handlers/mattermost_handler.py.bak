@@ -1,5 +1,12 @@
 # dose/passthrough/handlers/mattermost_handler.py
-"""Mattermost SPA passthrough: root-relative /api, /static, etc. must go under /pt/... prefix."""
+"""
+Mattermost SPA passthrough handler.
+
+Only the initial HTML page load flows through the proxy (/pt/admin/mattermost/).
+ALL subsequent traffic (static assets, API calls, WebSocket) goes DIRECT to the
+upstream Mattermost origin. The shim injects the auth token client-side so the
+browser can authenticate directly with Mattermost.
+"""
 
 import json
 import logging
@@ -10,11 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class MattermostPassthroughHandler:
-    """
-    The HTML shell is served from Django; JS bundles use absolute paths like /api/v4/..., which
-    would hit the PolySaaS host without a prefix. We inject a fetch/XHR/WebSocket shim and point
-    static assets at the real Mattermost origin (same pattern as Nextcloud).
-    """
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         logger.info("[MATTERMOST HANDLER] Processing HTML shell")
@@ -26,17 +28,35 @@ class MattermostPassthroughHandler:
         parsed = urlparse(origin)
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
 
-        passthrough_prefix = self._passthrough_prefix(request)
         site_path_prefix = self._site_path_prefix(endpoint_url)
+        mm_token = self._get_mm_token(request)
 
-        html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix, passthrough_prefix)
+        html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix)
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
+        html_str = self._strip_csp(html_str)
         html_str = self._inject_client_shim(
-            html_str, passthrough_prefix, base_origin, site_path_prefix
+            html_str, base_origin, site_path_prefix, mm_token
         )
 
         return html_str, None
+
+    def _get_mm_token(self, request):
+        """Retrieve the provisioned Mattermost token for the current tenant."""
+        try:
+            from dose.models import TenantApp
+            from dose.utils import get_current_tenant
+            tenant = get_current_tenant(request)
+            if not tenant:
+                return None
+            ta = TenantApp.objects.filter(
+                tenant=tenant, app_name='mattermost', status='active',
+            ).first()
+            if ta and ta.extra_config:
+                return ta.extra_config.get('mm_token')
+        except Exception as exc:
+            logger.warning("[MATTERMOST HANDLER] Could not load mm_token: %s", exc)
+        return None
 
     def build_admin_embed_injection(self, html_str, request, endpoint_url=None):
         """
@@ -48,6 +68,7 @@ class MattermostPassthroughHandler:
         origin = endpoint_url.rstrip("/")
         parsed = urlparse(origin)
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        site_path_prefix = self._site_path_prefix(endpoint_url)
 
         from bs4 import BeautifulSoup
 
@@ -142,24 +163,20 @@ class MattermostPassthroughHandler:
             "", html, flags=re.IGNORECASE,
         )
 
-    def _rewrite_asset_tags(self, html, base_origin, site_path_prefix="", passthrough_prefix=""):
-        """Rewrite root-relative asset URLs to go through the passthrough proxy."""
+    def _strip_csp(self, html: str) -> str:
+        """Remove Content-Security-Policy meta tags — the proxy serves cross-origin assets."""
+        if not html:
+            return html
+        return re.sub(
+            r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>',
+            "", html, flags=re.IGNORECASE,
+        )
+
+    def _rewrite_asset_tags(self, html, base_origin, site_path_prefix=""):
+        """Rewrite root-relative URLs in HTML to point directly to the upstream origin."""
 
         pref = (site_path_prefix or "").rstrip("/")
-        pt = (passthrough_prefix or "").rstrip("/")
-
-        def mm_install_tail(url_path):
-            """Strip Mattermost subpath so /mattermost/static matches /static rules."""
-            if not pref:
-                return url_path.split("?")[0].lower()
-            uq = url_path.split("?")[0]
-            if uq == pref or uq.lower() == pref.lower():
-                return "/"
-            low = uq.lower()
-            pl = pref.lower()
-            if low.startswith(pl + "/"):
-                return uq[len(pref):].split("?")[0].lower()
-            return low
+        upstream = base_origin.rstrip("/")
 
         def rewrite_attr(match):
             attr = match.group(1)
@@ -171,130 +188,141 @@ class MattermostPassthroughHandler:
                 return match.group(0)
             if not url.startswith("/"):
                 return match.group(0)
-            path_only = mm_install_tail(url)
-            if (
-                path_only.startswith("/static/")
-                or path_only.startswith("/plugins/")
-                or path_only.startswith("/files/")
-                or path_only.startswith("/images/")
-                or path_only.startswith("/api/")
-                or path_only == "/favicon.ico"
-            ):
-                tail = self._path_tail_after_site_prefix(url, pref) if pref else url
-                return f"{attr}={quote}{pt}{tail}{quote}"
-            return match.group(0)
+            tail = self._path_tail_after_site_prefix(url, pref) if pref else url
+            return f"{attr}={quote}{upstream}{tail}{quote}"
 
         pattern = r'(src|href)=([\"\'])(/[^\"\']*?)\2'
         return re.sub(pattern, rewrite_attr, html)
 
-    def _inject_client_shim(self, html, passthrough_prefix, base_origin, site_path_prefix=""):
-        prefix_json = json.dumps(passthrough_prefix)
+    def _inject_client_shim(self, html, base_origin, site_path_prefix="", mm_token=None):
         base_json = json.dumps(base_origin)
         mm_json = json.dumps((site_path_prefix or "").rstrip("/"))
+        token_json = json.dumps(mm_token or "")
+        # static_base must end with '/' — webpack uses it as publicPath for chunk loading
+        static_base = base_origin.rstrip("/") + "/static/"
+        static_json = json.dumps(static_base)
         patch = f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-var P = {prefix_json};
 var B = {base_json};
 var M = {mm_json};
+var T = {token_json};
 var O = window.location.origin;
-// Save the real embed path for refresh handling, then make MM think we're at "/"
-// so its router doesn't hard-redirect to an unknown route.
 var REAL_EMBED_PATH = window.location.pathname;
+// Override webpack public path BEFORE any MM script runs so chunk loading
+// goes to the upstream origin, not the PolySaaS host.
+try {{ window.__webpack_public_path__ = {static_json}; }} catch(e) {{}}
+// Tell MM's router we're at "/" so it recognises the route
 try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
 function stripMmSubpath(s) {{
   if (!M) return s;
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
   return s;
 }}
-/** Map https://upstream-host/mattermost/api/... to /pt/.../api/... (SPA often uses absolute MM URLs). */
-function upstreamAbsoluteToPassthrough(s) {{
-  if (!B) return null;
-  try {{
-    var abs = (s.indexOf('//') === 0) ? (location.protocol + s) : s;
-    var bu = new URL(B);
-    var pu = new URL(abs);
-    if (pu.protocol !== bu.protocol || pu.host !== bu.host) return null;
-    var path = pu.pathname || '/';
-    var tail = stripMmSubpath(path);
-    if (tail.charAt(0) !== '/') return null;
-    var suffix = (pu.search || '') + (pu.hash || '');
-    return P + tail + suffix;
-  }} catch (e) {{ return null; }}
-}}
-function absUrl(s) {{
+// Rewrite root-relative URLs to point at the upstream Mattermost origin
+function toUpstream(s) {{
   if (typeof s !== 'string') return s;
   if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
+  if (s.startsWith(B)) return s;
   if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
-    var mapped = upstreamAbsoluteToPassthrough(s);
-    if (mapped) return mapped;
-    if (s.startsWith(O + '/')) {{ s = s.slice(O.length); }}
-    else if (s === O) {{ s = '/'; }}
-    else {{ return s; }}
+    if (s.startsWith(O + '/')) s = s.slice(O.length);
+    else if (s === O) s = '/';
+    else return s;
   }}
-  if (s === P || s.startsWith(P + '/')) return s;
   if (s.charAt(0) !== '/') return s;
   s = stripMmSubpath(s);
   if (s.charAt(0) !== '/') return s;
-  if (/^\\/(api|static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects'))
-    return P + s;
-  return s;
+  return B + s;
+}}
+// Inject auth token on API calls to Mattermost
+function addAuth(url, init) {{
+  if (!T) return init;
+  try {{
+    var u = new URL(url, location.href);
+    var b = new URL(B);
+    if (u.host === b.host && u.pathname.indexOf('/api/') !== -1) {{
+      init = init || {{}};
+      var h = init.headers ? new Headers(init.headers) : new Headers();
+      if (!h.has('Authorization')) h.set('Authorization', 'Bearer ' + T);
+      init.headers = h;
+    }}
+  }} catch(e) {{}}
+  return init;
 }}
 var _f = window.fetch;
 window.fetch = function(input, init) {{
-  if (typeof input === 'string') input = absUrl(input);
-  else if (typeof Request !== 'undefined' && input instanceof Request) {{
-    var u = absUrl(input.url);
+  if (typeof input === 'string') {{
+    input = toUpstream(input);
+    init = addAuth(input, init);
+  }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
+    var u = toUpstream(input.url);
     if (u !== input.url) input = new Request(u, input);
+    init = addAuth(u, init);
   }}
   return _f.call(this, input, init);
 }};
 var _xo = XMLHttpRequest.prototype.open;
+var _xSetHeader = XMLHttpRequest.prototype.setRequestHeader;
 XMLHttpRequest.prototype.open = function(method, url) {{
+  this._psUrl = toUpstream(url);
   var rest = Array.prototype.slice.call(arguments, 2);
-  return _xo.apply(this, [method, absUrl(url)].concat(rest));
+  return _xo.apply(this, [method, this._psUrl].concat(rest));
 }};
+var _xSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send = function(body) {{
+  if (T && this._psUrl) {{
+    try {{
+      var u = new URL(this._psUrl, location.href);
+      var b = new URL(B);
+      if (u.host === b.host && u.pathname.indexOf('/api/') !== -1) {{
+        try {{ _xSetHeader.call(this, 'Authorization', 'Bearer ' + T); }} catch(e) {{}}
+      }}
+    }} catch(e) {{}}
+  }}
+  return _xSend.call(this, body);
+}};
+// WebSocket direct to Mattermost
 var _WS = WebSocket;
 window.WebSocket = function(url, protocols) {{
   if (typeof url === 'string') {{
-    url = absUrl(url);
-    if (url.charAt(0) === '/' && url.indexOf('/api/') !== -1) {{
-      var pr = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      url = pr + '//' + location.host + url;
+    var wsUrl = toUpstream(url);
+    try {{
+      var u = new URL(wsUrl);
+      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      if (T) u.searchParams.set('access_token', T);
+      wsUrl = u.toString();
+    }} catch(e) {{
+      wsUrl = wsUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
     }}
+    url = wsUrl;
   }}
   return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
 }};
-// Intercept dynamically created script/link/img elements (webpack chunk loading).
-// HTML-parser-created elements do NOT go through JS property setters, so this
-// only affects programmatic assignments like `script.src = "/static/chunk.js"`.
+// Webpack chunk loading — point at upstream
 function patchProp(proto, prop) {{
   var d = Object.getOwnPropertyDescriptor(proto, prop);
   if (!d || !d.set) return;
   Object.defineProperty(proto, prop, {{
     get: d.get,
-    set: function(v) {{ d.set.call(this, absUrl(v)); }},
+    set: function(v) {{ d.set.call(this, toUpstream(v)); }},
     configurable: true, enumerable: true
   }});
 }}
 patchProp(HTMLScriptElement.prototype, 'src');
 patchProp(HTMLLinkElement.prototype, 'href');
 patchProp(HTMLImageElement.prototype, 'src');
-// Also catch setAttribute('src', ...) / setAttribute('href', ...) calls
 var _setAttr = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function(name, value) {{
   if (typeof value === 'string') {{
     var ln = name.toLowerCase();
     if ((ln === 'src' || ln === 'href') &&
         (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
-      value = absUrl(value);
+      value = toUpstream(value);
     }}
   }}
   return _setAttr.call(this, name, value);
 }};
-// === Navigation lock: keep the SPA inside the embed page ===
-// We already set the URL to "/" so MM's router recognises it.
-// Pin pushState/replaceState so MM can't change the URL away.
+// === Navigation lock ===
 var _pushState = history.pushState;
 var _replaceState = history.replaceState;
 history.pushState = function(state, title, url) {{
@@ -303,14 +331,12 @@ history.pushState = function(state, title, url) {{
 history.replaceState = function(state, title, url) {{
   return _replaceState.call(this, state, title, '/');
 }};
-// On unload, restore the real embed URL so browser refresh hits Django correctly
 window.addEventListener('beforeunload', function() {{
   try {{ _replaceState.call(history, null, '', REAL_EMBED_PATH); }} catch(e) {{}}
 }});
-// Catch hard redirects (location.replace / location.assign)
 var _locReplace = Location.prototype.replace;
 Location.prototype.replace = function(url) {{
-  if (typeof url === 'string' && url.charAt(0) === '/' && !url.startsWith('/admin/')) {{
+  if (typeof url === 'string' && (url.charAt(0) === '/' || url.startsWith(O)) && !url.startsWith(B)) {{
     console.log('[PolySaaS] blocked location.replace:', url);
     return;
   }}
@@ -318,24 +344,19 @@ Location.prototype.replace = function(url) {{
 }};
 var _locAssign = Location.prototype.assign;
 Location.prototype.assign = function(url) {{
-  if (typeof url === 'string' && url.charAt(0) === '/' && !url.startsWith('/admin/')) {{
+  if (typeof url === 'string' && (url.charAt(0) === '/' || url.startsWith(O)) && !url.startsWith(B)) {{
     console.log('[PolySaaS] blocked location.assign:', url);
     return;
   }}
   return _locAssign.call(this, url);
 }};
-// Intercept location.href setter (catches `window.location.href = '/login'`)
 try {{
   var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
   if (hrefDesc && hrefDesc.set) {{
     Object.defineProperty(Location.prototype, 'href', {{
       get: hrefDesc.get,
       set: function(v) {{
-        if (typeof v === 'string' && v.charAt(0) === '/' && !v.startsWith('/admin/')) {{
-          console.log('[PolySaaS] blocked location.href =', v);
-          return;
-        }}
-        if (typeof v === 'string' && v.startsWith(O) && !v.startsWith(O + '/admin/')) {{
+        if (typeof v === 'string' && (v.charAt(0) === '/' || v.startsWith(O)) && !v.startsWith(B)) {{
           console.log('[PolySaaS] blocked location.href =', v);
           return;
         }}
@@ -358,104 +379,6 @@ try {{
             return html.replace("</head>", patch + "</head>", 1)
         return patch + html
 
-    def rewrite_upstream_body(
-        self,
-        body: bytes,
-        content_type: str,
-        request,
-        endpoint_url=None,
-        upstream_path: str = "/",
-    ):
-        """
-        Patch JSON from /api/v4/config/client so URLs (including nested strings) use this
-        passthrough host; otherwise the SPA hangs on loading (wrong API/WebSocket endpoints).
-        """
-        if not endpoint_url:
-            return None
-        ct = (content_type or "").split(";")[0].strip().lower()
-        if ct != "application/json":
-            return None
-        path_pop = (upstream_path or "").split("?")[0]
-        if "/api/v4/config/client" not in path_pop:
-            return None
-        try:
-            text = body.decode("utf-8")
-            data = json.loads(text)
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            logger.warning("[MATTERMOST HANDLER] JSON rewrite skip: %s", e)
-            return None
-        if not isinstance(data, dict):
-            return None
-
-        prefix = self._passthrough_prefix(request)
-        public_root = request.build_absolute_uri(prefix).split("?")[0].rstrip("/")
-        site_prefix = self._site_path_prefix(endpoint_url)
-
-        ep = urlparse(endpoint_url.rstrip("/"))
-        ws_scheme = "wss" if request.is_secure() else "ws"
-
-        changed = False
-        site_before = data.get("SiteURL")
-
-        def rewrite_url_string(url_str: str):
-            if not url_str or not isinstance(url_str, str):
-                return None
-            try:
-                pu = urlparse(url_str)
-            except Exception:
-                return None
-            if pu.scheme not in ("http", "https", "ws", "wss"):
-                return None
-            if pu.netloc != ep.netloc:
-                return None
-            path = pu.path or "/"
-            tail = self._path_tail_after_site_prefix(path, site_prefix)
-            qs = ("?" + pu.query) if pu.query else ""
-            frag = ("#" + pu.fragment) if pu.fragment else ""
-            if tail.startswith("/api"):
-                if pu.scheme in ("ws", "wss") or "websocket" in tail:
-                    return f"{ws_scheme}://{request.get_host()}{prefix}{tail}{qs}{frag}"
-                rel = f"{prefix}{tail}{qs}"
-                out = request.build_absolute_uri(rel)
-                return out + frag if frag else out
-            if tail == "/":
-                return public_root + qs + frag
-            return None
-
-        def walk(obj):
-            nonlocal changed
-            if isinstance(obj, dict):
-                for k, v in list(obj.items()):
-                    if isinstance(v, str):
-                        nv = rewrite_url_string(v)
-                        if nv is not None and nv != v:
-                            obj[k] = nv
-                            changed = True
-                    else:
-                        walk(v)
-            elif isinstance(obj, list):
-                for i, item in enumerate(obj):
-                    if isinstance(item, str):
-                        nv = rewrite_url_string(item)
-                        if nv is not None and nv != item:
-                            obj[i] = nv
-                            changed = True
-                    else:
-                        walk(item)
-
-        walk(data)
-
-        if site_before and not changed:
-            print(
-                f"[MATTERMOST HANDLER] config/client — no URL fields patched "
-                f"(endpoint host {ep.netloc!r} vs SiteURL {site_before!r}) — check PassThrough endpoint_url host/path vs Mattermost"
-            )
-
-        if not changed:
-            return None
-
-        out = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-        msg = f"[MATTERMOST HANDLER] Patched config/client (recursive URLs) prefix={prefix!r} public_root={public_root!r}"
-        print(msg)
-        logger.info(msg)
-        return out.encode("utf-8")
+    def rewrite_upstream_body(self, body, content_type, request, **kwargs):
+        """No-op: API calls go direct to Mattermost, not through the proxy."""
+        return None

@@ -198,6 +198,9 @@ class MattermostPassthroughHandler:
         base_json = json.dumps(base_origin)
         mm_json = json.dumps((site_path_prefix or "").rstrip("/"))
         token_json = json.dumps(mm_token or "")
+        # static_base must end with '/' — webpack uses it as publicPath for chunk loading
+        static_base = base_origin.rstrip("/") + "/static/"
+        static_json = json.dumps(static_base)
         patch = f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
@@ -206,6 +209,11 @@ var M = {mm_json};
 var T = {token_json};
 var O = window.location.origin;
 var REAL_EMBED_PATH = window.location.pathname;
+// Selector for the embed scope div — patches on DOM elements are restricted to this subtree
+var SCOPE = '[data-polysaas-embed-trigger]';
+// Override webpack public path BEFORE any MM script runs so chunk loading
+// goes to the upstream origin, not the PolySaaS host.
+try {{ window.__webpack_public_path__ = {static_json}; }} catch(e) {{}}
 // Tell MM's router we're at "/" so it recognises the route
 try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
 function stripMmSubpath(s) {{
@@ -213,7 +221,16 @@ function stripMmSubpath(s) {{
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
   return s;
 }}
-// Rewrite root-relative URLs to point at the upstream Mattermost origin
+// PolySaaS-owned prefixes — these must NEVER be redirected to Mattermost
+var PS_PREFIXES = ['/static/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+function isPolySaaSPath(s) {{
+  for (var i = 0; i < PS_PREFIXES.length; i++) {{
+    if (s.startsWith(PS_PREFIXES[i])) return true;
+  }}
+  return false;
+}}
+// Rewrite root-relative URLs to point at the upstream Mattermost origin.
+// Skips PolySaaS-owned paths so the sidebar/header assets are never affected.
 function toUpstream(s) {{
   if (typeof s !== 'string') return s;
   if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
@@ -224,6 +241,7 @@ function toUpstream(s) {{
     else return s;
   }}
   if (s.charAt(0) !== '/') return s;
+  if (isPolySaaSPath(s)) return s;
   s = stripMmSubpath(s);
   if (s.charAt(0) !== '/') return s;
   return B + s;
@@ -275,30 +293,40 @@ XMLHttpRequest.prototype.send = function(body) {{
   }}
   return _xSend.call(this, body);
 }};
-// WebSocket direct to Mattermost
+// WebSocket — redirect any WS pointed at the PolySaaS host to the Mattermost upstream.
+// Handles ws://, wss://, http://, and relative URLs so Mattermost's reconnect logic works.
 var _WS = WebSocket;
 window.WebSocket = function(url, protocols) {{
   if (typeof url === 'string') {{
-    var wsUrl = toUpstream(url);
     try {{
-      var u = new URL(wsUrl);
-      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      var u = new URL(url, location.href);
+      var bUrl = new URL(B);
+      if (u.hostname === location.hostname) {{
+        u.hostname = bUrl.hostname;
+        u.port = bUrl.port || '';
+      }}
+      u.protocol = (u.protocol === 'https:' || u.protocol === 'wss:') ? 'wss:' : 'ws:';
       if (T) u.searchParams.set('access_token', T);
-      wsUrl = u.toString();
+      url = u.toString();
     }} catch(e) {{
-      wsUrl = wsUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+      url = url.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
     }}
-    url = wsUrl;
   }}
   return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
 }};
-// Webpack chunk loading — point at upstream
+// Element property patches — SCOPED to the embed div only.
+// Nothing inside the content area can affect the sidebar or header.
 function patchProp(proto, prop) {{
   var d = Object.getOwnPropertyDescriptor(proto, prop);
   if (!d || !d.set) return;
   Object.defineProperty(proto, prop, {{
     get: d.get,
-    set: function(v) {{ d.set.call(this, toUpstream(v)); }},
+    set: function(v) {{
+      if (typeof v === 'string' && this.closest && this.closest(SCOPE)) {{
+        v = toUpstream(v);
+      }}
+      d.set.call(this, v);
+    }},
     configurable: true, enumerable: true
   }});
 }}
@@ -310,7 +338,8 @@ Element.prototype.setAttribute = function(name, value) {{
   if (typeof value === 'string') {{
     var ln = name.toLowerCase();
     if ((ln === 'src' || ln === 'href') &&
-        (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
+        (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement) &&
+        this.closest && this.closest(SCOPE)) {{
       value = toUpstream(value);
     }}
   }}

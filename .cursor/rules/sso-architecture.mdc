@@ -1,0 +1,44 @@
+---
+description: SSO architecture goal and passthrough auth pattern for bundled apps
+alwaysApply: true
+---
+
+# PolySaaS SSO — North Star Goal
+
+The end goal is **single sign-on across PolySaaS and every bundled application**. A subscriber logs in once to PolySaaS and is automatically authenticated in every app their tenant has subscribed to — no second login, no credential management.
+
+## How It Works (Established Pattern)
+
+1. **Provisioning** — On subscription, a `MattermostProvisioningService`-style Atomic Service creates the user inside the bundled app and stores app credentials in `TenantApp.extra_config`.
+2. **Passthrough handler** — On initial HTML load, the handler reads `TenantApp.extra_config` to retrieve the user's app token/session.
+3. **Client-side shim** — Injected into the upstream HTML; patches `fetch`, `XHR`, `WebSocket`, and asset loaders to:
+   - Route all requests directly to the upstream app origin (never back through `/pt/admin/`)
+   - Inject `Authorization: Bearer <token>` on API calls
+   - Set `MMAUTHTOKEN` (or equivalent) cookie so the SPA boots authenticated
+4. **Navigation lock** — Prevents the SPA from redirecting the browser away from the PolySaaS URL.
+
+## Credentials Storage Convention
+
+All app-specific auth lives in `TenantApp.extra_config` (JSONField):
+
+```python
+{
+  "mm_token": "<mattermost personal access token>",
+  "mm_password": "<provisioned password>",
+  # future apps follow same pattern:
+  # "odoo_uid": 12, "odoo_api_key": "...",
+  # "nextcloud_token": "..."
+}
+```
+
+## Pattern for New Bundled Apps
+
+1. Run PolySniffer to capture traffic patterns
+2. Build a `<App>ProvisioningService` (Atomic Service, data-driven via `Parameter` model)
+3. Build a `<App>PassthroughHandler` that injects the shim with token from `extra_config`
+4. Wire provisioning to the `TenantApp` subscription event
+
+## Current Status
+
+- **Mattermost**: Working. HTML proxied, assets/API go direct, shim auto-injects auth, tenant (`Oliver Enterprises`) provisioned.
+- **Odoo, Nextcloud, etc.**: Pending — follow same playbook.

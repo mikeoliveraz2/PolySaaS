@@ -341,7 +341,7 @@ def admin_navigation(request):
 
             # Use the clean normalized name for the URL; ignore any /admin/ or /dose/ prefix
             # stored in the trigger_path — that is middleware routing, not part of the endpoint.
-            url = f'/pt/admin/{norm}/'
+            url = f'/admin/passthrough-embed/{norm}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} → {url}")
 
