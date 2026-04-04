@@ -20,22 +20,15 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         -> Perfect place for PASSTHROUGH-OUT
         """
         if request.path_info.startswith("/pt/"):
-            user = getattr(request, "user", None)
-            is_auth = user and user.is_authenticated
-            print(f"[PT-MW] /pt/ hit | user={user} auth={is_auth}")
-            if not is_auth:
-                print("[PT-MW] BAIL: not authenticated")
+            if not getattr(request, "user", None) or not request.user.is_authenticated:
                 return self.get_response(request)
 
             tenant = get_current_tenant(request)
-            print(f"[PT-MW] tenant={tenant}")
             if not tenant:
-                print("[PT-MW] BAIL: no tenant")
                 return self.get_response(request)
             if not request.user.is_superuser and not UserTenantMembership.objects.filter(
                 user=request.user, tenant=tenant
             ).exists():
-                print("[PT-MW] BAIL: not superuser and no membership")
                 return self.get_response(request)
 
             parts = request.path_info.strip("/").split("/")
