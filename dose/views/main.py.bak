@@ -652,54 +652,37 @@ def landing_page(request):
 
     # Get PassThroughEndpoint records (per-tenant external services)
     # These should display ABOVE NavigationItems in the sidebar
-    from dose.models import PassThroughEndpoint, TenantApp
-
-    # Retrieve the tenant's subscribed app names (falls back to empty set on error)
-    try:
-        _subscribed = set(
-            TenantApp.public_bundles.filter(
-                tenant=current_tenant,
-                status__in=['active', 'provisioning'],
-            ).values_list('app_name', flat=True)
-        ) if current_tenant else set()
-    except Exception:
-        _subscribed = set()
-
-    def _endpoint_visible(trigger_path):
-        # Normalise: last path segment, lowercase, hyphens→underscores
-        # so /dose/monitor-logger/ → monitor_logger, monitor-logger → monitor_logger
-        n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-        return n == 'gmail' or n in _subscribed
-
-    passthrough_endpoints = [
-        ep for ep in PassThroughEndpoint.objects.filter(
-            is_enabled=True,
-            show_in_menu=True,
-        ).order_by('menu_sort_order', 'id')
-        if _endpoint_visible(ep.trigger_path)
-    ]
+    from dose.models import PassThroughEndpoint
+    passthrough_endpoints = PassThroughEndpoint.objects.filter(
+        is_enabled=True,
+        show_in_menu=True
+    ).order_by('id')
 
     # All PassThroughEndpoint records are passthrough services
     passthrough_services = []  # Passthrough endpoints (Gmail, HubSpot, etc.)
     external_services = []     # Other external integrations (from NavigationPanel if added later)
 
-    seen_normalized = set()
     for endpoint in passthrough_endpoints:
-        # Normalise: last path segment, lowercase, hyphens→underscores
-        norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-        if norm in seen_normalized:
-            continue
-        seen_normalized.add(norm)
-
-        url = f'/pt/admin/{norm}/'
-        title = endpoint.menu_title or norm.replace('_', ' ').title()
+        # Use standardized /pt/[context]/[trigger] URL format
+        from django.urls import reverse
+        
+        # Determine context based on service type
+        if endpoint.trigger_path.lower() in ['gmail']:
+            # Admin-accessible services
+            context = 'admin'
+        else:
+            # Default to admin context for other services
+            context = 'admin'
+        
+        # Use standardized passthrough URL format
+        url = f'/pt/{context}/{endpoint.trigger_path}/'
 
         service_data = {
             'id': f"pt_{endpoint.id}",
-            'title': title,
+            'title': endpoint.menu_title or endpoint.trigger_path.title(),
             'url': url,
             'icon': endpoint.menu_icon or "🔗",
-            'description': endpoint.description or f"Access {title}"
+            'description': endpoint.description or f"Access {endpoint.menu_title or endpoint.trigger_path}"
         }
 
         # All PassThroughEndpoint records go to passthrough_services

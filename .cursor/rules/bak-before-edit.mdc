@@ -1,0 +1,33 @@
+---
+description: Always make a .bak copy of a file before editing it
+alwaysApply: true
+---
+
+# Backup Before Edit
+
+Before editing **any** file, first create a `.bak` copy of the original.
+
+## The Rule
+
+```
+BEFORE editing foo/bar.py  →  copy foo/bar.py  to  foo/bar.py.bak
+BEFORE editing a/b.html   →  copy a/b.html    to  a/b.html.bak
+```
+
+- The `.bak` file stays alongside the original for as long as the original exists.
+- It provides an instant local revert without touching git.
+- This applies to every file type: `.py`, `.html`, `.js`, `.css`, `.md`, etc.
+
+## How to Do It
+
+Use a Shell copy command before making any edits:
+
+```powershell
+Copy-Item "path\to\file.ext" "path\to\file.ext.bak"
+```
+
+## What NOT to Do
+
+- Do NOT edit a file without making the `.bak` copy first.
+- Do NOT delete `.bak` files unless the user explicitly asks.
+- Do NOT add `.bak` to `.gitignore` — `.bak` files are committed to the repo and stay alongside their originals permanently.

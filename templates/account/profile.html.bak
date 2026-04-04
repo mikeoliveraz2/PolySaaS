@@ -1,8 +1,7 @@
-{% load static %}
 <!DOCTYPE html>
 <html>
 <head>
-    <title>PolySaaS - Welcome</title>
+    <title>DOSE - Welcome</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { 
@@ -17,22 +16,14 @@
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .logo {
-            display: block;
-            margin: 0 auto 10px auto;
-            max-width: 220px;
-            height: auto;
         }
         .user-info {
             background-color: #e8f5e8;
             padding: 15px;
             border-radius: 5px;
             margin: 20px 0;
-            text-align: left;
         }
-        h1 { color: #2c5c2c; text-align: center; margin-top: 8px; }
+        h1 { color: #2c5c2c; text-align: center; }
         .logout-link {
             background-color: #dc3545;
             color: white;
@@ -56,8 +47,7 @@
 </head>
 <body>
     <div class="welcome-container">
-        <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS" class="logo">
-        <h1>Welcome to PolySaaS!</h1>
+        <h1>Welcome to DOSE!</h1>
         
         {% if user.is_authenticated %}
             <div class="user-info">
@@ -69,8 +59,9 @@
             <p>You are now logged in with Google SSO. You can access external services without additional login prompts.</p>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="/admin/" class="external-link">🔧 Admin Dashboard</a>
-                <a href="/swagger/" class="external-link">📊 API</a>
+                <a href="/secure/browse/ATL-1" class="external-link">🎯 Test Jira Access</a>
+                <a href="/admin/" class="external-link">🔧 Django Admin</a>
+                <a href="/api/" class="external-link">📊 API</a>
             </div>
             
             <div style="text-align: center; margin-top: 30px;">

@@ -92,10 +92,7 @@ JAZZMIN_SETTINGS = {
         "dose.mltaxonomy",
         "dose.mldataset",
         "dose.deepseekprompt",
-        "dose.mlprompt",
     ],
-    # Hide entire apps that should not be visible in the tenant admin interface
-    "hide_apps": ["djstripe"],
 }
 
 # Jazzmin 3 reads this (not JAZZMIN_SETTINGS["ui_tweaks"] template strings).
