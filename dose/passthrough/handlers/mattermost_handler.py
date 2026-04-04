@@ -30,6 +30,7 @@ class MattermostPassthroughHandler:
         site_path_prefix = self._site_path_prefix(endpoint_url)
 
         html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix)
+        html_str = self._strip_base_tags(html_str)
         html_str = self._inject_client_shim(
             html_str, passthrough_prefix, base_origin, site_path_prefix
         )
@@ -103,6 +104,15 @@ class MattermostPassthroughHandler:
         path = (urlparse(endpoint_url.rstrip("/")).path or "").rstrip("/")
         return path if path and path != "/" else ""
 
+    def _strip_base_tags(self, html: str) -> str:
+        """
+        Mattermost ships <base href="…/mattermost/">. In the Jazzmin embed that tag lives in our
+        document <head> and repoints the entire admin UI + breaks the SPA. Remove all <base> tags.
+        """
+        if not html:
+            return html
+        return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
+
     def _rewrite_asset_tags(self, html, base_origin, site_path_prefix=""):
         """Load CSS/JS/fonts from Mattermost origin so large bundles skip Django."""
 
@@ -156,25 +166,49 @@ var P = {prefix_json};
 var B = {base_json};
 var M = {mm_json};
 var O = window.location.origin;
+/* Embed URL is /admin/passthrough-embed/... but MM config expects /pt/.../ — fix pathname before app boot. */
+try {{
+  if (P && location.pathname.indexOf('/admin/passthrough-embed/') === 0) {{
+    history.replaceState(null, '', P + '/' + (location.search || '') + (location.hash || ''));
+  }}
+}} catch (e1) {{}}
 function stripMmSubpath(s) {{
   if (!M) return s;
   if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
   return s;
 }}
+/** Map https://upstream-host/mattermost/api/... to /pt/.../api/... (SPA often uses absolute MM URLs). */
+function upstreamAbsoluteToPassthrough(s) {{
+  if (!B) return null;
+  try {{
+    var abs = (s.indexOf('//') === 0) ? (location.protocol + s) : s;
+    var bu = new URL(B);
+    var pu = new URL(abs);
+    if (pu.protocol !== bu.protocol || pu.host !== bu.host) return null;
+    var path = pu.pathname || '/';
+    var tail = stripMmSubpath(path);
+    if (tail.charAt(0) !== '/') return null;
+    var suffix = (pu.search || '') + (pu.hash || '');
+    if (/^\\/api\\b/.test(tail) || tail.startsWith('/api?')) return P + tail + suffix;
+    if (/^\\/(static|plugins|files|images)\\b/.test(tail) || tail === '/favicon.ico' || tail.startsWith('/_redirects'))
+      return B + (M || '') + tail + suffix;
+    return null;
+  }} catch (e) {{ return null; }}
+}}
 function absUrl(s) {{
   if (typeof s !== 'string') return s;
-  if (s.startsWith(O + '/') || s === O) {{
-    s = (s === O) ? '/' : s.slice(O.length);
-  }} else if (s.startsWith('http:') || s.startsWith('https:') || s.startsWith('//')) {{
-    if (B && (s === B || s.startsWith(B + '/'))) return s;
+  if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
+  if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
+    var mapped = upstreamAbsoluteToPassthrough(s);
+    if (mapped) return mapped;
     return s;
   }}
-  if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
+  if (s.startsWith(O + '/') || s === O) s = (s === O) ? '/' : s.slice(O.length);
   if (s === P || s.startsWith(P + '/')) return s;
   if (s.charAt(0) !== '/') return s;
   s = stripMmSubpath(s);
   if (s.charAt(0) !== '/') return s;
-  if (/^\\/(api)\\b/.test(s) || s.startsWith('/api?')) return P + s;
+  if (/^\\/api\\b/.test(s) || s.startsWith('/api?')) return P + s;
   if (/^\\/(static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects')) return B + (M || '') + s;
   return s;
 }}
