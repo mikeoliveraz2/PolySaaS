@@ -37,24 +37,15 @@ def forward_request_standardized(request, endpoint_url, handler=None):
 
         print(f"SENDING REQUEST TO -> {target_url}")
 
-        # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
-        _skip_meta = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH"})
-        outbound_headers = {
-            k: v
-            for k, v in request.META.items()
-            if (k.startswith("HTTP_") or k in ("CONTENT_TYPE", "CONTENT_LENGTH"))
-            and k not in _skip_meta
-        }
-
         resp = requests.request(
             method=request.method,
             url=target_url,
-            headers=outbound_headers,
+            headers={k: v for k, v in request.META.items() if k.startswith("HTTP_") or k in ["CONTENT_TYPE", "CONTENT_LENGTH"]},
             data=request.body,
             cookies=request.COOKIES,
             allow_redirects=True,
             stream=False,
-            timeout=60,
+            timeout=30,
         )
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")

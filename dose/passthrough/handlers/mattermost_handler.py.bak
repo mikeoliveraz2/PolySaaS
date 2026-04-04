@@ -1,0 +1,115 @@
+# dose/passthrough/handlers/mattermost_handler.py
+"""Mattermost SPA passthrough: root-relative /api, /static, etc. must go under /pt/... prefix."""
+
+import json
+import logging
+import re
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
+
+
+class MattermostPassthroughHandler:
+    """
+    The HTML shell is served from Django; JS bundles use absolute paths like /api/v4/..., which
+    would hit the PolySaaS host without a prefix. We inject a fetch/XHR/WebSocket shim and point
+    static assets at the real Mattermost origin (same pattern as Nextcloud).
+    """
+
+    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
+        logger.info("[MATTERMOST HANDLER] Processing HTML shell")
+
+        if not endpoint_url:
+            return html_str, None
+
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        passthrough_prefix = self._passthrough_prefix(request)
+        html_str = self._rewrite_asset_tags(html_str, base_origin)
+        html_str = self._inject_client_shim(html_str, passthrough_prefix)
+
+        return html_str, None
+
+    def _passthrough_prefix(self, request):
+        path = getattr(request, "path_info", "") or ""
+        m = re.match(r"^(/pt/(?:admin|dose)/[^/]+)", path)
+        if m:
+            return m.group(1).rstrip("/")
+        return "/pt/admin/mattermost"
+
+    def _rewrite_asset_tags(self, html, base_origin):
+        """Load CSS/JS/fonts from Mattermost origin so large bundles skip Django."""
+
+        def rewrite_attr(match):
+            attr = match.group(1)
+            quote = match.group(2)
+            url = match.group(3)
+            if not url or url.startswith(("data:", "javascript:", "#", "mailto:")):
+                return match.group(0)
+            if url.startswith(("http://", "https://", "//")):
+                return match.group(0)
+            if not url.startswith("/"):
+                return match.group(0)
+            path_only = url.split("?")[0].lower()
+            if (
+                path_only.startswith("/static/")
+                or path_only.startswith("/plugins/")
+                or path_only.startswith("/files/")
+                or path_only.startswith("/images/")
+                or path_only == "/favicon.ico"
+            ):
+                return f"{attr}={quote}{base_origin}{url}{quote}"
+            return match.group(0)
+
+        pattern = r'(src|href)=([\"\'])(/[^\"\']*?)\2'
+        return re.sub(pattern, rewrite_attr, html)
+
+    def _inject_client_shim(self, html, passthrough_prefix):
+        prefix_json = json.dumps(passthrough_prefix)
+        patch = f"""
+<script data-polysaas-mattermost-shim="1">
+(function() {{
+var P = {prefix_json};
+function absUrl(s) {{
+  if (typeof s !== 'string') return s;
+  if (!s || s.startsWith('http:') || s.startsWith('https:') || s.startsWith('//') || s.startsWith('data:') || s.startsWith('blob:')) return s;
+  if (s === P || s.startsWith(P + '/')) return s;
+  if (s.charAt(0) !== '/') return s;
+  if (/^\\/(api|static|plugins|files|images)\\b/.test(s) || s === '/favicon.ico' || s.startsWith('/_redirects')) return P + s;
+  return s;
+}}
+var _f = window.fetch;
+window.fetch = function(input, init) {{
+  if (typeof input === 'string') input = absUrl(input);
+  else if (typeof Request !== 'undefined' && input instanceof Request) {{
+    var u = absUrl(input.url);
+    if (u !== input.url) input = new Request(u, input);
+      }}
+  return _f.call(this, input, init);
+}};
+var _xo = XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open = function(method, url) {{
+  var rest = Array.prototype.slice.call(arguments, 2);
+  return _xo.apply(this, [method, absUrl(url)].concat(rest));
+}};
+var _WS = WebSocket;
+window.WebSocket = function(url, protocols) {{
+  if (typeof url === 'string' && url.charAt(0) === '/' && /^\\/(api)\\b/.test(url)) {{
+    var pr = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    url = pr + '//' + location.host + P + url;
+  }}
+  return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
+}};
+}})();
+</script>
+"""
+        lower = html.lower()
+        idx = lower.find("<head>")
+        if idx != -1:
+            ins = idx + len("<head>")
+            return html[:ins] + patch + html[ins:]
+        if "</head>" in html:
+            return html.replace("</head>", patch + "</head>", 1)
+        return patch + html
