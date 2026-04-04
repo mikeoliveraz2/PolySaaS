@@ -53,9 +53,8 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
                 for endpoint in passthrough_endpoints:
                     # Don't add duplicates - check if this URL already exists in static config
                     existing_urls = [link.get('url', '') for link in topmenu_links if 'url' in link]
-                    norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-                    # Embed route keeps Jazzmin sidebar/header; iframe loads /pt/admin/{norm}/
-                    full_url = f"/admin/passthrough-embed/{norm}/"
+                    # Use /pt/admin/ format for unified passthrough routing
+                    full_url = f"/pt/admin/{endpoint.trigger_path}/"
                     if full_url not in existing_urls:
                         menu_link = {
                             "name": endpoint.menu_title,

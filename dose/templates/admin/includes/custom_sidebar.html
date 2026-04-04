@@ -909,6 +909,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Passthrough sidebar links use normal full navigation (same as CRUD changelist links) so Django
+// admin base_site, messages, and session all refresh in one request — do not intercept with fetch.
+
 function toggleDoseSidebar() {
     const navContainer = document.getElementById('dose-custom-sidebar');
     const navToggle = document.getElementById('dose-nav-toggle');

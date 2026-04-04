@@ -909,6 +909,83 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Passthrough: dashboard-style in-place load (landing_page loadServiceContent) — swap .dose-content-col only.
+(function() {
+    function pssRunScripts(container) {
+        if (!container) return;
+        container.querySelectorAll('script').forEach(function(oldScript) {
+            var newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach(function(attr) {
+                newScript.setAttribute(attr.name, attr.value);
+            });
+            newScript.appendChild(document.createTextNode(oldScript.textContent || oldScript.innerHTML || ''));
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+    }
+
+    function loadPassthroughEmbedInPlace(url, e) {
+        e.preventDefault();
+        var col = document.querySelector('.dose-content-col');
+        if (!col) {
+            window.location.href = url;
+            return;
+        }
+        col.innerHTML = '<div style="text-align:center;padding:3rem;"><div style="font-size:2rem;margin-bottom:1rem;">⏳</div><p>Loading…</p></div>';
+        fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function(html) {
+                col.innerHTML = html;
+                pssRunScripts(col);
+                if (window.history && window.history.pushState) {
+                    window.history.pushState({ pssPassthroughEmbed: url }, '', url);
+                }
+            })
+            .catch(function(err) {
+                console.error('[PSS] passthrough embed load failed', err);
+                col.innerHTML = '<div style="text-align:center;padding:3rem;color:#e74c3c;"><p>Could not load service. <a href="' + url + '">Open full page</a></p></div>';
+            });
+    }
+
+    document.addEventListener('click', function(e) {
+        var a = e.target.closest && e.target.closest('a[href^="/admin/passthrough-embed/"]');
+        if (!a) return;
+        if (a.getAttribute('target') === '_blank') return;
+        if (e.defaultPrevented) return;
+        if (e.button !== 0) return;
+        if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+        var href = a.getAttribute('href');
+        if (!href) return;
+        var navItems = document.getElementById('dose-nav-items');
+        var navbar = document.getElementById('jazzy-navbar');
+        var inSidebar = navItems && navItems.contains(a);
+        var inTopMenu = navbar && navbar.contains(a);
+        if (!inSidebar && !inTopMenu) return;
+        loadPassthroughEmbedInPlace(href, e);
+    });
+
+    window.addEventListener('popstate', function(ev) {
+        if (ev.state && ev.state.pssPassthroughEmbed) {
+            var col = document.querySelector('.dose-content-col');
+            if (!col) return;
+            fetch(ev.state.pssPassthroughEmbed, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(function(r) { return r.text(); })
+                .then(function(html) { col.innerHTML = html; pssRunScripts(col); })
+                .catch(function() { window.location.reload(); });
+        } else {
+            window.location.reload();
+        }
+    });
+})();
+
 function toggleDoseSidebar() {
     const navContainer = document.getElementById('dose-custom-sidebar');
     const navToggle = document.getElementById('dose-nav-toggle');

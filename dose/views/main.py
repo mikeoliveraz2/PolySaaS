@@ -691,7 +691,7 @@ def landing_page(request):
             continue
         seen_normalized.add(norm)
 
-        url = f'/pt/admin/{norm}/'
+        url = f'/admin/passthrough-embed/{norm}/'
         title = endpoint.menu_title or norm.replace('_', ' ').title()
 
         service_data = {

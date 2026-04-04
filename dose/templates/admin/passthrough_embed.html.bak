@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{# Passthrough SPA loads in iframe so Jazzmin sidebar and top bar stay fixed (full /pt/... navigation replaces the whole document). #}
+
+{% block title %}{{ embed_title }} — {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; {{ embed_title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="polysaas-passthrough-embed-wrap" style="width:100%;height:calc(100vh - 220px);min-height:480px;">
+    <iframe
+        title="{{ embed_title }}"
+        src="{{ embed_src }}"
+        style="width:100%;height:100%;border:0;border-radius:8px;background:#fff;"
+        referrerpolicy="same-origin"
+    ></iframe>
+</div>
+<p class="text-muted" style="margin-top:10px;font-size:12px;">
+    {% trans "Open in full window" %}:
+    <a href="{{ embed_src }}" target="_blank" rel="noopener">{{ embed_src }}</a>
+</p>
+{% endblock %}

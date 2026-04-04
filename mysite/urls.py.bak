@@ -55,7 +55,6 @@ urlpatterns = [
     path('admin/aiaspeers-view/', __import__('dose.admin_views').admin_views.aiaspeers_view, name='aiaspeers_view'),
     path('admin/gmail-view/', __import__('dose.admin_views').admin_views.gmail_view, name='gmail_view'),
     path('admin/mattermost-view/', __import__('dose.admin_views').admin_views.mattermost_view, name='mattermost_view'),
-    path('admin/passthrough-embed/<str:trigger>/', __import__('dose.admin_views').admin_views.passthrough_embed_view, name='passthrough_embed'),
     path('api/airtable/tickets/', __import__('dose.views.airtable_dashboard', fromlist=['airtable_tickets_api']).airtable_tickets_api, name='api_airtable_tickets'),
     path('admin/polysniffer/', include((polysniffer_urls, 'polysniffer'))),
     path('', lambda request: redirect('dose:landing_page'), name='home'),

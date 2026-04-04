@@ -227,6 +227,23 @@ def admin_navigation(request):
         passthrough_services = []  # Passthrough endpoints (Gmail, HubSpot, etc.)
         external_services = []     # Other external integrations (from NavigationPanel if added later)
 
+        try:
+            from .models import TenantApp
+            _subscribed = set(
+                TenantApp.public_bundles.filter(
+                    tenant=tenant,
+                    status__in=['active', 'provisioning'],
+                ).values_list('app_name', flat=True)
+            ) if tenant else set()
+        except Exception:
+            _subscribed = set()
+
+        def _endpoint_visible(trigger_path):
+            # Normalise: last path segment, lowercase, hyphens→underscores
+            # so /dose/monitor-logger/ → monitor_logger, monitor-logger → monitor_logger
+            n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+            return n == 'gmail' or n in _subscribed
+
         # Use endpoints from middleware if available (already queried and filtered)
         endpoints = []
         if hasattr(request, 'passthrough_endpoints') and request.passthrough_endpoints:
@@ -301,41 +318,32 @@ def admin_navigation(request):
             else:
                 print(f"[ADMIN_NAV] No tenant found - no PassThroughEndpoints will be shown")
 
-        # Track both titles and trigger_paths to prevent duplicates
-        seen_titles = set()
-        seen_trigger_paths = set()
+        # Track seen normalized trigger names to prevent duplicates.
+        # Normalise: strip slashes, lowercase, take last path segment
+        # so /Admin/Passthrough/Odoo/ and odoo both map to 'odoo'.
+        # Prefer the clean simple-name entry; path-based stale entries are skipped.
+        seen_normalized = set()
 
         for endpoint in endpoints:
             print(f"[ADMIN_NAV] Endpoint: {endpoint.trigger_path} - {endpoint.menu_title}")
 
-            # Check for duplicates by trigger_path (more reliable than title)
-            trigger_path_normalized = endpoint.trigger_path.strip('/').lower()
-            if trigger_path_normalized in seen_trigger_paths:
-                print(f"[ADMIN_NAV] Skipping duplicate trigger_path: {endpoint.trigger_path}")
+            # Filter: only show gmail + subscribed bundled apps
+            if not _endpoint_visible(endpoint.trigger_path):
+                print(f"[ADMIN_NAV] Skipping unsubscribed: {endpoint.trigger_path}")
                 continue
-            seen_trigger_paths.add(trigger_path_normalized)
 
-            # Also check by title as backup
-            title = endpoint.menu_title or endpoint.trigger_path.title()
-            if title in seen_titles:
-                print(f"[ADMIN_NAV] Skipping duplicate title: {title}")
+            # Deduplicate by normalized trigger name (last path segment, hyphens→underscores)
+            norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+            if norm in seen_normalized:
+                print(f"[ADMIN_NAV] Skipping duplicate (normalized '{norm}'): {endpoint.trigger_path}")
                 continue
-            seen_titles.add(title)
+            seen_normalized.add(norm)
 
-            # Route to appropriate view using standardized /pt/[context]/[trigger] format
-            from django.urls import reverse
-
-            # Determine context based on service type
-            if endpoint.trigger_path.lower() in ['gmail']:
-                # Admin-accessible services
-                context = 'admin'
-            else:
-                # Default to admin context for other services
-                context = 'admin'
-
-            # Use standardized passthrough URL format
-            url = f'/pt/{context}/{endpoint.trigger_path}/'
-            print(f"[ADMIN_NAV] Using standardized passthrough URL: {url} (context: {context}, trigger: {endpoint.trigger_path})")
+            # Use the clean normalized name for the URL; ignore any /admin/ or /dose/ prefix
+            # stored in the trigger_path — that is middleware routing, not part of the endpoint.
+            url = f'/pt/admin/{norm}/'
+            title = endpoint.menu_title or norm.replace('_', ' ').title()
+            print(f"[ADMIN_NAV] Passthrough service: {title} → {url}")
 
             service_data = {
                 'id': endpoint.id,
