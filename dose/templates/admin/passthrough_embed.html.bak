@@ -1,7 +1,12 @@
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
 
-{# Passthrough SPA loads in iframe so Jazzmin sidebar and top bar stay fixed (full /pt/... navigation replaces the whole document). #}
+{# Full browser navigation: Jazzmin shell; upstream header/styles injected; iframe loads full /pt/... app. #}
+
+{% block extrahead %}
+{{ block.super }}
+{{ embed_head }}
+{% endblock %}
 
 {% block title %}{{ embed_title }} — {{ site_title|default:_('Django site admin') }}{% endblock %}
 
@@ -13,11 +18,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="polysaas-passthrough-embed-wrap" style="width:100%;height:calc(100vh - 220px);min-height:480px;">
+<div class="polysaas-passthrough-embed-wrap" style="display:flex;flex-direction:column;width:100%;height:calc(100vh - 220px);min-height:480px;gap:0;">
+    {% if embed_body %}
+    <div class="polysaas-passthrough-chrome dose-content-passthrough-chrome" style="flex:0 0 auto;width:100%;">
+        {{ embed_body }}
+    </div>
+    {% endif %}
     <iframe
         title="{{ embed_title }}"
         src="{{ embed_src }}"
-        style="width:100%;height:100%;border:0;border-radius:8px;background:#fff;"
+        style="flex:1 1 auto;width:100%;min-height:320px;border:0;border-radius:8px;background:#fff;"
         referrerpolicy="same-origin"
     ></iframe>
 </div>

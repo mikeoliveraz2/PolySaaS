@@ -6,6 +6,46 @@ from django.http import HttpResponse
 
 logger = logging.getLogger(__name__)
 
+_SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH"})
+
+
+def _outbound_headers_from_request(request):
+    return {
+        k: v
+        for k, v in request.META.items()
+        if (k.startswith("HTTP_") or k in ("CONTENT_TYPE", "CONTENT_LENGTH"))
+        and k not in _SKIP_META
+    }
+
+
+def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/"):
+    """
+    GET upstream HTML (same headers/cookies idea as forward_request_standardized).
+    Used to pull a fragment (e.g. header) into the Jazzmin passthrough embed page.
+    """
+    clean = upstream_subpath or "/"
+    if not clean.startswith("/"):
+        clean = "/" + clean
+    target_url = endpoint_url.rstrip("/") + clean
+    try:
+        resp = requests.get(
+            target_url,
+            headers=_outbound_headers_from_request(request),
+            cookies=request.COOKIES,
+            allow_redirects=True,
+            timeout=60,
+        )
+    except Exception as e:
+        logger.warning("fetch_upstream_index_html %s failed: %s", target_url, e)
+        return ""
+    if resp.status_code != 200:
+        logger.warning(
+            "fetch_upstream_index_html %s -> status %s", target_url, resp.status_code
+        )
+        return ""
+    return resp.content.decode("utf-8", errors="ignore")
+
+
 def forward_request_standardized(request, endpoint_url, handler=None):
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
@@ -29,22 +69,18 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 clean = "/"
             if not clean.startswith("/"):
                 clean = "/" + clean
+            upstream_path = clean
             target_url = endpoint_url.rstrip("/") + clean
             print(f"PASSTHROUGH -> {full_path} -> {target_url}")
         else:
+            upstream_path = "/"
             target_url = endpoint_url
             print(f"PASSTHROUGH -> USING ENDPOINT ROOT: {target_url}")
 
         print(f"SENDING REQUEST TO -> {target_url}")
 
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
-        _skip_meta = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH"})
-        outbound_headers = {
-            k: v
-            for k, v in request.META.items()
-            if (k.startswith("HTTP_") or k in ("CONTENT_TYPE", "CONTENT_LENGTH"))
-            and k not in _skip_meta
-        }
+        outbound_headers = _outbound_headers_from_request(request)
 
         resp = requests.request(
             method=request.method,
@@ -67,20 +103,42 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             "+html"
         )
 
-        # API, JS, CSS, images, fonts, etc. must pass through unchanged (not forced to text/html)
+        # API, JS, CSS, images, fonts, etc. must pass through unchanged (not forced to text/html).
+        # Handlers may still rewrite selected bodies (e.g. Mattermost /api/v4/config/client JSON).
         if not is_html:
-            response = HttpResponse(resp.content, status=resp.status_code)
+            body = resp.content
+            body_rewritten = False
+            if handler and hasattr(handler, "rewrite_upstream_body"):
+                try:
+                    new_body = handler.rewrite_upstream_body(
+                        body,
+                        content_type,
+                        request,
+                        endpoint_url=endpoint_url,
+                        upstream_path=upstream_path,
+                    )
+                    if new_body is not None:
+                        body = new_body
+                        body_rewritten = True
+                        print("FORWARDER — rewrite_upstream_body applied (non-HTML body modified)")
+                except Exception as rw_exc:
+                    logger.warning("rewrite_upstream_body failed: %s", rw_exc, exc_info=True)
+
+            response = HttpResponse(body, status=resp.status_code)
             upstream_ct = resp.headers.get("Content-Type")
             if upstream_ct:
                 response["Content-Type"] = upstream_ct
-            for hk in (
+            _copy_headers = (
                 "Cache-Control",
                 "ETag",
                 "Last-Modified",
                 "Content-Disposition",
                 "Content-Language",
                 "X-Requested-With",
-            ):
+            )
+            if body_rewritten:
+                _copy_headers = tuple(h for h in _copy_headers if h != "ETag")
+            for hk in _copy_headers:
                 if hk in resp.headers:
                     response[hk] = resp.headers[hk]
             response["X-Frame-Options"] = "ALLOWALL"

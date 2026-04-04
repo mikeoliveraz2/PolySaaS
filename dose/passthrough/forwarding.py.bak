@@ -29,23 +29,34 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 clean = "/"
             if not clean.startswith("/"):
                 clean = "/" + clean
+            upstream_path = clean
             target_url = endpoint_url.rstrip("/") + clean
             print(f"PASSTHROUGH -> {full_path} -> {target_url}")
         else:
+            upstream_path = "/"
             target_url = endpoint_url
             print(f"PASSTHROUGH -> USING ENDPOINT ROOT: {target_url}")
 
         print(f"SENDING REQUEST TO -> {target_url}")
 
+        # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
+        _skip_meta = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH"})
+        outbound_headers = {
+            k: v
+            for k, v in request.META.items()
+            if (k.startswith("HTTP_") or k in ("CONTENT_TYPE", "CONTENT_LENGTH"))
+            and k not in _skip_meta
+        }
+
         resp = requests.request(
             method=request.method,
             url=target_url,
-            headers={k: v for k, v in request.META.items() if k.startswith("HTTP_") or k in ["CONTENT_TYPE", "CONTENT_LENGTH"]},
+            headers=outbound_headers,
             data=request.body,
             cookies=request.COOKIES,
             allow_redirects=True,
             stream=False,
-            timeout=30,
+            timeout=60,
         )
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
@@ -58,20 +69,42 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             "+html"
         )
 
-        # API, JS, CSS, images, fonts, etc. must pass through unchanged (not forced to text/html)
+        # API, JS, CSS, images, fonts, etc. must pass through unchanged (not forced to text/html).
+        # Handlers may still rewrite selected bodies (e.g. Mattermost /api/v4/config/client JSON).
         if not is_html:
-            response = HttpResponse(resp.content, status=resp.status_code)
+            body = resp.content
+            body_rewritten = False
+            if handler and hasattr(handler, "rewrite_upstream_body"):
+                try:
+                    new_body = handler.rewrite_upstream_body(
+                        body,
+                        content_type,
+                        request,
+                        endpoint_url=endpoint_url,
+                        upstream_path=upstream_path,
+                    )
+                    if new_body is not None:
+                        body = new_body
+                        body_rewritten = True
+                        print("FORWARDER — rewrite_upstream_body applied (non-HTML body modified)")
+                except Exception as rw_exc:
+                    logger.warning("rewrite_upstream_body failed: %s", rw_exc, exc_info=True)
+
+            response = HttpResponse(body, status=resp.status_code)
             upstream_ct = resp.headers.get("Content-Type")
             if upstream_ct:
                 response["Content-Type"] = upstream_ct
-            for hk in (
+            _copy_headers = (
                 "Cache-Control",
                 "ETag",
                 "Last-Modified",
                 "Content-Disposition",
                 "Content-Language",
                 "X-Requested-With",
-            ):
+            )
+            if body_rewritten:
+                _copy_headers = tuple(h for h in _copy_headers if h != "ETag")
+            for hk in _copy_headers:
                 if hk in resp.headers:
                     response[hk] = resp.headers[hk]
             response["X-Frame-Options"] = "ALLOWALL"

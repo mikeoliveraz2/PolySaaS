@@ -613,11 +613,20 @@ def mattermost_view(request):
 @login_required
 def passthrough_embed_view(request, trigger):
     """
-    Load a /pt/admin/{trigger}/ passthrough inside the Jazzmin shell (sidebar + header stay put).
+    Full GET like any admin CRUD page: renders admin/base_site.html with passthrough in {% block content %}.
+    Upstream HTML is fetched once; handlers may inject a fragment (e.g. header) into the content column.
+    Sub-resources still load from /pt/admin/{trigger}/... (iframe src). Normal link navigation — not XHR.
     """
-    from dose.models import TenantApp
+    import logging
+
+    from django.utils.safestring import mark_safe
+
+    from dose.models import PassThroughEndpoint, TenantApp
+    from dose.passthrough.forwarding import fetch_upstream_index_html
+    from dose.passthrough.handlers.registry import get_handler_for_endpoint
     from dose.utils import get_current_tenant
 
+    log = logging.getLogger(__name__)
     norm = trigger.strip('/').lower().split('/')[-1].replace('-', '_')
     tenant = get_current_tenant(request)
 
@@ -636,8 +645,61 @@ def passthrough_embed_view(request, trigger):
 
     embed_src = f'/pt/admin/{norm}/'
     embed_title = norm.replace('_', ' ').title()
-    ctx = {'embed_src': embed_src, 'embed_title': embed_title}
-    # Same pattern as landing_page loadServiceContent: return fragment when swapping main pane via fetch.
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return render(request, 'admin/passthrough_embed_fragment.html', ctx)
-    return render(request, 'admin/passthrough_embed.html', ctx)
+    _xrw = request.headers.get("X-Requested-With", "")
+    print(
+        f"[PSS_SHELL] passthrough_embed_view full_document=1 path={request.path!r} "
+        f"trigger_norm={norm!r} user={getattr(request.user, 'username', None)!r} "
+        f"tenant_schema={getattr(tenant, 'schema_name', None)!r} "
+        f"x_requested_with={_xrw!r} "
+        f"=> same admin/base_site.html request cycle as CRUD changelist"
+    )
+    log.info(
+        "[PSS_SHELL] passthrough_embed_view path=%s trigger_norm=%s user_pk=%s tenant=%s xrw=%r",
+        request.path,
+        norm,
+        getattr(request.user, "pk", None),
+        getattr(tenant, "schema_name", None),
+        _xrw,
+    )
+
+    embed_head = ""
+    embed_body = ""
+    endpoint = PassThroughEndpoint.objects.filter(
+        trigger_path__iexact=norm,
+        is_enabled=True,
+    ).first()
+    if endpoint is None and "_" in norm:
+        endpoint = PassThroughEndpoint.objects.filter(
+            trigger_path__iexact=norm.replace("_", ""),
+            is_enabled=True,
+        ).first()
+
+    if endpoint:
+        handler = get_handler_for_endpoint(endpoint, request)
+        raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/")
+        if raw_html and handler and hasattr(handler, "build_admin_embed_injection"):
+            inj = handler.build_admin_embed_injection(
+                raw_html, request, endpoint_url=endpoint.endpoint_url
+            )
+            embed_head = mark_safe(inj.get("head") or "")
+            embed_body = mark_safe(inj.get("body") or "")
+            print(
+                f"[PSS_SHELL] passthrough_embed injection trigger={norm!r} "
+                f"head_chars={len(inj.get('head') or '')} body_chars={len(inj.get('body') or '')}"
+            )
+        elif not raw_html:
+            embed_body = mark_safe(
+                '<div class="alert alert-warning" style="margin-bottom:12px;">'
+                "Could not load upstream HTML for inline chrome (check endpoint URL and network).</div>"
+            )
+
+    return render(
+        request,
+        "admin/passthrough_embed.html",
+        {
+            "embed_src": embed_src,
+            "embed_title": embed_title,
+            "embed_head": embed_head,
+            "embed_body": embed_body,
+        },
+    )

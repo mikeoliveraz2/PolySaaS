@@ -27,10 +27,64 @@ class MattermostPassthroughHandler:
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
 
         passthrough_prefix = self._passthrough_prefix(request)
+
         html_str = self._rewrite_asset_tags(html_str, base_origin)
         html_str = self._inject_client_shim(html_str, passthrough_prefix, base_origin)
 
         return html_str, None
+
+    def build_admin_embed_injection(self, html_str, request, endpoint_url=None):
+        """
+        Fragments for admin/passthrough_embed.html: upstream banner + head styles only.
+        Injected into the existing Jazzmin layout (not a separate document).
+        """
+        if not endpoint_url or not html_str:
+            return {"head": "", "body": ""}
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html_str, "html.parser")
+        banner = (
+            soup.find("header")
+            or soup.find(attrs={"role": "banner"})
+            or soup.find(id=re.compile(r"global.*header|navbar|topbar", re.I))
+            or soup.select_one("[class*='global-header']")
+        )
+
+        head_chunks = []
+        head = soup.head
+        if head:
+            for link in head.find_all("link", href=True):
+                rel = link.get("rel")
+                rel_list = rel if isinstance(rel, (list, tuple)) else ([rel] if rel else [])
+                if "stylesheet" in rel_list:
+                    head_chunks.append(str(link))
+            for st in head.find_all("style"):
+                head_chunks.append(str(st))
+            for meta in head.find_all("meta"):
+                if meta.get("name") == "viewport" or meta.get("charset"):
+                    head_chunks.append(str(meta))
+
+        head_html = "\n".join(head_chunks)
+        head_html = self._rewrite_asset_tags(head_html, base_origin)
+
+        if not banner:
+            body = (
+                '<div class="alert alert-info" style="margin-bottom:12px;">'
+                "No static &lt;header&gt; in this HTML yet — Mattermost usually mounts the top bar "
+                "in React. Styles from the shell are still injected; full app below.</div>"
+            )
+        else:
+            body = self._rewrite_asset_tags(str(banner), base_origin)
+
+        print(
+            f"[MATTERMOST HANDLER] build_admin_embed_injection banner_found={bool(banner)} "
+            f"head_len={len(head_html)} body_len={len(body)}"
+        )
+        return {"head": head_html, "body": body}
 
     def _passthrough_prefix(self, request):
         path = getattr(request, "path_info", "") or ""
@@ -126,3 +180,76 @@ window.WebSocket = function(url, protocols) {{
         if "</head>" in html:
             return html.replace("</head>", patch + "</head>", 1)
         return patch + html
+
+    def rewrite_upstream_body(
+        self,
+        body: bytes,
+        content_type: str,
+        request,
+        endpoint_url=None,
+        upstream_path: str = "/",
+    ):
+        """
+        Patch JSON from /api/v4/config/client so SiteURL and websocket URLs point at this
+        passthrough prefix; otherwise the SPA keeps calling the raw upstream host.
+        """
+        if not endpoint_url:
+            return None
+        ct = (content_type or "").split(";")[0].strip().lower()
+        if ct != "application/json":
+            return None
+        path_only = (upstream_path or "").split("?")[0]
+        if not path_only.startswith("/api/v4/config/client"):
+            return None
+        try:
+            text = body.decode("utf-8")
+            data = json.loads(text)
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            logger.warning("[MATTERMOST HANDLER] JSON rewrite skip: %s", e)
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        prefix = self._passthrough_prefix(request)
+        public_root = request.build_absolute_uri(prefix).split("?")[0].rstrip("/")
+
+        ep = urlparse(endpoint_url.rstrip("/"))
+        ws_scheme = "wss" if request.is_secure() else "ws"
+        ws_public = f"{ws_scheme}://{request.get_host()}{prefix}/api/v4/websocket"
+
+        def _same_upstream_host(url_str):
+            if not url_str or not isinstance(url_str, str):
+                return False
+            try:
+                p = urlparse(url_str)
+                return p.netloc == ep.netloc
+            except Exception:
+                return False
+
+        changed = False
+        site_before = data.get("SiteURL")
+        site = site_before
+        if site and _same_upstream_host(site):
+            data["SiteURL"] = public_root
+            changed = True
+
+        for key in ("WebsocketURL", "WebsocketUrl", "WebsocketSecureURL"):
+            val = data.get(key)
+            if val and isinstance(val, str) and _same_upstream_host(val):
+                data[key] = ws_public
+                changed = True
+
+        if site_before and not changed:
+            print(
+                f"[MATTERMOST HANDLER] config/client SiteURL not patched "
+                f"(endpoint host {ep.netloc!r} vs response {site_before!r}) — check PassThrough URL vs Mattermost Site URL"
+            )
+
+        if not changed:
+            return None
+
+        out = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        msg = f"[MATTERMOST HANDLER] Patched config/client SiteURL {site_before!r} -> {public_root!r} prefix={prefix!r}"
+        print(msg)
+        logger.info(msg)
+        return out.encode("utf-8")

@@ -609,16 +609,58 @@ def mattermost_view(request):
     })
 
 
+def _split_html_document_for_jazzmin_embed(html: str):
+    """
+    Split a full HTML document into head/body inner HTML for admin/base_site.html.
+    Drops upstream <title> so the admin page title block stays authoritative.
+    """
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    head_inner = ""
+    if soup.head:
+        for t in soup.head.find_all("title"):
+            t.decompose()
+        head_inner = soup.head.decode_contents()
+    body_inner = soup.body.decode_contents() if soup.body else (html or "")
+    return head_inner, body_inner
+
+
+def _process_upstream_html_for_embed(handler, raw_html: str, request, endpoint_url: str):
+    """Same pipeline as passthrough forwarding HTML path; returns a single HTML string."""
+    from django.http import HttpResponse
+
+    processed = raw_html
+    if handler and hasattr(handler, "process_html_response"):
+        out = handler.process_html_response(raw_html, request, endpoint_url=endpoint_url)
+        if isinstance(out, HttpResponse):
+            return raw_html
+        if isinstance(out, tuple):
+            processed = out[0] if out[0] else raw_html
+        else:
+            processed = out if out is not None else raw_html
+    return processed or raw_html
+
+
 @never_cache
 @login_required
 def passthrough_embed_view(request, trigger):
     """
-    Full GET like any admin CRUD page: renders admin/base_site.html with passthrough in {% block content %}.
-    Sub-resources still load from /pt/admin/{trigger}/... (iframe src). Normal link navigation — not XHR.
+    Renders admin/base_site.html with the passthrough app in {% block content %} only (no iframe).
+
+    Upstream index HTML is fetched once, run through the same handler as /pt/... (rewrites + shims),
+    then split so <head> fragments go to {% block extrahead %} and <body> inner HTML into the
+    content column. Static assets may still load from the bundled app host; GET/POST API traffic
+    uses the passthrough prefix via the injected client shim and middleware.
     """
     import logging
 
-    from dose.models import TenantApp
+    from django.utils.html import escape
+    from django.utils.safestring import mark_safe
+
+    from dose.models import PassThroughEndpoint, TenantApp
+    from dose.passthrough.forwarding import fetch_upstream_index_html
+    from dose.passthrough.handlers.registry import get_handler_for_endpoint
     from dose.utils import get_current_tenant
 
     log = logging.getLogger(__name__)
@@ -640,17 +682,66 @@ def passthrough_embed_view(request, trigger):
 
     embed_src = f'/pt/admin/{norm}/'
     embed_title = norm.replace('_', ' ').title()
+    _xrw = request.headers.get("X-Requested-With", "")
+    print(
+        f"[PSS_SHELL] passthrough_embed_view full_document=1 path={request.path!r} "
+        f"trigger_norm={norm!r} user={getattr(request.user, 'username', None)!r} "
+        f"tenant_schema={getattr(tenant, 'schema_name', None)!r} "
+        f"x_requested_with={_xrw!r} "
+        f"=> same admin/base_site.html request cycle as CRUD changelist"
+    )
     log.info(
-        "[PSS_SHELL] passthrough_embed_view full_document=1 path=%s trigger_norm=%s user_pk=%s "
-        "tenant=%s x_requested_with=%r",
+        "[PSS_SHELL] passthrough_embed_view path=%s trigger_norm=%s user_pk=%s tenant=%s xrw=%r",
         request.path,
         norm,
         getattr(request.user, "pk", None),
         getattr(tenant, "schema_name", None),
-        request.headers.get("X-Requested-With", ""),
+        _xrw,
     )
+
+    embed_head = ""
+    embed_body = ""
+    endpoint = PassThroughEndpoint.objects.filter(
+        trigger_path__iexact=norm,
+        is_enabled=True,
+    ).first()
+    if endpoint is None and "_" in norm:
+        endpoint = PassThroughEndpoint.objects.filter(
+            trigger_path__iexact=norm.replace("_", ""),
+            is_enabled=True,
+        ).first()
+
+    if endpoint:
+        handler = get_handler_for_endpoint(endpoint, request)
+        raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/")
+        if raw_html:
+            processed = _process_upstream_html_for_embed(
+                handler, raw_html, request, endpoint.endpoint_url
+            )
+            head_html, body_html = _split_html_document_for_jazzmin_embed(processed)
+            embed_head = mark_safe(head_html or "")
+            embed_body = mark_safe(
+                '<div class="polysaas-passthrough-scope" '
+                f'data-polysaas-embed-trigger="{escape(norm)}">'
+                f"{body_html or ''}</div>"
+            )
+            print(
+                f"[PSS_SHELL] passthrough_embed full_document trigger={norm!r} "
+                f"head_chars={len(head_html or '')} body_chars={len(body_html or '')}"
+            )
+        else:
+            embed_body = mark_safe(
+                '<div class="alert alert-warning" style="margin-bottom:12px;">'
+                "Could not load upstream HTML (check endpoint URL and network).</div>"
+            )
+
     return render(
         request,
-        'admin/passthrough_embed.html',
-        {'embed_src': embed_src, 'embed_title': embed_title},
+        "admin/passthrough_embed.html",
+        {
+            "embed_src": embed_src,
+            "embed_title": embed_title,
+            "embed_head": embed_head,
+            "embed_body": embed_body,
+        },
     )
