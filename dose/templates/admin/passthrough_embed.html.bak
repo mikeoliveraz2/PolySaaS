@@ -36,12 +36,14 @@ body.polysaas-passthrough-embed-page .content .row {
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
 }
-/* The scope div fills the available viewport height */
+/* The scope div fills the available viewport height.
+   overflow:hidden because the embedded SPA manages its own internal scrolling. */
 .polysaas-passthrough-scope {
     position: relative;
     width: 100%;
-    height: calc(100vh - var(--pss-header-h, 40px) - 90px);
-    overflow: auto;
+    /* 56px Jazzmin top navbar + 42px breadcrumb bar = 98px chrome above the content */
+    height: calc(100vh - 98px);
+    overflow: hidden;
     box-sizing: border-box;
 }
 /* PolySaaS sidebar — always on top, never overridden */

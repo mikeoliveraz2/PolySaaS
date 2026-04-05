@@ -49,29 +49,45 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
         except Exception as exc:
             logger.warning("get_upstream_cookies failed: %s", exc)
 
-    try:
-        resp = requests.get(
-            target_url,
-            headers=_outbound_headers_from_request(request),
-            cookies=upstream_cookies,
-            allow_redirects=False,   # handle redirects explicitly
-            timeout=60,
-        )
-    except Exception as e:
-        logger.warning("fetch_upstream_index_html %s failed: %s", target_url, e)
-        return ""
+    # Follow same-origin redirects automatically (up to 5 hops) so that apps like Odoo
+    # whose root "/" redirects through "/odoo" before landing on the actual HTML are handled.
+    # Cross-origin redirects are returned as REDIRECT: sentinels for the caller to handle.
+    from urllib.parse import urlparse as _up
+    _origin = f"{_up(target_url).scheme}://{_up(target_url).netloc}"
+    _current_url = target_url
+    for _hop in range(5):
+        try:
+            resp = requests.get(
+                _current_url,
+                headers=_outbound_headers_from_request(request),
+                cookies=upstream_cookies,
+                allow_redirects=False,
+                timeout=60,
+            )
+        except Exception as e:
+            logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
+            return ""
 
-    # Pass 3xx redirects back to the caller as a sentinel so the browser follows them
-    if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+        if not (resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308)):
+            break   # got actual content
+
         location = resp.headers.get("Location", "")
-        # Make relative redirects absolute so the browser hits the upstream host, not localhost:8000
-        if location and not location.startswith(("http://", "https://")):
-            from urllib.parse import urlparse
-            p = urlparse(target_url)
-            location = f"{p.scheme}://{p.netloc}{location if location.startswith('/') else '/' + location}"
-        logger.info("fetch_upstream_index_html %s -> %s redirect to %s",
-                    target_url, resp.status_code, location)
-        return f"REDIRECT:{resp.status_code}:{location}"
+        if not location:
+            break
+        # Make relative location absolute
+        if not location.startswith(("http://", "https://")):
+            location = _origin + (location if location.startswith('/') else '/' + location)
+        # Only follow if same origin; hand cross-origin redirects back to the caller
+        loc_origin = f"{_up(location).scheme}://{_up(location).netloc}"
+        if loc_origin != _origin:
+            logger.info("fetch_upstream_index_html cross-origin redirect -> %s", location)
+            return f"REDIRECT:{resp.status_code}:{location}"
+        logger.info("fetch_upstream_index_html following %s -> %s", _current_url, location)
+        _current_url = location
+    else:
+        # Exhausted redirect hops
+        logger.warning("fetch_upstream_index_html: too many redirects from %s", target_url)
+        return ""
 
     if resp.status_code != 200:
         logger.warning(

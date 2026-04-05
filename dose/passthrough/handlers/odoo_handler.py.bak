@@ -145,13 +145,13 @@ class OdooPassthroughHandler:
         def _rewrite_attr(m):
             prefix = m.group(1)
             path   = m.group(2)
-            if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
+            if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/'):
                 path = '/pt/admin/odoo' + path
             return prefix + path
 
         # Rewrite href="..." and src="..." in tag attributes
         html = re.sub(
-            r'((?:href|src)=["\'])(/(?:web|odoo|bus|websocket)/[^"\']*)',
+            r'((?:href|src)=["\'])(/(?:web|odoo|bus)/[^"\']*)',
             _rewrite_attr, html,
         )
 
@@ -160,12 +160,12 @@ class OdooPassthroughHandler:
             quote = m.group(1) or ''
             path  = m.group(2)
             close = m.group(3) or ''
-            if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
+            if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/'):
                 path = '/pt/admin/odoo' + path
             return f'url({quote}{path}{close})'
 
         html = re.sub(
-            r'url\((["\']?)(/(?:web|odoo|bus|websocket)/[^)"\']*)(["\']?)\)',
+            r'url\((["\']?)(/(?:web|odoo|bus)/[^)"\']*)(["\']?)\)',
             _rewrite_css_url, html,
         )
         return html
@@ -200,43 +200,19 @@ class OdooPassthroughHandler:
         proxy_prefix = '/pt/admin/odoo'
         proxy_json   = json.dumps(proxy_prefix)
 
-        # ── Odoo 18 Base Path Fix ──
-        # Odoo 18 often uses a <base> tag or internal logic that assumes it is at /odoo/
-        # We must ensure the browser knows the base for relative assets is the proxy path.
-        base_tag = f'<base href="{proxy_prefix}/">'
-        
         patch = f"""
-{base_tag}
 <style id="polysaas-odoo-container-fix">
-/* Prevent Odoo's bundled CSS from hijacking html/body layout */
-body.polysaas-passthrough-embed-page,
-html {{
-    height: auto !important;
-    overflow: visible !important;
-}}
-/* Scope container fills the content area slot */
-.polysaas-passthrough-scope {{
-    position: relative !important;
-    width: 100%;
-    height: calc(100vh - 98px);
-    overflow: hidden;
-    box-sizing: border-box;
-}}
-/* Pin #wrapwrap inside the scope — defeat Odoo's position:fixed */
-.polysaas-passthrough-scope #wrapwrap,
-.polysaas-passthrough-scope .o_web_client,
-.polysaas-passthrough-scope .o_action_manager {{
-    position: relative !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: 100% !important;
+/* Force Odoo root elements to fill the PolySaaS container, not 100vh */
+html, body {{
     height: 100% !important;
-    min-height: unset !important;
     overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
+}}
+#wrapwrap, .o_web_client, .o_action_manager {{
+    height: 100% !important;
+    min-height: unset !important;
+    overflow: hidden !important;
 }}
 </style>
 <script data-polysaas-odoo-shim="1">
@@ -245,8 +221,6 @@ var B = {base_json};       // upstream origin e.g. http://localhost:8069
 var S = {session_json};    // server-side session_id (bootstrap only)
 var PROXY = {proxy_json};
 var O = window.location.origin;
-
-console.log('[PolySaaS] Odoo shim starting, B=', B, 'O=', O);
 
 // Seed session_id cookie so Odoo's SPA considers the user logged in on boot.
 if (S) {{
@@ -266,7 +240,7 @@ function isPolySaaSPath(s) {{
 }}
 
 // Odoo API/action paths that must flow through the PolySaaS proxy
-var ODOO_API_PREFIXES = ['/web/', '/odoo/', '/api/', '/longpolling/', '/bus/', '/websocket'];
+var ODOO_API_PREFIXES = ['/web/', '/odoo/', '/api/', '/longpolling/', '/bus/'];
 function isOdooApiPath(s) {{
   for (var i = 0; i < ODOO_API_PREFIXES.length; i++) {{
     if (s.startsWith(ODOO_API_PREFIXES[i])) return true;
@@ -289,13 +263,10 @@ function toProxy(s) {{
 // Patch fetch
 var _f = window.fetch;
 window.fetch = function(input, init) {{
-  var url = (typeof input === 'string') ? input : (input instanceof Request ? input.url : '');
-  var proxied = toProxy(url);
-  if (url !== proxied) console.log('[PolySaaS] fetch proxied:', url, '->', proxied);
-  
-  if (typeof input === 'string') input = proxied;
+  if (typeof input === 'string') input = toProxy(input);
   else if (typeof Request !== 'undefined' && input instanceof Request) {{
-    if (proxied !== input.url) input = new Request(proxied, input);
+    var u = toProxy(input.url);
+    if (u !== input.url) input = new Request(u, input);
   }}
   return _f.call(this, input, init);
 }};
@@ -303,10 +274,8 @@ window.fetch = function(input, init) {{
 // Patch XHR
 var _xo = XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open = function(method, url) {{
-  var proxied = toProxy(url);
-  if (url !== proxied) console.log('[PolySaaS] XHR proxied:', url, '->', proxied);
   var rest = Array.prototype.slice.call(arguments, 2);
-  return _xo.apply(this, [method, proxied].concat(rest));
+  return _xo.apply(this, [method, toProxy(url)].concat(rest));
 }};
 
 // Patch element src/href (for dynamically injected scripts/links/images)
@@ -322,12 +291,6 @@ function patchProp(proto, prop) {{
 patchProp(HTMLScriptElement.prototype, 'src');
 patchProp(HTMLLinkElement.prototype, 'href');
 patchProp(HTMLImageElement.prototype, 'src');
-
-// Patch Web Workers (Odoo 18 uses these for the Bus/Websocket)
-var _W = window.Worker;
-window.Worker = function(url, options) {{
-  return new _W(toProxy(url), options);
-}};
 
 var _setAttr = Element.prototype.setAttribute;
 Element.prototype.setAttribute = function(name, value) {{
@@ -381,175 +344,6 @@ try {{
 // Tell Odoo router we are at "/" so it recognises the route
 try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
 
-// ------------------------------------------------------------------ //
-// ADAPTIVE UI SHIM — Odoo's Owl framework relies on window.innerWidth//
-// for its responsive breakpoints. When embedded, we proxy these      //
-// getters to return the width of the .polysaas-passthrough-scope     //
-// container instead of the full window width.                        //
-// ------------------------------------------------------------------ //
-(function() {{
-  var scopeSelector = '.polysaas-passthrough-scope';
-  
-  function getWidth() {{
-    var scope = document.querySelector(scopeSelector);
-    return scope ? scope.offsetWidth : window.innerWidth;
-  }}
-
-  // Proxy window.innerWidth and matchMedia
-  try {{
-    // Use a non-configurable proxy if possible, but Odoo might try to re-define
-    Object.defineProperty(window, 'innerWidth', {{
-      get: function() {{ return getWidth(); }},
-      configurable: true
-    }});
-    
-    var _matchMedia = window.matchMedia;
-    window.matchMedia = function(query) {{
-      // If Odoo is checking for screen width, redirect the check to our scope
-      if (query.indexOf('max-width') !== -1 || query.indexOf('min-width') !== -1) {{
-        var width = getWidth();
-        // Simple evaluator for standard Odoo breakpoints
-        var match = query.match(/(min|max)-width:\s*(\d+)px/);
-        if (match) {{
-          var type = match[1];
-          var val = parseInt(match[2], 10);
-          var result = (type === 'min') ? (width >= val) : (width <= val);
-          return {{
-            matches: result,
-            media: query,
-            onchange: null,
-            addListener: function() {{}},
-            removeListener: function() {{}},
-            addEventListener: function() {{}},
-            removeEventListener: function() {{}},
-            dispatchEvent: function() {{ return false; }}
-          }};
-        }}
-      }}
-      return _matchMedia.call(window, query);
-    }};
-    console.log('[PolySaaS] Adaptive UI shim active (innerWidth proxied)');
-  }} catch(e) {{
-    console.warn('[PolySaaS] Failed to proxy innerWidth:', e);
-  }}
-}})();
-
-// ------------------------------------------------------------------ //
-// URL GUARD — Odoo's router sometimes tries to strip the proxy prefix//
-// or navigate to absolute paths like /odoo/apps. We intercept        //
-// pushState/replaceState to ensure the /pt/admin/odoo prefix stays.  //
-// ------------------------------------------------------------------ //
-(function() {{
-  var PROXY = {proxy_json};
-  var _push = history.pushState;
-  var _replace = history.replaceState;
-
-  function fixUrl(url) {{
-    if (!url || typeof url !== 'string') return url;
-    // If Odoo tries to navigate to /web, /odoo, or /websocket without our prefix, fix it.
-    if (url.startsWith('/') && !url.startsWith(PROXY) && !isPolySaaSPath(url)) {{
-      if (url.startsWith('/web') || url.startsWith('/odoo') || url.startsWith('/bus') || url.startsWith('/websocket')) {{
-         console.log('[PolySaaS] URL Guard: prefixing', url, 'with', PROXY);
-         return PROXY + url;
-      }}
-    }}
-    return url;
-  }}
-
-  history.pushState = function(state, title, url) {{
-    var fixed = fixUrl(url);
-    return _push.call(this, state, title, fixed);
-  }};
-  history.replaceState = function(state, title, url) {{
-    var fixed = fixUrl(url);
-    return _replace.call(this, state, title, fixed);
-  }};
-
-  // ── HARD NAV GUARD ── //
-  // If Odoo tries to set window.location = '/odoo/apps', it bypasses history.
-  // We catch this by monitoring beforeunload or simply patching the location object if possible.
-  window.addEventListener('popstate', function(e) {{
-     var cur = window.location.pathname;
-     if (cur.startsWith('/') && !cur.startsWith(PROXY) && (cur.startsWith('/web') || cur.startsWith('/odoo') || cur.startsWith('/websocket'))) {{
-         console.log('[PolySaaS] Hard nav detected to', cur, '- redirecting back to proxy');
-         window.location.href = PROXY + cur;
-     }}
-  }});
-
-  console.log('[PolySaaS] URL Guard active (history.pushState patched)');
-}})();
-
-// ------------------------------------------------------------------ //
-// MOUNT FALLBACK — primary fix is JS rewrite in rewrite_upstream_body //
-// (replaces .mount(document.body) with scope selector in proxy'd JS). //
-// This MutationObserver is a one-shot safety net: if any Odoo element //
-// (HEADER.o_navbar, DIV.o_*) appears as a direct child of body AFTER  //
-// the scope div exists, move it into the scope.                        //
-// Disconnects after capturing 2 elements — no infinite loop.          //
-// ------------------------------------------------------------------ //
-(function() {{
-  var moved = 0;
-  var obs = new MutationObserver(function(muts) {{
-    var scope = document.querySelector('.polysaas-passthrough-scope');
-    if (!scope) return;
-    muts.forEach(function(m) {{
-      m.addedNodes.forEach(function(node) {{
-        if (moved >= 10) return;
-        if (node.nodeType !== 1) return;
-        if (scope.contains(node)) return;
-        var cls = (typeof node.className === 'string') ? node.className :
-                  (node.getAttribute ? (node.getAttribute('class') || '') : '');
-        var id = node.id || '';
-        var isOdoo = (
-          (node.tagName === 'HEADER' && (/\bo_/.test(cls) || cls.indexOf('o_navbar') !== -1)) ||
-          (node.tagName === 'DIV'    && (/\bo_/.test(cls) || id === 'wrapwrap' || cls.indexOf('o-') === 0 || cls.indexOf('o_') === 0)) ||
-          (node.tagName === 'MAIN'   && /\bo_/.test(cls))
-        );
-        if (!isOdoo) {{
-            console.log('[PolySaaS] observer saw non-Odoo node:', node.tagName, id, cls.slice(0,20));
-            return;
-        }}
-        console.log('[PolySaaS] fallback: moving', node.tagName, id, cls.slice(0,40), '→ scope');
-        node.style.cssText = 'position:relative !important; width:100% !important; height:100% !important; flex:1; min-height:0; overflow:hidden !important;';
-        scope.appendChild(node);
-        moved++;
-        if (moved >= 5) obs.disconnect();
-      }});
-    }});
-  }});
-  obs.observe(document.body, {{ childList: true }});
-  console.log('[PolySaaS] mount fallback observer armed');
-}})();
-
-// ------------------------------------------------------------------ //
-// BODY STYLE GUARD — Odoo's JS sets body.style.overflow='hidden' and //
-// body.style.height='100%' after mount, which collapses the Jazzmin  //
-// layout. Override those back every time Odoo touches them.           //
-// ------------------------------------------------------------------ //
-(function() {{
-  var guard = new MutationObserver(function(muts) {{
-    muts.forEach(function(m) {{
-      if (m.target === document.body || m.target === document.documentElement) {{
-        if (document.body.style.overflow === 'hidden') {{
-          document.body.style.setProperty('overflow', 'visible', 'important');
-        }}
-        if (document.body.style.height) {{
-          document.body.style.setProperty('height', 'auto', 'important');
-        }}
-        if (document.documentElement.style.height) {{
-          document.documentElement.style.setProperty('height', 'auto', 'important');
-        }}
-        if (document.documentElement.style.overflow === 'hidden') {{
-          document.documentElement.style.setProperty('overflow', 'visible', 'important');
-        }}
-      }}
-    }});
-  }});
-  guard.observe(document.body, {{ attributes: true, attributeFilter: ['style'] }});
-  guard.observe(document.documentElement, {{ attributes: true, attributeFilter: ['style'] }});
-  console.log('[PolySaaS] body style guard active');
-}})();
-
 }})();
 </script>
 """
@@ -564,43 +358,12 @@ try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
 
     def rewrite_upstream_body(self, body, content_type, request, **kwargs):
         """
-        Rewrite responses served through the proxy:
-        - CSS: fix url() references so @font-face / background-image paths go
-          through the proxy instead of hitting PolySaaS host (which 404s).
-        - JS: patch Owl's mount(document.body) to target the scope div instead,
-          preventing Odoo from escaping the embed container.
+        Rewrite CSS files served through the proxy so that @font-face url() and
+        background-image url() references pointing to /web/... are served via the proxy,
+        not direct from the PolySaaS host (which 404s for Odoo paths).
         """
-        if not content_type:
-            return None
-
-        ct = content_type.lower()
-
-        # ── JavaScript: patch Owl mount target ─────────────────────────────
-        if 'javascript' in ct:
-            try:
-                text = body.decode('utf-8', errors='ignore')
-                # Owl's App.mount() and the standalone mount() helper both use
-                # document.body as the container target.  Replace it with the
-                # PolySaaS scope div so Odoo renders inside the embed column.
-                SCOPE = '.polysaas-passthrough-scope'
-                REPLACEMENT = (
-                    f'.mount(document.querySelector("{SCOPE}")||document.body'
-                )
-                patched = text.replace(
-                    '.mount(document.body', REPLACEMENT
-                )
-                if patched != text:
-                    logger.info(
-                        "[ODOO HANDLER] Patched Owl mount(document.body) in JS"
-                    )
-                    return patched.encode('utf-8', errors='ignore')
-            except Exception as exc:
-                logger.warning("[ODOO HANDLER] JS mount patch failed: %s", exc)
-            return None
-
-        # ── CSS: rewrite url() references ──────────────────────────────────
-        if 'css' not in ct:
-            return None
+        if not content_type or 'css' not in content_type.lower():
+            return None   # only touch CSS, let everything else pass through
 
         try:
             text = body.decode('utf-8', errors='ignore')
@@ -609,12 +372,12 @@ try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
                 quote = m.group(1) or ''
                 path  = m.group(2)
                 close = m.group(3) or ''
-                if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
+                if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/'):
                     path = '/pt/admin/odoo' + path
                 return f'url({quote}{path}{close})'
 
             rewritten = re.sub(
-                r'url\((["\']?)(/(?:web|odoo|bus|websocket)/[^)"\']*)(["\']?)\)',
+                r'url\((["\']?)(/(?:web|odoo|bus)/[^)"\']*)(["\']?)\)',
                 _proxy_css_url, text,
             )
             if rewritten != text:
