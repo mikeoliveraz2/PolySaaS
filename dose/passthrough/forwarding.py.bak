@@ -2,7 +2,10 @@
 import logging
 import traceback
 import requests
+import json
+import time
 from django.http import HttpResponse
+from dose.polysniffer.models import TrafficLog
 
 logger = logging.getLogger(__name__)
 
@@ -68,32 +71,51 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
             return ""
 
-        if not (resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308)):
-            break   # got actual content
-
-        location = resp.headers.get("Location", "")
-        if not location:
-            break
-        # Make relative location absolute
-        if not location.startswith(("http://", "https://")):
-            location = _origin + (location if location.startswith('/') else '/' + location)
-        # Only follow if same origin; hand cross-origin redirects back to the caller
-        loc_origin = f"{_up(location).scheme}://{_up(location).netloc}"
-        if loc_origin != _origin:
-            logger.info("fetch_upstream_index_html cross-origin redirect -> %s", location)
-            return f"REDIRECT:{resp.status_code}:{location}"
-        logger.info("fetch_upstream_index_html following %s -> %s", _current_url, location)
-        _current_url = location
-    else:
-        # Exhausted redirect hops
-        logger.warning("fetch_upstream_index_html: too many redirects from %s", target_url)
-        return ""
-
     if resp.status_code != 200:
         logger.warning(
             "fetch_upstream_index_html %s -> status %s", target_url, resp.status_code
         )
         return ""
+
+    # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
+    try:
+        from dose.polysniffer.models import TrafficLog
+        from django.contrib.auth.models import AnonymousUser
+        from django.db import connection
+        
+        capture_user = request.user if (request.user and not isinstance(request.user, AnonymousUser)) else None
+        
+        app_name = "unknown"
+        if handler:
+            app_name = handler.__class__.__name__.lower().replace("passthroughhandler", "")
+
+        # Ensure we are in the TENANT schema
+        tenant = getattr(request, "tenant", None)
+        if tenant:
+            with connection.cursor() as cur:
+                cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
+
+        TrafficLog.objects.create(
+            method="GET",
+            url=target_url,
+            path=upstream_subpath,
+            headers=_outbound_headers_from_request(request),
+            cookies=upstream_cookies,
+            query_params=dict(request.GET),
+            body="",
+            status_code=resp.status_code,
+            response_headers=dict(resp.headers),
+            response_body=resp.content.decode("utf-8", errors="ignore"),
+            response_size=len(resp.content),
+            endpoint_name=app_name,
+            user=capture_user,
+            duration_ms=0,
+        )
+        print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+    except Exception as ps_exc:
+        print(f"POLY SNIFFER — Initial HTML capture failed: {ps_exc}")
+    # ───────────────────────────────────────────────────────────────────
+
     return resp.content.decode("utf-8", errors="ignore")
 
 
@@ -133,6 +155,21 @@ def forward_request_standardized(request, endpoint_url, handler=None):
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
         outbound_headers = _outbound_headers_from_request(request)
 
+        # === FIX FOR BLANK ODOO SCREEN - PROPER PROXY HEADERS ===
+        if "odoo" in target_url.lower() or (handler and "odoo" in handler.__class__.__name__.lower()):
+            outbound_headers['Host'] = 'localhost:8069'
+            outbound_headers['X-Forwarded-For'] = request.META.get('REMOTE_ADDR', '')
+            outbound_headers['X-Forwarded-Proto'] = 'http' if 'localhost' in request.get_host() else 'https'
+            outbound_headers['X-Forwarded-Host'] = request.get_host()
+            outbound_headers['X-Forwarded-Port'] = '8069'
+            # Remove any conflicting headers that break Odoo assets
+            outbound_headers.pop('Referer', None)
+            
+            # Follow redirects for Odoo internally to avoid jailbreaks
+            odoo_internal_redirects = True
+        else:
+            odoo_internal_redirects = False
+
         # Merge browser cookies with any app-specific cookies the handler wants to inject.
         # Browser cookies take priority — after a manual login the browser has the fresh
         # session token; the server's cached token may be stale.
@@ -161,15 +198,114 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             headers=outbound_headers,
             data=request.body,
             cookies=upstream_cookies,
-            allow_redirects=False,   # pass 302s straight through to browser
+            allow_redirects=odoo_internal_redirects,   # Follow redirects internally for Odoo
             stream=False,
             timeout=60,
         )
+
+        if "odoo" in target_url.lower() or (handler and "odoo" in handler.__class__.__name__.lower()):
+            print("=== ODOO FIX #4 DEBUG ===")
+            print("Status:", resp.status_code)
+            print("Content-Type:", resp.headers.get('content-type'))
+            print("Content-Length:", len(resp.content) if resp.content else 0)
+            print("Body preview (first 600 chars):")
+            print(repr(resp.content[:600]) if resp.content else "EMPTY BODY")
+            print("================================")
+
+            # === BOSS FIX - Make Odoo visible without full-screen toggle + kill /odoo/apps redirects ===
+            if b'</head>' in resp.content or resp.status_code in (301, 302):
+                
+                # 1. Kill bad redirects
+                if resp.status_code in (301, 302):
+                    location = resp.headers.get('Location', '')
+                    if '/odoo/apps' in location or location.startswith('/odoo/'):
+                        print(f"=== BOSS FIX: Caught bad Odoo redirect to {location} → forcing passthrough ===")
+                        resp.status_code = 200
+                        resp.headers['Location'] = '/admin/passthrough-embed/odoo/'
+                        resp._content = b''
+
+                # 2. Brutal CSS to force content visible
+                if b'</head>' in resp.content:
+                    inject = b'''
+                    <style id="polysaas-boss-fix">
+                        html, body, #wrapwrap, .o_web_client, #app, .app-content, .o_app_board {
+                            width: calc(100vw - 260px) !important;
+                            min-width: calc(100vw - 260px) !important;
+                            height: 100vh !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            display: block !important;
+                            visibility: visible !important;
+                            opacity: 1 !important;
+                            overflow: auto !important;
+                        }
+                        .o_app, .o_app_board > * {
+                            display: block !important;
+                            visibility: visible !important;
+                        }
+                        .o_app_board {
+                            display: flex !important;
+                            flex-wrap: wrap !important;
+                        }
+                        /* Hide interfering PolySaaS elements */
+                        .navigation-bar, header, nav, .sidebar {
+                            display: none !important;
+                        }
+                    </style>
+                    '''
+                    resp._content = resp.content.replace(b'</head>', inject + b'</head>')
+
+                # 3. Safety rewrite for any remaining bad paths
+                resp._content = resp.content.replace(b'/odoo/apps', b'/admin/passthrough-embed/odoo/')
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")
         preview_bytes = resp.content[:500] if resp.content else b""
         print(f"CONTENT PREVIEW: {preview_bytes.decode('utf-8', errors='ignore')}")
+
+        # ── PolySniffer Capture (Step 1) ───────────────────────────────────
+        try:
+            # Determine app name from path or handler
+            app_name = "unknown"
+            if handler:
+                app_name = handler.__class__.__name__.lower().replace("passthroughhandler", "")
+            
+            # If still unknown, try parsing from path /pt/admin/{app}/...
+            if app_name == "unknown" and "/pt/admin/" in request.path:
+                parts = request.path.split("/")
+                if len(parts) > 3:
+                    app_name = parts[3]
+
+            from django.contrib.auth.models import AnonymousUser
+            capture_user = request.user if (request.user and not isinstance(request.user, AnonymousUser)) else None
+
+            # Ensure we are in the correct schema for the tenant
+            from django.db import connection
+            tenant = getattr(request, "tenant", None)
+            if tenant:
+                with connection.cursor() as cur:
+                    cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
+
+            TrafficLog.objects.create(
+                method=request.method,
+                url=target_url,
+                path=upstream_path,
+                headers=dict(request.headers),
+                cookies=dict(request.COOKIES),
+                query_params=dict(request.GET),
+                body=request.body.decode("utf-8", errors="ignore") if request.body else "",
+                status_code=resp.status_code,
+                response_headers=dict(resp.headers),
+                response_body=resp.content.decode("utf-8", errors="ignore") if resp.content else "",
+                response_size=len(resp.content),
+                endpoint_name=app_name,
+                user=capture_user,
+                duration_ms=0,
+            )
+            print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+        except Exception as ps_exc:
+            print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
+        # ───────────────────────────────────────────────────────────────────
 
         # Pass redirects straight through — make relative Locations absolute so browser hits upstream
         if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):

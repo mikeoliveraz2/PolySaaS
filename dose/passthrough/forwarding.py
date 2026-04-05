@@ -71,27 +71,6 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
             return ""
 
-        if not (resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308)):
-            break   # got actual content
-
-        location = resp.headers.get("Location", "")
-        if not location:
-            break
-        # Make relative location absolute
-        if not location.startswith(("http://", "https://")):
-            location = _origin + (location if location.startswith('/') else '/' + location)
-        # Only follow if same origin; hand cross-origin redirects back to the caller
-        loc_origin = f"{_up(location).scheme}://{_up(location).netloc}"
-        if loc_origin != _origin:
-            logger.info("fetch_upstream_index_html cross-origin redirect -> %s", location)
-            return f"REDIRECT:{resp.status_code}:{location}"
-        logger.info("fetch_upstream_index_html following %s -> %s", _current_url, location)
-        _current_url = location
-    else:
-        # Exhausted redirect hops
-        logger.warning("fetch_upstream_index_html: too many redirects from %s", target_url)
-        return ""
-
     if resp.status_code != 200:
         logger.warning(
             "fetch_upstream_index_html %s -> status %s", target_url, resp.status_code
@@ -185,6 +164,11 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             outbound_headers['X-Forwarded-Port'] = '8069'
             # Remove any conflicting headers that break Odoo assets
             outbound_headers.pop('Referer', None)
+            
+            # Follow redirects for Odoo internally to avoid jailbreaks
+            odoo_internal_redirects = True
+        else:
+            odoo_internal_redirects = False
 
         # Merge browser cookies with any app-specific cookies the handler wants to inject.
         # Browser cookies take priority — after a manual login the browser has the fresh
@@ -214,44 +198,70 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             headers=outbound_headers,
             data=request.body,
             cookies=upstream_cookies,
-            allow_redirects=False,   # pass 302s straight through to browser
+            allow_redirects=odoo_internal_redirects,   # Follow redirects internally for Odoo
             stream=False,
             timeout=60,
         )
 
+        # ═══════════════════════════════════════════════════════════════════════════
+        # ODOO COMPREHENSIVE FIX - Fix #4: No apps / no adaptive display
+        # ═══════════════════════════════════════════════════════════════════════════
         if "odoo" in target_url.lower() or (handler and "odoo" in handler.__class__.__name__.lower()):
-            print("=== ODOO FIX #4 DEBUG ===")
+            print("=== ODOO COMPREHENSIVE FIX DEBUG ===")
             print("Status:", resp.status_code)
             print("Content-Type:", resp.headers.get('content-type'))
             print("Content-Length:", len(resp.content) if resp.content else 0)
-            print("Body preview (first 600 chars):")
-            print(repr(resp.content[:600]) if resp.content else "EMPTY BODY")
-            print("================================")
-
-            # === DYNAMIC WIDTH FIX - Sidebar-aware adaptive display (Fix #4) ===
-            if b'</head>' in resp.content:
-                sidebar_width = 260   # measure your actual sidebar in DevTools and adjust this number
-
-                inject = f'''
-                <style id="polysaas-dynamic-width">
-                    html, body, .o_web_client, #wrapwrap, #app, .app-content {{
-                        width: calc(100vw - {sidebar_width}px) !important;
-                        max-width: calc(100vw - {sidebar_width}px) !important;
-                    }}
-                    
-                    @media (max-width: 1024px) {{
-                        .o_web_client, .app-content {{
-                            width: 100vw !important;
-                        }}
-                    }}
-                    
-                    .o_form_view, .o_list_view, .o_kanban_view {{
-                        width: 100% !important;
-                    }}
-                </style>
-                '''.encode('utf-8')
+            print("Location header:", resp.headers.get('Location', 'NONE'))
+            
+            # 1. Handle redirects - follow them server-side or rewrite to proxy path
+            if resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get('Location', '')
+                print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
                 
-                resp._content = resp.content.replace(b'</head>', inject + b'</head>')
+                # If Odoo redirects to /odoo/apps or /web, we need to follow it server-side
+                # and return the final content, not pass the redirect to the browser
+                if location and (location.startswith('/odoo') or location.startswith('/web')):
+                    # Construct full URL and fetch it
+                    from urllib.parse import urlparse as _up
+                    p = _up(endpoint_url)
+                    follow_url = f"{p.scheme}://{p.netloc}{location}"
+                    print(f"=== ODOO: Following redirect to {follow_url} ===")
+                    
+                    try:
+                        follow_resp = requests.get(
+                            follow_url,
+                            headers=outbound_headers,
+                            cookies=upstream_cookies,
+                            allow_redirects=True,  # Follow any further redirects
+                            timeout=60,
+                        )
+                        # Use the followed response
+                        resp = follow_resp
+                        print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
+                    except Exception as follow_exc:
+                        print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
+            
+            # 2. Rewrite any remaining problematic paths in HTML content
+            if resp.content and b'</head>' in resp.content:
+                content = resp.content
+                
+                # Rewrite direct /odoo/ and /web/ paths to go through proxy
+                # This catches paths in JavaScript strings and HTML attributes
+                content = content.replace(b'"/odoo/', b'"/pt/admin/odoo/odoo/')
+                content = content.replace(b"'/odoo/", b"'/pt/admin/odoo/odoo/")
+                content = content.replace(b'"/web/', b'"/pt/admin/odoo/web/')
+                content = content.replace(b"'/web/", b"'/pt/admin/odoo/web/")
+                content = content.replace(b'"/bus/', b'"/pt/admin/odoo/bus/')
+                content = content.replace(b"'/bus/", b"'/pt/admin/odoo/bus/")
+                content = content.replace(b'"/websocket', b'"/pt/admin/odoo/websocket')
+                content = content.replace(b"'/websocket", b"'/pt/admin/odoo/websocket")
+                
+                resp._content = content
+                print("=== ODOO: Path rewriting applied ===")
+            
+            print("Body preview (first 400 chars):")
+            print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")
+            print("=== END ODOO DEBUG ===")
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")

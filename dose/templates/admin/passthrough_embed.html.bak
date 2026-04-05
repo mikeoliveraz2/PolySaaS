@@ -15,6 +15,10 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 /* Drop the right-sidebar column — content takes the full available width */
 body.polysaas-passthrough-embed-page .admin-content-grid {
     grid-template-columns: 280px 1fr !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
 }
 body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
 body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
@@ -36,15 +40,16 @@ body.polysaas-passthrough-embed-page .content .row {
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
 }
-/* The scope div fills the available viewport height.
-   overflow:hidden because the embedded SPA manages its own internal scrolling. */
+/* The scope div fills the available viewport height. */
 .polysaas-passthrough-scope {
-    position: relative;
-    width: 100%;
-    /* 56px Jazzmin top navbar + 42px breadcrumb bar = 98px chrome above the content */
-    height: calc(100vh - 98px);
-    overflow: hidden;
-    box-sizing: border-box;
+    position: relative !important;
+    width: 100% !important;
+    height: calc(100vh - 98px) !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    contain: layout paint !important;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -55,6 +60,72 @@ body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
 #jazzy-navbar,
 .app-header {
     z-index: 1050 !important;
+}
+
+/* ── Odoo containment ── */
+body.polysaas-passthrough-embed-page {
+    overflow: visible !important;
+    height: auto !important;
+}
+.polysaas-passthrough-scope #wrapwrap,
+.polysaas-passthrough-scope .o_web_client,
+.polysaas-passthrough-scope .o_navbar,
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope .o-main-components-container,
+.polysaas-passthrough-scope .o_content,
+.polysaas-passthrough-scope .o_view_controller,
+.polysaas-passthrough-scope .o_kanban_view,
+.polysaas-passthrough-scope .o_list_view,
+.polysaas-passthrough-scope .o_form_view {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    overflow: auto !important;
+}
+.polysaas-passthrough-scope .o_navbar {
+    height: 46px !important;
+    bottom: auto !important;
+    z-index: 10 !important;
+}
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope .o_content {
+    top: 46px !important;
+}
+.polysaas-passthrough-scope .o_navbar {
+    flex: 0 0 auto !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    z-index: 10 !important;
+}
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope .o_web_client {
+    flex: 1 1 auto !important;
+    height: calc(100% - 46px) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+.polysaas-passthrough-scope .o_content {
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    overflow: auto !important;
+}
+/* Ensure the adaptive UI shim works by making the scope a true container */
+.polysaas-passthrough-scope {
+    display: block !important;
+}
+
+/* Hide the debug banner */
+.polysaas-passthrough-embed-wrap details {
+    display: none !important;
 }
 </style>
 {% endblock %}

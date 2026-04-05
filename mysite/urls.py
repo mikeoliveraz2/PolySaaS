@@ -1,9 +1,10 @@
 # mysite/urls.py — FINAL — WITH FOCALBOARD ROUTE ADDED
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect, render
+from django.views.generic import RedirectView
 from django.contrib.auth.decorators import login_required
 from dose.views import subscribe_view
 from dose.views_custom_login import CustomLoginView
@@ -58,6 +59,8 @@ urlpatterns = [
     path('admin/passthrough-embed/<str:trigger>/', __import__('dose.admin_views').admin_views.passthrough_embed_view, name='passthrough_embed'),
     path('api/airtable/tickets/', __import__('dose.views.airtable_dashboard', fromlist=['airtable_tickets_api']).airtable_tickets_api, name='api_airtable_tickets'),
     path('admin/polysniffer/', include((polysniffer_urls, 'polysniffer'))),
+    path('websocket', RedirectView.as_view(url='/pt/admin/odoo/websocket', permanent=False)),
+    re_path(r'^(?P<path>(?:odoo|web|bus|websocket)/.*)$', RedirectView.as_view(url='/pt/admin/odoo/%(path)s', permanent=False)),
     path('', lambda request: redirect('dose:landing_page'), name='home'),
 
     path('admin/', admin.site.urls),
