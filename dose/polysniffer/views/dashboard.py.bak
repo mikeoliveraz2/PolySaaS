@@ -21,7 +21,7 @@ def debug_dashboard(request):
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden('Staff access required')
-    logs = TrafficLog.objects.all().order_by('-captured_at')[:100]
+    logs = TrafficLog.objects.all().order_by('-timestamp')[:100]
     paginator = Paginator(logs, 20)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
@@ -56,7 +56,7 @@ def export_har(request, log_id=None):
     if log_id:
         logs = TrafficLog.objects.filter(id=log_id)
     else:
-        logs = TrafficLog.objects.all().order_by('-captured_at')[:100]
+        logs = TrafficLog.objects.all().order_by('-timestamp')[:100]
 
     har_data = {
         "log": {
@@ -71,7 +71,7 @@ def export_har(request, log_id=None):
 
     for log in logs:
         entry = {
-            "startedDateTime": log.captured_at.isoformat() if log.captured_at else "",
+            "startedDateTime": log.timestamp.isoformat(),
             "time": 0,
             "request": {
                 "method": log.method,

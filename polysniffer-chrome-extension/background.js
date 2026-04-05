@@ -12,7 +12,12 @@ chrome.storage.local.get(['djangoUrl', 'endpointId', 'endpointUrl'], (data) => {
 
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.djangoUrl) djangoUrl = changes.djangoUrl.newValue || '';
-  if (changes.endpointId) endpointId = changes.endpointId.newValue || null;
+  if (changes.endpointId) {
+    endpointId = changes.endpointId.newValue || null;
+    // Reset silentCaptureDisabled when endpoint changes - new endpoint may be valid
+    silentCaptureDisabled = false;
+    console.log(`[PolySniffer] Endpoint changed to ${endpointId}, re-enabled silent capture`);
+  }
   if (changes.endpointUrl) endpointUrl = changes.endpointUrl.newValue || '';
 });
 
