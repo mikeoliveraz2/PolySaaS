@@ -679,6 +679,23 @@ def _process_upstream_html_for_embed(handler, raw_html: str, request, endpoint_u
     return processed or raw_html
 
 
+def _passthrough_debug_banner(trigger, info):
+    """Render a collapsible debug banner above the passthrough content area."""
+    rows = "".join(
+        f"<tr><td style='padding:2px 8px;font-weight:600;white-space:nowrap'>{k}</td>"
+        f"<td style='padding:2px 8px;font-family:monospace;word-break:break-all'>{v}</td></tr>"
+        for k, v in info.items()
+    )
+    return (
+        f'<details style="margin:0 0 6px 0;font-size:11px;background:#1e293b;color:#94a3b8;'
+        f'border-radius:4px;padding:4px 8px;">'
+        f'<summary style="cursor:pointer;color:#38bdf8;font-weight:600">'
+        f'[DEBUG] passthrough:{trigger} — click to expand</summary>'
+        f'<table style="border-collapse:collapse;margin-top:4px">{rows}</table>'
+        f'</details>'
+    )
+
+
 @never_cache
 @login_required
 def passthrough_embed_view(request, trigger):
@@ -738,6 +755,8 @@ def passthrough_embed_view(request, trigger):
 
     embed_head = ""
     embed_body = ""
+    debug_info = {}  # collect debug info for the banner
+
     endpoint = PassThroughEndpoint.objects.filter(
         trigger_path__iexact=norm,
         is_enabled=True,
@@ -750,13 +769,40 @@ def passthrough_embed_view(request, trigger):
 
     if endpoint:
         handler = get_handler_for_endpoint(endpoint, request)
-        raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/")
-        if raw_html:
+
+        # Collect debug info before fetch
+        debug_info['endpoint_url'] = endpoint.endpoint_url
+        debug_info['fetch_url'] = endpoint.endpoint_url.rstrip('/') + '/'
+        upstream_cookies = {}
+        if hasattr(handler, 'get_upstream_cookies'):
+            try:
+                upstream_cookies = handler.get_upstream_cookies(request) or {}
+            except Exception as exc:
+                debug_info['cookie_error'] = str(exc)
+        debug_info['mmauthtoken'] = (upstream_cookies.get('MMAUTHTOKEN', '') or '')[:12] + '...' if upstream_cookies.get('MMAUTHTOKEN') else 'NONE'
+
+        raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/", handler=handler)
+
+        if raw_html and raw_html.startswith("REDIRECT:"):
+            parts = raw_html.split(":", 2)
+            status_code = int(parts[1]) if len(parts) > 1 else 302
+            location = parts[2] if len(parts) > 2 else "/"
+            debug_info['result'] = f'REDIRECT {status_code} -> {location}'
+            # Show debug banner instead of silently following the redirect
+            embed_body = mark_safe(
+                _passthrough_debug_banner(norm, debug_info) +
+                f'<div class="alert alert-warning">Upstream returned {status_code} redirect to: <code>{escape(location)}</code></div>'
+            )
+        elif raw_html:
+            debug_info['result'] = f'OK ({len(raw_html)} chars)'
             processed = _process_upstream_html_for_embed(
                 handler, raw_html, request, endpoint.endpoint_url
             )
             _head, body_html = _split_html_document_for_jazzmin_embed(processed)
+            debug_info['head_chars'] = len(_head or '')
+            debug_info['body_chars'] = len(body_html or '')
             embed_body = mark_safe(
+                _passthrough_debug_banner(norm, debug_info) +
                 '<div class="polysaas-passthrough-scope" '
                 f'data-polysaas-embed-trigger="{escape(norm)}">'
                 f"{_head or ''}{body_html or ''}</div>"
@@ -766,12 +812,13 @@ def passthrough_embed_view(request, trigger):
                 f"head_chars={len(_head or '')} body_chars={len(body_html or '')}"
             )
         else:
+            debug_info['result'] = 'EMPTY — upstream returned no HTML'
             embed_body = mark_safe(
-                '<div class="alert alert-warning" style="margin-bottom:12px;">'
-                "Could not load upstream HTML (check endpoint URL and network).</div>"
+                _passthrough_debug_banner(norm, debug_info) +
+                '<div class="alert alert-warning">Could not load upstream HTML (check endpoint URL and network).</div>'
             )
 
-    return render(
+    response = render(
         request,
         "admin/passthrough_embed.html",
         {
@@ -781,3 +828,7 @@ def passthrough_embed_view(request, trigger):
             "embed_body": embed_body,
         },
     )
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response

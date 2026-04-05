@@ -12,6 +12,17 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {% block extrahead %}
 {{ block.super }}
 <style id="polysaas-passthrough-embed-shield">
+/* Drop the right-sidebar column — content takes the full available width */
+body.polysaas-passthrough-embed-page .admin-content-grid {
+    grid-template-columns: 280px 1fr !important;
+}
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 60px 1fr !important;
+}
+body.polysaas-passthrough-embed-page #recent-actions-sidebar {
+    display: none !important;
+}
 /* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
 body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
@@ -25,12 +36,14 @@ body.polysaas-passthrough-embed-page .content .row {
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
 }
-/* The scope div is the viewport for the embedded app */
+/* The scope div fills the available viewport height.
+   overflow:hidden because the embedded SPA manages its own internal scrolling. */
 .polysaas-passthrough-scope {
     position: relative;
     width: 100%;
-    height: calc(100vh - var(--pss-header-h, 40px) - 90px);
-    overflow: auto;
+    /* 56px Jazzmin top navbar + 42px breadcrumb bar = 98px chrome above the content */
+    height: calc(100vh - 98px);
+    overflow: hidden;
     box-sizing: border-box;
 }
 /* PolySaaS sidebar — always on top, never overridden */

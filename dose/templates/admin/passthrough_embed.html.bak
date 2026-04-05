@@ -2,22 +2,28 @@
 {% load i18n static %}
 
 {% comment %}
-Passthrough: full upstream document in extrahead + content column (no iframe).
-Upstream CSS is global; shield styles protect PolySaaS chrome where possible.
+Passthrough: full upstream document rendered inside the content column only.
+ALL upstream HTML (head styles + body) goes in the scope div — nothing in extrahead.
+This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {% endcomment %}
 
 {% block bodyclass %}polysaas-passthrough-embed-page{% endblock %}
 
 {% block extrahead %}
 {{ block.super }}
-{{ embed_head }}
 <style id="polysaas-passthrough-embed-shield">
-/*
- * Global <link> stylesheets from the bundled app cannot be subtree-scoped without
- * shadow DOM or server-side prefixing. These rules re-stabilize our grid sidebar and
- * top bar after upstream Bootstrap/app CSS loads.
- */
-/* Jazzmin wraps the main content template block in .row > .col-*; use full width. */
+/* Drop the right-sidebar column — content takes the full available width */
+body.polysaas-passthrough-embed-page .admin-content-grid {
+    grid-template-columns: 280px 1fr !important;
+}
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 60px 1fr !important;
+}
+body.polysaas-passthrough-embed-page #recent-actions-sidebar {
+    display: none !important;
+}
+/* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
 body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -27,92 +33,26 @@ body.polysaas-passthrough-embed-page .content .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
 }
-/* Flex column so % / min-height:0 heights resolve inside the grid cell (not viewport). */
-body.polysaas-passthrough-embed-page .admin-content-grid > .dose-content-col {
-    min-height: calc(100vh - var(--pss-header-h, 40px) - 48px);
-}
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
-    padding-left: 0;
-    padding-right: 0;
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 100%;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    align-self: stretch;
+    padding: 0 !important;
 }
-/*
- * Clip + transform: containing block for Mattermost position:fixed / 100vh loading UI.
- * Without min-height:0 on flex children, inner height:100% never resolves.
- */
-body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-wrap {
-    flex: 1 1 auto;
-    min-height: 0;
-    position: relative;
-    transform: translateZ(0);
-    clip-path: inset(0);
-    -webkit-clip-path: inset(0);
-    max-height: calc(100vh - var(--pss-header-h, 40px) - 120px);
-    overflow: hidden;
-}
+/* The scope div fills the available viewport height */
 .polysaas-passthrough-scope {
-    isolation: isolate;
-    transform: translateZ(0);
     position: relative;
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
-    overflow: auto;
     width: 100%;
-    max-width: 100%;
+    height: calc(100vh - var(--pss-header-h, 40px) - 90px);
+    overflow: auto;
     box-sizing: border-box;
 }
-/* Override Mattermost 100vh on #root — use column height only */
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope #root,
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [id='root'],
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope #app,
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [id='app'] {
-    height: 100% !important;
-    min-height: 0 !important;
-    max-height: 100% !important;
-    width: 100% !important;
-}
-/* Initial loading screen (BEM + legacy class names) — pin to scope, not viewport */
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope .LoadingScreen,
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [class*="LoadingScreen"],
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [class*="loading-screen"],
-body.polysaas-passthrough-embed-page .polysaas-passthrough-scope [class*="InitialLoading"] {
-    position: absolute !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 100% !important;
-    min-height: 0 !important;
-}
-/* PolySaaS left nav (grid column 1) — match custom_sidebar.html */
+/* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
-    background-color: #1e293b !important;
-    box-shadow: 2px 0 12px rgba(15, 23, 42, 0.12) !important;
+    z-index: 1040 !important;
+    position: sticky !important;
 }
-.admin-content-grid > .collapsible-nav .nav-header {
-    background-color: #34495e !important;
-    color: #fff !important;
-    border-bottom-color: #2c3e50 !important;
-}
-.admin-content-grid > .collapsible-nav a,
-.admin-content-grid > .collapsible-nav .nav-link {
-    color: #c0c0c0 !important;
-}
-.admin-content-grid > .collapsible-nav a:hover,
-.admin-content-grid > .collapsible-nav .nav-link:hover {
-    background-color: rgba(255, 255, 255, 0.15) !important;
-    color: #ffffff !important;
-}
-/* Jazzmin / AdminLTE top navbar */
-#jazzy-navbar {
-    position: relative !important;
-    z-index: 1030 !important;
+/* Jazzmin top navbar */
+#jazzy-navbar,
+.app-header {
+    z-index: 1050 !important;
 }
 </style>
 {% endblock %}
