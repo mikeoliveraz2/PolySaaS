@@ -58,8 +58,11 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
     from urllib.parse import urlparse as _up
     _origin = f"{_up(target_url).scheme}://{_up(target_url).netloc}"
     _current_url = target_url
+    resp = None
+    
     for _hop in range(5):
         try:
+            print(f"[FETCH_UPSTREAM] Hop {_hop}: GET {_current_url}")
             resp = requests.get(
                 _current_url,
                 headers=_outbound_headers_from_request(request),
@@ -67,15 +70,43 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
                 allow_redirects=False,
                 timeout=60,
             )
+            print(f"[FETCH_UPSTREAM] Hop {_hop}: Status {resp.status_code}")
         except Exception as e:
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
             return ""
-
-    if resp.status_code != 200:
+        
+        # Check if we got a redirect
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location", "")
+            print(f"[FETCH_UPSTREAM] Redirect to: {location}")
+            if not location:
+                break
+            # Make relative URLs absolute
+            if location.startswith("/"):
+                location = _origin + location
+            # Check if same-origin
+            loc_parsed = _up(location)
+            loc_origin = f"{loc_parsed.scheme}://{loc_parsed.netloc}"
+            if loc_origin != _origin:
+                # Cross-origin redirect - return as sentinel for caller
+                print(f"[FETCH_UPSTREAM] Cross-origin redirect, returning sentinel")
+                return f"REDIRECT:{resp.status_code}:{location}"
+            # Same-origin - follow it
+            _current_url = location
+            continue
+        else:
+            # Not a redirect - we're done
+            break
+    
+    if resp is None or resp.status_code != 200:
+        status = resp.status_code if resp else "NO_RESPONSE"
         logger.warning(
-            "fetch_upstream_index_html %s -> status %s", target_url, resp.status_code
+            "fetch_upstream_index_html %s -> status %s", target_url, status
         )
+        print(f"[FETCH_UPSTREAM] Final status {status} - returning empty")
         return ""
+    
+    print(f"[FETCH_UPSTREAM] Success! Got {len(resp.content)} bytes")
 
     # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
     try:
@@ -203,60 +234,65 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             timeout=60,
         )
 
+        # ═══════════════════════════════════════════════════════════════════════════
+        # ODOO COMPREHENSIVE FIX - Fix #4: No apps / no adaptive display
+        # ═══════════════════════════════════════════════════════════════════════════
         if "odoo" in target_url.lower() or (handler and "odoo" in handler.__class__.__name__.lower()):
-            print("=== ODOO FIX #4 DEBUG ===")
+            print("=== ODOO COMPREHENSIVE FIX DEBUG ===")
             print("Status:", resp.status_code)
             print("Content-Type:", resp.headers.get('content-type'))
             print("Content-Length:", len(resp.content) if resp.content else 0)
-            print("Body preview (first 600 chars):")
-            print(repr(resp.content[:600]) if resp.content else "EMPTY BODY")
-            print("================================")
-
-            # === BOSS FIX - Make Odoo visible without full-screen toggle + kill /odoo/apps redirects ===
-            if b'</head>' in resp.content or resp.status_code in (301, 302):
+            print("Location header:", resp.headers.get('Location', 'NONE'))
+            
+            # 1. Handle redirects - follow them server-side or rewrite to proxy path
+            if resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get('Location', '')
+                print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
                 
-                # 1. Kill bad redirects
-                if resp.status_code in (301, 302):
-                    location = resp.headers.get('Location', '')
-                    if '/odoo/apps' in location or location.startswith('/odoo/'):
-                        print(f"=== BOSS FIX: Caught bad Odoo redirect to {location} → forcing passthrough ===")
-                        resp.status_code = 200
-                        resp.headers['Location'] = '/admin/passthrough-embed/odoo/'
-                        resp._content = b''
-
-                # 2. Brutal CSS to force content visible
-                if b'</head>' in resp.content:
-                    inject = b'''
-                    <style id="polysaas-boss-fix">
-                        html, body, #wrapwrap, .o_web_client, #app, .app-content, .o_app_board {
-                            width: calc(100vw - 260px) !important;
-                            min-width: calc(100vw - 260px) !important;
-                            height: 100vh !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            display: block !important;
-                            visibility: visible !important;
-                            opacity: 1 !important;
-                            overflow: auto !important;
-                        }
-                        .o_app, .o_app_board > * {
-                            display: block !important;
-                            visibility: visible !important;
-                        }
-                        .o_app_board {
-                            display: flex !important;
-                            flex-wrap: wrap !important;
-                        }
-                        /* Hide interfering PolySaaS elements */
-                        .navigation-bar, header, nav, .sidebar {
-                            display: none !important;
-                        }
-                    </style>
-                    '''
-                    resp._content = resp.content.replace(b'</head>', inject + b'</head>')
-
-                # 3. Safety rewrite for any remaining bad paths
-                resp._content = resp.content.replace(b'/odoo/apps', b'/admin/passthrough-embed/odoo/')
+                # If Odoo redirects to /odoo/apps or /web, we need to follow it server-side
+                # and return the final content, not pass the redirect to the browser
+                if location and (location.startswith('/odoo') or location.startswith('/web')):
+                    # Construct full URL and fetch it
+                    from urllib.parse import urlparse as _up
+                    p = _up(endpoint_url)
+                    follow_url = f"{p.scheme}://{p.netloc}{location}"
+                    print(f"=== ODOO: Following redirect to {follow_url} ===")
+                    
+                    try:
+                        follow_resp = requests.get(
+                            follow_url,
+                            headers=outbound_headers,
+                            cookies=upstream_cookies,
+                            allow_redirects=True,  # Follow any further redirects
+                            timeout=60,
+                        )
+                        # Use the followed response
+                        resp = follow_resp
+                        print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
+                    except Exception as follow_exc:
+                        print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
+            
+            # 2. Rewrite any remaining problematic paths in HTML content
+            if resp.content and b'</head>' in resp.content:
+                content = resp.content
+                
+                # Rewrite direct /odoo/ and /web/ paths to go through proxy
+                # This catches paths in JavaScript strings and HTML attributes
+                content = content.replace(b'"/odoo/', b'"/pt/admin/odoo/odoo/')
+                content = content.replace(b"'/odoo/", b"'/pt/admin/odoo/odoo/")
+                content = content.replace(b'"/web/', b'"/pt/admin/odoo/web/')
+                content = content.replace(b"'/web/", b"'/pt/admin/odoo/web/")
+                content = content.replace(b'"/bus/', b'"/pt/admin/odoo/bus/')
+                content = content.replace(b"'/bus/", b"'/pt/admin/odoo/bus/")
+                content = content.replace(b'"/websocket', b'"/pt/admin/odoo/websocket')
+                content = content.replace(b"'/websocket", b"'/pt/admin/odoo/websocket")
+                
+                resp._content = content
+                print("=== ODOO: Path rewriting applied ===")
+            
+            print("Body preview (first 400 chars):")
+            print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")
+            print("=== END ODOO DEBUG ===")
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")

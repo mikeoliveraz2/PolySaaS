@@ -121,14 +121,24 @@ function classifyOdooRpc(url, bodyStr) {
   }
 }
 
+let silentCaptureDisabled = false;
+
 function sendToDjango(capture) {
-  if (!djangoUrl || !endpointId) return;
+  if (!djangoUrl || !endpointId || silentCaptureDisabled) return;
   fetch(`${djangoUrl}/admin/polysniffer/silent-capture/${endpointId}/`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(capture)
-  }).catch(() => {});
+  }).then(response => {
+    if (!response.ok) {
+      console.log('[PolySniffer] Silent capture failed, disabling further attempts');
+      silentCaptureDisabled = true;
+    }
+  }).catch(() => {
+    console.log('[PolySniffer] Silent capture error, disabling further attempts');
+    silentCaptureDisabled = true;
+  });
 }
 
 chrome.webRequest.onBeforeRequest.addListener(
