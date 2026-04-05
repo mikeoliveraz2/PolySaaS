@@ -343,7 +343,7 @@ def admin_navigation(request):
             # stored in the trigger_path — that is middleware routing, not part of the endpoint.
             url = f'/admin/passthrough-embed/{norm}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
-            print(f"[ADMIN_NAV] Passthrough service: {title} → {url}")
+            print(f"[ADMIN_NAV] Passthrough service: {title} -> {url}")
 
             service_data = {
                 'id': endpoint.id,

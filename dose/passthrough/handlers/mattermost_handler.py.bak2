@@ -301,29 +301,26 @@ function isMMApiPath(s) {{
   }}
   return false;
 }}
-// CRITICAL: ALL Mattermost traffic MUST flow through /pt/admin/mattermost/
-// This enables: PolySniffer capture, dynamic orchestration, Instruction triggers, Atomic Services
-// The /pt/ prefix tells ExternalPassthroughMiddleware to handle it.
-// DO NOT route anything direct to upstream (B) - that bypasses the entire PolySaaS value.
-// See Process Rule 1: No Unilateral Changes
+// Route URLs:
+//   API/dynamic paths  → through PolySaaS proxy (server-side auth injection)
+//   Non-PolySaaS paths → direct to upstream Mattermost (static chunks, images, etc.)
+//   PolySaaS paths     → untouched
 function toProxy(s) {{
   if (typeof s !== 'string') return s;
   if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
-  // Absolute URL to upstream — rewrite to go through proxy
-  if (s.startsWith(B)) {{
-    var tail = s.slice(B.length);
-    if (!tail.startsWith('/')) tail = '/' + tail;
-    return PROXY + tail;
-  }}
+  // Already absolute upstream URL — leave alone
+  if (s.startsWith(B)) return s;
   // Absolute URL to PolySaaS host — strip origin, fall through to root-relative logic
   if (s.startsWith(O + '/')) s = s.slice(O.length);
   else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
   if (s.charAt(0) !== '/') return s;
-  // PolySaaS paths stay untouched
   if (isPolySaaSPath(s)) return s;
   s = stripMmSubpath(s);
-  // ALL Mattermost paths go through proxy - no exceptions
-  return PROXY + s;
+  if (isMMApiPath(s)) return PROXY + s;
+  // All other MM root-relative paths (static chunks, fonts, images) → direct to upstream.
+  // This is the key fix: webpack loads chunks as /static/NNNN.hash.js which would
+  // otherwise resolve against localhost:8000 instead of localhost:8065.
+  return B + s;
 }}
 var _f = window.fetch;
 window.fetch = function(input, init) {{
@@ -340,31 +337,38 @@ XMLHttpRequest.prototype.open = function(method, url) {{
   var rest = Array.prototype.slice.call(arguments, 2);
   return _xo.apply(this, [method, toProxy(url)].concat(rest));
 }};
-// WebSocket — route through PolySaaS proxy for capture and orchestration.
+// WebSocket — direct to Mattermost upstream.
 // CRITICAL: use the LIVE session token from localStorage, NOT the static PAT (T).
+// The PAT may be expired/revoked; after a fresh login the SPA updates localStorage['MMAUTHTOKEN']
+// with the new session token. Reading from localStorage here ensures every reconnect uses the
+// most current token, breaking the "invalid session immediately after login" loop.
 var _WS = WebSocket;
 window.WebSocket = function(url, protocols) {{
   if (typeof url === 'string') {{
     try {{
       var u = new URL(url, location.href);
-      // Route WebSocket through PolySaaS proxy
-      u.hostname = location.hostname;
-      u.port = location.port || '';
-      u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-      // Rewrite path to go through /pt/admin/mattermost/
-      var wsPath = u.pathname;
-      if (!wsPath.startsWith('/pt/')) {{
-        wsPath = PROXY + wsPath;
+      var bUrl = new URL(B);
+      if (u.hostname === location.hostname) {{
+        u.hostname = bUrl.hostname;
+        u.port = bUrl.port || '';
       }}
-      u.pathname = wsPath;
+      u.protocol = (u.protocol === 'https:' || u.protocol === 'wss:') ? 'wss:' : 'ws:';
       // Prefer live localStorage token (updated on every login) → fall back to S (injected at load) → T (PAT)
       var wsToken = (function() {{
         try {{ return localStorage.getItem('MMAUTHTOKEN') || S || T; }} catch(e) {{ return S || T; }}
       }})();
-      console.log('[PolySaaS] WebSocket through proxy:', u.toString());
+      console.log('=== WS TOKEN DEBUG ===');
+      console.log('T (PAT at render):', T ? T.substring(0,8)+'...' : 'none');
+      console.log('S (server session at render):', S ? S.substring(0,8)+'...' : 'none');
+      try {{
+        var _lt = localStorage.getItem('MMAUTHTOKEN');
+        console.log('localStorage MMAUTHTOKEN:', _lt ? _lt.substring(0,8)+'...' : 'none');
+      }} catch(e) {{ console.log('localStorage read error:', e); }}
+      console.log('Chosen WS token:', wsToken ? wsToken.substring(0,8)+'...' : 'NONE — WS will fail');
+      console.log('======================');
       if (wsToken) u.searchParams.set('access_token', wsToken);
       url = u.toString();
-    }} catch(e) {{ console.log('[PolySaaS] WebSocket rewrite error:', e); }}
+    }} catch(e) {{}}
   }}
   return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
 }};

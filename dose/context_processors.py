@@ -339,9 +339,13 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
+            # CRITICAL: DO NOT CHANGE THIS URL PATTERN
+            # The /pt/admin/ prefix is the ONLY correct passthrough path.
+            # /admin/passthrough-embed/ was an unauthorized change that broke the system.
+            # See Process Rule 1: No Unilateral Changes
             # Use the clean normalized name for the URL; ignore any /admin/ or /dose/ prefix
             # stored in the trigger_path — that is middleware routing, not part of the endpoint.
-            url = f'/admin/passthrough-embed/{norm}/'
+            url = f'/pt/admin/{norm}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url}")
 

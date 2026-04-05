@@ -399,17 +399,28 @@ function isOdooApiPath(s) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. URL REWRITING
+// CRITICAL: ALL Odoo traffic MUST flow through /pt/admin/odoo/
+// This enables: PolySniffer capture, dynamic orchestration, Instruction triggers, Atomic Services
+// The /pt/ prefix tells ExternalPassthroughMiddleware to handle it.
+// DO NOT route anything direct to upstream (B) - that bypasses the entire PolySaaS value.
+// See Process Rule 1: No Unilateral Changes
 // ═══════════════════════════════════════════════════════════════════════════
 function toProxy(s) {
     if (typeof s !== 'string' || !s) return s;
     if (s.indexOf('data:') === 0 || s.indexOf('blob:') === 0) return s;
-    if (s.indexOf(B) === 0) return s;  // already upstream-absolute
+    // Absolute URL to upstream — rewrite to go through proxy
+    if (s.indexOf(B) === 0) {
+        var tail = s.slice(B.length);
+        if (tail.charAt(0) !== '/') tail = '/' + tail;
+        return PROXY + tail;
+    }
     if (s.indexOf(O + '/') === 0) s = s.slice(O.length);  // strip our origin
     if (s.indexOf('http:') === 0 || s.indexOf('https:') === 0 || s.indexOf('//') === 0) return s;
     if (s.charAt(0) !== '/') return s;
+    // PolySaaS paths stay untouched
     if (isPolySaaSPath(s)) return s;
-    if (isOdooApiPath(s)) return PROXY + s;
-    return B + s;  // static assets go direct to upstream
+    // ALL Odoo paths go through proxy - no exceptions
+    return PROXY + s;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

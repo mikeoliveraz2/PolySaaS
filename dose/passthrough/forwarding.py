@@ -58,8 +58,11 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
     from urllib.parse import urlparse as _up
     _origin = f"{_up(target_url).scheme}://{_up(target_url).netloc}"
     _current_url = target_url
+    resp = None
+    
     for _hop in range(5):
         try:
+            print(f"[FETCH_UPSTREAM] Hop {_hop}: GET {_current_url}")
             resp = requests.get(
                 _current_url,
                 headers=_outbound_headers_from_request(request),
@@ -67,15 +70,43 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
                 allow_redirects=False,
                 timeout=60,
             )
+            print(f"[FETCH_UPSTREAM] Hop {_hop}: Status {resp.status_code}")
         except Exception as e:
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
             return ""
-
-    if resp.status_code != 200:
+        
+        # Check if we got a redirect
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location", "")
+            print(f"[FETCH_UPSTREAM] Redirect to: {location}")
+            if not location:
+                break
+            # Make relative URLs absolute
+            if location.startswith("/"):
+                location = _origin + location
+            # Check if same-origin
+            loc_parsed = _up(location)
+            loc_origin = f"{loc_parsed.scheme}://{loc_parsed.netloc}"
+            if loc_origin != _origin:
+                # Cross-origin redirect - return as sentinel for caller
+                print(f"[FETCH_UPSTREAM] Cross-origin redirect, returning sentinel")
+                return f"REDIRECT:{resp.status_code}:{location}"
+            # Same-origin - follow it
+            _current_url = location
+            continue
+        else:
+            # Not a redirect - we're done
+            break
+    
+    if resp is None or resp.status_code != 200:
+        status = resp.status_code if resp else "NO_RESPONSE"
         logger.warning(
-            "fetch_upstream_index_html %s -> status %s", target_url, resp.status_code
+            "fetch_upstream_index_html %s -> status %s", target_url, status
         )
+        print(f"[FETCH_UPSTREAM] Final status {status} - returning empty")
         return ""
+    
+    print(f"[FETCH_UPSTREAM] Success! Got {len(resp.content)} bytes")
 
     # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
     try:
