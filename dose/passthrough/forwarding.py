@@ -228,36 +228,29 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             print(repr(resp.content[:600]) if resp.content else "EMPTY BODY")
             print("================================")
 
-            # === DYNAMIC WIDTH FIX - Sidebar-aware adaptive display ===
+            # === DYNAMIC WIDTH FIX - Sidebar-aware adaptive display (Fix #4) ===
             if b'</head>' in resp.content:
-                # Get real sidebar width from PolySaaS (usually 260px when open)
-                sidebar_width = 260
-                
+                sidebar_width = 260   # measure your actual sidebar in DevTools and adjust this number
+
                 inject = f'''
                 <style id="polysaas-dynamic-width">
                     html, body, .o_web_client, #wrapwrap, #app, .app-content {{
                         width: calc(100vw - {sidebar_width}px) !important;
                         max-width: calc(100vw - {sidebar_width}px) !important;
-                        margin-left: auto !important;
-                        margin-right: auto !important;
                     }}
                     
-                    /* When sidebar collapses, expand fully */
                     @media (max-width: 1024px) {{
                         .o_web_client, .app-content {{
                             width: 100vw !important;
                         }}
                     }}
                     
-                    /* Force Odoo to respect available space */
                     .o_form_view, .o_list_view, .o_kanban_view {{
                         width: 100% !important;
                     }}
                 </style>
                 '''.encode('utf-8')
                 
-                # We need to be careful about bytes vs string here.
-                # resp.content is bytes.
                 resp._content = resp.content.replace(b'</head>', inject + b'</head>')
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
