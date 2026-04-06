@@ -1,0 +1,68 @@
+# File: polysniffer/handlers/base.py
+# Purpose: Base class for all clean server-side passthrough handlers
+
+import requests
+import logging
+from urllib.parse import urlparse
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from dose.models import PassThroughEndpoint
+
+logger = logging.getLogger(__name__)
+
+class BasePassthroughHandler:
+    """
+    Base class for clean passthrough handlers.
+    Uses server-side fetch → process → return pattern.
+    """
+
+    def __init__(self, endpoint_id):
+        self.endpoint = get_object_or_404(PassThroughEndpoint, id=endpoint_id)
+
+    def get_upstream_cookies(self, request):
+        """Override in subclass if special cookies are needed."""
+        return {}
+
+    def process_html_response(self, html_str, request, endpoint_url=None):
+        """
+        Main processing method.
+        Subclasses should override this for URL rewriting and toolbar injection.
+        """
+        # Default: return as-is (subclasses will extend)
+        return html_str, None
+
+    def embed(self, request):
+        """
+        Main entry point: fetch real target on server, process it, return HTML.
+        """
+        try:
+            cookies = self.get_upstream_cookies(request)
+            headers = {
+                'User-Agent': request.META.get('HTTP_USER_AGENT', 'Mozilla/5.0'),
+            }
+
+            response = requests.get(
+                self.endpoint.endpoint_url,
+                cookies=cookies,
+                headers=headers,
+                timeout=20,
+                allow_redirects=True
+            )
+
+            html_content = response.text
+
+            # Process through handler
+            processed_html, django_response = self.process_html_response(
+                html_content, 
+                request, 
+                endpoint_url=self.endpoint.endpoint_url
+            )
+
+            if django_response:
+                return django_response
+
+            return HttpResponse(processed_html)
+
+        except Exception as e:
+            logger.error(f"[BasePassthroughHandler] Error embedding {self.endpoint.name}: {e}")
+            return HttpResponse(f"<h1>Error loading {self.endpoint.name}</h1><pre>{str(e)}</pre>", status=500)

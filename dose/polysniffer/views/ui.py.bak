@@ -215,6 +215,27 @@ def navigate_with_toolbar(request, endpoint_id):
 
 
 @staff_member_required
+def mattermost_embed_view(request, endpoint_id):
+    """
+    Server-side fetch + MattermostPassthroughHandler (PolySniffer handlers package).
+    """
+    if not request.user.is_staff:
+        return redirect("admin:index")
+    try:
+        get_endpoint_any_schema(endpoint_id, request)
+    except Exception:
+        return HttpResponse(
+            f'<h1>Endpoint not found</h1><p><a href="/admin/dose/passthroughendpoint/">Back</a></p>',
+            status=404,
+            content_type="text/html; charset=utf-8",
+        )
+    from dose.polysniffer.handlers.mattermost_handler import MattermostPassthroughHandler
+
+    handler = MattermostPassthroughHandler(endpoint_id)
+    return handler.embed(request)
+
+
+@staff_member_required
 def live_capture(request, endpoint_id):
     """
     Live capture interface - shows captured traffic in real-time

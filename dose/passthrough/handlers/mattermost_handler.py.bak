@@ -23,10 +23,16 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
+    def _mm_rewrite_attr(self, m, proxy_prefix):
+        """Prefix root-relative src/href with proxy; skip absolute and already-prefixed."""
+        path = m.group(3)
+        if path.startswith(("http://", "https://", "//", "data:")):
+            return m.group(0)
+        if path.startswith(proxy_prefix):
+            return m.group(0)
+        return f'{m.group(1)}={m.group(2)}{proxy_prefix}{path}{m.group(2)}'
+
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        """
-        Process upstream HTML for embedded display in PolySaaS admin.
-        """
         logger.info("[MattermostPassthroughHandler] Processing HTML response")
 
         if not endpoint_url:
@@ -37,29 +43,24 @@ class MattermostPassthroughHandler:
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
         proxy_prefix = "/pt/admin/mattermost"
 
-        # Strip tags that break embedding
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
 
-        # BROADER SERVER-SIDE REWRITING - Catch ALL static/chunk files
-        # Critical for webpack-based SPAs like Mattermost with hashed chunks
-        # (e.g. 3949.58b56486b08018682f8b.css, main.eba7751588c9635a9465.js)
         html_str = re.sub(
-            r'(src|href)=(["\'])(/[^"\']+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map))\2',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map))',
+            lambda m: self._mm_rewrite_attr(m, proxy_prefix),
             html_str,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
-        # Extra pass for any remaining /static/ paths (catches files without extensions)
         html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']+)\2',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str
+            r'(src|href)=(["\'])(/static/[^"\']*)',
+            lambda m: self._mm_rewrite_attr(m, proxy_prefix),
+            html_str,
+            flags=re.IGNORECASE,
         )
 
-        # Inject client-side shim for dynamic requests
         html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
 
         return html_str, None
@@ -141,25 +142,13 @@ class MattermostPassthroughHandler:
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
     def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
-        """
-        Minimal diagnostic shim: token + basic pushState guard only.
-        Injected as the first thing inside <head> so passthrough_embed extraction keeps it.
-        """
+        """Aggressive shim: token, __webpack_public_path__, createElement patch. First in <head>."""
         token = ""
         try:
             cookies = self.get_upstream_cookies(request) or {}
             token = cookies.get("MMAUTHTOKEN") or ""
-            if token:
-                logger.info(
-                    "[MattermostPassthroughHandler] MINIMAL token ready: %s...",
-                    token[:8],
-                )
-            else:
-                logger.warning(
-                    "[MattermostPassthroughHandler] MINIMAL: no MMAUTHTOKEN from get_upstream_cookies"
-                )
         except Exception as exc:
-            logger.warning("[MattermostPassthroughHandler] Token retrieval failed: %s", exc)
+            logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
 
         token_js = json.dumps(token)
         proxy_js = json.dumps(proxy_prefix)
@@ -167,32 +156,47 @@ class MattermostPassthroughHandler:
         shim = f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-    var MMAUTHTOKEN = {token_js};
     var PROXY = {proxy_js};
+    var MMAUTHTOKEN = {token_js};
 
     if (MMAUTHTOKEN) {{
         try {{
             localStorage.setItem('MMAUTHTOKEN', MMAUTHTOKEN);
             document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; SameSite=Lax; max-age=3600';
             window.MMAUTHTOKEN = MMAUTHTOKEN;
-            console.log('[PolySaaS MINIMAL] MMAUTHTOKEN injected: ' + MMAUTHTOKEN.substring(0, 8) + '...');
+            console.log('[PolySaaS FULL] MMAUTHTOKEN injected');
         }} catch (e) {{
-            console.warn('[PolySaaS MINIMAL] Token injection failed:', e);
+            console.warn('[PolySaaS FULL] Token injection failed:', e);
         }}
-    }} else {{
-        console.warn('[PolySaaS MINIMAL] No MMAUTHTOKEN available');
     }}
 
-    var originalPushState = history.pushState;
-    history.pushState = function(state, title, url) {{
-        if (url && (url === '/' || String(url).indexOf('/dose/') !== -1)) {{
-            console.log('[PolySaaS MINIMAL] Blocked pushState to:', url);
-            return;
+    window.__webpack_public_path__ = PROXY + '/static/';
+
+    var originalCreateElement = document.createElement;
+    document.createElement = function(tag) {{
+        var el = originalCreateElement.call(document, tag);
+        var t = String(tag || '').toLowerCase();
+        if (t === 'script' || t === 'link') {{
+            var prop = t === 'script' ? 'src' : 'href';
+            var desc = Object.getOwnPropertyDescriptor(el.constructor.prototype, prop);
+            if (desc && desc.set) {{
+                Object.defineProperty(el, prop, {{
+                    set: function(v) {{
+                        if (typeof v === 'string' && v.charAt(0) === '/') {{
+                            v = PROXY + v;
+                        }}
+                        desc.set.call(this, v);
+                    }},
+                    get: desc.get,
+                    configurable: true,
+                    enumerable: true
+                }});
+            }}
         }}
-        return originalPushState.apply(this, arguments);
+        return el;
     }};
 
-    console.log('[PolySaaS MINIMAL] Shim loaded - proxy:', PROXY);
+    console.log('[PolySaaS FULL] Aggressive shim loaded');
 }})();
 </script>
 """

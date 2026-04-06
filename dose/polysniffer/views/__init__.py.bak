@@ -5,4 +5,3 @@ from .core import *
 from .ui import *
 from .proxy import *
 from .dashboard import *
-from .mattermost_embed import mattermost_embed_view
