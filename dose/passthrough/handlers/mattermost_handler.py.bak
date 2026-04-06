@@ -23,15 +23,6 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
-    def _mm_rewrite_attr(self, m, proxy_prefix):
-        """Prefix root-relative src/href with proxy; skip absolute and already-prefixed."""
-        path = m.group(3)
-        if path.startswith(("http://", "https://", "//", "data:")):
-            return m.group(0)
-        if path.startswith(proxy_prefix):
-            return m.group(0)
-        return f'{m.group(1)}={m.group(2)}{proxy_prefix}{path}{m.group(2)}'
-
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         logger.info("[MattermostPassthroughHandler] Processing HTML response")
 
@@ -49,14 +40,14 @@ class MattermostPassthroughHandler:
 
         html_str = re.sub(
             r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map))',
-            lambda m: self._mm_rewrite_attr(m, proxy_prefix),
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
 
         html_str = re.sub(
             r'(src|href)=(["\'])(/static/[^"\']*)',
-            lambda m: self._mm_rewrite_attr(m, proxy_prefix),
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
@@ -142,7 +133,7 @@ class MattermostPassthroughHandler:
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
     def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
-        """Aggressive shim: token, __webpack_public_path__, createElement patch. First in <head>."""
+        """Strong shim: token, __webpack_public_path__, createElement patch. First in <head>."""
         token = ""
         try:
             cookies = self.get_upstream_cookies(request) or {}
@@ -162,11 +153,11 @@ class MattermostPassthroughHandler:
     if (MMAUTHTOKEN) {{
         try {{
             localStorage.setItem('MMAUTHTOKEN', MMAUTHTOKEN);
-            document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; SameSite=Lax; max-age=3600';
+            document.cookie = `MMAUTHTOKEN=${{MMAUTHTOKEN}}; path=/; max-age=3600`;
             window.MMAUTHTOKEN = MMAUTHTOKEN;
-            console.log('[PolySaaS FULL] MMAUTHTOKEN injected');
+            console.log('[PolySaaS STRONG] MMAUTHTOKEN injected');
         }} catch (e) {{
-            console.warn('[PolySaaS FULL] Token injection failed:', e);
+            console.warn('[PolySaaS STRONG] Token injection failed:', e);
         }}
     }}
 
@@ -175,14 +166,13 @@ class MattermostPassthroughHandler:
     var originalCreateElement = document.createElement;
     document.createElement = function(tag) {{
         var el = originalCreateElement.call(document, tag);
-        var t = String(tag || '').toLowerCase();
-        if (t === 'script' || t === 'link') {{
-            var prop = t === 'script' ? 'src' : 'href';
+        if (tag.toLowerCase() === 'script' || tag.toLowerCase() === 'link') {{
+            var prop = tag.toLowerCase() === 'script' ? 'src' : 'href';
             var desc = Object.getOwnPropertyDescriptor(el.constructor.prototype, prop);
             if (desc && desc.set) {{
                 Object.defineProperty(el, prop, {{
                     set: function(v) {{
-                        if (typeof v === 'string' && v.charAt(0) === '/') {{
+                        if (typeof v === 'string' && v.startsWith('/')) {{
                             v = PROXY + v;
                         }}
                         desc.set.call(this, v);
@@ -196,7 +186,7 @@ class MattermostPassthroughHandler:
         return el;
     }};
 
-    console.log('[PolySaaS FULL] Aggressive shim loaded');
+    console.log('[PolySaaS STRONG] Shim with dynamic patching loaded');
 }})();
 </script>
 """

@@ -23,6 +23,26 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
+    def try_root_display_shell_response(self, request, _endpoint, url_trigger_segment):
+        """
+        Phase 1: GET to this service's /pt/admin/<trigger>/ root only — return admin/display.html
+        (orchestration bar + buckets), no upstream request. Deeper paths return None.
+        """
+        if request.method != "GET":
+            return None
+        seg = (
+            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
+        )
+        if request.path_info.rstrip("/") != f"/pt/admin/{seg}":
+            return None
+        from django.shortcuts import render
+
+        response = render(request, "admin/display.html", {})
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        return response
+
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         logger.info("[MattermostPassthroughHandler] Processing HTML response")
 

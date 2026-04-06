@@ -195,9 +195,31 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
                     trigger_path__iexact=trigger,
                     is_enabled=True
                 ).first()
+                if endpoint is None and "_" in trigger:
+                    endpoint = PassThroughEndpoint.objects.filter(
+                        trigger_path__iexact=trigger.replace("_", ""),
+                        is_enabled=True,
+                    ).first()
                 print(f"[PT-MIDDLEWARE] endpoint={endpoint}")
 
                 if endpoint:
+                    handler = get_handler_for_endpoint(endpoint, request)
+                    try_root = (
+                        getattr(handler, "try_root_display_shell_response", None)
+                        if handler is not None
+                        else None
+                    )
+                    if callable(try_root):
+                        shell = try_root(request, endpoint, trigger)
+                        if shell is not None:
+                            print(
+                                "[PT-MW] Handler root display shell — "
+                                "admin/display.html (no forward)"
+                            )
+                            request._passthrough_handled = True
+                            request._passthrough_response = shell
+                            return shell
+
                     print("\n" + "="*120)
                     print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (LAST BEFORE EXIT)")
                     print(f"TARGET URL: {endpoint.endpoint_url}")
@@ -205,7 +227,6 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
                     print(f"USER      : {request.user}")
                     print("="*120 + "\n")
 
-                    handler = get_handler_for_endpoint(endpoint, request)
                     response = forward_request_standardized(request, endpoint.endpoint_url, handler=handler)
 
                     # For initial page loads, wrap the response in the admin template
