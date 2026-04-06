@@ -175,6 +175,16 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
                 print("[PT-MW] BAIL: not superuser and no membership")
                 return self.get_response(request)
 
+            # Mattermost static: handled by URLconf (mattermost_static_proxy streams from real MM)
+            if request.path_info.startswith("/pt/admin/mattermost/static/"):
+                print(f"[PT-MW] Delegate to mattermost_static_proxy: {request.path_info}")
+                return self.get_response(request)
+
+            # PolySniffer building pen + POST process: Django URLconf (not passthrough trigger)
+            if request.path_info.startswith("/pt/admin/passthrough/"):
+                print(f"[PT-MW] Delegate PolySniffer passthrough path: {request.path_info}")
+                return self.get_response(request)
+
             parts = request.path_info.strip("/").split("/")
             print(f"[PT-MIDDLEWARE] path={request.path_info} parts={parts}")
             if len(parts) >= 3 and parts[0] == "pt":

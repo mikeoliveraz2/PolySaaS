@@ -5,4 +5,8 @@ from .core import *
 from .ui import *
 from .proxy import *
 from .dashboard import *
+from .building_pen_embed import building_pen_embed
+from .building_pen_process import building_pen_process
+from .generic_passthrough_embed import generic_passthrough_embed
 from .mattermost_embed import mattermost_embed_view
+from .mattermost_static_proxy import mattermost_static_proxy

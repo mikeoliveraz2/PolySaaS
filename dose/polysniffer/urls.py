@@ -3,7 +3,7 @@ PolySniffer URLs - Admin Only Access
 All URLs require staff access and should only be accessed from PassThrough Endpoint admin interface
 """
 from django.urls import path
-from . import views
+from dose.polysniffer.views import mattermost_embed_view  # polysniffer.views.mattermost_embed_view
 from .views.ui import (
     redirect_to_admin,
     open_sniffer,
@@ -43,7 +43,7 @@ urlpatterns = [
     path('navigate/<int:endpoint_id>/', navigate_with_toolbar, name='navigate_with_toolbar'),
     path(
         'mattermost-embed/<int:endpoint_id>/',
-        views.mattermost_embed_view,
+        mattermost_embed_view,
         name='mattermost_embed_view',
     ),
     # Capture interface - green bar and capture log only (Tab 1)

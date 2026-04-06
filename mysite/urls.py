@@ -28,6 +28,11 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 from dose.polysniffer import urls as polysniffer_urls
+from dose.polysniffer.views import (
+    building_pen_embed,
+    building_pen_process,
+    mattermost_static_proxy,
+)
 from mysite.health import health_live, health_ready
 
 schema_view = get_schema_view(
@@ -56,6 +61,22 @@ urlpatterns = [
     path('admin/aiaspeers-view/', __import__('dose.admin_views').admin_views.aiaspeers_view, name='aiaspeers_view'),
     path('admin/gmail-view/', __import__('dose.admin_views').admin_views.gmail_view, name='gmail_view'),
     path('admin/mattermost-view/', __import__('dose.admin_views').admin_views.mattermost_view, name='mattermost_view'),
+    # Building pen: iframe loads real app; /pt/admin/passthrough/<service>/<endpoint_id>/
+    path(
+        'pt/admin/passthrough/<str:service_name>/<int:endpoint_id>/',
+        building_pen_embed,
+        name='building_pen_embed',
+    ),
+    path(
+        'pt/admin/passthrough/process/',
+        building_pen_process,
+        name='building_pen_process',
+    ),
+    path(
+        'pt/admin/mattermost/static/<path:path>',
+        mattermost_static_proxy,
+        name='mattermost_static_proxy',
+    ),
     path('admin/passthrough-embed/<str:trigger>/', __import__('dose.admin_views').admin_views.passthrough_embed_view, name='passthrough_embed'),
     path('api/airtable/tickets/', __import__('dose.views.airtable_dashboard', fromlist=['airtable_tickets_api']).airtable_tickets_api, name='api_airtable_tickets'),
     path('admin/polysniffer/', include((polysniffer_urls, 'polysniffer'))),

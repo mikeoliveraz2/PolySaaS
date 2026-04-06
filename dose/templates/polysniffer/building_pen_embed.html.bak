@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+        #toolbar {
+            position: fixed; top: 0; left: 0; right: 0; height: 52px;
+            background: #000; border-bottom: 4px solid #0f0;
+            display: flex; align-items: center; padding: 0 20px;
+            font-weight: bold; color: #0f0; z-index: 2147483647;
+        }
+        #iframe-container {
+            position: absolute; top: 52px; left: 0; right: 0; bottom: 0;
+            display: none;
+        }
+        #iframe-container iframe { width: 100%; height: 100%; border: none; }
+        #display-wrap {
+            position: absolute; top: 52px; left: 0; right: 0; bottom: 0;
+        }
+        #display-frame {
+            width: 100%; height: 100%; border: none;
+            background: #fff;
+        }
+    </style>
+</head>
+<body>
+    {% csrf_token %}
+    <div id="toolbar">
+        🟢 PolySniffer ACTIVE — Building Pen — {{ service_name|title }}
+    </div>
+    <div id="iframe-container">
+        <iframe id="building-pen" src="{{ real_url }}" title="{{ title }}"></iframe>
+    </div>
+    <div id="display-wrap">
+        <iframe id="display-frame" title="Processed embed"></iframe>
+    </div>
+
+    <script>
+        function getCookie(name) {
+            let v = null;
+            if (document.cookie && document.cookie !== '') {
+                document.cookie.split(';').forEach(function (c) {
+                    c = c.trim();
+                    if (c.substring(0, name.length + 1) === (name + '=')) {
+                        v = decodeURIComponent(c.substring(name.length + 1));
+                    }
+                });
+            }
+            return v;
+        }
+
+        const iframe = document.getElementById('building-pen');
+        const displayFrame = document.getElementById('display-frame');
+        const processUrl = '{% url "building_pen_process" %}';
+        let lastDisplayObjectUrl = null;
+
+        function showProcessedHtml(htmlText) {
+            if (lastDisplayObjectUrl) {
+                URL.revokeObjectURL(lastDisplayObjectUrl);
+                lastDisplayObjectUrl = null;
+            }
+            const blob = new Blob([htmlText], { type: 'text/html;charset=utf-8' });
+            lastDisplayObjectUrl = URL.createObjectURL(blob);
+            displayFrame.src = lastDisplayObjectUrl;
+        }
+
+        iframe.addEventListener('load', function () {
+            console.log('[PolySniffer] Building pen iframe load — waiting for SPA settle…');
+            setTimeout(async function () {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    const fullHTML = iframeDoc.documentElement.outerHTML;
+
+                    const csrftoken = getCookie('csrftoken');
+                    const response = await fetch(processUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken || '',
+                        },
+                        body: JSON.stringify({
+                            service_name: '{{ service_name|escapejs }}',
+                            endpoint_id: {{ endpoint_id }},
+                            html: fullHTML
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw new Error(response.status + ' ' + errText.slice(0, 200));
+                    }
+
+                    const processedHTML = await response.text();
+                    showProcessedHtml(processedHTML);
+                    console.log('[PolySniffer] Building pen processed OK');
+                } catch (e) {
+                    console.error('[PolySniffer] Building pen failed:', e);
+                    const msg = (e && e.name === 'SecurityError')
+                        ? 'Cannot read iframe DOM (cross-origin). Point the building pen at a same-origin proxy URL, or use server-side embed.'
+                        : String(e.message || e);
+                    showProcessedHtml(
+                        '<!DOCTYPE html><html><body style="background:#111;color:#f66;font-family:sans-serif;padding:2rem;">' +
+                        '<h2>Building pen extraction / process failed</h2><p>' + msg.replace(/</g, '&lt;') + '</p></body></html>'
+                    );
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

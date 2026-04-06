@@ -1,0 +1,140 @@
+# dose/polysniffer/views/building_pen_embed.py
+# True building pen: server fetches upstream HTML (same-origin to browser after rewrites),
+# injects a script; main document runs the SPA; final DOM POSTs to building_pen_process.
+
+import json
+import logging
+import re
+
+import requests
+from django.contrib.admin.views.decorators import staff_member_required
+from django.http import Http404, HttpResponse
+from django.middleware.csrf import get_token
+from django.urls import reverse
+from django.utils.html import escape
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+from ..handlers.registry import get_handler
+from .core import get_endpoint_any_schema
+
+logger = logging.getLogger(__name__)
+
+# Time for webpack/React to settle before snapshot (ms).
+DEFAULT_SETTLE_MS = 2500
+
+
+def _inject_building_pen_script(
+    html: str, request, service_name: str, endpoint_id: int, settle_ms: int = DEFAULT_SETTLE_MS
+) -> str:
+    """Append script before </body> that POSTs document.documentElement.outerHTML to process."""
+    cfg = {
+        "csrf": get_token(request),
+        "processUrl": reverse("building_pen_process"),
+        "serviceName": service_name.strip().lower(),
+        "endpointId": int(endpoint_id),
+        "settleMs": int(settle_ms),
+    }
+    cfg_js = json.dumps(cfg)
+    script = (
+        "<script>(function(){var C="
+        + cfg_js
+        + ";function post(){var h=document.documentElement.outerHTML;"
+        "fetch(C.processUrl,{method:'POST',credentials:'same-origin',"
+        "headers:{'Content-Type':'application/json','X-CSRFToken':C.csrf},"
+        "body:JSON.stringify({service_name:C.serviceName,endpoint_id:C.endpointId,html:h})})"
+        ".then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(r.status+' '+t);});"
+        "return r.text();})"
+        ".then(function(p){document.open();document.write(p);document.close();"
+        "console.log('[PolySniffer] Building pen: processed HTML applied');})"
+        ".catch(function(e){console.error('[PolySniffer] Building pen:',e);"
+        "try{document.body.innerHTML="
+        "'<h1 style=color:#f66;font-family:sans-serif;padding:1rem'>Building pen failed</h1>"
+        "<pre style=color:#ccc>'+String(e)+'</pre>';}catch(x){}});}"
+        "setTimeout(post,C.settleMs);})();</script>"
+    )
+    if re.search(r"</body>", html, flags=re.IGNORECASE):
+        return re.sub(r"(?i)</body>", script + "</body>", html, count=1)
+    return html + script
+
+
+@staff_member_required
+@ensure_csrf_cookie
+def building_pen_embed(request, service_name, endpoint_id):
+    """
+    Server-side fetch of upstream app shell, URL rewriting for same-origin assets,
+    then inline script captures built DOM and POSTs to building_pen_process.
+    No iframe: the browser document is the pen.
+    """
+    handler_class = get_handler(service_name)
+    if not handler_class:
+        return HttpResponse(
+            f"<h1>Unsupported service</h1><p>{escape(service_name)}</p>",
+            status=400,
+            content_type="text/html; charset=utf-8",
+        )
+
+    try:
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+    except Http404:
+        return HttpResponse(
+            "<h1>PassThroughEndpoint not found</h1>"
+            f"<p>id=<strong>{escape(str(endpoint_id))}</strong> — "
+            "check Admin → Pass through endpoints for this tenant.</p>",
+            status=404,
+            content_type="text/html; charset=utf-8",
+        )
+
+    endpoint_url = (endpoint.endpoint_url or "").strip()
+    if not endpoint_url:
+        return HttpResponse(
+            "<h1>No endpoint URL</h1>"
+            "<p>This PassThroughEndpoint has no <code>endpoint_url</code> configured.</p>",
+            status=400,
+            content_type="text/html; charset=utf-8",
+        )
+
+    label = escape(
+        (getattr(endpoint, "menu_title", None) or "").strip()
+        or (getattr(endpoint, "trigger_path", None) or "").strip()
+        or f"endpoint {endpoint.pk}"
+    )
+
+    try:
+        handler = handler_class(endpoint_id, request)
+        cookies = handler.get_upstream_cookies(request) or {}
+        headers = {
+            "User-Agent": request.META.get("HTTP_USER_AGENT", "Mozilla/5.0"),
+        }
+        upstream = requests.get(
+            endpoint_url,
+            cookies=cookies,
+            headers=headers,
+            timeout=25,
+            allow_redirects=True,
+        )
+        html_content = upstream.text
+        processed, django_response = handler.process_html_response(
+            html_content,
+            request,
+            endpoint_url=endpoint_url,
+            inject_toolbar=True,
+            rewrite_assets=True,
+        )
+        if django_response is not None:
+            return django_response
+
+        processed = _inject_building_pen_script(
+            processed, request, service_name, endpoint_id, settle_ms=DEFAULT_SETTLE_MS
+        )
+        return HttpResponse(
+            processed,
+            content_type="text/html; charset=utf-8",
+            status=upstream.status_code if upstream.status_code else 200,
+        )
+    except Exception as exc:
+        logger.exception("[building_pen_embed] failed for %s: %s", label, exc)
+        return HttpResponse(
+            f"<h1>Error loading building pen</h1><p>{label}</p><pre>{escape(str(exc))}</pre>",
+            status=500,
+            content_type="text/html; charset=utf-8",
+        )

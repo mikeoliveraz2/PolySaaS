@@ -76,7 +76,10 @@ def navigate_with_toolbar(request, endpoint_id):
     endpoint_name = endpoint.menu_title or endpoint.trigger_path or "Endpoint"
     is_mattermost = (endpoint.trigger_path or "").lower() == "mattermost"
     if is_mattermost:
-        step2_href = reverse("polysniffer:mattermost_embed_view", args=[endpoint_id])
+        step2_href = reverse(
+            "building_pen_embed",
+            kwargs={"service_name": "mattermost", "endpoint_id": endpoint_id},
+        )
         step2_title = "Open Embedded Mattermost"
         step2_description = (
             "Opens Mattermost through the server-side embed view (green PolySniffer toolbar). "

@@ -76,7 +76,10 @@ def navigate_with_toolbar(request, endpoint_id):
     endpoint_name = endpoint.menu_title or endpoint.trigger_path or "Endpoint"
     is_mattermost = (endpoint.trigger_path or "").lower() == "mattermost"
     if is_mattermost:
-        step2_href = reverse("polysniffer:mattermost_embed_view", args=[endpoint_id])
+        step2_href = reverse(
+            "building_pen_embed",
+            kwargs={"service_name": "mattermost", "endpoint_id": endpoint_id},
+        )
         step2_title = "Open Embedded Mattermost"
         step2_description = (
             "Opens Mattermost through the server-side embed view (green PolySniffer toolbar). "
@@ -212,27 +215,6 @@ def navigate_with_toolbar(request, endpoint_id):
     </html>
     """
     return HttpResponse(notice_html)
-
-
-@staff_member_required
-def mattermost_embed_view(request, endpoint_id):
-    """
-    Server-side fetch + MattermostPassthroughHandler (PolySniffer handlers package).
-    """
-    if not request.user.is_staff:
-        return redirect("admin:index")
-    try:
-        get_endpoint_any_schema(endpoint_id, request)
-    except Exception:
-        return HttpResponse(
-            f'<h1>Endpoint not found</h1><p><a href="/admin/dose/passthroughendpoint/">Back</a></p>',
-            status=404,
-            content_type="text/html; charset=utf-8",
-        )
-    from dose.polysniffer.handlers.mattermost_handler import MattermostPassthroughHandler
-
-    handler = MattermostPassthroughHandler(endpoint_id)
-    return handler.embed(request)
 
 
 @staff_member_required

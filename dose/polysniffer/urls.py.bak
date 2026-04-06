@@ -3,11 +3,11 @@ PolySniffer URLs - Admin Only Access
 All URLs require staff access and should only be accessed from PassThrough Endpoint admin interface
 """
 from django.urls import path
+from dose.polysniffer.views import mattermost_embed_view  # polysniffer.views.mattermost_embed_view
 from .views.ui import (
     redirect_to_admin,
     open_sniffer,
     navigate_with_toolbar,
-    mattermost_embed_view,
     live_capture,
     capture_interface_view,
     split_window_view,

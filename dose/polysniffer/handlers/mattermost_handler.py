@@ -36,7 +36,14 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
 
         return {}
 
-    def process_html_response(self, html_str, request, endpoint_url=None):
+    def process_html_response(
+        self,
+        html_str,
+        request,
+        endpoint_url=None,
+        inject_toolbar=True,
+        rewrite_assets=True,
+    ):
         """Process the fully built Mattermost HTML."""
         logger.info("[MattermostPassthroughHandler] Processing final HTML")
 
@@ -50,31 +57,52 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
 
-        # Rewrite static assets
-        html_str = self._rewrite_static_assets(html_str, proxy_prefix)
+        if rewrite_assets:
+            html_str = self._rewrite_static_assets(html_str, proxy_prefix)
 
-        # Inject green PolySniffer toolbar
-        html_str = self._inject_toolbar(html_str)
+        if inject_toolbar:
+            html_str = self._inject_toolbar(html_str)
 
         return html_str, None
 
     def _rewrite_static_assets(self, html, proxy_prefix):
-        """Rewrite all static asset URLs."""
+        """Maximum aggression rewrite - catch everything Mattermost throws at us"""
         import re
-        # Broad catch for hashed webpack files
+
+        # 1. Catch any file with a hash-like name (most webpack chunks)
         html = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map))',
+            r'(src|href)=(["\'])([^"\']*?[\w\.-]{8,}\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map|ico))',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html,
             flags=re.IGNORECASE
         )
-        # Extra pass for /static/
+
+        # 2. Force ALL /static/ paths (this is the most important one)
         html = re.sub(
             r'(src|href)=(["\'])(/static/[^"\']*)',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html,
             flags=re.IGNORECASE
         )
+
+        # 3. Catch bare root hashed files (common in Mattermost)
+        html = re.sub(
+            r'(src|href)=(["\'])(/)([\w\.-]{10,}\.(js|css))',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static{m.group(3)}{m.group(4)}{m.group(2)}',
+            html,
+            flags=re.IGNORECASE
+        )
+
+        # 4. Catch absolute Mattermost origin
+        if hasattr(self, 'endpoint') and self.endpoint.endpoint_url:
+            origin = self.endpoint.endpoint_url.rstrip('/')
+            html = re.sub(
+                re.escape(origin) + r'(/[^"\']*)',
+                lambda m: proxy_prefix + m.group(1),
+                html,
+                flags=re.IGNORECASE
+            )
+
         return html
 
     def _inject_toolbar(self, html):
