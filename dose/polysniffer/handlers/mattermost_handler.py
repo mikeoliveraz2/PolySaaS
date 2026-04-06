@@ -1,8 +1,10 @@
 # File: polysniffer/handlers/mattermost_handler.py
 # Purpose: Clean Mattermost handler using the new BasePassthroughHandler
 
-import re
+import json
 import logging
+import re
+
 from .base import BasePassthroughHandler
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,11 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
 
+        # First script in <head>: localStorage + cookie + MM client hints (before webpack path)
+        html_str = self._inject_early_mm_token(html_str, request)
+
+        html_str = self._inject_webpack_public_path(html_str, proxy_prefix)
+
         if rewrite_assets:
             html_str = self._rewrite_static_assets(html_str, proxy_prefix)
 
@@ -64,6 +71,55 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
             html_str = self._inject_toolbar(html_str)
 
         return html_str, None
+
+    def _inject_early_mm_token(self, html_str, request):
+        """Inject MMAUTHTOKEN into page context before Mattermost bundles run."""
+        token = ""
+        try:
+            cookies = self.get_upstream_cookies(request) or {}
+            token = (cookies.get("MMAUTHTOKEN") or "").strip()
+        except Exception as exc:
+            logger.warning(
+                "[MattermostPassthroughHandler] Token lookup failed: %s", exc
+            )
+
+        if not token:
+            return html_str
+
+        token_js = json.dumps(token)
+        early = (
+            "<script>(function(){var token="
+            + token_js
+            + ";if(!token)return;"
+            "try{"
+            "localStorage.setItem('MMAUTHTOKEN',token);"
+            "document.cookie='MMAUTHTOKEN='+encodeURIComponent(token)"
+            + "+'; path=/; max-age=7200; SameSite=Lax';"
+            "window.MMAUTHTOKEN=token;"
+            "console.log('[PolySniffer] Strong early token injected');"
+            "if(window.location.pathname.indexOf('/login')>=0||"
+            "window.location.search.indexOf('redirect_to')>=0){"
+            "setTimeout(function(){window.location.reload();},600);}"
+            "}catch(e){console.warn('[PolySniffer] Token injection failed:',e);}"
+            "})();</script>"
+        )
+        if re.search(r"<head[^>]*>", html_str, flags=re.IGNORECASE):
+            return re.sub(
+                r"(?i)(<head[^>]*>)", r"\1" + early, html_str, count=1
+            )
+        return early + html_str
+
+    def _inject_webpack_public_path(self, html, proxy_prefix):
+        """Run before main.js: webpack chunk loaders honor __webpack_public_path__."""
+        base = f"{proxy_prefix}/static/"
+        snippet = (
+            f'<script>try{{window.__webpack_public_path__="{base}";}}catch(e){{}}</script>'
+        )
+        if re.search(r"<head[^>]*>", html, flags=re.IGNORECASE):
+            return re.sub(
+                r"(?i)(<head[^>]*>)", r"\1" + snippet, html, count=1
+            )
+        return snippet + html
 
     def _rewrite_static_assets(self, html, proxy_prefix):
         """Nuclear rewrite for building pen / embed output (webpack chunks + static + origin)."""

@@ -1,17 +1,23 @@
 # dose/polysniffer/views/mattermost_static_proxy.py
 # Stream Mattermost /static/* through Django (same origin as embed).
+# Rewrites root-relative /static/ inside JS/CSS bodies so webpack chunk URLs hit this proxy.
 
 import logging
 
 import requests
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse
 from django.utils.html import escape
 
 logger = logging.getLogger(__name__)
 
-# Default upstream; override via MATTERMOST_STATIC_ORIGIN in settings if needed.
 DEFAULT_MM_ORIGIN = "http://localhost:8065"
+
+# Must match MattermostPassthroughHandler proxy_prefix + "/static/"
+WEBPACK_STATIC_PREFIX = "/pt/admin/mattermost/static/"
+
+# Main + large chunks; skip huge source maps if needed
+MAX_BODY_REWRITE_BYTES = 25 * 1024 * 1024
 
 
 def _upstream_static_base():
@@ -21,6 +27,30 @@ def _upstream_static_base():
         return getattr(settings, "MATTERMOST_STATIC_ORIGIN", DEFAULT_MM_ORIGIN).rstrip("/")
     except Exception:
         return DEFAULT_MM_ORIGIN
+
+
+def _rewrite_webpack_static_paths(body: bytes, *, is_css: bool) -> bytes:
+    """
+    Mattermost bundles set publicPath to /static/; chunk loaders request :8000/static/...
+    Replace string forms of root-relative /static/ with our proxy path inside file bodies.
+    """
+    if not body or len(body) > MAX_BODY_REWRITE_BYTES:
+        return body
+    try:
+        s = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body
+
+    p = WEBPACK_STATIC_PREFIX
+    s = s.replace('"/static/', f'"{p}')
+    s = s.replace("'/static/", f"'{p}")
+    s = s.replace('\\"/static/', f'\\"{p}')
+    s = s.replace("\\'/static/", f"\\'{p}")
+    if is_css:
+        s = s.replace("url(/static/", f"url({p}")
+        s = s.replace('url("/static/', f'url("{p}')
+        s = s.replace("url('/static/", f"url('{p}")
+    return s.encode("utf-8")
 
 
 @login_required
@@ -39,23 +69,42 @@ def mattermost_static_proxy(request, path):
             real_url,
             headers={"User-Agent": request.META.get("HTTP_USER_AGENT", "Mozilla/5.0")},
             timeout=30,
-            stream=True,
         )
 
-        if upstream.status_code == 200:
-            streaming = StreamingHttpResponse(
-                upstream.iter_content(chunk_size=8192),
-                content_type=upstream.headers.get(
-                    "content-type", "application/octet-stream"
-                ),
-                status=upstream.status_code,
-            )
-            for h in ("Cache-Control", "ETag", "Last-Modified"):
-                if upstream.headers.get(h):
-                    streaming[h] = upstream.headers[h]
-            return streaming
+        if upstream.status_code != 200:
+            return HttpResponse(status=upstream.status_code)
 
-        return HttpResponse(status=upstream.status_code)
+        content = upstream.content
+        ct = (upstream.headers.get("content-type") or "").lower()
+        path_l = path.lower()
+
+        is_js = (
+            "javascript" in ct
+            or "ecmascript" in ct
+            or path_l.endswith(".js")
+            or path_l.endswith(".mjs")
+        )
+        is_css = ("css" in ct and "javascript" not in ct) or path_l.endswith(".css")
+        is_json = "json" in ct or path_l.endswith(".json")
+
+        if is_js:
+            content = _rewrite_webpack_static_paths(content, is_css=False)
+        elif is_css:
+            content = _rewrite_webpack_static_paths(content, is_css=True)
+        elif is_json:
+            content = _rewrite_webpack_static_paths(content, is_css=False)
+
+        resp = HttpResponse(
+            content,
+            content_type=upstream.headers.get(
+                "content-type", "application/octet-stream"
+            ),
+            status=upstream.status_code,
+        )
+        for h in ("Cache-Control", "ETag", "Last-Modified"):
+            if upstream.headers.get(h):
+                resp[h] = upstream.headers[h]
+        return resp
 
     except Exception as exc:
         logger.warning("Mattermost static proxy error for %s: %s", path, exc)

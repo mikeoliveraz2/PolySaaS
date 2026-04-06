@@ -1,0 +1,50 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}PolySaaS Display{% endblock %}
+
+{% block extrastyle %}
+<style>
+    #polysaas-orchestration-bar {
+        background-color: #1a1a1a;
+        color: #0f0;
+        padding: 10px 15px;
+        border-bottom: 3px solid #0f0;
+        font-family: monospace;
+        font-size: 15px;
+        margin: 0 -15px 20px -15px;
+    }
+
+    #polysaas-display-head-bucket {
+        border: 2px dashed #555;
+        padding: 20px;
+        margin-bottom: 25px;
+        min-height: 120px;
+        background-color: #fafafa;
+    }
+
+    #polysaas-display-body-bucket {
+        border: 2px dashed #555;
+        padding: 20px;
+        min-height: 500px;
+        background-color: #fafafa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div id="polysaas-orchestration-bar">
+        ● POLYSAAS ORCHESTRATION ACTIVE — DISPLAY SHELL (PHASE 1)
+    </div>
+
+    <div id="polysaas-display-head-bucket">
+        <h3>DIV HEAD BUCKET</h3>
+        <p>Head content (styles, scripts, links, meta) will go here.</p>
+    </div>
+
+    <div id="polysaas-display-body-bucket">
+        <h3>DIV BODY BUCKET</h3>
+        <p>Body content from upstream will go here after build pen processing.</p>
+    </div>
+
+    <small style="color:#666;">display.html shell — ready for testing via sidebar Mattermost link</small>
+{% endblock %}

@@ -78,6 +78,11 @@ urlpatterns = [
         name='mattermost_static_proxy',
     ),
     path('admin/passthrough-embed/<str:trigger>/', __import__('dose.admin_views').admin_views.passthrough_embed_view, name='passthrough_embed'),
+    path(
+        'admin/passthrough-display/',
+        __import__('dose.admin_views').admin_views.passthrough_display_shell_view,
+        name='passthrough_display_shell',
+    ),
     path('api/airtable/tickets/', __import__('dose.views.airtable_dashboard', fromlist=['airtable_tickets_api']).airtable_tickets_api, name='api_airtable_tickets'),
     path('admin/polysniffer/', include((polysniffer_urls, 'polysniffer'))),
     path('websocket', RedirectView.as_view(url='/pt/admin/odoo/websocket', permanent=False)),

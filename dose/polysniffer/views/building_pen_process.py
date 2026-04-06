@@ -1,8 +1,9 @@
 # dose/polysniffer/views/building_pen_process.py
-# POST: final built DOM → light pass (no double rewrite / double toolbar).
+# POST: final built DOM → full handler pass (toolbar + asset rewrite on snapshot).
 
 import json
 import logging
+import re
 import traceback
 
 from django.contrib.admin.views.decorators import staff_member_required
@@ -15,12 +16,35 @@ from ..handlers.registry import get_handler
 logger = logging.getLogger(__name__)
 
 
+def _strip_poly_pen_injection(html: str) -> str:
+    """Remove pen runner + overlay from POSTed outerHTML so document.write does not loop."""
+    html = re.sub(
+        r'<script[^>]*\bid=["\']poly-sniffer-building-pen["\'][^>]*>.*?</script>',
+        "",
+        html,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    html = re.sub(
+        r'<style[^>]*\bid=["\']poly-pen-spinner-style["\'][^>]*>.*?</style>',
+        "",
+        html,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    html = re.sub(
+        r'<div[^>]*\bid=["\']poly-pen-overlay["\'][^>]*>.*?</span>\s*</div>',
+        "",
+        html,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    return html
+
+
 @staff_member_required
 @require_POST
 def building_pen_process(request):
     """
     Accept JSON { service_name, endpoint_id, html }.
-    Shell was already rewritten in building_pen_embed; only strip CSP/meta again, no re-proxy.
+    Strips pen artifacts, then runs full process_html_response on the snapshot for client replace.
     """
     try:
         data = json.loads(request.body.decode("utf-8"))
@@ -33,6 +57,8 @@ def building_pen_process(request):
 
     if not service_name or endpoint_id is None or not isinstance(html, str):
         return HttpResponseBadRequest("Missing service_name, endpoint_id, or html")
+
+    html = _strip_poly_pen_injection(html)
 
     handler_class = get_handler(service_name)
     if not handler_class:
@@ -58,8 +84,8 @@ def building_pen_process(request):
             html,
             request,
             endpoint_url=endpoint_url,
-            inject_toolbar=False,
-            rewrite_assets=False,
+            inject_toolbar=True,
+            rewrite_assets=True,
         )
     except Exception as exc:
         logger.exception("[building_pen_process] handler failed: %s", exc)

@@ -28,7 +28,11 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 from dose.polysniffer import urls as polysniffer_urls
-from dose.polysniffer.views import building_pen_embed, mattermost_static_proxy
+from dose.polysniffer.views import (
+    building_pen_embed,
+    building_pen_process,
+    mattermost_static_proxy,
+)
 from mysite.health import health_live, health_ready
 
 schema_view = get_schema_view(
@@ -62,6 +66,11 @@ urlpatterns = [
         'pt/admin/passthrough/<str:service_name>/<int:endpoint_id>/',
         building_pen_embed,
         name='building_pen_embed',
+    ),
+    path(
+        'pt/admin/passthrough/process/',
+        building_pen_process,
+        name='building_pen_process',
     ),
     path(
         'pt/admin/mattermost/static/<path:path>',

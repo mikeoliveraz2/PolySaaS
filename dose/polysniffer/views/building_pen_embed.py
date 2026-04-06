@@ -20,7 +20,7 @@ from .core import get_endpoint_any_schema
 logger = logging.getLogger(__name__)
 
 # Let webpack/React settle before snapshot (ms).
-SETTLE_MS = 3500
+SETTLE_MS = 4500
 
 _SPINNER_STYLE = (
     '<style id="poly-pen-spinner-style">'
@@ -71,22 +71,24 @@ def _inject_extraction_script(
     }
     cfg_js = json.dumps(cfg)
     script = (
-        "<script>(function(){var C="
+        '<script id="poly-sniffer-building-pen">(function(){var C='
         + cfg_js
-        + ";console.log('[PolySniffer] Building pen started — waiting for SPA…');"
+        + ";console.log('[PolySniffer] Building pen started — waiting for Mattermost...');"
         "setTimeout(function(){var h=document.documentElement.outerHTML;"
         "fetch(C.processUrl,{method:'POST',credentials:'same-origin',"
         "headers:{'Content-Type':'application/json','X-CSRFToken':C.csrf},"
         "body:JSON.stringify({service_name:C.serviceName,endpoint_id:C.endpointId,html:h})})"
-        ".then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(r.status+' '+t);});"
+        ".then(function(r){if(!r.ok)throw new Error('Process failed with status '+r.status);"
         "return r.text();})"
-        ".then(function(finalHTML){console.log('[PolySniffer] Building pen complete — applying');"
-        "document.open();document.write(finalHTML);document.close();})"
-        ".catch(function(err){console.error('[PolySniffer] Process failed:',err);"
+        ".then(function(processedHTML){console.log('[PolySniffer] Processing successful — replacing page');"
+        "document.open();document.write(processedHTML);document.close();})"
+        ".catch(function(err){console.error('[PolySniffer] Building pen failed:',err);"
         "var o=document.getElementById('poly-pen-overlay');if(o)o.remove();"
-        "try{var b=document.body;if(b)b.innerHTML="
-        "'<h1 style=color:#f66;font-family:sans-serif;padding:2rem>Building pen failed</h1>"
-        "<p style=color:#888;padding:0 2rem>See browser console for details.</p>';}catch(x){}});"
+        "try{var b=document.body;if(b){b.innerHTML="
+        "'<div style=\"color:#f66;text-align:center;margin-top:150px\">"
+        "<h2>Building pen failed</h2><p id=\"poly-pen-err-msg\"></p></div>';"
+        "var pe=document.getElementById('poly-pen-err-msg');"
+        "if(pe)pe.textContent=String((err&&err.message)||err||'unknown');}}catch(x){}});"
         "},C.settleMs);})();</script>"
     )
     if re.search(r"</body>", html, flags=re.IGNORECASE):

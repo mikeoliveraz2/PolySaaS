@@ -1,0 +1,165 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% comment %}
+Passthrough display shell (phase 1): green orchestration bar + head/body buckets only.
+No upstream fetch and no proxified URL rewriting until this layout is verified in admin.
+{% endcomment %}
+
+{% block bodyclass %}polysaas-passthrough-embed-page polysaas-display-shell-page{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style id="polysaas-display-shell-styles">
+/* Match passthrough embed column layout (subset of passthrough_embed.html shield) */
+body.polysaas-display-shell-page .admin-content-grid {
+    grid-template-columns: 280px 1fr !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+body.polysaas-display-shell-page .admin-content-grid.sidebar-collapse,
+body.polysaas-display-shell-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 60px 1fr !important;
+}
+body.polysaas-display-shell-page #recent-actions-sidebar {
+    display: none !important;
+}
+body.polysaas-display-shell-page .content .container-fluid {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: none !important;
+}
+body.polysaas-display-shell-page .content .row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+body.polysaas-display-shell-page .polysaas-display-shell-col {
+    padding: 0 !important;
+}
+.admin-content-grid > .collapsible-nav {
+    z-index: 1040 !important;
+    position: sticky !important;
+}
+#jazzy-navbar,
+.app-header {
+    z-index: 1050 !important;
+}
+
+/* Shell root: fills content column below Jazzmin chrome */
+.polysaas-display-shell-root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: calc(100vh - 98px);
+    box-sizing: border-box;
+    background: #0f172a;
+}
+
+/* PolySniffer-style orchestration bar (in-content, not fixed to viewport) */
+#polysaas-orchestration-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 16px;
+    background: #1a1a1a;
+    color: #0f0;
+    font-family: system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 3px solid #0f0;
+    box-shadow: 0 4px 16px rgba(0, 255, 0, 0.2);
+    z-index: 1020;
+    position: relative;
+}
+#polysaas-orchestration-bar .polysaas-orch-status {
+    margin-left: auto;
+    color: #86efac;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.polysaas-display-buckets {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+    overflow: auto;
+}
+
+#polysaas-display-head-bucket,
+#polysaas-display-body-bucket {
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border: 2px dashed #334155;
+    margin: 12px 16px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.6);
+    color: #94a3b8;
+    font-size: 13px;
+}
+#polysaas-display-head-bucket {
+    min-height: 72px;
+    flex: 0 0 auto;
+}
+#polysaas-display-body-bucket {
+    flex: 1 1 auto;
+    min-height: 240px;
+    margin-bottom: 16px;
+}
+.polysaas-display-bucket-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #0f0;
+    margin-bottom: 8px;
+}
+</style>
+{% endblock %}
+
+{% block title %}{{ display_title }} — {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; {{ display_title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="col-12 polysaas-display-shell-col">
+    <div class="polysaas-display-shell-root" data-polysaas-display-phase="{{ display_phase|default:'shell' }}">
+        <div id="polysaas-orchestration-bar" role="status" aria-live="polite">
+            <span>🟢 {% trans "PolySniffer — Orchestration" %}</span>
+            <span style="color:#86efac;font-weight:500;">{{ display_subtitle|default:"" }}</span>
+            <span class="polysaas-orch-status">{% trans "Shell ready" %}</span>
+        </div>
+        <div class="polysaas-display-buckets">
+            <div id="polysaas-display-head-bucket" data-bucket="head">
+                <span class="polysaas-display-bucket-label">{% trans "Head bucket" %}</span>
+                {% trans "Empty — proxified head fragments will land here after URL rewrite phase." %}
+            </div>
+            <div id="polysaas-display-body-bucket" data-bucket="body">
+                <span class="polysaas-display-bucket-label">{% trans "Body bucket" %}</span>
+                {% trans "Empty — proxified body content will land here after URL rewrite phase." %}
+            </div>
+        </div>
+    </div>
+</div>
+<p class="text-muted" style="margin:10px 16px;font-size:12px;">
+    {% trans "Phase 1 test URL (bookmark for regression):" %}
+    <code>{{ request.path }}</code>
+</p>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+{% endblock %}
