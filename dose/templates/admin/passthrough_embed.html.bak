@@ -11,6 +11,10 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 
 {% block extrahead %}
 {{ block.super }}
+{% if embed_head %}
+<!-- Upstream head content (shims, scripts) - injected by middleware -->
+{{ embed_head }}
+{% endif %}
 <style id="polysaas-passthrough-embed-shield">
 /* Drop the right-sidebar column — content takes the full available width */
 body.polysaas-passthrough-embed-page .admin-content-grid {
@@ -62,21 +66,30 @@ body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     z-index: 1050 !important;
 }
 
-/* ── Odoo containment ── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   ODOO CONTAINMENT - Fix #4: No apps / no adaptive display
+   The scope container becomes Odoo's viewport. All Odoo elements must stay
+   inside and use the scope's dimensions, not the browser viewport.
+   ═══════════════════════════════════════════════════════════════════════════ */
 body.polysaas-passthrough-embed-page {
     overflow: visible !important;
     height: auto !important;
 }
+
+/* The scope is a positioned container that Odoo elements are relative to */
+.polysaas-passthrough-scope {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    height: calc(100vh - 98px) !important;
+    min-height: 400px !important;
+    overflow: hidden !important;
+    background: #f0f0f0 !important;
+}
+
+/* Odoo's root containers fill the scope */
 .polysaas-passthrough-scope #wrapwrap,
-.polysaas-passthrough-scope .o_web_client,
-.polysaas-passthrough-scope .o_navbar,
-.polysaas-passthrough-scope .o_action_manager,
-.polysaas-passthrough-scope .o-main-components-container,
-.polysaas-passthrough-scope .o_content,
-.polysaas-passthrough-scope .o_view_controller,
-.polysaas-passthrough-scope .o_kanban_view,
-.polysaas-passthrough-scope .o_list_view,
-.polysaas-passthrough-scope .o_form_view {
+.polysaas-passthrough-scope .o_web_client {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
@@ -86,41 +99,90 @@ body.polysaas-passthrough-embed-page {
     height: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    transform: none !important;
+    display: flex !important;
+    flex-direction: column !important;
     visibility: visible !important;
     opacity: 1 !important;
-    overflow: auto !important;
-}
-.polysaas-passthrough-scope .o_navbar {
-    height: 46px !important;
-    bottom: auto !important;
-    z-index: 10 !important;
-}
-.polysaas-passthrough-scope .o_action_manager,
-.polysaas-passthrough-scope .o_content {
-    top: 46px !important;
-}
-.polysaas-passthrough-scope .o_navbar {
-    flex: 0 0 auto !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    z-index: 10 !important;
-}
-.polysaas-passthrough-scope .o_action_manager,
-.polysaas-passthrough-scope .o_web_client {
-    flex: 1 1 auto !important;
-    height: calc(100% - 46px) !important;
-    min-height: 0 !important;
     overflow: hidden !important;
 }
-.polysaas-passthrough-scope .o_content {
+
+/* Odoo navbar at top */
+.polysaas-passthrough-scope .o_navbar {
+    position: relative !important;
+    flex: 0 0 46px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    width: 100% !important;
+    z-index: 100 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Action manager fills remaining space */
+.polysaas-passthrough-scope .o_action_manager {
+    position: relative !important;
     flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Content areas */
+.polysaas-passthrough-scope .o_content,
+.polysaas-passthrough-scope .o_view_controller,
+.polysaas-passthrough-scope .o_kanban_view,
+.polysaas-passthrough-scope .o_list_view,
+.polysaas-passthrough-scope .o_form_view {
+    position: relative !important;
+    width: 100% !important;
     height: 100% !important;
     overflow: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
-/* Ensure the adaptive UI shim works by making the scope a true container */
-.polysaas-passthrough-scope {
-    display: block !important;
+
+/* Apps/Home menu grid */
+.polysaas-passthrough-scope .o_apps,
+.polysaas-passthrough-scope .o_home_menu,
+.polysaas-passthrough-scope .o_app_board {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+    align-content: flex-start !important;
+    padding: 20px !important;
+    gap: 15px !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 200px !important;
+    overflow: auto !important;
+}
+
+/* Individual app icons */
+.polysaas-passthrough-scope .o_app,
+.polysaas-passthrough-scope .o_menuitem {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Override fixed positioning that escapes the container */
+.polysaas-passthrough-scope [style*="position: fixed"],
+.polysaas-passthrough-scope [style*="position:fixed"] {
+    position: absolute !important;
+}
+
+/* Loading indicators stay in scope */
+.polysaas-passthrough-scope .o_loading,
+.polysaas-passthrough-scope .o_blockUI {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
 }
 
 /* Hide the debug banner */

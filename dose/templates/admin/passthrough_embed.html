@@ -10,6 +10,11 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {% block bodyclass %}polysaas-passthrough-embed-page{% endblock %}
 
 {% block extrahead %}
+{% if embed_head %}
+{# Mattermost/Odoo shim + webpack path MUST run before Jazzmin {{ block.super }} or main.js hits /static/ and / before our patches #}
+<!-- Upstream head first (passthrough shims, upstream scripts) -->
+{{ embed_head }}
+{% endif %}
 {{ block.super }}
 <style id="polysaas-passthrough-embed-shield">
 /* Drop the right-sidebar column — content takes the full available width */

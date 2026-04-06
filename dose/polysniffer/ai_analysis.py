@@ -305,114 +305,319 @@ def analyze_ajax_calls(captures):
     return ajax_endpoints
 
 
-def generate_handler_code(analysis, endpoint):
-    """Generate handler code from analysis"""
-    auth = analysis["authentication"]
+def _format_session_cookie_return(session_cookies, app_name, token_var='session_token'):
+    """Helper to format session cookie return dict for generated code."""
+    if session_cookies:
+        primary = session_cookies[0]
+        return f"'{primary}': {token_var}"
+    return f"'{app_name.upper()}AUTHTOKEN': {token_var}"
 
-    if not auth["method"]:
+
+def generate_handler_code(analysis, endpoint):
+    """
+    Generate a complete PassthroughHandler class from PolySniffer analysis.
+    
+    The generated handler includes:
+    - process_html_response(): URL rewriting and shim injection for embedded display
+    - get_upstream_cookies(): SSO/auto-login using captured auth flow
+    - rewrite_upstream_body(): Optional body rewriting for API responses
+    
+    This is the architectural approach: handlers are generated from observed traffic,
+    not hand-coded assumptions.
+    """
+    auth = analysis["authentication"]
+    base_url = analysis["base_url"]
+    cookies = analysis.get("cookie_analysis", {})
+    
+    # Determine app name from trigger path
+    app_name = (endpoint.trigger_path or "app").strip("/").lower().replace("-", "_")
+    class_name = "".join(word.title() for word in app_name.split("_")) + "PassthroughHandler"
+    
+    # Identify session cookies from analysis
+    session_cookies = cookies.get("session_cookies", [])
+    csrf_cookies = cookies.get("csrf_tokens", [])
+    
+    # Determine login endpoint
+    login_url = auth.get("login_url") or f"{base_url}/api/v4/users/login"
+    
+    # Pre-compute session cookie return strings
+    cached_cookie_return = _format_session_cookie_return(session_cookies, app_name, 'session_token')
+    fresh_cookie_return = _format_session_cookie_return(session_cookies, app_name, 'token')
+    primary_session_cookie = session_cookies[0] if session_cookies else "session_id"
+    
+    handler_code = f'''# Auto-generated PassthroughHandler for {app_name}
+# Generated from PolySniffer analysis of {endpoint.endpoint_url}
+# 
+# This handler provides:
+# - SSO/auto-login via get_upstream_cookies()
+# - URL rewriting and shim injection via process_html_response()
+# - All traffic flows through /pt/admin/{app_name}/ for PolySniffer capture
+
+import json
+import logging
+import re
+import time
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
+
+
+class {class_name}:
+    """
+    Passthrough handler for {app_name}.
+    Generated from PolySniffer captures - do not hand-edit.
+    Regenerate from fresh captures if behavior changes.
+    """
+
+    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
+        """
+        Process upstream HTML for embedded display in PolySaaS admin.
+        - Strips problematic tags (<base>, meta redirects, CSP)
+        - Injects client-side shim for URL rewriting
+        - Rewrites asset URLs to go through proxy
+        """
+        logger.info("[{class_name}] Processing HTML response")
+
+        if not endpoint_url:
+            return html_str, None
+
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{{parsed.scheme}}://{{parsed.netloc}}"
+
+        # Strip tags that break embedded display
+        html_str = self._strip_base_tags(html_str)
+        html_str = self._strip_meta_redirects(html_str)
+        html_str = self._strip_csp(html_str)
+
+        # Inject client-side shim
+        html_str = self._inject_client_shim(html_str, base_origin, request)
+
+        return html_str, None
+
+    def get_upstream_cookies(self, request):
+        """
+        Provide session cookies for SSO/auto-login.
+        Uses credentials from TenantApp.extra_config to obtain fresh session.
+        """
+        try:
+            from dose.models import TenantApp
+            from dose.utils import get_current_tenant
+            import requests as _req
+
+            tenant = get_current_tenant(request)
+            if not tenant:
+                return {{}}
+
+            ta = TenantApp.objects.filter(
+                tenant=tenant, app_name='{app_name}', status='active',
+            ).first()
+            if not ta or not ta.extra_config:
+                return {{}}
+
+            # Check for cached session token (less than 1 hour old)
+            session_token = ta.extra_config.get('{app_name}_session_token')
+            session_token_time = ta.extra_config.get('{app_name}_session_token_time', 0)
+            if session_token and (time.time() - session_token_time < 3600):
+                return {{{cached_cookie_return}}}
+
+            # Expired or missing - perform fresh login
+            logger.info("[{class_name}] Session token expired or missing - refreshing")
+            
+            password = ta.extra_config.get('{app_name}_password') or ta.extra_config.get('password')
+            if not password:
+                logger.warning("[{class_name}] No password in extra_config")
+                return {{}}
+
+            login_id = ta.extra_config.get('{app_name}_login_id') or ta.extra_config.get('login_id') or request.user.email
+            
+            # Perform login
+            resp = _req.post(
+                '{login_url}',
+                json={{'login_id': login_id, 'password': password}},
+                timeout=10,
+            )
+            
+            if resp.status_code == 200:
+                # Extract session token from response header or cookies
+                token = resp.headers.get('Token') or resp.cookies.get('{primary_session_cookie}')
+                if token:
+                    ta.extra_config['{app_name}_session_token'] = token
+                    ta.extra_config['{app_name}_session_token_time'] = time.time()
+                    ta.save(update_fields=['extra_config'])
+                    logger.info("[{class_name}] Session token obtained and cached")
+                    return {{{fresh_cookie_return}}}
+            
+            logger.warning("[{class_name}] Login failed: %s", resp.status_code)
+        except Exception as exc:
+            logger.warning("[{class_name}] get_upstream_cookies failed: %s", exc)
+        return {{}}
+
+    def rewrite_upstream_body(self, body, content_type, request, **kwargs):
+        """
+        Rewrite non-HTML response bodies if needed.
+        Returns None to use original body, or modified bytes.
+        """
+        # Most API responses pass through unchanged
         return None
 
-    handler_code = f"""
-# Auto-generated handler for {endpoint.trigger_path or endpoint.endpoint_url}
-# Generated from PolySniffer analysis
+    def _strip_base_tags(self, html):
+        """Remove <base> tags that break relative URLs in embedded context."""
+        if not html:
+            return html
+        return re.sub(r"<base\\b[^>]*>", "", html, flags=re.IGNORECASE)
 
-import requests
-from bs4 import BeautifulSoup
+    def _strip_meta_redirects(self, html):
+        """Remove meta refresh tags that navigate away from embed."""
+        if not html:
+            return html
+        return re.sub(
+            r'<meta\\s+http-equiv\\s*=\\s*["\\'"]refresh["\\'"][^>]*>',
+            "", html, flags=re.IGNORECASE,
+        )
 
-def auto_login_{endpoint.id}(endpoint):
-    \"\"\"
-    Auto-login handler generated from PolySniffer analysis.
-    Endpoint: {endpoint.endpoint_url}
-    \"\"\"
-    session = requests.Session()
-    base_url = "{analysis['base_url']}"
-    login_url = "{auth['login_url'] or analysis['base_url'] + '/login.php'}"
+    def _strip_csp(self, html):
+        """Remove Content-Security-Policy meta tags."""
+        if not html:
+            return html
+        return re.sub(
+            r'<meta\\s+http-equiv\\s*=\\s*["\\'"]Content-Security-Policy["\\'"][^>]*>',
+            "", html, flags=re.IGNORECASE,
+        )
 
-    # Step 1: Get login page and extract CSRF token
-    login_page = session.get(login_url, timeout=10)
-    if login_page.status_code != 200:
-        raise Exception(f"Cannot reach login page: {{{{login_page.status_code}}}}")
-
-    soup = BeautifulSoup(login_page.text, 'html.parser')
+    def _inject_client_shim(self, html, base_origin, request):
+        """
+        Inject JavaScript shim that:
+        - Rewrites all URLs to go through /pt/admin/{app_name}/
+        - Patches fetch, XHR, WebSocket to use proxy
+        - Seeds session token for SPA authentication
+        """
+        proxy_prefix = "/pt/admin/{app_name}"
+        
+        shim = """
+<script data-polysaas-{app_name}-shim="1">
+(function() {{
+    var B = """ + json.dumps(base_origin) + """;  // Upstream origin
+    var PROXY = """ + json.dumps(proxy_prefix) + """;  // PolySaaS proxy prefix
+    var O = window.location.origin;  // PolySaaS origin
+    
+    // PolySaaS paths - never rewrite these
+    var PS_PREFIXES = ['/static/admin/', '/static/img/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+    function isPolySaaSPath(s) {{
+        for (var i = 0; i < PS_PREFIXES.length; i++) {{
+            if (s.startsWith(PS_PREFIXES[i])) return true;
+        }}
+        return false;
+    }}
+    
+    // Rewrite URL to go through proxy
+    function toProxy(s) {{
+        if (typeof s !== 'string') return s;
+        if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
+        
+        // Absolute URL to upstream - rewrite to proxy
+        if (s.startsWith(B)) {{
+            var tail = s.slice(B.length);
+            if (!tail.startsWith('/')) tail = '/' + tail;
+            return PROXY + tail;
+        }}
+        
+        // Absolute URL to PolySaaS - strip origin
+        if (s.startsWith(O + '/')) s = s.slice(O.length);
+        else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
+        
+        if (s.charAt(0) !== '/') return s;
+        
+        // PolySaaS paths stay untouched
+        if (isPolySaaSPath(s)) return s;
+        
+        // All other paths go through proxy
+        return PROXY + s;
+    }}
+    
+    // Patch fetch
+    var _f = window.fetch;
+    window.fetch = function(input, init) {{
+        if (typeof input === 'string') {{
+            input = toProxy(input);
+        }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
+            var u = toProxy(input.url);
+            if (u !== input.url) input = new Request(u, input);
+        }}
+        return _f.call(this, input, init);
+    }};
+    
+    // Patch XMLHttpRequest
+    var _xo = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {{
+        var rest = Array.prototype.slice.call(arguments, 2);
+        return _xo.apply(this, [method, toProxy(url)].concat(rest));
+    }};
+    
+    // Patch WebSocket
+    var _WS = WebSocket;
+    window.WebSocket = function(url, protocols) {{
+        if (typeof url === 'string') {{
+            try {{
+                var u = new URL(url, location.href);
+                u.hostname = location.hostname;
+                u.port = location.port || '';
+                u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+                if (!u.pathname.startsWith('/pt/')) {{
+                    u.pathname = PROXY + u.pathname;
+                }}
+                url = u.toString();
+                console.log('[PolySaaS] WebSocket through proxy:', url);
+            }} catch(e) {{ console.log('[PolySaaS] WebSocket rewrite error:', e); }}
+        }}
+        return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
+    }};
+    
+    // Patch element src/href setters
+    function patchProp(proto, prop) {{
+        var d = Object.getOwnPropertyDescriptor(proto, prop);
+        if (!d || !d.set) return;
+        Object.defineProperty(proto, prop, {{
+            get: d.get,
+            set: function(v) {{
+                if (typeof v === 'string') v = toProxy(v);
+                d.set.call(this, v);
+            }},
+            configurable: true, enumerable: true
+        }});
+    }}
+    patchProp(HTMLScriptElement.prototype, 'src');
+    patchProp(HTMLLinkElement.prototype, 'href');
+    patchProp(HTMLImageElement.prototype, 'src');
+    
+    // Patch setAttribute
+    var _setAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {{
+        if (typeof value === 'string') {{
+            var ln = name.toLowerCase();
+            if ((ln === 'src' || ln === 'href') &&
+                (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
+                value = toProxy(value);
+            }}
+        }}
+        return _setAttr.call(this, name, value);
+    }};
+    
+    console.log('[PolySaaS] {app_name} shim loaded - all traffic routed through', PROXY);
+}})();
+</script>
 """
-
-    if auth["csrf_token_field"]:
-        handler_code += f"""
-    # Extract CSRF token
-    csrf_input = soup.find("input", {{"name": "{auth['csrf_token_field']}"}})
-    if not csrf_input:
-        raise Exception("CSRF token not found in login page")
-    csrf_token = csrf_input["value"]
-"""
-    else:
-        handler_code += """
-    csrf_token = None  # No CSRF token detected
-"""
-
-    handler_code += """
-    # Step 2: Submit login form
-    login_data = {
-"""
-
-    if auth["username_field"]:
-        handler_code += f'        "{auth["username_field"]}": endpoint.auth_username,\n'
-    if auth["password_field"]:
-        handler_code += f'        "{auth["password_field"]}": endpoint.auth_password,\n'
-    if auth["csrf_token_field"]:
-        handler_code += f'        "{auth["csrf_token_field"]}": csrf_token,\n'
-
-    # Check if AJAX login
-    if auth["method"] == "form_based_ajax":
-        handler_code += '        "ajax": "1",\n'
-        if "do" not in str(auth.get("submit_url", "")):
-            handler_code += '        "do": "scplogin",\n'
-
-    handler_code += """    }
-
-    login_headers = {
-"""
-
-    for header_name, header_value in auth["submit_headers"].items():
-        handler_code += f'        "{header_name}": "{header_value}",\n'
-
-    submit_url = auth.get('submit_url') or login_url
-    handler_code += f"""    }}
-
-    login_response = session.post(
-        "{submit_url}",
-        data=login_data,
-        headers=login_headers,
-        timeout=10
-    )
-
-    # Step 3: Verify login success
-    if login_response.status_code != 200:
-        raise Exception(f"Login failed: {{{{login_response.status_code}}}}")
-
-    # Step 4: Extract session cookie
-"""
-
-    if auth["session_cookie"]:
-        handler_code += f"""
-    session_cookie = session.cookies.get("{auth['session_cookie']}")
-    if not session_cookie:
-        raise Exception("Session cookie '{auth['session_cookie']}' not found after login")
-"""
-    else:
-        handler_code += """
-    # Session cookie not detected - using all cookies
-    session_cookie = dict(session.cookies)
-"""
-
-    handler_code += f"""
-    # Step 5: Save cookies to endpoint
-    if not endpoint.discovered_subpaths:
-        endpoint.discovered_subpaths = {{}}
-    endpoint.discovered_subpaths['cookies'] = dict(session.cookies)
-    endpoint.save()
-
-    return session_cookie
-"""
+        
+        # Inject shim after <head>
+        lower = html.lower()
+        idx = lower.find("<head>")
+        if idx != -1:
+            ins = idx + len("<head>")
+            return html[:ins] + shim + html[ins:]
+        if "</head>" in html:
+            return html.replace("</head>", shim + "</head>", 1)
+        return shim + html
+'''
 
     return handler_code
 

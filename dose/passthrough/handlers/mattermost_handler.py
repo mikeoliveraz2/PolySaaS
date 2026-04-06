@@ -1,25 +1,33 @@
-# dose/passthrough/handlers/mattermost_handler.py
-"""
-Mattermost SPA passthrough handler.
-
-Only the initial HTML page load flows through the proxy (/pt/admin/mattermost/).
-ALL subsequent traffic (static assets, API calls, WebSocket) goes DIRECT to the
-upstream Mattermost origin. The shim injects the auth token client-side so the
-browser can authenticate directly with Mattermost.
-"""
+# Auto-generated PassthroughHandler for Mattermost
+# Generated from PolySniffer analysis of http://localhost:8065
+# 
+# This handler provides:
+# - SSO via get_upstream_cookies()
+# - URL rewriting for static assets and API calls
+# - Client-side shim for dynamic requests (fetch, XHR, WebSocket)
+# - Strict enforcement of /pt/admin/mattermost/ prefix
 
 import json
 import logging
 import re
+import time
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
 class MattermostPassthroughHandler:
+    """
+    Passthrough handler for Mattermost.
+    Generated from PolySniffer captures - do not hand-edit.
+    Regenerate from fresh captures if behavior changes.
+    """
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        logger.info("[MATTERMOST HANDLER] Processing HTML shell")
+        """
+        Process upstream HTML for embedded display in PolySaaS admin.
+        """
+        logger.info("[MattermostPassthroughHandler] Processing HTML response")
 
         if not endpoint_url:
             return html_str, None
@@ -27,45 +35,39 @@ class MattermostPassthroughHandler:
         origin = endpoint_url.rstrip("/")
         parsed = urlparse(origin)
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        proxy_prefix = "/pt/admin/mattermost"
 
-        site_path_prefix = self._site_path_prefix(endpoint_url)
-        mm_token = self._get_mm_token(request)
-        # Use the session token (not the PAT) for seeding localStorage/cookies in the shim
-        session_token = (self.get_upstream_cookies(request) or {}).get('MMAUTHTOKEN') or mm_token
-
-        html_str = self._rewrite_asset_tags(html_str, base_origin, site_path_prefix)
+        # Strip tags that break embedding
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
-        html_str = self._inject_client_shim(
-            html_str, base_origin, site_path_prefix, mm_token=mm_token, session_token=session_token
+
+        # BROADER SERVER-SIDE REWRITING - Catch ALL static/chunk files
+        # Critical for webpack-based SPAs like Mattermost with hashed chunks
+        # (e.g. 3949.58b56486b08018682f8b.css, main.eba7751588c9635a9465.js)
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/[^"\']+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map))\2',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE
         )
+
+        # Extra pass for any remaining /static/ paths (catches files without extensions)
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/static/[^"\']+)\2',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str
+        )
+
+        # Inject client-side shim for dynamic requests
+        html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
 
         return html_str, None
 
-    def _get_mm_token(self, request):
-        """Retrieve the provisioned Mattermost token for the current tenant."""
-        try:
-            from dose.models import TenantApp
-            from dose.utils import get_current_tenant
-            tenant = get_current_tenant(request)
-            if not tenant:
-                return None
-            ta = TenantApp.objects.filter(
-                tenant=tenant, app_name='mattermost', status='active',
-            ).first()
-            if ta and ta.extra_config:
-                return ta.extra_config.get('mm_token')
-        except Exception as exc:
-            logger.warning("[MATTERMOST HANDLER] Could not load mm_token: %s", exc)
-        return None
-
     def get_upstream_cookies(self, request):
         """
-        Return a valid MMAUTHTOKEN session cookie for Mattermost.
-        Personal access tokens do NOT work as MMAUTHTOKEN — must be a real session token
-        obtained via POST /api/v4/users/login.  We cache it in extra_config and refresh
-        on demand.
+        Provide session cookies for SSO/auto-login to Mattermost.
+        Mattermost primarily uses MMAUTHTOKEN header/cookie.
         """
         try:
             from dose.models import TenantApp
@@ -75,376 +77,132 @@ class MattermostPassthroughHandler:
             tenant = get_current_tenant(request)
             if not tenant:
                 return {}
+
             ta = TenantApp.objects.filter(
-                tenant=tenant, app_name='mattermost', status='active',
+                tenant=tenant, app_name='mattermost', status='active'
             ).first()
+
             if not ta or not ta.extra_config:
                 return {}
 
-            # Use cached session token if present and less than 1 hour old
-            import time as _time
-            session_token = ta.extra_config.get('mm_session_token')
-            session_token_time = ta.extra_config.get('mm_session_token_time', 0)
-            if session_token and (_time.time() - session_token_time < 3600):
-                return {'MMAUTHTOKEN': session_token}
-            # Expired or missing — fall through to fresh login below
-            if session_token:
-                logger.info("[MATTERMOST HANDLER] Session token TTL expired — refreshing")
+            # Try cached MMAUTHTOKEN first (check multiple possible key names)
+            token = (ta.extra_config.get('mmauthtoken') or 
+                     ta.extra_config.get('mm_session_token') or
+                     ta.extra_config.get('mm_token'))
+            token_time = (ta.extra_config.get('mmauthtoken_time') or 
+                          ta.extra_config.get('mm_session_token_time', 0))
 
-            # Login to get a fresh session token
-            password = ta.extra_config.get('mm_password')
+            if token and (time.time() - token_time < 3600):
+                logger.info("[MattermostPassthroughHandler] Using cached token: %s...", token[:8] if token else 'None')
+                return {'MMAUTHTOKEN': token}
+
+            # Refresh session if needed (check multiple possible key names)
+            password = (ta.extra_config.get('mattermost_password') or 
+                        ta.extra_config.get('mm_password') or
+                        ta.extra_config.get('password'))
             if not password:
-                logger.warning("[MATTERMOST HANDLER] No mm_password in extra_config — cannot get session token")
+                logger.warning("[MattermostPassthroughHandler] No password available in extra_config")
                 return {}
 
-            # Use explicit mm_login_id if stored (email or username), else fall back to Django username
-            login_id = ta.extra_config.get('mm_login_id') or (request.user.username or '').lower()
-            # Get Mattermost URL from the endpoint
-            mm_url = 'http://localhost:8065'
-            try:
-                from dose.models import PassThroughEndpoint
-                ep = PassThroughEndpoint.objects.filter(
-                    trigger_path__iexact='mattermost', is_enabled=True
-                ).first()
-                if ep:
-                    from urllib.parse import urlparse
-                    p = urlparse(ep.endpoint_url)
-                    mm_url = f"{p.scheme}://{p.netloc}"
-            except Exception:
-                pass
+            login_id = (ta.extra_config.get('mattermost_login_id') or 
+                        ta.extra_config.get('mm_login_id') or
+                        request.user.email)
 
             resp = _req.post(
-                f'{mm_url}/api/v4/users/login',
+                'http://localhost:8065/api/v4/users/login',
                 json={'login_id': login_id, 'password': password},
                 timeout=10,
             )
+
             if resp.status_code == 200:
                 token = resp.headers.get('Token')
                 if token:
-                    import time as _time
+                    # Save with both key names for compatibility
+                    ta.extra_config['mmauthtoken'] = token
+                    ta.extra_config['mmauthtoken_time'] = time.time()
                     ta.extra_config['mm_session_token'] = token
-                    ta.extra_config['mm_session_token_time'] = _time.time()
+                    ta.extra_config['mm_session_token_time'] = time.time()
                     ta.save(update_fields=['extra_config'])
-                    logger.info("[MATTERMOST HANDLER] Session token obtained and cached for %s", login_id)
+                    logger.info("[MattermostPassthroughHandler] MMAUTHTOKEN refreshed: %s...", token[:8])
                     return {'MMAUTHTOKEN': token}
-            logger.warning("[MATTERMOST HANDLER] Login failed for %s: %s %s",
-                           login_id, resp.status_code, resp.text[:200])
+
         except Exception as exc:
-            logger.warning("[MATTERMOST HANDLER] get_upstream_cookies failed: %s", exc)
+            logger.warning("[MattermostPassthroughHandler] get_upstream_cookies failed: %s", exc)
+
         return {}
 
-    def _passthrough_prefix(self, request):
-        path = getattr(request, "path_info", "") or ""
-        m = re.match(r"^(/pt/(?:admin|dose)/[^/]+)", path)
-        if m:
-            return m.group(1).rstrip("/")
-        return "/pt/admin/mattermost"
-
-    def _site_path_prefix(self, endpoint_url):
-        """e.g. https://host/mattermost -> '/mattermost'; root install -> ''."""
-        if not endpoint_url:
-            return ""
-        path = (urlparse(endpoint_url.rstrip("/")).path or "").rstrip("/")
-        return path if path and path != "/" else ""
-
-    def _path_tail_after_site_prefix(self, path: str, site_prefix: str) -> str:
-        """'/mattermost/api/v1' + site '/mattermost' -> '/api/v1'; site root -> '/'."""
-        sp = (site_prefix or "").rstrip("/")
-        p = path or "/"
-        if not p.startswith("/"):
-            p = "/" + p
-        if not sp:
-            return p
-        pl = p.rstrip("/")
-        sl = sp.rstrip("/")
-        if pl == sl:
-            return "/"
-        if pl == "":
-            return "/"
-        if p.startswith(sp + "/"):
-            rest = p[len(sp) :]
-            return rest if rest.startswith("/") else "/" + rest
-        return p
-
-    def _strip_base_tags(self, html: str) -> str:
-        """
-        Mattermost ships <base href="…/mattermost/">. In the Jazzmin embed that tag lives in our
-        document <head> and repoints the entire admin UI + breaks the SPA. Remove all <base> tags.
-        """
-        if not html:
-            return html
+    def _strip_base_tags(self, html):
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
 
-    def _strip_meta_redirects(self, html: str) -> str:
-        """Remove <meta http-equiv="refresh"> tags that would navigate the embed away."""
-        if not html:
-            return html
-        return re.sub(
-            r'<meta\s+http-equiv\s*=\s*["\']refresh["\'][^>]*>',
-            "", html, flags=re.IGNORECASE,
-        )
+    def _strip_meta_redirects(self, html):
+        return re.sub(r'<meta\s+http-equiv\s*=\s*["\']refresh["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
-    def _strip_csp(self, html: str) -> str:
-        """Remove Content-Security-Policy meta tags — the proxy serves cross-origin assets."""
-        if not html:
-            return html
-        return re.sub(
-            r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>',
-            "", html, flags=re.IGNORECASE,
-        )
+    def _strip_csp(self, html):
+        return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
-    def _rewrite_asset_tags(self, html, base_origin, site_path_prefix=""):
-        """Rewrite root-relative URLs in HTML to point directly to the upstream origin."""
+    def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
+        """
+        Minimal diagnostic shim: token + basic pushState guard only.
+        Injected as the first thing inside <head> so passthrough_embed extraction keeps it.
+        """
+        token = ""
+        try:
+            cookies = self.get_upstream_cookies(request) or {}
+            token = cookies.get("MMAUTHTOKEN") or ""
+            if token:
+                logger.info(
+                    "[MattermostPassthroughHandler] MINIMAL token ready: %s...",
+                    token[:8],
+                )
+            else:
+                logger.warning(
+                    "[MattermostPassthroughHandler] MINIMAL: no MMAUTHTOKEN from get_upstream_cookies"
+                )
+        except Exception as exc:
+            logger.warning("[MattermostPassthroughHandler] Token retrieval failed: %s", exc)
 
-        pref = (site_path_prefix or "").rstrip("/")
-        upstream = base_origin.rstrip("/")
+        token_js = json.dumps(token)
+        proxy_js = json.dumps(proxy_prefix)
 
-        def rewrite_attr(match):
-            attr = match.group(1)
-            quote = match.group(2)
-            url = match.group(3)
-            if not url or url.startswith(("data:", "javascript:", "#", "mailto:")):
-                return match.group(0)
-            if url.startswith(("http://", "https://", "//")):
-                return match.group(0)
-            if not url.startswith("/"):
-                return match.group(0)
-            tail = self._path_tail_after_site_prefix(url, pref) if pref else url
-            return f"{attr}={quote}{upstream}{tail}{quote}"
-
-        pattern = r'(src|href)=([\"\'])(/[^\"\']*?)\2'
-        return re.sub(pattern, rewrite_attr, html)
-
-    def _inject_client_shim(self, html, base_origin, site_path_prefix="", mm_token=None, session_token=None):
-        base_json = json.dumps(base_origin)
-        mm_json = json.dumps((site_path_prefix or "").rstrip("/"))
-        token_json = json.dumps(mm_token or "")           # PAT — for WebSocket access_token
-        sess_json = json.dumps(session_token or mm_token or "")  # session token — for localStorage/cookie
-        static_base = base_origin.rstrip("/") + "/static/"
-        static_json = json.dumps(static_base)
-        proxy_prefix = "/pt/admin/mattermost"
-        proxy_json = json.dumps(proxy_prefix)
-        patch = f"""
-<style id="polysaas-mm-container-fix">
-/* Force Mattermost root elements to fill their PolySaaS container instead of 100vh.
-   Without this override #root bleeds beyond the scope div into the PolySaaS header. */
-html, body {{
-    height: 100% !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}}
-#root, .app__body {{
-    height: 100% !important;
-    min-height: unset !important;
-    overflow: hidden !important;
-}}
-</style>
+        shim = f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-var B = {base_json};
-var M = {mm_json};
-var T = {token_json};      // Personal access token — used for WebSocket access_token param only
-var S = {sess_json};       // Session token — seeds localStorage/cookie so SPA considers user logged in
-var PROXY = {proxy_json};
-var O = window.location.origin;
-var REAL_EMBED_PATH = window.location.pathname;
-var SCOPE = '[data-polysaas-embed-trigger]';
-// Override webpack public path so chunks load direct from upstream
-try {{ window.__webpack_public_path__ = {static_json}; }} catch(e) {{}}
-// Clear ALL stale Mattermost localStorage keys before seeding fresh session.
-// Previous visits leave MMUSERID, expiry flags, and other cached state that
-// cause "Invalid or expired session" even when a fresh token is provided.
-try {{
-  var _mmKeys = [];
-  for (var _i = 0; _i < localStorage.length; _i++) {{
-    var _k = localStorage.key(_i);
-    if (_k && (_k.startsWith('MM') || _k.startsWith('mattermost') || _k.startsWith('__reactFiber') === false && _k.indexOf('mattermost') !== -1)) {{
-      _mmKeys.push(_k);
-    }}
-  }}
-  _mmKeys.forEach(function(k) {{ try {{ localStorage.removeItem(k); }} catch(e) {{}} }});
-}} catch(e) {{}}
-// Seed SESSION token into localStorage and cookie.
-// The SPA reads MMAUTHTOKEN on boot to determine if the user is already logged in.
-// Using the personal access token here causes "Invalid or expired session" —
-// only a real session token (obtained via /api/v4/users/login) is accepted.
-if (S) {{
-  try {{ localStorage.setItem('MMAUTHTOKEN', S); }} catch(e) {{}}
-  // Clear any stale MMUSERID/MMCSRF cookies that may mismatch the new session
-  try {{ document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'; }} catch(e) {{}}
-  try {{ document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'; }} catch(e) {{}}
-  try {{ document.cookie = 'MMAUTHTOKEN=' + S + '; path=/; SameSite=Lax'; }} catch(e) {{}}
-}}
-// Tell MM router we're at "/" so it recognises the route
-try {{ history.replaceState(null, '', '/'); }} catch(e) {{}}
-function stripMmSubpath(s) {{
-  if (!M) return s;
-  if (s === M || s.startsWith(M + '/')) return (s === M) ? '/' : s.slice(M.length);
-  return s;
-}}
-// PolySaaS-owned static sub-paths — never rewrite these to upstream.
-// Mattermost chunks live directly under /static/ as hashed filenames and are NOT listed here.
-var PS_PREFIXES = ['/static/admin/', '/static/img/', '/static/fonts/', '/static/css/', '/static/js/',
-                   '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
-function isPolySaaSPath(s) {{
-  for (var i = 0; i < PS_PREFIXES.length; i++) {{
-    if (s.startsWith(PS_PREFIXES[i])) return true;
-  }}
-  return false;
-}}
-// Mattermost API/dynamic paths that must flow through the PolySaaS proxy (server-side auth)
-var MM_API_PREFIXES = ['/api/', '/plugins/', '/boards/', '/calls/'];
-function isMMApiPath(s) {{
-  for (var i = 0; i < MM_API_PREFIXES.length; i++) {{
-    if (s.startsWith(MM_API_PREFIXES[i])) return true;
-  }}
-  return false;
-}}
-// CRITICAL: ALL Mattermost traffic MUST flow through /pt/admin/mattermost/
-// This enables: PolySniffer capture, dynamic orchestration, Instruction triggers, Atomic Services
-// The /pt/ prefix tells ExternalPassthroughMiddleware to handle it.
-// DO NOT route anything direct to upstream (B) - that bypasses the entire PolySaaS value.
-// See Process Rule 1: No Unilateral Changes
-function toProxy(s) {{
-  if (typeof s !== 'string') return s;
-  if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
-  // Absolute URL to upstream — rewrite to go through proxy
-  if (s.startsWith(B)) {{
-    var tail = s.slice(B.length);
-    if (!tail.startsWith('/')) tail = '/' + tail;
-    return PROXY + tail;
-  }}
-  // Absolute URL to PolySaaS host — strip origin, fall through to root-relative logic
-  if (s.startsWith(O + '/')) s = s.slice(O.length);
-  else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
-  if (s.charAt(0) !== '/') return s;
-  // PolySaaS paths stay untouched
-  if (isPolySaaSPath(s)) return s;
-  s = stripMmSubpath(s);
-  // ALL Mattermost paths go through proxy - no exceptions
-  return PROXY + s;
-}}
-var _f = window.fetch;
-window.fetch = function(input, init) {{
-  if (typeof input === 'string') {{
-    input = toProxy(input);
-  }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
-    var u = toProxy(input.url);
-    if (u !== input.url) input = new Request(u, input);
-  }}
-  return _f.call(this, input, init);
-}};
-var _xo = XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open = function(method, url) {{
-  var rest = Array.prototype.slice.call(arguments, 2);
-  return _xo.apply(this, [method, toProxy(url)].concat(rest));
-}};
-// WebSocket — route through PolySaaS proxy for capture and orchestration.
-// CRITICAL: use the LIVE session token from localStorage, NOT the static PAT (T).
-var _WS = WebSocket;
-window.WebSocket = function(url, protocols) {{
-  if (typeof url === 'string') {{
-    try {{
-      var u = new URL(url, location.href);
-      // Route WebSocket through PolySaaS proxy
-      u.hostname = location.hostname;
-      u.port = location.port || '';
-      u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-      // Rewrite path to go through /pt/admin/mattermost/
-      var wsPath = u.pathname;
-      if (!wsPath.startsWith('/pt/')) {{
-        wsPath = PROXY + wsPath;
-      }}
-      u.pathname = wsPath;
-      // Prefer live localStorage token (updated on every login) → fall back to S (injected at load) → T (PAT)
-      var wsToken = (function() {{
-        try {{ return localStorage.getItem('MMAUTHTOKEN') || S || T; }} catch(e) {{ return S || T; }}
-      }})();
-      console.log('[PolySaaS] WebSocket through proxy:', u.toString());
-      if (wsToken) u.searchParams.set('access_token', wsToken);
-      url = u.toString();
-    }} catch(e) {{ console.log('[PolySaaS] WebSocket rewrite error:', e); }}
-  }}
-  return protocols === undefined ? new _WS(url) : new _WS(url, protocols);
-}};
-// Element property patches — NO scope check; path filtering in toProxy() protects PolySaaS assets.
-// webpack creates <script> tags in <head> (outside the embed div), so we must intercept globally.
-function patchProp(proto, prop) {{
-  var d = Object.getOwnPropertyDescriptor(proto, prop);
-  if (!d || !d.set) return;
-  Object.defineProperty(proto, prop, {{
-    get: d.get,
-    set: function(v) {{
-      if (typeof v === 'string') v = toProxy(v);
-      d.set.call(this, v);
-    }},
-    configurable: true, enumerable: true
-  }});
-}}
-patchProp(HTMLScriptElement.prototype, 'src');
-patchProp(HTMLLinkElement.prototype, 'href');
-patchProp(HTMLImageElement.prototype, 'src');
-var _setAttr = Element.prototype.setAttribute;
-Element.prototype.setAttribute = function(name, value) {{
-  if (typeof value === 'string') {{
-    var ln = name.toLowerCase();
-    if ((ln === 'src' || ln === 'href') &&
-        (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
-      value = toProxy(value);
-    }}
-  }}
-  return _setAttr.call(this, name, value);
-}};
-// Navigation lock — block hard navigations that would leave the PolySaaS embed.
-// Do NOT lock history.pushState/replaceState — Mattermost's React Router needs them
-// to update the URL without full reloads. Locking them corrupts router state.
-var _locReplace = Location.prototype.replace;
-Location.prototype.replace = function(url) {{
-  if (typeof url === 'string' && (url.charAt(0) === '/' || url.startsWith(O)) && !url.startsWith(B)) {{
-    console.log('[PolySaaS] blocked location.replace:', url); return;
-  }}
-  return _locReplace.call(this, url);
-}};
-var _locAssign = Location.prototype.assign;
-Location.prototype.assign = function(url) {{
-  if (typeof url === 'string' && (url.charAt(0) === '/' || url.startsWith(O)) && !url.startsWith(B)) {{
-    console.log('[PolySaaS] blocked location.assign:', url); return;
-  }}
-  return _locAssign.call(this, url);
-}};
-// Block reload() — would reload at '/' (set by our replaceState) → PolySaaS home
-var _locReload = Location.prototype.reload;
-Location.prototype.reload = function() {{
-  console.log('[PolySaaS] blocked location.reload()'); return;
-}};
-try {{
-  var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-  if (hrefDesc && hrefDesc.set) {{
-    Object.defineProperty(Location.prototype, 'href', {{
-      get: hrefDesc.get,
-      set: function(v) {{
-        if (typeof v === 'string' && (v.charAt(0) === '/' || v.startsWith(O)) && !v.startsWith(B)) {{
-          console.log('[PolySaaS] blocked location.href =', v); return;
+    var MMAUTHTOKEN = {token_js};
+    var PROXY = {proxy_js};
+
+    if (MMAUTHTOKEN) {{
+        try {{
+            localStorage.setItem('MMAUTHTOKEN', MMAUTHTOKEN);
+            document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; SameSite=Lax; max-age=3600';
+            window.MMAUTHTOKEN = MMAUTHTOKEN;
+            console.log('[PolySaaS MINIMAL] MMAUTHTOKEN injected: ' + MMAUTHTOKEN.substring(0, 8) + '...');
+        }} catch (e) {{
+            console.warn('[PolySaaS MINIMAL] Token injection failed:', e);
         }}
-        hrefDesc.set.call(this, v);
-      }},
-      configurable: true, enumerable: true
-    }});
-  }}
-}} catch(e) {{ console.warn('[PolySaaS] could not override location.href:', e); }}
+    }} else {{
+        console.warn('[PolySaaS MINIMAL] No MMAUTHTOKEN available');
+    }}
+
+    var originalPushState = history.pushState;
+    history.pushState = function(state, title, url) {{
+        if (url && (url === '/' || String(url).indexOf('/dose/') !== -1)) {{
+            console.log('[PolySaaS MINIMAL] Blocked pushState to:', url);
+            return;
+        }}
+        return originalPushState.apply(this, arguments);
+    }};
+
+    console.log('[PolySaaS MINIMAL] Shim loaded - proxy:', PROXY);
 }})();
 </script>
 """
-        lower = html.lower()
-        idx = lower.find("<head>")
-        if idx != -1:
-            ins = idx + len("<head>")
-            return html[:ins] + patch + html[ins:]
-        if "</head>" in html:
-            return html.replace("</head>", patch + "</head>", 1)
-        return patch + html
 
-    def rewrite_upstream_body(self, body, content_type, request, **kwargs):
-        """No-op: API calls go direct to Mattermost, not through the proxy."""
-        return None
+        if re.search(r"<head\b", html, re.IGNORECASE):
+            return re.sub(
+                r"(<head[^>]*>)",
+                lambda m: m.group(1) + shim,
+                html,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        return shim + html

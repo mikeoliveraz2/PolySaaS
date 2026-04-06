@@ -30,7 +30,7 @@ def ai_analyze_endpoint(request, endpoint_id):
             "analysis": analysis,
             "handler_code": analysis.get("handler_code"),
             "ready_for_ai": True
-        }, indent=2)
+        }, json_dumps_params={'indent': 2})
 
     except Exception as e:
         import traceback
@@ -80,7 +80,7 @@ def ai_generate_handler(request, endpoint_id):
                 "session_cookie": analysis["authentication"].get("session_cookie"),
                 "csrf_token_field": analysis["authentication"].get("csrf_token_field")
             }
-        }, indent=2)
+        }, json_dumps_params={'indent': 2})
 
     except Exception as e:
         import traceback
