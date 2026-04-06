@@ -37,7 +37,12 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
         return {}
 
     def process_html_response(
-        self, html_str, request, endpoint_url=None, inject_toolbar=True
+        self,
+        html_str,
+        request,
+        endpoint_url=None,
+        inject_toolbar=True,
+        rewrite_assets=True,
     ):
         """Process the fully built Mattermost HTML."""
         logger.info("[MattermostPassthroughHandler] Processing final HTML")
@@ -52,8 +57,8 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
 
-        # Rewrite static assets
-        html_str = self._rewrite_static_assets(html_str, proxy_prefix)
+        if rewrite_assets:
+            html_str = self._rewrite_static_assets(html_str, proxy_prefix)
 
         if inject_toolbar:
             html_str = self._inject_toolbar(html_str)

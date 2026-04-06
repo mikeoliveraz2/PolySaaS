@@ -1,5 +1,5 @@
 # dose/polysniffer/views/building_pen_process.py
-# POST: final built HTML → single handler pass (toolbar + asset rewrite).
+# POST: final built DOM → light pass (no double rewrite / double toolbar).
 
 import json
 import logging
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def building_pen_process(request):
     """
     Accept JSON { service_name, endpoint_id, html }.
-    One process_html_response pass: rewrite assets + toolbar (minimal building pen).
+    Shell was already rewritten in building_pen_embed; only strip CSP/meta again, no re-proxy.
     """
     try:
         data = json.loads(request.body.decode("utf-8"))
@@ -58,8 +58,8 @@ def building_pen_process(request):
             html,
             request,
             endpoint_url=endpoint_url,
-            inject_toolbar=True,
-            rewrite_assets=True,
+            inject_toolbar=False,
+            rewrite_assets=False,
         )
     except Exception as exc:
         logger.exception("[building_pen_process] handler failed: %s", exc)

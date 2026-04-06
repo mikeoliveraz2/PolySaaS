@@ -66,41 +66,39 @@ class MattermostPassthroughHandler(BasePassthroughHandler):
         return html_str, None
 
     def _rewrite_static_assets(self, html, proxy_prefix):
-        """Maximum aggression rewrite - catch everything Mattermost throws at us"""
-        import re
-
-        # 1. Catch any file with a hash-like name (most webpack chunks)
+        """Nuclear rewrite for building pen / embed output (webpack chunks + static + origin)."""
+        # Catch every possible webpack chunk and asset
         html = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w\.-]{8,}\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map|ico))',
+            r'(src|href)=(["\'])([^"\']*?[\w\.-]{5,}\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map|ico))',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
-        # 2. Force ALL /static/ paths (this is the most important one)
+        # Force all /static/ paths
         html = re.sub(
             r'(src|href)=(["\'])(/static/[^"\']*)',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
-        # 3. Catch bare root hashed files (common in Mattermost)
+        # Bare hashed files at root
         html = re.sub(
-            r'(src|href)=(["\'])(/)([\w\.-]{10,}\.(js|css))',
+            r'(src|href)=(["\'])(/)([\w\.-]{8,}\.(js|css))',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static{m.group(3)}{m.group(4)}{m.group(2)}',
             html,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
-        # 4. Catch absolute Mattermost origin
-        if hasattr(self, 'endpoint') and self.endpoint.endpoint_url:
-            origin = self.endpoint.endpoint_url.rstrip('/')
+        # Absolute Mattermost origin
+        if hasattr(self, "endpoint") and self.endpoint.endpoint_url:
+            origin = self.endpoint.endpoint_url.rstrip("/")
             html = re.sub(
                 re.escape(origin) + r'(/[^"\']*)',
                 lambda m: proxy_prefix + m.group(1),
                 html,
-                flags=re.IGNORECASE
+                flags=re.IGNORECASE,
             )
 
         return html
