@@ -147,16 +147,16 @@ class OdooPassthroughHandler:
                 if m:
                     head_raw = m.group(1).strip()
                     display_head_inner = self._strip_base_tags(head_raw)
-                # Root: do not inject upstream <body> — Odoo client mounts #wrapwrap; tuck script
-                # places it in the bucket. Injecting server body here broke Apps + Discuss layout.
-                if upstream_subpath.rstrip("/") not in ("", "/"):
-                    m_body = re.search(
-                        r"<body[^>]*>(.*?)</body>",
-                        raw_html,
-                        re.DOTALL | re.IGNORECASE,
-                    )
-                    if m_body:
-                        display_body_inner = m_body.group(1).strip()
+                # TEMP DEBUG (CC): always extract upstream <body> so display.html <pre> shows raw HTML.
+                # Revert: wrap below in `if upstream_subpath.rstrip("/") not in ("", "/"):` — root was
+                # body-empty so SPA mounts #wrapwrap client-side; full body here can break layout.
+                m_body = re.search(
+                    r"<body[^>]*>(.*?)</body>",
+                    raw_html,
+                    re.DOTALL | re.IGNORECASE,
+                )
+                if m_body:
+                    display_body_inner = m_body.group(1).strip()
 
         display_head_inner = self._rewrite_web_paths_for_display_shell(
             display_head_inner, seg

@@ -35,6 +35,22 @@
         box-sizing: border-box !important;
     }
 
+    /* Force the placeholder h3 to be visible regardless of font-controls JS overrides.
+       CSS !important beats JS el.style.fontSize = '14px' (inline style without !important). */
+    #polysaas-body-placeholder {
+        display: block !important;
+        visibility: visible !important;
+        color: #c0392b !important;
+        background-color: #fff3cd !important;
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        padding: 12px 16px !important;
+        margin: 0 0 12px 0 !important;
+        border-left: 5px solid #c0392b !important;
+        border-radius: 3px !important;
+        opacity: 1 !important;
+    }
+
     /* Head fragment must stay in the content column (not global extrahead) so Jazzmin is not torn down. Hidden, not a visible “bucket”. */
     #polysaas-display-head-inject {
         position: absolute;
@@ -58,8 +74,7 @@
     </div>
 
     <div id="polysaas-display-body-bucket">
-        <div id="polysaas-display-head-inject" aria-hidden="true">{{ display_head_inner|safe }}</div>
-        <pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px; background: #111; color: #0f0; padding: 10px; max-height: 600px; overflow: auto;">{{ display_body_inner }}</pre>
+        <h3 id="polysaas-body-placeholder">✅ CONTENT AREA WORKING — upstream response body will be injected here</h3>
     </div>
 
     <small style="color:#666;">{{ display_shell_footer|default:"Passthrough display shell — trigger is shown when the handler sets display_shell_footer." }}</small>
@@ -156,6 +171,16 @@
         } else {
             start();
         }
+
+        // Diagnostic: confirm placeholder h3 is in the DOM and visible
+        (function checkPlaceholder() {
+            var ph = document.getElementById('polysaas-body-placeholder');
+            if (ph) {
+                console.log('[PolySaaS Display] ✅ placeholder h3 found in DOM. offsetHeight=' + ph.offsetHeight + ' computedColor=' + (window.getComputedStyle ? window.getComputedStyle(ph).color : 'n/a'));
+            } else {
+                console.warn('[PolySaaS Display] ❌ placeholder h3 NOT found in DOM — check template rendering');
+            }
+        })();
 
         if (document.body && typeof MutationObserver !== 'undefined') {
             var tuckTimer = null;

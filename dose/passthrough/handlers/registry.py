@@ -1,6 +1,8 @@
 # dose/passthrough/handlers/registry.py — FINAL — WORKS 100%
 import logging
 
+from dose.passthrough.utils import normalize_trigger_segment
+
 logger = logging.getLogger(__name__)
 
 def get_handler_for_endpoint(endpoint, request=None):
@@ -19,7 +21,7 @@ def get_handler_for_endpoint(endpoint, request=None):
     if trigger_path.lower() == 'wordpress':
         from dose.passthrough.handlers.wordpress_handler import WordPressPassthroughHandler
         return WordPressPassthroughHandler()
-    if trigger_path.lower() == 'odoo':
+    if normalize_trigger_segment(trigger_path) == "odoo":
         from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
         return OdooPassthroughHandler()
     if trigger_path.lower() == 'liferay':

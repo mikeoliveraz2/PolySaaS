@@ -1,6 +1,8 @@
 # dose/passthrough/handlers/registry.py — FINAL — WORKS 100%
 import logging
 
+from dose.passthrough.utils import normalize_trigger_segment
+
 logger = logging.getLogger(__name__)
 
 def get_handler_for_endpoint(endpoint, request=None):
@@ -25,6 +27,9 @@ def get_handler_for_endpoint(endpoint, request=None):
     if trigger_path.lower() == 'liferay':
         from dose.passthrough.handlers.liferay_handler import LiferayPassthroughHandler
         return LiferayPassthroughHandler()
+    if trigger_path.lower() == 'mattermost':
+        from dose.passthrough.handlers.mattermost_handler import MattermostPassthroughHandler
+        return MattermostPassthroughHandler()
 
     logger.info(f"No specific handler found for {trigger_path}")
     return None
