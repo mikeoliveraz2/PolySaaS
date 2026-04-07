@@ -31,7 +31,9 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
     it would false-match /website, /websocket, etc.
     """
     u = upstream_subpath or ""
-    if u == "/web" or u.startswith("/web/"):
+    # /web exact = Odoo app home after login redirect — must go through display shell, not be bypassed.
+    # /web/ subdpaths (assets, datasets, actions, binary, session) are API/asset calls → bypass.
+    if u.startswith("/web/"):
         return True
     if u == "/website" or u.startswith("/website/"):
         return True
@@ -164,6 +166,48 @@ class OdooPassthroughHandler:
         display_body_inner = self._rewrite_web_paths_for_display_shell(
             display_body_inner, seg
         )
+
+        # Prepend an early fetch/XHR shim to display_head_inner so it runs BEFORE
+        # Odoo's inline scripts (especially odoo.reloadMenus() and the menu load fetch).
+        # Without this, those calls go to the PolySaaS host before the full shim in
+        # extrajs has a chance to patch fetch, causing 404s that break Owl boot.
+        if endpoint is not None:
+            _parsed = urlparse(endpoint.endpoint_url)
+            _base = f"{_parsed.scheme}://{_parsed.netloc}"
+            _early_shim = f"""<script data-polysaas-early-shim="1">
+(function(){{
+'use strict';
+var PROXY={json.dumps(proxy_prefix)};
+var B={json.dumps(_base)};
+function _toProxy(u){{
+    if(!u||typeof u!=='string')return u;
+    if(u.indexOf(B)===0)return PROXY+u.slice(B.length);
+    if(u.charAt(0)==='/'&&!u.startsWith(PROXY)){{
+        if(u.startsWith('/web/')||u.startsWith('/odoo/')||u.startsWith('/bus/')||
+           u.startsWith('/websocket')||u.startsWith('/mail/')||u.startsWith('/jsonrpc')||
+           u.startsWith('/longpolling/')||u.startsWith('/website/')){{
+            return PROXY+u;
+        }}
+    }}
+    return u;
+}}
+var _f=window.fetch;
+window.fetch=function(input,init){{
+    if(typeof input==='string')input=_toProxy(input);
+    else if(typeof Request!=='undefined'&&input instanceof Request){{var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);}}
+    return _f.call(this,input,init);
+}};
+var _x=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(){{
+    var a=Array.prototype.slice.call(arguments);
+    a[1]=_toProxy(a[1]);
+    return _x.apply(this,a);
+}};
+console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
+}})();
+</script>
+"""
+            display_head_inner = _early_shim + display_head_inner
 
         response = render(
             request,

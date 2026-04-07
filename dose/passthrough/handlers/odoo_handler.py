@@ -167,6 +167,48 @@ class OdooPassthroughHandler:
             display_body_inner, seg
         )
 
+        # Prepend an early fetch/XHR shim to display_head_inner so it runs BEFORE
+        # Odoo's inline scripts (especially odoo.reloadMenus() and the menu load fetch).
+        # Without this, those calls go to the PolySaaS host before the full shim in
+        # extrajs has a chance to patch fetch, causing 404s that break Owl boot.
+        if endpoint is not None:
+            _parsed = urlparse(endpoint.endpoint_url)
+            _base = f"{_parsed.scheme}://{_parsed.netloc}"
+            _early_shim = f"""<script data-polysaas-early-shim="1">
+(function(){{
+'use strict';
+var PROXY={json.dumps(proxy_prefix)};
+var B={json.dumps(_base)};
+function _toProxy(u){{
+    if(!u||typeof u!=='string')return u;
+    if(u.indexOf(B)===0)return PROXY+u.slice(B.length);
+    if(u.charAt(0)==='/'&&!u.startsWith(PROXY)){{
+        if(u.startsWith('/web/')||u.startsWith('/odoo/')||u.startsWith('/bus/')||
+           u.startsWith('/websocket')||u.startsWith('/mail/')||u.startsWith('/jsonrpc')||
+           u.startsWith('/longpolling/')||u.startsWith('/website/')){{
+            return PROXY+u;
+        }}
+    }}
+    return u;
+}}
+var _f=window.fetch;
+window.fetch=function(input,init){{
+    if(typeof input==='string')input=_toProxy(input);
+    else if(typeof Request!=='undefined'&&input instanceof Request){{var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);}}
+    return _f.call(this,input,init);
+}};
+var _x=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(){{
+    var a=Array.prototype.slice.call(arguments);
+    a[1]=_toProxy(a[1]);
+    return _x.apply(this,a);
+}};
+console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
+}})();
+</script>
+"""
+            display_head_inner = _early_shim + display_head_inner
+
         response = render(
             request,
             "admin/display.html",
@@ -307,7 +349,6 @@ class OdooPassthroughHandler:
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
-        html_str = self._clear_login_field(html_str)
         # Rewrite initial HTML asset paths BEFORE the JS shim runs.
         # <link> and <script> tags are fetched by the browser before JS executes, so we must
         # rewrite them server-side to route through our proxy.
@@ -336,11 +377,9 @@ class OdooPassthroughHandler:
                 path = '/pt/admin/odoo' + path
             return prefix + path
 
-        # Rewrite href="..." and src="..." in tag attributes (NOT action — Odoo's onsubmit
-        # overrides action back to /web/login before submission; rewriting it is pointless
-        # and risks breaking the form if onsubmit fails to fire).
+        # Rewrite href="...", src="...", and action="..." in tag attributes
         html = re.sub(
-            r'((?:href|src)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
+            r'((?:href|src|action)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
             _rewrite_attr, html,
         )
 
@@ -368,14 +407,6 @@ class OdooPassthroughHandler:
     # ------------------------------------------------------------------ #
     # HTML cleaners                                                        #
     # ------------------------------------------------------------------ #
-
-    def _clear_login_field(self, html):
-        """Clear any pre-filled login/email value Odoo puts back after a failed attempt."""
-        return re.sub(
-            r'(<input[^>]+name=["\']login["\'][^>]+)\bvalue=["\'][^"\']*["\']',
-            r'\1value=""',
-            html, flags=re.IGNORECASE,
-        )
 
     def _strip_base_tags(self, html):
         """Odoo ships <base href="/odoo/"> which breaks the Jazzmin embed."""
@@ -936,15 +967,19 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         if 'javascript' in ct:
             try:
                 text = body.decode('utf-8', errors='ignore')
-                # Owl's App.mount() and the standalone mount() helper both use
-                # document.body as the container target.  Replace it with the
-                # PolySaaS scope div so Odoo renders inside the embed column.
+                # Owl's mount target replacement.
+                # Odoo 17 style: app.mount(document.body)       → matches .mount(document.body
+                # Odoo 18 style: mount(WebClient, document.body) → matches ,document.body,
+                # Both are replaced so the Owl root lands in our scope div, not in body.
                 SCOPE = '.polysaas-passthrough-scope'
-                REPLACEMENT = (
-                    f'.mount(document.querySelector("{SCOPE}")||document.body'
-                )
+                SCOPE_JS = f'(document.querySelector("{SCOPE}")||document.body)'
+                # Odoo 17 / Owl method call pattern
                 patched = text.replace(
-                    '.mount(document.body', REPLACEMENT
+                    '.mount(document.body', f'.mount({SCOPE_JS}'
+                )
+                # Odoo 18 / standalone mount(Component, document.body, config) pattern
+                patched = patched.replace(
+                    ',document.body,', f',{SCOPE_JS},'
                 )
 
                 # Also rewrite paths hidden in JS strings
@@ -962,10 +997,14 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                 )
 
                 # === FIX WEBSOCKET 404 - Force Odoo to use proxied WebSocket path ===
-                if '/websocket' in patched or 'websocket' in patched.lower():
-                    # Replace any direct WebSocket URLs with the proxied version
-                    # Note: Using the /pt/admin/odoo prefix which is the actual proxy entry point
-                    patched = patched.replace('/websocket', '/pt/admin/odoo/websocket')
+                # Use word-boundary regex so we only replace /websocket as a standalone
+                # path component, not inside /bus/websocket_worker_bundle.
+                if '/websocket' in patched:
+                    patched = re.sub(
+                        r'(?<!/odoo)/websocket(?!_)',
+                        '/pt/admin/odoo/websocket',
+                        patched,
+                    )
 
                 if patched != text:
                     logger.info(

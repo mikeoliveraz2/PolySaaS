@@ -223,10 +223,8 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             # Remove any conflicting headers that break Odoo assets
             outbound_headers.pop('Referer', None)
             
-            # Follow redirects for GET only. For POST (login forms), never follow — the browser
-            # must receive the 302 + Set-Cookie directly so it can carry the new session_id on
-            # the follow-up GET. Following POST redirects server-side loses the new cookie.
-            odoo_internal_redirects = (request.method == 'GET')
+            # Follow redirects for Odoo internally to avoid jailbreaks
+            odoo_internal_redirects = True
         else:
             odoo_internal_redirects = False
 
@@ -273,14 +271,35 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             print("Content-Length:", len(resp.content) if resp.content else 0)
             print("Location header:", resp.headers.get('Location', 'NONE'))
             
-            # Redirects are handled by the standard redirect rewriter below (line ~370).
-            # For POST (login), allow_redirects=False means the 303/302 is visible here and
-            # will be rewritten to /pt/admin/odoo/<path> and returned to the browser.
-            # The browser follows it as GET, which triggers try_root_display_shell_response.
-            # Do NOT follow redirects server-side here — it consumes the Set-Cookie and loses
-            # the new session_id before the browser can receive it.
-
-            # Rewrite any remaining problematic paths in HTML content
+            # 1. Handle redirects - follow them server-side or rewrite to proxy path
+            if resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get('Location', '')
+                print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
+                
+                # If Odoo redirects to /odoo/apps or /web, we need to follow it server-side
+                # and return the final content, not pass the redirect to the browser
+                if location and (location.startswith('/odoo') or location.startswith('/web')):
+                    # Construct full URL and fetch it
+                    from urllib.parse import urlparse as _up
+                    p = _up(endpoint_url)
+                    follow_url = f"{p.scheme}://{p.netloc}{location}"
+                    print(f"=== ODOO: Following redirect to {follow_url} ===")
+                    
+                    try:
+                        follow_resp = requests.get(
+                            follow_url,
+                            headers=outbound_headers,
+                            cookies=upstream_cookies,
+                            allow_redirects=True,  # Follow any further redirects
+                            timeout=60,
+                        )
+                        # Use the followed response
+                        resp = follow_resp
+                        print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
+                    except Exception as follow_exc:
+                        print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
+            
+            # 2. Rewrite any remaining problematic paths in HTML content
             if resp.content and b'</head>' in resp.content:
                 content = resp.content
                 
