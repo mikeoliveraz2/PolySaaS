@@ -235,6 +235,15 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         This is the LAST middleware before the request leaves Django
         -> Perfect place for PASSTHROUGH-OUT
         """
+        # Odoo native paths (/web/login, /odoo/..., /bus/..., /websocket) arrive here when
+        # Odoo's own JS overrides the rewritten form action. Remap them to the proxy prefix
+        # so run_pt_admin_passthrough_core handles them — bypasses Django CSRF and redirect issues.
+        _ODOO_NATIVE = ("/web/", "/odoo/", "/bus/", "/websocket")
+        _path = request.path_info
+        if not _path.startswith("/pt/") and _path.startswith(_ODOO_NATIVE):
+            _path = "/pt/admin/odoo" + _path
+            request.path_info = _path
+
         if request.path_info.startswith("/pt/"):
             print(f"[PT-MW-TOP] ExternalPassthroughMiddleware HIT for {request.path_info}")
             user = getattr(request, "user", None)

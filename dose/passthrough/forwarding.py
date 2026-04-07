@@ -183,7 +183,13 @@ def forward_request_standardized(request, endpoint_url, handler=None):
     print("="*120)
 
     try:
-        full_path = request.get_full_path()
+        # Use request.path_info (may be rewritten by ExternalPassthroughMiddleware for native
+        # Odoo paths like /web/login -> /pt/admin/odoo/web/login) rather than get_full_path()
+        # which reads request.META['PATH_INFO'] and never sees the rewritten path_info attribute.
+        full_path = request.path_info
+        qs = request.META.get('QUERY_STRING', '')
+        if qs:
+            full_path += '?' + qs
 
         # Generic prefix stripping: /pt/{admin|dose}/{trigger}/subpath -> /subpath
         import re

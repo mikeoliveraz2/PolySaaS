@@ -54,10 +54,4 @@ class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
         if re.match(r'^/pt/\w+/\w+/?', path_info):
             return True
 
-        # Odoo native paths that redirect to /pt/admin/odoo/... — exempt so the
-        # redirect or direct POST is not blocked by Django CSRF before forwarding.
-        odoo_prefixes = ('/web/', '/web', '/odoo/', '/odoo', '/bus/', '/websocket')
-        if path_info.startswith(odoo_prefixes):
-            return True
-
         return False

@@ -31,7 +31,9 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
     it would false-match /website, /websocket, etc.
     """
     u = upstream_subpath or ""
-    if u == "/web" or u.startswith("/web/"):
+    # /web exact = Odoo app home after login redirect — must go through display shell, not be bypassed.
+    # /web/ subdpaths (assets, datasets, actions, binary, session) are API/asset calls → bypass.
+    if u.startswith("/web/"):
         return True
     if u == "/website" or u.startswith("/website/"):
         return True
@@ -333,9 +335,9 @@ class OdooPassthroughHandler:
                 path = '/pt/admin/odoo' + path
             return prefix + path
 
-        # Rewrite href="..." and src="..." in tag attributes
+        # Rewrite href="...", src="...", and action="..." in tag attributes
         html = re.sub(
-            r'((?:href|src)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
+            r'((?:href|src|action)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
             _rewrite_attr, html,
         )
 

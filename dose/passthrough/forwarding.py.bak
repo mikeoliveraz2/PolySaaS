@@ -27,6 +27,27 @@ def _outbound_headers_from_request(request):
     return headers
 
 
+def _resolve_upstream_target_url(endpoint_url, upstream_subpath, handler=None):
+    """
+    Build the upstream URL for a proxied path. Handlers may override (e.g. Odoo uses the
+    full configured endpoint for the initial document only, and origin + path for /web, /bus, …).
+    """
+    clean = upstream_subpath if upstream_subpath not in (None, "") else "/"
+    if not isinstance(clean, str):
+        clean = "/"
+    if not clean.startswith("/"):
+        clean = "/" + clean
+    if handler is not None and hasattr(handler, "upstream_url_for_subpath"):
+        try:
+            resolved = handler.upstream_url_for_subpath(endpoint_url, clean)
+        except Exception:
+            logger.warning("upstream_url_for_subpath failed", exc_info=True)
+            resolved = None
+        if resolved:
+            return resolved
+    return endpoint_url.rstrip("/") + clean
+
+
 def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handler=None):
     """
     GET upstream HTML mimicking a real browser request.
@@ -37,7 +58,7 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
     clean = upstream_subpath or "/"
     if not clean.startswith("/"):
         clean = "/" + clean
-    target_url = endpoint_url.rstrip("/") + clean
+    target_url = _resolve_upstream_target_url(endpoint_url, clean, handler=handler)
 
     # Merge browser cookies with any app-specific cookies the handler wants to inject.
     # Browser cookies take priority — after a manual login the browser has the fresh
@@ -174,7 +195,7 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             if not clean.startswith("/"):
                 clean = "/" + clean
             upstream_path = clean
-            target_url = endpoint_url.rstrip("/") + clean
+            target_url = _resolve_upstream_target_url(endpoint_url, clean, handler=handler)
             print(f"PASSTHROUGH -> {full_path} -> {target_url}")
         else:
             upstream_path = "/"

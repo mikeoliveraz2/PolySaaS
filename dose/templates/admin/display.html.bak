@@ -74,7 +74,7 @@
     </div>
 
     <div id="polysaas-display-body-bucket">
-        <h3 id="polysaas-body-placeholder">✅ CONTENT AREA WORKING — upstream response body will be injected here</h3>
+        {{ display_body_inner|safe }}
     </div>
 
     <small style="color:#666;">{{ display_shell_footer|default:"Passthrough display shell — trigger is shown when the handler sets display_shell_footer." }}</small>
