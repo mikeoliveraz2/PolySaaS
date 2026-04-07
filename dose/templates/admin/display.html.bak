@@ -1,165 +1,178 @@
 {% extends "admin/base_site.html" %}
-{% load i18n static %}
 
-{% comment %}
-Passthrough display shell (phase 1): green orchestration bar + head/body buckets only.
-No upstream fetch and no proxified URL rewriting until this layout is verified in admin.
-{% endcomment %}
+{% block title %}PolySaaS Display{% endblock %}
 
-{% block bodyclass %}polysaas-passthrough-embed-page polysaas-display-shell-page{% endblock %}
+{% block extrastyle %}
+<style>
+    #polysaas-orchestration-bar {
+        background-color: #1a1a1a;
+        color: #0f0;
+        padding: 10px 15px;
+        border-bottom: 3px solid #0f0;
+        font-family: monospace;
+        font-size: 15px;
+        margin: 0 -15px 20px -15px;
+    }
 
-{% block extrahead %}
-{{ block.super }}
-<style id="polysaas-display-shell-styles">
-/* Match passthrough embed column layout (subset of passthrough_embed.html shield) */
-body.polysaas-display-shell-page .admin-content-grid {
-    grid-template-columns: 280px 1fr !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-}
-body.polysaas-display-shell-page .admin-content-grid.sidebar-collapse,
-body.polysaas-display-shell-page.polysaas-collapsed .admin-content-grid {
-    grid-template-columns: 60px 1fr !important;
-}
-body.polysaas-display-shell-page #recent-actions-sidebar {
-    display: none !important;
-}
-body.polysaas-display-shell-page .content .container-fluid {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    max-width: none !important;
-}
-body.polysaas-display-shell-page .content .row {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-}
-body.polysaas-display-shell-page .polysaas-display-shell-col {
-    padding: 0 !important;
-}
-.admin-content-grid > .collapsible-nav {
-    z-index: 1040 !important;
-    position: sticky !important;
-}
-#jazzy-navbar,
-.app-header {
-    z-index: 1050 !important;
-}
+    #polysaas-display-body-bucket {
+        position: relative;
+        border: 2px dashed #555;
+        padding: 20px;
+        min-height: 500px;
+        background-color: #fafafa;
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        overflow-x: auto;
+        /* no contain: layout — breaks Odoo/Owl sub-views (e.g. Discuss) after in-app nav */
+    }
 
-/* Shell root: fills content column below Jazzmin chrome */
-.polysaas-display-shell-root {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    min-height: calc(100vh - 98px);
-    box-sizing: border-box;
-    background: #0f172a;
-}
+    /* Keep Odoo root nodes inside the column (they often use 100% / fixed layouts). */
+    #polysaas-display-body-bucket #wrapwrap,
+    #polysaas-display-body-bucket .o_web_client {
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
 
-/* PolySniffer-style orchestration bar (in-content, not fixed to viewport) */
-#polysaas-orchestration-bar {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 52px;
-    padding: 8px 16px;
-    background: #1a1a1a;
-    color: #0f0;
-    font-family: system-ui, sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    border-bottom: 3px solid #0f0;
-    box-shadow: 0 4px 16px rgba(0, 255, 0, 0.2);
-    z-index: 1020;
-    position: relative;
-}
-#polysaas-orchestration-bar .polysaas-orch-status {
-    margin-left: auto;
-    color: #86efac;
-    font-weight: 700;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.polysaas-display-buckets {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    min-height: 0;
-    overflow: auto;
-}
-
-#polysaas-display-head-bucket,
-#polysaas-display-body-bucket {
-    box-sizing: border-box;
-    padding: 12px 16px;
-    border: 2px dashed #334155;
-    margin: 12px 16px;
-    border-radius: 8px;
-    background: rgba(15, 23, 42, 0.6);
-    color: #94a3b8;
-    font-size: 13px;
-}
-#polysaas-display-head-bucket {
-    min-height: 72px;
-    flex: 0 0 auto;
-}
-#polysaas-display-body-bucket {
-    flex: 1 1 auto;
-    min-height: 240px;
-    margin-bottom: 16px;
-}
-.polysaas-display-bucket-label {
-    display: block;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #0f0;
-    margin-bottom: 8px;
-}
+    /* Head fragment must stay in the content column (not global extrahead) so Jazzmin is not torn down. Hidden, not a visible “bucket”. */
+    #polysaas-display-head-inject {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
 </style>
 {% endblock %}
 
-{% block title %}{{ display_title }} — {{ site_title|default:_('Django site admin') }}{% endblock %}
-
-{% block breadcrumbs %}
-<div class="breadcrumbs">
-    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
-    &rsaquo; {{ display_title }}
-</div>
-{% endblock %}
-
 {% block content %}
-<div class="col-12 polysaas-display-shell-col">
-    <div class="polysaas-display-shell-root" data-polysaas-display-phase="{{ display_phase|default:'shell' }}">
-        <div id="polysaas-orchestration-bar" role="status" aria-live="polite">
-            <span>🟢 {% trans "PolySniffer — Orchestration" %}</span>
-            <span style="color:#86efac;font-weight:500;">{{ display_subtitle|default:"" }}</span>
-            <span class="polysaas-orch-status">{% trans "Shell ready" %}</span>
-        </div>
-        <div class="polysaas-display-buckets">
-            <div id="polysaas-display-head-bucket" data-bucket="head">
-                <span class="polysaas-display-bucket-label">{% trans "Head bucket" %}</span>
-                {% trans "Empty — proxified head fragments will land here after URL rewrite phase." %}
-            </div>
-            <div id="polysaas-display-body-bucket" data-bucket="body">
-                <span class="polysaas-display-bucket-label">{% trans "Body bucket" %}</span>
-                {% trans "Empty — proxified body content will land here after URL rewrite phase." %}
-            </div>
-        </div>
+    <div id="polysaas-orchestration-bar">
+        ● POLYSAAS ORCHESTRATION ACTIVE — DISPLAY SHELL (PHASE 1)<br>
+        <span style="color:#86efac;font-size:13px;">Phase 1 Shell — Use browser refresh (F5) to reload. Do not use the in-app Reload button yet.</span><br>
+        <span style="color:#86efac;font-size:13px;">Note: In-app Reload currently takes you out of Phase 1 shell. Use browser refresh (F5) to return.</span>
     </div>
-</div>
-<p class="text-muted" style="margin:10px 16px;font-size:12px;">
-    {% trans "Phase 1 test URL (bookmark for regression):" %}
-    <code>{{ request.path }}</code>
-</p>
+
+    <div id="polysaas-display-body-bucket">
+        <div id="polysaas-display-head-inject" aria-hidden="true">{{ display_head_inner|safe }}</div>
+        {{ display_body_inner|safe }}
+    </div>
+
+    <small style="color:#666;">display.html shell — ready for testing via sidebar Mattermost link</small>
 {% endblock %}
 
-{% block extrajs %}
-{{ block.super }}
+{% block extrajs %}{{ block.super }}
+    {# Odoo mounts late; root may be #wrapwrap or .o_web_client (not always body direct). #}
+    <script>
+    (function () {
+        var bucket = document.getElementById('polysaas-display-body-bucket');
+        if (!bucket) return;
+
+        function canMove(el) {
+            return el && el !== document.body && el !== document.documentElement;
+        }
+
+        function firstOutsideBucket(selector) {
+            var list = document.querySelectorAll(selector);
+            var i;
+            var el;
+            for (i = 0; i < list.length; i++) {
+                el = list[i];
+                if (canMove(el) && !bucket.contains(el)) {
+                    return el;
+                }
+            }
+            return null;
+        }
+
+        function tuckFromBodyChildren() {
+            var ch = document.body ? document.body.children : [];
+            var i;
+            var n;
+            for (i = 0; i < ch.length; i++) {
+                n = ch[i];
+                if (n.contains && n.contains(bucket)) {
+                    continue;
+                }
+                if (n === bucket) {
+                    continue;
+                }
+                if (n.tagName === 'SCRIPT' || n.tagName === 'STYLE' || n.tagName === 'LINK') {
+                    continue;
+                }
+                if (n.id === 'wrapwrap' && canMove(n)) {
+                    bucket.appendChild(n);
+                    return true;
+                }
+                if (canMove(n) && n.classList && (n.classList.contains('o_web_client') || n.classList.contains('o_home_menu_background'))) {
+                    bucket.appendChild(n);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function tuck() {
+            var el;
+            var list;
+            var i;
+            if (tuckFromBodyChildren()) {
+                return;
+            }
+            el = firstOutsideBucket('#wrapwrap');
+            if (el) {
+                bucket.appendChild(el);
+                return;
+            }
+            el = firstOutsideBucket('.o_web_client');
+            if (el) {
+                bucket.appendChild(el);
+                return;
+            }
+            list = document.querySelectorAll('.o_action_manager');
+            for (i = 0; i < list.length; i++) {
+                el = list[i];
+                if (canMove(el) && !bucket.contains(el)) {
+                    bucket.appendChild(el);
+                    return;
+                }
+            }
+        }
+
+        function start() {
+            tuck();
+            [400, 800, 1500, 3000, 6000, 10000].forEach(function (ms) {
+                setTimeout(tuck, ms);
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', start);
+        } else {
+            start();
+        }
+
+        if (document.body && typeof MutationObserver !== 'undefined') {
+            var tuckTimer = null;
+            function debouncedTuck() {
+                if (tuckTimer) {
+                    clearTimeout(tuckTimer);
+                }
+                tuckTimer = setTimeout(function () {
+                    tuckTimer = null;
+                    tuck();
+                }, 250);
+            }
+            var mo = new MutationObserver(debouncedTuck);
+            mo.observe(document.body, { childList: true, subtree: true });
+            /* Do not disconnect: Odoo SPA adds new roots to body after Apps → Discuss, etc. */
+            window.addEventListener('hashchange', debouncedTuck);
+            window.addEventListener('popstate', debouncedTuck);
+        }
+    })();
+    </script>
 {% endblock %}

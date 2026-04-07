@@ -23,10 +23,11 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
-    def try_root_display_shell_response(self, request, _endpoint, url_trigger_segment):
+    def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
-        Phase 1: GET to this service's /pt/admin/<trigger>/ root only — return admin/display.html
-        (orchestration bar + buckets), no upstream request. Deeper paths return None.
+        GET /pt/admin/<trigger>/ root: display shell; fetch upstream HTML, extract <head> and
+        <body> inner HTML; rewrite href|src starting with /static/ in both to use
+        /pt/admin/mattermost/static/... (mattermost_static_proxy).
         """
         if request.method != "GET":
             return None
@@ -36,8 +37,58 @@ class MattermostPassthroughHandler:
         if request.path_info.rstrip("/") != f"/pt/admin/{seg}":
             return None
         from django.shortcuts import render
+        from django.utils.safestring import mark_safe
 
-        response = render(request, "admin/display.html", {})
+        from dose.passthrough.forwarding import fetch_upstream_index_html
+
+        display_head_inner = ""
+        display_body_inner = ""
+        raw_html = fetch_upstream_index_html(
+            request, endpoint.endpoint_url, "/", handler=self
+        )
+        if raw_html and not raw_html.startswith("REDIRECT:"):
+            proxy_prefix = "/pt/admin/mattermost"
+            _static_attr = re.compile(
+                r'(src|href)=(["\'])(/static/[^"\']*)', re.IGNORECASE
+            )
+
+            def _rewrite_static_attrs(fragment):
+                if not fragment:
+                    return fragment
+                return _static_attr.sub(
+                    lambda m2: (
+                        f"{m2.group(1)}={m2.group(2)}{proxy_prefix}{m2.group(3)}{m2.group(2)}"
+                    ),
+                    fragment,
+                )
+
+            m = re.search(
+                r"<head[^>]*>(.*?)</head>",
+                raw_html,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if m:
+                display_head_inner = _rewrite_static_attrs(m.group(1).strip())
+            m_body = re.search(
+                r"<body[^>]*>(.*?)</body>",
+                raw_html,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if m_body:
+                display_body_inner = _rewrite_static_attrs(m_body.group(1).strip())
+
+        response = render(
+            request,
+            "admin/display.html",
+            {
+                "display_head_inner": mark_safe(display_head_inner)
+                if display_head_inner
+                else "",
+                "display_body_inner": mark_safe(display_body_inner)
+                if display_body_inner
+                else "",
+            },
+        )
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["Pragma"] = "no-cache"
         response["Expires"] = "0"

@@ -1,6 +1,8 @@
 # dose/polysniffer/views/mattermost_static_proxy.py
 # Stream Mattermost /static/* through Django (same origin as embed).
 # Rewrites root-relative /static/ inside JS/CSS bodies so webpack chunk URLs hit this proxy.
+# Nested paths under /static/ on the wire (e.g. github/bundle.js) map to upstream
+# /static/plugins/<plugin>/...; core trees (images, emoji, …) stay under /static/<path>.
 
 import logging
 
@@ -18,6 +20,22 @@ WEBPACK_STATIC_PREFIX = "/pt/admin/mattermost/static/"
 
 # Main + large chunks; skip huge source maps if needed
 MAX_BODY_REWRITE_BYTES = 25 * 1024 * 1024
+
+# First path segment after /static/: these stay on /static/<path> upstream (not /static/plugins/).
+_MM_STATIC_CORE_PREFIXES = frozenset(
+    ("images", "emoji", "fonts", "files", "metadata", "sounds", "plugins")
+)
+
+
+def _upstream_rel_for_mm_static(path: str) -> str:
+    """Single upstream path (relative to origin) for one proxy request — no retries."""
+    if "/" not in path:
+        return f"/static/{path}"
+    first, _, _rest = path.partition("/")
+    fl = first.lower()
+    if fl in _MM_STATIC_CORE_PREFIXES:
+        return f"/static/{path}"
+    return f"/static/plugins/{path}"
 
 
 def _upstream_static_base():
@@ -60,9 +78,8 @@ def mattermost_static_proxy(request, path):
         return HttpResponse("Invalid path", status=400)
 
     base = _upstream_static_base()
-    real_url = f"{base}/static/{path}"
-    if request.META.get("QUERY_STRING"):
-        real_url = f"{real_url}?{request.META['QUERY_STRING']}"
+    qs = f"?{request.META['QUERY_STRING']}" if request.META.get("QUERY_STRING") else ""
+    real_url = f"{base}{_upstream_rel_for_mm_static(path)}{qs}"
 
     try:
         upstream = requests.get(

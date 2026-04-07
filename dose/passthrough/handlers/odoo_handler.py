@@ -21,8 +21,154 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+# Prepended before Odoo <head> fragments in display shell only. No SW handling.
+_DISPLAY_SHELL_RUNTIME_XHR_PATCH = (
+    '<script data-polysaas-odoo-display-xhr="1">'
+    "(function(){"
+    "var P='/pt/admin/odoo';"
+    "function fix(u){"
+    "if(typeof u!=='string'||!u)return u;"
+    "if(/^https?:\\/\\//i.test(u)){try{var o=window.location.origin;"
+    "if(u.indexOf(o)===0)u=u.slice(o.length);else return u;}catch(e){return u;}}"
+    "if(u.charAt(0)!=='/')return u;"
+    "if(u.indexOf('/pt/')===0)return u;"
+    "if(u.indexOf('/web/')===0||u.indexOf('/odoo/')===0)return P+u;"
+    "return u;"
+    "}"
+    "var ox=XMLHttpRequest.prototype.open;"
+    "XMLHttpRequest.prototype.open=function(){var a=[].slice.call(arguments);"
+    "a[1]=fix(a[1]);return ox.apply(this,a);};"
+    "var of=window.fetch;"
+    "window.fetch=function(input,init){"
+    "if(typeof input==='string'){input=fix(input);}"
+    "else if(input&&typeof Request!=='undefined'&&input instanceof Request){"
+    "var n=fix(input.url);if(n!==input.url)input=new Request(n,input);}"
+    "return of.call(this,input,init);};"
+    "})();"
+    "</script>"
+)
+
 
 class OdooPassthroughHandler:
+
+    def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
+        """
+        GET under /pt/admin/<trigger>/: same display.html shell as root; not only exact root.
+        Upstream path = suffix after /pt/admin/<seg> (or / for root). Head + body from HTML;
+        quoted /web/ rewrite + runtime XHR patch. Static-like paths return None (forward).
+        """
+        if request.method != "GET":
+            return None
+        seg = (
+            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
+        )
+        proxy_prefix = f"/pt/admin/{seg}"
+        path_info = request.path_info
+        norm = path_info.rstrip("/")
+        if norm == proxy_prefix:
+            upstream_subpath = "/"
+        elif path_info.startswith(proxy_prefix + "/"):
+            upstream_subpath = path_info[len(proxy_prefix) :]
+            if not upstream_subpath.startswith("/"):
+                upstream_subpath = "/" + upstream_subpath
+        else:
+            return None
+
+        last_seg = path_info.rstrip("/").split("/")[-1]
+        if "." in last_seg:
+            ext = last_seg.rsplit(".", 1)[-1].lower()
+            if ext in (
+                "js",
+                "css",
+                "map",
+                "png",
+                "jpg",
+                "jpeg",
+                "gif",
+                "svg",
+                "ico",
+                "woff",
+                "woff2",
+                "ttf",
+                "eot",
+                "webp",
+                "json",
+                "wasm",
+            ):
+                return None
+
+        from django.shortcuts import render
+        from django.utils.safestring import mark_safe
+
+        from dose.passthrough.forwarding import fetch_upstream_index_html
+
+        display_head_inner = ""
+        display_body_inner = ""
+
+        if endpoint is not None:
+            raw_html = fetch_upstream_index_html(
+                request,
+                endpoint.endpoint_url,
+                upstream_subpath,
+                handler=self,
+            )
+            if raw_html and not raw_html.startswith("REDIRECT:"):
+                m = re.search(
+                    r"<head[^>]*>(.*?)</head>",
+                    raw_html,
+                    re.DOTALL | re.IGNORECASE,
+                )
+                if m:
+                    head_raw = m.group(1).strip()
+                    display_head_inner = self._strip_base_tags(head_raw)
+                m_body = re.search(
+                    r"<body[^>]*>(.*?)</body>",
+                    raw_html,
+                    re.DOTALL | re.IGNORECASE,
+                )
+                if m_body:
+                    display_body_inner = m_body.group(1).strip()
+
+        display_head_inner = self._rewrite_web_paths_for_display_shell(
+            display_head_inner, seg
+        )
+        display_body_inner = self._rewrite_web_paths_for_display_shell(
+            display_body_inner, seg
+        )
+
+        xhr_patch = _DISPLAY_SHELL_RUNTIME_XHR_PATCH.replace(
+            "var P='/pt/admin/odoo';",
+            "var P='%s';" % (proxy_prefix.replace("'", "\\'"),),
+        )
+        display_head_inner = xhr_patch + display_head_inner
+
+        response = render(
+            request,
+            "admin/display.html",
+            {
+                "display_head_inner": mark_safe(display_head_inner)
+                if display_head_inner
+                else "",
+                "display_body_inner": mark_safe(display_body_inner)
+                if display_body_inner
+                else "",
+            },
+        )
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        return response
+
+    @staticmethod
+    def _rewrite_web_paths_for_display_shell(html: str, seg: str = "odoo") -> str:
+        """Quoted /web/... -> /pt/admin/<seg>/web/..."""
+        if not html:
+            return html
+        proxy_web = f"/pt/admin/{seg}/web/"
+        return (
+            html.replace('"/web/', f'"{proxy_web}')
+            .replace("'/web/", f"'{proxy_web}")
+        )
 
     # ------------------------------------------------------------------ #
     # Server-side auto-login                                               #

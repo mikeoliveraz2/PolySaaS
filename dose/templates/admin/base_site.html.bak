@@ -1,4 +1,10 @@
-{#
+{% extends "admin/base.html" %}
+{% load static %}
+{% comment %}
+  Multi-line file banners must use the comment/endcomment block, not curly-hash
+  delimiters across lines: Django lexer does not treat those as comments when the
+  block spans newlines, so the banner was rendered as visible text at the top of every admin page.
+
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  FINAL — WORKS 100% — DO NOT MODIFY WITHOUT APPROVAL                ║
   ║                                                                      ║
@@ -14,9 +20,7 @@
   ║  DO NOT add block nav-global or any other non-Jazzmin block here.   ║
   ║  dose/templates is first in TEMPLATES DIRS (mysite/settings.py).    ║
   ╚══════════════════════════════════════════════════════════════════════╝
-#}
-{% extends "admin/base.html" %}
-{% load static %}
+{% endcomment %}
 
 {% block extrahead %}
   {{ block.super }}
@@ -298,8 +302,10 @@
   </style>
 
   <script>
-    // Simple debug logging to confirm middleware is working
-    console.log('TENANT DEBUG: Passthrough endpoints count:', {{ request.passthrough_endpoints|length }});
+    // Sidebar uses admin_navigation passthrough_services (context); Jazzmin middleware
+    // prefetch request.passthrough_endpoints can be empty — do not treat 0 as "no services".
+    console.log('TENANT DEBUG: Passthrough sidebar services (context):', {{ passthrough_services|length|default:0 }});
+    console.log('TENANT DEBUG: request.passthrough_endpoints (Jazzmin prefetch):', {{ request.passthrough_endpoints|length }});
     {% if request.tenant %}
     console.log('TENANT DEBUG: Current tenant:', '{{ request.tenant.name|escapejs }}');
     {% endif %}
