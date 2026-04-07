@@ -760,12 +760,12 @@ def passthrough_embed_view(request, trigger):
     endpoint = PassThroughEndpoint.objects.filter(
         trigger_path__iexact=norm,
         is_enabled=True,
-    ).first()
+    ).order_by("-id").first()
     if endpoint is None and "_" in norm:
         endpoint = PassThroughEndpoint.objects.filter(
             trigger_path__iexact=norm.replace("_", ""),
             is_enabled=True,
-        ).first()
+        ).order_by("-id").first()
 
     if endpoint:
         handler = get_handler_for_endpoint(endpoint, request)

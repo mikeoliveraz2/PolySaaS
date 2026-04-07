@@ -4,6 +4,7 @@ from django.utils.deprecation import MiddlewareMixin
 from dose.models import PassThroughEndpoint, UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.handlers.registry import get_handler_for_endpoint
+from dose.passthrough.utils import normalize_trigger_segment
 from dose.utils import get_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,85 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
         return response
 
 
+def run_pt_admin_passthrough_core(request):
+    """
+    Handle /pt/admin/<trigger>/... when path matches a PassThroughEndpoint.
+    Returns HttpResponse, or None to let URLconf continue (static proxy, building pen, no endpoint).
+    Caller must already enforce auth, tenant, and membership.
+    """
+    path = request.path_info
+    if path.startswith("/pt/admin/mattermost/static/"):
+        print(f"[PT-CORE] Delegate mattermost_static_proxy: {path}")
+        return None
+    if path.startswith("/pt/admin/passthrough/"):
+        print(f"[PT-CORE] Delegate PolySniffer passthrough: {path}")
+        return None
+
+    parts = path.strip("/").split("/")
+    print(f"[PT-CORE] path={path} parts={parts}")
+    if len(parts) < 3 or parts[0] != "pt":
+        return None
+    trigger = parts[2]
+    print(f"[PT-CORE] trigger={trigger}")
+
+    url_key = normalize_trigger_segment(trigger)
+    endpoint = PassThroughEndpoint.objects.filter(
+        trigger_path__iexact=trigger,
+        is_enabled=True,
+    ).order_by("-id").first()
+    if endpoint is None and "_" in trigger:
+        endpoint = PassThroughEndpoint.objects.filter(
+            trigger_path__iexact=trigger.replace("_", ""),
+            is_enabled=True,
+        ).order_by("-id").first()
+    if endpoint is None and url_key:
+        for ep in PassThroughEndpoint.objects.filter(is_enabled=True).order_by("-id"):
+            if normalize_trigger_segment(ep.trigger_path) == url_key:
+                endpoint = ep
+                print(
+                    f"[PT-CORE] matched endpoint by normalized trigger "
+                    f"(url_key={url_key!r} trigger_path={ep.trigger_path!r})"
+                )
+                break
+    print(f"[PT-CORE] endpoint={endpoint}")
+
+    if not endpoint:
+        return None
+
+    handler = get_handler_for_endpoint(endpoint, request)
+    try_root = (
+        getattr(handler, "try_root_display_shell_response", None)
+        if handler is not None
+        else None
+    )
+    if callable(try_root):
+        shell = try_root(request, endpoint, trigger)
+        if shell is not None:
+            print("[PT-CORE] Handler display shell — admin/display.html (no forward)")
+            request._passthrough_handled = True
+            request._passthrough_response = shell
+            return shell
+
+    print("\n" + "=" * 120)
+    print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")
+    print(f"TARGET URL: {endpoint.endpoint_url}")
+    print(f"PATH      : {request.path_info}")
+    print(f"USER      : {request.user}")
+    print("=" * 120 + "\n")
+
+    response = forward_request_standardized(request, endpoint.endpoint_url, handler=handler)
+
+    if _is_initial_page_load(request):
+        print("[PT-CORE] Initial page load — wrapping in admin template")
+        response = _wrap_in_admin_template(request, response, trigger, endpoint)
+    else:
+        print("[PT-CORE] API/asset — raw response")
+
+    request._passthrough_handled = True
+    request._passthrough_response = response
+    return response
+
+
 class ExternalPassthroughMiddleware(MiddlewareMixin):
     def __init__(self, get_response):
         self.get_response = get_response
@@ -175,73 +255,9 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
                 print("[PT-MW] BAIL: not superuser and no membership")
                 return self.get_response(request)
 
-            # Mattermost static: handled by URLconf (mattermost_static_proxy streams from real MM)
-            if request.path_info.startswith("/pt/admin/mattermost/static/"):
-                print(f"[PT-MW] Delegate to mattermost_static_proxy: {request.path_info}")
-                return self.get_response(request)
-
-            # PolySniffer building pen + POST process: Django URLconf (not passthrough trigger)
-            if request.path_info.startswith("/pt/admin/passthrough/"):
-                print(f"[PT-MW] Delegate PolySniffer passthrough path: {request.path_info}")
-                return self.get_response(request)
-
-            parts = request.path_info.strip("/").split("/")
-            print(f"[PT-MIDDLEWARE] path={request.path_info} parts={parts}")
-            if len(parts) >= 3 and parts[0] == "pt":
-                trigger = parts[2]
-                print(f"[PT-MIDDLEWARE] trigger={trigger}")
-
-                endpoint = PassThroughEndpoint.objects.filter(
-                    trigger_path__iexact=trigger,
-                    is_enabled=True
-                ).first()
-                if endpoint is None and "_" in trigger:
-                    endpoint = PassThroughEndpoint.objects.filter(
-                        trigger_path__iexact=trigger.replace("_", ""),
-                        is_enabled=True,
-                    ).first()
-                print(f"[PT-MIDDLEWARE] endpoint={endpoint}")
-
-                if endpoint:
-                    handler = get_handler_for_endpoint(endpoint, request)
-                    try_root = (
-                        getattr(handler, "try_root_display_shell_response", None)
-                        if handler is not None
-                        else None
-                    )
-                    if callable(try_root):
-                        shell = try_root(request, endpoint, trigger)
-                        if shell is not None:
-                            print(
-                                "[PT-MW] Handler root display shell — "
-                                "admin/display.html (no forward)"
-                            )
-                            request._passthrough_handled = True
-                            request._passthrough_response = shell
-                            return shell
-
-                    print("\n" + "="*120)
-                    print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (LAST BEFORE EXIT)")
-                    print(f"TARGET URL: {endpoint.endpoint_url}")
-                    print(f"PATH      : {request.path_info}")
-                    print(f"USER      : {request.user}")
-                    print("="*120 + "\n")
-
-                    response = forward_request_standardized(request, endpoint.endpoint_url, handler=handler)
-
-                    # For initial page loads, wrap the response in the admin template
-                    # so Mattermost/Odoo/etc display embedded with PolySaaS sidebar
-                    if _is_initial_page_load(request):
-                        print(f"[PT-MW] Initial page load detected — wrapping in admin template")
-                        response = _wrap_in_admin_template(request, response, trigger, endpoint)
-                    else:
-                        print(f"[PT-MW] API/asset request — returning raw response")
-
-                    # Mark so process_response knows it was us
-                    request._passthrough_handled = True
-                    request._passthrough_response = response
-
-                    return response  # SHORT-CIRCUIT — WE ARE DONE
+            resp = run_pt_admin_passthrough_core(request)
+            if resp is not None:
+                return resp
 
         # Not a passthrough request — continue down the stack
         return self.get_response(request)

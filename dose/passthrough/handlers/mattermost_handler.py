@@ -87,6 +87,7 @@ class MattermostPassthroughHandler:
                 "display_body_inner": mark_safe(display_body_inner)
                 if display_body_inner
                 else "",
+                "display_shell_footer": "Mattermost passthrough — static assets use /pt/admin/mattermost/static/.",
             },
         )
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"

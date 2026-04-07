@@ -168,6 +168,10 @@ class OdooPassthroughHandler:
                 if display_body_inner
                 else "",
                 "display_odoo_pt_prefix": proxy_prefix,
+                "display_shell_footer": (
+                    f"Odoo passthrough ({seg}): head/scripts load here; "
+                    f"Discuss shows “Inbox” like native Odoo. Proxy prefix {proxy_prefix}/"
+                ),
             },
         )
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -207,24 +211,23 @@ class OdooPassthroughHandler:
             ta = TenantApp.objects.filter(
                 tenant=tenant, app_name='odoo', status='active',
             ).first()
-            if not ta or not ta.extra_config:
+            if not ta:
                 return {}
+            extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
 
-            # Return cached session if still fresh (< 1 hour)
-            session_id = ta.extra_config.get('odoo_session_id')
-            session_time = ta.extra_config.get('odoo_session_time', 0)
-            if session_id and (time.time() - session_time < 3600):
-                return {'session_id': session_id}
-            if session_id:
-                logger.info("[ODOO HANDLER] Session TTL expired — refreshing")
+            # TEMP: skip 1h session cache — it may still be another Odoo user from before admin/admin.
+            # After revert to extra_config credentials, restore the cached-session block below.
+            # session_id = ta.extra_config.get("odoo_session_id")
+            # session_time = ta.extra_config.get("odoo_session_time", 0)
+            # if session_id and (time.time() - session_time < 3600):
+            #     return {"session_id": session_id}
 
-            password = ta.extra_config.get('odoo_password')
-            if not password:
-                logger.warning("[ODOO HANDLER] No odoo_password in extra_config")
-                return {}
-
-            login_id = ta.extra_config.get('odoo_login') or (request.user.username or '').lower()
-            db_name  = ta.extra_config.get('odoo_db') or 'odoo'
+            # TEMP (explicit user request): sidebar passthrough always JSON-RPC logs in as Odoo
+            # admin/admin so you can reset Discuss/history on that account. Revert to
+            # extra_config odoo_login / odoo_password when done.
+            login_id = "admin"
+            password = "admin"
+            db_name = extra.get("odoo_db") or "odoo"
 
             # Resolve Odoo base URL from the PassThroughEndpoint
             odoo_url = 'http://localhost:8069'
@@ -258,9 +261,11 @@ class OdooPassthroughHandler:
                 uid = (body.get('result') or {}).get('uid')
                 sid = resp.cookies.get('session_id')
                 if uid and sid:
-                    ta.extra_config['odoo_session_id']   = sid
-                    ta.extra_config['odoo_session_time'] = time.time()
-                    ta.save(update_fields=['extra_config'])
+                    if not isinstance(ta.extra_config, dict):
+                        ta.extra_config = {}
+                    ta.extra_config["odoo_session_id"] = sid
+                    ta.extra_config["odoo_session_time"] = time.time()
+                    ta.save(update_fields=["extra_config"])
                     logger.info("[ODOO HANDLER] Session obtained for %s (uid=%s)", login_id, uid)
                     return {'session_id': sid}
                 else:

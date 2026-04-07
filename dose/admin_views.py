@@ -1,6 +1,12 @@
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
-from django.http import JsonResponse, HttpResponse, HttpResponseNotFound
+from django.http import (
+    JsonResponse,
+    HttpResponse,
+    HttpResponseNotFound,
+    Http404,
+    HttpResponseForbidden,
+)
 from django.contrib.auth.decorators import login_required
 import requests
 import re
@@ -836,6 +842,36 @@ def passthrough_embed_view(request, trigger):
 
 @never_cache
 @login_required
+def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
+    """
+    URLconf fallback for /pt/admin/<trigger>/ and nested paths. Middleware runs first;
+    this view runs if the middleware delegated (e.g. ordering quirks) or for clearer
+    login_required handling when the session is not yet authenticated.
+    """
+    from dose.models import UserTenantMembership
+    from dose.passthrough.middleware import run_pt_admin_passthrough_core
+    from dose.utils import get_current_tenant
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden("Tenant context is required for passthrough.")
+    u = request.user
+    if not u.is_superuser and not UserTenantMembership.objects.filter(
+        user=u, tenant=tenant
+    ).exists():
+        return HttpResponseForbidden("You do not have access to this tenant.")
+
+    resp = run_pt_admin_passthrough_core(request)
+    if resp is not None:
+        return resp
+    raise Http404(
+        "No enabled PassThroughEndpoint matches this URL, or the path is reserved "
+        "(e.g. mattermost static, PolySniffer building pen)."
+    )
+
+
+@never_cache
+@login_required
 def passthrough_display_shell_view(request):
     """
     Phase 1: render admin/display.html — orchestration bar + head/body buckets only.
@@ -848,6 +884,7 @@ def passthrough_display_shell_view(request):
             "display_title": "Passthrough display",
             "display_subtitle": "Shell (no proxified URLs yet)",
             "display_phase": "shell",
+            "display_shell_footer": "Test shell (/admin/passthrough-display/) — open a sidebar passthrough link for a live app.",
         },
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"

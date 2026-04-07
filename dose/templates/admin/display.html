@@ -62,7 +62,7 @@
         {{ display_body_inner|safe }}
     </div>
 
-    <small style="color:#666;">display.html shell — ready for testing via sidebar Mattermost link</small>
+    <small style="color:#666;">{{ display_shell_footer|default:"Passthrough display shell — trigger is shown when the handler sets display_shell_footer." }}</small>
 {% endblock %}
 
 {% block extrajs %}
@@ -180,10 +180,12 @@
     {% if display_odoo_pt_prefix %}
     <script>
     (function () {
-        var P = '{{ display_odoo_pt_prefix|escapejs }}';
+        console.log('[PolySaaS Odoo] Shim loaded - forcing action = null for clean start');
         if (window.odoo && window.odoo.__session_info__) {
-            window.odoo.__session_info__.action = null;   /* force Apps/home screen */
+            window.odoo.__session_info__.action = null;
+            console.log('[PolySaaS Odoo] Action forced to null');
         }
+        var P = '{{ display_odoo_pt_prefix|escapejs }}';
         function fix(u) {
             if (typeof u !== 'string' || !u) return u;
             if (/^https?:\/\//i.test(u)) {
@@ -227,6 +229,16 @@
             if (u.indexOf('/json/') === 0 || u.indexOf('/longpolling/') === 0) return P + u;
             return u;
         }
+        setTimeout(() => {
+            try {
+                localStorage.removeItem('odoo_last_action');
+                localStorage.removeItem('discuss_last_channel');
+                if (window.odoo && window.odoo.__session_info__) {
+                    window.odoo.__session_info__.action = null;
+                    console.log('[PolySaaS Odoo] Action forced to null + localStorage cleared');
+                }
+            } catch (e) {}
+        }, 3500);
         /* Odoo calls .addEventListener on registration.active (etc.); null caused TypeError. */
         if (navigator.serviceWorker) {
             navigator.serviceWorker.register = function () {

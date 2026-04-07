@@ -77,6 +77,17 @@ urlpatterns = [
         mattermost_static_proxy,
         name='mattermost_static_proxy',
     ),
+    # Generic passthrough triggers (odoo, gmail, …) — after specific pt/admin/* routes
+    path(
+        'pt/admin/<str:trigger>/',
+        __import__('dose.admin_views').admin_views.pt_admin_generic_passthrough_view,
+        name='pt_admin_trigger',
+    ),
+    path(
+        'pt/admin/<str:trigger>/<path:subpath>',
+        __import__('dose.admin_views').admin_views.pt_admin_generic_passthrough_view,
+        name='pt_admin_trigger_subpath',
+    ),
     path('admin/passthrough-embed/<str:trigger>/', __import__('dose.admin_views').admin_views.passthrough_embed_view, name='passthrough_embed'),
     path(
         'admin/passthrough-display/',
