@@ -832,3 +832,25 @@ def passthrough_embed_view(request, trigger):
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
     return response
+
+
+@never_cache
+@login_required
+def passthrough_display_shell_view(request):
+    """
+    Phase 1: render admin/display.html — orchestration bar + head/body buckets only.
+    No upstream HTML fetch and no URL rewriting; validates Jazzmin content shell.
+    """
+    response = render(
+        request,
+        "admin/display.html",
+        {
+            "display_title": "Passthrough display",
+            "display_subtitle": "Shell (no proxified URLs yet)",
+            "display_phase": "shell",
+        },
+    )
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response

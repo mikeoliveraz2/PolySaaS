@@ -193,13 +193,13 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
 
                 endpoint = PassThroughEndpoint.objects.filter(
                     trigger_path__iexact=trigger,
-                    is_enabled=True
-                ).first()
+                    is_enabled=True,
+                ).order_by("-id").first()
                 if endpoint is None and "_" in trigger:
                     endpoint = PassThroughEndpoint.objects.filter(
                         trigger_path__iexact=trigger.replace("_", ""),
                         is_enabled=True,
-                    ).first()
+                    ).order_by("-id").first()
                 print(f"[PT-MIDDLEWARE] endpoint={endpoint}")
 
                 if endpoint:

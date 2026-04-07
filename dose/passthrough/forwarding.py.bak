@@ -343,14 +343,45 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
         # ───────────────────────────────────────────────────────────────────
 
-        # Pass redirects straight through — make relative Locations absolute so browser hits upstream
+        # CRITICAL: Rewrite redirects to go through the proxy, NOT direct to upstream.
+        # This ensures all traffic flows through /pt/admin/{app}/ for PolySniffer and orchestration.
+        # DO NOT pass redirects directly to upstream - that bypasses the entire PolySaaS value.
         if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location", "/")
-            if location and not location.startswith(("http://", "https://")):
-                from urllib.parse import urlparse as _up
-                p = _up(target_url)
-                location = f"{p.scheme}://{p.netloc}{location if location.startswith('/') else '/' + location}"
-            print(f"FORWARDER — upstream {resp.status_code} redirect to {location}, passing through")
+            print(f"FORWARDER — upstream {resp.status_code} redirect to {location}")
+            
+            # Extract the proxy prefix from the original request path (e.g., /pt/admin/mattermost)
+            # so we can prepend it to the redirect location
+            original_path = request.path_info
+            proxy_prefix = ""
+            if original_path.startswith("/pt/"):
+                # Extract /pt/admin/{app}/ from the path
+                parts = original_path.strip("/").split("/")
+                if len(parts) >= 3:
+                    proxy_prefix = f"/{parts[0]}/{parts[1]}/{parts[2]}"  # /pt/admin/mattermost
+            
+            from urllib.parse import urlparse as _up
+            p = _up(endpoint_url)
+            upstream_origin = f"{p.scheme}://{p.netloc}"
+            
+            # Rewrite the location to go through the proxy
+            if location.startswith(upstream_origin):
+                # Absolute URL to upstream - strip origin and prepend proxy prefix
+                rel_path = location[len(upstream_origin):]
+                if not rel_path.startswith("/"):
+                    rel_path = "/" + rel_path
+                location = proxy_prefix + rel_path
+            elif location.startswith("/"):
+                # Relative path - prepend proxy prefix
+                location = proxy_prefix + location
+            elif location.startswith(("http://", "https://")):
+                # Absolute URL to different origin - pass through unchanged (external redirect)
+                pass
+            else:
+                # Relative path without leading slash
+                location = proxy_prefix + "/" + location
+            
+            print(f"FORWARDER — rewritten redirect to {location} (proxy prefix: {proxy_prefix})")
             redirect_response = HttpResponse(status=resp.status_code)
             redirect_response["Location"] = location
             return redirect_response

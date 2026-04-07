@@ -206,11 +206,11 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
 
         ep = PassThroughEndpoint.objects.filter(
             trigger_path__iexact=endpoint_name
-        ).order_by("-id").first()
+        ).first()
         if not ep:
             ep = PassThroughEndpoint.objects.filter(
                 trigger_path__icontains=endpoint_name
-            ).order_by("-id").first()
+            ).first()
         if not ep:
             return
 

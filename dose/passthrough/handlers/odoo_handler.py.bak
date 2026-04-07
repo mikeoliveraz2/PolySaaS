@@ -21,65 +21,8 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-# Prepended before Odoo <head> fragments in display shell only.
-# Rewrites fetch/XHR for /web, /mail, /bus, etc.; fixes SW scope under proxy.
-_DISPLAY_SHELL_RUNTIME_XHR_PATCH = (
-    '<script data-polysaas-odoo-display-xhr="1">'
-    "(function(){"
-    "var P='/pt/admin/odoo';"
-    "function fix(u){"
-    "if(typeof u!=='string'||!u)return u;"
-    "if(/^https?:\\/\\//i.test(u)){try{var o=window.location.origin;"
-    "if(u.indexOf(o)===0)u=u.slice(o.length);else return u;}catch(e){return u;}}"
-    "var pb=P+'/bus/'+P,pm=P+'/mail/'+P;"
-    "while(u.indexOf(pb)!==-1)u=u.split(pb).join(P+'/bus');"
-    "while(u.indexOf(pm)!==-1)u=u.split(pm).join(P+'/mail');"
-    "if(u.charAt(0)!=='/'){"
-    "if(u.indexOf('web/')===0||u.indexOf('odoo/')===0||u.indexOf('mail/')===0||u.indexOf('bus/')===0)"
-    "return P+'/'+u;"
-    "return u;"
-    "}"
-    "if(u.indexOf('/pt/')===0)return u;"
-    "if(u.indexOf('/web/')===0||u.indexOf('/odoo/')===0||u.indexOf('/mail/')===0||u.indexOf('/bus/')===0)"
-    "return P+u;"
-    "if(u.indexOf('/json/')===0||u.indexOf('/longpolling/')===0)return P+u;"
-    "return u;"
-    "}"
-    "if(navigator.serviceWorker&&navigator.serviceWorker.register){"
-    "var _swr=navigator.serviceWorker.register.bind(navigator.serviceWorker);"
-    "navigator.serviceWorker.register=function(swUrl,opts){"
-    "opts=Object.assign({},opts||{});"
-    "if(typeof location!=='undefined'&&location.origin)"
-    "opts.scope=location.origin+P+'/web/';"
-    "return _swr(swUrl,opts).catch(function(){return Promise.resolve(undefined);});"
-    "};"
-    "}"
-    "var ox=XMLHttpRequest.prototype.open;"
-    "XMLHttpRequest.prototype.open=function(){var a=[].slice.call(arguments);"
-    "a[1]=fix(a[1]);return ox.apply(this,a);};"
-    "var of=window.fetch;"
-    "window.fetch=function(input,init){"
-    "if(typeof input==='string'){input=fix(input);}"
-    "else if(input&&typeof Request!=='undefined'&&input instanceof Request){"
-    "var n=fix(input.url);if(n!==input.url)input=new Request(n,input);}"
-    "else if(input&&typeof URL!=='undefined'&&input instanceof URL){"
-    "var pu=input.pathname+(input.search||'')+(input.hash||'');var nf=fix(pu);"
-    "if(nf!==pu)input=new URL(nf,location.origin);}"
-    "return of.call(this,input,init);};"
-    "if(typeof Response!=='undefined'&&Response.prototype.json){"
-    "var _rj=Response.prototype.json;"
-    "Response.prototype.json=function(){"
-    "var self=this;"
-    "var ct=(self.headers&&self.headers.get)?(self.headers.get('content-type')||''):'';"
-    "var ctl=ct.toLowerCase();"
-    "if(ctl.indexOf('text/html')!==-1||ctl.indexOf('application/xhtml')!==-1){"
-    "return Promise.resolve(null);}"
-    "return _rj.call(self).catch(function(){return null;});"
-    "};"
-    "}"
-    "})();"
-    "</script>"
-)
+# Odoo display-shell fetch/XHR/SW runtime lives in templates/admin/display.html extrajs
+# (end of body) so it runs after Jazzmin sync scripts and before deferred Odoo modules.
 
 def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
     """
@@ -200,12 +143,6 @@ class OdooPassthroughHandler:
             display_body_inner, seg
         )
 
-        xhr_patch = _DISPLAY_SHELL_RUNTIME_XHR_PATCH.replace(
-            "var P='/pt/admin/odoo';",
-            "var P='%s';" % (proxy_prefix.replace("'", "\\'"),),
-        )
-        display_head_inner = xhr_patch + display_head_inner
-
         response = render(
             request,
             "admin/display.html",
@@ -216,6 +153,7 @@ class OdooPassthroughHandler:
                 "display_body_inner": mark_safe(display_body_inner)
                 if display_body_inner
                 else "",
+                "display_odoo_pt_prefix": proxy_prefix,
             },
         )
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -279,8 +217,8 @@ class OdooPassthroughHandler:
             try:
                 from dose.models import PassThroughEndpoint
                 ep = PassThroughEndpoint.objects.filter(
-                    trigger_path__iexact='odoo', is_enabled=True
-                ).first()
+                    trigger_path__iexact="odoo", is_enabled=True
+                ).order_by("-id").first()
                 if ep:
                     p = urlparse(ep.endpoint_url)
                     odoo_url = f"{p.scheme}://{p.netloc}"

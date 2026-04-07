@@ -181,6 +181,9 @@
     <script>
     (function () {
         var P = '{{ display_odoo_pt_prefix|escapejs }}';
+        if (window.odoo && window.odoo.__session_info__) {
+            window.odoo.__session_info__.action = null;   /* force Apps/home screen */
+        }
         function fix(u) {
             if (typeof u !== 'string' || !u) return u;
             if (/^https?:\/\//i.test(u)) {
@@ -202,7 +205,13 @@
             /* Already under this passthrough prefix — do not prefix again (avoids double /pt/admin/odoo/...). */
             if (u === P || u.startsWith(P + '/')) return u;
             if (u === '/mail' || u.startsWith('/mail/')) return P + u;
-            if (u === '/bus' || u.startsWith('/bus/')) return P + u;
+            /* Bus, worker bundles, and loose *worker* paths (not /web/… assets). Strip leading /odoo/ once to avoid P+/odoo/odoo/… */
+            if (u === '/bus' || u.startsWith('/bus/') || u.indexOf('websocket_worker_bundle') !== -1 || (u.indexOf('worker') !== -1 && u.indexOf('/web/') !== 0)) {
+                return P + u.replace(/^\/odoo\//, '/');
+            }
+            if (u === '/discuss' || u.startsWith('/discuss/') || u === '/odoo/discuss' || u.startsWith('/odoo/discuss/')) {
+                return P + u.replace(/^\/odoo\//, '/');
+            }
             /* Odoo bus — same-origin WS to /websocket (query allowed). */
             if (u === '/websocket' || /^\/websocket(\/|\?|$)/.test(u)) return P + u;
             if (u.startsWith('/web/dataset/') || u.startsWith('/web/action/') || u.startsWith('/jsonrpc')) return P + u;

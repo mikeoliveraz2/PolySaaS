@@ -446,19 +446,32 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     content_preview.short_description = "Content Preview"
 
     def save_model(self, request, obj, form, change):
+        from django.contrib import messages
+        from dose.utils import get_current_tenant
+
+        # TenantAwareModelAdmin saves into the schema for session tenant_id. If there is no
+        # tenant, the row is written to public — reloading under Oliver Enterprises reads
+        # olient and the edit looks "lost". AdminTenantSessionMiddleware only syncs
+        # tenant_id from UserProfile on /admin-panel/, not necessarily on /admin/.
+        if not get_current_tenant(request):
+            messages.warning(
+                request,
+                "No active tenant in session: this endpoint was saved in the public schema. "
+                "If the URL reverts after reload, open /admin-panel/ once (or ensure tenant_id "
+                "is in session), then edit again so the row saves to your tenant schema.",
+            )
+
         # Call parent save which will trigger the signal to create/update navigation items
         super().save_model(request, obj, form, change)
 
         # Show a success message about menu integration
         if obj.show_in_menu:
-            from django.contrib import messages
             menu_title = obj.get_menu_title()
             messages.success(
                 request,
                 f'✅ Passthrough endpoint saved successfully! Menu item "{menu_title}" will appear in the navigation for all tenants.'
             )
         else:
-            from django.contrib import messages
             messages.info(
                 request,
                 'Passthrough endpoint saved. Menu integration is disabled - no navigation item will be created.'

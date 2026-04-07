@@ -50,6 +50,20 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
 
 class OdooPassthroughHandler:
 
+    def upstream_url_for_subpath(self, endpoint_url, clean_path):
+        """
+        Initial HTML (path /): use the full configured endpoint_url (e.g. .../web/login).
+        All other upstream paths: only scheme://netloc + path so assets and RPC never stack
+        onto the login (or other entry) path from endpoint_url.
+        """
+        if not endpoint_url:
+            return None
+        parsed = urlparse(endpoint_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        if clean_path in ("/", ""):
+            return endpoint_url.rstrip("/") + "/"
+        return base.rstrip("/") + clean_path
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         GET under /pt/admin/<trigger>/: same display.html shell as root; not only exact root.
@@ -217,8 +231,8 @@ class OdooPassthroughHandler:
             try:
                 from dose.models import PassThroughEndpoint
                 ep = PassThroughEndpoint.objects.filter(
-                    trigger_path__iexact='odoo', is_enabled=True
-                ).first()
+                    trigger_path__iexact="odoo", is_enabled=True
+                ).order_by("-id").first()
                 if ep:
                     p = urlparse(ep.endpoint_url)
                     odoo_url = f"{p.scheme}://{p.netloc}"
