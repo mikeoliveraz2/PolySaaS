@@ -65,7 +65,8 @@
     <small style="color:#666;">display.html shell — ready for testing via sidebar Mattermost link</small>
 {% endblock %}
 
-{% block extrajs %}{{ block.super }}
+{% block extrajs %}
+{{ block.super }}
     {# Odoo mounts late; root may be #wrapwrap or .o_web_client (not always body direct). #}
     <script>
     (function () {
@@ -175,4 +176,163 @@
         }
     })();
     </script>
+    {# Odoo passthrough: must run at end of body (after Jazzmin extrajs) so XHR/fetch are patched before deferred Odoo modules execute. Head-inject div scripts are unreliable here. #}
+    {% if display_odoo_pt_prefix %}
+    <script>
+    (function () {
+        var P = '{{ display_odoo_pt_prefix|escapejs }}';
+        function fix(u) {
+            if (typeof u !== 'string' || !u) return u;
+            if (/^https?:\/\//i.test(u)) {
+                try {
+                    var o = window.location.origin;
+                    if (u.indexOf(o) === 0) u = u.slice(o.length);
+                    else return u;
+                } catch (e) {
+                    return u;
+                }
+            }
+            /* Collapse /mail/<P>/… and /bus/<P>/… (bad relative joins → double prefix in workers/RPC). */
+            var mailPad = '/mail/' + P, busPad = '/bus/' + P;
+            if (u === mailPad || u.indexOf(mailPad + '/') === 0) u = '/mail' + u.slice(mailPad.length);
+            if (u === busPad || u.indexOf(busPad + '/') === 0) u = '/bus' + u.slice(busPad.length);
+            var pb = P + '/bus/' + P, pm = P + '/mail/' + P;
+            while (u.indexOf(pb) !== -1) u = u.split(pb).join(P + '/bus');
+            while (u.indexOf(pm) !== -1) u = u.split(pm).join(P + '/mail');
+            /* Already under this passthrough prefix — do not prefix again (avoids double /pt/admin/odoo/...). */
+            if (u === P || u.startsWith(P + '/')) return u;
+            if (u === '/mail' || u.startsWith('/mail/')) return P + u;
+            if (u === '/bus' || u.startsWith('/bus/')) return P + u;
+            /* Odoo bus — same-origin WS to /websocket (query allowed). */
+            if (u === '/websocket' || /^\/websocket(\/|\?|$)/.test(u)) return P + u;
+            if (u.startsWith('/web/dataset/') || u.startsWith('/web/action/') || u.startsWith('/jsonrpc')) return P + u;
+            if (u.charAt(0) !== '/') {
+                if (u.indexOf('web/') === 0 || u.indexOf('odoo/') === 0 || u.indexOf('mail/') === 0 || u.indexOf('bus/') === 0) {
+                    return P + '/' + u;
+                }
+                return u;
+            }
+            if (u.indexOf('/web/') === 0 || u === '/odoo' || u.indexOf('/odoo/') === 0) {
+                return P + u;
+            }
+            if (u.indexOf('/json/') === 0 || u.indexOf('/longpolling/') === 0) return P + u;
+            return u;
+        }
+        /* Odoo calls .addEventListener on registration.active (etc.); null caused TypeError. */
+        if (navigator.serviceWorker) {
+            navigator.serviceWorker.register = function () {
+                function fakeWorker() {
+                    return {
+                        state: 'activated',
+                        scriptURL: '',
+                        postMessage: function () {},
+                        addEventListener: function () {},
+                        removeEventListener: function () {},
+                        dispatchEvent: function () { return true; }
+                    };
+                }
+                var reg = {
+                    scope: (typeof location !== 'undefined' ? location.origin : '') + P + '/web/',
+                    active: fakeWorker(),
+                    installing: null,
+                    waiting: null,
+                    navigationPreload: {
+                        enable: function () { return Promise.resolve(); },
+                        disable: function () { return Promise.resolve(); },
+                        setHeaderValue: function () { return Promise.resolve(); },
+                        getState: function () { return 'disabled'; }
+                    },
+                    update: function () { return Promise.resolve(reg); },
+                    unregister: function () { return Promise.resolve(true); },
+                    addEventListener: function () {},
+                    removeEventListener: function () {},
+                    dispatchEvent: function () { return true; }
+                };
+                reg.ready = Promise.resolve(reg);
+                return Promise.resolve(reg);
+            };
+        }
+        var _Worker = window.Worker;
+        if (_Worker) {
+            window.Worker = function (scriptURL, options) {
+                if (typeof scriptURL === 'string') scriptURL = fix(scriptURL);
+                return new _Worker(scriptURL, options);
+            };
+        }
+        var _SharedWorker = window.SharedWorker;
+        if (typeof _SharedWorker === 'function') {
+            window.SharedWorker = function (scriptURL, options) {
+                if (typeof scriptURL === 'string') scriptURL = fix(scriptURL);
+                return new _SharedWorker(scriptURL, options);
+            };
+        }
+        var ox = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function () {
+            var a = [].slice.call(arguments);
+            a[1] = fix(a[1]);
+            return ox.apply(this, a);
+        };
+        var _WS = window.WebSocket;
+        window.WebSocket = function (url, protocols) {
+            var u = url;
+            if (typeof u === 'string') {
+                if (/^wss?:\/\//i.test(u)) {
+                    try {
+                        var wu = new URL(u);
+                        if (wu.origin === location.origin) {
+                            var wp = wu.pathname + (wu.search || '') + (wu.hash || '');
+                            wp = fix(wp);
+                            u = wu.protocol + '//' + wu.host + wp;
+                        }
+                    } catch (e) {}
+                } else {
+                    u = fix(u);
+                    if (u.charAt(0) === '/') {
+                        u = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + u;
+                    }
+                }
+            }
+            if (protocols !== undefined) return new _WS(u, protocols);
+            return new _WS(u);
+        };
+        if (_WS.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WS.CONNECTING;
+        if (_WS.OPEN !== undefined) window.WebSocket.OPEN = _WS.OPEN;
+        if (_WS.CLOSING !== undefined) window.WebSocket.CLOSING = _WS.CLOSING;
+        if (_WS.CLOSED !== undefined) window.WebSocket.CLOSED = _WS.CLOSED;
+        /* WSGI passthrough cannot upgrade WS; force HTTP longpolling bus like full Odoo shim. */
+        function forceOdooLongPolling() {
+            try {
+                if (window.odoo && window.odoo.info) window.odoo.info.websocket = false;
+            } catch (e) {}
+        }
+        [0, 100, 500, 1000, 2000, 4000].forEach(function (ms) { setTimeout(forceOdooLongPolling, ms); });
+        var ofn = window.fetch;
+        window.fetch = function (input, init) {
+            if (typeof input === 'string') {
+                input = fix(input);
+            } else if (input && typeof Request !== 'undefined' && input instanceof Request) {
+                var n = fix(input.url);
+                if (n !== input.url) input = new Request(n, input);
+            } else if (input && typeof URL !== 'undefined' && input instanceof URL) {
+                var pu = input.pathname + (input.search || '') + (input.hash || '');
+                var nf = fix(pu);
+                if (nf !== pu) input = new URL(nf, location.origin);
+            }
+            return ofn.call(this, input, init);
+        };
+        if (typeof Response !== 'undefined' && Response.prototype.json) {
+            var _rj = Response.prototype.json;
+            Response.prototype.json = function () {
+                var self = this;
+                var ct = (self.headers && self.headers.get) ? (self.headers.get('content-type') || '') : '';
+                var ctl = ct.toLowerCase();
+                if (ctl.indexOf('text/html') !== -1 || ctl.indexOf('application/xhtml') !== -1) {
+                    return Promise.resolve(null);
+                }
+                return _rj.call(self).catch(function () { return null; });
+            };
+        }
+    })();
+    </script>
+    {% endif %}
 {% endblock %}

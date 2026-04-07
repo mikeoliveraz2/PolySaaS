@@ -21,7 +21,8 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-# Prepended before Odoo <head> fragments in display shell only. No SW handling.
+# Prepended before Odoo <head> fragments in display shell only.
+# Rewrites fetch/XHR for /web, /mail, /bus, etc.; fixes SW scope under proxy.
 _DISPLAY_SHELL_RUNTIME_XHR_PATCH = (
     '<script data-polysaas-odoo-display-xhr="1">'
     "(function(){"
@@ -30,10 +31,28 @@ _DISPLAY_SHELL_RUNTIME_XHR_PATCH = (
     "if(typeof u!=='string'||!u)return u;"
     "if(/^https?:\\/\\//i.test(u)){try{var o=window.location.origin;"
     "if(u.indexOf(o)===0)u=u.slice(o.length);else return u;}catch(e){return u;}}"
-    "if(u.charAt(0)!=='/')return u;"
-    "if(u.indexOf('/pt/')===0)return u;"
-    "if(u.indexOf('/web/')===0||u.indexOf('/odoo/')===0)return P+u;"
+    "var pb=P+'/bus/'+P,pm=P+'/mail/'+P;"
+    "while(u.indexOf(pb)!==-1)u=u.split(pb).join(P+'/bus');"
+    "while(u.indexOf(pm)!==-1)u=u.split(pm).join(P+'/mail');"
+    "if(u.charAt(0)!=='/'){"
+    "if(u.indexOf('web/')===0||u.indexOf('odoo/')===0||u.indexOf('mail/')===0||u.indexOf('bus/')===0)"
+    "return P+'/'+u;"
     "return u;"
+    "}"
+    "if(u.indexOf('/pt/')===0)return u;"
+    "if(u.indexOf('/web/')===0||u.indexOf('/odoo/')===0||u.indexOf('/mail/')===0||u.indexOf('/bus/')===0)"
+    "return P+u;"
+    "if(u.indexOf('/json/')===0||u.indexOf('/longpolling/')===0)return P+u;"
+    "return u;"
+    "}"
+    "if(navigator.serviceWorker&&navigator.serviceWorker.register){"
+    "var _swr=navigator.serviceWorker.register.bind(navigator.serviceWorker);"
+    "navigator.serviceWorker.register=function(swUrl,opts){"
+    "opts=Object.assign({},opts||{});"
+    "if(typeof location!=='undefined'&&location.origin)"
+    "opts.scope=location.origin+P+'/web/';"
+    "return _swr(swUrl,opts).catch(function(){return Promise.resolve(undefined);});"
+    "};"
     "}"
     "var ox=XMLHttpRequest.prototype.open;"
     "XMLHttpRequest.prototype.open=function(){var a=[].slice.call(arguments);"
@@ -43,28 +62,102 @@ _DISPLAY_SHELL_RUNTIME_XHR_PATCH = (
     "if(typeof input==='string'){input=fix(input);}"
     "else if(input&&typeof Request!=='undefined'&&input instanceof Request){"
     "var n=fix(input.url);if(n!==input.url)input=new Request(n,input);}"
+    "else if(input&&typeof URL!=='undefined'&&input instanceof URL){"
+    "var pu=input.pathname+(input.search||'')+(input.hash||'');var nf=fix(pu);"
+    "if(nf!==pu)input=new URL(nf,location.origin);}"
     "return of.call(this,input,init);};"
+    "if(typeof Response!=='undefined'&&Response.prototype.json){"
+    "var _rj=Response.prototype.json;"
+    "Response.prototype.json=function(){"
+    "var self=this;"
+    "var ct=(self.headers&&self.headers.get)?(self.headers.get('content-type')||''):'';"
+    "var ctl=ct.toLowerCase();"
+    "if(ctl.indexOf('text/html')!==-1||ctl.indexOf('application/xhtml')!==-1){"
+    "return Promise.resolve(null);}"
+    "return _rj.call(self).catch(function(){return null;});"
+    "};"
+    "}"
     "})();"
     "</script>"
 )
+
+def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
+    """
+    If True, try_root_display_shell_response returns None so the request is
+    forwarded to Odoo (JSON/binary/assets). Never use startswith('/web') alone —
+    it would false-match /website, /websocket, etc.
+    """
+    u = upstream_subpath or ""
+    if u == "/web" or u.startswith("/web/"):
+        return True
+    if u == "/bus" or u.startswith("/bus/"):
+        return True
+    if u == "/jsonrpc" or u.startswith("/jsonrpc/"):
+        return True
+    if u.startswith("/json/"):
+        return True
+    if u == "/longpolling" or u.startswith("/longpolling/"):
+        return True
+    if u == "/websocket" or u.startswith("/websocket/"):
+        return True
+    if u == "/mail" or u.startswith("/mail/"):
+        return True
+    return False
 
 
 class OdooPassthroughHandler:
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
-        GET /pt/admin/<trigger>/ root only: display.html shell like Mattermost.
-        Display shell: (1) string replace "/web/ and '/web/ in injected HTML;
-        (2) prepend minimal fetch + XHR patch so runtime /web/ and /odoo/ hit the proxy.
-        No service worker handling here.
+        GET under /pt/admin/<trigger>/: same display.html shell as root; not only exact root.
+        Upstream path = suffix after /pt/admin/<seg> (or / for root). Head always from HTML;
+        body inner only for non-root paths (root stays empty so the SPA owns #wrapwrap — avoids
+        double DOM vs server snapshot). quoted /web/ rewrite + XHR patch. Static ext → forward.
         """
         if request.method != "GET":
             return None
         seg = (
             url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
         )
-        if request.path_info.rstrip("/") != f"/pt/admin/{seg}":
+        proxy_prefix = f"/pt/admin/{seg}"
+        path_info = request.path_info
+        norm = path_info.rstrip("/")
+        if norm == proxy_prefix:
+            upstream_subpath = "/"
+        elif path_info.startswith(proxy_prefix + "/"):
+            upstream_subpath = path_info[len(proxy_prefix) :]
+            if not upstream_subpath.startswith("/"):
+                upstream_subpath = "/" + upstream_subpath
+        else:
             return None
+
+        # Before any display-shell work: API, bus, jsonrpc, and all of /web/* (not /website).
+        if _odoo_upstream_bypasses_display_shell(upstream_subpath):
+            return None
+
+        last_seg = path_info.rstrip("/").split("/")[-1]
+        if "." in last_seg:
+            ext = last_seg.rsplit(".", 1)[-1].lower()
+            if ext in (
+                "js",
+                "css",
+                "map",
+                "png",
+                "jpg",
+                "jpeg",
+                "gif",
+                "svg",
+                "ico",
+                "woff",
+                "woff2",
+                "ttf",
+                "eot",
+                "webp",
+                "json",
+                "wasm",
+            ):
+                return None
+
         from django.shortcuts import render
         from django.utils.safestring import mark_safe
 
@@ -75,7 +168,10 @@ class OdooPassthroughHandler:
 
         if endpoint is not None:
             raw_html = fetch_upstream_index_html(
-                request, endpoint.endpoint_url, "/", handler=self
+                request,
+                endpoint.endpoint_url,
+                upstream_subpath,
+                handler=self,
             )
             if raw_html and not raw_html.startswith("REDIRECT:"):
                 m = re.search(
@@ -86,16 +182,29 @@ class OdooPassthroughHandler:
                 if m:
                     head_raw = m.group(1).strip()
                     display_head_inner = self._strip_base_tags(head_raw)
+                # Root: do not inject upstream <body> — Odoo client mounts #wrapwrap; tuck script
+                # places it in the bucket. Injecting server body here broke Apps + Discuss layout.
+                if upstream_subpath.rstrip("/") not in ("", "/"):
+                    m_body = re.search(
+                        r"<body[^>]*>(.*?)</body>",
+                        raw_html,
+                        re.DOTALL | re.IGNORECASE,
+                    )
+                    if m_body:
+                        display_body_inner = m_body.group(1).strip()
 
         display_head_inner = self._rewrite_web_paths_for_display_shell(
-            display_head_inner
+            display_head_inner, seg
         )
         display_body_inner = self._rewrite_web_paths_for_display_shell(
-            display_body_inner
+            display_body_inner, seg
         )
 
-        # Must run before Odoo bundles parse: same-origin /web/* and /odoo/* -> /pt/admin/odoo/*
-        display_head_inner = _DISPLAY_SHELL_RUNTIME_XHR_PATCH + display_head_inner
+        xhr_patch = _DISPLAY_SHELL_RUNTIME_XHR_PATCH.replace(
+            "var P='/pt/admin/odoo';",
+            "var P='%s';" % (proxy_prefix.replace("'", "\\'"),),
+        )
+        display_head_inner = xhr_patch + display_head_inner
 
         response = render(
             request,
@@ -104,7 +213,9 @@ class OdooPassthroughHandler:
                 "display_head_inner": mark_safe(display_head_inner)
                 if display_head_inner
                 else "",
-                "display_body_inner": display_body_inner,
+                "display_body_inner": mark_safe(display_body_inner)
+                if display_body_inner
+                else "",
             },
         )
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -113,13 +224,14 @@ class OdooPassthroughHandler:
         return response
 
     @staticmethod
-    def _rewrite_web_paths_for_display_shell(html: str) -> str:
-        """Piccolo passo: quoted /web/... -> /pt/admin/odoo/web/..."""
+    def _rewrite_web_paths_for_display_shell(html: str, seg: str = "odoo") -> str:
+        """Quoted /web/... -> /pt/admin/<seg>/web/..."""
         if not html:
             return html
+        proxy_web = f"/pt/admin/{seg}/web/"
         return (
-            html.replace('"/web/', '"/pt/admin/odoo/web/')
-            .replace("'/web/", "'/pt/admin/odoo/web/")
+            html.replace('"/web/', f'"{proxy_web}')
+            .replace("'/web/", f"'{proxy_web}")
         )
 
     # ------------------------------------------------------------------ #
