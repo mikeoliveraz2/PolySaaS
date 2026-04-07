@@ -33,6 +33,8 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
     u = upstream_subpath or ""
     if u == "/web" or u.startswith("/web/"):
         return True
+    if u == "/website" or u.startswith("/website/"):
+        return True
     if u == "/bus" or u.startswith("/bus/"):
         return True
     if u == "/jsonrpc" or u.startswith("/jsonrpc/"):
@@ -88,7 +90,7 @@ class OdooPassthroughHandler:
         else:
             return None
 
-        # Before any display-shell work: API, bus, jsonrpc, and all of /web/* (not /website).
+        # Before any display-shell work: API, bus, jsonrpc, /web/*, /website/* (translations, etc.).
         if _odoo_upstream_bypasses_display_shell(upstream_subpath):
             return None
 
@@ -124,10 +126,16 @@ class OdooPassthroughHandler:
         display_body_inner = ""
 
         if endpoint is not None:
+            # Display shell root only: fetch /login on upstream base; path "/" unchanged for body logic.
+            fetch_path = (
+                "/web/login"
+                if upstream_subpath.rstrip("/") in ("", "/")
+                else upstream_subpath
+            )
             raw_html = fetch_upstream_index_html(
                 request,
                 endpoint.endpoint_url,
-                upstream_subpath,
+                fetch_path,
                 handler=self,
             )
             if raw_html and not raw_html.startswith("REDIRECT:"):
@@ -181,13 +189,16 @@ class OdooPassthroughHandler:
 
     @staticmethod
     def _rewrite_web_paths_for_display_shell(html: str, seg: str = "odoo") -> str:
-        """Quoted /web/... -> /pt/admin/<seg>/web/..."""
+        """Quoted /web/ and /website/ -> /pt/admin/<seg>/..."""
         if not html:
             return html
         proxy_web = f"/pt/admin/{seg}/web/"
+        proxy_site = f"/pt/admin/{seg}/website/"
         return (
             html.replace('"/web/', f'"{proxy_web}')
             .replace("'/web/", f"'{proxy_web}")
+            .replace('"/website/', f'"{proxy_site}')
+            .replace("'/website/", f"'{proxy_site}")
         )
 
     # ------------------------------------------------------------------ #
@@ -304,21 +315,27 @@ class OdooPassthroughHandler:
 
     def _rewrite_static_paths(self, html):
         """
-        Rewrite src/href attributes in <link>/<script>/<img> tags that start with /web/, /odoo/,
-        or /bus/ to go through our PolySaaS proxy at /pt/admin/odoo/.
+        Rewrite src/href attributes in <link>/<script>/<img> tags that start with /web/, /website/,
+        /odoo/, or /bus/ to go through our PolySaaS proxy at /pt/admin/odoo/.
         This must happen server-side because the browser fetches these before JS runs.
         Also rewrites CSS url() references inside <style> blocks (for @font-face).
         """
         def _rewrite_attr(m):
             prefix = m.group(1)
             path   = m.group(2)
-            if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
+            if (
+                path.startswith('/web/')
+                or path.startswith('/website/')
+                or path.startswith('/odoo/')
+                or path.startswith('/bus/')
+                or path.startswith('/websocket')
+            ):
                 path = '/pt/admin/odoo' + path
             return prefix + path
 
         # Rewrite href="..." and src="..." in tag attributes
         html = re.sub(
-            r'((?:href|src)=["\'])(/(?:web|odoo|bus|websocket)[^"\']*)',
+            r'((?:href|src)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
             _rewrite_attr, html,
         )
 
@@ -327,12 +344,18 @@ class OdooPassthroughHandler:
             quote = m.group(1) or ''
             path  = m.group(2)
             close = m.group(3) or ''
-            if path.startswith('/web') or path.startswith('/odoo') or path.startswith('/bus') or path.startswith('/websocket'):
+            if (
+                path.startswith('/web')
+                or path.startswith('/website')
+                or path.startswith('/odoo')
+                or path.startswith('/bus')
+                or path.startswith('/websocket')
+            ):
                 path = '/pt/admin/odoo' + path
             return f'url({quote}{path}{close})'
 
         html = re.sub(
-            r'url\((["\']?)(/(?:web|odoo|bus|websocket)[^)"\']*)(["\']?)\)',
+            r'url\((["\']?)(/(?:web|website|odoo|bus|websocket)[^)"\']*)(["\']?)\)',
             _rewrite_css_url, html,
         )
         return html
