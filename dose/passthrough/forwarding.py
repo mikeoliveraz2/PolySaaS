@@ -223,8 +223,10 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             # Remove any conflicting headers that break Odoo assets
             outbound_headers.pop('Referer', None)
             
-            # Follow redirects for Odoo internally to avoid jailbreaks
-            odoo_internal_redirects = True
+            # Follow redirects for GET only. For POST (login forms), never follow — the browser
+            # must receive the 302 + Set-Cookie directly so it can carry the new session_id on
+            # the follow-up GET. Following POST redirects server-side loses the new cookie.
+            odoo_internal_redirects = (request.method == 'GET')
         else:
             odoo_internal_redirects = False
 
