@@ -126,9 +126,9 @@ class OdooPassthroughHandler:
         display_body_inner = ""
 
         if endpoint is not None:
-            # Display shell root only: fetch /login on upstream base; path "/" unchanged for body logic.
+            # Display shell root only: fetch /web on upstream base; path "/" unchanged for body logic.
             fetch_path = (
-                "/web/login"
+                "/web"
                 if upstream_subpath.rstrip("/") in ("", "/")
                 else upstream_subpath
             )

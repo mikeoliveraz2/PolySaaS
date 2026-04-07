@@ -59,7 +59,7 @@
 
     <div id="polysaas-display-body-bucket">
         <div id="polysaas-display-head-inject" aria-hidden="true">{{ display_head_inner|safe }}</div>
-        {{ display_body_inner|safe }}
+        <pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px; background: #111; color: #0f0; padding: 10px; max-height: 600px; overflow: auto;">{{ display_body_inner }}</pre>
     </div>
 
     <small style="color:#666;">{{ display_shell_footer|default:"Passthrough display shell — trigger is shown when the handler sets display_shell_footer." }}</small>
@@ -186,7 +186,10 @@
             console.log('[PolySaaS Odoo] Action forced to null');
         }
         var P = '{{ display_odoo_pt_prefix|escapejs }}';
+        console.log('[PolySaaS Odoo DEBUG] Shim started - P =', P);
+        console.log('[PolySaaS Odoo DEBUG] Initial fetch path being used:', 'check network for first /pt/admin/odoo/ request');
         function fix(u) {
+            console.log('[PolySaaS Odoo DEBUG] fix() called with url:', u);
             if (typeof u !== 'string' || !u) return u;
             if (/^https?:\/\//i.test(u)) {
                 try {
@@ -217,13 +220,15 @@
             /* Odoo bus — same-origin WS to /websocket (query allowed). */
             if (u === '/websocket' || /^\/websocket(\/|\?|$)/.test(u)) return P + u;
             if (u.startsWith('/web/dataset/') || u.startsWith('/web/action/') || u.startsWith('/jsonrpc')) return P + u;
+            /* Website / translations / frontend lazy assets (else GET /website/... 404s on PolySaaS host). */
+            if (u === '/website' || u.startsWith('/website/')) return P + u;
             if (u.charAt(0) !== '/') {
-                if (u.indexOf('web/') === 0 || u.indexOf('odoo/') === 0 || u.indexOf('mail/') === 0 || u.indexOf('bus/') === 0) {
+                if (u.indexOf('web/') === 0 || u.indexOf('website/') === 0 || u.indexOf('odoo/') === 0 || u.indexOf('mail/') === 0 || u.indexOf('bus/') === 0) {
                     return P + '/' + u;
                 }
                 return u;
             }
-            if (u.indexOf('/web/') === 0 || u === '/odoo' || u.indexOf('/odoo/') === 0) {
+            if (u.indexOf('/web/') === 0 || u.indexOf('/website/') === 0 || u === '/odoo' || u.indexOf('/odoo/') === 0) {
                 return P + u;
             }
             if (u.indexOf('/json/') === 0 || u.indexOf('/longpolling/') === 0) return P + u;
