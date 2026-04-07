@@ -302,10 +302,8 @@
   </style>
 
   <script>
-    // Sidebar uses admin_navigation passthrough_services (context); Jazzmin middleware
-    // prefetch request.passthrough_endpoints can be empty — do not treat 0 as "no services".
-    console.log('TENANT DEBUG: Passthrough sidebar services (context):', {{ passthrough_services|length|default:0 }});
-    console.log('TENANT DEBUG: request.passthrough_endpoints (Jazzmin prefetch):', {{ request.passthrough_endpoints|length }});
+    // Simple debug logging to confirm middleware is working
+    console.log('TENANT DEBUG: Passthrough endpoints count:', {{ request.passthrough_endpoints|length }});
     {% if request.tenant %}
     console.log('TENANT DEBUG: Current tenant:', '{{ request.tenant.name|escapejs }}');
     {% endif %}

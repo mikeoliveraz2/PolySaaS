@@ -823,11 +823,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebarUnreadDropdown = document.getElementById('sidebar-unread-dropdown');
 
     if (sidebarBellBtn && sidebarUnreadDropdown) {
+        function unreadJsonOrNull(response) {
+            if (!response.ok) return Promise.resolve(null);
+            var ct = response.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') === -1) return Promise.resolve(null);
+            return response.json().catch(function () { return null; });
+        }
         // Update unread count and populate dropdown (just fetch, don't mark as read)
         function updateSidebarUnreadCount() {
             fetch('/dose/api/unread-dosemessages/')
-                .then(response => response.json())
+                .then(unreadJsonOrNull)
                 .then(data => {
+                    if (!data) return;
                     const count = data.count || 0;
                     const countSpan = document.getElementById('sidebar-unread-count');
                     if (countSpan) {
@@ -850,21 +857,24 @@ document.addEventListener('DOMContentLoaded', function() {
                             messagesList.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">No unread messages</div>';
                         }
                     }
-                });
+                })
+                .catch(function () {});
         }
 
         // Update only the count (without clearing the message list)
         function updateCountOnly() {
             fetch('/dose/api/unread-dosemessages/')
-                .then(response => response.json())
+                .then(unreadJsonOrNull)
                 .then(data => {
+                    if (!data) return;
                     const count = data.count || 0;
                     const countSpan = document.getElementById('sidebar-unread-count');
                     if (countSpan) {
                         countSpan.textContent = count;
                         countSpan.style.display = count > 0 ? 'inline-block' : 'none';
                     }
-                });
+                })
+                .catch(function () {});
         }
 
         // Initial load

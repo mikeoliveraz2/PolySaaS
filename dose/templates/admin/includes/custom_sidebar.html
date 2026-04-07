@@ -3,8 +3,8 @@
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
-    /* Header height — must match AdminLTE fixed navbar */
-    :root { --pss-header-h: 40px; }
+    /* Header height — must match AdminLTE fixed navbar (57px is standard Jazzmin height) */
+    :root { --pss-header-h: 57px; }
 
     /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
     .admin-content-grid {
@@ -90,11 +90,37 @@
 
     .collapsible-nav.collapsed .nav-header {
         justify-content: center;
-        padding: 12px 5px;
+        padding: 8px 5px;
+        background: #2563eb !important;   /* bright blue — unmistakably a button */
+        border-bottom: 2px solid #1d4ed8;
+        min-height: 48px;
     }
 
     .collapsible-nav.collapsed .nav-header > span:first-child {
         display: none;
+    }
+
+    /* Make the fa-bars icon look like a proper restore button when collapsed */
+    .collapsible-nav.collapsed .nav-toggle {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        font-size: 1.3rem !important;
+        transition: background 0.2s ease;
+        cursor: pointer;
+    }
+
+    .collapsible-nav.collapsed .nav-toggle i {
+        font-size: 1.2rem;
+        color: #fff;
+    }
+
+    .collapsible-nav.collapsed .nav-header:hover .nav-toggle {
+        background: rgba(255,255,255,0.35);
     }
 
     .nav-header:hover {
@@ -105,6 +131,20 @@
         font-size: 1.3rem;
         transition: all 0.3s ease;
         font-weight: normal;
+    }
+
+    /* applyFont() in base_site.html sets el.style.fontFamily on every element,
+       overriding FA's glyph font and making icons vanish.
+       These !important rules beat the JS inline-style (no !important) and restore rendering. */
+    .nav-toggle i,
+    .nav-toggle i.fas,
+    .nav-toggle i.far,
+    .nav-toggle i.fab {
+        font-family: "Font Awesome 5 Free" !important;
+        font-weight: 900 !important;
+        font-size: inherit !important;
+        display: inline-block !important;
+        color: #fff !important;
     }
 
     .nav-items {
@@ -424,9 +464,9 @@
 <div class="admin-content-grid">
     <!-- Sidebar Column -->
     <div class="collapsible-nav" id="dose-custom-sidebar" style="">
-    <div class="nav-header" onclick="toggleDoseSidebar()">
+    <div class="nav-header" onclick="toggleDoseSidebar()" id="dose-nav-header" title="Collapse sidebar">
         <span>Navigation Bar</span>
-        <span class="nav-toggle" id="dose-nav-toggle">☰</span>
+        <span class="nav-toggle" id="dose-nav-toggle"><i class="fas fa-bars"></i></span>
     </div>
     <div class="nav-items" id="dose-nav-items">
         <!-- DEBUG: Log context data for admin sidebar -->
@@ -690,8 +730,27 @@ document.addEventListener('DOMContentLoaded', function() {
             sidebar.classList.add('collapsed');
             document.body.classList.add('polysaas-collapsed');
             if (grid) grid.classList.add('sidebar-collapse');
+            // Apply blue + icon styles inline (same as toggleDoseSidebar collapsed path)
+            const header = document.getElementById('dose-nav-header');
+            if (header) {
+                header.title = 'Expand sidebar';
+                header.style.background = '#2563eb';
+                header.style.borderBottom = '2px solid #1d4ed8';
+                header.style.justifyContent = 'center';
+            }
             const toggle = document.getElementById('dose-nav-toggle');
-            if (toggle) toggle.style.transform = 'rotate(90deg)';
+            if (toggle) {
+                toggle.style.transform = '';
+                toggle.style.display = 'inline-flex';
+                toggle.style.alignItems = 'center';
+                toggle.style.justifyContent = 'center';
+                toggle.style.width = '40px';
+                toggle.style.height = '40px';
+                toggle.style.fontSize = '1.3rem';
+                toggle.style.color = '#fff';
+                toggle.style.background = 'rgba(255,255,255,0.2)';
+                toggle.style.borderRadius = '8px';
+            }
         }
     } else {
         console.error('[ADMIN SIDEBAR] ERROR: dose-custom-sidebar not found!');
@@ -936,7 +995,32 @@ function toggleDoseSidebar() {
     document.body.classList.toggle('polysaas-collapsed', isCollapsed);
     localStorage.setItem('pss_sidebar_collapsed', isCollapsed ? '1' : '0');
 
-    // Rotate hamburger icon
-    navToggle.style.transform = isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
+    // Drive blue header background + tooltip via JS (overrides any CSS conflicts)
+    const header = document.getElementById('dose-nav-header');
+    if (header) {
+        header.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+        header.style.background = isCollapsed ? '#2563eb' : '';
+        header.style.borderBottom = isCollapsed ? '2px solid #1d4ed8' : '';
+        header.style.justifyContent = isCollapsed ? 'center' : '';
+    }
+    // No rotation — fa-bars rotated 90° looks like ||| not ☰
+    navToggle.style.transform = '';
+    // Make icon clearly visible in both states
+    navToggle.style.display = 'inline-flex';
+    navToggle.style.alignItems = 'center';
+    navToggle.style.justifyContent = 'center';
+    navToggle.style.fontSize = '1.3rem';
+    navToggle.style.color = '#fff';
+    if (isCollapsed) {
+        navToggle.style.width = '40px';
+        navToggle.style.height = '40px';
+        navToggle.style.background = 'rgba(255,255,255,0.2)';
+        navToggle.style.borderRadius = '8px';
+    } else {
+        navToggle.style.width = '';
+        navToggle.style.height = '';
+        navToggle.style.background = '';
+        navToggle.style.borderRadius = '';
+    }
 }
 </script>
