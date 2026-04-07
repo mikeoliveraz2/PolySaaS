@@ -307,6 +307,7 @@ class OdooPassthroughHandler:
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
+        html_str = self._clear_login_field(html_str)
         # Rewrite initial HTML asset paths BEFORE the JS shim runs.
         # <link> and <script> tags are fetched by the browser before JS executes, so we must
         # rewrite them server-side to route through our proxy.
@@ -335,9 +336,11 @@ class OdooPassthroughHandler:
                 path = '/pt/admin/odoo' + path
             return prefix + path
 
-        # Rewrite href="...", src="...", and action="..." in tag attributes
+        # Rewrite href="..." and src="..." in tag attributes (NOT action — Odoo's onsubmit
+        # overrides action back to /web/login before submission; rewriting it is pointless
+        # and risks breaking the form if onsubmit fails to fire).
         html = re.sub(
-            r'((?:href|src|action)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
+            r'((?:href|src)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
             _rewrite_attr, html,
         )
 
@@ -365,6 +368,14 @@ class OdooPassthroughHandler:
     # ------------------------------------------------------------------ #
     # HTML cleaners                                                        #
     # ------------------------------------------------------------------ #
+
+    def _clear_login_field(self, html):
+        """Clear any pre-filled login/email value Odoo puts back after a failed attempt."""
+        return re.sub(
+            r'(<input[^>]+name=["\']login["\'][^>]+)\bvalue=["\'][^"\']*["\']',
+            r'\1value=""',
+            html, flags=re.IGNORECASE,
+        )
 
     def _strip_base_tags(self, html):
         """Odoo ships <base href="/odoo/"> which breaks the Jazzmin embed."""
