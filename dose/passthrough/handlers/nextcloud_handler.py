@@ -103,6 +103,21 @@ def _nc_proxy_prefix_from_endpoint(endpoint) -> str:
     return f"/pt/admin/{seg}"
 
 
+def _nc_netloc_variants(endpoint_url: str) -> tuple:
+    """Host:port forms Nextcloud may use in redirects (localhost vs 127.0.0.1)."""
+    if not endpoint_url:
+        return ("localhost:8888", "127.0.0.1:8888")
+    n = urlparse(endpoint_url).netloc
+    if not n:
+        return ("localhost:8888", "127.0.0.1:8888")
+    out = {n}
+    if "localhost" in n:
+        out.add(n.replace("localhost", "127.0.0.1", 1))
+    if "127.0.0.1" in n:
+        out.add(n.replace("127.0.0.1", "localhost", 1))
+    return tuple(out)
+
+
 def _nc_root_path_should_proxy(path: str, proxy_prefix: str) -> bool:
     """True if path is a Nextcloud root-relative URL that should be served under proxy_prefix."""
     if not path or not path.startswith("/"):
@@ -233,6 +248,7 @@ class NextcloudPassthroughHandler:
         if endpoint is not None:
             _parsed = urlparse(endpoint.endpoint_url)
             _base = f"{_parsed.scheme}://{_parsed.netloc}"
+            nc_netlocs = _nc_netloc_variants(endpoint.endpoint_url)
 
             fetch_path = upstream_subpath if upstream_subpath not in ("", "/") else "/"
             # Include query string so Nextcloud receives params like ?direct=1&user=admin.
@@ -241,10 +257,33 @@ class NextcloudPassthroughHandler:
             qs = request.META.get("QUERY_STRING", "")
             if qs:
                 fetch_path = fetch_path + "?" + qs
-            raw_html, upstream_set_cookies = self._fetch_nc_html(_base, fetch_path, proxy_prefix, request)
+            raw_html, upstream_set_cookies, fetch_dbg = self._fetch_nc_html(
+                _base, fetch_path, proxy_prefix, request
+            )
+
+            if (
+                fetch_dbg
+                and endpoint is not None
+                and raw_html
+                and not raw_html.startswith("REDIRECT:")
+            ):
+                from dose.passthrough.stream_debug import log_handler_fetched_html_if_debug
+
+                log_handler_fetched_html_if_debug(
+                    request,
+                    endpoint,
+                    phase="nextcloud_display_shell_fetch",
+                    target_url=fetch_dbg["target_url"],
+                    status_code=fetch_dbg["status"],
+                    content_type=fetch_dbg.get("content_type", ""),
+                    body_text=raw_html,
+                    set_cookie_lines=fetch_dbg.get("set_cookie_lines") or [],
+                )
 
             # If upstream redirected to a PolySaaS URL outside the proxy prefix → browser redirect
-            redir = self._display_shell_redirect_from_fetch(raw_html, request, proxy_prefix)
+            redir = self._display_shell_redirect_from_fetch(
+                raw_html, request, proxy_prefix, nc_netlocs
+            )
             if redir is not None:
                 # Forward Set-Cookie on redirects too (e.g. post-login redirect carries nc_session)
                 self._apply_set_cookies(redir, upstream_set_cookies)
@@ -308,7 +347,7 @@ class NextcloudPassthroughHandler:
     def _fetch_nc_html(base: str, path: str, proxy_prefix: str, request):
         """
         Fetch HTML from Nextcloud upstream.
-        Returns a tuple (html_str, set_cookie_raw_list).
+        Returns a tuple (html_str, set_cookie_raw_list, debug_meta_or_none).
 
         KEY INSIGHT: When fetching via 'localhost', Nextcloud matches its OVERWRITEHOST
         setting and issues redirect loops back to the PolySaaS host. Fetching via
@@ -346,7 +385,7 @@ class NextcloudPassthroughHandler:
                                allow_redirects=False, timeout=30)
             except Exception as exc:
                 print(f"[NC_FETCH] Request failed: {exc}")
-                return ""
+                return "", set_cookies, None
 
             print(f"[NC_FETCH] Hop {hop}: Status {resp.status_code}")
 
@@ -359,9 +398,15 @@ class NextcloudPassthroughHandler:
                 ct = resp.headers.get("Content-Type", "")
                 if "text/html" in ct:
                     print(f"[NC_FETCH] Got HTML ({len(resp.content)} bytes)")
-                    return resp.text, set_cookies
+                    dbg = {
+                        "target_url": url,
+                        "status": 200,
+                        "content_type": ct,
+                        "set_cookie_lines": list(set_cookies),
+                    }
+                    return resp.text, set_cookies, dbg
                 print(f"[NC_FETCH] Non-HTML content-type: {ct}")
-                return "", set_cookies
+                return "", set_cookies, None
 
             if resp.status_code in (301, 302, 303, 307, 308):
                 loc = resp.headers.get("Location", "")
@@ -390,7 +435,7 @@ class NextcloudPassthroughHandler:
                 nc_origins = (fetch_base, fetch_base.replace("127.0.0.1", "localhost"))
                 if loc_origin not in nc_origins:
                     # Cross-origin redirect (e.g. to PolySaaS or external) — let caller handle
-                    return f"REDIRECT:{resp.status_code}:{loc}", set_cookies
+                    return f"REDIRECT:{resp.status_code}:{loc}", set_cookies, None
                 # Same-origin absolute: extract path and continue fetching
                 current_path = loc_parsed.path
                 if loc_parsed.query:
@@ -399,10 +444,10 @@ class NextcloudPassthroughHandler:
 
             # Any other status
             print(f"[NC_FETCH] Unexpected status {resp.status_code}")
-            return "", set_cookies
+            return "", set_cookies, None
 
         print("[NC_FETCH] Exceeded hop limit")
-        return "", set_cookies
+        return "", set_cookies, None
 
     @staticmethod
     def _apply_set_cookies(response, set_cookie_raw_list):
@@ -421,13 +466,13 @@ class NextcloudPassthroughHandler:
                 print(f"[NC_FETCH] Set-Cookie parse error: {e}")
 
     @staticmethod
-    def _display_shell_redirect_from_fetch(raw_html, request, proxy_prefix):
+    def _display_shell_redirect_from_fetch(raw_html, request, proxy_prefix, nc_netlocs):
         """
         _fetch_nc_html returns REDIRECT:status:url when upstream returns a redirect.
         This handles two cases:
         1. Nextcloud redirects to PolySaaS host (localhost:8000) with proxy prefix baked in
            → just use the path as-is
-        2. Nextcloud redirects to its own origin (localhost:8888) without proxy prefix
+        2. Nextcloud redirects to its own origin (port from endpoint URL) without proxy prefix
            → prepend proxy_prefix so the browser goes through PolySaaS
         """
         if not raw_html or not raw_html.startswith("REDIRECT:"):
@@ -449,10 +494,9 @@ class NextcloudPassthroughHandler:
                 target = f"{path}?{loc_parsed.query}"
             return HttpResponseRedirect(target)
         
-        # Case 2: Redirect to Nextcloud's origin (e.g. http://localhost:8888/apps/dashboard/)
+        # Case 2: Redirect to Nextcloud's origin (e.g. http://127.0.0.1:8888/apps/dashboard/)
         # Convert to proxy path so browser stays in PolySaaS
-        nc_origins = ("localhost:8888", "127.0.0.1:8888")
-        if loc_parsed.netloc in nc_origins:
+        if loc_parsed.netloc in nc_netlocs:
             target = f"{proxy_prefix}{path}"
             if loc_parsed.query:
                 target = f"{target}?{loc_parsed.query}"
@@ -488,13 +532,16 @@ class NextcloudPassthroughHandler:
     # HTML processing (called by forwarding.py for non-shell responses)
     # ------------------------------------------------------------------
 
-    def process_html_response(self, html_str, response, endpoint_url=None, *args, **kwargs):
+    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         """Rewrite URLs in proxied HTML that bypasses the display shell."""
         if not endpoint_url:
             return html_str, None
         parsed = urlparse(endpoint_url)
         base = f"{parsed.scheme}://{parsed.netloc}"
-        proxy_prefix = "/pt/admin/nextcloud"
+        ep = getattr(request, "_passthrough_endpoint", None)
+        proxy_prefix = (
+            _nc_proxy_prefix_from_endpoint(ep) if ep is not None else "/pt/admin/nextcloud"
+        )
         html_str = self._rewrite_nc_paths(html_str, proxy_prefix, base)
         
         # Inject shim + _oc_webroot at the START of <head>, BEFORE oc.js loads
@@ -619,9 +666,9 @@ class NextcloudPassthroughHandler:
     @staticmethod
     def _build_early_shim(proxy_prefix: str, base: str) -> str:
         """
-        Minimal JS shim injected before Nextcloud's inline scripts.
-        Patches fetch, XHR, and navigation so same-origin Nextcloud calls route through proxy.
-        Also patches OC.generateUrl / OC.filePath.
+        Full client shim (aligned with Mattermost pattern): fetch, XHR, WebSocket,
+        PolySaaS-path guard, script/link/img setters + setAttribute, OC.generateUrl,
+        history, login form fixes.
         """
         nc_paths_js = json.dumps(
             list(dict.fromkeys(list(_NC_PROXY_PATH_PREFIXES) + ["/csrftoken"]))
@@ -636,6 +683,9 @@ document.documentElement.setAttribute('data-oc-webroot', {json.dumps(proxy_prefi
 var PROXY={json.dumps(proxy_prefix)};
 var BASE={json.dumps(base)};
 var NC_PATHS={nc_paths_js};
+var O=window.location.origin;
+var PS_PREFIXES=['/static/admin/','/static/img/','/admin/','/dose/','/media/','/accounts/','/pt/','/favicon'];
+function _isPS(p){{for(var i=0;i<PS_PREFIXES.length;i++){{if(p.startsWith(PS_PREFIXES[i]))return true;}}return false;}}
 
 // Force-fix form actions after Vue renders — we know the correct action path
 function _fixLoginForms() {{
@@ -672,15 +722,19 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 function _toProxy(u){{
     if(!u||typeof u!=='string')return u;
-    // Absolute upstream URL
     if(u.indexOf(BASE)===0)return PROXY+u.slice(BASE.length);
-    // Already proxied
     if(u.startsWith(PROXY))return u;
+    if(u.startsWith(O+'/')){{
+        u=u.slice(O.length);
+        if(!u.startsWith('/'))u='/'+u;
+    }}else if(u.startsWith('http:')||u.startsWith('https:')){{
+        return u;
+    }}
+    if(u.charAt(0)==='/'&&_isPS(u))return u;
     if(u.charAt(0)==='/'){{
         for(var i=0;i<NC_PATHS.length;i++){{
-            if(u.startsWith(NC_PATHS[i])||u===NC_PATHS[i].replace(/\\/$/,'')){{
-                return PROXY+u;
-            }}
+            var p=NC_PATHS[i];
+            if(u.startsWith(p)||u===p.replace(/\\/$/,''))return PROXY+u;
         }}
     }}
     return u;
@@ -702,6 +756,50 @@ XMLHttpRequest.prototype.open=function(){{
     var a=Array.prototype.slice.call(arguments);
     a[1]=_toProxy(a[1]);
     return _x.apply(this,a);
+}};
+
+var _WS=WebSocket;
+window.WebSocket=function(url,protocols){{
+    if(typeof url==='string'){{
+        try{{
+            var u=new URL(url,location.href);
+            u.hostname=location.hostname;
+            u.port=location.port||'';
+            u.protocol=(location.protocol==='https:')?'wss:':'ws:';
+            if(!u.pathname.startsWith('/pt/'))u.pathname=PROXY+u.pathname;
+            url=u.toString();
+            console.log('[PolySaaS Nextcloud] WebSocket via proxy:',url);
+        }}catch(e){{console.warn('[PolySaaS Nextcloud] WebSocket rewrite:',e);}}
+    }}
+    if(protocols!==undefined)return new _WS(url,protocols);
+    return new _WS(url);
+}};
+if(_WS.CONNECTING!==undefined)window.WebSocket.CONNECTING=_WS.CONNECTING;
+if(_WS.OPEN!==undefined)window.WebSocket.OPEN=_WS.OPEN;
+if(_WS.CLOSING!==undefined)window.WebSocket.CLOSING=_WS.CLOSING;
+if(_WS.CLOSED!==undefined)window.WebSocket.CLOSED=_WS.CLOSED;
+
+function _patchProp(proto,prop){{
+    var d=Object.getOwnPropertyDescriptor(proto,prop);
+    if(!d||!d.set)return;
+    Object.defineProperty(proto,prop,{{
+        get:d.get,
+        set:function(v){{if(typeof v==='string')v=_toProxy(v);d.set.call(this,v);}},
+        configurable:true,enumerable:true
+    }});
+}}
+_patchProp(HTMLScriptElement.prototype,'src');
+_patchProp(HTMLLinkElement.prototype,'href');
+_patchProp(HTMLImageElement.prototype,'src');
+var _setAttr=Element.prototype.setAttribute;
+Element.prototype.setAttribute=function(name,value){{
+    if(typeof value==='string'){{
+        var ln=name.toLowerCase();
+        if((ln==='src'||ln==='href')&&
+            (this instanceof HTMLScriptElement||this instanceof HTMLLinkElement||this instanceof HTMLImageElement))
+            value=_toProxy(value);
+    }}
+    return _setAttr.call(this,name,value);
 }};
 
 // Patch OC.generateUrl (Nextcloud's URL builder)
@@ -745,7 +843,7 @@ history.replaceState=function(state,title,url){{
 _patchOC();
 [100,300,600,1200,2500].forEach(function(ms){{setTimeout(_patchOC,ms);}});
 
-console.log('[PolySaaS] Nextcloud shim active, proxy='+PROXY);
+console.log('[PolySaaS Nextcloud] Full shim active, proxy='+PROXY);
 }})();
 </script>
 """

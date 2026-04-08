@@ -117,38 +117,6 @@ def _emit(
     print(blob)
 
 
-def log_handler_fetched_html_if_debug(
-    request,
-    endpoint: Any | None,
-    *,
-    phase: str,
-    target_url: str,
-    status_code: int,
-    content_type: str,
-    body_text: str,
-    set_cookie_lines: Optional[List[str]] = None,
-) -> None:
-    """
-    Log HTML fetched inside a handler (e.g. Nextcloud display-shell server-side fetch).
-    Respects POLYSNIFFER_PASSTHROUGH_DEBUG and PassThroughEndpoint.passthrough_stream_debug.
-    """
-    if not passthrough_stream_debug_enabled(endpoint):
-        return
-    lines = set_cookie_lines or []
-    _emit(
-        phase,
-        request,
-        endpoint,
-        client_path=getattr(request, "path_info", "") or "",
-        upstream_path=None,
-        target_url=target_url,
-        status_code=status_code,
-        content_type=content_type or "",
-        body_text=body_text,
-        set_cookie_lines=lines,
-    )
-
-
 def log_upstream_response_if_debug(
     request,
     endpoint: Any | None,
