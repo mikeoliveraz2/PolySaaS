@@ -14,6 +14,8 @@ import logging
 import re
 from urllib.parse import urlparse
 
+from django.http import HttpResponseRedirect
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -95,7 +97,6 @@ class NextcloudPassthroughHandler:
             return None
 
         from django.shortcuts import render
-        from dose.passthrough.forwarding import fetch_upstream_index_html
 
         display_head_inner = ""
         display_body_inner = ""
@@ -105,12 +106,16 @@ class NextcloudPassthroughHandler:
             _base = f"{_parsed.scheme}://{_parsed.netloc}"
 
             fetch_path = upstream_subpath if upstream_subpath not in ("", "/") else "/"
-            raw_html = fetch_upstream_index_html(
-                request,
-                endpoint.endpoint_url,
-                fetch_path,
-                handler=self,
-            )
+            # Use our own fetch that handles Nextcloud's proxy-prefix redirects correctly.
+            # fetch_upstream_index_html follows same-origin redirects by prepending the upstream
+            # base, but Nextcloud may put /pt/admin/nextcloud/ in its Location headers (because
+            # it was initialised with OVERWRITEWEBROOT), causing a redirect loop.
+            raw_html = self._fetch_nc_html(_base, fetch_path, proxy_prefix, request)
+
+            # If upstream redirected to a PolySaaS URL outside the proxy prefix → browser redirect
+            redir = self._display_shell_redirect_from_fetch(raw_html, request, proxy_prefix)
+            if redir is not None:
+                return redir
 
             if raw_html and not raw_html.startswith("REDIRECT:"):
                 # Extract <head> content
@@ -141,6 +146,115 @@ class NextcloudPassthroughHandler:
                 "proxy_prefix": proxy_prefix,
             },
         )
+
+    @staticmethod
+    def _fetch_nc_html(base: str, path: str, proxy_prefix: str, request) -> str:
+        """
+        Fetch HTML from Nextcloud upstream.
+
+        KEY INSIGHT: When fetching via 'localhost', Nextcloud matches its OVERWRITEHOST
+        setting and issues redirect loops back to the PolySaaS host. Fetching via
+        '127.0.0.1' bypasses OVERWRITEHOST matching and returns HTML directly.
+        We normalise 'localhost' → '127.0.0.1' before making any request.
+        """
+        import requests as _rq
+
+        # Force IP address so Nextcloud's OVERWRITEHOST rule doesn't match.
+        fetch_base = base.replace("localhost", "127.0.0.1")
+
+        # Do NOT pass browser cookies — old nc_session cookies in the browser (from
+        # direct localhost:8888 access) cause Nextcloud to redirect away from /login
+        # instead of serving the page HTML, creating a redirect loop.  The display-shell
+        # fetch only needs the page structure; auth is handled by the login POST.
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; PolySaaS-Proxy/1.0)",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        current_path = path
+        for hop in range(6):
+            url = fetch_base.rstrip("/") + current_path
+            print(f"[NC_FETCH] Hop {hop}: GET {url}")
+            try:
+                resp = _rq.get(url, headers=headers, cookies={},
+                               allow_redirects=False, timeout=30)
+            except Exception as exc:
+                print(f"[NC_FETCH] Request failed: {exc}")
+                return ""
+
+            print(f"[NC_FETCH] Hop {hop}: Status {resp.status_code}")
+
+            if resp.status_code == 200:
+                ct = resp.headers.get("Content-Type", "")
+                if "text/html" in ct:
+                    print(f"[NC_FETCH] Got HTML ({len(resp.content)} bytes)")
+                    return resp.text
+                print(f"[NC_FETCH] Non-HTML content-type: {ct}")
+                return ""
+
+            if resp.status_code in (301, 302, 303, 307, 308):
+                loc = resp.headers.get("Location", "")
+                if not loc:
+                    break
+                print(f"[NC_FETCH] Redirect to: {loc}")
+
+                # Make relative paths absolute (they're relative to upstream origin, not proxy)
+                if loc.startswith("/"):
+                    # Strip proxy prefix if Nextcloud injected it
+                    if loc.startswith(proxy_prefix):
+                        loc = loc[len(proxy_prefix):]
+                        if not loc.startswith("/"):
+                            loc = "/" + loc
+                    # Strip double-appended proxy prefix loops
+                    while "/nextcloud/index.phpnextcloud" in loc or \
+                          "index.phpnextcloud" in loc:
+                        loc = loc.split("index.phpnextcloud")[0] + "index.php"
+                    current_path = loc
+                    continue
+
+                # Absolute URL — cross-origin means Nextcloud wants browser to go there
+                loc_parsed = urlparse(loc)
+                loc_origin = f"{loc_parsed.scheme}://{loc_parsed.netloc}"
+                if loc_origin != fetch_base:
+                    # Return as sentinel so caller can decide what to do
+                    return f"REDIRECT:{resp.status_code}:{loc}"
+                # Same-origin absolute: extract path
+                current_path = loc_parsed.path
+                if loc_parsed.query:
+                    current_path += "?" + loc_parsed.query
+                continue
+
+            # Any other status
+            print(f"[NC_FETCH] Unexpected status {resp.status_code}")
+            return ""
+
+        print("[NC_FETCH] Exceeded hop limit")
+        return ""
+
+    @staticmethod
+    def _display_shell_redirect_from_fetch(raw_html, request, proxy_prefix):
+        """
+        fetch_upstream_index_html returns REDIRECT:status:url when Location is not the same
+        origin as the upstream base (e.g. Nextcloud -> http://localhost:8000/pt/admin/nextcloud/login).
+        Tell the browser to follow that URL so the display shell loads on the next GET.
+        """
+        if not raw_html or not raw_html.startswith("REDIRECT:"):
+            return None
+        parts = raw_html.split(":", 2)
+        if len(parts) < 3:
+            return None
+        location = parts[2].strip()
+        if not location:
+            return None
+        loc_parsed = urlparse(location)
+        path = loc_parsed.path or ""
+        if not path.startswith(proxy_prefix):
+            return None
+        target = path
+        if loc_parsed.query:
+            target = f"{path}?{loc_parsed.query}"
+        return HttpResponseRedirect(target)
 
     # ------------------------------------------------------------------
     # URL resolution (called by forwarding.py)
