@@ -9,16 +9,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var lastId = 0;
     var captureCount = 0;
     var pollCount = 0;
-    var pollTimer = null;
-    var sniffingStopped = false;
 
     var countEl = document.getElementById('count');
     var updateEl = document.getElementById('last-update');
     var statusEl = document.getElementById('status');
     var pauseBtn = document.getElementById('pause-btn');
     var capturesEl = document.getElementById('captures');
-    var doneBtn = document.getElementById('done-btn');
-    var doneToast = document.getElementById('done-toast');
 
     capturesEl.innerHTML =
         '<div class="empty">' +
@@ -42,55 +38,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     window.togglePoll = function() {
-        if (sniffingStopped) return;
         polling = !polling;
         statusEl.className = 'status ' + (polling ? 'polling' : 'paused');
         statusEl.textContent = polling ? 'POLLING' : 'PAUSED';
         pauseBtn.textContent = polling ? 'Pause' : 'Resume';
     };
-
-    function showDoneToast() {
-        if (!doneToast) return;
-        doneToast.classList.add('show');
-        setTimeout(function() {
-            doneToast.classList.remove('show');
-        }, 4500);
-    }
-
-    function shutdownExtensionSniffer(reason) {
-        if (sniffingStopped) return;
-        sniffingStopped = true;
-        polling = false;
-        if (pollTimer != null) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-        }
-        statusEl.className = 'status paused';
-        statusEl.textContent = 'STOPPED';
-        if (pauseBtn) {
-            pauseBtn.disabled = true;
-            pauseBtn.textContent = 'Pause';
-        }
-        if (doneBtn) doneBtn.disabled = true;
-        window.postMessage(
-            { type: 'polysniffer-shutdown', source: 'live_capture', reason: reason || 'done' },
-            '*'
-        );
-        showDoneToast();
-    }
-
-    if (doneBtn) {
-        doneBtn.addEventListener('click', function() {
-            shutdownExtensionSniffer('done_button');
-        });
-    }
-
-    window.addEventListener('pagehide', function() {
-        shutdownExtensionSniffer('pagehide');
-    });
-    window.addEventListener('beforeunload', function() {
-        shutdownExtensionSniffer('beforeunload');
-    });
 
     window.clearAll = function() {
         capturesEl.innerHTML = '<div class="empty"><p>Cleared. Browse <strong>' + endpointName + '</strong> in the other tab to capture traffic.</p></div>';
@@ -99,7 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     function poll() {
-        if (!polling || sniffingStopped) return;
+        if (!polling) return;
         pollCount++;
         updateEl.textContent = 'Poll #' + pollCount + ' @ ' + new Date().toLocaleTimeString();
 
@@ -139,6 +91,6 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(function(e) { console.error('Poll error:', e); });
     }
 
-    pollTimer = setInterval(poll, 2000);
+    setInterval(poll, 2000);
     poll();
 });

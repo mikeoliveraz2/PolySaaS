@@ -119,14 +119,6 @@ class PassThroughEndpoint(models.Model):
         default=False,
         help_text="If True, inject PolySaaS API interceptor script to capture XHR/Fetch calls from SPAs (e.g., Airtable, Notion)"
     )
-    passthrough_stream_debug = models.BooleanField(
-        default=False,
-        help_text=(
-            "If True, log passthrough stream diagnostics (upstream + final HTML snippets, "
-            "asset URLs, Set-Cookie samples) to the server console. Or set "
-            "POLYSNIFFER_PASSTHROUGH_DEBUG in settings for all endpoints."
-        ),
-    )
 
     def __str__(self):
 

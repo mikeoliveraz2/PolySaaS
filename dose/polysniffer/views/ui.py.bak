@@ -262,6 +262,15 @@ def live_capture(request, endpoint_id):
             .btn-clear:hover {{ background: #c82333; }}
             .btn-pause {{ background: #ff9800; color: white; }}
             .btn-pause:hover {{ background: #f57c00; }}
+            .btn-done {{ background: #2e7d32; color: white; font-weight: bold; }}
+            .btn-done:hover {{ background: #1b5e20; }}
+            #done-toast {{
+                display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+                background: #1b5e20; color: #fff; padding: 12px 22px; border-radius: 8px;
+                font-size: 14px; font-weight: 600; z-index: 99999; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            }}
+            #done-toast.show {{ display: block; animation: fadein 0.3s ease; }}
+            @keyframes fadein {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
             .stats {{ background: #2a2a2a; padding: 10px 20px; border-bottom: 1px solid #444; display: flex; gap: 30px; font-size: 13px; color: #aaa; }}
             .stats span {{ color: #0f0; font-weight: bold; }}
             .captures {{ padding: 10px 20px; overflow-y: auto; height: calc(100vh - 130px); }}
@@ -310,6 +319,7 @@ def live_capture(request, endpoint_id):
                 <button class="btn btn-open" onclick="window.open('{endpoint.endpoint_url}', '_blank')">Open {endpoint_name}</button>
                 <button id="pause-btn" class="btn btn-pause" onclick="togglePoll()">Pause</button>
                 <button class="btn btn-clear" onclick="clearAll()">Clear</button>
+                <button type="button" id="done-btn" class="btn btn-done" title="Stop extension capture and release the target tab">Done — stop sniffing</button>
             </div>
         </div>
         <div class="stats">
@@ -318,6 +328,7 @@ def live_capture(request, endpoint_id):
             Target: <span>{endpoint.endpoint_url}</span>
         </div>
         <div class="captures" id="captures"></div>
+        <div id="done-toast" role="status">PolySniffer stopped. Extension is idle — passthrough tabs behave normally.</div>
 
         <script src="/static/polysniffer/live_capture.js"></script>
     </body>

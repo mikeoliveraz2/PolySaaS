@@ -82,6 +82,8 @@ input:focus, select:focus {
 .btn-primary:hover { background: #00cc6a; }
 .btn-danger { background: #ff4444; color: #fff; }
 .btn-danger:hover { background: #cc3333; }
+.btn-done-sniff { background: #2e7d32; color: #fff; width: 100%; margin-top: 10px; font-weight: 700; }
+.btn-done-sniff:hover { background: #1b5e20; }
 .btn-success { background: #2196f3; color: #fff; width: 100%; margin-top: 6px; }
 .btn-success:hover { background: #1976d2; }
 .btn-accent { background: #9c27b0; color: #fff; width: 100%; margin-top: 6px; }

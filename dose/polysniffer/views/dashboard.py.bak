@@ -15,20 +15,52 @@ import json
 @staff_member_required
 def debug_dashboard(request):
     """
-    Debug dashboard - shows all captured traffic logs
-    Only accessible from within sniffer interface
+    Debug dashboard - shows captured traffic logs.
+
+    Query params:
+      source=passthrough — only rows logged by Django passthrough forwarder (full cookies, client_path).
+      source=browser — extension / silent-capture rows (capture_source=browser_extension).
+      (omit source) — all rows, including legacy rows with empty capture_source.
+      endpoint=... — filter by endpoint_name (icontains)
+      method=GET|POST — filter by HTTP method
     """
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden('Staff access required')
-    logs = TrafficLog.objects.all().order_by('-timestamp')[:100]
-    paginator = Paginator(logs, 20)
+
+    qs = TrafficLog.objects.all().order_by('-captured_at')
+    source = (request.GET.get('source') or '').strip().lower()
+    if source == 'passthrough':
+        qs = qs.filter(capture_source=TrafficLog.CAPTURE_PASSTHROUGH)
+    elif source in ('browser', 'browser_extension', 'ext'):
+        qs = qs.filter(capture_source=TrafficLog.CAPTURE_BROWSER_EXT)
+
+    ep = (request.GET.get('endpoint') or '').strip()
+    if ep:
+        qs = qs.filter(endpoint_name__icontains=ep)
+
+    method = (request.GET.get('method') or '').strip().upper()
+    if method in ('GET', 'POST', 'PUT', 'PATCH', 'DELETE'):
+        qs = qs.filter(method=method)
+
+    total_logs = qs.count()
+    paginator = Paginator(qs, 20)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
+
+    endpoints = (
+        TrafficLog.objects.exclude(endpoint_name='')
+        .values_list('endpoint_name', flat=True)
+        .distinct()
+        .order_by('endpoint_name')[:50]
+    )
+
     context = {
         'logs': page_obj,
-        'total_logs': logs.count(),
-        'page_obj': page_obj
+        'total_logs': total_logs,
+        'page_obj': page_obj,
+        'endpoints': list(endpoints),
+        'source_filter': source,
     }
     return render(request, 'polysniffer/dashboard.html', context)
 
@@ -56,7 +88,7 @@ def export_har(request, log_id=None):
     if log_id:
         logs = TrafficLog.objects.filter(id=log_id)
     else:
-        logs = TrafficLog.objects.all().order_by('-timestamp')[:100]
+        logs = TrafficLog.objects.all().order_by('-captured_at')[:100]
 
     har_data = {
         "log": {
@@ -71,7 +103,7 @@ def export_har(request, log_id=None):
 
     for log in logs:
         entry = {
-            "startedDateTime": log.timestamp.isoformat(),
+            "startedDateTime": log.captured_at.isoformat() if log.captured_at else "",
             "time": 0,
             "request": {
                 "method": log.method,
@@ -190,6 +222,7 @@ def save_capture(request, endpoint_id):
                     endpoint_name=endpoint.trigger_path or str(endpoint),
                     user=request.user,
                     captured_at=timezone.now(),
+                    capture_source=TrafficLog.CAPTURE_BROWSER_EXT,
                 )
                 log_count += 1
             except Exception:
@@ -379,7 +412,8 @@ def silent_capture(request, endpoint_id):
             response_body='',
             har_data=har_rpc_data,
             user=request.user if request.user.is_authenticated else None,
-            captured_at=timezone.now()
+            captured_at=timezone.now(),
+            capture_source=TrafficLog.CAPTURE_BROWSER_EXT,
         )
 
         return JsonResponse({'success': True})

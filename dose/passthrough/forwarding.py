@@ -6,6 +6,7 @@ import json
 import time
 from django.http import HttpResponse
 from dose.polysniffer.models import TrafficLog
+from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,11 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             with connection.cursor() as cur:
                 cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
 
+        try:
+            ensure_trafficlog_capture_columns(request)
+        except Exception as _patch_exc:
+            print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
+
         TrafficLog.objects.create(
             method="GET",
             url=target_url,
@@ -162,6 +168,8 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             endpoint_name=app_name,
             user=capture_user,
             duration_ms=0,
+            capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
+            client_path=getattr(request, "path_info", "") or "",
         )
         print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
     except Exception as ps_exc:
@@ -171,7 +179,7 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
     return resp.content.decode("utf-8", errors="ignore")
 
 
-def forward_request_standardized(request, endpoint_url, handler=None):
+def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None):
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
     print("FORWARDER (forward_request_standardized) CALLED")
@@ -326,6 +334,19 @@ def forward_request_standardized(request, endpoint_url, handler=None):
         preview_bytes = resp.content[:500] if resp.content else b""
         print(f"CONTENT PREVIEW: {preview_bytes.decode('utf-8', errors='ignore')}")
 
+        try:
+            from dose.passthrough.stream_debug import log_upstream_response_if_debug
+
+            log_upstream_response_if_debug(
+                request,
+                endpoint,
+                upstream_path=upstream_path,
+                target_url=target_url,
+                resp=resp,
+            )
+        except Exception as _sd_exc:
+            print(f"[PT-STREAM-DEBUG] upstream log error (non-blocking): {_sd_exc}")
+
         # ── PolySniffer Capture (Step 1) ───────────────────────────────────
         try:
             # Determine app name from path or handler
@@ -349,6 +370,11 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 with connection.cursor() as cur:
                     cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
 
+            try:
+                ensure_trafficlog_capture_columns(request)
+            except Exception as _patch_exc:
+                print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
+
             TrafficLog.objects.create(
                 method=request.method,
                 url=target_url,
@@ -364,6 +390,8 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 endpoint_name=app_name,
                 user=capture_user,
                 duration_ms=0,
+                capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
+                client_path=getattr(request, "path_info", "") or "",
             )
             print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
         except Exception as ps_exc:
@@ -563,6 +591,23 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 del response[csp_hdr]
             except KeyError:
                 pass
+
+        # Forward Set-Cookie headers from HTML responses too (critical for Nextcloud login)
+        # The session cookie must match the requesttoken embedded in the HTML
+        from http.cookies import SimpleCookie
+        for raw_name, raw_val in resp.raw.headers.items():
+            if raw_name.lower() != "set-cookie":
+                continue
+            try:
+                sc = SimpleCookie()
+                sc.load(raw_val)
+                for cookie_name, morsel in sc.items():
+                    response.cookies[cookie_name] = morsel.value
+                    response.cookies[cookie_name]["path"] = morsel.get("path") or "/"
+                    response.cookies[cookie_name]["samesite"] = "Lax"
+                    print(f"FORWARDER — forwarding Set-Cookie from HTML: {cookie_name}")
+            except Exception as sc_exc:
+                print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")

@@ -1,15 +1,14 @@
 {
   "manifest_version": 3,
   "name": "PolySniffer",
-  "version": "1.0.3",
+  "version": "1.0.2",
   "description": "Capture HTTP traffic and DOM structure for PolySaaS passthrough endpoint handler generation",
   "permissions": [
     "activeTab",
     "storage",
     "cookies",
     "webRequest",
-    "scripting",
-    "tabs"
+    "scripting"
   ],
   "host_permissions": [
     "http://localhost:8000/*",

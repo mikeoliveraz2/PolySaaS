@@ -244,6 +244,29 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
             _path = "/pt/admin/odoo" + _path
             request.path_info = _path
 
+        # Nextcloud paths that reach us missing the /admin/nextcloud/ segment.
+        # Happens when Nextcloud's Vue login component builds the form action from OC.webroot
+        # which may resolve to /pt (only the outermost prefix) instead of the full proxy prefix.
+        # e.g. POST /pt/index.php/login → /pt/admin/nextcloud/index.php/login
+        _NC_PARTIAL_PREFIXES = (
+            "/pt/index.php/",
+            "/pt/login",
+            "/pt/ocs/",
+            "/pt/remote.php/",
+            "/pt/apps/",
+            "/pt/core/",
+            "/pt/avatar/",
+            "/pt/heartbeat",
+        )
+        _path = request.path_info
+        if _path.startswith("/pt/") and not _path.startswith("/pt/admin/"):
+            for _pfx in _NC_PARTIAL_PREFIXES:
+                if _path == _pfx.rstrip("/") or _path.startswith(_pfx):
+                    _path = "/pt/admin/nextcloud" + _path[3:]
+                    request.path_info = _path
+                    print(f"[PT-MW] NC path rewrite → {_path}")
+                    break
+
         if request.path_info.startswith("/pt/"):
             print(f"[PT-MW-TOP] ExternalPassthroughMiddleware HIT for {request.path_info}")
             user = getattr(request, "user", None)

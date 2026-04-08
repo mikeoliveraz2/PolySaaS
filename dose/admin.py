@@ -313,6 +313,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
                         ('auth_username', "VARCHAR(200) DEFAULT ''"),
                         ('auth_password', "VARCHAR(500) DEFAULT ''"),
                         ('inject_proxy_script', 'BOOLEAN DEFAULT FALSE NOT NULL'),
+                        ('passthrough_stream_debug', 'BOOLEAN DEFAULT FALSE NOT NULL'),
                         ('show_in_menu', 'BOOLEAN DEFAULT TRUE NOT NULL'),
                         ('menu_title', "VARCHAR(100) DEFAULT ''"),
                         ('menu_icon', "VARCHAR(100) DEFAULT '🔗'"),
@@ -388,8 +389,9 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             'classes': ['collapse']
         }),
         ('Integration Mode', {
-            'fields': ('integration_mode', 'passthrough_type', 'bypass_middleware'),
-            'description': '<strong>Integration Type:</strong> Choose between Web UI only, Web UI + API, or API only (custom Dose UI).',
+            'fields': ('integration_mode', 'passthrough_type', 'bypass_middleware', 'passthrough_stream_debug'),
+            'description': '<strong>Integration Type:</strong> Choose between Web UI only, Web UI + API, or API only (custom Dose UI). '
+            '<strong>Passthrough stream debug:</strong> when enabled, logs upstream/final response diagnostics to the server console for this endpoint (or use POLYSNIFFER_PASSTHROUGH_DEBUG in settings for all).',
             'classes': ['collapse']
         }),
         ('API Configuration', {

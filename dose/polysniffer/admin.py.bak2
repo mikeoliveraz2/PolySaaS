@@ -3,7 +3,6 @@ PolySniffer Admin
 """
 from django.contrib import admin
 from .models import TrafficLog
-from .schema_patch import ensure_trafficlog_capture_columns
 
 
 @admin.register(TrafficLog)
@@ -36,10 +35,6 @@ class TrafficLogAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     ]
-
-    def get_queryset(self, request):
-        ensure_trafficlog_capture_columns(request)
-        return super().get_queryset(request)
 
     def has_add_permission(self, request):
         # Logs are created automatically, not manually

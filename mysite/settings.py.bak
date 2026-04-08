@@ -221,6 +221,7 @@ INSTALLED_APPS = [
     'django_extensions',  # For ERD generation
     'oauth2_provider',    # Django OAuth Toolkit — OIDC provider for SSO
     'djstripe',           # dj-stripe — Stripe models, webhooks, sync
+    'dose.polysniffer',   # PolySniffer — traffic capture for orchestration mapping
 ]
 
 # Filter out apps that cannot be imported (helps when files are missing or

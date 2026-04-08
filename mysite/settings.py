@@ -11,6 +11,8 @@ env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=True)
 print("Loaded .env:", env('DJANGO_SECRET_KEY', default='NOT FOUND'))
 SECRET_KEY = env('DJANGO_SECRET_KEY')
 DEBUG = True
+# Passthrough: log upstream + final HTML diagnostics to console (all endpoints). See dose/passthrough/stream_debug.py
+POLYSNIFFER_PASSTHROUGH_DEBUG = env.bool("POLYSNIFFER_PASSTHROUGH_DEBUG", default=False)
 # Jazzmin admin theme settings (customize as needed)
 JAZZMIN_SETTINGS = {
     "custom_links": {},

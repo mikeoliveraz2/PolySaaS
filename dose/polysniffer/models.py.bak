@@ -9,28 +9,6 @@ from django.utils import timezone
 class TrafficLog(models.Model):
     """Store captured HTTP request/response pairs"""
 
-    # How this row was recorded (for filtering PolySniffer UI)
-    CAPTURE_PASSTHROUGH = "passthrough"
-    CAPTURE_BROWSER_EXT = "browser_extension"
-    CAPTURE_SOURCE_CHOICES = (
-        (CAPTURE_PASSTHROUGH, "Passthrough (/pt/admin/… via Django forwarder)"),
-        (CAPTURE_BROWSER_EXT, "Browser extension / silent capture JSON"),
-    )
-    capture_source = models.CharField(
-        max_length=32,
-        blank=True,
-        default="",
-        db_index=True,
-        help_text="passthrough = logged by forward_request_standardized; browser_extension = extension/silent-capture",
-    )
-    # Browser-visible path when request went through PolySaaS (e.g. /pt/admin/nextcloud/login)
-    client_path = models.CharField(
-        max_length=500,
-        blank=True,
-        default="",
-        help_text="Django path_info for passthrough requests; empty for native-only captures",
-    )
-
     # Request info
     method = models.CharField(max_length=10)  # GET, POST, etc.
     url = models.URLField(max_length=500)

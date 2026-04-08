@@ -162,6 +162,8 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             endpoint_name=app_name,
             user=capture_user,
             duration_ms=0,
+            capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
+            client_path=getattr(request, "path_info", "") or "",
         )
         print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
     except Exception as ps_exc:
@@ -364,6 +366,8 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 endpoint_name=app_name,
                 user=capture_user,
                 duration_ms=0,
+                capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
+                client_path=getattr(request, "path_info", "") or "",
             )
             print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
         except Exception as ps_exc:
@@ -496,9 +500,30 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             # Forward Set-Cookie headers from upstream so the browser receives MMUSERID and MMCSRF
             # after Mattermost login.  Without MMCSRF the SPA cannot set X-CSRF-Token on POSTs.
             # Strip HttpOnly so JS can read MMAUTHTOKEN; strip Domain so cookies bind to PolySaaS host.
+            #
+            # IMPORTANT: Do NOT forward Set-Cookie from static asset responses (JS, CSS, fonts,
+            # images).  Nextcloud (and similar apps) set a new session cookie on every asset
+            # request.  If we forward those cookies to the browser, the browser's session is
+            # overwritten with one that no longer matches the requesttoken embedded in the HTML,
+            # which causes CSRF validation failures on the next form POST.
+            _static_asset_types = (
+                "application/javascript",
+                "text/javascript",
+                "text/css",
+                "image/",
+                "font/",
+                "application/font-",
+                "application/x-font-",
+            )
+            _skip_set_cookie = any(
+                (upstream_ct or "").lower().startswith(t) for t in _static_asset_types
+            )
             from http.cookies import SimpleCookie
             for raw_name, raw_val in resp.raw.headers.items():
                 if raw_name.lower() != "set-cookie":
+                    continue
+                if _skip_set_cookie:
+                    print(f"FORWARDER — suppressing Set-Cookie from static asset ({upstream_ct})")
                     continue
                 try:
                     sc = SimpleCookie()
@@ -542,6 +567,23 @@ def forward_request_standardized(request, endpoint_url, handler=None):
                 del response[csp_hdr]
             except KeyError:
                 pass
+
+        # Forward Set-Cookie headers from HTML responses too (critical for Nextcloud login)
+        # The session cookie must match the requesttoken embedded in the HTML
+        from http.cookies import SimpleCookie
+        for raw_name, raw_val in resp.raw.headers.items():
+            if raw_name.lower() != "set-cookie":
+                continue
+            try:
+                sc = SimpleCookie()
+                sc.load(raw_val)
+                for cookie_name, morsel in sc.items():
+                    response.cookies[cookie_name] = morsel.value
+                    response.cookies[cookie_name]["path"] = morsel.get("path") or "/"
+                    response.cookies[cookie_name]["samesite"] = "Lax"
+                    print(f"FORWARDER — forwarding Set-Cookie from HTML: {cookie_name}")
+            except Exception as sc_exc:
+                print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")

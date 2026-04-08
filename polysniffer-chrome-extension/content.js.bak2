@@ -19,43 +19,12 @@ if (configEl) {
   }
 }
 
-/** Live capture page (normal JS) cannot call chrome.runtime — it postMessages here. */
-window.addEventListener('message', (event) => {
-  if (event.source !== window) return;
-  const d = event.data;
-  if (!d || d.type !== 'polysniffer-shutdown' || d.source !== 'live_capture') return;
-  chrome.runtime.sendMessage({
-    action: 'shutdownSniffer',
-    reason: d.reason || 'live_capture_done'
-  });
-});
-
 let isCapturing = false;
 let originalFetch = null;
 let originalXHROpen = null;
 let originalXHRSend = null;
-let formSubmitCaptureHandler = null;
-
-function removeFormSubmitCapture() {
-  if (formSubmitCaptureHandler) {
-    document.removeEventListener('submit', formSubmitCaptureHandler, true);
-    formSubmitCaptureHandler = null;
-  }
-}
-
-function teardownSnifferContent() {
-  isCapturing = false;
-  restoreInterceptors();
-  removeFormSubmitCapture();
-}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === 'shutdownSnifferContent') {
-    teardownSnifferContent();
-    sendResponse({ ok: true });
-    return true;
-  }
-
   if (msg.action === 'postSilentCapture') {
     fetch(msg.url, {
       method: 'POST',
@@ -85,7 +54,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'stopCapture') {
     isCapturing = false;
     restoreInterceptors();
-    removeFormSubmitCapture();
     sendResponse({ ok: true });
   }
 
@@ -230,8 +198,7 @@ function interceptNetworkCalls() {
 }
 
 function observeFormSubmissions() {
-  if (formSubmitCaptureHandler) return;
-  formSubmitCaptureHandler = (e) => {
+  document.addEventListener('submit', (e) => {
     if (!isCapturing) return;
 
     const form = e.target;
@@ -257,8 +224,7 @@ function observeFormSubmissions() {
         }
       }
     });
-  };
-  document.addEventListener('submit', formSubmitCaptureHandler, true);
+  }, true);
 }
 
 function restoreInterceptors() {

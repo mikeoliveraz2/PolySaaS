@@ -29,8 +29,6 @@ def debug_dashboard(request):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden('Staff access required')
 
-    ensure_trafficlog_capture_columns(request)
-
     qs = TrafficLog.objects.all().order_by('-captured_at')
     source = (request.GET.get('source') or '').strip().lower()
     if source == 'passthrough':
@@ -74,7 +72,6 @@ def view_log(request, log_id):
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden('Staff access required')
-    ensure_trafficlog_capture_columns(request)
     log = get_object_or_404(TrafficLog, id=log_id)
     context = {'log': log}
     return render(request, 'polysniffer/log_detail.html', context)
@@ -87,8 +84,6 @@ def export_har(request, log_id=None):
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden('Staff access required')
-
-    ensure_trafficlog_capture_columns(request)
 
     if log_id:
         logs = TrafficLog.objects.filter(id=log_id)
@@ -160,7 +155,6 @@ def capture_traffic(request):
         return JsonResponse({'success': False, 'error': 'Staff access required'}, status=403)
 
     try:
-        ensure_trafficlog_capture_columns(request)
         data = json.loads(request.body)
         capture_data = data
 
@@ -212,7 +206,6 @@ def save_capture(request, endpoint_id):
     endpoint = get_endpoint_any_schema(endpoint_id, request)
 
     try:
-        ensure_trafficlog_capture_columns(request)
         data = json.loads(request.body)
         captures = data.get('captures', [])
 
@@ -273,7 +266,6 @@ def log_capture_to_services(request, endpoint_id):
     endpoint = get_endpoint_any_schema(endpoint_id, request)
 
     try:
-        ensure_trafficlog_capture_columns(request)
         data = json.loads(request.body)
         captures = data.get('captures', [])
 
@@ -313,7 +305,6 @@ def get_captures(request, endpoint_id):
     endpoint_name = endpoint.menu_title or endpoint.trigger_path or str(endpoint_id)
 
     try:
-        ensure_trafficlog_capture_columns(request)
         since_id = int(request.GET.get('since_id', 0))
         qs = TrafficLog.objects.filter(endpoint_name__iexact=endpoint_name)
         if not qs.exists():
@@ -357,7 +348,6 @@ def apply_latest_capture(request, endpoint_id):
     endpoint = get_endpoint_any_schema(endpoint_id, request)
 
     try:
-        ensure_trafficlog_capture_columns(request)
         # Get the latest capture
         latest_log = TrafficLog.objects.filter(endpoint=endpoint).order_by('-captured_at').first()
         if not latest_log:
@@ -393,7 +383,6 @@ def silent_capture(request, endpoint_id):
         return JsonResponse({'success': False, 'error': 'Staff access required'}, status=403)
 
     try:
-        ensure_trafficlog_capture_columns(request)
         data = json.loads(request.body)
         endpoint = get_endpoint_any_schema(endpoint_id, request)
         endpoint_name = endpoint.menu_title or endpoint.trigger_path or str(endpoint_id)

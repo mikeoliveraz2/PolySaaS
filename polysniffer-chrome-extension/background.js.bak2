@@ -11,18 +11,14 @@ chrome.storage.local.get(['djangoUrl', 'endpointId', 'endpointUrl'], (data) => {
 });
 
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.djangoUrl) {
-    djangoUrl = changes.djangoUrl.newValue != null ? changes.djangoUrl.newValue : '';
-  }
+  if (changes.djangoUrl) djangoUrl = changes.djangoUrl.newValue || '';
   if (changes.endpointId) {
-    endpointId =
-      changes.endpointId.newValue !== undefined ? changes.endpointId.newValue : null;
+    endpointId = changes.endpointId.newValue || null;
+    // Reset silentCaptureDisabled when endpoint changes - new endpoint may be valid
     silentCaptureDisabled = false;
     console.log(`[PolySniffer] Endpoint changed to ${endpointId}, re-enabled silent capture`);
   }
-  if (changes.endpointUrl) {
-    endpointUrl = changes.endpointUrl.newValue != null ? changes.endpointUrl.newValue : '';
-  }
+  if (changes.endpointUrl) endpointUrl = changes.endpointUrl.newValue || '';
 });
 
 function effectivePort(u) {
@@ -132,33 +128,6 @@ function classifyOdooRpc(url, bodyStr) {
 
 let silentCaptureDisabled = false;
 
-/**
- * Full sniffer shutdown: stop webRequest forwarding (clears endpoint), clear storage,
- * reset badge, tell all tabs to tear down fetch/XHR hooks and form listeners.
- * Idempotent — safe to call multiple times.
- */
-function shutdownSniffer(reason = 'unknown') {
-  console.log('[PolySniffer] Shutdown requested:', reason);
-  djangoUrl = '';
-  endpointId = null;
-  endpointUrl = '';
-  pollerTabId = null;
-  silentCaptureDisabled = false;
-  // Keep djangoUrl so the popup stays "connected" — only drop the active capture target.
-  chrome.storage.local.remove(['endpointId', 'endpointUrl'], () => {});
-  try {
-    chrome.action.setBadgeText({ text: '' });
-  } catch (e) {}
-
-  chrome.tabs.query({}, (tabs) => {
-    if (!tabs || !tabs.length) return;
-    for (const tab of tabs) {
-      if (tab.id == null) continue;
-      chrome.tabs.sendMessage(tab.id, { action: 'shutdownSnifferContent' }).catch(() => {});
-    }
-  });
-}
-
 function sendToDjango(capture) {
   if (!djangoUrl || !endpointId || silentCaptureDisabled) return;
   fetch(`${djangoUrl}/admin/polysniffer/silent-capture/${endpointId}/`, {
@@ -247,12 +216,6 @@ chrome.webRequest.onCompleted.addListener(
 );
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === 'shutdownSniffer') {
-    shutdownSniffer(msg.reason || 'message');
-    sendResponse({ ok: true });
-    return true;
-  }
-
   if (msg.action === 'autoConfig') {
     djangoUrl = msg.djangoUrl;
     endpointId = msg.endpointId;

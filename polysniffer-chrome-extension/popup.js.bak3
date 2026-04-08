@@ -8,13 +8,12 @@ let endpoints = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
   const saved = await chrome.storage.local.get(['djangoUrl', 'endpointId']);
-  // Apply saved endpoint *before* connect() so the dropdown can select the right row.
-  if (saved.endpointId != null && saved.endpointId !== '') {
-    endpointId = saved.endpointId;
-  }
   if (saved.djangoUrl) {
     $('#django-url').value = saved.djangoUrl;
     await connect(saved.djangoUrl);
+  }
+  if (saved.endpointId) {
+    endpointId = saved.endpointId;
   }
 
   $('#btn-connect').addEventListener('click', () => {
@@ -71,20 +70,6 @@ async function connect(url) {
 
     endpoints = data.endpoints || [];
 
-    const validIds = new Set(endpoints.map((ep) => String(ep.id)));
-    if (endpointId != null && endpointId !== '' && !validIds.has(String(endpointId))) {
-      console.warn(
-        '[PolySniffer] Saved endpoint id',
-        endpointId,
-        'not in current tenant list — clearing (IDs are per DB row; pick again).'
-      );
-      endpointId = null;
-      await chrome.storage.local.set({ endpointId: null, endpointUrl: '' });
-      await chrome.runtime
-        .sendMessage({ action: 'shutdownSniffer', reason: 'stale_endpoint_id' })
-        .catch(() => {});
-    }
-
     statusBar.className = 'status-bar ok';
     connText.textContent = `Connected — ${endpoints.length} endpoint(s)`;
     show(statusBar);
@@ -94,11 +79,10 @@ async function connect(url) {
     endpoints.forEach(ep => {
       const opt = document.createElement('option');
       opt.value = ep.id;
-      opt.textContent = `${ep.name || ep.trigger_path} — id ${ep.id} — ${ep.url}`;
+      opt.textContent = `${ep.name || ep.trigger_path} — ${ep.url}`;
       if (String(ep.id) === String(endpointId)) opt.selected = true;
       select.appendChild(opt);
     });
-    select.value = endpointId != null ? String(endpointId) : '';
 
     show($('#endpoint-section'));
     updateActiveState();
