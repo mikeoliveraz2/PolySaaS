@@ -127,6 +127,19 @@ def _nc_netloc_variants(endpoint_url: str) -> tuple:
     return tuple(out)
 
 
+def _nc_upstream_base_aliases(base: str) -> list:
+    """http://localhost:8888 vs http://127.0.0.1:8888 both appear in NC HTML/JSON."""
+    b = (base or "").rstrip("/")
+    if not b:
+        return []
+    out = {b}
+    if "localhost" in b:
+        out.add(b.replace("localhost", "127.0.0.1", 1))
+    if "127.0.0.1" in b:
+        out.add(b.replace("127.0.0.1", "localhost", 1))
+    return list(out)
+
+
 def _nc_root_path_should_proxy(path: str, proxy_prefix: str) -> bool:
     """True if path is a Nextcloud root-relative URL that should be served under proxy_prefix."""
     if not path or not path.startswith("/"):
@@ -629,14 +642,17 @@ class NextcloudPassthroughHandler:
         and quoted url(...) in inline CSS where safe.
         """
 
+        base_aliases = _nc_upstream_base_aliases(base)
+
         def proxy_single(url: str) -> str:
             if not url:
                 return url
             u = url.strip()
             if u.startswith("data:") or u.startswith("javascript:") or u.startswith("#"):
                 return url
-            if u.startswith(base + "/"):
-                return proxy_prefix + u[len(base) :]
+            for ab in base_aliases:
+                if u.startswith(ab + "/"):
+                    return proxy_prefix + u[len(ab) :]
             if _nc_root_path_should_proxy(u, proxy_prefix):
                 return proxy_prefix + u
             return url
@@ -695,9 +711,10 @@ class NextcloudPassthroughHandler:
             flags=re.IGNORECASE,
         )
 
-        # Absolute upstream URLs embedded in JS / JSON strings
-        html = html.replace(f'"{base}/', f'"{proxy_prefix}/')
-        html = html.replace(f"'{base}/", f"'{proxy_prefix}/")
+        # Absolute upstream URLs embedded in JS / JSON strings (all localhost/127 aliases)
+        for ab in base_aliases:
+            html = html.replace(f'"{ab}/', f'"{proxy_prefix}/')
+            html = html.replace(f"'{ab}/", f"'{proxy_prefix}/")
 
         return html
 
@@ -746,6 +763,28 @@ var O=window.location.origin;
 var PS_PREFIXES=['/static/admin/','/static/img/','/admin/','/dose/','/media/','/accounts/','/pt/','/favicon'];
 function _isPS(p){{for(var i=0;i<PS_PREFIXES.length;i++){{if(p.startsWith(PS_PREFIXES[i]))return true;}}return false;}}
 
+// Nextcloud often uses http://127.0.0.1:PORT in JSON while endpoint_url is localhost (or vice versa).
+// Those absolute URLs must map to PROXY or fetch runs cross-origin from PolySaaS → currentUser stays null.
+function _ncPort(pu){{return pu.port||(pu.protocol==='https:'?'443':'80');}}
+function _ncSameUpstreamOrigin(u,b){{
+    try{{
+        if(u.protocol!==b.protocol)return false;
+        var uh=u.hostname,bh=b.hostname;
+        var loop=(uh==='localhost'||uh==='127.0.0.1')&&(bh==='localhost'||bh==='127.0.0.1');
+        if(loop)return _ncPort(u)===_ncPort(b);
+        return u.hostname===b.hostname&&_ncPort(u)===_ncPort(b);
+    }}catch(e){{return false;}}
+}}
+function _absUpstreamToProxy(u){{
+    if(!u||(u.indexOf('http:')!==0&&u.indexOf('https:')!==0))return null;
+    try{{
+        var uu=new URL(u);
+        var bb=new URL(BASE.endsWith('/')?BASE:BASE+'/');
+        if(!_ncSameUpstreamOrigin(uu,bb))return null;
+        return PROXY+uu.pathname+(uu.search||'')+(uu.hash||'');
+    }}catch(e){{return null;}}
+}}
+
 // Force-fix form actions after Vue renders — we know the correct action path
 function _fixLoginForms() {{
     var forms = document.querySelectorAll('form');
@@ -781,6 +820,8 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 function _toProxy(u){{
     if(!u||typeof u!=='string')return u;
+    var ap=_absUpstreamToProxy(u);
+    if(ap!==null)return ap;
     if(u.indexOf(BASE)===0)return PROXY+u.slice(BASE.length);
     if(u.startsWith(PROXY))return u;
     if(u.startsWith(O+'/')){{
