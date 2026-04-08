@@ -68,6 +68,40 @@ _NC_PROXY_EXACT_PATHS = frozenset(
     {"/login", "/index.php", "/heartbeat", "/status.php", "/cron.php"}
 )
 
+# /pt/... without /pt/admin/<trigger>/ (wrong webroot depth)
+_NC_PARTIAL_PT_PREFIXES = (
+    "/pt/index.php/",
+    "/pt/login",
+    "/pt/ocs/",
+    "/pt/remote.php/",
+    "/pt/apps/",
+    "/pt/core/",
+    "/pt/avatar/",
+    "/pt/heartbeat",
+    "/pt/dist/",
+    "/pt/css/",
+    "/pt/js/",
+    "/pt/vendor/",
+    "/pt/svg/",
+    "/pt/custom/",
+    "/pt/themes/",
+    "/pt/settings/",
+    "/pt/dav/",
+    "/pt/cron.php",
+    "/pt/status.php",
+)
+
+
+def _nc_proxy_prefix_from_endpoint(endpoint) -> str:
+    seg = (
+        (getattr(endpoint, "trigger_path", None) or "nextcloud")
+        .strip("/")
+        .lower()
+        .split("/")[-1]
+        .replace("-", "_")
+    )
+    return f"/pt/admin/{seg}"
+
 
 def _nc_root_path_should_proxy(path: str, proxy_prefix: str) -> bool:
     """True if path is a Nextcloud root-relative URL that should be served under proxy_prefix."""
@@ -111,6 +145,47 @@ class NextcloudPassthroughHandler:
     Implements try_root_display_shell_response so the middleware wraps HTML responses
     in admin/display.html (the same shell used for Odoo and Mattermost).
     """
+
+    # ------------------------------------------------------------------
+    # Incoming path rewrite (called by incoming_path_rewrite.apply_incoming_path_rewrites)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _nc_incoming_rewrite_confidence(request, proxy_prefix: str) -> bool:
+        ref = request.META.get("HTTP_REFERER", "") or ""
+        if proxy_prefix in ref:
+            return True
+        if request.COOKIES.get("nc_session_id") or request.COOKIES.get("nc_username"):
+            return True
+        return False
+
+    def try_rewrite_incoming_path(self, request, endpoint) -> bool:
+        """
+        Map /pt/... (missing admin segment) and bare /core/, /apps/, … onto this endpoint's proxy prefix.
+        """
+        proxy_prefix = _nc_proxy_prefix_from_endpoint(endpoint)
+        path = request.path_info
+
+        if path.startswith("/pt/") and not path.startswith("/pt/admin/"):
+            for pfx in _NC_PARTIAL_PT_PREFIXES:
+                if path == pfx.rstrip("/") or path.startswith(pfx):
+                    request.path_info = proxy_prefix + path[3:]
+                    print(f"[NC-HANDLER] partial /pt/ rewrite → {request.path_info}")
+                    return True
+            return False
+
+        if path.startswith("/pt/"):
+            return False
+        if path == "/" or not path.startswith("/"):
+            return False
+        if not _nc_root_path_should_proxy(path, proxy_prefix):
+            return False
+        if not self._nc_incoming_rewrite_confidence(request, proxy_prefix):
+            return False
+
+        request.path_info = proxy_prefix + path
+        print(f"[NC-HANDLER] bare path rewrite → {request.path_info}")
+        return True
 
     # ------------------------------------------------------------------
     # Display-shell entry point (called by middleware)

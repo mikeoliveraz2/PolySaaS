@@ -1,5 +1,5 @@
 ---
-description: Tenant schema isolation — tenant-owned data lives in the tenant schema; public is for system + intentional cross-tenant shared data
+description: Tenant schema isolation — all records must be created in the user's tenant schema, never in public
 alwaysApply: true
 ---
 
@@ -9,15 +9,13 @@ PolySaaS is a multi-tenant Django application using PostgreSQL schema-based isol
 
 ## The Rule
 
-**All user interactions with tenant-owned data use the user’s tenant schema.** Rows that belong to one subscriber (their business data) are created and read there, not duplicated per tenant in `public`.
-
-**Exception (by design):** Data that must be **shared across all tenants** with **one source of truth** may live in **`public`** — see **`public-shared-data.mdc`**. That is not tenant-owned data; it is platform-wide or global reference data.
+**No user action should rely on or create any record in the `public` schema.** All data belongs in the user's tenant schema.
 
 ## How It Works
 
 - Each tenant has a dedicated PostgreSQL schema (e.g. `olient` for Oliver Enterprises).
 - The `SessionTenantMiddleware` sets `search_path` based on the logged-in user's tenant.
-- The **`public`** schema holds shared system tables (e.g. Tenant, User) and **intentional** cross-tenant tables when you choose a single global copy (see **`public-shared-data.mdc`**). Tenant-specific data such as Instructions, Mappings, PassThroughEndpoints, CallBackData, MQConfig, TrafficLog for that tenant, etc., stays in **that tenant’s schema**, not in `public`.
+- The `public` schema holds only shared system tables (Tenant, User, etc.), never tenant-specific data like Instructions, Mappings, PassThroughEndpoints, CallBackData, MQConfig, etc.
 
 ## Migrations Must Hit All Schemas
 

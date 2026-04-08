@@ -967,15 +967,19 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         if 'javascript' in ct:
             try:
                 text = body.decode('utf-8', errors='ignore')
-                # Owl's App.mount() and the standalone mount() helper both use
-                # document.body as the container target.  Replace it with the
-                # PolySaaS scope div so Odoo renders inside the embed column.
+                # Owl's mount target replacement.
+                # Odoo 17 style: app.mount(document.body)       → matches .mount(document.body
+                # Odoo 18 style: mount(WebClient, document.body) → matches ,document.body,
+                # Both are replaced so the Owl root lands in our scope div, not in body.
                 SCOPE = '.polysaas-passthrough-scope'
-                REPLACEMENT = (
-                    f'.mount(document.querySelector("{SCOPE}")||document.body'
-                )
+                SCOPE_JS = f'(document.querySelector("{SCOPE}")||document.body)'
+                # Odoo 17 / Owl method call pattern
                 patched = text.replace(
-                    '.mount(document.body', REPLACEMENT
+                    '.mount(document.body', f'.mount({SCOPE_JS}'
+                )
+                # Odoo 18 / standalone mount(Component, document.body, config) pattern
+                patched = patched.replace(
+                    ',document.body,', f',{SCOPE_JS},'
                 )
 
                 # Also rewrite paths hidden in JS strings
@@ -993,10 +997,14 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                 )
 
                 # === FIX WEBSOCKET 404 - Force Odoo to use proxied WebSocket path ===
-                if '/websocket' in patched or 'websocket' in patched.lower():
-                    # Replace any direct WebSocket URLs with the proxied version
-                    # Note: Using the /pt/admin/odoo prefix which is the actual proxy entry point
-                    patched = patched.replace('/websocket', '/pt/admin/odoo/websocket')
+                # Use word-boundary regex so we only replace /websocket as a standalone
+                # path component, not inside /bus/websocket_worker_bundle.
+                if '/websocket' in patched:
+                    patched = re.sub(
+                        r'(?<!/odoo)/websocket(?!_)',
+                        '/pt/admin/odoo/websocket',
+                        patched,
+                    )
 
                 if patched != text:
                     logger.info(

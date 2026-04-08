@@ -40,6 +40,54 @@ _NC_STATIC_EXTENSIONS = frozenset(
     "js css map woff woff2 ttf eot otf png jpg jpeg gif svg ico webp json wasm xml".split()
 )
 
+# Root-relative paths in Nextcloud HTML that must be prefixed with /pt/admin/{app}/…
+_NC_PROXY_PATH_PREFIXES = (
+    "/index.php/",
+    "/index.php?",
+    "/core/",
+    "/apps/",
+    "/ocs/",
+    "/remote.php/",
+    "/dav/",
+    "/dist/",
+    "/css/",
+    "/js/",
+    "/custom/",
+    "/svg/",
+    "/vendor/",
+    "/themes/",
+    "/settings/",
+    "/avatar/",
+    "/heartbeat",
+    "/login",
+    "/status.php",
+    "/cron.php",
+    "/appdata_",
+)
+_NC_PROXY_EXACT_PATHS = frozenset(
+    {"/login", "/index.php", "/heartbeat", "/status.php", "/cron.php"}
+)
+
+
+def _nc_root_path_should_proxy(path: str, proxy_prefix: str) -> bool:
+    """True if path is a Nextcloud root-relative URL that should be served under proxy_prefix."""
+    if not path or not path.startswith("/"):
+        return False
+    if path.startswith(proxy_prefix):
+        return False
+    # NC app root in generated links
+    if path == "/":
+        return True
+    if path.startswith("/index.php?"):
+        return True
+    p = path.rstrip("/") or "/"
+    if p in _NC_PROXY_EXACT_PATHS:
+        return True
+    for pfx in _NC_PROXY_PATH_PREFIXES:
+        if path.startswith(pfx) or path == pfx.rstrip("/"):
+            return True
+    return False
+
 
 def _nc_bypasses_display_shell(upstream_subpath: str) -> bool:
     """Return True if this path should be forwarded directly (not wrapped in display shell)."""
@@ -394,47 +442,78 @@ class NextcloudPassthroughHandler:
 
     def _rewrite_nc_paths(self, html: str, proxy_prefix: str, base: str) -> str:
         """
-        Rewrite absolute Nextcloud paths in HTML attributes to go through the proxy prefix.
-        Covers href, src, action, data-url, data-href, and JSON strings in <script> blocks.
+        Rewrite Nextcloud root-relative and upstream-absolute URLs so the browser loads
+        assets and navigation through proxy_prefix. Covers srcset, lazy-load data attrs,
+        and quoted url(...) in inline CSS where safe.
         """
-        # Patterns that should be proxied (navigation + APIs + assets)
-        _NC_PROXY_PREFIXES = (
-            "/index.php/",
-            "/core/",
-            "/apps/",
-            "/ocs/",
-            "/remote.php/",
-            "/heartbeat",
-            "/avatar/",
-            "/dist/",       # bundled JS (Vue login, etc.)
-            "/login",       # login page itself
-            "/css/",        # CSS assets
-            "/js/",         # JS assets
-        )
+
+        def proxy_single(url: str) -> str:
+            if not url:
+                return url
+            u = url.strip()
+            if u.startswith("data:") or u.startswith("javascript:") or u.startswith("#"):
+                return url
+            if u.startswith(base + "/"):
+                return proxy_prefix + u[len(base) :]
+            if _nc_root_path_should_proxy(u, proxy_prefix):
+                return proxy_prefix + u
+            return url
+
+        def rewrite_srcset_list(val: str) -> str:
+            parts_out = []
+            for chunk in re.split(r"\s*,\s*", val):
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                bits = chunk.split()
+                u0 = proxy_single(bits[0])
+                parts_out.append(" ".join([u0] + bits[1:]))
+            return ", ".join(parts_out)
 
         def rewrite_attr_value(match):
             attr = match.group(1)
             quote = match.group(2)
-            url = match.group(3)
-            if not url:
+            raw = match.group(3)
+            al = attr.lower()
+            if al in ("srcset", "data-srcset", "imagesrcset"):
+                newv = rewrite_srcset_list(raw)
+                if newv == raw:
+                    return match.group(0)
+                return f"{attr}={quote}{newv}{quote}"
+            url = raw.strip()
+            newu = proxy_single(url)
+            if newu == url:
                 return match.group(0)
-            if url.startswith("data:") or url.startswith("javascript:") or url.startswith("#"):
-                return match.group(0)
-            # Absolute upstream URL → proxy
-            if url.startswith(base + "/"):
-                return f'{attr}={quote}{proxy_prefix}{url[len(base):]}{quote}'
-            # Relative root paths for NC
-            if url.startswith("/") and not url.startswith(proxy_prefix):
-                for pfx in _NC_PROXY_PREFIXES:
-                    if url.startswith(pfx) or url == pfx.rstrip("/"):
-                        return f'{attr}={quote}{proxy_prefix}{url}{quote}'
-            return match.group(0)
+            return f"{attr}={quote}{newu}{quote}"
 
-        # Rewrite in standard HTML attributes
-        attr_pattern = r'((?:href|src|action|data-url|data-href|data-link))=([\"\'])(/[^\"\'#\s]*?)\2'
-        html = re.sub(attr_pattern, rewrite_attr_value, html, flags=re.IGNORECASE)
+        # Multiline-safe: srcset can span lines in pretty-printed HTML
+        multi_attrs = r"(?i)\b(srcset|data-srcset|imagesrcset)\s*=\s*([\"'])(.*?)\2"
+        html = re.sub(multi_attrs, rewrite_attr_value, html, flags=re.DOTALL)
 
-        # Rewrite absolute base URLs embedded in JS strings / JSON (e.g. OC.webroot, baseUrl)
+        single_attrs = (
+            r"(?i)\b(href|src|action|data-url|data-href|data-link|data-src|data-lazy-src|"
+            r"data-original|data-background-url|data-icon-url|poster)\s*=\s*([\"'])([^\"']*)\2"
+        )
+        html = re.sub(single_attrs, rewrite_attr_value, html)
+
+        # Quoted url(/path) in inline styles and <style> blocks
+        def rewrite_url_call(m):
+            q, path = m.group(1), m.group(2).strip()
+            if path.startswith("data:"):
+                return m.group(0)
+            newp = proxy_single(path)
+            if newp == path:
+                return m.group(0)
+            return f"url({q}{newp}{q})"
+
+        html = re.sub(
+            r'url\(\s*([\"\'])(/[^\"\'\)]*)\1\s*\)',
+            rewrite_url_call,
+            html,
+            flags=re.IGNORECASE,
+        )
+
+        # Absolute upstream URLs embedded in JS / JSON strings
         html = html.replace(f'"{base}/', f'"{proxy_prefix}/')
         html = html.replace(f"'{base}/", f"'{proxy_prefix}/")
 
@@ -468,11 +547,9 @@ class NextcloudPassthroughHandler:
         Patches fetch, XHR, and navigation so same-origin Nextcloud calls route through proxy.
         Also patches OC.generateUrl / OC.filePath.
         """
-        nc_paths_js = json.dumps([
-            "/index.php/", "/core/", "/apps/", "/ocs/", "/remote.php/",
-            "/heartbeat", "/avatar/", "/csrftoken", "/cron.php",
-            "/dist/", "/login", "/css/", "/js/",
-        ])
+        nc_paths_js = json.dumps(
+            list(dict.fromkeys(list(_NC_PROXY_PATH_PREFIXES) + ["/csrftoken"]))
+        )
         return f"""<script data-polysaas-nc-shim="1">
 // Set _oc_webroot BEFORE oc.js loads — Nextcloud reads this to build all URLs
 window._oc_webroot={json.dumps(proxy_prefix)};

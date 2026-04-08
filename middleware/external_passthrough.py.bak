@@ -1,0 +1,48 @@
+"""Dumb middleware. Nothing endpoint-specific lives here.
+Only looks up the endpoint and calls its handler."""
+from django.http import HttpResponse
+from django.utils.deprecation import MiddlewareMixin
+from passthrough.models import PassthroughEndpoint
+from passthrough.handlers import BasePassthroughHandler
+
+class ExternalPassthroughMiddleware(MiddlewareMixin):
+    def __call__(self, request):
+        # 1. Quick check - is this a passthrough request?
+        if not request.path.startswith('/pt/admin/'):
+            return self.get_response(request)
+
+        # 2. Extract slug (e.g. "nextcloud")
+        try:
+            slug = request.path.split('/pt/admin/')[1].split('/')[0]
+        except (IndexError, AttributeError):
+            return self.get_response(request)
+
+        # 3. Lookup endpoint (nothing more)
+        try:
+            endpoint = PassthroughEndpoint.objects.get(slug=slug, is_active=True)
+        except PassthroughEndpoint.DoesNotExist:
+            return HttpResponse(f"Passthrough endpoint '{slug}' not found or inactive", status=404)
+
+        # 4. Get handler and let IT decide everything
+        handler_class = self._get_handler_class(endpoint)
+        handler = handler_class(endpoint)
+
+        # 5. Handler takes full control
+        return handler.handle(request)
+
+    def _get_handler_class(self, endpoint):
+        """Maps slug to handler. No logic, just lookup."""
+        handlers = {
+            "nextcloud": "passthrough.handlers.nextcloud.NextcloudPassthroughHandler",
+            # Add others later: "odoo", "wordpress", etc.
+        }
+        handler_path = handlers.get(endpoint.slug)
+        if not handler_path:
+            # Default fallback
+            from .handlers.base import BasePassthroughHandler
+            return BasePassthroughHandler
+
+        # Dynamic import
+        module_path, class_name = handler_path.rsplit('.', 1)
+        module = __import__(module_path, fromlist=[class_name])
+        return getattr(module, class_name)

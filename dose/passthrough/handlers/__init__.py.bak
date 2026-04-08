@@ -5,11 +5,6 @@ from types import ModuleType
 
 logger = logging.getLogger(__name__)
 
-from .handler_base import (
-    PassthroughHandlerBase,
-    endpoint_log_label,
-    proxy_prefix_for_trigger_endpoint,
-)
 from .registry import get_handler_for_endpoint
 
 class BasePassthroughHandler:

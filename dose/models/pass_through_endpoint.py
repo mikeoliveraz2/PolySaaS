@@ -42,6 +42,16 @@ class PassThroughEndpoint(models.Model):
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
     trigger_path = models.CharField(max_length=200, blank=True, default="", help_text="One word, no slashes please", verbose_name="Trigger Word")
+    slug = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Optional identifier for non–passthrough features (menus, links, other Django code). "
+            "Distinct from trigger_path, which is the URL segment for /pt/admin/<trigger>/ only. "
+            "Leave blank if unused."
+        ),
+    )
     discovered_subpaths = models.JSONField(default=dict, blank=True, help_text="Auto-discovered subpaths for this endpoint")
 
     # Menu Integration Fields

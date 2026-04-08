@@ -289,68 +289,72 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     def get_queryset(self, request):
         """Override to handle missing migration columns gracefully - adds all missing columns automatically"""
         qs = super().get_queryset(request)
-        # Try to add missing columns if they don't exist (one-time fix)
+        # Try to add missing columns if they don't exist (one-time fix).
+        # Wrapped in transaction.atomic() so any DDL failure rolls back only the
+        # savepoint and never poisons the outer request transaction.
         try:
-            from django.db import connection
+            from django.db import connection, transaction
             from dose.utils import get_current_tenant
             tenant = get_current_tenant(request) or getattr(request, 'tenant', None)
             schema = tenant.schema_name if tenant and tenant.schema_name else 'public'
 
-            with connection.cursor() as cursor:
-                cursor.execute(f'SET search_path TO "{schema}",public;')
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(f'SET search_path TO "{schema}",public;')
 
-                # Define all columns that might be missing (from various migrations)
-                # Format: (column_name, sql_definition)
-                columns_to_add = [
-                    ('bypass_middleware', 'BOOLEAN DEFAULT FALSE NOT NULL'),
-                    ('passthrough_type', "VARCHAR(20) DEFAULT 'scraper' NOT NULL"),
-                    ('integration_mode', "VARCHAR(20) DEFAULT 'web_only' NOT NULL"),
-                    ('api_endpoint', "VARCHAR(300) DEFAULT ''"),
-                    ('api_auth_type', "VARCHAR(20) DEFAULT 'bearer' NOT NULL"),
-                    ('api_key', "VARCHAR(500) DEFAULT ''"),
-                    ('api_key_header', "VARCHAR(100) DEFAULT 'Authorization'"),
-                    ('auth_username', "VARCHAR(200) DEFAULT ''"),
-                    ('auth_password', "VARCHAR(500) DEFAULT ''"),
-                    ('inject_proxy_script', 'BOOLEAN DEFAULT FALSE NOT NULL'),
-                    ('polysniffer_debug_output', "TEXT DEFAULT ''"),
-                    ('polysniffer_last_run', 'TIMESTAMP NULL'),
-                    ('show_in_menu', 'BOOLEAN DEFAULT TRUE NOT NULL'),
-                    ('menu_title', "VARCHAR(100) DEFAULT ''"),
-                    ('menu_icon', "VARCHAR(100) DEFAULT '🔗'"),
-                    ('menu_sort_order', 'INTEGER DEFAULT 100 NOT NULL'),
-                ]
+                    columns_to_add = [
+                        ('bypass_middleware', 'BOOLEAN DEFAULT FALSE NOT NULL'),
+                        ('passthrough_type', "VARCHAR(20) DEFAULT 'scraper' NOT NULL"),
+                        ('integration_mode', "VARCHAR(20) DEFAULT 'web_only' NOT NULL"),
+                        ('api_endpoint', "VARCHAR(300) DEFAULT ''"),
+                        ('api_auth_type', "VARCHAR(20) DEFAULT 'bearer' NOT NULL"),
+                        ('api_key', "VARCHAR(500) DEFAULT ''"),
+                        ('api_key_header', "VARCHAR(100) DEFAULT 'Authorization'"),
+                        ('auth_username', "VARCHAR(200) DEFAULT ''"),
+                        ('auth_password', "VARCHAR(500) DEFAULT ''"),
+                        ('inject_proxy_script', 'BOOLEAN DEFAULT FALSE NOT NULL'),
+                        ('passthrough_stream_debug', 'BOOLEAN DEFAULT FALSE NOT NULL'),
+                        ('show_in_menu', 'BOOLEAN DEFAULT TRUE NOT NULL'),
+                        ('menu_title', "VARCHAR(100) DEFAULT ''"),
+                        ('menu_icon', "VARCHAR(100) DEFAULT '🔗'"),
+                        ('menu_sort_order', 'INTEGER DEFAULT 100 NOT NULL'),
+                    ]
 
-                for column_name, column_def in columns_to_add:
-                    # Check if column exists
-                    cursor.execute("""
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = %s
-                        AND table_name = 'dose_passthroughendpoint'
-                        AND column_name = %s
-                    """, [schema, column_name])
-
-                    if not cursor.fetchone():
-                        try:
-                            cursor.execute(f"""
-                                ALTER TABLE {schema}.dose_passthroughendpoint
-                                ADD COLUMN {column_name} {column_def}
-                            """)
-                            print(f"[AUTO-FIX] Added {column_name} column to {schema} schema")
-                        except Exception as e:
-                            print(f"[AUTO-FIX] Could not add {column_name}: {e}")
+                    for column_name, column_def in columns_to_add:
+                        cursor.execute(f"""
+                            ALTER TABLE {schema}.dose_passthroughendpoint
+                            ADD COLUMN IF NOT EXISTS {column_name} {column_def}
+                        """)
+                        print(f"[AUTO-FIX] Ensured column {column_name} in {schema} schema")
         except Exception as e:
-            # If we can't add the columns, defer them from the query
             print(f"[AUTO-FIX] Error checking/adding columns: {e}")
-            # Use defer to exclude problematic fields from SELECT
-            try:
-                qs = qs.defer('bypass_middleware', 'passthrough_type', 'integration_mode',
-                             'api_endpoint', 'api_auth_type', 'api_key', 'api_key_header',
-                             'auth_username', 'auth_password', 'inject_proxy_script',
-                             'polysniffer_debug_output', 'polysniffer_last_run',
-                             'show_in_menu', 'menu_title', 'menu_icon', 'menu_sort_order')
-            except:
-                pass
+
+        # Filter to only show endpoints the tenant has subscribed to.
+        # Use only('id', 'trigger_path') — these two columns have always existed,
+        # so this evaluation never triggers a missing-column error.
+        try:
+            from dose.models import TenantApp
+            from dose.utils import get_current_tenant
+            _tenant = get_current_tenant(request) or getattr(request, 'tenant', None)
+            _subscribed = set(
+                TenantApp.public_bundles.filter(
+                    tenant=_tenant,
+                    status__in=['active', 'provisioning'],
+                ).values_list('app_name', flat=True)
+            ) if _tenant else set()
+
+            def _visible(trigger_path):
+                # Normalise: last path segment, lowercase, hyphens→underscores
+                n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+                return n == 'gmail' or n in _subscribed
+
+            visible_ids = [
+                ep.id for ep in qs.only('id', 'trigger_path')
+                if _visible(ep.trigger_path)
+            ]
+            qs = qs.filter(id__in=visible_ids)
+        except Exception as e:
+            print(f"[PassThroughEndpointAdmin] Subscription filter error (showing all): {e}")
 
         return qs
 
@@ -385,8 +389,9 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             'classes': ['collapse']
         }),
         ('Integration Mode', {
-            'fields': ('integration_mode', 'passthrough_type', 'bypass_middleware'),
-            'description': '<strong>Integration Type:</strong> Choose between Web UI only, Web UI + API, or API only (custom Dose UI).',
+            'fields': ('integration_mode', 'passthrough_type', 'bypass_middleware', 'passthrough_stream_debug'),
+            'description': '<strong>Integration Type:</strong> Choose between Web UI only, Web UI + API, or API only (custom Dose UI). '
+            '<strong>Passthrough stream debug:</strong> when enabled, logs upstream/final response diagnostics to the server console for this endpoint (or use POLYSNIFFER_PASSTHROUGH_DEBUG in settings for all).',
             'classes': ['collapse']
         }),
         ('API Configuration', {
@@ -443,19 +448,32 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     content_preview.short_description = "Content Preview"
 
     def save_model(self, request, obj, form, change):
+        from django.contrib import messages
+        from dose.utils import get_current_tenant
+
+        # TenantAwareModelAdmin saves into the schema for session tenant_id. If there is no
+        # tenant, the row is written to public — reloading under Oliver Enterprises reads
+        # olient and the edit looks "lost". AdminTenantSessionMiddleware only syncs
+        # tenant_id from UserProfile on /admin-panel/, not necessarily on /admin/.
+        if not get_current_tenant(request):
+            messages.warning(
+                request,
+                "No active tenant in session: this endpoint was saved in the public schema. "
+                "If the URL reverts after reload, open /admin-panel/ once (or ensure tenant_id "
+                "is in session), then edit again so the row saves to your tenant schema.",
+            )
+
         # Call parent save which will trigger the signal to create/update navigation items
         super().save_model(request, obj, form, change)
 
         # Show a success message about menu integration
         if obj.show_in_menu:
-            from django.contrib import messages
             menu_title = obj.get_menu_title()
             messages.success(
                 request,
                 f'✅ Passthrough endpoint saved successfully! Menu item "{menu_title}" will appear in the navigation for all tenants.'
             )
         else:
-            from django.contrib import messages
             messages.info(
                 request,
                 'Passthrough endpoint saved. Menu integration is disabled - no navigation item will be created.'

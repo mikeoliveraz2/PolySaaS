@@ -282,7 +282,7 @@ class InstructionAdmin(TenantAwareModelAdmin):
 
 class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     list_display = ('get_menu_title', 'provider', 'endpoint_url', 'show_in_menu', 'is_enabled', 'debug_button', 'created_at')
-    search_fields = ('provider', 'endpoint_url', 'description', 'menu_title')
+    search_fields = ('provider', 'endpoint_url', 'description', 'menu_title', 'slug', 'trigger_path')
     list_filter = ('provider', 'show_in_menu', 'is_enabled', 'integration_mode')
     change_form_template = 'admin/dose/passthroughendpoint/change_form.html'
 
@@ -318,6 +318,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
                         ('menu_title', "VARCHAR(100) DEFAULT ''"),
                         ('menu_icon', "VARCHAR(100) DEFAULT '🔗'"),
                         ('menu_sort_order', 'INTEGER DEFAULT 100 NOT NULL'),
+                        ('slug', "VARCHAR(100) DEFAULT ''"),
                     ]
 
                     for column_name, column_def in columns_to_add:
@@ -380,8 +381,13 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
 
     fieldsets = [
         ('Endpoint Configuration', {
-            'fields': ('provider', 'endpoint_url', 'trigger_path', 'is_enabled'),
-            'description': '<strong>Trigger Word:</strong> One word, no slashes please. Examples: <code>gmail</code>, <code>monitor-logger</code>, <code>nextcloud</code>. System automatically builds URLs like /pt/admin/{trigger_word}/ and /pt/dose/{trigger_word}/'
+            'fields': ('provider', 'endpoint_url', 'trigger_path', 'slug', 'is_enabled'),
+            'description': (
+                '<strong>Trigger path:</strong> URL segment for passthrough only '
+                '(<code>/pt/admin/&lt;trigger&gt;/…</code>). '
+                '<strong>Slug:</strong> optional separate id for non-passthrough use (menus, internal links); '
+                'leave blank if you do not need it.'
+            ),
         }),
         ('Menu Integration', {
             'fields': ('show_in_menu', 'menu_title', 'menu_icon', 'menu_sort_order', 'description'),

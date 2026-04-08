@@ -190,6 +190,8 @@ def run_pt_admin_passthrough_core(request):
     if not endpoint:
         return None
 
+    request._passthrough_endpoint = endpoint
+
     handler = get_handler_for_endpoint(endpoint, request)
     try_root = (
         getattr(handler, "try_root_display_shell_response", None)
@@ -211,7 +213,9 @@ def run_pt_admin_passthrough_core(request):
     print(f"USER      : {request.user}")
     print("=" * 120 + "\n")
 
-    response = forward_request_standardized(request, endpoint.endpoint_url, handler=handler)
+    response = forward_request_standardized(
+        request, endpoint.endpoint_url, handler=handler, endpoint=endpoint
+    )
 
     if _is_initial_page_load(request):
         print("[PT-CORE] Initial page load — wrapping in admin template")
@@ -308,5 +312,11 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
             preview = response.content[:500].decode('utf-8', errors='ignore') if hasattr(response, 'content') else "No content"
             print(f"PREVIEW: {preview}")
             print("="*120 + "\n")
+            try:
+                from dose.passthrough.stream_debug import log_final_response_if_debug
+
+                log_final_response_if_debug(request, response)
+            except Exception as _fin_exc:
+                print(f"[PT-STREAM-DEBUG] final response log error (non-blocking): {_fin_exc}")
 
         return response
