@@ -295,6 +295,7 @@ class NextcloudPassthroughHandler:
                 "display_body_inner": display_body_inner,
                 "service_name": "Nextcloud",
                 "proxy_prefix": proxy_prefix,
+                "display_enable_odoo_body_scope": False,
             },
         )
         # Forward Nextcloud session cookies (e.g. the session ID cookie that ties the

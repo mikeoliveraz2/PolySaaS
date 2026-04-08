@@ -1,6 +1,12 @@
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
-from django.http import JsonResponse, HttpResponse, HttpResponseNotFound
+from django.http import (
+    JsonResponse,
+    HttpResponse,
+    HttpResponseNotFound,
+    Http404,
+    HttpResponseForbidden,
+)
 from django.contrib.auth.decorators import login_required
 import requests
 import re
@@ -124,7 +130,7 @@ THEMES = [
 
 @login_required
 def select_theme_api(request):
-    """JSON endpoint — returns current theme settings for the popup modal."""
+    """JSON endpoint ΓÇö returns current theme settings for the popup modal."""
     from dose.tenant_utils import get_current_tenant
     tenant = get_current_tenant(request)
     if not tenant:
@@ -406,8 +412,8 @@ def odoo_view(request):
             <button class="open-tab-btn-global" onclick="window.open('http://localhost:8069/web', '_blank')">Open in New Tab</button>
             <div class="odoo-container" style="position:relative;">
                 <div class="odoo-header">
-                    <span>🏢 Odoo 18 Enterprise • polyodoo</span>
-                    <span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:12px">✅ Live</span>
+                    <span>≡ƒÅó Odoo 18 Enterprise ΓÇó polyodoo</span>
+                    <span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:12px">Γ£à Live</span>
                 </div>
                 <iframe src="http://localhost:8069/web" class="odoo-frame"></iframe>
             </div>
@@ -473,8 +479,8 @@ def dolibarr_view(request):
 
     html_content = """
     <div style="background: linear-gradient(135deg, #059669, #10B981); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>💼 Dolibarr ERP</h1>
-        <p>Open Source ERP & CRM • Coming Soon</p>
+        <h1>≡ƒÆ╝ Dolibarr ERP</h1>
+        <p>Open Source ERP & CRM ΓÇó Coming Soon</p>
     </div>
     """
     return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
@@ -485,8 +491,8 @@ def polysysmon_view(request):
 
     html_content = """
     <div style="background: linear-gradient(135deg, #DC2626, #EF4444); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>🖥️ PolySysMon</h1>
-        <p>System Monitoring • Coming Soon</p>
+        <h1>≡ƒûÑ∩╕Å PolySysMon</h1>
+        <p>System Monitoring ΓÇó Coming Soon</p>
     </div>
     """
     return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
@@ -497,8 +503,8 @@ def aiaspeers_view(request):
 
     html_content = """
     <div style="background: linear-gradient(135deg, #F59E0B, #FBBF24); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>🤖 AI As Peers</h1>
-        <p>Artificial Intelligence Platform • Coming Soon</p>
+        <h1>≡ƒñû AI As Peers</h1>
+        <p>Artificial Intelligence Platform ΓÇó Coming Soon</p>
     </div>
     """
     return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
@@ -509,8 +515,8 @@ def gmail_view(request):
 
     html_content = """
     <div style="background: linear-gradient(135deg, #DC2626, #EF4444); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>📧 Gmail Enterprise</h1>
-        <p>Email Management • Coming Soon</p>
+        <h1>≡ƒôº Gmail Enterprise</h1>
+        <p>Email Management ΓÇó Coming Soon</p>
     </div>
     """
     return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
@@ -518,7 +524,7 @@ def gmail_view(request):
 @login_required
 def mattermost_view(request):
     """
-    Mattermost • Chat & Kanban (screenshot version — looks integrated)
+    Mattermost ΓÇó Chat & Kanban (screenshot version ΓÇö looks integrated)
     """
     from django.utils.safestring import mark_safe
 
@@ -579,14 +585,14 @@ def mattermost_view(request):
     </style>
 
     <div class="widget-header">
-        <div>Mattermost • Chat & Kanban</div>
+        <div>Mattermost ΓÇó Chat & Kanban</div>
         <div>
             <button onclick="setView('here')" id="btn-here" class="view-btn active">Open Here</button>
             <button onclick="setView('tab')" id="btn-tab" class="view-btn">Open in New Tab</button>
         </div>
     </div>
 
-    <div class="fake-iframe" onclick="alert('Pro tip: Click \"Open in New Tab\" for the full live experience — seamless embed coming soon! 😉')">
+    <div class="fake-iframe" onclick="alert('Pro tip: Click \"Open in New Tab\" for the full live experience ΓÇö seamless embed coming soon! ≡ƒÿë')">
         <div class="fake-overlay">Full embed coming soon!<br>Try "Open in New Tab" for now</div>
     </div>
 
@@ -690,7 +696,7 @@ def _passthrough_debug_banner(trigger, info):
         f'<details style="margin:0 0 6px 0;font-size:11px;background:#1e293b;color:#94a3b8;'
         f'border-radius:4px;padding:4px 8px;">'
         f'<summary style="cursor:pointer;color:#38bdf8;font-weight:600">'
-        f'[DEBUG] passthrough:{trigger} — click to expand</summary>'
+        f'[DEBUG] passthrough:{trigger} ΓÇö click to expand</summary>'
         f'<table style="border-collapse:collapse;margin-top:4px">{rows}</table>'
         f'</details>'
     )
@@ -812,7 +818,7 @@ def passthrough_embed_view(request, trigger):
                 f"head_chars={len(_head or '')} body_chars={len(body_html or '')}"
             )
         else:
-            debug_info['result'] = 'EMPTY — upstream returned no HTML'
+            debug_info['result'] = 'EMPTY ΓÇö upstream returned no HTML'
             embed_body = mark_safe(
                 _passthrough_debug_banner(norm, debug_info) +
                 '<div class="alert alert-warning">Could not load upstream HTML (check endpoint URL and network).</div>'
@@ -836,9 +842,39 @@ def passthrough_embed_view(request, trigger):
 
 @never_cache
 @login_required
+def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
+    """
+    URLconf fallback for /pt/admin/<trigger>/ and nested paths. Middleware runs first;
+    this view runs if the middleware delegated (e.g. ordering quirks) or for clearer
+    login_required handling when the session is not yet authenticated.
+    """
+    from dose.models import UserTenantMembership
+    from dose.passthrough.middleware import run_pt_admin_passthrough_core
+    from dose.utils import get_current_tenant
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden("Tenant context is required for passthrough.")
+    u = request.user
+    if not u.is_superuser and not UserTenantMembership.objects.filter(
+        user=u, tenant=tenant
+    ).exists():
+        return HttpResponseForbidden("You do not have access to this tenant.")
+
+    resp = run_pt_admin_passthrough_core(request)
+    if resp is not None:
+        return resp
+    raise Http404(
+        "No enabled PassThroughEndpoint matches this URL, or the path is reserved "
+        "(e.g. mattermost static, PolySniffer building pen)."
+    )
+
+
+@never_cache
+@login_required
 def passthrough_display_shell_view(request):
     """
-    Phase 1: render admin/display.html — orchestration bar + head/body buckets only.
+    Phase 1: render admin/display.html ΓÇö orchestration bar + head/body buckets only.
     No upstream HTML fetch and no URL rewriting; validates Jazzmin content shell.
     """
     response = render(
@@ -848,6 +884,7 @@ def passthrough_display_shell_view(request):
             "display_title": "Passthrough display",
             "display_subtitle": "Shell (no proxified URLs yet)",
             "display_phase": "shell",
+            "display_shell_footer": "Test shell (/admin/passthrough-display/) ΓÇö open a sidebar passthrough link for a live app.",
         },
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"

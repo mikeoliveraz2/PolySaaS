@@ -241,6 +241,8 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 if display_body_inner
                 else "",
                 "display_odoo_pt_prefix": proxy_prefix,
+                # Odoo 18 mounts nodes on document.body — display.html hijacks appendChild.
+                "display_enable_odoo_body_scope": True,
                 "display_shell_footer": (
                     f"Odoo passthrough ({seg}): head/scripts load here; "
                     f"Discuss shows “Inbox” like native Odoo. Proxy prefix {proxy_prefix}/"

@@ -14,25 +14,77 @@
         margin: 0 -15px 20px -15px;
     }
 
+    /* ── Odoo display scope ── */
     #polysaas-display-body-bucket {
-        position: relative;
-        border: 2px dashed #555;
-        padding: 20px;
-        min-height: 500px;
-        background-color: #fafafa;
-        max-width: 100%;
-        width: 100%;
-        box-sizing: border-box;
-        overflow-x: auto;
-        /* no contain: layout — breaks Odoo/Owl sub-views (e.g. Discuss) after in-app nav */
+        position: relative !important;
+        width: 100% !important;
+        height: calc(100vh - 150px) !important;
+        min-height: 400px !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        background: #fff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        /* Flex column so Odoo's direct children (navbar + content) stack correctly */
+        display: flex !important;
+        flex-direction: column !important;
     }
 
-    /* Keep Odoo root nodes inside the column (they often use 100% / fixed layouts). */
-    #polysaas-display-body-bucket #wrapwrap,
-    #polysaas-display-body-bucket .o_web_client {
-        max-width: 100% !important;
+    /* Case A: Odoo 17 / Owl wraps everything in a single .o_web_client div */
+    #polysaas-display-body-bucket > #wrapwrap,
+    #polysaas-display-body-bucket > .o_web_client {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
         width: 100% !important;
-        box-sizing: border-box !important;
+    }
+
+    /* Case B: Odoo 18 — navbar + action manager are direct children of scope */
+    #polysaas-display-body-bucket > .o_main_navbar,
+    #polysaas-display-body-bucket > nav.o_main_navbar {
+        flex: 0 0 auto !important;
+        width: 100% !important;
+    }
+
+    /* Action manager — flex: 1 so it fills remaining height */
+    #polysaas-display-body-bucket .o_action_manager,
+    #polysaas-display-body-bucket > main {
+        flex: 1 1 auto !important;
+        overflow: auto !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    /* Discuss / content views must also fill */
+    #polysaas-display-body-bucket .o_discuss,
+    #polysaas-display-body-bucket .o_mail_discuss,
+    #polysaas-display-body-bucket .o_view_controller,
+    #polysaas-display-body-bucket .o_form_view,
+    #polysaas-display-body-bucket .o_list_view,
+    #polysaas-display-body-bucket .o_kanban_view,
+    #polysaas-display-body-bucket .o_content {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        height: 100% !important;
+        overflow: auto !important;
+    }
+
+    /* Navbar stays at top (both class patterns) */
+    #polysaas-display-body-bucket .o_navbar,
+    #polysaas-display-body-bucket .o_main_navbar {
+        flex: 0 0 auto !important;
+    }
+
+    /* Loading state while Odoo boots */
+    #polysaas-display-body-bucket:empty::after {
+        content: "Loading Odoo…";
+        display: block;
+        padding: 40px;
+        text-align: center;
+        color: #666;
     }
 
     /* Force the placeholder h3 to be visible regardless of font-controls JS overrides.
@@ -75,7 +127,7 @@
 
     <div id="polysaas-display-head-inject">{{ display_head_inner|safe }}</div>
 
-    <div id="polysaas-display-body-bucket">
+    <div id="polysaas-display-body-bucket" class="polysaas-passthrough-scope">
         {{ display_body_inner|safe }}
     </div>
 
@@ -84,123 +136,96 @@
 
 {% block extrajs %}
 {{ block.super }}
-    {# Odoo mounts late; root may be #wrapwrap or .o_web_client (not always body direct). #}
+    {#
+      Odoo 18 mounts by adding its rendered children directly to document.body
+      (body itself gets o_web_client class — there is no separate child with that class).
+      Strategy: snapshot body's current children (all Jazzmin/Django template nodes)
+      at script-execution time, then after DOMContentLoaded redirect any NEW direct
+      children of body into the scope bucket.  Runs both as an appendChild override
+      (catches synchronous appends) and via MutationObserver (catches async appends).
+    #}
     <script>
     (function () {
-        var bucket = document.getElementById('polysaas-display-body-bucket');
-        if (!bucket) return;
+        'use strict';
+        var scope = document.getElementById('polysaas-display-body-bucket');
+        if (!scope) return;
 
-        function canMove(el) {
-            return el && el !== document.body && el !== document.documentElement;
-        }
+        // --- snapshot Jazzmin nodes (already in the DOM when this script runs) ---
+        var _jazzmin = new Set();
+        var _ch = document.body ? Array.prototype.slice.call(document.body.childNodes) : [];
+        for (var _i = 0; _i < _ch.length; _i++) { _jazzmin.add(_ch[_i]); }
 
-        function firstOutsideBucket(selector) {
-            var list = document.querySelectorAll(selector);
-            var i;
-            var el;
-            for (i = 0; i < list.length; i++) {
-                el = list[i];
-                if (canMove(el) && !bucket.contains(el)) {
-                    return el;
-                }
-            }
-            return null;
-        }
-
-        function tuckFromBodyChildren() {
-            var ch = document.body ? document.body.children : [];
-            var i;
-            var n;
-            for (i = 0; i < ch.length; i++) {
-                n = ch[i];
-                if (n.contains && n.contains(bucket)) {
-                    continue;
-                }
-                if (n === bucket) {
-                    continue;
-                }
-                if (n.tagName === 'SCRIPT' || n.tagName === 'STYLE' || n.tagName === 'LINK') {
-                    continue;
-                }
-                if (n.id === 'wrapwrap' && canMove(n)) {
-                    bucket.appendChild(n);
-                    return true;
-                }
-                if (canMove(n) && n.classList && (n.classList.contains('o_web_client') || n.classList.contains('o_home_menu_background'))) {
-                    bucket.appendChild(n);
-                    return true;
-                }
-            }
+        // --- helper: is this node one we should keep in body? ---
+        function _isJazzmin(node) {
+            if (_jazzmin.has(node)) return true;
+            // Bootstrap / Jazzmin modals, tooltips, dropdowns appended to body at runtime
+            if (!node.classList) return false;
+            var c = node.classList;
+            if (c.contains('modal') || c.contains('modal-backdrop') ||
+                c.contains('toast') || c.contains('tooltip') ||
+                c.contains('popover') || c.contains('dropdown-menu')) return true;
             return false;
         }
 
-        function tuck() {
-            var el;
-            var list;
-            var i;
-            if (tuckFromBodyChildren()) {
-                return;
-            }
-            el = firstOutsideBucket('#wrapwrap');
-            if (el) {
-                bucket.appendChild(el);
-                return;
-            }
-            el = firstOutsideBucket('.o_web_client');
-            if (el) {
-                bucket.appendChild(el);
-                return;
-            }
-            list = document.querySelectorAll('.o_action_manager');
-            for (i = 0; i < list.length; i++) {
-                el = list[i];
-                if (canMove(el) && !bucket.contains(el)) {
-                    bucket.appendChild(el);
-                    return;
-                }
-            }
+        // --- move a node from body into the scope bucket ---
+        function _claim(node) {
+            if (!node || node.nodeType !== 1) return;
+            if (node === scope) return;
+            if (scope.contains(node)) return;
+            if (_isJazzmin(node)) return;
+            console.log('[PolySaaS] Moving Odoo node to scope:', node.tagName, node.className || node.id || '');
+            scope.appendChild(node);
         }
 
-        function start() {
-            tuck();
-            [400, 800, 1500, 3000, 6000, 10000].forEach(function (ms) {
-                setTimeout(tuck, ms);
+        // --- override appendChild on body so synchronous mounts are caught ---
+        var _origAppend = document.body.appendChild.bind(document.body);
+        document.body.appendChild = function (node) {
+            if (!_jazzmin.has(node) && !_isJazzmin(node)) {
+                console.log('[PolySaaS] Intercepted body.appendChild → redirecting to scope:', (node.tagName || ''), (node.className || ''));
+                return scope.appendChild(node);
+            }
+            return _origAppend(node);
+        };
+
+        // --- also override Element.prototype.appendChild for the rare case Owl uses it ---
+        var _origElemAppend = Element.prototype.appendChild;
+        Element.prototype.appendChild = function (child) {
+            if (this === document.body && child && !_isJazzmin(child) && !_jazzmin.has(child)) {
+                console.log('[PolySaaS] Intercepted Element.appendChild(body) → scope:', (child.tagName || ''), (child.className || ''));
+                return _origElemAppend.call(scope, child);
+            }
+            return _origElemAppend.call(this, child);
+        };
+
+        // --- MutationObserver fallback for anything that slips through ---
+        if (typeof MutationObserver !== 'undefined') {
+            var _mo = new MutationObserver(function (mutations) {
+                mutations.forEach(function (m) {
+                    m.addedNodes.forEach(function (node) {
+                        if (node.parentNode === document.body) { _claim(node); }
+                    });
+                });
+            });
+            _mo.observe(document.body, { childList: true });
+        }
+
+        // --- also: check body.classList for o_web_client (Odoo 18 sets class on body itself) ---
+        // When body IS the web client, copy its relevant children into scope.
+        function _harvestBodyChildren() {
+            var children = Array.prototype.slice.call(document.body.children);
+            children.forEach(function (n) {
+                if (n !== scope && !_jazzmin.has(n) && !_isJazzmin(n)) {
+                    _claim(n);
+                }
             });
         }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', start);
-        } else {
-            start();
-        }
-
-        // Diagnostic: confirm placeholder h3 is in the DOM and visible
-        (function checkPlaceholder() {
-            var ph = document.getElementById('polysaas-body-placeholder');
-            if (ph) {
-                console.log('[PolySaaS Display] ✅ placeholder h3 found in DOM. offsetHeight=' + ph.offsetHeight + ' computedColor=' + (window.getComputedStyle ? window.getComputedStyle(ph).color : 'n/a'));
-            } else {
-                console.warn('[PolySaaS Display] ❌ placeholder h3 NOT found in DOM — check template rendering');
-            }
-        })();
-
-        if (document.body && typeof MutationObserver !== 'undefined') {
-            var tuckTimer = null;
-            function debouncedTuck() {
-                if (tuckTimer) {
-                    clearTimeout(tuckTimer);
-                }
-                tuckTimer = setTimeout(function () {
-                    tuckTimer = null;
-                    tuck();
-                }, 250);
-            }
-            var mo = new MutationObserver(debouncedTuck);
-            mo.observe(document.body, { childList: true, subtree: true });
-            /* Do not disconnect: Odoo SPA adds new roots to body after Apps → Discuss, etc. */
-            window.addEventListener('hashchange', debouncedTuck);
-            window.addEventListener('popstate', debouncedTuck);
-        }
+        // Run after Owl boots (it calls whenReady → DOMContentLoaded, then renders)
+        [500, 1000, 2000, 4000, 8000].forEach(function (ms) {
+            setTimeout(_harvestBodyChildren, ms);
+        });
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(_harvestBodyChildren, 200);
+        });
     })();
     </script>
     {# Odoo passthrough: must run at end of body (after Jazzmin extrajs) so XHR/fetch are patched before deferred Odoo modules execute. Head-inject div scripts are unreliable here. #}

@@ -885,6 +885,7 @@ def passthrough_display_shell_view(request):
             "display_subtitle": "Shell (no proxified URLs yet)",
             "display_phase": "shell",
             "display_shell_footer": "Test shell (/admin/passthrough-display/) — open a sidebar passthrough link for a live app.",
+            "display_enable_odoo_body_scope": False,
         },
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"

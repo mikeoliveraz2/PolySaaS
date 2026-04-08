@@ -77,6 +77,13 @@ class MattermostPassthroughHandler:
             if m_body:
                 display_body_inner = _rewrite_static_attrs(m_body.group(1).strip())
 
+        # Same MMAUTHTOKEN + webpack public path + createElement patch as full HTML proxy path;
+        # display shell previously omitted this → endless spinner.
+        proxy_prefix = "/pt/admin/mattermost"
+        shim_html = self._mattermost_display_shim_html(request, proxy_prefix)
+        if shim_html:
+            display_head_inner = shim_html + display_head_inner
+
         response = render(
             request,
             "admin/display.html",
@@ -87,6 +94,8 @@ class MattermostPassthroughHandler:
                 "display_body_inner": mark_safe(display_body_inner)
                 if display_body_inner
                 else "",
+                "display_shell_footer": "Mattermost passthrough — static assets use /pt/admin/mattermost/static/.",
+                "display_enable_odoo_body_scope": False,
             },
         )
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -203,8 +212,11 @@ class MattermostPassthroughHandler:
     def _strip_csp(self, html):
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
-    def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
-        """Strong shim: token, __webpack_public_path__, createElement patch. First in <head>."""
+    def _mattermost_display_shim_html(self, request, proxy_prefix: str) -> str:
+        """
+        Client shim fragment: MMAUTHTOKEN, __webpack_public_path__, createElement patch.
+        Used by display shell (prepend to head) and by _inject_client_shim for full HTML.
+        """
         token = ""
         try:
             cookies = self.get_upstream_cookies(request) or {}
@@ -215,7 +227,7 @@ class MattermostPassthroughHandler:
         token_js = json.dumps(token)
         proxy_js = json.dumps(proxy_prefix)
 
-        shim = f"""
+        return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
     var PROXY = {proxy_js};
@@ -261,6 +273,10 @@ class MattermostPassthroughHandler:
 }})();
 </script>
 """
+
+    def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
+        """Strong shim: token, __webpack_public_path__, createElement patch. First in <head>."""
+        shim = self._mattermost_display_shim_html(request, proxy_prefix)
 
         if re.search(r"<head\b", html, re.IGNORECASE):
             return re.sub(
