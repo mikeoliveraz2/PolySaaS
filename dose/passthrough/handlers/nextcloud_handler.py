@@ -372,6 +372,7 @@ class NextcloudPassthroughHandler:
                 "service_name": "Nextcloud",
                 "proxy_prefix": proxy_prefix,
                 "display_enable_odoo_body_scope": False,
+                "display_nextcloud_bucket": True,
                 "display_shell_footer": shell_footer,
             },
         )

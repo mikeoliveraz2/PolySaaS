@@ -37,7 +37,7 @@ _NC_BYPASS_PREFIXES = (
 )
 
 _NC_STATIC_EXTENSIONS = frozenset(
-    "js css map woff woff2 ttf eot otf png jpg jpeg gif svg ico webp json wasm xml".split()
+    "js mjs css map woff woff2 ttf eot otf png jpg jpeg gif svg ico webp json wasm xml".split()
 )
 
 # Root-relative paths in Nextcloud HTML that must be prefixed with /pt/admin/{app}/…
@@ -60,9 +60,15 @@ _NC_PROXY_PATH_PREFIXES = (
     "/avatar/",
     "/heartbeat",
     "/login",
+    "/login/v2/",
     "/status.php",
     "/cron.php",
     "/appdata_",
+    # Core UI + search + contacts (must hit proxy or browser gets Django HTML → MIME errors on .mjs)
+    "/contactsmenu/",
+    "/autocomplete/",
+    "/unifiedsearch/",
+    "/csrftoken",
 )
 _NC_PROXY_EXACT_PATHS = frozenset(
     {"/login", "/index.php", "/heartbeat", "/status.php", "/cron.php"}
@@ -89,6 +95,9 @@ _NC_PARTIAL_PT_PREFIXES = (
     "/pt/dav/",
     "/pt/cron.php",
     "/pt/status.php",
+    "/pt/contactsmenu/",
+    "/pt/autocomplete/",
+    "/pt/unifiedsearch/",
 )
 
 
@@ -363,6 +372,7 @@ class NextcloudPassthroughHandler:
                 "service_name": "Nextcloud",
                 "proxy_prefix": proxy_prefix,
                 "display_enable_odoo_body_scope": False,
+                "display_nextcloud_bucket": True,
                 "display_shell_footer": shell_footer,
             },
         )

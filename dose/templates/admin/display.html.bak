@@ -137,13 +137,11 @@
 {% block extrajs %}
 {{ block.super }}
     {#
-      Odoo 18 mounts by adding its rendered children directly to document.body
-      (body itself gets o_web_client class — there is no separate child with that class).
-      Strategy: snapshot body's current children (all Jazzmin/Django template nodes)
-      at script-execution time, then after DOMContentLoaded redirect any NEW direct
-      children of body into the scope bucket.  Runs both as an appendChild override
-      (catches synchronous appends) and via MutationObserver (catches async appends).
+      Odoo-only: Owl may mount direct children on document.body. Mattermost/Nextcloud
+      must NOT run this — it breaks their SPAs (React/Vue). Enabled only when the handler
+      sets display_enable_odoo_body_scope=True (see OdooPassthroughHandler).
     #}
+    {% if display_enable_odoo_body_scope %}
     <script>
     (function () {
         'use strict';
@@ -228,6 +226,7 @@
         });
     })();
     </script>
+    {% endif %}
     {# Odoo passthrough: must run at end of body (after Jazzmin extrajs) so XHR/fetch are patched before deferred Odoo modules execute. Head-inject div scripts are unreliable here. #}
     {% if display_odoo_pt_prefix %}
     <script>

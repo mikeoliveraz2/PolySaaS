@@ -115,6 +115,29 @@
         white-space: nowrap;
         border: 0;
     }
+
+    /*
+      Nextcloud (and similar SPAs): the Odoo bucket uses flex + overflow:hidden so Owl
+      fills height. Nextcloud’s DOM does not match .o_web_client / .o_action_manager,
+      so the Vue root often gets zero usable height → blank white panel. This class is
+      set only when the handler passes display_nextcloud_bucket (see NextcloudPassthroughHandler).
+    */
+    #polysaas-display-body-bucket.polysaas-nc-bucket {
+        display: block !important;
+        flex-direction: unset !important;
+        overflow: auto !important;
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+        height: auto !important;
+        min-height: calc(100vh - 180px) !important;
+    }
+    #polysaas-display-body-bucket.polysaas-nc-bucket > * {
+        flex: none !important;
+        min-height: unset !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
 </style>
 {% endblock %}
 
@@ -127,7 +150,7 @@
 
     <div id="polysaas-display-head-inject">{{ display_head_inner|safe }}</div>
 
-    <div id="polysaas-display-body-bucket" class="polysaas-passthrough-scope">
+    <div id="polysaas-display-body-bucket" class="polysaas-passthrough-scope{% if display_nextcloud_bucket %} polysaas-nc-bucket{% endif %}">
         {{ display_body_inner|safe }}
     </div>
 
