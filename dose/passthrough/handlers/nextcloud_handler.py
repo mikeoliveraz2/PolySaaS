@@ -261,6 +261,21 @@ class NextcloudPassthroughHandler:
                 _base, fetch_path, proxy_prefix, request
             )
 
+            # Root "/" sometimes returns empty or non-HTML; /index.php is a reliable entry.
+            _fp0 = fetch_path.split("?")[0].rstrip("/") or "/"
+            if (
+                (not raw_html or not raw_html.strip())
+                and _fp0 == "/"
+                and not (raw_html or "").startswith("REDIRECT:")
+            ):
+                alt = "/index.php"
+                if qs:
+                    alt = alt + "?" + qs
+                print(f"[NC_FETCH] Root returned empty HTML — retry fetch_path={alt!r}")
+                raw_html, upstream_set_cookies, fetch_dbg = self._fetch_nc_html(
+                    _base, alt, proxy_prefix, request
+                )
+
             if (
                 fetch_dbg
                 and endpoint is not None
@@ -326,6 +341,19 @@ class NextcloudPassthroughHandler:
             early_shim = self._build_early_shim(proxy_prefix, _base)
             display_head_inner = early_shim + display_head_inner
 
+        if endpoint is None:
+            shell_footer = "Nextcloud: no PassThroughEndpoint in context — check tenant schema."
+        elif not (display_body_inner or "").strip():
+            shell_footer = (
+                "Nextcloud display shell: no body HTML extracted. "
+                "Check console + server [NC_FETCH] lines; confirm endpoint_url and NC is up. "
+                "Try opening /pt/admin/nextcloud/login/ in the same session."
+            )
+        else:
+            shell_footer = (
+                f"Nextcloud passthrough — endpoint {_base!s}, proxy {proxy_prefix}/"
+            )
+
         response = render(
             request,
             "admin/display.html",
@@ -335,6 +363,7 @@ class NextcloudPassthroughHandler:
                 "service_name": "Nextcloud",
                 "proxy_prefix": proxy_prefix,
                 "display_enable_odoo_body_scope": False,
+                "display_shell_footer": shell_footer,
             },
         )
         # Forward Nextcloud session cookies (e.g. the session ID cookie that ties the
@@ -374,6 +403,9 @@ class NextcloudPassthroughHandler:
             "User-Agent": "Mozilla/5.0 (compatible; PolySaaS-Proxy/1.0)",
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "en-US,en;q=0.9",
+            # Avoid upstream 304 with empty body — display shell needs full HTML to extract head/body.
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
         }
 
         current_path = path
@@ -388,6 +420,23 @@ class NextcloudPassthroughHandler:
                 return "", set_cookies, None
 
             print(f"[NC_FETCH] Hop {hop}: Status {resp.status_code}")
+
+            if resp.status_code == 304:
+                sep = "&" if "?" in url else "?"
+                bust_url = url + sep + "_polysaas_nc_fetch=1"
+                print(f"[NC_FETCH] Hop {hop}: 304 — retry GET {bust_url}")
+                try:
+                    resp = _rq.get(
+                        bust_url,
+                        headers=headers,
+                        cookies=browser_cookies,
+                        allow_redirects=False,
+                        timeout=30,
+                    )
+                    url = bust_url
+                    print(f"[NC_FETCH] Hop {hop}: retry status {resp.status_code}")
+                except Exception as exc:
+                    print(f"[NC_FETCH] 304 retry failed: {exc}")
 
             # Accumulate Set-Cookie headers from every hop
             for _rh, _rv in resp.raw.headers.items():
