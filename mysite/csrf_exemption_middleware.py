@@ -60,4 +60,10 @@ class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
         if path_info.startswith(odoo_prefixes):
             return True
 
+        # Nextcloud paths that arrive missing /admin/nextcloud/ — they are rewritten
+        # by ExternalPassthroughMiddleware, but exempt them here too for safety.
+        nc_partial = ('/pt/index.php/', '/pt/login', '/pt/ocs/', '/pt/remote.php/')
+        if path_info.startswith(nc_partial):
+            return True
+
         return False

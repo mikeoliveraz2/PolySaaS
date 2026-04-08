@@ -392,15 +392,31 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             upstream_origin = f"{p.scheme}://{p.netloc}"
             
             # Rewrite the location to go through the proxy
+            from urllib.parse import urlparse as _ulp
+            _loc_parsed = _ulp(location)
+            _polysaas_host = request.get_host()  # e.g. localhost:8000
+
             if location.startswith(upstream_origin):
                 # Absolute URL to upstream - strip origin and prepend proxy prefix
                 rel_path = location[len(upstream_origin):]
                 if not rel_path.startswith("/"):
                     rel_path = "/" + rel_path
-                location = proxy_prefix + rel_path
+                # Guard against double-prefix (upstream already injected proxy path via overwritewebroot)
+                if not rel_path.startswith(proxy_prefix):
+                    location = proxy_prefix + rel_path
+                else:
+                    location = rel_path
+            elif _loc_parsed.netloc and _loc_parsed.netloc == _polysaas_host:
+                # Absolute URL pointing back at PolySaaS itself — use the path as-is
+                # (Nextcloud with overwritehost=localhost:8000 does this)
+                location = _loc_parsed.path
+                if _loc_parsed.query:
+                    location += "?" + _loc_parsed.query
             elif location.startswith("/"):
-                # Relative path - prepend proxy prefix
-                location = proxy_prefix + location
+                # Relative path - prepend proxy prefix only if not already prefixed
+                # (Nextcloud with overwritewebroot bakes the proxy prefix into Location headers)
+                if not location.startswith(proxy_prefix):
+                    location = proxy_prefix + location
             elif location.startswith(("http://", "https://")):
                 # Absolute URL to different origin - pass through unchanged (external redirect)
                 pass
@@ -411,6 +427,25 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             print(f"FORWARDER — rewritten redirect to {location} (proxy prefix: {proxy_prefix})")
             redirect_response = HttpResponse(status=resp.status_code)
             redirect_response["Location"] = location
+
+            # Forward Set-Cookie headers from the upstream redirect response.
+            # Critical for login flows: Nextcloud/Odoo set the session cookie on the
+            # 302 login response — without this the browser never gets authenticated.
+            from http.cookies import SimpleCookie as _SC
+            for _rh_name, _rh_val in resp.raw.headers.items():
+                if _rh_name.lower() != "set-cookie":
+                    continue
+                try:
+                    _sc = _SC()
+                    _sc.load(_rh_val)
+                    for _cn, _cm in _sc.items():
+                        redirect_response.cookies[_cn] = _cm.value
+                        redirect_response.cookies[_cn]["path"] = _cm.get("path") or "/"
+                        redirect_response.cookies[_cn]["samesite"] = "Lax"
+                        print(f"FORWARDER — forwarding Set-Cookie on redirect: {_cn}")
+                except Exception as _ce:
+                    print(f"FORWARDER — Set-Cookie parse error on redirect: {_ce}")
+
             return redirect_response
 
         content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -461,9 +496,30 @@ def forward_request_standardized(request, endpoint_url, handler=None):
             # Forward Set-Cookie headers from upstream so the browser receives MMUSERID and MMCSRF
             # after Mattermost login.  Without MMCSRF the SPA cannot set X-CSRF-Token on POSTs.
             # Strip HttpOnly so JS can read MMAUTHTOKEN; strip Domain so cookies bind to PolySaaS host.
+            #
+            # IMPORTANT: Do NOT forward Set-Cookie from static asset responses (JS, CSS, fonts,
+            # images).  Nextcloud (and similar apps) set a new session cookie on every asset
+            # request.  If we forward those cookies to the browser, the browser's session is
+            # overwritten with one that no longer matches the requesttoken embedded in the HTML,
+            # which causes CSRF validation failures on the next form POST.
+            _static_asset_types = (
+                "application/javascript",
+                "text/javascript",
+                "text/css",
+                "image/",
+                "font/",
+                "application/font-",
+                "application/x-font-",
+            )
+            _skip_set_cookie = any(
+                (upstream_ct or "").lower().startswith(t) for t in _static_asset_types
+            )
             from http.cookies import SimpleCookie
             for raw_name, raw_val in resp.raw.headers.items():
                 if raw_name.lower() != "set-cookie":
+                    continue
+                if _skip_set_cookie:
+                    print(f"FORWARDER — suppressing Set-Cookie from static asset ({upstream_ct})")
                     continue
                 try:
                     sc = SimpleCookie()

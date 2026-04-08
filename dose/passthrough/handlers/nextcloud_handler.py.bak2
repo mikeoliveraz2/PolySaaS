@@ -100,31 +100,50 @@ class NextcloudPassthroughHandler:
 
         display_head_inner = ""
         display_body_inner = ""
+        upstream_set_cookies = []
 
         if endpoint is not None:
             _parsed = urlparse(endpoint.endpoint_url)
             _base = f"{_parsed.scheme}://{_parsed.netloc}"
 
             fetch_path = upstream_subpath if upstream_subpath not in ("", "/") else "/"
-            # Use our own fetch that handles Nextcloud's proxy-prefix redirects correctly.
-            # fetch_upstream_index_html follows same-origin redirects by prepending the upstream
-            # base, but Nextcloud may put /pt/admin/nextcloud/ in its Location headers (because
-            # it was initialised with OVERWRITEWEBROOT), causing a redirect loop.
-            raw_html = self._fetch_nc_html(_base, fetch_path, proxy_prefix, request)
+            # Include query string so Nextcloud receives params like ?direct=1&user=admin.
+            # Without this, fetching /login always returns the redirect to /login?direct=1
+            # which the browser follows back to the same URL — causing ERR_TOO_MANY_REDIRECTS.
+            qs = request.META.get("QUERY_STRING", "")
+            if qs:
+                fetch_path = fetch_path + "?" + qs
+            raw_html, upstream_set_cookies = self._fetch_nc_html(_base, fetch_path, proxy_prefix, request)
 
             # If upstream redirected to a PolySaaS URL outside the proxy prefix → browser redirect
             redir = self._display_shell_redirect_from_fetch(raw_html, request, proxy_prefix)
             if redir is not None:
+                # Forward Set-Cookie on redirects too (e.g. post-login redirect carries nc_session)
+                self._apply_set_cookies(redir, upstream_set_cookies)
                 return redir
 
             if raw_html and not raw_html.startswith("REDIRECT:"):
-                # Extract <head> content
-                m = re.search(r"<head[^>]*>(.*?)</head>", raw_html, re.DOTALL | re.IGNORECASE)
+                # Extract <head> content — also grab data-requesttoken from the <head> tag itself.
+                # Nextcloud's Vue login reads document.head.dataset.requesttoken for CSRF validation.
+                # We only inject inner content so the attribute would be lost without this.
+                m = re.search(r"<head([^>]*)>(.*?)</head>", raw_html, re.DOTALL | re.IGNORECASE)
                 if m:
-                    head_raw = m.group(1).strip()
+                    head_attrs = m.group(1)
+                    head_raw = m.group(2).strip()
                     head_raw = self._strip_base_tags(head_raw)
                     head_raw = self._strip_csp_meta(head_raw)
                     display_head_inner = self._rewrite_nc_paths(head_raw, proxy_prefix, _base)
+
+                    # Inject requesttoken onto document.head so Nextcloud's JS can read it.
+                    # Nextcloud reads document.head.dataset.requesttoken for CSRF — must be
+                    # set synchronously (before Vue initialises), not in a DOMContentLoaded cb.
+                    rt_match = re.search(r'data-requesttoken=["\']([^"\']+)["\']', head_attrs, re.IGNORECASE)
+                    if rt_match:
+                        rt_val = rt_match.group(1).replace("\\", "\\\\").replace('"', '\\"')
+                        display_head_inner = (
+                            f'<script>document.head.dataset.requesttoken="{rt_val}";</script>\n'
+                            + display_head_inner
+                        )
 
                 # Extract <body> content
                 m_body = re.search(r"<body[^>]*>(.*?)</body>", raw_html, re.DOTALL | re.IGNORECASE)
@@ -136,7 +155,7 @@ class NextcloudPassthroughHandler:
             early_shim = self._build_early_shim(proxy_prefix, _base)
             display_head_inner = early_shim + display_head_inner
 
-        return render(
+        response = render(
             request,
             "admin/display.html",
             {
@@ -146,11 +165,17 @@ class NextcloudPassthroughHandler:
                 "proxy_prefix": proxy_prefix,
             },
         )
+        # Forward Nextcloud session cookies (e.g. the session ID cookie that ties the
+        # data-requesttoken in the HTML to the server-side session). Without this the
+        # browser can't validate the CSRF token on form submission and login fails.
+        self._apply_set_cookies(response, upstream_set_cookies)
+        return response
 
     @staticmethod
-    def _fetch_nc_html(base: str, path: str, proxy_prefix: str, request) -> str:
+    def _fetch_nc_html(base: str, path: str, proxy_prefix: str, request):
         """
         Fetch HTML from Nextcloud upstream.
+        Returns a tuple (html_str, set_cookie_raw_list).
 
         KEY INSIGHT: When fetching via 'localhost', Nextcloud matches its OVERWRITEHOST
         setting and issues redirect loops back to the PolySaaS host. Fetching via
@@ -163,9 +188,15 @@ class NextcloudPassthroughHandler:
         fetch_base = base.replace("localhost", "127.0.0.1")
 
         # Forward browser cookies so Nextcloud knows if the user is already authenticated.
-        # After a successful login the browser holds an nc_session cookie; forwarding it
-        # lets Nextcloud redirect to the dashboard rather than serving the login page again.
-        browser_cookies = dict(request.COOKIES) if request else {}
+        # Exception: the bare /login path with NO query string — forwarding cookies there
+        # causes Nextcloud to redirect to /login?direct=1&user=admin (cross-origin), which
+        # we then send to the browser, which comes back to the same bare /login, looping.
+        # With a query string (?direct=1&user=admin), forwarding cookies is safe: Nextcloud
+        # either serves the login form (unauthenticated) or redirects to dashboard (authenticated).
+        _bare_login = path.split("?")[0].rstrip("/") in ("/login", "/index.php/login")
+        _has_qs = "?" in path
+        browser_cookies = {} if (_bare_login and not _has_qs) else (dict(request.COOKIES) if request else {})
+        set_cookies = []  # collect Set-Cookie raw values to forward to the browser
 
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; PolySaaS-Proxy/1.0)",
@@ -186,13 +217,18 @@ class NextcloudPassthroughHandler:
 
             print(f"[NC_FETCH] Hop {hop}: Status {resp.status_code}")
 
+            # Accumulate Set-Cookie headers from every hop
+            for _rh, _rv in resp.raw.headers.items():
+                if _rh.lower() == "set-cookie":
+                    set_cookies.append(_rv)
+
             if resp.status_code == 200:
                 ct = resp.headers.get("Content-Type", "")
                 if "text/html" in ct:
                     print(f"[NC_FETCH] Got HTML ({len(resp.content)} bytes)")
-                    return resp.text
+                    return resp.text, set_cookies
                 print(f"[NC_FETCH] Non-HTML content-type: {ct}")
-                return ""
+                return "", set_cookies
 
             if resp.status_code in (301, 302, 303, 307, 308):
                 loc = resp.headers.get("Location", "")
@@ -219,7 +255,7 @@ class NextcloudPassthroughHandler:
                 loc_origin = f"{loc_parsed.scheme}://{loc_parsed.netloc}"
                 if loc_origin != fetch_base:
                     # Return as sentinel so caller can decide what to do
-                    return f"REDIRECT:{resp.status_code}:{loc}"
+                    return f"REDIRECT:{resp.status_code}:{loc}", set_cookies
                 # Same-origin absolute: extract path
                 current_path = loc_parsed.path
                 if loc_parsed.query:
@@ -228,10 +264,26 @@ class NextcloudPassthroughHandler:
 
             # Any other status
             print(f"[NC_FETCH] Unexpected status {resp.status_code}")
-            return ""
+            return "", set_cookies
 
         print("[NC_FETCH] Exceeded hop limit")
-        return ""
+        return "", set_cookies
+
+    @staticmethod
+    def _apply_set_cookies(response, set_cookie_raw_list):
+        """Copy raw Set-Cookie strings from upstream onto a Django response."""
+        from http.cookies import SimpleCookie
+        for raw in (set_cookie_raw_list or []):
+            try:
+                sc = SimpleCookie()
+                sc.load(raw)
+                for name, morsel in sc.items():
+                    response.cookies[name] = morsel.value
+                    response.cookies[name]["path"] = morsel.get("path") or "/"
+                    response.cookies[name]["samesite"] = "Lax"
+                    print(f"[NC_FETCH] Forwarding Set-Cookie to browser: {name}")
+            except Exception as e:
+                print(f"[NC_FETCH] Set-Cookie parse error: {e}")
 
     @staticmethod
     def _display_shell_redirect_from_fetch(raw_html, request, proxy_prefix):
