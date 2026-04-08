@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  nextcloud-db:
+    image: mariadb:10.11
+    container_name: polysaas-nextcloud-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: nextcloud_root_pw
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: nextcloud_pw
+    volumes:
+      - nextcloud_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--su-mysql", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nextcloud:
+    image: nextcloud:28
+    container_name: polysaas-nextcloud
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    environment:
+      MYSQL_HOST: nextcloud-db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: nextcloud_pw
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: admin
+      NEXTCLOUD_TRUSTED_DOMAINS: "localhost 127.0.0.1 localhost:8000 localhost:8888"
+      OVERWRITEPROTOCOL: http
+      OVERWRITEHOST: "localhost:8888"
+      NC_OVERWRITECLIURL: "http://localhost:8888"
+    volumes:
+      - nextcloud_data:/var/www/html
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+
+volumes:
+  nextcloud_db:
+  nextcloud_data:
