@@ -30,6 +30,9 @@ def get_handler_for_endpoint(endpoint, request=None):
     if trigger_path.lower() == 'mattermost':
         from dose.passthrough.handlers.mattermost_handler import MattermostPassthroughHandler
         return MattermostPassthroughHandler()
+    if trigger_path.lower() == 'dolibarr':
+        from dose.passthrough.handlers.dolibarr_handler import DolibarrPassthroughHandler
+        return DolibarrPassthroughHandler()
 
     logger.info(f"No specific handler found for {trigger_path}")
     return None
