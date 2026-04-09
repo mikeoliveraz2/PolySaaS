@@ -176,6 +176,34 @@ def _nc_bypasses_display_shell(upstream_subpath: str) -> bool:
     return False
 
 
+def _nextcloud_session_cookie_present(request) -> bool:
+    """
+    True if the browser likely holds an upstream Nextcloud session.
+    Cookie names vary by version (oc<instanceid>, oc_sessionPassphrase, etc.).
+    """
+    if not request or not getattr(request, "COOKIES", None):
+        return False
+    for name in request.COOKIES:
+        low = name.lower()
+        if low in ("nc_session_id", "nc_username", "oc_sessionpassphrase"):
+            return True
+        if low.startswith("__host-nc") or low.startswith("__secure-nc"):
+            return True
+        if name.startswith("oc") and len(name) >= 12:
+            return True
+    return False
+
+
+def _nc_shell_path_needs_nc_session(path_with_possible_qs: str) -> bool:
+    """HTML paths we server-fetch; without session cookies upstream often embeds null currentUser."""
+    p = (path_with_possible_qs or "").split("?")[0].rstrip("/") or "/"
+    if p in ("/", "/index.php"):
+        return True
+    if "/apps/" in p:
+        return True
+    return False
+
+
 class NextcloudPassthroughHandler:
     """
     Passthrough handler for Nextcloud.
@@ -192,7 +220,7 @@ class NextcloudPassthroughHandler:
         ref = request.META.get("HTTP_REFERER", "") or ""
         if proxy_prefix in ref:
             return True
-        if request.COOKIES.get("nc_session_id") or request.COOKIES.get("nc_username"):
+        if _nextcloud_session_cookie_present(request):
             return True
         return False
 
@@ -279,6 +307,22 @@ class NextcloudPassthroughHandler:
             qs = request.META.get("QUERY_STRING", "")
             if qs:
                 fetch_path = fetch_path + "?" + qs
+
+            # Cookie-name heuristics false-positive easily (any long "oc*" cookie). Verify with
+            # OCS: unauthenticated HTML still boots the dashboard Vue with null currentUser.
+            if _nc_shell_path_needs_nc_session(fetch_path):
+                _fb = _base.replace("localhost", "127.0.0.1")
+                if not NextcloudPassthroughHandler._nc_upstream_ocs_user_ok(_fb, request):
+                    print("[NC_OCS] user probe failed — redirect to login")
+                    print(
+                        "[NC-HANDLER] OCS user probe failed — redirect to login "
+                        "(bootstrap real NC session before display shell fetch)"
+                    )
+                    redir = proxy_prefix + "/login?direct=1"
+                    if qs:
+                        redir = redir + "&" + qs
+                    return HttpResponseRedirect(redir)
+
             raw_html, upstream_set_cookies, fetch_dbg = self._fetch_nc_html(
                 _base, fetch_path, proxy_prefix, request
             )
@@ -338,14 +382,46 @@ class NextcloudPassthroughHandler:
                     head_raw = self._strip_csp_meta(head_raw)
                     display_head_inner = self._rewrite_nc_paths(head_raw, proxy_prefix, _base)
 
-                    # Inject requesttoken onto document.head so Nextcloud's JS can read it.
-                    # Nextcloud reads document.head.dataset.requesttoken for CSRF — must be
-                    # set synchronously (before Vue initialises), not in a DOMContentLoaded cb.
-                    rt_match = re.search(r'data-requesttoken=["\']([^"\']+)["\']', head_attrs, re.IGNORECASE)
-                    if rt_match:
-                        rt_val = rt_match.group(1).replace("\\", "\\\\").replace('"', '\\"')
+                    # -------------------------------------------------------
+                    # Copy ALL data-* attributes from the Nextcloud <head> tag
+                    # to document.head so Nextcloud's JS can read them.
+                    #
+                    # Nextcloud core reads (among others):
+                    #   document.head.dataset.user           → OC.currentUser
+                    #   document.head.dataset.uid            → user id
+                    #   document.head.dataset.userDisplayname
+                    #   document.head.dataset.requesttoken   → CSRF token
+                    #   document.head.dataset.allowedAdminGroups
+                    #   document.head.dataset.adminNonce / nonce
+                    #
+                    # Previously we only copied data-requesttoken, leaving every
+                    # user-related attribute null → OC.getCurrentUser() = null → Vue crash.
+                    # -------------------------------------------------------
+                    data_attrs = re.findall(
+                        r'\b(data-[a-z0-9_-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')',
+                        head_attrs,
+                        re.IGNORECASE,
+                    )
+                    if data_attrs:
+                        js_parts = []
+                        for attr_name, dq_val, sq_val in data_attrs:
+                            val = dq_val if dq_val else sq_val
+                            # Convert data-foo-bar to camelCase dataset key fooBar
+                            key_parts = attr_name[5:].split("-")  # strip leading "data-"
+                            dataset_key = key_parts[0] + "".join(
+                                p.capitalize() for p in key_parts[1:]
+                            )
+                            escaped = val.replace("\\", "\\\\").replace('"', '\\"')
+                            js_parts.append(
+                                f'document.head.dataset["{dataset_key}"]="{escaped}";'
+                            )
+                        head_dataset_js = "\n".join(js_parts)
+                        print(
+                            f"[NC-HANDLER] Injecting {len(data_attrs)} head data-attrs: "
+                            + ", ".join(a[0] for a in data_attrs[:8])
+                        )
                         display_head_inner = (
-                            f'<script>document.head.dataset.requesttoken="{rt_val}";</script>\n'
+                            f"<script>{head_dataset_js}</script>\n"
                             + display_head_inner
                         )
 
@@ -396,6 +472,68 @@ class NextcloudPassthroughHandler:
         return response
 
     @staticmethod
+    def _nc_upstream_ocs_user_ok(fetch_base: str, request) -> bool:
+        """
+        True if Nextcloud accepts the browser cookie jar as a logged-in user.
+        Uses OCS; avoids false positives from unrelated cookies matching oc* heuristics.
+        """
+        import requests as _rq
+
+        if not request or not getattr(request, "COOKIES", None):
+            return False
+        cookies = dict(request.COOKIES)
+        headers = {
+            "OCS-APIRequest": "true",
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+        ua = request.META.get("HTTP_USER_AGENT")
+        if ua:
+            headers["User-Agent"] = ua
+        ref = request.META.get("HTTP_REFERER")
+        if ref:
+            headers["Referer"] = ref
+        al = request.META.get("HTTP_ACCEPT_LANGUAGE")
+        if al:
+            headers["Accept-Language"] = al
+        url = fetch_base.rstrip("/") + "/ocs/v2.php/cloud/user"
+        try:
+            resp = _rq.get(
+                url, headers=headers, cookies=cookies, allow_redirects=False, timeout=15
+            )
+        except Exception as exc:
+            print(f"[NC_OCS] probe GET failed: {exc}")
+            return False
+        if resp.status_code != 200:
+            print(f"[NC_OCS] probe status={resp.status_code} url={url!r}")
+            return False
+        try:
+            payload = resp.json()
+        except Exception:
+            print("[NC_OCS] probe: response not JSON")
+            return False
+        ocs = payload.get("ocs") or {}
+        meta = ocs.get("meta") or {}
+        try:
+            ocs_sc = int(meta.get("statuscode", 0))
+        except (TypeError, ValueError):
+            ocs_sc = 0
+        if ocs_sc != 200:
+            print(f"[NC_OCS] probe ocs.meta.statuscode={meta.get('statuscode')!r}")
+            return False
+        data = ocs.get("data")
+        if not isinstance(data, dict):
+            print("[NC_OCS] probe: missing ocs.data object")
+            return False
+        uid = data.get("id")
+        if uid is None or uid == "":
+            print("[NC_OCS] probe: ocs.data has no id")
+            return False
+        print(f"[NC_OCS] probe ok id={uid!r} url={url!r}")
+        return True
+
+    @staticmethod
     def _fetch_nc_html(base: str, path: str, proxy_prefix: str, request):
         """
         Fetch HTML from Nextcloud upstream.
@@ -423,13 +561,28 @@ class NextcloudPassthroughHandler:
         set_cookies = []  # collect Set-Cookie raw values to forward to the browser
 
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; PolySaaS-Proxy/1.0)",
             "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-US,en;q=0.9",
             # Avoid upstream 304 with empty body — display shell needs full HTML to extract head/body.
             "Cache-Control": "no-cache",
             "Pragma": "no-cache",
         }
+        if request:
+            ua = request.META.get("HTTP_USER_AGENT")
+            if ua:
+                headers["User-Agent"] = ua
+            else:
+                headers["User-Agent"] = "Mozilla/5.0 (compatible; PolySaaS-Proxy/1.0)"
+            ref = request.META.get("HTTP_REFERER")
+            if ref:
+                headers["Referer"] = ref
+            al = request.META.get("HTTP_ACCEPT_LANGUAGE")
+            headers["Accept-Language"] = al or "en-US,en;q=0.9"
+            acc = request.META.get("HTTP_ACCEPT")
+            if acc and "text/html" in acc:
+                headers["Accept"] = acc
+        else:
+            headers["User-Agent"] = "Mozilla/5.0 (compatible; PolySaaS-Proxy/1.0)"
+            headers["Accept-Language"] = "en-US,en;q=0.9"
 
         current_path = path
         for hop in range(6):
@@ -640,6 +793,11 @@ class NextcloudPassthroughHandler:
         Rewrite Nextcloud root-relative and upstream-absolute URLs so the browser loads
         assets and navigation through proxy_prefix. Covers srcset, lazy-load data attrs,
         and quoted url(...) in inline CSS where safe.
+
+        Script bodies are excluded from bulk quoted-URL replacement: running
+        html.replace('\"http://127.0.0.1:8888/', ...) across embedded JSON initial state
+        breaks parsing and leaves OC.getCurrentUser() null (Vue crashes) even when OCS
+        /cloud/user returns 200 for the same cookie jar.
         """
 
         base_aliases = _nc_upstream_base_aliases(base)
@@ -684,17 +842,6 @@ class NextcloudPassthroughHandler:
                 return match.group(0)
             return f"{attr}={quote}{newu}{quote}"
 
-        # Multiline-safe: srcset can span lines in pretty-printed HTML
-        multi_attrs = r"(?i)\b(srcset|data-srcset|imagesrcset)\s*=\s*([\"'])(.*?)\2"
-        html = re.sub(multi_attrs, rewrite_attr_value, html, flags=re.DOTALL)
-
-        single_attrs = (
-            r"(?i)\b(href|src|action|data-url|data-href|data-link|data-src|data-lazy-src|"
-            r"data-original|data-background-url|data-icon-url|poster)\s*=\s*([\"'])([^\"']*)\2"
-        )
-        html = re.sub(single_attrs, rewrite_attr_value, html)
-
-        # Quoted url(/path) in inline styles and <style> blocks
         def rewrite_url_call(m):
             q, path = m.group(1), m.group(2).strip()
             if path.startswith("data:"):
@@ -704,17 +851,92 @@ class NextcloudPassthroughHandler:
                 return m.group(0)
             return f"url({q}{newp}{q})"
 
+        def rewrite_url_call_http(m):
+            q, path = m.group(1), m.group(2).strip()
+            if path.startswith("data:"):
+                return m.group(0)
+            newp = proxy_single(path)
+            if newp == path:
+                return m.group(0)
+            return f"url({q}{newp}{q})"
+
+        def rewrite_markup_segment(segment: str) -> str:
+            """Attrs + root-relative url() + bulk quoted upstream URLs (safe outside scripts)."""
+            h = segment
+            multi_attrs = r"(?i)\b(srcset|data-srcset|imagesrcset)\s*=\s*([\"'])(.*?)\2"
+            h = re.sub(multi_attrs, rewrite_attr_value, h, flags=re.DOTALL)
+            single_attrs = (
+                r"(?i)\b(href|src|action|data-url|data-href|data-link|data-src|data-lazy-src|"
+                r"data-original|data-background-url|data-icon-url|poster)\s*=\s*([\"'])([^\"']*)\2"
+            )
+            h = re.sub(single_attrs, rewrite_attr_value, h)
+            h = re.sub(
+                r'url\(\s*([\"\'])(/[^\"\'\)]*)\1\s*\)',
+                rewrite_url_call,
+                h,
+                flags=re.IGNORECASE,
+            )
+            h = re.sub(
+                r'url\(\s*([\"\'])(https?://[^\"\'\)]*)\1\s*\)',
+                rewrite_url_call_http,
+                h,
+                flags=re.IGNORECASE,
+            )
+            for ab in base_aliases:
+                h = h.replace(f'"{ab}/', f'"{proxy_prefix}/')
+                h = h.replace(f"'{ab}/", f"'{proxy_prefix}/")
+            return h
+
+        def rewrite_style_inner(inner: str) -> str:
+            """CSS only: url() paths; never bulk-replace quoted JSON-like strings."""
+            h = inner
+            h = re.sub(
+                r'url\(\s*([\"\'])(/[^\"\'\)]*)\1\s*\)',
+                rewrite_url_call,
+                h,
+                flags=re.IGNORECASE,
+            )
+            h = re.sub(
+                r'url\(\s*([\"\'])(https?://[^\"\'\)]*)\1\s*\)',
+                rewrite_url_call_http,
+                h,
+                flags=re.IGNORECASE,
+            )
+            return h
+
+        scripts: list[tuple[str, str, str]] = []
+
+        def _stash_script(m: re.Match) -> str:
+            scripts.append((m.group(1), m.group(2), m.group(3)))
+            return f"__NCRW_SCRIPT_{len(scripts) - 1}__"
+
+        # Unescaped </script> inside JS strings is rare in NC bundles; acceptable risk.
         html = re.sub(
-            r'url\(\s*([\"\'])(/[^\"\'\)]*)\1\s*\)',
-            rewrite_url_call,
+            r"(?is)(<script\b[^>]*>)(.*?)(</script\s*>)",
+            _stash_script,
             html,
-            flags=re.IGNORECASE,
         )
 
-        # Absolute upstream URLs embedded in JS / JSON strings (all localhost/127 aliases)
-        for ab in base_aliases:
-            html = html.replace(f'"{ab}/', f'"{proxy_prefix}/')
-            html = html.replace(f"'{ab}/", f"'{proxy_prefix}/")
+        styles: list[tuple[str, str, str]] = []
+
+        def _stash_style(m: re.Match) -> str:
+            styles.append((m.group(1), m.group(2), m.group(3)))
+            return f"__NCRW_STYLE_{len(styles) - 1}__"
+
+        html = re.sub(
+            r"(?is)(<style\b[^>]*>)(.*?)(</style\s*>)",
+            _stash_style,
+            html,
+        )
+
+        html = rewrite_markup_segment(html)
+
+        for i, (o, inn, c) in enumerate(styles):
+            html = html.replace(f"__NCRW_STYLE_{i}__", o + rewrite_style_inner(inn) + c)
+
+        for i, (o, inn, c) in enumerate(scripts):
+            o_rw = rewrite_markup_segment(o)
+            html = html.replace(f"__NCRW_SCRIPT_{i}__", o_rw + inn + c)
 
         return html
 
