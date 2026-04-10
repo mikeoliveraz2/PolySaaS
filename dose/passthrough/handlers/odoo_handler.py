@@ -186,12 +186,31 @@ class OdooPassthroughHandler:
                 if upstream_subpath.rstrip("/") in ("", "/")
                 else upstream_subpath
             )
+            fetch_dbg = {}
             raw_html = fetch_upstream_index_html(
                 request,
                 endpoint.endpoint_url,
                 fetch_path,
                 handler=self,
+                fetch_debug=fetch_dbg,
             )
+            # Windows / mixed stacks: localhost sometimes fails where 127.0.0.1 works for requests.
+            if (
+                not raw_html
+                and endpoint.endpoint_url
+                and "localhost" in endpoint.endpoint_url
+                and "127.0.0.1" not in endpoint.endpoint_url
+            ):
+                alt_ep = endpoint.endpoint_url.replace("localhost", "127.0.0.1", 1)
+                if alt_ep != endpoint.endpoint_url:
+                    fetch_dbg["retried_as"] = alt_ep
+                    raw_html = fetch_upstream_index_html(
+                        request,
+                        alt_ep,
+                        fetch_path,
+                        handler=self,
+                        fetch_debug=fetch_dbg,
+                    )
             if raw_html and not raw_html.startswith("REDIRECT:"):
                 m = re.search(
                     r"<head[^>]*>(.*?)</head>",
@@ -212,18 +231,38 @@ class OdooPassthroughHandler:
                 if m_body:
                     display_body_inner = m_body.group(1).strip()
             elif raw_html and raw_html.startswith("REDIRECT:"):
+                from django.utils.html import escape as _esc
+
+                loc = _esc(str(fetch_dbg.get("location") or ""))
                 display_body_inner = (
                     '<div class="alert alert-warning" style="margin:16px;">'
                     'Odoo display shell received an upstream redirect instead of HTML. '
                     'The proxy shell rendered, but the upstream app did not provide boot HTML.'
-                    '</div>'
+                    + (f"<br><small>Location: {loc}</small>" if loc else "")
+                    + "</div>"
                 )
             else:
+                from django.utils.html import escape as _esc
+
+                detail_parts = []
+                if fetch_dbg.get("error"):
+                    detail_parts.append(f"Connection: {_esc(str(fetch_dbg['error']))}")
+                st = fetch_dbg.get("status")
+                if st not in (None, ""):
+                    detail_parts.append(f"HTTP status {_esc(str(st))}")
+                if fetch_dbg.get("url"):
+                    detail_parts.append(f"last request URL: {_esc(str(fetch_dbg['url']))}")
+                detail = ("<br><small>" + " — ".join(detail_parts) + "</small>") if detail_parts else ""
                 display_body_inner = (
                     '<div class="alert alert-danger" style="margin:16px;">'
-                    f'Could not load Odoo HTML from upstream endpoint {upstream_origin}. '
-                    'The display shell is active, but the upstream service appears unavailable or returned no HTML.'
-                    '</div>'
+                    f"Could not load Odoo HTML from upstream endpoint <code>{upstream_origin}</code>. "
+                    "The display shell is active, but the server-side fetch got no HTML."
+                    f"{detail}"
+                    "<br><small>Check that Odoo is listening on that host/port. "
+                    "If Django runs in Docker, use <code>http://host.docker.internal:8069/…</code> "
+                    "or the compose service name (e.g. <code>http://odoo:8069/…</code>) in "
+                    "<strong>PassThroughEndpoint</strong> instead of <code>localhost</code>.</small>"
+                    "</div>"
                 )
 
         display_head_inner = self._rewrite_web_paths_for_display_shell(

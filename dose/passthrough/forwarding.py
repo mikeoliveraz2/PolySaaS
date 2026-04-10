@@ -143,13 +143,22 @@ def _origins_equivalent_for_upstream_fetch(origin_a: str, origin_b: str) -> bool
         return origin_a == origin_b
 
 
-def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handler=None):
+def fetch_upstream_index_html(
+    request, endpoint_url, upstream_subpath="/", handler=None, fetch_debug=None
+):
     """
     GET upstream HTML mimicking a real browser request.
     Injects any app-specific cookies (e.g. MMAUTHTOKEN) via handler.get_upstream_cookies().
     If the upstream returns a 3xx redirect the redirect target URL is returned as a string
     prefixed with 'REDIRECT:' so the caller can pass it straight through to the browser.
+
+    If ``fetch_debug`` is a dict, it is filled with failure details (error message, HTTP status,
+    last URL) when this function returns "".
     """
+    def _fail(**kwargs):
+        if fetch_debug is not None:
+            fetch_debug.update(kwargs)
+
     clean = upstream_subpath or "/"
     if not clean.startswith("/"):
         clean = "/" + clean
@@ -201,6 +210,7 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             print(f"[FETCH_UPSTREAM] Hop {_hop}: Status {resp.status_code}")
         except Exception as e:
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
+            _fail(error=str(e), url=_current_url, phase="request_exception")
             return ""
         
         # Check if we got a redirect
@@ -219,6 +229,12 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             if not _origins_equivalent_for_upstream_fetch(loc_origin, _origin):
                 # Cross-origin redirect - return as sentinel for caller
                 print(f"[FETCH_UPSTREAM] Cross-origin redirect, returning sentinel")
+                _fail(
+                    phase="cross_origin_redirect",
+                    status=resp.status_code,
+                    location=location,
+                    url=_current_url,
+                )
                 return f"REDIRECT:{resp.status_code}:{location}"
             # Same-origin - follow it (refresh Host / proxy headers for the new URL)
             _current_url = location
@@ -242,6 +258,18 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             "fetch_upstream_index_html %s -> status %s", target_url, status
         )
         print(f"[FETCH_UPSTREAM] Final status {status} - returning empty")
+        snippet = ""
+        try:
+            if resp is not None and resp.content:
+                snippet = resp.content[:400].decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        _fail(
+            phase="non_200",
+            status=status,
+            url=_current_url if resp is not None else target_url,
+            body_preview=snippet,
+        )
         return ""
     
     print(f"[FETCH_UPSTREAM] Success! Got {len(resp.content)} bytes")

@@ -232,6 +232,12 @@ class OdooPassthroughHandler:
         display_body_inner = self._rewrite_web_paths_for_display_shell(
             display_body_inner, seg
         )
+        display_head_inner = self._rewrite_absolute_polysaas_host_paths(
+            display_head_inner, request.get_host(), proxy_prefix
+        )
+        display_body_inner = self._rewrite_absolute_polysaas_host_paths(
+            display_body_inner, request.get_host(), proxy_prefix
+        )
 
         # Prepend an early fetch/XHR shim to display_head_inner so it runs BEFORE
         # Odoo's inline scripts (especially odoo.reloadMenus() and the menu load fetch).
@@ -312,6 +318,35 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             .replace('"/website/', f'"{proxy_site}')
             .replace("'/website/", f"'{proxy_site}")
         )
+
+    @staticmethod
+    def _rewrite_absolute_polysaas_host_paths(
+        html: str, public_host: str, proxy_prefix: str
+    ) -> str:
+        """
+        With X-Forwarded-Host, Odoo often embeds absolute URLs like
+        http://localhost:8000/web/... — the browser loads those against PolySaaS without
+        the passthrough prefix and assets 404; Owl never boots (blank shell).
+        """
+        if not html or not public_host or not proxy_prefix:
+            return html
+        ph = public_host.strip().lower()
+        out = html
+        for scheme in ("http", "https"):
+            base = f"{scheme}://{ph}"
+            pairs = (
+                (f"{base}/web/", f"{base}{proxy_prefix}/web/"),
+                (f"{base}/web?", f"{base}{proxy_prefix}/web?"),
+                (f"{base}/odoo/", f"{base}{proxy_prefix}/odoo/"),
+                (f"{base}/bus/", f"{base}{proxy_prefix}/bus/"),
+                (f"{base}/websocket", f"{base}{proxy_prefix}/websocket"),
+                (f"{base}/longpolling/", f"{base}{proxy_prefix}/longpolling/"),
+                (f"{base}/website/", f"{base}{proxy_prefix}/website/"),
+            )
+            for old, new in pairs:
+                if old in out:
+                    out = out.replace(old, new)
+        return out
 
     # ------------------------------------------------------------------ #
     # Server-side auto-login                                               #

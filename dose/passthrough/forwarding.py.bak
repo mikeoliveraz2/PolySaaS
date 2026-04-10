@@ -130,7 +130,7 @@ def _origins_equivalent_for_upstream_fetch(origin_a: str, origin_b: str) -> bool
         p = urlparse(origin)
         scheme = (p.scheme or "http").lower()
         host = (p.hostname or "").lower()
-        if host in ("127.0.0.1", "localhost", "::1"):
+        if host in ("127.0.0.1", "localhost", "::1", "host.docker.internal"):
             host = "__loopback__"
         port = p.port
         if port is None:
@@ -188,7 +188,7 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
         except Exception as _aug_exc:
             logger.warning("augment_outbound_headers (fetch_upstream) failed: %s", _aug_exc)
 
-    for _hop in range(5):
+    for _hop in range(15):
         try:
             print(f"[FETCH_UPSTREAM] Hop {_hop}: GET {_current_url}")
             resp = requests.get(
@@ -272,7 +272,7 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
         TrafficLog.objects.create(
             method="GET",
             url=target_url,
-            path=upstream_subpath,
+            path=clean,
             headers=_outbound_headers_from_request(request),
             cookies=upstream_cookies,
             query_params=dict(request.GET),
