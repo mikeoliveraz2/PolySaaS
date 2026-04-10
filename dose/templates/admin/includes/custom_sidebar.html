@@ -3,8 +3,8 @@
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
-    /* Header height — must match AdminLTE fixed navbar (57px is standard Jazzmin height) */
-    :root { --pss-header-h: 57px; }
+    /* Header height — tuned to the live Jazzmin navbar so the grid clears the fixed header. */
+    :root { --pss-header-h: 64px; }
 
     /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
     .admin-content-grid {
@@ -400,7 +400,7 @@
 
     /* Wrapper for grid container */
     .admin-main-wrapper {
-        min-height: calc(100vh - 50px);
+        min-height: calc(100vh - var(--pss-header-h));
     }
 
     /* Ensure grid and sidebar are visible */
