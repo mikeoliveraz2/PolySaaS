@@ -1,0 +1,28 @@
+---
+description: Passthrough endpoint logic lives in handlers, not middleware
+alwaysApply: true
+---
+
+# Passthrough — Handler isolation
+
+## Rule
+
+**Do not put endpoint-specific behavior in `ExternalPassthroughMiddleware` or `run_pt_admin_passthrough_core`.** No hardcoded paths, trigger names, or app names for a single product (e.g. Mattermost, Nextcloud, Odoo) in middleware.
+
+Each bundled app owns its rules on its **passthrough handler** class. Middleware and `forwarding.py` may only:
+
+- Call **generic hooks** on the handler (`hasattr` / `getattr`), or
+- Call **registry aggregators** that iterate registered handlers (same pattern as `any_handler_exempts_csrf_for_path` and `pt_admin_core_delegated_to_urlconf`).
+
+## Examples
+
+- **Bad in middleware:** `if path.startswith("/pt/admin/mattermost/static/"): return None`
+- **Good:** `MattermostPassthroughHandler.should_delegate_pt_admin_core` + `pt_admin_core_delegated_to_urlconf` in `registry.py`
+
+## Shared forwarder (`forwarding.py`)
+
+Comments may mention apps for human context; **control flow** must branch on handler hooks or handler class checks delegated from generic helpers, not on “if Nextcloud” string literals in middleware.
+
+## Reference
+
+See `PassthroughHandlerBase` hook list in `dose/passthrough/handlers/handler_base.py`.

@@ -53,7 +53,6 @@ class PassthroughHandlerBase:
     - `rewrite_upstream_body(body, content_type, request, **context) -> bytes | None`
     - `process_html_response(html_str, request, endpoint_url=None, **context) -> str | tuple | HttpResponse`
     - `should_forward_set_cookie_headers(request, upstream_content_type, upstream_path, response_kind) -> bool`
-    - `should_delegate_pt_admin_core(request, path_info) -> bool` (defer PT core to URLconf)
     """
 
     def __init__(self, endpoint: PassThroughEndpoint | None = None):
@@ -94,9 +93,6 @@ class PassthroughHandlerBase:
         for prefix in self.native_passthrough_prefixes():
             if path_info == prefix or path_info.startswith(prefix + "/"):
                 return True
-        return False
-
-    def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
         return False
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:

@@ -23,6 +23,10 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
+    def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
+        """Static bundle URLs are served by mattermost_static_proxy in URLconf, not PT core."""
+        return path_info.startswith("/pt/admin/mattermost/static/")
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         GET /pt/admin/<trigger>/ root: display shell; fetch upstream HTML, extract <head> and

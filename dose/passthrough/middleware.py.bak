@@ -4,6 +4,7 @@ from django.utils.deprecation import MiddlewareMixin
 from dose.models import PassThroughEndpoint, UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.handlers.registry import get_handler_for_endpoint
+from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
 from dose.passthrough.utils import normalize_trigger_segment
 from dose.utils import get_current_tenant
 
@@ -239,37 +240,8 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         This is the LAST middleware before the request leaves Django
         -> Perfect place for PASSTHROUGH-OUT
         """
-        # Odoo native paths (/web/login, /odoo/..., /bus/..., /websocket) arrive here when
-        # Odoo's own JS overrides the rewritten form action. Remap them to the proxy prefix
-        # so run_pt_admin_passthrough_core handles them — bypasses Django CSRF and redirect issues.
-        _ODOO_NATIVE = ("/web/", "/odoo/", "/bus/", "/websocket")
-        _path = request.path_info
-        if not _path.startswith("/pt/") and _path.startswith(_ODOO_NATIVE):
-            _path = "/pt/admin/odoo" + _path
-            request.path_info = _path
-
-        # Nextcloud paths that reach us missing the /admin/nextcloud/ segment.
-        # Happens when Nextcloud's Vue login component builds the form action from OC.webroot
-        # which may resolve to /pt (only the outermost prefix) instead of the full proxy prefix.
-        # e.g. POST /pt/index.php/login → /pt/admin/nextcloud/index.php/login
-        _NC_PARTIAL_PREFIXES = (
-            "/pt/index.php/",
-            "/pt/login",
-            "/pt/ocs/",
-            "/pt/remote.php/",
-            "/pt/apps/",
-            "/pt/core/",
-            "/pt/avatar/",
-            "/pt/heartbeat",
-        )
-        _path = request.path_info
-        if _path.startswith("/pt/") and not _path.startswith("/pt/admin/"):
-            for _pfx in _NC_PARTIAL_PREFIXES:
-                if _path == _pfx.rstrip("/") or _path.startswith(_pfx):
-                    _path = "/pt/admin/nextcloud" + _path[3:]
-                    request.path_info = _path
-                    print(f"[PT-MW] NC path rewrite → {_path}")
-                    break
+        # Handlers (Odoo, Nextcloud, …) may rewrite native paths onto /pt/admin/<trigger>/…
+        apply_incoming_path_rewrites(request)
 
         if request.path_info.startswith("/pt/"):
             print(f"[PT-MW-TOP] ExternalPassthroughMiddleware HIT for {request.path_info}")

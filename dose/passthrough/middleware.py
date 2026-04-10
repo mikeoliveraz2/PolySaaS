@@ -3,7 +3,10 @@ import logging
 from django.utils.deprecation import MiddlewareMixin
 from dose.models import PassThroughEndpoint, UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
-from dose.passthrough.handlers.registry import get_handler_for_endpoint
+from dose.passthrough.handlers.registry import (
+    get_handler_for_endpoint,
+    pt_admin_core_delegated_to_urlconf,
+)
 from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
 from dose.passthrough.utils import normalize_trigger_segment
 from dose.utils import get_current_tenant
@@ -153,8 +156,8 @@ def run_pt_admin_passthrough_core(request):
     Caller must already enforce auth, tenant, and membership.
     """
     path = request.path_info
-    if path.startswith("/pt/admin/mattermost/static/"):
-        print(f"[PT-CORE] Delegate mattermost_static_proxy: {path}")
+    if pt_admin_core_delegated_to_urlconf(request, path):
+        print(f"[PT-CORE] Delegate to URLconf (handler): {path}")
         return None
     if path.startswith("/pt/admin/passthrough/"):
         print(f"[PT-CORE] Delegate PolySniffer passthrough: {path}")
@@ -240,7 +243,7 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         This is the LAST middleware before the request leaves Django
         -> Perfect place for PASSTHROUGH-OUT
         """
-        # Handlers (Odoo, Nextcloud, …) may rewrite native paths onto /pt/admin/<trigger>/…
+        # Handlers may rewrite native app paths onto /pt/admin/<trigger>/… (see incoming_path_rewrite).
         apply_incoming_path_rewrites(request)
 
         if request.path_info.startswith("/pt/"):
