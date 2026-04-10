@@ -237,21 +237,6 @@ def font_controls(request):
     return redirect('/admin/')
 
 
-def _rewrite_css_selectors(css_text, prefix):
-    import re
-    css_text = re.sub(r'\bhtml\b[^{]*{[^}]*}', '', css_text)
-    css_text = re.sub(r'\bbody\b[^{]*{[^}]*}', '', css_text)
-    css_text = re.sub(r'\*\s*{[^}]*}', '', css_text)
-    lines = css_text.split('\n')
-    scoped_lines = []
-    for line in lines:
-        line = line.strip()
-        if line and not line.startswith('@') and '{' in line:
-            if not line.startswith(prefix):
-                line = f"{prefix} {line}"
-        scoped_lines.append(line)
-    return '\n'.join(scoped_lines)
-
 @login_required
 def monitor_logger_view(request):
     from django.utils.safestring import mark_safe
