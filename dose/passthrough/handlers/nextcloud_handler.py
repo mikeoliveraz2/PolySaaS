@@ -1147,8 +1147,8 @@ XMLHttpRequest.prototype.send=function(){{
             if(self._polyNcMethod!=='POST')return;
             var u=self._polyNcUrl||'';
             if(u.indexOf('/login')===-1&&u.indexOf('index.php/login')===-1)return;
-            var st=self.status|0;
-            if(st<200||st>=500)return;
+            var st=Number(self.status)||0;
+            if(st<200||st>=400)return;
             var ru=self.responseURL||'';
             if(!ru||ru.indexOf(O)!==0)return;
             var pu=new URL(ru);
