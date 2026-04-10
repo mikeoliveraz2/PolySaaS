@@ -9,6 +9,24 @@ logger = logging.getLogger(__name__)
 
 _BUNDLED_HANDLER_SPECS = (
     {
+        "key": "gmail",
+        "module": "dose.passthrough.handlers.gmail_handler",
+        "class_name": "GmailPassthroughHandler",
+        "matches": lambda trigger_path: trigger_path.lower() == "gmail",
+    },
+    {
+        "key": "monitor_logger",
+        "module": "dose.passthrough.handlers.monitor_logger_handler",
+        "class_name": "MonitorLoggerPassthroughHandler",
+        "matches": lambda trigger_path: normalize_trigger_segment(trigger_path) == "monitor_logger",
+    },
+    {
+        "key": "aiaspeers",
+        "module": "dose.passthrough.handlers.aiaspeers_handler",
+        "class_name": "AiaspeersPassthroughHandler",
+        "matches": lambda trigger_path: trigger_path.lower() == "aiaspeers",
+    },
+    {
         "key": "nextcloud",
         "module": "dose.passthrough.handlers.nextcloud_handler",
         "class_name": "NextcloudPassthroughHandler",

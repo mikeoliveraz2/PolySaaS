@@ -237,68 +237,6 @@ def font_controls(request):
     return redirect('/admin/')
 
 
-@login_required
-def monitor_logger_view(request):
-    from django.utils.safestring import mark_safe
-    import requests
-
-    try:
-        response = requests.get('http://localhost:5000', timeout=10)
-        if response.status_code == 200:
-            monitor_html = response.text
-            escaped_html = monitor_html.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
-            html_content = f"""
-            <style>
-            .monitor-widget-container {{ width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #ddd; }}
-            #monitor-frame {{ width: 100%; min-height: 700px; border: none; }}
-            </style>
-
-            <div class="monitor-widget-container">
-                <div id="monitor-frame"></div>
-            </div>
-
-            <div id="monitor-source" style="display: none;">{escaped_html}</div>
-
-            <script>
-            document.addEventListener('DOMContentLoaded', () => {{
-                const frame = document.getElementById('monitor-frame');
-                const shadow = frame.attachShadow({{mode: 'open'}});
-                const sourceHTML = document.getElementById('monitor-source').innerHTML;
-                shadow.innerHTML = sourceHTML;
-            }});
-            </script>
-            """
-        else:
-            raise Exception("Bad status")
-    except Exception as e:
-        html_content = "<div>Monitor Logger unavailable</div>"
-
-    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
-
-@login_required
-def aiaspeers_view(request):
-    from django.utils.safestring import mark_safe
-
-    html_content = """
-    <div style="background: linear-gradient(135deg, #F59E0B, #FBBF24); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>🤖 AI As Peers</h1>
-        <p>Artificial Intelligence Platform • Coming Soon</p>
-    </div>
-    """
-    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
-
-@login_required
-def gmail_view(request):
-    from django.utils.safestring import mark_safe
-
-    html_content = """
-    <div style="background: linear-gradient(135deg, #DC2626, #EF4444); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>📧 Gmail Enterprise</h1>
-        <p>Email Management • Coming Soon</p>
-    </div>
-    """
-    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
-
 def _split_html_document_for_jazzmin_embed(html: str):
     """
     Split a full HTML document into head/body inner HTML for admin/base_site.html.
