@@ -2,8 +2,68 @@
 
 {% block title %}PolySaaS Display{% endblock %}
 
+{% block bodyclass %}polysaas-display-shell-page{% endblock %}
+
 {% block extrastyle %}
 <style>
+    body.polysaas-display-shell-page {
+        --pss-header-h: 64px;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid {
+        grid-template-columns: 280px 1fr !important;
+        margin-top: var(--pss-header-h, 64px) !important;
+        margin-right: 0 !important;
+        margin-bottom: 0 !important;
+        margin-left: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid.sidebar-collapse,
+    body.polysaas-display-shell-page.polysaas-collapsed .admin-content-grid {
+        grid-template-columns: 60px 1fr !important;
+    }
+
+    body.polysaas-display-shell-page #recent-actions-sidebar {
+        display: none !important;
+    }
+
+    body.polysaas-display-shell-page .content .container-fluid,
+    body.polysaas-display-shell-page .dose-content-col .container-fluid {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        max-width: none !important;
+    }
+
+    body.polysaas-display-shell-page .content .row,
+    body.polysaas-display-shell-page .dose-content-col .row {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    body.polysaas-display-shell-page .dose-content-col,
+    body.polysaas-display-shell-page .content-wrapper,
+    body.polysaas-display-shell-page .app-content,
+    body.polysaas-display-shell-page .app-content-header {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-right: 0 !important;
+        max-width: 100% !important;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid > .collapsible-nav {
+        top: var(--pss-header-h, 64px) !important;
+        height: calc(100vh - var(--pss-header-h, 64px)) !important;
+        z-index: 1041 !important;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid > .collapsible-nav .nav-header {
+        position: relative !important;
+        z-index: 2 !important;
+    }
+
     #polysaas-orchestration-bar {
         background-color: #1a1a1a;
         color: #0f0;
@@ -11,7 +71,7 @@
         border-bottom: 3px solid #0f0;
         font-family: monospace;
         font-size: 15px;
-        margin: 0 -15px 20px -15px;
+        margin: 0 0 20px 0;
     }
 
     /* ── Odoo display scope ── */
