@@ -55,7 +55,6 @@ urlpatterns = [
     path('admin/font-controls/', __import__('dose.admin_views').admin_views.font_controls, name='font_controls'),
     path('admin/monitor-logger-view/', __import__('dose.admin_views').admin_views.monitor_logger_view, name='monitor_logger_view'),
     path('admin/odoo-view/', __import__('dose.admin_views').admin_views.odoo_view, name='odoo_view'),
-    path('admin/dolibarr-view/', __import__('dose.admin_views').admin_views.dolibarr_view, name='dolibarr_view'),
     path('admin/polysysmon-view/', __import__('dose.admin_views').admin_views.polysysmon_view, name='polysysmon_view'),
     path('admin/aiaspeers-view/', __import__('dose.admin_views').admin_views.aiaspeers_view, name='aiaspeers_view'),
     path('admin/gmail-view/', __import__('dose.admin_views').admin_views.gmail_view, name='gmail_view'),

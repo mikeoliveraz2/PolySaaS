@@ -385,17 +385,6 @@ def odoo_passthrough_view(request, path="web"):
     return proxy_response
 
 @login_required
-def dolibarr_view(request):
-    from django.utils.safestring import mark_safe
-
-    html_content = """
-    <div style="background: linear-gradient(135deg, #059669, #10B981); color:white; padding:40px; text-align:center; border-radius:12px;">
-        <h1>💼 Dolibarr ERP</h1>
-        <p>Open Source ERP & CRM • Coming Soon</p>
-    </div>
-    """
-    return render(request, 'admin/nextcloud_view.html', {'html_content': mark_safe(html_content)})
-
 @login_required
 def polysysmon_view(request):
     from django.utils.safestring import mark_safe
