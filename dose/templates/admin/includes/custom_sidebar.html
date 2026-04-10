@@ -4,7 +4,56 @@
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
     /* Header height — tuned to the live Jazzmin navbar so the grid clears the fixed header. */
-    :root { --pss-header-h: 64px; }
+    :root {
+        --pss-header-h: 64px;
+        --pss-sidebar-shell-bg: #1e293b;
+        --pss-sidebar-shell-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        --pss-sidebar-header-bg: #34495e;
+        --pss-sidebar-header-hover-bg: #1e293b;
+        --pss-sidebar-header-text: #ffffff;
+        --pss-sidebar-header-border: #2c3e50;
+        --pss-sidebar-surface: #f8fafc;
+        --pss-sidebar-scroll-track: #f1f1f1;
+        --pss-sidebar-scroll-thumb: #888;
+        --pss-sidebar-scroll-thumb-hover: #555;
+        --pss-sidebar-item-text: #334155;
+        --pss-sidebar-item-hover-bg: rgba(37, 99, 235, 0.08);
+        --pss-sidebar-icon: #64748b;
+        --pss-sidebar-icon-hover: #2563eb;
+        --pss-sidebar-panel-bg: #f1f5f9;
+        --pss-sidebar-panel-text: #64748b;
+        --pss-sidebar-panel-border: #e2e8f0;
+        --pss-sidebar-passthrough-bg: #eff6ff;
+        --pss-sidebar-passthrough-text: #1e40af;
+        --pss-sidebar-passthrough-border: #3b82f6;
+    }
+
+    html[data-ps-theme="darkly"],
+    html[data-ps-theme="cyborg"],
+    html[data-ps-theme="slate"],
+    html[data-ps-theme="solar"],
+    html[data-ps-theme="superhero"] {
+        --pss-sidebar-shell-bg: #20252b;
+        --pss-sidebar-shell-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+        --pss-sidebar-header-bg: #2f353c;
+        --pss-sidebar-header-hover-bg: #252a31;
+        --pss-sidebar-header-text: #f5f7fa;
+        --pss-sidebar-header-border: #454d55;
+        --pss-sidebar-surface: #2b2b2b;
+        --pss-sidebar-scroll-track: #252525;
+        --pss-sidebar-scroll-thumb: #626b75;
+        --pss-sidebar-scroll-thumb-hover: #7a848f;
+        --pss-sidebar-item-text: #d9e2ec;
+        --pss-sidebar-item-hover-bg: rgba(41, 128, 185, 0.2);
+        --pss-sidebar-icon: #a7b3c2;
+        --pss-sidebar-icon-hover: #4db6ff;
+        --pss-sidebar-panel-bg: #3a3a3a;
+        --pss-sidebar-panel-text: #d0d7de;
+        --pss-sidebar-panel-border: #4b525a;
+        --pss-sidebar-passthrough-bg: #16324f;
+        --pss-sidebar-passthrough-text: #8ecbff;
+        --pss-sidebar-passthrough-border: #2196f3;
+    }
 
     /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
     .admin-content-grid {
@@ -55,10 +104,10 @@
 
     /* Sidebar Container - positioned in grid, not fixed */
     .collapsible-nav {
-        background: #1e293b;
+        background: var(--pss-sidebar-shell-bg);
         border-radius: 0;
         overflow: hidden;
-        box-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        box-shadow: var(--pss-sidebar-shell-shadow);
         height: calc(100vh - var(--pss-header-h));
         position: sticky;
         top: var(--pss-header-h); /* stick just below the fixed header */
@@ -73,8 +122,8 @@
     }
 
     .nav-header {
-        background: #34495e;
-        color: white;
+        background: var(--pss-sidebar-header-bg);
+        color: var(--pss-sidebar-header-text);
         padding: 12px 15px;
         cursor: pointer;
         display: flex;
@@ -83,7 +132,7 @@
         font-weight: 600;
         font-size: 0.95rem;
         transition: all 0.2s ease;
-        border-bottom: 1px solid #2c3e50;
+        border-bottom: 1px solid var(--pss-sidebar-header-border);
         white-space: nowrap;
         overflow: hidden;
     }
@@ -124,7 +173,7 @@
     }
 
     .nav-header:hover {
-        background: #1e293b;
+        background: var(--pss-sidebar-header-hover-bg);
     }
 
     .nav-toggle {
@@ -151,7 +200,7 @@
         max-height: 85vh;
         overflow-y: auto;
         overflow-x: hidden;
-        background: #f8fafc;
+        background: var(--pss-sidebar-surface);
         display: flex;
         flex-direction: column;
         flex-grow: 1;
@@ -173,16 +222,16 @@
     }
 
     .nav-items::-webkit-scrollbar-track {
-        background: #f1f1f1;
+        background: var(--pss-sidebar-scroll-track);
     }
 
     .nav-items::-webkit-scrollbar-thumb {
-        background: #888;
+        background: var(--pss-sidebar-scroll-thumb);
         border-radius: 3px;
     }
 
     .nav-items::-webkit-scrollbar-thumb:hover {
-        background: #555;
+        background: var(--pss-sidebar-scroll-thumb-hover);
     }
 
     /* Admin-style compact nav items */
@@ -192,7 +241,7 @@
         gap: 10px;
         padding: 8px 15px;
         margin: 2px 8px;
-        color: #334155;
+        color: var(--pss-sidebar-item-text);
         text-decoration: none;
         border: none;
         border-radius: 6px;
@@ -280,7 +329,7 @@
     }
 
     .nav-item:hover {
-        background: rgba(37, 99, 235, 0.08) !important;
+        background: var(--pss-sidebar-item-hover-bg) !important;
         padding-left: 15px;
     }
 
@@ -295,7 +344,7 @@
         align-items: center;
         justify-content: center;
         background: transparent;
-        color: #64748b;
+        color: var(--pss-sidebar-icon);
         border-radius: 6px;
         font-size: 0.85rem;
         flex-shrink: 0;
@@ -312,7 +361,7 @@
     }
 
     .nav-item:hover .nav-icon {
-        color: #2563eb;
+        color: var(--pss-sidebar-icon-hover);
     }
 
     /* Ensure icons from FontAwesome/Bootstrap work */
@@ -335,24 +384,24 @@
     }
 
     .nav-panel-title {
-        background: #f1f5f9;
+        background: var(--pss-sidebar-panel-bg);
         padding: 8px 15px;
         margin: 0;
         font-size: 0.75rem;
         font-weight: 600;
-        color: #64748b;
+        color: var(--pss-sidebar-panel-text);
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--pss-sidebar-panel-border);
         white-space: nowrap;
         overflow: hidden;
     }
 
     /* Passthrough panel — subtle accent, not loud green */
     .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title {
-        background: #eff6ff;
-        color: #1e40af;
-        border-left: 3px solid #3b82f6;
+        background: var(--pss-sidebar-passthrough-bg);
+        color: var(--pss-sidebar-passthrough-text);
+        border-left: 3px solid var(--pss-sidebar-passthrough-border);
         padding-left: 12px;
     }
 
