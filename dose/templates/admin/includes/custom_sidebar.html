@@ -1,5 +1,5 @@
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
-{% load static %}
+{% load static custom_menu_tags %}
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
@@ -341,18 +341,30 @@
         padding-left: 15px;
     }
 
-    .nav-item.is-active {
+    #dose-custom-sidebar .nav-item.is-active,
+    #dose-custom-sidebar .nav-item[aria-current="page"] {
         background: var(--pss-sidebar-item-active-bg) !important;
         color: var(--pss-sidebar-item-active-text) !important;
-        box-shadow: var(--pss-sidebar-item-active-shadow);
-        font-weight: 600;
+        box-shadow: var(--pss-sidebar-item-active-shadow) !important;
+        border-left: 3px solid var(--pss-sidebar-icon-active);
+        font-weight: 600 !important;
+        padding-left: 12px;
     }
 
-    .nav-item.is-active .nav-icon {
+    #dose-custom-sidebar .nav-item.is-active:hover,
+    #dose-custom-sidebar .nav-item[aria-current="page"]:hover {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-icon,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-icon {
         color: var(--pss-sidebar-icon-active) !important;
     }
 
-    .nav-item.is-active .nav-text {
+    #dose-custom-sidebar .nav-item.is-active .nav-text,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-text {
         color: inherit;
     }
 
@@ -361,8 +373,12 @@
     }
 
     .collapsible-nav.collapsed .nav-item.is-active,
-    #dose-custom-sidebar.collapsed .nav-item.is-active {
+    #dose-custom-sidebar.collapsed .nav-item.is-active,
+    .collapsible-nav.collapsed .nav-item[aria-current="page"],
+    #dose-custom-sidebar.collapsed .nav-item[aria-current="page"] {
         box-shadow: inset 0 0 0 2px var(--pss-sidebar-passthrough-border);
+        border-left: none;
+        padding-left: 10px;
     }
 
     .nav-icon {
@@ -574,7 +590,8 @@
                 <div class="nav-panel-items">
                     {% for service in passthrough_services %}
                         <a href="{{ service.url }}"
-                           class="nav-item"
+                           class="nav-item{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
+                           {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            title="{{ service.description }}">
                             <span class="nav-icon">{{ service.icon }}</span>
                             <span class="nav-text">{{ service.title }}</span>
@@ -591,10 +608,11 @@
                 <div class="nav-panel-items">
                     {% for service in external_services %}
                         <a href="{{ service.url }}"
-                           class="nav-item"
+                           class="nav-item{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
                            data-item-id="{{ service.id }}"
                            data-item-type="external"
                            target="{{ service.target|default:'_blank' }}"
+                           {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            title="{{ service.description }}">
                             <span class="nav-icon">{{ service.icon }}</span>
                             <span class="nav-text">{{ service.title }}</span>
@@ -663,10 +681,11 @@
                 <div class="nav-panel-items">
                     {% for item in panel.filtered_items %}
                         <a href="{{ item.url }}"
-                           class="nav-item"
+                           class="nav-item{% if request.path_info|path_starts_with:item.url %} is-active{% endif %}"
                            target="{{ item.target }}"
                            data-item-id="{{ item.id }}"
                            data-item-type="{{ item.item_type }}"
+                           {% if request.path_info|path_starts_with:item.url %}aria-current="page"{% endif %}
                            title="{{ item.description }}">
                             {% if item.icon_style == 'emoji' and item.icon_value %}
                                 <span class="nav-icon material-icon">{{ item.icon_value }}</span>
@@ -690,7 +709,7 @@
         <div class="nav-panel static-nav" data-panel-type="system">
             <h4 class="nav-panel-title">SYSTEM NAVIGATION</h4>
             {% for item in top_navigation_items %}
-                <a href="{{ item.url }}" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;">
+                <a href="{{ item.url }}" class="nav-item system-nav-item{% if request.path_info|path_starts_with:item.url %} is-active{% endif %}" style="max-width: 100%; white-space: normal;" {% if request.path_info|path_starts_with:item.url %}aria-current="page"{% endif %}>
                     <span class="nav-icon">{{ item.icon }}</span>
                     <span class="nav-text">{{ item.name }}</span>
                 </a>
@@ -727,9 +746,6 @@ function applyActiveSidebarLink() {
     let bestScore = -1;
 
     sidebarLinks.forEach(function(link) {
-        link.classList.remove('is-active');
-        link.removeAttribute('aria-current');
-
         const href = link.getAttribute('href');
         if (!href || href.startsWith('#')) {
             return;
@@ -760,10 +776,18 @@ function applyActiveSidebarLink() {
     });
 
     if (bestMatch) {
+        sidebarLinks.forEach(function(link) {
+            link.classList.remove('is-active');
+            link.removeAttribute('aria-current');
+        });
         bestMatch.classList.add('is-active');
         bestMatch.setAttribute('aria-current', 'page');
     }
 }
+
+window.addEventListener('pageshow', function() {
+    applyActiveSidebarLink();
+});
 
 // Move content-wrapper into grid on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -797,6 +821,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     applyActiveSidebarLink();
+    window.setTimeout(applyActiveSidebarLink, 150);
 
     // Ensure grid is visible
     if (grid) {
