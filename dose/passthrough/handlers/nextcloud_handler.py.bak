@@ -211,6 +211,43 @@ class NextcloudPassthroughHandler:
     in admin/display.html (the same shell used for Odoo and Mattermost).
     """
 
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        """
+        Nextcloud skips SameSite probe cookies when unrelated cookies are present (e.g. Django
+        session). Strip everything on GET to the login path so NC issues a fresh session and
+        requesttoken; on other requests forward only oc* / nc_* cookies.
+        """
+        path = (request.path_info or request.path or "").lower()
+        if request.method == "GET" and "login" in path:
+            return {}
+        return {k: v for k, v in cookies.items() if k.startswith("oc") or k.startswith("nc_")}
+
+    def should_forward_set_cookie_headers(
+        self,
+        request,
+        *,
+        upstream_content_type=None,
+        upstream_path=None,
+        response_kind=None,
+    ) -> bool:
+        """
+        Keep Nextcloud's session cookie aligned with the requesttoken embedded in HTML.
+        Static asset responses can emit fresh session cookies that break that pairing.
+        """
+        if response_kind != "non-html":
+            return True
+        content_type = (upstream_content_type or "").lower()
+        static_asset_types = (
+            "application/javascript",
+            "text/javascript",
+            "text/css",
+            "image/",
+            "font/",
+            "application/font-",
+            "application/x-font-",
+        )
+        return not any(content_type.startswith(prefix) for prefix in static_asset_types)
+
     # ------------------------------------------------------------------
     # Incoming path rewrite (called by incoming_path_rewrite.apply_incoming_path_rewrites)
     # ------------------------------------------------------------------

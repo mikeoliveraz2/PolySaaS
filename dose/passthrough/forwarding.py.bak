@@ -13,6 +13,52 @@ logger = logging.getLogger(__name__)
 _SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE"})
 
 
+def _should_follow_upstream_redirects(handler, request, *, target_url, upstream_path):
+    """Shared default is no internal redirect following for proxied requests."""
+    if handler and hasattr(handler, "should_follow_upstream_redirects"):
+        try:
+            return bool(
+                handler.should_follow_upstream_redirects(
+                    request,
+                    target_url=target_url,
+                    upstream_path=upstream_path,
+                )
+            )
+        except Exception as exc:
+            logger.warning("should_follow_upstream_redirects failed: %s", exc, exc_info=True)
+    return False
+
+
+def _postprocess_upstream_response(
+    handler,
+    resp,
+    request,
+    *,
+    endpoint_url,
+    target_url,
+    upstream_path,
+    outbound_headers,
+    upstream_cookies,
+):
+    """Handlers own endpoint-specific upstream response normalization."""
+    if handler and hasattr(handler, "postprocess_upstream_response"):
+        try:
+            new_resp = handler.postprocess_upstream_response(
+                resp,
+                request,
+                endpoint_url=endpoint_url,
+                target_url=target_url,
+                upstream_path=upstream_path,
+                outbound_headers=outbound_headers,
+                upstream_cookies=upstream_cookies,
+            )
+            if new_resp is not None:
+                return new_resp
+        except Exception as exc:
+            logger.warning("postprocess_upstream_response failed: %s", exc, exc_info=True)
+    return resp
+
+
 def _should_forward_set_cookie_headers(handler, request, *, upstream_content_type, upstream_path, response_kind):
     """
     Shared default is to forward upstream Set-Cookie headers.
@@ -67,6 +113,34 @@ def _resolve_upstream_target_url(endpoint_url, upstream_subpath, handler=None):
         if resolved:
             return resolved
     return endpoint_url.rstrip("/") + clean
+
+
+def _origins_equivalent_for_upstream_fetch(origin_a: str, origin_b: str) -> bool:
+    """
+    Same-origin check for redirect following in fetch_upstream_index_html.
+
+    Odoo (and other local services) often emit Location with 127.0.0.1 while the
+    configured endpoint uses localhost (or vice versa). urllib treats those as
+    different origins, which incorrectly yields a REDIRECT: sentinel and an empty
+    display shell.
+    """
+    from urllib.parse import urlparse
+
+    def _key(origin: str):
+        p = urlparse(origin)
+        scheme = (p.scheme or "http").lower()
+        host = (p.hostname or "").lower()
+        if host in ("127.0.0.1", "localhost", "::1"):
+            host = "__loopback__"
+        port = p.port
+        if port is None:
+            port = 443 if scheme == "https" else 80
+        return (scheme, host, port)
+
+    try:
+        return _key(origin_a) == _key(origin_b)
+    except Exception:
+        return origin_a == origin_b
 
 
 def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handler=None):
@@ -135,18 +209,28 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             print(f"[FETCH_UPSTREAM] Redirect to: {location}")
             if not location:
                 break
-            # Make relative URLs absolute
+            # Make relative URLs absolute (use *current* URL so multi-hop redirects stay consistent)
             if location.startswith("/"):
-                location = _origin + location
+                _cur = _up(_current_url)
+                location = f"{_cur.scheme}://{_cur.netloc}{location}"
             # Check if same-origin
             loc_parsed = _up(location)
             loc_origin = f"{loc_parsed.scheme}://{loc_parsed.netloc}"
-            if loc_origin != _origin:
+            if not _origins_equivalent_for_upstream_fetch(loc_origin, _origin):
                 # Cross-origin redirect - return as sentinel for caller
                 print(f"[FETCH_UPSTREAM] Cross-origin redirect, returning sentinel")
                 return f"REDIRECT:{resp.status_code}:{location}"
-            # Same-origin - follow it
+            # Same-origin - follow it (refresh Host / proxy headers for the new URL)
             _current_url = location
+            if loc_parsed.netloc:
+                hop_headers["Host"] = loc_parsed.netloc
+            if handler and hasattr(handler, "augment_outbound_headers"):
+                try:
+                    handler.augment_outbound_headers(request, hop_headers, _current_url)
+                except Exception as _aug2:
+                    logger.warning(
+                        "augment_outbound_headers (fetch redirect hop) failed: %s", _aug2
+                    )
             continue
         else:
             # Not a redirect - we're done
@@ -253,10 +337,6 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
         outbound_headers = _outbound_headers_from_request(request)
 
-        odoo_internal_redirects = (
-            "odoo" in target_url.lower()
-            or (handler and "odoo" in handler.__class__.__name__.lower())
-        )
         if handler and hasattr(handler, "augment_outbound_headers"):
             try:
                 handler.augment_outbound_headers(request, outbound_headers, target_url)
@@ -296,70 +376,26 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             headers=outbound_headers,
             data=request.body,
             cookies=upstream_cookies,
-            allow_redirects=odoo_internal_redirects,   # Follow redirects internally for Odoo
+            allow_redirects=_should_follow_upstream_redirects(
+                handler,
+                request,
+                target_url=target_url,
+                upstream_path=upstream_path,
+            ),
             stream=False,
             timeout=60,
         )
 
-        # ═══════════════════════════════════════════════════════════════════════════
-        # ODOO COMPREHENSIVE FIX - Fix #4: No apps / no adaptive display
-        # ═══════════════════════════════════════════════════════════════════════════
-        if "odoo" in target_url.lower() or (handler and "odoo" in handler.__class__.__name__.lower()):
-            print("=== ODOO COMPREHENSIVE FIX DEBUG ===")
-            print("Status:", resp.status_code)
-            print("Content-Type:", resp.headers.get('content-type'))
-            print("Content-Length:", len(resp.content) if resp.content else 0)
-            print("Location header:", resp.headers.get('Location', 'NONE'))
-            
-            # 1. Handle redirects - follow them server-side or rewrite to proxy path
-            if resp.status_code in (301, 302, 303, 307, 308):
-                location = resp.headers.get('Location', '')
-                print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
-                
-                # If Odoo redirects to /odoo/apps or /web, we need to follow it server-side
-                # and return the final content, not pass the redirect to the browser
-                if location and (location.startswith('/odoo') or location.startswith('/web')):
-                    # Construct full URL and fetch it
-                    from urllib.parse import urlparse as _up
-                    p = _up(endpoint_url)
-                    follow_url = f"{p.scheme}://{p.netloc}{location}"
-                    print(f"=== ODOO: Following redirect to {follow_url} ===")
-                    
-                    try:
-                        follow_resp = requests.get(
-                            follow_url,
-                            headers=outbound_headers,
-                            cookies=upstream_cookies,
-                            allow_redirects=True,  # Follow any further redirects
-                            timeout=60,
-                        )
-                        # Use the followed response
-                        resp = follow_resp
-                        print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
-                    except Exception as follow_exc:
-                        print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
-            
-            # 2. Rewrite any remaining problematic paths in HTML content
-            if resp.content and b'</head>' in resp.content:
-                content = resp.content
-                
-                # Rewrite direct /odoo/ and /web/ paths to go through proxy
-                # This catches paths in JavaScript strings and HTML attributes
-                content = content.replace(b'"/odoo/', b'"/pt/admin/odoo/odoo/')
-                content = content.replace(b"'/odoo/", b"'/pt/admin/odoo/odoo/")
-                content = content.replace(b'"/web/', b'"/pt/admin/odoo/web/')
-                content = content.replace(b"'/web/", b"'/pt/admin/odoo/web/")
-                content = content.replace(b'"/bus/', b'"/pt/admin/odoo/bus/')
-                content = content.replace(b"'/bus/", b"'/pt/admin/odoo/bus/")
-                content = content.replace(b'"/websocket', b'"/pt/admin/odoo/websocket')
-                content = content.replace(b"'/websocket", b"'/pt/admin/odoo/websocket")
-                
-                resp._content = content
-                print("=== ODOO: Path rewriting applied ===")
-            
-            print("Body preview (first 400 chars):")
-            print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")
-            print("=== END ODOO DEBUG ===")
+        resp = _postprocess_upstream_response(
+            handler,
+            resp,
+            request,
+            endpoint_url=endpoint_url,
+            target_url=target_url,
+            upstream_path=upstream_path,
+            outbound_headers=outbound_headers,
+            upstream_cookies=upstream_cookies,
+        )
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")

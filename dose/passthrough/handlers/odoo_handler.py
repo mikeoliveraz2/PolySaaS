@@ -17,6 +17,7 @@ import json
 import logging
 import re
 import time
+import requests
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,13 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
 
 class OdooPassthroughHandler:
 
+    def native_passthrough_prefixes(self):
+        return ("/web", "/odoo", "/bus", "/websocket", "/longpolling")
+
+    def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
+        """Odoo often redirects internally before landing on the usable page/document."""
+        return True
+
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
         Every Odoo upstream call (including display-shell HTML fetch) must see proxy headers
@@ -81,7 +89,8 @@ class OdooPassthroughHandler:
         path = request.path_info
         if path.startswith("/pt/"):
             return False
-        if not path.startswith(("/web/", "/odoo/", "/bus/", "/websocket")):
+        native_prefixes = tuple(prefix + "/" for prefix in self.native_passthrough_prefixes())
+        if path not in self.native_passthrough_prefixes() and not path.startswith(native_prefixes):
             return False
         seg = (
             (getattr(endpoint, "trigger_path", None) or "odoo")
@@ -169,6 +178,8 @@ class OdooPassthroughHandler:
         display_body_inner = ""
 
         if endpoint is not None:
+            parsed_endpoint = urlparse(endpoint.endpoint_url)
+            upstream_origin = f"{parsed_endpoint.scheme}://{parsed_endpoint.netloc}"
             # Display shell root only: fetch /web on upstream base; path "/" unchanged for body logic.
             fetch_path = (
                 "/web"
@@ -200,12 +211,32 @@ class OdooPassthroughHandler:
                 )
                 if m_body:
                     display_body_inner = m_body.group(1).strip()
+            elif raw_html and raw_html.startswith("REDIRECT:"):
+                display_body_inner = (
+                    '<div class="alert alert-warning" style="margin:16px;">'
+                    'Odoo display shell received an upstream redirect instead of HTML. '
+                    'The proxy shell rendered, but the upstream app did not provide boot HTML.'
+                    '</div>'
+                )
+            else:
+                display_body_inner = (
+                    '<div class="alert alert-danger" style="margin:16px;">'
+                    f'Could not load Odoo HTML from upstream endpoint {upstream_origin}. '
+                    'The display shell is active, but the upstream service appears unavailable or returned no HTML.'
+                    '</div>'
+                )
 
         display_head_inner = self._rewrite_web_paths_for_display_shell(
             display_head_inner, seg
         )
         display_body_inner = self._rewrite_web_paths_for_display_shell(
             display_body_inner, seg
+        )
+        display_head_inner = self._rewrite_absolute_polysaas_host_paths(
+            display_head_inner, request.get_host(), proxy_prefix
+        )
+        display_body_inner = self._rewrite_absolute_polysaas_host_paths(
+            display_body_inner, request.get_host(), proxy_prefix
         )
 
         # Prepend an early fetch/XHR shim to display_head_inner so it runs BEFORE
@@ -287,6 +318,35 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             .replace('"/website/', f'"{proxy_site}')
             .replace("'/website/", f"'{proxy_site}")
         )
+
+    @staticmethod
+    def _rewrite_absolute_polysaas_host_paths(
+        html: str, public_host: str, proxy_prefix: str
+    ) -> str:
+        """
+        With X-Forwarded-Host, Odoo often embeds absolute URLs like
+        http://localhost:8000/web/... — the browser loads those against PolySaaS without
+        the passthrough prefix and assets 404; Owl never boots (blank shell).
+        """
+        if not html or not public_host or not proxy_prefix:
+            return html
+        ph = public_host.strip().lower()
+        out = html
+        for scheme in ("http", "https"):
+            base = f"{scheme}://{ph}"
+            pairs = (
+                (f"{base}/web/", f"{base}{proxy_prefix}/web/"),
+                (f"{base}/web?", f"{base}{proxy_prefix}/web?"),
+                (f"{base}/odoo/", f"{base}{proxy_prefix}/odoo/"),
+                (f"{base}/bus/", f"{base}{proxy_prefix}/bus/"),
+                (f"{base}/websocket", f"{base}{proxy_prefix}/websocket"),
+                (f"{base}/longpolling/", f"{base}{proxy_prefix}/longpolling/"),
+                (f"{base}/website/", f"{base}{proxy_prefix}/website/"),
+            )
+            for old, new in pairs:
+                if old in out:
+                    out = out.replace(old, new)
+        return out
 
     # ------------------------------------------------------------------ #
     # Server-side auto-login                                               #
@@ -1059,3 +1119,62 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
             return None
 
         return None
+
+    def postprocess_upstream_response(
+        self,
+        resp,
+        request,
+        *,
+        endpoint_url,
+        target_url,
+        upstream_path,
+        outbound_headers,
+        upstream_cookies,
+    ):
+        """
+        Odoo-specific upstream normalization belongs here, not in the shared forwarder.
+        """
+        print("=== ODOO COMPREHENSIVE FIX DEBUG ===")
+        print("Status:", resp.status_code)
+        print("Content-Type:", resp.headers.get('content-type'))
+        print("Content-Length:", len(resp.content) if resp.content else 0)
+        print("Location header:", resp.headers.get('Location', 'NONE'))
+
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get('Location', '')
+            print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
+            if location and (location.startswith('/odoo') or location.startswith('/web')):
+                parsed = urlparse(endpoint_url)
+                follow_url = f"{parsed.scheme}://{parsed.netloc}{location}"
+                print(f"=== ODOO: Following redirect to {follow_url} ===")
+                try:
+                    follow_resp = requests.get(
+                        follow_url,
+                        headers=outbound_headers,
+                        cookies=upstream_cookies,
+                        allow_redirects=True,
+                        timeout=60,
+                    )
+                    resp = follow_resp
+                    print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
+                except Exception as follow_exc:
+                    print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
+
+        if resp.content and b'</head>' in resp.content:
+            content = resp.content
+            content = content.replace(b'"/odoo/', b'"/pt/admin/odoo/odoo/')
+            content = content.replace(b"'/odoo/", b"'/pt/admin/odoo/odoo/")
+            content = content.replace(b'"/web/', b'"/pt/admin/odoo/web/')
+            content = content.replace(b"'/web/", b"'/pt/admin/odoo/web/")
+            content = content.replace(b'"/bus/', b'"/pt/admin/odoo/bus/')
+            content = content.replace(b"'/bus/", b"'/pt/admin/odoo/bus/")
+            content = content.replace(b'"/websocket', b'"/pt/admin/odoo/websocket')
+            content = content.replace(b"'/websocket", b"'/pt/admin/odoo/websocket")
+            resp._content = content
+            print("=== ODOO: Path rewriting applied ===")
+
+        print("Body preview (first 400 chars):")
+        print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")
+        print("=== END ODOO DEBUG ===")
+        return resp
+

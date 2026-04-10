@@ -222,6 +222,32 @@ class NextcloudPassthroughHandler:
             return {}
         return {k: v for k, v in cookies.items() if k.startswith("oc") or k.startswith("nc_")}
 
+    def should_forward_set_cookie_headers(
+        self,
+        request,
+        *,
+        upstream_content_type=None,
+        upstream_path=None,
+        response_kind=None,
+    ) -> bool:
+        """
+        Keep Nextcloud's session cookie aligned with the requesttoken embedded in HTML.
+        Static asset responses can emit fresh session cookies that break that pairing.
+        """
+        if response_kind != "non-html":
+            return True
+        content_type = (upstream_content_type or "").lower()
+        static_asset_types = (
+            "application/javascript",
+            "text/javascript",
+            "text/css",
+            "image/",
+            "font/",
+            "application/font-",
+            "application/x-font-",
+        )
+        return not any(content_type.startswith(prefix) for prefix in static_asset_types)
+
     # ------------------------------------------------------------------
     # Incoming path rewrite (called by incoming_path_rewrite.apply_incoming_path_rewrites)
     # ------------------------------------------------------------------
@@ -1073,14 +1099,26 @@ function _toProxy(u){{
     return u;
 }}
 
-// Patch fetch
+// Patch fetch — login POST follows 303 in-fetch but the document URL stays on /login; force navigate
 var _f=window.fetch;
 window.fetch=function(input,init){{
     if(typeof input==='string')input=_toProxy(input);
     else if(typeof Request!=='undefined'&&input instanceof Request){{
         var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);
     }}
-    return _f.call(this,input,init);
+    var _method='GET';
+    var _reqUrl='';
+    if(typeof input==='string'){{_reqUrl=input;_method=(init&&init.method)||'GET';}}
+    else if(typeof Request!=='undefined'&&input instanceof Request){{_reqUrl=input.url||'';_method=input.method||'GET';}}
+    return _f.call(this,input,init).then(function(resp){{
+        try{{
+            var _loginUrl=_reqUrl.indexOf('/login')!==-1||_reqUrl.indexOf('index.php/login')!==-1;
+            if(resp&&resp.redirected&&resp.url&&_method.toUpperCase()==='POST'&&_loginUrl){{
+                window.location.assign(resp.url);
+            }}
+        }}catch(e){{}}
+        return resp;
+    }});
 }};
 
 // Patch XHR
