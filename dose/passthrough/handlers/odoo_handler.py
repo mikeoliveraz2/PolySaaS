@@ -54,6 +54,26 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
 
 class OdooPassthroughHandler:
 
+    def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
+        """
+        Every Odoo upstream call (including display-shell HTML fetch) must see proxy headers
+        so generated asset URLs and web.base.url logic match the browser-facing PolySaaS host.
+        """
+        if not target_url:
+            return
+        parsed = urlparse(target_url)
+        if not parsed.netloc:
+            return
+        headers["Host"] = parsed.netloc
+        headers["X-Forwarded-For"] = request.META.get("REMOTE_ADDR", "")
+        headers["X-Forwarded-Proto"] = "https" if request.is_secure() else "http"
+        headers["X-Forwarded-Host"] = request.get_host()
+        try:
+            headers["X-Forwarded-Port"] = str(request.get_port())
+        except Exception:
+            headers["X-Forwarded-Port"] = "443" if request.is_secure() else "80"
+        headers.pop("Referer", None)
+
     def try_rewrite_incoming_path(self, request, endpoint) -> bool:
         """
         Remap native Odoo URLs (/web/, /odoo/, /bus/, /websocket) onto this endpoint's proxy prefix.

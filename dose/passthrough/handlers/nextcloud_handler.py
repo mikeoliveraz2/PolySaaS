@@ -211,6 +211,17 @@ class NextcloudPassthroughHandler:
     in admin/display.html (the same shell used for Odoo and Mattermost).
     """
 
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        """
+        Nextcloud skips SameSite probe cookies when unrelated cookies are present (e.g. Django
+        session). Strip everything on GET to the login path so NC issues a fresh session and
+        requesttoken; on other requests forward only oc* / nc_* cookies.
+        """
+        path = (request.path_info or request.path or "").lower()
+        if request.method == "GET" and "login" in path:
+            return {}
+        return {k: v for k, v in cookies.items() if k.startswith("oc") or k.startswith("nc_")}
+
     # ------------------------------------------------------------------
     # Incoming path rewrite (called by incoming_path_rewrite.apply_incoming_path_rewrites)
     # ------------------------------------------------------------------

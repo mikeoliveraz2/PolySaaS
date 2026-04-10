@@ -65,6 +65,11 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
     # Browser cookies take priority — after a manual login the browser has the fresh
     # session token; the server's cached token may be stale.
     upstream_cookies = dict(request.COOKIES)
+    if handler and hasattr(handler, "filter_cookies_for_upstream"):
+        try:
+            upstream_cookies = handler.filter_cookies_for_upstream(request, upstream_cookies)
+        except Exception as _fc_exc:
+            logger.warning("filter_cookies_for_upstream (fetch_upstream) failed: %s", _fc_exc)
     if handler and hasattr(handler, "get_upstream_cookies"):
         try:
             extra = handler.get_upstream_cookies(request) or {}
@@ -81,13 +86,20 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
     _origin = f"{_up(target_url).scheme}://{_up(target_url).netloc}"
     _current_url = target_url
     resp = None
-    
+
+    hop_headers = _outbound_headers_from_request(request)
+    if handler and hasattr(handler, "augment_outbound_headers"):
+        try:
+            handler.augment_outbound_headers(request, hop_headers, _current_url)
+        except Exception as _aug_exc:
+            logger.warning("augment_outbound_headers (fetch_upstream) failed: %s", _aug_exc)
+
     for _hop in range(5):
         try:
             print(f"[FETCH_UPSTREAM] Hop {_hop}: GET {_current_url}")
             resp = requests.get(
                 _current_url,
-                headers=_outbound_headers_from_request(request),
+                headers=hop_headers,
                 cookies=upstream_cookies,
                 allow_redirects=False,
                 timeout=60,
@@ -221,25 +233,25 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
         outbound_headers = _outbound_headers_from_request(request)
 
-        # === FIX FOR BLANK ODOO SCREEN - PROPER PROXY HEADERS ===
-        if "odoo" in target_url.lower() or (handler and "odoo" in handler.__class__.__name__.lower()):
-            outbound_headers['Host'] = 'localhost:8069'
-            outbound_headers['X-Forwarded-For'] = request.META.get('REMOTE_ADDR', '')
-            outbound_headers['X-Forwarded-Proto'] = 'http' if 'localhost' in request.get_host() else 'https'
-            outbound_headers['X-Forwarded-Host'] = request.get_host()
-            outbound_headers['X-Forwarded-Port'] = '8069'
-            # Remove any conflicting headers that break Odoo assets
-            outbound_headers.pop('Referer', None)
-            
-            # Follow redirects for Odoo internally to avoid jailbreaks
-            odoo_internal_redirects = True
-        else:
-            odoo_internal_redirects = False
+        odoo_internal_redirects = (
+            "odoo" in target_url.lower()
+            or (handler and "odoo" in handler.__class__.__name__.lower())
+        )
+        if handler and hasattr(handler, "augment_outbound_headers"):
+            try:
+                handler.augment_outbound_headers(request, outbound_headers, target_url)
+            except Exception as _aug_exc:
+                logger.warning("augment_outbound_headers failed: %s", _aug_exc)
 
         # Merge browser cookies with any app-specific cookies the handler wants to inject.
         # Browser cookies take priority — after a manual login the browser has the fresh
         # session token; the server's cached token may be stale.
         upstream_cookies = dict(request.COOKIES)
+        if handler and hasattr(handler, "filter_cookies_for_upstream"):
+            try:
+                upstream_cookies = handler.filter_cookies_for_upstream(request, upstream_cookies)
+            except Exception as _fc_exc:
+                logger.warning("filter_cookies_for_upstream failed: %s", _fc_exc)
         if handler and hasattr(handler, "get_upstream_cookies"):
             try:
                 extra = handler.get_upstream_cookies(request) or {}

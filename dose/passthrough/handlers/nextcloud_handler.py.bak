@@ -382,14 +382,46 @@ class NextcloudPassthroughHandler:
                     head_raw = self._strip_csp_meta(head_raw)
                     display_head_inner = self._rewrite_nc_paths(head_raw, proxy_prefix, _base)
 
-                    # Inject requesttoken onto document.head so Nextcloud's JS can read it.
-                    # Nextcloud reads document.head.dataset.requesttoken for CSRF — must be
-                    # set synchronously (before Vue initialises), not in a DOMContentLoaded cb.
-                    rt_match = re.search(r'data-requesttoken=["\']([^"\']+)["\']', head_attrs, re.IGNORECASE)
-                    if rt_match:
-                        rt_val = rt_match.group(1).replace("\\", "\\\\").replace('"', '\\"')
+                    # -------------------------------------------------------
+                    # Copy ALL data-* attributes from the Nextcloud <head> tag
+                    # to document.head so Nextcloud's JS can read them.
+                    #
+                    # Nextcloud core reads (among others):
+                    #   document.head.dataset.user           → OC.currentUser
+                    #   document.head.dataset.uid            → user id
+                    #   document.head.dataset.userDisplayname
+                    #   document.head.dataset.requesttoken   → CSRF token
+                    #   document.head.dataset.allowedAdminGroups
+                    #   document.head.dataset.adminNonce / nonce
+                    #
+                    # Previously we only copied data-requesttoken, leaving every
+                    # user-related attribute null → OC.getCurrentUser() = null → Vue crash.
+                    # -------------------------------------------------------
+                    data_attrs = re.findall(
+                        r'\b(data-[a-z0-9_-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')',
+                        head_attrs,
+                        re.IGNORECASE,
+                    )
+                    if data_attrs:
+                        js_parts = []
+                        for attr_name, dq_val, sq_val in data_attrs:
+                            val = dq_val if dq_val else sq_val
+                            # Convert data-foo-bar to camelCase dataset key fooBar
+                            key_parts = attr_name[5:].split("-")  # strip leading "data-"
+                            dataset_key = key_parts[0] + "".join(
+                                p.capitalize() for p in key_parts[1:]
+                            )
+                            escaped = val.replace("\\", "\\\\").replace('"', '\\"')
+                            js_parts.append(
+                                f'document.head.dataset["{dataset_key}"]="{escaped}";'
+                            )
+                        head_dataset_js = "\n".join(js_parts)
+                        print(
+                            f"[NC-HANDLER] Injecting {len(data_attrs)} head data-attrs: "
+                            + ", ".join(a[0] for a in data_attrs[:8])
+                        )
                         display_head_inner = (
-                            f'<script>document.head.dataset.requesttoken="{rt_val}";</script>\n'
+                            f"<script>{head_dataset_js}</script>\n"
                             + display_head_inner
                         )
 
