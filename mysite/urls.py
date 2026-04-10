@@ -54,11 +54,8 @@ urlpatterns = [
     path('admin/set-theme/', __import__('dose.admin_views').admin_views.set_theme, name='set_theme'),
     path('admin/font-controls/', __import__('dose.admin_views').admin_views.font_controls, name='font_controls'),
     path('admin/monitor-logger-view/', __import__('dose.admin_views').admin_views.monitor_logger_view, name='monitor_logger_view'),
-    path('admin/odoo-view/', __import__('dose.admin_views').admin_views.odoo_view, name='odoo_view'),
-    path('admin/polysysmon-view/', __import__('dose.admin_views').admin_views.polysysmon_view, name='polysysmon_view'),
     path('admin/aiaspeers-view/', __import__('dose.admin_views').admin_views.aiaspeers_view, name='aiaspeers_view'),
     path('admin/gmail-view/', __import__('dose.admin_views').admin_views.gmail_view, name='gmail_view'),
-    path('admin/mattermost-view/', __import__('dose.admin_views').admin_views.mattermost_view, name='mattermost_view'),
     # Building pen: iframe loads real app; /pt/admin/passthrough/<service>/<endpoint_id>/
     path(
         'pt/admin/passthrough/<str:service_name>/<int:endpoint_id>/',
