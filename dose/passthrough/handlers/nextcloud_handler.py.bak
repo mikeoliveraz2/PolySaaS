@@ -1099,7 +1099,13 @@ function _toProxy(u){{
     return u;
 }}
 
-// Patch fetch — login POST follows 303 in-fetch but the document URL stays on /login; force navigate
+function _ncPathLooksLikeLogin(pathname){{
+    if(!pathname)return true;
+    var p=(''+pathname).toLowerCase();
+    return p.endsWith('/login')||p.indexOf('/index.php/login')!==-1;
+}}
+
+// Patch fetch — Vue may use fetch or axios; after POST /login the document URL can stay on /login
 var _f=window.fetch;
 window.fetch=function(input,init){{
     if(typeof input==='string')input=_toProxy(input);
@@ -1113,20 +1119,45 @@ window.fetch=function(input,init){{
     return _f.call(this,input,init).then(function(resp){{
         try{{
             var _loginUrl=_reqUrl.indexOf('/login')!==-1||_reqUrl.indexOf('index.php/login')!==-1;
-            if(resp&&resp.redirected&&resp.url&&_method.toUpperCase()==='POST'&&_loginUrl){{
-                window.location.assign(resp.url);
-            }}
+            if(!resp||_method.toUpperCase()!=='POST'||!_loginUrl)return resp;
+            var finalU=resp.url||'';
+            if(!finalU||finalU.indexOf(O)!==0)return resp;
+            var pu=new URL(finalU);
+            if(_ncPathLooksLikeLogin(pu.pathname))return resp;
+            if(resp.redirected||resp.ok)window.location.assign(finalU);
         }}catch(e){{}}
         return resp;
     }});
 }};
 
-// Patch XHR
-var _x=XMLHttpRequest.prototype.open;
+// Patch XHR — Nextcloud login often uses XMLHttpRequest; responseURL is set after redirect chain
+var _xo=XMLHttpRequest.prototype.open;
+var _xs=XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.open=function(){{
     var a=Array.prototype.slice.call(arguments);
+    this._polyNcMethod=(a[0]||'GET').toString().toUpperCase();
+    this._polyNcUrl=typeof a[1]==='string'?a[1]:'';
     a[1]=_toProxy(a[1]);
-    return _x.apply(this,a);
+    return _xo.apply(this,a);
+}};
+XMLHttpRequest.prototype.send=function(){{
+    var self=this;
+    var onDone=function(){{
+        try{{
+            if(self._polyNcMethod!=='POST')return;
+            var u=self._polyNcUrl||'';
+            if(u.indexOf('/login')===-1&&u.indexOf('index.php/login')===-1)return;
+            var st=Number(self.status)||0;
+            if(st<200||st>=400)return;
+            var ru=self.responseURL||'';
+            if(!ru||ru.indexOf(O)!==0)return;
+            var pu=new URL(ru);
+            if(_ncPathLooksLikeLogin(pu.pathname))return;
+            window.location.assign(ru);
+        }}catch(e){{}}
+    }};
+    self.addEventListener('load',onDone);
+    return _xs.apply(self,arguments);
 }};
 
 var _WS=WebSocket;
