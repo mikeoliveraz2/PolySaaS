@@ -4,7 +4,6 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect, render
-from django.views.generic import RedirectView
 from django.contrib.auth.decorators import login_required
 from dose.views import subscribe_view
 from dose.views_custom_login import CustomLoginView
@@ -33,6 +32,7 @@ from dose.polysniffer.views import (
     building_pen_process,
     mattermost_static_proxy,
 )
+from dose.passthrough.handlers.registry import native_passthrough_path_regex
 from mysite.health import health_live, health_ready
 
 schema_view = get_schema_view(
@@ -96,8 +96,6 @@ urlpatterns = [
     ),
     path('api/airtable/tickets/', __import__('dose.views.airtable_dashboard', fromlist=['airtable_tickets_api']).airtable_tickets_api, name='api_airtable_tickets'),
     path('admin/polysniffer/', include((polysniffer_urls, 'polysniffer'))),
-    path('websocket', RedirectView.as_view(url='/pt/admin/odoo/websocket', permanent=False)),
-    re_path(r'^(?P<path>(?:odoo|web|bus|websocket)/.*)$', RedirectView.as_view(url='/pt/admin/odoo/%(path)s', permanent=False)),
     path('', lambda request: redirect('dose:landing_page'), name='home'),
 
     path('admin/', admin.site.urls),
@@ -115,6 +113,17 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
+
+_native_passthrough_regex = native_passthrough_path_regex()
+if _native_passthrough_regex:
+    urlpatterns.insert(
+        18,
+        re_path(
+            _native_passthrough_regex,
+            __import__('dose.admin_views').admin_views.native_passthrough_alias_view,
+            name='native_passthrough_alias',
+        ),
+    )
 
 if _oauth2_available:
     urlpatterns += [

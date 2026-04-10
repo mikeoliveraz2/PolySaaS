@@ -842,6 +842,37 @@ def passthrough_embed_view(request, trigger):
 
 @never_cache
 @login_required
+def native_passthrough_alias_view(request, path):
+    """
+    Fallback view for handler-declared native aliases like /web/... .
+    Middleware should normally rewrite and handle these before the view runs.
+    """
+    from dose.models import UserTenantMembership
+    from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
+    from dose.passthrough.middleware import run_pt_admin_passthrough_core
+    from dose.utils import get_current_tenant
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden("Tenant context is required for passthrough.")
+    u = request.user
+    if not u.is_superuser and not UserTenantMembership.objects.filter(
+        user=u, tenant=tenant
+    ).exists():
+        return HttpResponseForbidden("You do not have access to this tenant.")
+
+    apply_incoming_path_rewrites(request)
+    if not request.path_info.startswith("/pt/"):
+        raise Http404("No passthrough handler claimed this native alias path.")
+
+    resp = run_pt_admin_passthrough_core(request)
+    if resp is not None:
+        return resp
+    raise Http404("No enabled PassThroughEndpoint matches this native alias URL.")
+
+
+@never_cache
+@login_required
 def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
     """
     URLconf fallback for /pt/admin/<trigger>/ and nested paths. Middleware runs first;

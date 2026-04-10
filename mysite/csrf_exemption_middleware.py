@@ -9,6 +9,7 @@ to external services. Django's CSRF validation is not applicable to these reques
 from django.utils.deprecation import MiddlewareMixin
 
 from dose.middleware.debug import DebugStackMiddleware   # ← ADD THIS
+from dose.passthrough.handlers.registry import any_handler_exempts_csrf_for_path
 
 class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST!
 
@@ -48,22 +49,8 @@ class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
         - /pt/dose/gmail/
 
         """
-        import re
-
-        # Match /pt/ format paths
-        if re.match(r'^/pt/\w+/\w+/?', path_info):
+        # All /pt/ paths are passthrough infrastructure paths.
+        if path_info.startswith('/pt/'):
             return True
 
-        # Odoo native paths that redirect to /pt/admin/odoo/... — exempt so the
-        # redirect or direct POST is not blocked by Django CSRF before forwarding.
-        odoo_prefixes = ('/web/', '/web', '/odoo/', '/odoo', '/bus/', '/websocket')
-        if path_info.startswith(odoo_prefixes):
-            return True
-
-        # Nextcloud paths that arrive missing /admin/nextcloud/ — they are rewritten
-        # by ExternalPassthroughMiddleware, but exempt them here too for safety.
-        nc_partial = ('/pt/index.php/', '/pt/login', '/pt/ocs/', '/pt/remote.php/')
-        if path_info.startswith(nc_partial):
-            return True
-
-        return False
+        return any_handler_exempts_csrf_for_path(path_info)

@@ -1099,14 +1099,26 @@ function _toProxy(u){{
     return u;
 }}
 
-// Patch fetch
+// Patch fetch — login POST follows 303 in-fetch but the document URL stays on /login; force navigate
 var _f=window.fetch;
 window.fetch=function(input,init){{
     if(typeof input==='string')input=_toProxy(input);
     else if(typeof Request!=='undefined'&&input instanceof Request){{
         var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);
     }}
-    return _f.call(this,input,init);
+    var _method='GET';
+    var _reqUrl='';
+    if(typeof input==='string'){{_reqUrl=input;_method=(init&&init.method)||'GET';}}
+    else if(typeof Request!=='undefined'&&input instanceof Request){{_reqUrl=input.url||'';_method=input.method||'GET';}}
+    return _f.call(this,input,init).then(function(resp){{
+        try{{
+            var _loginUrl=_reqUrl.indexOf('/login')!==-1||_reqUrl.indexOf('index.php/login')!==-1;
+            if(resp&&resp.redirected&&resp.url&&_method.toUpperCase()==='POST'&&_loginUrl){{
+                window.location.assign(resp.url);
+            }}
+        }}catch(e){{}}
+        return resp;
+    }});
 }};
 
 // Patch XHR
