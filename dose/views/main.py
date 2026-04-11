@@ -19,7 +19,9 @@ def debug_session_view(request):
 from django.shortcuts import render, redirect
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.http import HttpResponseForbidden
+from django.http import Http404, HttpResponseForbidden
+from django.utils.safestring import mark_safe
+from django.views.decorators.cache import never_cache
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from dose.models import (
@@ -589,16 +591,12 @@ from django.shortcuts import render, redirect
 from django.utils import timezone
 from dose.models import UserProfile, NavigationPanel, DashboardButton, NavigationItem
 from dose.utils import get_current_tenant, get_tenant_theme_colors
-def landing_page(request):
-    """
-    Comprehensive landing page with themed layout and table-driven navigation
-    Includes: header, menu bar, tenant-specific navigation panels, main body, status bar
-    Redirects to login with tenant selection if no active tenant
-    """
+
+
+def _build_landing_page_context(request):
     current_tenant = get_current_tenant(request)
     user_profile = UserProfile.objects.filter(user=request.user).first() if request.user.is_authenticated else None
 
-    # If no active tenant
     if not current_tenant:
         theme_info = {
             'name': 'default',
@@ -615,29 +613,26 @@ def landing_page(request):
             'navigation_panels': [],
             'dashboard_buttons': [],
             'top_navigation_items': [],
-            'page_title': 'D.O.S.E. Landing - System'
+            'passthrough_services': [],
+            'external_services': [],
+            'page_title': 'PolySaaS Industrial Strength SaaS for Limitless Horizons'
         }
         if not request.user.is_authenticated:
-            # Only redirect to login if not authenticated
             login_url = f"/dose/login/?next={request.path}"
-            return redirect(login_url)
-        # If authenticated, show prompt to select tenant
+            return None, redirect(login_url)
         context['tenant_prompt'] = True
-        return render(request, 'dose/landing_page.html', context)
+        return context, None
 
-    # If tenant is set, show full landing page
     theme_info = {
         'name': 'tech_blue',
         'display_name': 'Tech Blue'
     }
     theme_colors = get_tenant_theme_colors('tech_blue')
-    # Get tenant-specific navigation panels and items
     navigation_panels = NavigationPanel.objects.filter(
         tenant=current_tenant,
         is_active=True
     ).prefetch_related('navigation_items').order_by('sort_order')
 
-    # Filter navigation items based on user permissions
     filtered_panels = []
     for panel in navigation_panels:
         active_items = []
@@ -645,16 +640,12 @@ def landing_page(request):
             if item.has_permission(request.user):
                 active_items.append(item)
 
-        # Only include panels that have at least one visible item
         if active_items:
             panel.filtered_items = active_items
             filtered_panels.append(panel)
 
-    # Get PassThroughEndpoint records (per-tenant external services)
-    # These should display ABOVE NavigationItems in the sidebar
     from dose.models import PassThroughEndpoint, TenantApp
 
-    # Retrieve the tenant's subscribed app names (falls back to empty set on error)
     try:
         _subscribed = set(
             TenantApp.public_bundles.filter(
@@ -666,8 +657,6 @@ def landing_page(request):
         _subscribed = set()
 
     def _endpoint_visible(trigger_path):
-        # Normalise: last path segment, lowercase, hyphens→underscores
-        # so /dose/monitor-logger/ → monitor_logger, monitor-logger → monitor_logger
         n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
         return n == 'gmail' or n in _subscribed
 
@@ -679,40 +668,31 @@ def landing_page(request):
         if _endpoint_visible(ep.trigger_path)
     ]
 
-    # All PassThroughEndpoint records are passthrough services
-    passthrough_services = []  # Passthrough endpoints (Gmail, HubSpot, etc.)
-    external_services = []     # Other external integrations (from NavigationPanel if added later)
-
+    passthrough_services = []
+    external_services = []
     seen_normalized = set()
     for endpoint in passthrough_endpoints:
-        # Normalise: last path segment, lowercase, hyphens→underscores
         norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
         if norm in seen_normalized:
             continue
         seen_normalized.add(norm)
 
-        url = f'/admin/passthrough-embed/{norm}/'
         title = endpoint.menu_title or norm.replace('_', ' ').title()
-
-        service_data = {
+        passthrough_services.append({
             'id': f"pt_{endpoint.id}",
             'title': title,
-            'url': url,
-            'icon': endpoint.menu_icon or "🔗",
+            'trigger': norm,
+            'url': f'/pt/dose/{norm}/',
+            'icon': endpoint.menu_icon or '🔗',
             'description': endpoint.description or f"Access {title}"
-        }
+        })
 
-        # All PassThroughEndpoint records go to passthrough_services
-        passthrough_services.append(service_data)
-
-    # Get user's customizable dashboard buttons (Big Ass Buttons - BABs)
     dashboard_buttons = DashboardButton.objects.filter(
         user=request.user,
         tenant=current_tenant,
         is_active=True
     ).order_by('sort_order')
 
-    # System status information
     status_info = {
         'system_status': 'operational',
         'last_login': request.user.last_login,
@@ -723,7 +703,6 @@ def landing_page(request):
         'dashboard_buttons_count': dashboard_buttons.count()
     }
 
-    # Static navigation menu items (for header/top menu)
     top_navigation_items = [
         {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '📊'},
         {'name': 'About', 'url': '/dose/about/', 'icon': 'ℹ️'},
@@ -733,17 +712,15 @@ def landing_page(request):
         {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'}
     ]
 
-    # Add dynamic passthrough endpoints (e.g., Gmail) from 'External Services' NavigationPanel
     if current_tenant:
         try:
             passthrough_panel = NavigationPanel.objects.filter(
                 tenant=current_tenant,
-                title__iexact="External Services",
+                title__iexact='External Services',
                 is_active=True
             ).prefetch_related('navigation_items').first()
             if passthrough_panel:
                 passthrough_items = passthrough_panel.navigation_items.filter(is_active=True).order_by('sort_order')
-                # Only include items user has permission for
                 for item in passthrough_items:
                     if item.has_permission(request.user):
                         top_navigation_items.append({
@@ -761,14 +738,137 @@ def landing_page(request):
         'theme_info': theme_info,
         'theme_colors': theme_colors,
         'status_info': status_info,
-        'passthrough_services': passthrough_services,  # Gmail, etc. (AJAX-loaded)
-        'external_services': external_services,  # Other PassThroughEndpoint items (per-tenant)
-        'navigation_panels': filtered_panels,     # NavigationItem items (per-user)
+        'passthrough_services': passthrough_services,
+        'external_services': external_services,
+        'navigation_panels': filtered_panels,
         'dashboard_buttons': dashboard_buttons,
         'top_navigation_items': top_navigation_items,
-        'page_title': f'D.O.S.E. Landing - {current_tenant.name if current_tenant else "System"}'
+        'page_title': 'PolySaaS Industrial Strength SaaS for Limitless Horizons'
     }
+    return context, None
 
+
+def _resolve_landing_passthrough_endpoint(trigger):
+    from dose.models import PassThroughEndpoint
+
+    endpoint = PassThroughEndpoint.objects.filter(
+        trigger_path__iexact=trigger,
+        is_enabled=True,
+    ).order_by('-id').first()
+    if endpoint is None and '_' in trigger:
+        endpoint = PassThroughEndpoint.objects.filter(
+            trigger_path__iexact=trigger.replace('_', ''),
+            is_enabled=True,
+        ).order_by('-id').first()
+    if endpoint is None:
+        for candidate in PassThroughEndpoint.objects.filter(is_enabled=True).order_by('-id'):
+            norm = candidate.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+            if norm == trigger:
+                return candidate
+    return endpoint
+
+
+def _retarget_passthrough_prefixes_for_dose(html, trigger):
+    if not html:
+        return html
+    admin_prefix = f'/pt/admin/{trigger}'
+    dose_prefix = f'/pt/dose/{trigger}'
+    return (
+        html.replace(f'"{admin_prefix}', f'"{dose_prefix}')
+        .replace(f"'{admin_prefix}", f"'{dose_prefix}")
+        .replace(admin_prefix, dose_prefix)
+    )
+
+
+def landing_page(request):
+    """
+    Comprehensive landing page with themed layout and table-driven navigation
+    Includes: header, menu bar, tenant-specific navigation panels, main body, status bar
+    Redirects to login with tenant selection if no active tenant
+    """
+    context, response = _build_landing_page_context(request)
+    if response is not None:
+        return response
+    return render(request, 'dose/landing_page.html', context)
+
+
+@never_cache
+@login_required
+def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
+    from dose.admin_views import _process_upstream_html_for_embed, _split_html_document_for_jazzmin_embed
+    from dose.models import UserTenantMembership
+    from dose.passthrough.forwarding import fetch_upstream_index_html
+    from dose.passthrough.handlers.registry import get_handler_for_endpoint
+    from dose.utils import get_current_tenant
+
+    context, response = _build_landing_page_context(request)
+    if response is not None:
+        return response
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden('Tenant context is required for passthrough.')
+    if not request.user.is_superuser and not UserTenantMembership.objects.filter(
+        user=request.user, tenant=tenant
+    ).exists():
+        return HttpResponseForbidden('You do not have access to this tenant.')
+
+    norm = trigger.strip('/').lower().split('/')[-1].replace('-', '_')
+    allowed_triggers = {service.get('trigger') for service in context.get('passthrough_services', [])}
+    if norm not in allowed_triggers:
+        raise Http404('Not found')
+
+    endpoint = _resolve_landing_passthrough_endpoint(norm)
+    if endpoint is None:
+        raise Http404('No enabled PassThroughEndpoint matches this URL.')
+
+    handler = get_handler_for_endpoint(endpoint, request)
+    upstream_subpath = '/'
+    if subpath:
+        upstream_subpath = '/' + subpath.lstrip('/')
+
+    raw_html = fetch_upstream_index_html(
+        request,
+        endpoint.endpoint_url,
+        upstream_subpath=upstream_subpath,
+        handler=handler,
+    )
+
+    embed_title = endpoint.menu_title or norm.replace('_', ' ').title()
+    embed_head = ''
+    embed_body = ''
+    if raw_html and raw_html.startswith('REDIRECT:'):
+        parts = raw_html.split(':', 2)
+        status_code = int(parts[1]) if len(parts) > 1 else 302
+        location = parts[2] if len(parts) > 2 else '/'
+        embed_body = mark_safe(
+            '<div class="landing-passthrough-message error">'
+            f'Upstream returned {status_code} redirect to <code>{location}</code>.'
+            '</div>'
+        )
+    elif raw_html:
+        processed = _process_upstream_html_for_embed(handler, raw_html, request, endpoint.endpoint_url)
+        processed = _retarget_passthrough_prefixes_for_dose(processed, norm)
+        head_inner, body_html = _split_html_document_for_jazzmin_embed(processed)
+        embed_head = mark_safe(head_inner)
+        embed_body = mark_safe(
+            f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{norm}">{body_html or ""}</div>'
+        )
+    else:
+        embed_body = mark_safe(
+            '<div class="landing-passthrough-message error">'
+            'Could not load upstream HTML. Check the endpoint URL and upstream service.'
+            '</div>'
+        )
+
+    context.update({
+        'page_title': 'PolySaaS Industrial Strength SaaS for Limitless Horizons',
+        'passthrough_embed_head': embed_head,
+        'passthrough_embed_body': embed_body,
+        'passthrough_embed_title': embed_title,
+        'passthrough_embed_trigger': norm,
+        'passthrough_embed_path': request.path_info,
+    })
     return render(request, 'dose/landing_page.html', context)
 # Dashboard view moved from views.py
 from django.shortcuts import render

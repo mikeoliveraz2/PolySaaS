@@ -246,6 +246,10 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         # Handlers may rewrite native app paths onto /pt/admin/<trigger>/… (see incoming_path_rewrite).
         apply_incoming_path_rewrites(request)
 
+        if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
+            print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
+            return self.get_response(request)
+
         if request.path_info.startswith("/pt/"):
             print(f"[PT-MW-TOP] ExternalPassthroughMiddleware HIT for {request.path_info}")
             user = getattr(request, "user", None)

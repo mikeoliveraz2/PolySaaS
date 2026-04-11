@@ -3,7 +3,7 @@
 
 {% block title %}{{ page_title }}{% endblock %}
 
-{% block header_title %}PolySaaS - Dynamic Orchestration Service Engine{% endblock %}
+{% block header_title %}PolySaaS Industrial Strength SaaS for Limitless Horizons{% endblock %}
 
 {% block page_css %}
 <style>
@@ -682,6 +682,32 @@
         line-height: 1.5;
     }
 
+    .landing-passthrough-wrap {
+        margin-top: 1.5rem;
+    }
+
+    .landing-passthrough-message {
+        padding: 1rem 1.25rem;
+        border-radius: 10px;
+        margin-top: 1rem;
+        background: #eef6fb;
+        color: #244357;
+    }
+
+    .landing-passthrough-message.error {
+        background: #fff1f0;
+        color: #8a2d22;
+        border: 1px solid rgba(138, 45, 34, 0.15);
+    }
+
+    .polysaas-passthrough-scope {
+        min-height: 60vh;
+        background: #fff;
+        border-radius: 12px;
+        overflow: auto;
+        box-shadow: 0 4px 12px rgba(44, 62, 80, 0.12);
+    }
+
     .status-bar {
         background: white;
         border-radius: 8px;
@@ -761,6 +787,12 @@
 </style>
 {% endblock %}
 
+{% block extrahead %}
+{% if passthrough_embed_head %}
+{{ passthrough_embed_head }}
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="landing-container">
     <!-- Enhanced Header Section with Tenant-Specific PolySaaS Branding -->
@@ -770,7 +802,7 @@
                 <div class="dose-icon">
                     <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" style="height: 100%; width: 100%; object-fit: contain;" alt="PolySaaS">
                 </div>
-                <div class="dose-acronym" style="margin-top: 0.05rem;">Dynamic Orchestration Service Engine</div>
+                <div class="dose-acronym" style="margin-top: 0.05rem;">Industrial Strength SaaS for Limitless Horizons</div>
             </div>
             <p class="subtitle">{{ current_tenant.name }} - Advanced Technology Platform</p>
             <p class="brand-tagline">"Orchestrating {{ current_tenant.name }}'s Technology Solutions"</p>
@@ -918,10 +950,21 @@
 
         <!-- Enhanced Main Body Section -->
         <div class="main-body">
+            {% if passthrough_embed_body %}
+            <div class="welcome-section">
+                <h2>{{ passthrough_embed_title }}</h2>
+                <div class="welcome-text">
+                    This passthrough endpoint is running inside the landing-page content area through <strong>{{ passthrough_embed_path }}</strong>.
+                </div>
+                <div class="landing-passthrough-wrap">
+                    {{ passthrough_embed_body }}
+                </div>
+            </div>
+            {% else %}
             <div class="welcome-section">
                 <h2>Welcome to {{ current_tenant.name }} PolySaaS Platform</h2>
                 <div class="welcome-text">
-                    Your <strong>{{ current_tenant.name }} Dynamic Orchestration Service Engine</strong> is operational and ready to serve.
+                    Your <strong>{{ current_tenant.name }} PolySaaS platform</strong> is operational and ready to serve.
                     This enterprise-grade technology platform provides comprehensive multi-tenant management,
                     advanced orchestration capabilities, and professional administration tools designed for
                     {{ current_tenant.name }}'s mission-critical operations and scalable enterprise solutions.
@@ -954,6 +997,7 @@
                     </div>
                 {% endif %}
             </div>
+                {% endif %}
         </div>
     </div>
 
@@ -1084,54 +1128,6 @@ async function trackButtonClick(buttonId) {
     }
 }
 
-// AJAX Content Loader for External Services (Gmail, OSTicket, etc.)
-function loadServiceContent(url, event) {
-    event.preventDefault();
-
-    const mainBody = document.querySelector('.main-body');
-    if (!mainBody) return;
-
-    // Show loading indicator
-    mainBody.innerHTML = '<div style="text-align: center; padding: 3rem;"><div style="font-size: 2rem; margin-bottom: 1rem;">⏳</div><p>Loading...</p></div>';
-
-    // Fetch content with AJAX header
-    fetch(url, {
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-        .then(response => response.text())
-        .then(html => {
-            // Inject content directly (it's already a fragment)
-            mainBody.innerHTML = html;
-
-            // Execute any scripts in the loaded content
-            const scripts = mainBody.querySelectorAll('script');
-            scripts.forEach(oldScript => {
-                const newScript = document.createElement('script');
-                Array.from(oldScript.attributes).forEach(attr =>
-                    newScript.setAttribute(attr.name, attr.value)
-                );
-                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-            });
-
-            // Update URL without reload
-            history.pushState({url: url}, '', url);
-        })
-        .catch(error => {
-            console.error('Error loading content:', error);
-            mainBody.innerHTML = '<div style="text-align: center; padding: 3rem; color: #e74c3c;"><div style="font-size: 2rem; margin-bottom: 1rem;">❌</div><p>Error loading content. Please try again.</p></div>';
-        });
-}
-
-// Handle browser back/forward
-window.addEventListener('popstate', function(event) {
-    if (event.state && event.state.url) {
-        loadServiceContent(event.state.url, {preventDefault: () => {}});
-    }
-});
-
 // Initialize navigation state and event listeners
 document.addEventListener('DOMContentLoaded', function() {
     // Navigation starts EXPANDED to show all items (same as admin sidebar)
@@ -1143,17 +1139,6 @@ document.addEventListener('DOMContentLoaded', function() {
     sidebar.classList.remove('sidebar-collapsed');
     mainContent.classList.remove('sidebar-collapsed');
     navToggle.classList.remove('collapsed');
-
-    // Intercept external service links for AJAX loading
-    document.querySelectorAll('.nav-item[href*="/dose/"]').forEach(link => {
-        link.addEventListener('click', function(e) {
-            const href = this.getAttribute('href');
-            // Load Gmail, OSTicket, etc. via AJAX
-            if (href.includes('/dose/gmail') || href.includes('/dose/osticket')) {
-                loadServiceContent(href, e);
-            }
-        });
-    });
 
     // Add click tracking to navigation items
     document.querySelectorAll('.nav-item[data-item-id]').forEach(link => {
