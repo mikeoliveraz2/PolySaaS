@@ -43,9 +43,9 @@ RUN chmod +x /entrypoint.sh /celery-worker.sh /celery-beat.sh
 USER django
 EXPOSE 8000
 
-# Railway sets PORT; local default 8000. Healthcheck uses same port.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD python -c "import os,urllib.request; p=os.environ.get('PORT','8000'); urllib.request.urlopen('http://127.0.0.1:%s/health/'%p, timeout=4)" || exit 1
+# Railway sets PORT; local default 8000.
+# Railway's own healthcheck (in railway.toml) is more reliable than Docker HEALTHCHECK.
+# Remove Docker HEALTHCHECK to avoid log noise and duplicate probes.
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-30} mysite.wsgi:application"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-30} --access-logfile - --error-logfile - mysite.wsgi:application"]

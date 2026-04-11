@@ -13,11 +13,16 @@ from urllib.parse import urlsplit, urlunsplit
 
 import environ
 
+print("[Django] Loading mysite/settings_railway.py at", os.path.basename(__file__), flush=True)
+
 from mysite.settings import *  # noqa: F401,F403
+
+print("[Django] Base settings loaded, configuring Railway overrides", flush=True)
 
 # Liveness for Railway: respond before SecurityMiddleware (no HTTP→HTTPS redirect on
 # internal probes) and before SessionTenantMiddleware (no DB cursor on cold Postgres).
 MIDDLEWARE.insert(0, "mysite.railway_health_middleware.RailwayLivenessMiddleware")
+print("[Django] RailwayLivenessMiddleware inserted at MIDDLEWARE position 0", flush=True)
 
 _env = environ.Env(
     DEBUG=(bool, False),
@@ -154,3 +159,5 @@ LOGGING = {
 # Quiet startup print from base settings if desired
 if not DEBUG:
     logging.getLogger("django.utils.autoreload").setLevel(logging.WARNING)
+
+print("[Django] mysite/settings_railway.py fully loaded and ready", flush=True)

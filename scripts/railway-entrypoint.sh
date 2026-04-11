@@ -13,11 +13,16 @@ require_env() {
 
 require_env DJANGO_SECRET_KEY
 
+echo "[railway-entrypoint] Starting entrypoint script at $(date)" >&2
+
 # Optional: run migrations on boot (multi-tenant redirect lives in manage.py)
 if [ "${RUN_MIGRATIONS:-0}" = "1" ]; then
+  echo "[railway-entrypoint] Running migrations..." >&2
   python manage.py migrate --noinput
 fi
 
+echo "[railway-entrypoint] Running collectstatic..." >&2
 python manage.py collectstatic --noinput
 
+echo "[railway-entrypoint] Starting gunicorn at $(date)" >&2
 exec "$@"
