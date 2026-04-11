@@ -2,7 +2,6 @@
 Custom adapters for django-allauth to handle multi-tenant schema issues
 """
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from django.contrib.sites.models import Site
 from django.db import connection, connections
 import logging
 
@@ -15,9 +14,13 @@ logger = logging.getLogger(__name__)
 # CRITICAL: We need to use raw SQL with explicit schema reference
 # because SET search_path doesn't work reliably with Django ORM
 
-_original_site_get = Site.objects.get
-_original_site_filter = Site.objects.filter
-_original_site_get_current = getattr(Site.objects, 'get_current', None)
+# Lazy-init guard — patching happens once, inside _patch_site_model(),
+# which is called from DoseConfig.ready() rather than at import time.
+_site_model_patched = False
+_original_site_get = None
+_original_site_filter = None
+_original_site_get_current = None
+
 
 def _site_get_with_public_schema(*args, **kwargs):
     """Wrapper that ensures Site.get() always queries from public schema"""
@@ -35,8 +38,11 @@ def _site_get_with_public_schema(*args, **kwargs):
         elif args:
             site_id = args[0]
         else:
-            # Fallback to original method
-            return _original_site_get(*args, **kwargs)
+            # Fallback to original method (only available after _patch_site_model() has run)
+            if _original_site_get is not None:
+                return _original_site_get(*args, **kwargs)
+            from django.contrib.sites.models import Site as SiteModel
+            raise SiteModel.DoesNotExist("Site matching query does not exist (no pk/id provided)")
 
         # Get the actual table name from Site model
         table_name = SiteModel._meta.db_table
@@ -120,13 +126,36 @@ def _site_get_current_with_public_schema(request=None):
     site_id = getattr(settings, 'SITE_ID', 1)
     return _site_get_with_public_schema(pk=site_id)
 
-# Patch the Site manager methods
-Site.objects.get = _site_get_with_public_schema
-Site.objects.filter = _site_filter_with_public_schema
-if _original_site_get_current:
-    Site.objects.get_current = _site_get_current_with_public_schema
 
-logger.debug("[CUSTOM ADAPTER] Patched Site model to always query from public schema using raw SQL")
+def _patch_site_model():
+    """
+    Patch the Django Site model manager so all queries always target the
+    public schema, regardless of the active tenant search_path.
+
+    This function is idempotent — subsequent calls are no-ops.  It must be
+    called from DoseConfig.ready() (i.e. after Django's app registry is
+    fully initialised) rather than at module import time, so that no
+    database operations are attempted during worker startup.
+    """
+    global _site_model_patched, _original_site_get, _original_site_filter, _original_site_get_current
+
+    if _site_model_patched:
+        return
+
+    from django.contrib.sites.models import Site
+
+    _original_site_get = Site.objects.get
+    _original_site_filter = Site.objects.filter
+    _original_site_get_current = getattr(Site.objects, 'get_current', None)
+
+    # Patch the Site manager methods
+    Site.objects.get = _site_get_with_public_schema
+    Site.objects.filter = _site_filter_with_public_schema
+    if _original_site_get_current:
+        Site.objects.get_current = _site_get_current_with_public_schema
+
+    _site_model_patched = True
+    logger.debug("[CUSTOM ADAPTER] Patched Site model to always query from public schema using raw SQL")
 
 
 def _emails_from_extra_data(extra_data):
