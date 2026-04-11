@@ -15,10 +15,6 @@ import environ
 
 from mysite.settings import *  # noqa: F401,F403
 
-# Liveness for Railway: respond before SecurityMiddleware (no HTTP→HTTPS redirect on
-# internal probes) and before SessionTenantMiddleware (no DB cursor on cold Postgres).
-MIDDLEWARE.insert(0, "mysite.railway_health_middleware.RailwayLivenessMiddleware")
-
 _env = environ.Env(
     DEBUG=(bool, False),
 )
@@ -91,9 +87,7 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
 if not DEBUG:
-    # Default False: Railway terminates TLS; internal health checks are often HTTP
-    # without X-Forwarded-Proto — a True default yields 301 and a failed deploy healthcheck.
-    SECURE_SSL_REDIRECT = _env.bool("SECURE_SSL_REDIRECT", default=False)
+    SECURE_SSL_REDIRECT = _env.bool("SECURE_SSL_REDIRECT", default=True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
