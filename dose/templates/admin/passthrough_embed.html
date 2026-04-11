@@ -20,7 +20,10 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 /* Drop the right-sidebar column — content takes the full available width */
 body.polysaas-passthrough-embed-page .admin-content-grid {
     grid-template-columns: 280px 1fr !important;
-    margin: 0 !important;
+    margin-top: var(--pss-header-h, 64px) !important;
+    margin-right: 0 !important;
+    margin-bottom: 0 !important;
+    margin-left: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -45,11 +48,24 @@ body.polysaas-passthrough-embed-page .content .row {
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
 }
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
+    top: var(--pss-header-h, 64px) !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
+}
+#polysaas-orchestration-bar {
+    background-color: #1a1a1a;
+    color: #0f0;
+    padding: 10px 15px;
+    border-bottom: 3px solid #0f0;
+    font-family: monospace;
+    font-size: 15px;
+    margin: 0 0 20px 0;
+}
 /* The scope div fills the available viewport height. */
 .polysaas-passthrough-scope {
     position: relative !important;
     width: 100% !important;
-    height: calc(100vh - 98px) !important;
+    height: calc(100vh - 170px) !important;
     overflow: visible !important;
     box-sizing: border-box !important;
     display: flex !important;
@@ -204,6 +220,11 @@ body.polysaas-passthrough-embed-page {
 
 {% block content %}
 <div class="col-12 polysaas-passthrough-embed-col polysaas-passthrough-embed-wrap">
+    <div id="polysaas-orchestration-bar">
+        ● POLYSAAS ORCHESTRATION ACTIVE — PASSTHROUGH EMBED<br>
+        <span style="color:#86efac;font-size:13px;">Handler-driven passthrough is active for this app.</span><br>
+        <span style="color:#86efac;font-size:13px;">Use browser refresh (F5) if you need to fully reload the embedded service.</span>
+    </div>
     {% if embed_body %}
     {{ embed_body }}
     {% endif %}
