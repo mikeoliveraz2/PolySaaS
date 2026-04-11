@@ -58,6 +58,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
    make install-dev
    # or
    pip install -r requirements-dev.txt
+   pip install -e .
    ```
 
 5. Create a branch:
@@ -77,7 +78,7 @@ make test
 make test-cov
 
 # Run specific test
-pytest tests/test_smoke.py -v
+pytest tests/test_main.py -v
 ```
 
 ### Code Quality

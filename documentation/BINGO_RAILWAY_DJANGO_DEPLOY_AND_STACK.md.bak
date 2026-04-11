@@ -44,7 +44,7 @@ PolySaaS is **ready to deploy Django on Railway** using a **dedicated Dockerfile
 
 ## 3. Repo hygiene notes
 
-- Root **`Dockerfile`** refuses to build (points to **`Dockerfile.django`**); root **`docker-compose.yml`** is Postgres/Redis only — use **`Dockerfile.django`** for the Django image.
+- Root **`Dockerfile`** / **`docker-compose.yml`** remain the **FastAPI** stub — **do not** use them for DOSE Django; use **`Dockerfile.django`**.
 - Unstaged local edits may still exist (`dose/oauth.py`, `oauth2_registration.py`, `go.ps1`) from optional **`oauth2_provider`**-off laptop work — **not** part of this bingo unless committed separately.
 
 ---

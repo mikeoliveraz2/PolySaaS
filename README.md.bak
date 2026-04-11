@@ -4,7 +4,7 @@ PolySaaS is the product formerly code-named DOSE. In this repository, the live a
 
 ## Runtime
 
-- Web app: Django / Gunicorn via `mysite.wsgi:application` (there is no FastAPI or alternate `src/` web app in this repo; use `Dockerfile.django` for containers)
+- Web app: Django / Gunicorn via `mysite.wsgi:application`
 - Main settings: `mysite.settings`
 - Railway/container settings: `mysite.settings_railway`
 - Health endpoints: `/health/` and `/health/ready/`
