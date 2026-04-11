@@ -4,12 +4,15 @@
 import environ
 import os
 import importlib
+from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env = environ.Env()
 #environ.Env.read_env()  # This loads .env file
 env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=True)
-print("Loaded .env:", env('DJANGO_SECRET_KEY', default='NOT FOUND'))
-SECRET_KEY = env('DJANGO_SECRET_KEY')
+SECRET_KEY = env('DJANGO_SECRET_KEY', default='')
+print("Loaded .env DJANGO_SECRET_KEY:", "SET" if SECRET_KEY else "NOT FOUND")
+if not SECRET_KEY:
+    raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY environment variable")
 DEBUG = True
 # Passthrough: log upstream + final HTML diagnostics to console (all endpoints). See dose/passthrough/stream_debug.py
 POLYSNIFFER_PASSTHROUGH_DEBUG = env.bool("POLYSNIFFER_PASSTHROUGH_DEBUG", default=False)
