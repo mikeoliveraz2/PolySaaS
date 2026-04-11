@@ -36,7 +36,10 @@ DEBUG=False
 DATABASE_URL=<railway postgres url>
 ALLOWED_HOSTS=<your railway host>
 CSRF_TRUSTED_ORIGINS=https://<your railway host>
-RUN_MIGRATIONS=1
+RUN_MIGRATIONS=0
+GUNICORN_WORKERS=1
+GUNICORN_THREADS=2
+GUNICORN_TIMEOUT=180
 ```
 
 Optional worker environment:

@@ -10,6 +10,6 @@ dockerfilePath = "Dockerfile.django"
 
 [deploy]
 healthcheckPath = "/health/"
-healthcheckTimeout = 300
+healthcheckTimeout = 600
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
