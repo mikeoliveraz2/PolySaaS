@@ -48,4 +48,4 @@ EXPOSE 8000
 # Remove Docker HEALTHCHECK to avoid log noise and duplicate probes.
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-30} --access-logfile - --error-logfile - mysite.wsgi:application"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-120} --access-logfile - --error-logfile - --log-level debug mysite.wsgi:application"]
