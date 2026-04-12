@@ -336,6 +336,10 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
         try:
             from dose.models import TenantApp
             from dose.utils import get_current_tenant
+
+            if getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
+                return qs
+
             _tenant = get_current_tenant(request) or getattr(request, 'tenant', None)
             _subscribed = set(
                 TenantApp.public_bundles.filter(

@@ -239,6 +239,8 @@ def admin_navigation(request):
             _subscribed = set()
 
         def _endpoint_visible(trigger_path):
+            if getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
+                return True
             # Normalise: last path segment, lowercase, hyphens→underscores
             # so /dose/monitor-logger/ → monitor_logger, monitor-logger → monitor_logger
             n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
