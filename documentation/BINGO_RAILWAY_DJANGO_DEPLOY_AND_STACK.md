@@ -60,3 +60,37 @@ PolySaaS is **ready to deploy Django on Railway** using a **dedicated Dockerfile
 - [ ] **You:** Daily backup / `.\go` per machine when done  
 
 **BINGO — this documentation commit certifies the listed deliverables as implemented in repo; production cutover is confirmed when Railway smoke test passes.**
+
+---
+
+## Update: April 12, 2026 (production incident closure)
+
+### What was fixed
+
+- Added missing `ml_studio` migrations to resolve deploy-time `InvalidBasesError` for proxy models.
+- Confirmed and fixed root 500 caused by missing DB schema object (`dose_instruction`) by running migrations in Railway.
+- Rebound custom domain and validated DNS path for `production.polysaas.online`.
+- Added Railway startup auth bootstrap to recover admin and OAuth config without shell/job access:
+	- New command: `dose/management/commands/bootstrap_auth.py`
+	- Entrypoint integration: `scripts/railway-entrypoint.sh`
+	- Startup now enforces `admin` user as `is_staff=True` and `is_superuser=True` when present.
+
+### Commit trail (latest incident work)
+
+- `a984ca9` Add initial ml_studio proxy migrations
+- `9dac262` Add Railway auth bootstrap support
+- `62e15a0` Always enforce admin superuser on Railway boot
+
+### Current verified state
+
+- Default domain health endpoint: OK
+- Default domain app login route: OK
+- Custom domain `production.polysaas.online`: routing and app load OK
+- Admin account access: restored and elevated through startup bootstrap
+
+### Remaining operator actions
+
+- Keep Google OAuth values set if Google login is required:
+	- `BOOTSTRAP_GOOGLE_CLIENT_ID`
+	- `BOOTSTRAP_GOOGLE_CLIENT_SECRET`
+- Remove `BOOTSTRAP_ADMIN_PASSWORD` after validation and redeploy once, so password is not reapplied at each boot.
