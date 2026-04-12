@@ -56,7 +56,7 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
                 self.model.__name__,
                 tb,
             )
-            raise
+            raise  # re-raise so PassThroughEndpointAdmin.save_model can catch and display it
 
     def delete_model(self, request, obj):
         """Ensure schema is set before deleting."""

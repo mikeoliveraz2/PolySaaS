@@ -481,11 +481,11 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             tb = traceback.format_exc()
             messages.error(
                 request,
-                f'❌ Save failed: {exc.__class__.__name__}: {exc}\n\nTraceback:\n{tb}',
+                f'❌ Save failed: {exc.__class__.__name__}: {exc} — Full traceback: {tb}',
             )
             import logging
             logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] save_model error")
-            raise
+            return  # stay on the form with the error message, no 500
 
         # Show a success message about menu integration
         if obj.show_in_menu:
