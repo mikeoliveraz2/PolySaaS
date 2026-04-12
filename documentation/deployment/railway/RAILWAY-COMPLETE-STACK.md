@@ -13,6 +13,7 @@ This guide explains how to deploy **all PolySaaS services** (core infrastructure
 - ✅ **Django (PolySaaS/DOSE core)**
 - ✅ Celery worker + beat
 - ✅ **Mattermost** (chat platform)
+- ✅ **Odoo** (ERP platform)
 - ✅ **Nextcloud** (file sharing)
 - ✅ **Liferay** (portal engine)
 - ⚪ Polysysmon (optional, commented out by default)
@@ -37,6 +38,7 @@ All services run on a **single Docker network** (`polysaas-network`) managed by 
 │  MonitorLogger (ingestion)                  │
 ├─────────────────────────────────────────────┤
 │  Mattermost ↔ Mattermost-DB (Postgres)      │
+│  Odoo ↔ Odoo-DB (Postgres)                  │
 │  Nextcloud ↔ Nextcloud-DB (MariaDB)        │
 │  Liferay ↔ Liferay-DB (MySQL)              │
 └─────────────────────────────────────────────┘
@@ -127,6 +129,13 @@ LIFERAY_DB_USER=liferay
 LIFERAY_DB_PASSWORD=<generate-strong-password>
 LIFERAY_DB=lportal
 LIFERAY_MYSQL_ROOT_PASSWORD=<generate-strong-password>
+```
+
+#### Odoo
+```
+ODOO_DB_USER=odoo
+ODOO_DB_PASSWORD=<generate-strong-password>
+ODOO_DB=postgres
 ```
 
 ### Step 4: Deploy
@@ -225,13 +234,19 @@ curl https://production.polysaas.online:8181/web/guest/home
 # Should return HTML home page
 ```
 
-### 5. Grafana
+### 5. Odoo
+```bash
+curl -I https://production.polysaas.online:8086/web/login
+# Expected: HTTP 200/303
+```
+
+### 6. Grafana
 ```bash
 curl https://production.polysaas.online:3000/api/health
 # Expected: {"database":"ok", ...}
 ```
 
-### 6. Celery Worker Status
+### 7. Celery Worker Status
 In Django admin → Celery Tasks, or:
 ```bash
 celery -A mysite inspect active
@@ -253,6 +268,9 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
 4. For **Liferay**:
    - URL: `https://liferay:8080`
    - or if external: `https://production.polysaas.online:8181`
+5. For **Odoo**:
+   - URL: `http://odoo:8069`
+   - or if external: `https://production.polysaas.online:8086`
 
 **Option A: Internal networking** (recommended)
 - Set endpoint URLs to internal hostnames: `http://mattermost:8065`, `http://nextcloud`, etc.
@@ -262,6 +280,7 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
 - Set endpoint URLs to Railway public domain + port:
   ```
   https://production.polysaas.online:8065  (Mattermost)
+   https://production.polysaas.online:8086  (Odoo)
   https://production.polysaas.online:8888  (Nextcloud)
   https://production.polysaas.online:8181  (Liferay)
   ```
@@ -333,6 +352,7 @@ We'll document the GCP path once Railway is stable. The docker-compose approach 
 - [ ] Services booting (check logs for errors)
 - [ ] Django migrations ran successfully
 - [ ] Mattermost/Nextcloud/Liferay health checks passing
+- [ ] Odoo is reachable at /web/login
 - [ ] Test endpoints reachable from curl
 - [ ] PassThroughEndpoint URLs updated in admin
 - [ ] Sidebar links to bundled apps now working

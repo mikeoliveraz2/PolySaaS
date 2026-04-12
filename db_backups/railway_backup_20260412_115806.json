@@ -1,0 +1,12 @@
+[Django] Loading mysite/settings_railway.py at settings_railway.py
+Loaded .env DJANGO_SECRET_KEY: SET
+Skipping unavailable INSTALLED_APPS entry: django_celery_beat
+Skipping unavailable INSTALLED_APPS entry: django_celery_results
+parameters.__init__
+[Django] Base settings loaded, configuring Railway overrides
+[Django] RailwayLivenessMiddleware inserted at MIDDLEWARE position 0
+[Django] mysite/settings_railway.py fully loaded and ready
+[DEBUG] admin_views.py module loaded
+[DEBUG] set_theme PRE-DECORATOR ENTRY
+Router registering: <class 'dose.subscription_views.SubscriptionApiViewSet'>
+[

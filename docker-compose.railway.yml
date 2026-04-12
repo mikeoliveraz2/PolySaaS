@@ -315,6 +315,47 @@ services:
       timeout: 10s
       retries: 3
 
+  # ──── Odoo ──────────────────────────────────────────────────────────────────
+
+  odoo-db:
+    image: postgres:15-alpine
+    container_name: polysaas-odoo-db
+    environment:
+      POSTGRES_USER: ${ODOO_DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
+      POSTGRES_DB: ${ODOO_DB:-postgres}
+    volumes:
+      - odoo_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ODOO_DB_USER:-odoo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - polysaas-network
+
+  odoo:
+    image: odoo:17
+    container_name: polysaas-odoo
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    environment:
+      HOST: odoo-db
+      USER: ${ODOO_DB_USER:-odoo}
+      PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
+      PORT: 5432
+    ports:
+      - "8086:8069"
+    volumes:
+      - odoo_web_data:/var/lib/odoo
+      - ./odoo.conf:/etc/odoo/odoo.conf:ro
+    command: ["odoo", "-c", "/etc/odoo/odoo.conf"]
+    restart: unless-stopped
+    networks:
+      - polysaas-network
+
   # ════════════════════════════════════════════════════════════════════════════
   # OPTIONAL: Polysysmon (comment out if not needed)
   # Note: Requires docker/ subdirectory with Polysysmon source
@@ -379,6 +420,9 @@ volumes:
   liferay_db_data:
   liferay_data:
   liferay_deploy:
+  # Odoo
+  odoo_db_data:
+  odoo_web_data:
   # Polysysmon (optional)
   # polysysmon_pg_data:
 
