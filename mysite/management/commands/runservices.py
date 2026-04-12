@@ -161,7 +161,7 @@ class Command(BaseCommand):
         """Display service URLs and commands"""
         self.stdout.write("🌐 Service URLs:")
         self.stdout.write("=" * 15)
-        self.stdout.write("• Django Admin: http://localhost:{}/admin-panel/".format(django_port))
+        self.stdout.write("• Django Admin: http://localhost:{}/admin/".format(django_port))
         self.stdout.write("• Django API: http://localhost:{}/api/".format(django_port))
         self.stdout.write("• Pass-Through Health: http://localhost:{}/health".format(passthrough_port))
         self.stdout.write("• Test Middleware: http://localhost:{}/test-pass-through".format(django_port))

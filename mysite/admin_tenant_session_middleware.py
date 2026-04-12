@@ -6,8 +6,8 @@ from dose.models import UserProfile
 
 class AdminTenantSessionMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
-        # Only set tenant session keys for authenticated users in admin
-        if request.path.startswith('/admin-panel/') and request.user.is_authenticated:
+        # Keep tenant session keys aligned for authenticated users in the real Django admin.
+        if request.path.startswith('/admin/') and request.user.is_authenticated:
             logger = logging.getLogger(__name__)
             try:
                 tenant_id = request.session.get('tenant_id')

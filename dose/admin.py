@@ -464,14 +464,14 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
 
         # TenantAwareModelAdmin saves into the schema for session tenant_id. If there is no
         # tenant, the row is written to public — reloading under Oliver Enterprises reads
-        # olient and the edit looks "lost". AdminTenantSessionMiddleware only syncs
-        # tenant_id from UserProfile on /admin-panel/, not necessarily on /admin/.
+        # olient and the edit looks "lost". The tenant session is expected to be
+        # aligned automatically on real /admin/ requests.
         if not get_current_tenant(request):
             messages.warning(
                 request,
                 "No active tenant in session: this endpoint was saved in the public schema. "
-                "If the URL reverts after reload, open /admin-panel/ once (or ensure tenant_id "
-                "is in session), then edit again so the row saves to your tenant schema.",
+                "If the URL reverts after reload, re-open the admin once so tenant_id is "
+                "restored in session, then edit again so the row saves to your tenant schema.",
             )
 
         # Call parent save which will trigger the signal to create/update navigation items

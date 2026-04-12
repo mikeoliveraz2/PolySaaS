@@ -359,8 +359,9 @@ def passthrough_embed_view(request, trigger):
     except Exception:
         subscribed = set()
 
-    if not (norm == 'gmail' or norm in subscribed):
-        return HttpResponseNotFound('Not found')
+    if not (getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False)):
+        if not (norm == 'gmail' or norm in subscribed):
+            return HttpResponseNotFound('Not found')
 
     embed_src = f'/pt/admin/{norm}/'
     embed_title = norm.replace('_', ' ').title()
