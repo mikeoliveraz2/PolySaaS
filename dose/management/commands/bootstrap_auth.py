@@ -4,6 +4,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils.text import slugify
+
+from dose.models import Tenant, UserProfile, UserTenantMembership
 
 
 class Command(BaseCommand):
@@ -20,10 +23,28 @@ class Command(BaseCommand):
         google_client_id = os.environ.get("BOOTSTRAP_GOOGLE_CLIENT_ID", "").strip()
         google_client_secret = os.environ.get("BOOTSTRAP_GOOGLE_CLIENT_SECRET", "").strip()
 
+        tenant_admin_username = os.environ.get("BOOTSTRAP_TENANT_ADMIN_USERNAME", "").strip()
+        tenant_admin_email = os.environ.get("BOOTSTRAP_TENANT_ADMIN_EMAIL", "").strip()
+        tenant_admin_password = os.environ.get("BOOTSTRAP_TENANT_ADMIN_PASSWORD", "").strip()
+        tenant_admin_tenant_slug = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_SLUG", "").strip()
+        tenant_admin_tenant_name = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_NAME", "").strip()
+
         user_model = get_user_model()
         existing_admin = user_model.objects.filter(username=admin_username).first()
+        existing_tenant_admin = (
+            user_model.objects.filter(username=tenant_admin_username).first()
+            if tenant_admin_username
+            else None
+        )
 
-        if not site_domain and not admin_password and not google_client_id and existing_admin is None:
+        if (
+            not site_domain
+            and not admin_password
+            and not google_client_id
+            and existing_admin is None
+            and not tenant_admin_password
+            and existing_tenant_admin is None
+        ):
             self.stdout.write("bootstrap_auth: nothing to do, skipping")
             return
 
@@ -77,4 +98,59 @@ class Command(BaseCommand):
                 state = "created" if created else "updated"
                 self.stdout.write(
                     f"bootstrap_auth: google social app {state} -> id={google_app.id}, site={site.domain}"
+                )
+
+            if tenant_admin_username:
+                tenant_slug = tenant_admin_tenant_slug or "olient"
+                tenant_name = tenant_admin_tenant_name or tenant_slug.replace("-", " ").title()
+                if tenant_admin_email:
+                    resolved_email = tenant_admin_email
+                else:
+                    safe_slug = slugify(tenant_slug).replace("-", "") or "tenant"
+                    resolved_email = f"{tenant_admin_username}@{safe_slug}.local"
+
+                tenant_obj = Tenant.objects.filter(slug=tenant_slug).first()
+                if tenant_obj is None:
+                    tenant_obj = Tenant(name=tenant_name, slug=tenant_slug, is_active=True)
+                    tenant_obj.save()
+                    self.stdout.write(
+                        f"bootstrap_auth: tenant created -> slug={tenant_obj.slug}, schema={tenant_obj.schema_name}"
+                    )
+
+                tenant_admin_user, tenant_admin_created = user_model.objects.get_or_create(
+                    username=tenant_admin_username,
+                    defaults={"email": resolved_email},
+                )
+                if resolved_email:
+                    tenant_admin_user.email = resolved_email
+                tenant_admin_user.is_active = True
+                tenant_admin_user.is_staff = True
+                if tenant_admin_password:
+                    tenant_admin_user.set_password(tenant_admin_password)
+                tenant_admin_user.save()
+
+                membership, membership_created = UserTenantMembership.objects.get_or_create(
+                    user=tenant_admin_user,
+                    tenant=tenant_obj,
+                    defaults={"role": UserTenantMembership.Role.ADMIN},
+                )
+                if membership.role != UserTenantMembership.Role.ADMIN:
+                    membership.role = UserTenantMembership.Role.ADMIN
+                    membership.save(update_fields=["role", "updated_at"])
+
+                profile, profile_created = UserProfile.objects.get_or_create(
+                    user=tenant_admin_user,
+                    defaults={"tenant": tenant_obj},
+                )
+                if profile.tenant_id != tenant_obj.id:
+                    profile.tenant = tenant_obj
+                    profile.save(update_fields=["tenant"])
+
+                user_state = "created" if tenant_admin_created else "updated"
+                member_state = "created" if membership_created else "updated"
+                profile_state = "created" if profile_created else "updated"
+                self.stdout.write(
+                    "bootstrap_auth: tenant admin "
+                    f"{user_state} -> {tenant_admin_username}, tenant={tenant_obj.slug}, "
+                    f"membership={member_state}, profile={profile_state}"
                 )
