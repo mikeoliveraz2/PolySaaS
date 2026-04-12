@@ -458,6 +458,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     content_preview.short_description = "Content Preview"
 
     def save_model(self, request, obj, form, change):
+        import traceback
         from django.contrib import messages
         from dose.utils import get_current_tenant
 
@@ -474,7 +475,17 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             )
 
         # Call parent save which will trigger the signal to create/update navigation items
-        super().save_model(request, obj, form, change)
+        try:
+            super().save_model(request, obj, form, change)
+        except Exception as exc:
+            tb = traceback.format_exc()
+            messages.error(
+                request,
+                f'❌ Save failed: {exc.__class__.__name__}: {exc}\n\nTraceback:\n{tb}',
+            )
+            import logging
+            logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] save_model error")
+            raise
 
         # Show a success message about menu integration
         if obj.show_in_menu:

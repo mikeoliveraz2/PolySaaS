@@ -33,6 +33,8 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         """Ensure schema is set before saving."""
+        import traceback
+        import logging
         tenant = get_current_tenant(request)
         if tenant and tenant.schema_name:
             # Set search_path directly on the connection (not in cursor context)
@@ -45,7 +47,16 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
             logger = logging.getLogger(__name__)
             logger.debug(f"[TenantAwareModelAdmin] Set search_path to public for {self.model.__name__} save (no tenant)")
 
-        super().save_model(request, obj, form, change)
+        try:
+            super().save_model(request, obj, form, change)
+        except Exception as exc:
+            tb = traceback.format_exc()
+            logging.getLogger(__name__).error(
+                "[TenantAwareModelAdmin] save_model EXCEPTION for %s:\n%s",
+                self.model.__name__,
+                tb,
+            )
+            raise
 
     def delete_model(self, request, obj):
         """Ensure schema is set before deleting."""
