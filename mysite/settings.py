@@ -406,6 +406,7 @@ MIDDLEWARE = [
     'dose.passthrough.middleware.ExternalPassthroughMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'mysite.admin_status_banner_middleware.AdminStatusBannerMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
