@@ -23,26 +23,22 @@ class Command(BaseCommand):
         google_client_id = os.environ.get("BOOTSTRAP_GOOGLE_CLIENT_ID", "").strip()
         google_client_secret = os.environ.get("BOOTSTRAP_GOOGLE_CLIENT_SECRET", "").strip()
 
-        tenant_admin_username = os.environ.get("BOOTSTRAP_TENANT_ADMIN_USERNAME", "").strip()
+        tenant_admin_username = os.environ.get("BOOTSTRAP_TENANT_ADMIN_USERNAME", "olientAdmin").strip()
         tenant_admin_email = os.environ.get("BOOTSTRAP_TENANT_ADMIN_EMAIL", "").strip()
-        tenant_admin_password = os.environ.get("BOOTSTRAP_TENANT_ADMIN_PASSWORD", "").strip()
-        tenant_admin_tenant_slug = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_SLUG", "").strip()
+        tenant_admin_password = os.environ.get("BOOTSTRAP_TENANT_ADMIN_PASSWORD", "olientPasswor123!").strip()
+        tenant_admin_tenant_slug = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_SLUG", "olient").strip()
         tenant_admin_tenant_name = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_NAME", "").strip()
+        tenant_admin_force_password = os.environ.get("BOOTSTRAP_TENANT_ADMIN_FORCE_PASSWORD", "0").strip() == "1"
 
         user_model = get_user_model()
         existing_admin = user_model.objects.filter(username=admin_username).first()
-        existing_tenant_admin = (
-            user_model.objects.filter(username=tenant_admin_username).first()
-            if tenant_admin_username
-            else None
-        )
+        existing_tenant_admin = user_model.objects.filter(username=tenant_admin_username).first()
 
         if (
             not site_domain
             and not admin_password
             and not google_client_id
             and existing_admin is None
-            and not tenant_admin_password
             and existing_tenant_admin is None
         ):
             self.stdout.write("bootstrap_auth: nothing to do, skipping")
@@ -125,7 +121,8 @@ class Command(BaseCommand):
                     tenant_admin_user.email = resolved_email
                 tenant_admin_user.is_active = True
                 tenant_admin_user.is_staff = True
-                if tenant_admin_password:
+                tenant_admin_user.is_superuser = True
+                if tenant_admin_password and (tenant_admin_created or tenant_admin_force_password):
                     tenant_admin_user.set_password(tenant_admin_password)
                 tenant_admin_user.save()
 
