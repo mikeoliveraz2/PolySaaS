@@ -55,7 +55,7 @@ else:
 _database_url = os.environ.get("DATABASE_URL", "").strip()
 if _database_url:
     DATABASES = {"default": environ.Env.db_url_config(_normalize_database_url(_database_url))}
-    DATABASES["default"]["CONN_MAX_AGE"] = int(os.environ.get("DB_CONN_MAX_AGE", "60"))
+    DATABASES["default"]["CONN_MAX_AGE"] = int(os.environ.get("DB_CONN_MAX_AGE", "0"))
 else:
     DATABASES = {
         "default": {
@@ -65,7 +65,7 @@ else:
             "PASSWORD": os.environ.get("DOSE_DB_PASSWORD", os.environ.get("DB_PASSWORD", "")),
             "HOST": os.environ.get("DB_HOST", "localhost"),
             "PORT": os.environ.get("DB_PORT", "5432"),
-            "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+            "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "0")),
         }
     }
 

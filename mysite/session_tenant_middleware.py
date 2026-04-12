@@ -42,3 +42,15 @@ class SessionTenantMiddleware(MiddlewareMixin):
 			connection.schema_name = 'public'
 			request.schema_name = 'public'
 			logger.info("SessionTenantMiddleware: set search_path to public (unauthenticated or no tenant)")
+
+	def process_response(self, request, response):
+		import logging
+		logger = logging.getLogger(__name__)
+		try:
+			# Ensure DB connection does not leak tenant search_path into the next request.
+			with connection.cursor() as cursor:
+				cursor.execute("SET search_path TO public;")
+			connection.schema_name = 'public'
+		except Exception as e:
+			logger.error(f"SessionTenantMiddleware: failed to reset search_path in response: {e}")
+		return response
