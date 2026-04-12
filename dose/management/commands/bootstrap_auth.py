@@ -10,7 +10,7 @@ class Command(BaseCommand):
     help = "Bootstrap Site, admin user, and Google SocialApp from environment variables"
 
     def handle(self, *args, **options):
-        site_domain = os.environ.get("BOOTSTRAP_SITE_DOMAIN", "production.polysaas.online").strip()
+        site_domain = os.environ.get("BOOTSTRAP_SITE_DOMAIN", "").strip()
         site_name = os.environ.get("BOOTSTRAP_SITE_NAME", "PolySaaS Production").strip()
 
         admin_username = os.environ.get("BOOTSTRAP_ADMIN_USERNAME", "admin").strip()
@@ -20,19 +20,24 @@ class Command(BaseCommand):
         google_client_id = os.environ.get("BOOTSTRAP_GOOGLE_CLIENT_ID", "").strip()
         google_client_secret = os.environ.get("BOOTSTRAP_GOOGLE_CLIENT_SECRET", "").strip()
 
-        if not admin_password and not google_client_id:
-            self.stdout.write("bootstrap_auth: no bootstrap env vars set, skipping")
+        user_model = get_user_model()
+        existing_admin = user_model.objects.filter(username=admin_username).first()
+
+        if not site_domain and not admin_password and not google_client_id and existing_admin is None:
+            self.stdout.write("bootstrap_auth: nothing to do, skipping")
             return
 
         with transaction.atomic():
-            site, _ = Site.objects.update_or_create(
-                id=1,
-                defaults={"domain": site_domain, "name": site_name},
-            )
-            self.stdout.write(f"bootstrap_auth: site ready -> {site.id} {site.domain}")
+            site = None
+            if site_domain:
+                site, _ = Site.objects.update_or_create(
+                    id=1,
+                    defaults={"domain": site_domain, "name": site_name},
+                )
+                self.stdout.write(f"bootstrap_auth: site ready -> {site.id} {site.domain}")
 
-            if admin_password:
-                user_model = get_user_model()
+            # Always ensure existing admin user has staff/superuser access.
+            if admin_password or existing_admin is not None:
                 admin_user, created = user_model.objects.get_or_create(
                     username=admin_username,
                     defaults={"email": admin_email},
@@ -61,6 +66,11 @@ class Command(BaseCommand):
                 google_app.secret = google_client_secret
                 google_app.key = ""
                 google_app.save()
+                if site is None:
+                    site, _ = Site.objects.get_or_create(
+                        id=1,
+                        defaults={"domain": "production.polysaas.online", "name": "PolySaaS Production"},
+                    )
                 google_app.sites.set([site])
 
                 state = "created" if created else "updated"
