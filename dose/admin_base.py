@@ -32,13 +32,11 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
         return queryset
 
     def save_model(self, request, obj, form, change):
-        """Ensure schema is set before saving."""
+        """Ensure schema is set before saving. Tenant model row goes to tenant schema."""
         import traceback
         import logging
         tenant = get_current_tenant(request)
         if tenant and tenant.schema_name:
-            # Set search_path directly on the connection (not in cursor context)
-            # This ensures it persists for Django ORM operations
             connection.cursor().execute(f'SET search_path TO "{tenant.schema_name}",public;')
             logger = logging.getLogger(__name__)
             logger.debug(f"[TenantAwareModelAdmin] Set search_path to {tenant.schema_name} for {self.model.__name__} save")
@@ -56,7 +54,28 @@ class TenantAwareModelAdmin(admin.ModelAdmin):
                 self.model.__name__,
                 tb,
             )
-            raise  # re-raise so PassThroughEndpointAdmin.save_model can catch and display it
+            raise  # re-raise so subclass save_model can catch and display it
+
+    # --- Django admin infrastructure log writes ---
+    # django_admin_log has a FK → auth_user. Authentication uses public.auth_user,
+    # so admin log writes MUST target public.django_admin_log.
+    # These overrides use SET LOCAL so the tenant search_path is unaffected outside
+    # the savepoint — tenant data stays in the tenant schema.
+
+    def log_addition(self, request, obj, message):
+        with connection.cursor() as cur:
+            cur.execute("SET LOCAL search_path TO public;")
+        super().log_addition(request, obj, message)
+
+    def log_change(self, request, obj, message):
+        with connection.cursor() as cur:
+            cur.execute("SET LOCAL search_path TO public;")
+        super().log_change(request, obj, message)
+
+    def log_deletion(self, request, obj, object_repr):
+        with connection.cursor() as cur:
+            cur.execute("SET LOCAL search_path TO public;")
+        super().log_deletion(request, obj, object_repr)
 
     def delete_model(self, request, obj):
         """Ensure schema is set before deleting."""
