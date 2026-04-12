@@ -46,7 +46,8 @@ class Command(BaseCommand):
                     admin_user.email = admin_email
                 admin_user.is_staff = True
                 admin_user.is_superuser = True
-                admin_user.set_password(admin_password)
+                if admin_password:
+                    admin_user.set_password(admin_password)
                 admin_user.save()
                 state = "created" if created else "updated"
                 self.stdout.write(f"bootstrap_auth: admin {state} -> {admin_username}")
