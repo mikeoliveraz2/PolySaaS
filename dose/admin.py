@@ -286,6 +286,42 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     list_filter = ('provider', 'show_in_menu', 'is_enabled', 'integration_mode')
     change_form_template = 'admin/dose/passthroughendpoint/change_form.html'
 
+    def _render_admin_exception(self, request, exc, operation):
+        import html
+        import traceback
+        from django.http import HttpResponseServerError
+
+        traceback_text = traceback.format_exc()
+        body = (
+            "<html><head><title>PassThroughEndpoint Admin Error</title>"
+            "<style>body{font-family:Consolas,monospace;padding:24px;background:#111;color:#eee;}"
+            "h1{color:#ff6b6b;} pre{white-space:pre-wrap;background:#1b1b1b;padding:16px;border-radius:8px;border:1px solid #333;}"
+            "code{color:#ffd166;}</style></head><body>"
+            f"<h1>PassThroughEndpoint {html.escape(operation)} failed</h1>"
+            f"<p><strong>{html.escape(exc.__class__.__name__)}</strong>: {html.escape(str(exc))}</p>"
+            f"<p>Path: <code>{html.escape(request.path)}</code></p>"
+            f"<p>Method: <code>{html.escape(request.method)}</code></p>"
+            f"<pre>{html.escape(traceback_text)}</pre>"
+            "</body></html>"
+        )
+        return HttpResponseServerError(body)
+
+    def add_view(self, request, form_url='', extra_context=None):
+        try:
+            return super().add_view(request, form_url, extra_context)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] add_view error")
+            return self._render_admin_exception(request, exc, 'add')
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        try:
+            return super().change_view(request, object_id, form_url, extra_context)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] change_view error")
+            return self._render_admin_exception(request, exc, 'change')
+
     def get_queryset(self, request):
         """Override to handle missing migration columns gracefully - adds all missing columns automatically"""
         qs = super().get_queryset(request)
