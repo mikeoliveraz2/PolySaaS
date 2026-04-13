@@ -133,9 +133,11 @@ LIFERAY_MYSQL_ROOT_PASSWORD=<generate-strong-password>
 
 #### Odoo
 ```
-ODOO_DB_USER=odoo
-ODOO_DB_PASSWORD=<generate-strong-password>
-ODOO_DB=postgres
+DB_HOST=${{Postgres.PGHOST}}
+DB_PORT=${{Postgres.PGPORT}}
+DB_USER=odoo_user
+DB_PASSWORD=<set-in-postgres-and-match-exactly>
+DB_NAME=odoo
 ```
 
 ### Step 4: Deploy
@@ -236,7 +238,7 @@ curl https://production.polysaas.online:8181/web/guest/home
 
 ### 5. Odoo
 ```bash
-curl -I https://production.polysaas.online:8086/web/login
+curl -I https://odoo-production-ed0e.up.railway.app/web/login
 # Expected: HTTP 200/303
 ```
 
@@ -270,21 +272,21 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
    - or if external: `https://production.polysaas.online:8181`
 5. For **Odoo**:
    - URL: `http://odoo:8069`
-   - or if external: `https://production.polysaas.online:8086`
+   - or if external: `https://odoo-production-ed0e.up.railway.app`
 
 **Option A: Internal networking** (recommended)
 - Set endpoint URLs to internal hostnames: `http://mattermost:8065`, `http://nextcloud`, etc.
 - All services communicate via Docker network (fast, no external routing)
 
 **Option B: External access**
-- Set endpoint URLs to Railway public domain + port:
+- Set endpoint URLs to per-service Railway public domains:
   ```
-  https://production.polysaas.online:8065  (Mattermost)
-   https://production.polysaas.online:8086  (Odoo)
-  https://production.polysaas.online:8888  (Nextcloud)
-  https://production.polysaas.online:8181  (Liferay)
+   https://<mattermost-service>.up.railway.app  (Mattermost)
+   https://<odoo-service>.up.railway.app        (Odoo)
+   https://<nextcloud-service>.up.railway.app   (Nextcloud)
+   https://<liferay-service>.up.railway.app     (Liferay)
   ```
-- Add port mappings in `docker-compose.railway.yml` if they're not there
+- Railway routes public traffic to each service domain directly; avoid relying on custom port suffixes on a shared domain
 
 ---
 
@@ -318,6 +320,34 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
 
 ### Django can't connect to PostgreSQL
 - Verify PostgreSQL pod is healthy: Railway UI → Services → postgres → Logs
+
+### Odoo: `password authentication failed for user "odoo_user"`
+- Root cause: `DB_PASSWORD` in Odoo service does not match the password set for `odoo_user` in Postgres
+- Verify/fix with a DB admin client (Adminer recommended in-project)
+- In Postgres, run:
+   ```sql
+   ALTER ROLE odoo_user WITH LOGIN PASSWORD 'PolySaaS2026!';
+   ALTER DATABASE odoo OWNER TO odoo_user;
+   GRANT ALL PRIVILEGES ON DATABASE odoo TO odoo_user;
+   ```
+- In Odoo service variables, set exactly:
+   ```
+   DB_HOST=postgres.railway.internal
+   DB_PORT=5432
+   DB_USER=odoo_user
+   DB_PASSWORD=PolySaaS2026!
+   DB_NAME=odoo
+   ```
+- Remove conflicting vars on Odoo service: `USER`, `PASSWORD`, `HOST`, `PORT`, `DATABASE`, and any `PG*`
+
+### Adminer quick setup (in Railway project)
+- Create service from image: `adminer:latest`
+- Set `ADMINER_DEFAULT_SERVER=postgres.railway.internal`
+- Login values:
+   - System: `PostgreSQL`
+   - Server: `postgres.railway.internal`
+   - Username: `postgres`
+   - Database: `postgres`
 - Verify env var `DATABASE_URL` is set correctly
 - Check network: are `django` and `postgres` on same Docker network? (Yes, both on `polysaas-network`)
 
