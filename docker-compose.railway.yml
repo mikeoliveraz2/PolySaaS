@@ -323,7 +323,7 @@ services:
     environment:
       POSTGRES_USER: ${ODOO_DB_USER:-odoo}
       POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
-      POSTGRES_DB: ${ODOO_DB:-postgres}
+        POSTGRES_DB: ${ODOO_DB:-odoo}
     volumes:
       - odoo_db_data:/var/lib/postgresql/data
     healthcheck:
