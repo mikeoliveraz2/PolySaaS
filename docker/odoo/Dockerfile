@@ -8,7 +8,7 @@ USER root
 RUN sed -i \
 	-e 's#${{Postgres.HOST}}#postgres.railway.internal#g' \
 	-e 's#^db_host *=.*#db_host = postgres.railway.internal#' \
-	-e 's#^db_name *=.*#db_name = database1#' \
+	-e 's#^db_name *=.*#db_name = odoo#' \
 	/etc/odoo/odoo.conf
 
 # Run with the default unprivileged runtime user.
