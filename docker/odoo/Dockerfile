@@ -13,4 +13,4 @@ RUN sed -i \
 
 # Keep root as container user so startup can repair volume ownership,
 # then drop to odoo user before launching Odoo.
-CMD ["sh", "-c", "chown -R odoo:odoo /var/lib/odoo && exec gosu odoo odoo -c /etc/odoo/odoo.conf -d odoo -i base"]
+CMD ["bash", "-lc", "chown -R odoo:odoo /var/lib/odoo && exec su -s /bin/bash odoo -c '/entrypoint.sh odoo'"]
