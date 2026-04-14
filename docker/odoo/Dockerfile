@@ -11,6 +11,9 @@ RUN sed -i \
 	-e 's#^db_name *=.*#db_name = odoo#' \
 	/etc/odoo/odoo.conf
 
+COPY start-odoo.sh /start-odoo.sh
+RUN chmod +x /start-odoo.sh
+
 # Keep root as container user so startup can repair volume ownership,
 # then drop to odoo user before launching Odoo.
-CMD ["bash", "-lc", "chown -R odoo:odoo /var/lib/odoo && exec su -s /bin/bash odoo -c '/entrypoint.sh odoo'"]
+CMD ["/start-odoo.sh"]
