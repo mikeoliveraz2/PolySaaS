@@ -11,6 +11,7 @@ RUN sed -i \
 	-e 's#^db_name *=.*#db_name = odoo#' \
 	/etc/odoo/odoo.conf
 
-# Keep root as container user so startup can repair volume ownership,
-# then drop to odoo user before launching Odoo.
-CMD ["sh", "-c", "chown -R odoo:odoo /var/lib/odoo && exec gosu odoo odoo -c /etc/odoo/odoo.conf -d odoo -i base"]
+# Fix volume ownership at build time and let the base image's entrypoint
+# handle startup (including database initialisation) correctly.
+RUN chown -R odoo:odoo /var/lib/odoo
+ENV ODOO_RC=/etc/odoo/odoo.conf
