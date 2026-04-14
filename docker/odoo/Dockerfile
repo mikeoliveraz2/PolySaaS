@@ -11,6 +11,10 @@ RUN sed -i \
 	-e 's#^db_name *=.*#db_name = odoo#' \
 	/etc/odoo/odoo.conf
 
-# Keep root as container user so startup can repair volume ownership,
-# then drop to odoo user before launching Odoo.
-CMD ["bash", "-lc", "chown -R odoo:odoo /var/lib/odoo && exec su -s /bin/bash odoo -c '/entrypoint.sh odoo'"]
+# Copy smart init script and make it executable.
+COPY init-odoo.sh /init-odoo.sh
+RUN chmod +x /init-odoo.sh
+
+# Keep root as container user so the init script can repair volume ownership,
+# then the script drops to the odoo user before launching Odoo.
+CMD ["/init-odoo.sh"]
