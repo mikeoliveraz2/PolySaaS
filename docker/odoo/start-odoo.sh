@@ -5,11 +5,23 @@ set -euo pipefail
 mkdir -p /var/lib/odoo/filestore
 chown -R odoo:odoo /var/lib/odoo
 
-DB_NAME="${DB_NAME:-${PGDATABASE:-odoo}}"
-DB_HOST="${DB_HOST:-${PGHOST:-postgres.railway.internal}}"
-DB_PORT="${DB_PORT:-${PGPORT:-5432}}"
-DB_USER="${DB_USER:-${PGUSER:-odoo}}"
-DB_PASSWORD="${DB_PASSWORD:-${PGPASSWORD:-}}"
+first_non_empty() {
+	for value in "$@"; do
+		if [ -n "$value" ]; then
+			printf '%s' "$value"
+			return 0
+		fi
+	done
+	return 1
+}
+
+DB_NAME="$(first_non_empty "${DB_NAME:-}" "${PGDATABASE:-}" "${POSTGRES_DB:-}" "${POSTGRES_DATABASE:-}" "${ODOO_DATABASE_NAME:-}" "odoo")"
+DB_HOST="$(first_non_empty "${DB_HOST:-}" "${PGHOST:-}" "${POSTGRES_HOST:-}" "${ODOO_DATABASE_HOST:-}" "postgres.railway.internal")"
+DB_PORT="$(first_non_empty "${DB_PORT:-}" "${PGPORT:-}" "${POSTGRES_PORT:-}" "${ODOO_DATABASE_PORT_NUMBER:-}" "5432")"
+DB_USER="$(first_non_empty "${DB_USER:-}" "${PGUSER:-}" "${POSTGRES_USER:-}" "${ODOO_DATABASE_USER:-}" "odoo")"
+DB_PASSWORD="$(first_non_empty "${DB_PASSWORD:-}" "${PGPASSWORD:-}" "${POSTGRES_PASSWORD:-}" "${ODOO_DATABASE_PASSWORD:-}" "")"
+
+RUNTIME_CONF=/tmp/odoo-runtime.conf
 
 export DB_NAME
 export DB_HOST
@@ -20,6 +32,20 @@ export PGHOST="$DB_HOST"
 export PGPORT="$DB_PORT"
 export PGUSER="$DB_USER"
 export PGPASSWORD="$DB_PASSWORD"
+
+cp /etc/odoo/odoo.conf "$RUNTIME_CONF"
+sed -i \
+	-e "s#^db_host *=.*#db_host = $DB_HOST#" \
+	-e "s#^db_port *=.*#db_port = $DB_PORT#" \
+	-e "s#^db_user *=.*#db_user = $DB_USER#" \
+	-e "s#^db_name *=.*#db_name = $DB_NAME#" \
+	"$RUNTIME_CONF"
+
+if grep -q '^db_password *=.*' "$RUNTIME_CONF"; then
+	sed -i -e "s#^db_password *=.*#db_password = $DB_PASSWORD#" "$RUNTIME_CONF"
+else
+	printf '\ndb_password = %s\n' "$DB_PASSWORD" >> "$RUNTIME_CONF"
+fi
 
 db_exists() {
 	python3 - <<'PY'
@@ -57,11 +83,11 @@ else
 	rc=$?
 	if [ "$rc" -eq 10 ]; then
 		echo "Database '$DB_NAME' not found; running one-time base initialization."
-		su -s /bin/bash odoo -c "/entrypoint.sh odoo -c /etc/odoo/odoo.conf -d '$DB_NAME' -i base --without-demo=all --stop-after-init"
+		su -s /bin/bash odoo -c "/entrypoint.sh odoo -c '$RUNTIME_CONF' -d '$DB_NAME' -i base --without-demo=all --stop-after-init"
 	else
 		echo "Database check failed with code $rc; refusing to continue." >&2
 		exit "$rc"
 	fi
 fi
 
-exec su -s /bin/bash odoo -c "/entrypoint.sh odoo -c /etc/odoo/odoo.conf -d '$DB_NAME'"
+exec su -s /bin/bash odoo -c "/entrypoint.sh odoo -c '$RUNTIME_CONF' -d '$DB_NAME'"
