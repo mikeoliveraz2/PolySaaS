@@ -16,4 +16,4 @@ RUN chmod +x /start-odoo.sh
 
 # Keep root as container user so startup can repair volume ownership,
 # then drop to odoo user before launching Odoo.
-CMD ["/start-odoo.sh"]
+ENTRYPOINT ["/start-odoo.sh"]
