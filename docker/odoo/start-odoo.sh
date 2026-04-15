@@ -77,8 +77,24 @@ sys.exit(0)
 PY
 }
 
+db_initialized() {
+	psql \
+		--host="$DB_HOST" \
+		--port="$DB_PORT" \
+		--username="$DB_USER" \
+		--dbname="$DB_NAME" \
+		--tuples-only \
+		--no-align \
+		--command="SELECT to_regclass('public.ir_module_module');" 2>/dev/null | grep -q '^ir_module_module$'
+}
+
 if db_exists; then
-	echo "Database '$DB_NAME' exists; starting Odoo normally."
+	if db_initialized; then
+		echo "Database '$DB_NAME' exists and is initialized; starting Odoo normally."
+	else
+		echo "Database '$DB_NAME' exists but is not initialized; running one-time base initialization."
+		su -s /bin/bash odoo -c "/entrypoint.sh odoo -c '$RUNTIME_CONF' -d '$DB_NAME' -i base --without-demo=all --stop-after-init"
+	fi
 else
 	rc=$?
 	if [ "$rc" -eq 10 ]; then
