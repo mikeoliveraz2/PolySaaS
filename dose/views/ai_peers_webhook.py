@@ -1,12 +1,12 @@
 """
 Mattermost outgoing webhook handler for AI as Peers.
 
-Mattermost fires an outgoing webhook when a trigger word (@cc, @supergrok)
-appears in a channel message. This view receives that payload, identifies
-which peer(s) were mentioned, and dispatches to the AI peer service.
+Mattermost fires an outgoing webhook when a configured trigger word appears in
+channel traffic. This view identifies mentioned peers and dispatches them to
+the AI peer service.
 
-The webhook returns 200 immediately — the AI response is posted back to
-the channel asynchronously via the Mattermost API (as the bot user identity).
+The webhook returns 200 immediately — the AI response is posted back to the
+channel asynchronously via the Mattermost API as the matching bot identity.
 """
 import json
 import logging
@@ -27,22 +27,99 @@ MENTION_PATTERN = re.compile(r'[#@](\w+)')
 _peers_loaded = False
 _processed_posts = set()
 
+PEER_SPECS = [
+    {
+        'username': 'copilot',
+        'display_name': 'Copilot',
+        'token_setting': 'BOT_TOKEN_COPILOT',
+        'provider_setting': 'AI_PEER_PROVIDER_COPILOT',
+        'default_provider': 'anthropic',
+        'persona': 'You are Copilot, an engineering-focused AI peer. Prioritize code clarity, implementation detail, and actionable next steps.',
+        'aliases': [],
+    },
+    {
+        'username': 'cursor',
+        'display_name': 'Cursor',
+        'token_setting': 'BOT_TOKEN_CURSOR',
+        'provider_setting': 'AI_PEER_PROVIDER_CURSOR',
+        'default_provider': 'anthropic',
+        'persona': 'You are Cursor, a pragmatic coding peer focused on direct implementation, debugging, and repo-aware iteration.',
+        'aliases': ['cc'],
+        'fallback_token_settings': ['BOT_TOKEN_CC'],
+    },
+    {
+        'username': 'grok',
+        'display_name': 'Grok',
+        'token_setting': 'BOT_TOKEN_GROK',
+        'provider_setting': 'AI_PEER_PROVIDER_GROK',
+        'default_provider': 'xai',
+        'persona': 'You are Grok, a direct AI peer focused on fast synthesis, candid tradeoffs, and decisive recommendations.',
+        'aliases': ['supergrok'],
+        'fallback_token_settings': ['BOT_TOKEN_SUPERGROK'],
+    },
+    {
+        'username': 'router',
+        'display_name': 'Router',
+        'token_setting': 'BOT_TOKEN_ROUTER',
+        'provider_setting': 'AI_PEER_PROVIDER_ROUTER',
+        'default_provider': 'anthropic',
+        'persona': 'You are Router, the orchestration peer. Your job is to clarify the request, decide which peer should respond, and when useful explicitly hand work to other AI peers.',
+        'aliases': [],
+    },
+    {
+        'username': 'openclaw',
+        'display_name': 'OpenClaw',
+        'token_setting': 'BOT_TOKEN_OPENCLAW',
+        'provider_setting': 'AI_PEER_PROVIDER_OPENCLAW',
+        'default_provider': 'anthropic',
+        'persona': 'You are OpenClaw, an open-systems AI peer focused on extensibility, interoperability, and self-hostable workflows.',
+        'aliases': ['opeclaw'],
+    },
+    {
+        'username': 'gem',
+        'display_name': 'Gem (Gemini)',
+        'token_setting': 'BOT_TOKEN_GEM',
+        'provider_setting': 'AI_PEER_PROVIDER_GEM',
+        'default_provider': 'gemini',
+        'persona': 'You are Gem, a synthesis-focused AI peer powered by Gemini.',
+        'aliases': [],
+    },
+]
+
+
+def _first_setting(*names):
+    for name in names:
+        value = getattr(settings, name, '')
+        if value:
+            return value
+    return ''
+
+
+def _peer_provider(spec):
+    provider = getattr(settings, spec['provider_setting'], spec['default_provider'])
+    return (provider or spec['default_provider']).strip().lower()
+
+
+def _available_peer_tags(specs):
+    tags = []
+    for spec in specs:
+        tags.append(f"#{spec['username']}")
+        for alias in spec.get('aliases', []):
+            tags.append(f"#{alias}")
+    return ', '.join(dict.fromkeys(tags))
+
 
 def _ensure_peers_loaded():
     """
     Lazily register AI peer identities from settings on first webhook call.
-    Bot tokens must be set as BOT_TOKEN_CC / BOT_TOKEN_SUPERGROK in settings.
+    Bot tokens must be set in settings for the peers you want enabled.
     """
     global _peers_loaded
     # We allow re-loading if we detect tokens are missing but exist in settings
     from django.conf import settings
     from dose.services.ai_peer_service import register_peer, PEER_REGISTRY
 
-    cc_token = getattr(settings, 'BOT_TOKEN_CC', '')
-    grok_token = getattr(settings, 'BOT_TOKEN_SUPERGROK', '')
-    gem_token = getattr(settings, 'BOT_TOKEN_GEM', '')
-
-    if _peers_loaded and 'cc' in PEER_REGISTRY and 'supergrok' in PEER_REGISTRY:
+    if _peers_loaded and PEER_REGISTRY:
         return
     
     _peers_loaded = True
@@ -64,20 +141,27 @@ def _ensure_peers_loaded():
         "AI as Peers (this feature) is a key differentiator — multiple AI models "
         "collaborating visibly with humans in Mattermost channels.\n\n"
         "Be concise, helpful, and collaborative. Keep responses under 150 words unless "
-        "asked for detail. You can mention other peers with #cc, #supergrok, or #gem."
+        f"asked for detail. You can mention other peers with {_available_peer_tags(PEER_SPECS)}."
     )
 
-    if cc_token:
-        register_peer('cc', 'CC (Claude)', 'anthropic', cc_token,
-                       system_prompt=f"You are CC, powered by Anthropic Claude. {polysaas_context}")
+    PEER_REGISTRY.clear()
+    for spec in PEER_SPECS:
+        token_names = [spec['token_setting'], *spec.get('fallback_token_settings', [])]
+        bot_token = _first_setting(*token_names)
+        if not bot_token:
+            continue
 
-    if grok_token:
-        register_peer('supergrok', 'SuperGrok', 'xai', grok_token,
-                       system_prompt=f"You are SuperGrok, powered by xAI Grok. {polysaas_context}")
-
-    if gem_token:
-        register_peer('gem', 'Gem (Gemini)', 'gemini', gem_token,
-                       system_prompt=f"You are Gem, powered by Google Gemini. {polysaas_context}")
+        provider = _peer_provider(spec)
+        register_peer(
+            spec['username'],
+            spec['display_name'],
+            provider,
+            bot_token,
+            system_prompt=(
+                f"{spec['persona']} {polysaas_context}"
+            ),
+            aliases=spec.get('aliases', []),
+        )
 
 
 @csrf_exempt

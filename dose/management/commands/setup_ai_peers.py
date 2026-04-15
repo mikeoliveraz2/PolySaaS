@@ -1,9 +1,8 @@
 """
 Management command: Create AI peer bot accounts in Mattermost.
 
-Creates @CC (Claude via Anthropic) and @SuperGrok (via xAI) as bot users,
-generates personal access tokens for each, and registers them in the
-AI peer service.
+Creates the current AI as Peers bot set for Mattermost, generates personal
+access tokens for each, and registers them in the AI peer service.
 
 Usage:
     python manage.py setup_ai_peers
@@ -18,18 +17,34 @@ from dose.services.ai_peer_service import register_peer
 
 BOT_DEFINITIONS = [
     {
-        'username': 'cc',
-        'display_name': 'CC (Claude Opus)',
-        'description': 'AI peer powered by Anthropic Claude — collaborates in channels alongside humans and other AI agents.',
+        'username': 'copilot',
+        'display_name': 'Copilot',
+        'description': 'AI peer for engineering execution and implementation planning in Mattermost channels.',
         'provider': 'anthropic',
-        'icon_url': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Anthropic_logo.svg/240px-Anthropic_logo.svg.png',
     },
     {
-        'username': 'supergrok',
-        'display_name': 'SuperGrok',
-        'description': 'AI peer powered by xAI Grok — collaborates in channels alongside humans and other AI agents.',
+        'username': 'cursor',
+        'display_name': 'Cursor',
+        'description': 'AI peer for repo-aware coding, debugging, and pragmatic iteration in Mattermost channels.',
+        'provider': 'anthropic',
+    },
+    {
+        'username': 'grok',
+        'display_name': 'Grok',
+        'description': 'AI peer powered by xAI Grok for direct analysis and fast synthesis in Mattermost channels.',
         'provider': 'xai',
-        'icon_url': 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Grok_logo.svg/240px-Grok_logo.svg.png',
+    },
+    {
+        'username': 'router',
+        'display_name': 'Router',
+        'description': 'AI orchestration peer for routing work to the best human or AI collaborator in Mattermost channels.',
+        'provider': 'anthropic',
+    },
+    {
+        'username': 'openclaw',
+        'display_name': 'OpenClaw',
+        'description': 'AI peer for open systems, interoperability, and self-hosted workflow design in Mattermost channels.',
+        'provider': 'anthropic',
     },
 ]
 
@@ -88,10 +103,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('\nAI peer setup complete.'))
         self.stdout.write(
             '\nNext steps:\n'
-            '  1. Set ANTHROPIC_API_KEY and XAI_API_KEY in your .env\n'
+            '  1. Set the required provider API keys in your .env\n'
             '  2. Create an outgoing webhook in Mattermost pointing to:\n'
             f'     <your-polysaas-url>/dose/webhook/ai-peers/\n'
-            '  3. Set the webhook trigger words to: @cc, @supergrok\n'
+            '  3. Create trigger words for: #copilot, #cursor, #grok, #router, #openclaw\n'
             '  4. Copy the webhook token into AI_PEERS_WEBHOOK_TOKEN in .env\n'
         )
 

@@ -1,18 +1,16 @@
 """
-AI as Peers — Multi-LLM router for Mattermost channels.
+AI as Peers — configurable multi-LLM router for Mattermost channels.
 
-When a user @mentions an AI peer (@CC, @SuperGrok, etc.) in a Mattermost
-channel, this service:
-  1. Identifies which peer was mentioned
-  2. Gathers recent channel context (last N messages)
-  3. Calls the appropriate LLM API (Anthropic for CC, xAI for SuperGrok)
-  4. Posts the response back to the channel AS that bot user
+When a user mentions an AI peer in a Mattermost channel, this service:
+    1. Identifies which peer was mentioned
+    2. Gathers recent channel context (last N messages)
+    3. Calls the configured LLM backend for that peer
+    4. Posts the response back to the channel as that bot user
 
-Each bot has its own Mattermost bot account with a personal access token,
-so replies appear under the correct identity.
+Each peer has its own Mattermost bot account and token so replies appear
+under the correct identity.
 """
 import logging
-import json
 import requests
 from typing import Optional, Dict, Any, List
 
@@ -32,16 +30,26 @@ def _mm_headers(token: str) -> dict:
 
 
 def register_peer(username: str, display_name: str, provider: str,
-                  bot_token: str, system_prompt: str = ''):
+                  bot_token: str, system_prompt: str = '', aliases: Optional[List[str]] = None):
     """Register an AI peer in the in-memory registry."""
-    PEER_REGISTRY[username.lower()] = {
+    peer_record = {
         'username': username,
         'display_name': display_name,
         'provider': provider,       # 'anthropic' | 'xai'
         'bot_token': bot_token,
         'system_prompt': system_prompt,
+        'aliases': [alias.lower() for alias in (aliases or [])],
     }
+    PEER_REGISTRY[username.lower()] = peer_record
+    for alias in peer_record['aliases']:
+        PEER_REGISTRY[alias] = peer_record
     logger.info("Registered AI peer: @%s (%s via %s)", username, display_name, provider)
+
+
+def _peer_label(peer: Optional[Dict[str, Any]], fallback: str = 'AI Peer') -> str:
+    if not peer:
+        return fallback
+    return peer.get('display_name') or peer.get('username') or fallback
 
 
 def get_channel_context(channel_id: str, limit: Optional[int] = None) -> List[dict]:
@@ -106,10 +114,11 @@ def get_pinned_context_for_system(channel_id: str) -> str:
         return ''
 
 
-def _call_anthropic(messages: list, system_prompt: str) -> str:
+def _call_anthropic(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]] = None) -> str:
+    peer_label = _peer_label(peer)
     api_key = getattr(settings, 'ANTHROPIC_API_KEY', '')
     if not api_key:
-        return "[CC] Anthropic API key not configured."
+        return f"[{peer_label}] Anthropic API key not configured."
     conversation = []
     for m in messages:
         role = 'assistant' if m.get('is_bot') else 'user'
@@ -128,7 +137,7 @@ def _call_anthropic(messages: list, system_prompt: str) -> str:
                 'model': 'claude-sonnet-4-6',
                 'max_tokens': 1024,
                 'system': system_prompt or (
-                    "You are CC (Claude), an AI peer collaborating in a Mattermost channel "
+                    f"You are {peer_label}, an AI peer collaborating in a Mattermost channel "
                     "with humans and other AI agents on the PolySaaS platform. Be concise, "
                     "helpful, and collaborative. You can @mention other peers to loop them in."
                 ),
@@ -146,13 +155,14 @@ def _call_anthropic(messages: list, system_prompt: str) -> str:
     except Exception as e:
         print(f"[DEBUG] Anthropic error: {e}")
         logger.error("Anthropic API error: %s", e)
-        return f"[CC] Error calling Anthropic: {e}"
+        return f"[{peer_label}] Error calling Anthropic: {e}"
 
 
-def _call_xai(messages: list, system_prompt: str) -> str:
+def _call_xai(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]] = None) -> str:
+    peer_label = _peer_label(peer)
     api_key = getattr(settings, 'XAI_API_KEY', '')
     if not api_key:
-        return "[SuperGrok] xAI API key not configured."
+        return f"[{peer_label}] xAI API key not configured."
     conversation = []
     for m in messages:
         role = 'assistant' if m.get('is_bot') else 'user'
@@ -170,7 +180,7 @@ def _call_xai(messages: list, system_prompt: str) -> str:
                 'model': 'grok-3',
                 'messages': [
                     {'role': 'system', 'content': system_prompt or (
-                        "You are SuperGrok, an AI peer collaborating in a Mattermost channel "
+                        f"You are {peer_label}, an AI peer collaborating in a Mattermost channel "
                         "with humans and other AI agents on the PolySaaS platform. Be concise, "
                         "direct, and collaborative. You can @mention other peers to loop them in."
                     )},
@@ -189,13 +199,14 @@ def _call_xai(messages: list, system_prompt: str) -> str:
     except Exception as e:
         print(f"[DEBUG] xAI error: {e}")
         logger.error("xAI API error: %s", e)
-        return f"[SuperGrok] Error calling xAI: {e}"
+        return f"[{peer_label}] Error calling xAI: {e}"
 
 
-def _call_gemini(messages: list, system_prompt: str) -> str:
+def _call_gemini(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]] = None) -> str:
+    peer_label = _peer_label(peer)
     api_key = getattr(settings, 'GEMINI_API_KEY', '')
     if not api_key:
-        return "[CC] Gemini API key not configured."
+        return f"[{peer_label}] Gemini API key not configured."
     conversation = []
     for m in messages:
         role = 'model' if m.get('is_bot') else 'user'
@@ -209,7 +220,7 @@ def _call_gemini(messages: list, system_prompt: str) -> str:
             headers={'Content-Type': 'application/json'},
             json={
                 'system_instruction': {'parts': [{'text': system_prompt or (
-                    "You are CC, an AI peer collaborating in a Mattermost channel "
+                    f"You are {peer_label}, an AI peer collaborating in a Mattermost channel "
                     "with humans and other AI agents on the PolySaaS platform. Be concise, "
                     "helpful, and collaborative. You can @mention other peers to loop them in."
                 )}]},
@@ -225,7 +236,7 @@ def _call_gemini(messages: list, system_prompt: str) -> str:
     except Exception as e:
         print(f"[DEBUG] Gemini error: {e}")
         logger.error("Gemini API error: %s", e)
-        return f"[CC] Error calling Gemini: {e}"
+        return f"[{peer_label}] Error calling Gemini: {e}"
 
 
 LLM_PROVIDERS = {
@@ -271,7 +282,7 @@ def handle_mention(peer_username: str, channel_id: str,
         return None
 
     print(f"[DEBUG] Calling provider {peer['provider']} for @{peer_username}")
-    response_text = provider_fn(context, base_prompt)
+    response_text = provider_fn(context, base_prompt, peer)
     print(f"[DEBUG] AI Response: {response_text[:100]}...")
 
     _post_as_bot(peer['bot_token'], channel_id, response_text)
