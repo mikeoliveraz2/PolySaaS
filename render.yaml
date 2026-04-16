@@ -1,0 +1,78 @@
+# Render Blueprint — PolySaaS (temporary phase before GCP)
+# https://render.com/docs/blueprint-spec
+#
+# Apply: Dashboard → Blueprints → Connect this repo (same repo that contains this file).
+# Add secrets in the dashboard or via `sync: false` prompts on first sync.
+#
+# Notes:
+# - All Docker services use Dockerfile.django (never the repo-root stub Dockerfile).
+# - preDeploy runs after image build, before new instances get traffic (web) / start (worker).
+# - We call migrate_all_schemas explicitly (not `migrate`) to match multi-tenant manage.py.
+# - Scale to more services later by copying a block and changing `name`, `type`, `dockerCommand`.
+
+previews:
+  generation: off
+
+envVarGroups:
+  - name: polysaas-common
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: mysite.settings_railway
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # Set in dashboard / Blueprint sync prompts (never commit real secrets)
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CELERY_BROKER_URL
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      # Optional tuning
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CELERY_LOG_LEVEL
+        value: INFO
+      - key: CELERY_CONCURRENCY
+        value: "2"
+
+services:
+  # --- Main Django / Gunicorn (uses Dockerfile CMD + ENTRYPOINT) ---
+  - type: web
+    name: PolySaaS
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerfilePath: Dockerfile.django
+    dockerContext: .
+    # Omit dockerCommand → image CMD runs Gunicorn via /entrypoint.sh
+    healthCheckPath: /health/
+    autoDeployTrigger: commit
+    preDeployCommand: python manage.py migrate_all_schemas --noinput && python manage.py bootstrap_auth
+    envVars:
+      - fromGroup: polysaas-common
+      # First-time / disaster recovery: set to 1 on the web service only if you need migrate on boot too
+      - key: RUN_MIGRATIONS
+        value: "0"
+
+  # --- Celery worker (OpenClaw / agents / background jobs) ---
+  - type: worker
+    name: PolySaaS-Celery-Worker
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerfilePath: Dockerfile.django
+    dockerContext: .
+    # Overrides image CMD; ENTRYPOINT still runs bootstrap + collectstatic before this exec
+    dockerCommand: celery -A mysite worker -l INFO --concurrency=2
+    autoDeployTrigger: commit
+    preDeployCommand: python manage.py migrate_all_schemas --noinput && python manage.py bootstrap_auth
+    envVars:
+      - fromGroup: polysaas-common
+      - key: RUN_MIGRATIONS
+        value: "0"
