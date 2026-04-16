@@ -7,7 +7,8 @@
 .github
 
 # Python
-__pycache__
+__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -55,9 +56,16 @@ cover/
 # Documentation
 docs/_build/
 
-# Environment
+# Environment (never bake secrets into images)
 .env
-.env.local
+.env.*
+!.env.example
+
+# Local / generated runtime (not needed in build context)
+media/
+staticfiles/
+logs/
+**/logs/
 
 # Temporary files
 tmp/
