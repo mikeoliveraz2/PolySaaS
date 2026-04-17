@@ -3,12 +3,8 @@ Odoo on Render (PolySaaS repo, in-tree)
 
 Purpose
 -------
-Small Dockerfile so Odoo binds HTTP to Render's injected $PORT while using the
-official odoo:18 image unchanged. The stock /entrypoint.sh reads HOST, PORT, USER,
-and PASSWORD to build --db_host / --db_port / --db_user / --db_password for Odoo
-and wait-for-psql. On Render, PORT is the *HTTP* port, not Postgres, so the CMD
-snapshots that value for --http-port, sets PORT=5432 for the database, then runs
-exec /entrypoint.sh odoo so wait-for-psql and DB args still apply (TCP to HOST).
+Small Dockerfile so Odoo binds HTTP to Render's $PORT while still using the
+official odoo:18 image and its entrypoint behaviour for PostgreSQL.
 
 Render Web Service settings
 -----------------------------
@@ -24,14 +20,11 @@ Set on the Odoo Web Service, NOT in the Dockerfile:
 
   HOST      = hostname ONLY from Postgres "External Database URL"
             (the part between @ and :5432). Never put the full postgresql:// URL in HOST.
+  PORT      = 5432  (Postgres port — not the same as Render's HTTP PORT)
   USER      = database user from Render
   PASSWORD  = database password (use dashboard Copy; rotate if it was ever pasted into logs)
 
-Do NOT set PORT=5432 in the Render dashboard for this Web Service: Render injects PORT
-for the HTTP listener. The Dockerfile CMD copies that to Odoo's --http-port, then sets
-PORT=5432 in-process so the official entrypoint targets Postgres correctly.
-
-Optional: ADMIN_PASSWORD / ODOO_MASTER_PASSWORD per official image docs.
+Render sets HTTP PORT automatically for the web listener; the Dockerfile CMD passes it to Odoo.
 
 Region
 ------
