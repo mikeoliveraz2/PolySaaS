@@ -1,0 +1,24 @@
+# PolySaaS — Odoo on Render (Shela layout — main for current build/deploy).
+# Alternate layout (official entrypoint + Render HTTP vs Postgres PORT): see Dockerfile.bak2.
+#
+# DB credentials from Render at runtime; do not bake secrets into custom layers beyond this file.
+# Render: Dockerfile path = deploy/odoo-render/Dockerfile; context = this folder (or repo root).
+# Set HOST / USER / PASSWORD (hostname only for HOST — never a postgresql:// URL).
+# Optional on Render: DB_NAME (maps to PGDATABASE).
+
+FROM odoo:18
+
+# Explicit libpq-style env (Shela) — align with web-style names where applicable.
+ENV PGHOST=$HOST
+ENV PGPORT=5432
+ENV PGUSER=$USER
+ENV PGPASSWORD=$PASSWORD
+ENV PGDATABASE=$DB_NAME
+
+ENV ADMIN_PASSWORD=$ADMIN_PASSWORD
+ENV ODOO_MASTER_PASSWORD=$ODOO_MASTER_PASSWORD
+
+# Document default Odoo HTTP; Render still injects PORT at runtime for the CMD below.
+EXPOSE 8069
+
+CMD ["sh", "-c", "exec odoo --http-port=${PORT:-8069}"]

@@ -3,43 +3,35 @@ Odoo on Render (PolySaaS repo, in-tree)
 
 Purpose
 -------
-Small Dockerfile so Odoo binds HTTP to Render's injected $PORT while using the
-official odoo:18 image unchanged. The stock /entrypoint.sh reads HOST, PORT, USER,
-and PASSWORD to build --db_host / --db_port / --db_user / --db_password for Odoo
-and wait-for-psql. On Render, PORT is the *HTTP* port, not Postgres, so the CMD
-snapshots that value for --http-port, sets PORT=5432 for the database, then runs
-exec /entrypoint.sh odoo so wait-for-psql and DB args still apply (TCP to HOST).
+**`Dockerfile` (current):** Merges CC/Shela’s goals with Render-safe mechanics: at **container
+start**, save Render’s HTTP `PORT`, set **`PORT=5432`** so `/entrypoint.sh` uses the correct
+Postgres port, export **`PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE`** from
+`HOST` / `USER` / `PASSWORD` / `DB_NAME` (TCP to Render Postgres, not a local socket), then
+**`exec /entrypoint.sh odoo --http-port=…`** so `wait-for-psql` and `--db_*` still run.
 
-Render Web Service settings
------------------------------
-- Build: Docker
-- Root directory: (repo root) — recommended
-- Dockerfile path: deploy/odoo-render/Dockerfile
-- Docker build context: deploy/odoo-render
-  (context is this folder only; image is mostly FROM odoo:18.)
+**Older snapshots:** `Dockerfile.bak2` — entrypoint + `PORT` fix only (no runtime `PG*` exports).
+`Dockerfile.bak3` — prior Shela-style `ENV PG*` + `exec odoo` (bypassed entrypoint).
 
-PostgreSQL env (official image — see Docker Hub "odoo" Environment Variables)
-----------------------------------------------------------------------------
-Set on the Odoo Web Service, NOT in the Dockerfile:
+Render Web Service
+------------------
+- Build: Docker  
+- Dockerfile path: `deploy/odoo-render/Dockerfile`  
+- Context: `deploy/odoo-render` (or repo root if your service is configured that way)
 
-  HOST      = hostname ONLY from Postgres "External Database URL"
-            (the part between @ and :5432). Never put the full postgresql:// URL in HOST.
-  USER      = database user from Render
-  PASSWORD  = database password (use dashboard Copy; rotate if it was ever pasted into logs)
+Environment (Odoo service)
+--------------------------
+  HOST, USER, PASSWORD — from Postgres; **HOST = hostname only** (no `postgresql://` URL).  
+  DB_NAME — optional; defaults to `postgres` for `PGDATABASE` if unset.  
+  Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**. Postgres 5432
+  is applied inside the startup script before `/entrypoint.sh`.
 
-Do NOT set PORT=5432 in the Render dashboard for this Web Service: Render injects PORT
-for the HTTP listener. The Dockerfile CMD copies that to Odoo's --http-port, then sets
-PORT=5432 in-process so the official entrypoint targets Postgres correctly.
+You do **not** need a separate **PGPASSWORD** in the dashboard unless you want it; the CMD
+exports `PGPASSWORD` from **PASSWORD**.
 
-Optional: ADMIN_PASSWORD / ODOO_MASTER_PASSWORD per official image docs.
+Optional: **ADMIN_PASSWORD**, **ODOO_MASTER_PASSWORD** (official `odoo` image docs).
+
+After push: **Manual Deploy** on the Odoo service and check logs for `wait-for-psql` / DB lines.
 
 Region
 ------
-Create the Postgres database and this Web Service in the SAME Render region so you can
-prefer internal hostnames when Render documents that they resolve; if DNS still fails,
-use the external hostname in HOST.
-
-Optional
---------
-If you later need addons or odoo.conf, add COPY lines here and keep this folder as the
-Docker build context.
+Same region as Postgres when possible; use **external** DB hostname in HOST if internal DNS fails.
