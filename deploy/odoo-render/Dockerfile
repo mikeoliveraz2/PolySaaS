@@ -1,13 +1,16 @@
 # PolySaaS — Odoo on Render
-# Collaboration (CC / Michael / Shela): use official /entrypoint.sh (wait-for-psql, --db_*),
-# fix Render HTTP PORT vs Postgres PORT, and map DB env at container start (not in Dockerfile ENV).
+# All database credentials come from the container environment at runtime (Render dashboard).
+# Never bake HOST, USER, PASSWORD, or PGPASSWORD into this file or into image layers.
 #
-# Note on the pasted “ENV ODOO_HTTP_PORT=${PORT:-8069}” + JSON CMD approach: those values are
-# resolved at *image build* time unless you use build-args, and exec-form CMD does not expand
-# Render’s runtime PORT. This file uses one shell CMD so Render’s PORT, HOST, USER, PASSWORD apply.
+# Required on Render: HOST (Postgres hostname only), USER, PASSWORD
+# Optional: DB_NAME (defaults to postgres), PGPASSWORD (if set, overrides PASSWORD for DB auth),
+#           ADMIN_PASSWORD, ODOO_MASTER_PASSWORD
+# Do not set PORT=5432 in Render; Render injects PORT for HTTP. This CMD sets PORT=5432 for Postgres
+# before /entrypoint.sh and passes Render's HTTP port to Odoo via --http-port.
 
 FROM odoo:18
 
 EXPOSE 8069
 
-CMD ["sh", "-c", "ODOO_HTTP_PORT=\"${PORT:-8069}\"; export PORT=5432 PGHOST=\"${HOST}\" PGPORT=5432 PGUSER=\"${USER}\" PGPASSWORD=\"${PASSWORD}\" PGDATABASE=\"${DB_NAME:-postgres}\"; export ADMIN_PASSWORD=\"${ADMIN_PASSWORD}\" ODOO_MASTER_PASSWORD=\"${ODOO_MASTER_PASSWORD}\"; exec /entrypoint.sh odoo --http-port=\"${ODOO_HTTP_PORT}\""]
+# Prefer PASSWORD; if your team sets PGPASSWORD only, it is used. If both are set, PGPASSWORD wins.
+CMD ["sh", "-c", "ODOO_HTTP_PORT=\"${PORT:-8069}\"; DB_PASS=\"${PGPASSWORD:-${PASSWORD}}\"; export PORT=5432 HOST=\"${HOST}\" USER=\"${USER}\" PASSWORD=\"${DB_PASS}\" PGHOST=\"${HOST}\" PGPORT=5432 PGUSER=\"${USER}\" PGPASSWORD=\"${DB_PASS}\" PGDATABASE=\"${DB_NAME:-postgres}\"; export ADMIN_PASSWORD=\"${ADMIN_PASSWORD}\" ODOO_MASTER_PASSWORD=\"${ODOO_MASTER_PASSWORD}\"; exec /entrypoint.sh odoo --http-port=\"${ODOO_HTTP_PORT}\""]

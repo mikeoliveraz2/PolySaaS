@@ -20,16 +20,13 @@ Render Web Service
 
 Environment (Odoo service)
 --------------------------
-**Secrets only in Render** — never commit passwords into the Dockerfile or Git.
+  HOST, USER, PASSWORD — from Postgres; **HOST = hostname only** (no `postgresql://` URL).  
+  DB_NAME — optional; defaults to `postgres` for `PGDATABASE` if unset.  
+  Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**. Postgres 5432
+  is applied inside the startup script before `/entrypoint.sh`.
 
-  **HOST** — Postgres **hostname only** from Internal (or External) connection info — **not** a full `postgresql://` URL.  
-  **USER** — database role name.  
-  **PASSWORD** — that role’s password (required for normal setups).  
-  **PGPASSWORD** — optional; if set, it **overrides** **PASSWORD** for both libpq and Odoo’s entrypoint DB auth.  
-  **DB_NAME** — optional; defaults to `postgres` for `PGDATABASE` if unset.  
-
-Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**. Postgres **5432**
-is applied inside the container startup before `/entrypoint.sh`.
+You do **not** need a separate **PGPASSWORD** in the dashboard unless you want it; the CMD
+exports `PGPASSWORD` from **PASSWORD**.
 
 Optional: **ADMIN_PASSWORD**, **ODOO_MASTER_PASSWORD** (official `odoo` image docs).
 
