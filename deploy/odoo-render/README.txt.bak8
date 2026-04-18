@@ -1,18 +1,6 @@
 Odoo on Render (PolySaaS repo, in-tree)
 ======================================
 
-Why Odoo is not like Nextcloud on Render
------------------------------------------
-The **official Nextcloud** image can come up with **no** database environment variables (first-run
-wizard, SQLite in some setups, etc.). The **official Odoo** image **requires** **`HOST`**, **`USER`**,
-and **`PASSWORD`** (and usually **`DB_NAME`**) **before** it starts; if **`HOST`** is missing, Odoo’s
-entrypoint falls back to the hostname **`db`**, which fails on Render.
-
-**Blueprint:** Repo **`render.yaml`** defines env group **`polysaas-odoo`** and attaches it to
-**`PolySaaS-Odoo`** with **`fromGroup`**. After you **sync / apply** the Blueprint (or link that env
-group in the dashboard and set each value), those variables must be **non-empty** — especially
-**`HOST`** = Postgres **hostname only** from your Connections page.
-
 Purpose
 -------
 **`Dockerfile` (current):** At **container start**, save Render’s HTTP `PORT`, set **`PORT=5432`**

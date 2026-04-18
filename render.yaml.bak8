@@ -89,24 +89,6 @@ envVarGroups:
       - key: MLSTUDIO_API_KEY
         sync: false
 
-  # Odoo — official image requires Postgres env at boot (HOST/USER/PASSWORD/…). Nextcloud’s image
-  # can start with no DB env (wizard / defaults). Link this group to PolySaaS-Odoo; fill values on
-  # Blueprint sync or in the dashboard (hostname only for HOST, not the full postgresql:// URL).
-  - name: polysaas-odoo
-    envVars:
-      - key: HOST
-        sync: false
-      - key: USER
-        sync: false
-      - key: PASSWORD
-        sync: false
-      - key: DB_NAME
-        sync: false
-      - key: ADMIN_PASSWORD
-        sync: false
-      - key: ODOO_MASTER_PASSWORD
-        sync: false
-
 services:
   # --- Main Django / Gunicorn (uses Dockerfile CMD + ENTRYPOINT) ---
   - type: web
@@ -161,7 +143,20 @@ services:
     autoDeployTrigger: commit
     healthCheckPath: /web/login
     envVars:
-      - fromGroup: polysaas-odoo
+      # Set to internal hostname ONLY (from your paid Postgres Connections — not the full postgresql:// URL).
+      - key: HOST
+        sync: false
+      - key: USER
+        sync: false
+      - key: PASSWORD
+        sync: false
+      # Dedicated database on the shared server (e.g. odoo_hkyw); create empty DB + role in Postgres first if needed.
+      - key: DB_NAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ODOO_MASTER_PASSWORD
+        sync: false
     disk:
       name: odoo-filestore
       mountPath: /var/lib/odoo
