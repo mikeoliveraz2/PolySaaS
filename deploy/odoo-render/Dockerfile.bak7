@@ -14,5 +14,4 @@ FROM odoo:18
 EXPOSE 8069
 
 # Prefer PASSWORD; if your team sets PGPASSWORD only, it is used. If both are set, PGPASSWORD wins.
-# If HOST is missing, official entrypoint defaults to hostname "db" — fail fast with a clear message.
-CMD ["sh", "-c", "if [ -z \"${HOST}\" ]; then echo \"FATAL: HOST is unset or empty. On Render set HOST to your Postgres hostname only (from Connections), not the full postgresql:// URL.\" >&2; exit 1; fi; ODOO_HTTP_PORT=\"${PORT:-8069}\"; DB_PASS=\"${PGPASSWORD:-${PASSWORD}}\"; export PORT=5432 HOST=\"${HOST}\" USER=\"${USER}\" PASSWORD=\"${DB_PASS}\" PGHOST=\"${HOST}\" PGPORT=5432 PGUSER=\"${USER}\" PGPASSWORD=\"${DB_PASS}\" PGDATABASE=\"${DB_NAME:-postgres}\"; export ADMIN_PASSWORD=\"${ADMIN_PASSWORD}\" ODOO_MASTER_PASSWORD=\"${ODOO_MASTER_PASSWORD}\"; exec /entrypoint.sh odoo --http-port=\"${ODOO_HTTP_PORT}\" --proxy-mode"]
+CMD ["sh", "-c", "ODOO_HTTP_PORT=\"${PORT:-8069}\"; DB_PASS=\"${PGPASSWORD:-${PASSWORD}}\"; export PORT=5432 HOST=\"${HOST}\" USER=\"${USER}\" PASSWORD=\"${DB_PASS}\" PGHOST=\"${HOST}\" PGPORT=5432 PGUSER=\"${USER}\" PGPASSWORD=\"${DB_PASS}\" PGDATABASE=\"${DB_NAME:-postgres}\"; export ADMIN_PASSWORD=\"${ADMIN_PASSWORD}\" ODOO_MASTER_PASSWORD=\"${ODOO_MASTER_PASSWORD}\"; exec /entrypoint.sh odoo --http-port=\"${ODOO_HTTP_PORT}\" --proxy-mode"]
