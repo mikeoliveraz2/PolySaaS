@@ -92,8 +92,6 @@ envVarGroups:
   # Odoo — official image requires Postgres env at boot (HOST/USER/PASSWORD/…). Nextcloud’s image
   # can start with no DB env (wizard / defaults). Link this group to PolySaaS-Odoo; fill values on
   # Blueprint sync or in the dashboard (hostname only for HOST, not the full postgresql:// URL).
-  # PolySaaS: you may use ODOO_DB_USER / ODOO_DB_PASSWORD / ODOO_DB_NAME instead of USER/PASSWORD/DB_NAME
-  # (see deploy/odoo-render/README.txt); same strong secret values, naming choice only.
   - name: polysaas-odoo
     envVars:
       - key: HOST

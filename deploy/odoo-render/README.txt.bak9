@@ -39,18 +39,11 @@ Environment (Odoo service)
 --------------------------
 **Secrets only in Render** — never commit passwords into the Dockerfile or Git.
 
-**PolySaaS naming (per app on shared Postgres)**  
-Use one **database** and one **role** per product; many teams use the app slug for both **`DB_NAME`**
-and **`USER`** (e.g. `odoo`). The **password** is a **strong value** you choose; a label in your
-vault like `odoo_password` is only documentation — the **Render env key** must still be what the
-container reads (**`PASSWORD`** or **`ODOO_DB_PASSWORD`**, see below).
-
-**Keys the Dockerfile understands (either style)**  
-  **HOST** — Postgres **hostname only** (instance “where”; same host for all apps on that server).  
-  **USER** *or* **ODOO_DB_USER** — role for this Odoo database.  
-  **PASSWORD** *or* **ODOO_DB_PASSWORD** *or* **ODOO_PASSWORD** — that role’s password (**`PGPASSWORD`**
-  overrides **PASSWORD** if set).  
-  **DB_NAME** *or* **ODOO_DB_NAME** — database name; defaults to `postgres` if unset.  
+  **HOST** — Postgres **hostname only** from Internal (or External) connection info — **not** a full `postgresql://` URL.  
+  **USER** — database role name.  
+  **PASSWORD** — that role’s password (required for normal setups).  
+  **PGPASSWORD** — optional; if set, it **overrides** **PASSWORD** for both libpq and Odoo’s entrypoint DB auth.  
+  **DB_NAME** — optional; defaults to `postgres` for `PGDATABASE` if unset.  
 
 Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**. Postgres **5432**
 is applied inside the container startup before `/entrypoint.sh`.
