@@ -52,18 +52,6 @@ container reads (**`PASSWORD`** or **`ODOO_DB_PASSWORD`**, see below).
   overrides **PASSWORD** if set).  
   **DB_NAME** *or* **ODOO_DB_NAME** — database name; defaults to `postgres` if unset.  
 
-**Rollout order (what to try first)**  
-1. **Start with** the current env group / Docker Hub names: **`HOST`**, **`USER`**, **`PASSWORD`**,
-   **`DB_NAME`**. Redeploy Odoo after **`main`** includes the latest `deploy/odoo-render/Dockerfile`.  
-2. **If that still fails** (auth, wrong user, etc.), switch the **same values** to the PolySaaS-prefixed
-   keys: **`ODOO_DB_USER`**, **`ODOO_DB_PASSWORD`**, **`ODOO_DB_NAME`** (keep **`HOST`** as-is). Remove
-   or blank the Hub-style keys for the same field so only one source wins — avoid setting **`USER`**
-   and **`ODOO_DB_USER`** to different values.  
-3. If you ever set **`PGPASSWORD`**, it overrides **`PASSWORD`**; remove **`PGPASSWORD`** unless you
-   mean to use it.
-
-The Dockerfile resolves **Hub-style names before `ODOO_*`** where both could apply.
-
 Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**. Postgres **5432**
 is applied inside the container startup before `/entrypoint.sh`.
 
