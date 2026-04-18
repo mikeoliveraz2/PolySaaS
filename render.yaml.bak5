@@ -5,8 +5,7 @@
 # Add secrets in the dashboard or via `sync: false` prompts on first sync.
 #
 # Notes:
-# - Django/Celery use Dockerfile.django (never the repo-root stub Dockerfile).
-# - Odoo uses deploy/odoo-render/Dockerfile (official odoo:18 + Render PORT split + --proxy-mode).
+# - All Docker services use Dockerfile.django (never the repo-root stub Dockerfile).
 # - preDeploy runs after image build, before new instances get traffic (web) / start (worker).
 # - We call migrate_all_schemas explicitly (not `migrate`) to match multi-tenant manage.py.
 # - Scale to more services later by copying a block and changing `name`, `type`, `dockerCommand`.
@@ -128,39 +127,6 @@ services:
       - fromGroup: polysaas-bundled-apps
       - key: RUN_MIGRATIONS
         value: "0"
-
-  # --- Odoo (official Hub image via deploy/odoo-render; matches Render support pattern except we
-  #     do NOT set PORT=5432 in env — that breaks Render's HTTP PORT. The Dockerfile snapshots HTTP
-  #     PORT then forces Postgres 5432 before /entrypoint.sh. Persistent disk for filestore.)
-  - type: web
-    name: PolySaaS-Odoo
-    runtime: docker
-    region: singapore
-    plan: starter
-    branch: main
-    dockerfilePath: deploy/odoo-render/Dockerfile
-    dockerContext: deploy/odoo-render
-    autoDeployTrigger: commit
-    healthCheckPath: /web/login
-    envVars:
-      # Set to internal hostname ONLY (from your paid Postgres Connections — not the full postgresql:// URL).
-      - key: HOST
-        sync: false
-      - key: USER
-        sync: false
-      - key: PASSWORD
-        sync: false
-      # Dedicated database on the shared server (e.g. odoo_hkyw); create empty DB + role in Postgres first if needed.
-      - key: DB_NAME
-        sync: false
-      - key: ADMIN_PASSWORD
-        sync: false
-      - key: ODOO_MASTER_PASSWORD
-        sync: false
-    disk:
-      name: odoo-filestore
-      mountPath: /var/lib/odoo
-      sizeGB: 10
 
 # ------------------------------------------------------------------------------
 # Future Render services (templates — all commented; uncomment one block when ready).
@@ -311,26 +277,3 @@ services:
 #   envVars:
 #     - fromGroup: polysaas-common
 #     - fromGroup: polysaas-bundled-apps
-#
-# ------------------------------------------------------------------------------
-# Optional: Render-managed Postgres only for Odoo (uncomment + switch PolySaaS-Odoo env to fromDatabase)
-# ------------------------------------------------------------------------------
-# databases:
-#   - name: polysaas-odoo-db
-#     plan: starter
-#     region: singapore
-#
-# Then replace PolySaaS-Odoo envVars HOST/USER/PASSWORD with e.g.:
-#   - key: HOST
-#     fromDatabase:
-#       name: polysaas-odoo-db
-#       property: host
-#   - key: USER
-#     fromDatabase:
-#       name: polysaas-odoo-db
-#       property: user
-#   - key: PASSWORD
-#     fromDatabase:
-#       name: polysaas-odoo-db
-#       property: password
-# (Keep DB_NAME as sync:false or set database name per Render docs for your plan.)

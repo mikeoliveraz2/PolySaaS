@@ -3,16 +3,11 @@ Odoo on Render (PolySaaS repo, in-tree)
 
 Purpose
 -------
-**`Dockerfile` (current):** At **container start**, save Render’s HTTP `PORT`, set **`PORT=5432`**
-so `/entrypoint.sh` uses the correct Postgres port, export **`PGHOST` / …** from
-`HOST` / `USER` / `PASSWORD` / `DB_NAME`, then **`exec /entrypoint.sh odoo --http-port=… --proxy-mode`**
-so `wait-for-psql` and `--db_*` still run and Odoo trusts Render’s reverse proxy (`X-Forwarded-*`).
-
-**Blueprint:** Repo root **`render.yaml`** defines **`PolySaaS-Odoo`** (starter, Singapore) with this
-Dockerfile, **`healthCheckPath: /web/login`**, **`disk`** on **`/var/lib/odoo`**, and **`sync: false`**
-for **HOST / USER / PASSWORD / DB_NAME / ADMIN_PASSWORD / ODOO_MASTER_PASSWORD** (fill on apply or
-dashboard). We intentionally **omit** support’s **`PORT: 5432`** env — it collides with Render’s
-HTTP **`PORT`**; the Dockerfile handles Postgres port **5432** internally.
+**`Dockerfile` (current):** Merges CC/Shela’s goals with Render-safe mechanics: at **container
+start**, save Render’s HTTP `PORT`, set **`PORT=5432`** so `/entrypoint.sh` uses the correct
+Postgres port, export **`PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE`** from
+`HOST` / `USER` / `PASSWORD` / `DB_NAME` (TCP to Render Postgres, not a local socket), then
+**`exec /entrypoint.sh odoo --http-port=…`** so `wait-for-psql` and `--db_*` still run.
 
 **Older snapshots:** `Dockerfile.bak2` — entrypoint + `PORT` fix only (no runtime `PG*` exports).
 `Dockerfile.bak3` — prior Shela-style `ENV PG*` + `exec odoo` (bypassed entrypoint).
