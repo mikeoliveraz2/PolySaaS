@@ -24,9 +24,10 @@ Option A — Render Dashboard (no Blueprint)
 
 Option B — Blueprint (render.yaml)
 -----------------------------------
-Repo includes service PolySaaS-Adminer (runtime: image). Sync the Blueprint; when
-prompted, set ADMINER_DEFAULT_SERVER to the internal hostname. Confirm port 8080
-in the service settings if the deploy health check fails.
+Repo includes service PolySaaS-Adminer (runtime: image). Connect the Blueprint
+(see documentation/RENDER_BLUEPRINT_SETUP.md); when prompted, set
+ADMINER_DEFAULT_SERVER to the internal hostname. Confirm port 8080 in the
+service settings if the deploy health check fails.
 
 Security
 --------

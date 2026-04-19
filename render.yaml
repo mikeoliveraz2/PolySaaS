@@ -1,7 +1,9 @@
 # Render Blueprint — PolySaaS (temporary phase before GCP)
 # https://render.com/docs/blueprint-spec
 #
-# Apply: Dashboard → Blueprints → Connect this repo (same repo that contains this file).
+# Apply: Dashboard → New → Blueprint → connect this repo (branch main; default path render.yaml).
+# First-time: use workspace PolySaaS-Main. See documentation/RENDER_BLUEPRINT_SETUP.md for linking
+# existing services (names + regions must match what you already deployed).
 # Add secrets in the dashboard or via `sync: false` prompts on first sync.
 #
 # Notes:
@@ -111,8 +113,9 @@ envVarGroups:
 
 services:
   # --- Main Django / Gunicorn (uses Dockerfile CMD + ENTRYPOINT) ---
+  # Name matches live service PolySaaS-Core so Blueprint sync attaches instead of duplicating.
   - type: web
-    name: PolySaaS
+    name: PolySaaS-Core
     runtime: docker
     region: singapore
     plan: starter
