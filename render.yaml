@@ -130,6 +130,22 @@ services:
       - key: RUN_MIGRATIONS
         value: "0"
 
+  # --- Adminer (PostgreSQL UI; deploy in same workspace + region as polysaas-postgres for internal host)
+  #     Image listens on 8080 — after sync, confirm Dashboard → Settings → the service listens on port 8080.
+  #     Set ADMINER_DEFAULT_SERVER to the internal hostname only (e.g. dpg-xxxx-a), not a postgresql:// URL.
+  #     Secure the public URL (Render auth / IP allowlist / Adminer login plugins); see deploy/adminer-render/README.txt
+  - type: web
+    name: PolySaaS-Adminer
+    runtime: image
+    region: singapore
+    plan: starter
+    healthCheckPath: /
+    image:
+      url: docker.io/library/adminer:4.8.1
+    envVars:
+      - key: ADMINER_DEFAULT_SERVER
+        sync: false
+
   # --- Celery worker (OpenClaw / agents / background jobs) ---
   - type: worker
     name: PolySaaS-Celery-Worker
