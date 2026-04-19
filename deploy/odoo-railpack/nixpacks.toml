@@ -1,0 +1,34 @@
+# Deprecated for Railway: installing Odoo from git here is slow and often fails (OOM / timeouts).
+# Prefer Dockerfile in this folder (same odoo:18 + entrypoint as deploy/odoo-render).
+[variables]
+PYTHONUNBUFFERED = "1"
+PIP_DISABLE_PIP_VERSION_CHECK = "1"
+
+[phases.setup]
+nixPkgs = ["python311", "nodejs_20", "wkhtmltopdf", "postgresql_16"]
+aptPkgs = [
+  "build-essential",
+  "git",
+  "libpq-dev",
+  "libxml2-dev",
+  "libxslt1-dev",
+  "libldap2-dev",
+  "libsasl2-dev",
+  "libjpeg-dev",
+  "zlib1g-dev",
+  "libffi-dev"
+]
+
+[phases.install]
+cmds = [
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip setuptools wheel",
+  ". /opt/venv/bin/activate && pip install psycopg2-binary gevent greenlet lxml pillow reportlab",
+  ". /opt/venv/bin/activate && pip install git+https://github.com/odoo/odoo.git@18.0"
+]
+
+[phases.build]
+cmds = ["chmod +x start-odoo.sh"]
+
+[start]
+cmd = "./start-odoo.sh"

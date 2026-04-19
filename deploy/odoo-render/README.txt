@@ -4,73 +4,69 @@ Odoo on Render (PolySaaS repo, in-tree)
 Why Odoo is not like Nextcloud on Render
 -----------------------------------------
 The **official Nextcloud** image can come up with **no** database environment variables (first-run
-wizard, SQLite in some setups, etc.). The **official Odoo** image **requires** **`HOST`**, **`USER`**,
-and **`PASSWORD`** (and usually **`DB_NAME`**) **before** it starts; if **`HOST`** is missing, Odoo’s
-entrypoint falls back to the hostname **`db`**, which fails on Render.
+wizard, SQLite in some setups, etc.). The **official Odoo** image **requires** Postgres connection
+details **before** it starts; if **`HOST`** is missing, Odoo’s entrypoint falls back to the hostname
+**`db`**, which fails on Render.
 
 **Blueprint:** Repo **`render.yaml`** defines env group **`polysaas-odoo`** and attaches it to
 **`PolySaaS-Odoo`** with **`fromGroup`**. After you **sync / apply** the Blueprint (or link that env
-group in the dashboard and set each value), those variables must be **non-empty** — especially
-**`HOST`** = Postgres **hostname only** from your Connections page.
+group in the dashboard and set each value), those variables must be **non-empty**.
+
+POSIX **`USER` vs Postgres role (critical)**
+--------------------------------------------
+Shells set **`USER`** to the **login name** (in the official image this is almost always **`odoo`**).
+That is **not** your Render Postgres role. If the entrypoint read **`USER`** first, it would try to
+connect as database user **`odoo`**, which usually fails with “password authentication failed”.
+
+**`render.yaml`** therefore uses **`ODOO_DB_USER`** (not plain **`USER`**) for the database role.
+**`entrypoint-render.sh`** resolves credentials in this order:
+
+- **Role:** `ODOO_DB_USER` → `DB_USER` → `PGUSER` → `POSTGRES_USER` → plain **`USER`** only if
+  **`USER` ≠ `$(id -un)`** or **`USE_ENV_USER_FOR_POSTGRES=1`** (escape hatch when the Postgres role
+  is literally the same string as the Linux login name).
+
+**Host:** `HOST` → **`ODOO_DB_HOST`** → **`PGHOST`** (hostname only, never a `postgresql://` URL).
+
+**Wait for DB:** The stock **`wait-for-psql.py`** in the Odoo image always probes database
+**`postgres`**. On Render, your role may **not** be allowed to connect to **`postgres`**, only to
+your app database — so the probe failed even when Odoo would work. Our entrypoint uses **`psql`**
+against **`DB_NAME` / `ODOO_DB_NAME`** instead.
+
+**TLS:** If connections require SSL, set **`PGSSLMODE=require`** (or `verify-full`) on the Odoo
+service. Default is **`prefer`**.
 
 Purpose
 -------
-**`Dockerfile` (current):** At **container start**, save Render’s HTTP `PORT`, set **`PORT=5432`**
-so `/entrypoint.sh` uses the correct Postgres port, export **`PGHOST` / …** from
-`HOST` / `USER` / `PASSWORD` / `DB_NAME`, then **`exec /entrypoint.sh odoo --http-port=… --proxy-mode`**
-so `wait-for-psql` and `--db_*` still run and Odoo trusts Render’s reverse proxy (`X-Forwarded-*`).
+**`Dockerfile`:** Extends **`odoo:18`**, installs **`entrypoint-render.sh`** as **`ENTRYPOINT`**.
+That script binds HTTP to Render’s **`PORT`**, waits for Postgres using **`psql`** against the real
+database name, unsets **`PORT`**, then **`exec odoo`** with **`--proxy-mode`** and explicit **`--db_*`**
+/ **`-d`**.
 
-**Blueprint:** Repo root **`render.yaml`** defines **`PolySaaS-Odoo`** (starter, Singapore) with this
-Dockerfile, **`healthCheckPath: /web/login`**, **`disk`** on **`/var/lib/odoo`**, and **`sync: false`**
-for **HOST / USER / PASSWORD / DB_NAME / ADMIN_PASSWORD / ODOO_MASTER_PASSWORD** (fill on apply or
-dashboard). We intentionally **omit** support’s **`PORT: 5432`** env — it collides with Render’s
-HTTP **`PORT`**; the Dockerfile handles Postgres port **5432** internally.
-
-**Older snapshots:** `Dockerfile.bak2` — entrypoint + `PORT` fix only (no runtime `PG*` exports).
-`Dockerfile.bak3` — prior Shela-style `ENV PG*` + `exec odoo` (bypassed entrypoint).
+**Blueprint:** **`PolySaaS-Odoo`**, **`healthCheckPath: /web/login`**, disk **`/var/lib/odoo`**.
 
 Render Web Service
 ------------------
 - Build: Docker  
 - Dockerfile path: `deploy/odoo-render/Dockerfile`  
-- Context: `deploy/odoo-render` (or repo root if your service is configured that way)
+- Context: `deploy/odoo-render`
 
 Environment (Odoo service)
 --------------------------
 **Secrets only in Render** — never commit passwords into the Dockerfile or Git.
 
-**PolySaaS naming (per app on shared Postgres)**  
-Use one **database** and one **role** per product; many teams use the app slug for both **`DB_NAME`**
-and **`USER`** (e.g. `odoo`). The **password** is a **strong value** you choose; a label in your
-vault like `odoo_password` is only documentation — the **Render env key** must still be what the
-container reads (**`PASSWORD`** or **`ODOO_DB_PASSWORD`**, see below).
+**Required keys (polysaas-odoo)**  
+  **`HOST`** — Postgres hostname only (internal hostname from Connections).  
+  **`ODOO_DB_USER`** — Postgres **role** for this database (same value you used to call **`USER`** before).  
+  **`PASSWORD`** — that role’s password (or use **`ODOO_DB_PASSWORD`** / **`PGPASSWORD`**).  
+  **`DB_NAME`** — database name (or **`ODOO_DB_NAME`**).
 
-**Keys the Dockerfile understands (either style)**  
-  **HOST** — Postgres **hostname only** (instance “where”; same host for all apps on that server).  
-  **USER** *or* **ODOO_DB_USER** — role for this Odoo database.  
-  **PASSWORD** *or* **ODOO_DB_PASSWORD** *or* **ODOO_PASSWORD** — that role’s password (**`PGPASSWORD`**
-  overrides **PASSWORD** if set).  
-  **DB_NAME** *or* **ODOO_DB_NAME** — database name; defaults to `postgres` if unset.  
+Optional: **`ODOO_DB_HOST`** instead of **`HOST`** (Railway-style), **`ADMIN_PASSWORD`**,
+**`ODOO_MASTER_PASSWORD`**, **`PGSSLMODE`**.
 
-**Rollout order (what to try first)**  
-1. **Start with** the current env group / Docker Hub names: **`HOST`**, **`USER`**, **`PASSWORD`**,
-   **`DB_NAME`**. Redeploy Odoo after **`main`** includes the latest `deploy/odoo-render/Dockerfile`.  
-2. **If that still fails** (auth, wrong user, etc.), switch the **same values** to the PolySaaS-prefixed
-   keys: **`ODOO_DB_USER`**, **`ODOO_DB_PASSWORD`**, **`ODOO_DB_NAME`** (keep **`HOST`** as-is). Remove
-   or blank the Hub-style keys for the same field so only one source wins — avoid setting **`USER`**
-   and **`ODOO_DB_USER`** to different values.  
-3. If you ever set **`PGPASSWORD`**, it overrides **`PASSWORD`**; remove **`PGPASSWORD`** unless you
-   mean to use it.
+Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**.
 
-The Dockerfile resolves **Hub-style names before `ODOO_*`** where both could apply.
-
-Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**. Postgres **5432**
-is applied inside the container startup before `/entrypoint.sh`.
-
-Optional: **ADMIN_PASSWORD**, **ODOO_MASTER_PASSWORD** (official `odoo` image docs).
-
-After push: **Manual Deploy** on the Odoo service and check logs for `wait-for-psql` / DB lines.
+After push: **Manual Deploy** on the Odoo service and check logs for **`[entrypoint-render]`**.
 
 Region
 ------
-Same region as Postgres when possible; use **external** DB hostname in HOST if internal DNS fails.
+Same region as Postgres when possible; use **external** DB hostname in **HOST** if internal DNS fails.
