@@ -1,0 +1,10 @@
+# Phase 1: HTTP shell + health (small image, fast deploy).
+httpx==0.27.2
+starlette==0.38.6
+uvicorn[standard]==0.30.6
+
+# Add when the UI needs them (expect larger images + longer builds):
+# numpy>=2.0,<3
+# scikit-learn>=1.5.0
+# pandas>=2.2.0
+# torch / tensorflow: follow official wheels; consider CPU-only pins on Render starter.

@@ -12,6 +12,7 @@
 # - preDeploy runs after image build, before new instances get traffic (web) / start (worker).
 # - We call migrate_all_schemas explicitly (not `migrate`) to match multi-tenant manage.py.
 # - Scale to more services later by copying a block and changing `name`, `type`, `dockerCommand`.
+# - ML Studio uses deploy/ml-studio-render/Dockerfile (standalone UI + ML libs; grow requirements.txt over time).
 
 previews:
   generation: off
@@ -86,6 +87,7 @@ envVarGroups:
         sync: false
       - key: ELASTICSEARCH_API_KEY
         sync: false
+      # Public URL of PolySaaS-ML-Studio web service when wired (see deploy/ml-studio-render/README.txt).
       - key: MLSTUDIO_BASE_URL
         sync: false
       - key: MLSTUDIO_API_KEY
@@ -203,6 +205,23 @@ services:
       - key: PEERS_UPSTREAM_DJANGO_URL
         sync: false
       - key: AI_PEERS_WEBHOOK_TOKEN
+        sync: false
+
+  # --- Machine Learning Studio (own image for UI + heavy ML deps; Django keeps tables / admin for now) ---
+  - type: web
+    name: PolySaaS-ML-Studio
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerfilePath: deploy/ml-studio-render/Dockerfile
+    dockerContext: deploy/ml-studio-render
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: POLYSAAS_CORE_BASE_URL
+        sync: false
+      - key: MLSTUDIO_SERVICE_TOKEN
         sync: false
 
 # ------------------------------------------------------------------------------
@@ -340,7 +359,7 @@ services:
 #       value: "false"
 #     - fromGroup: polysaas-bundled-apps
 #
-# --- ML Studio (Django app already in repo; optional dedicated worker queue) ---
+# --- ML Studio Celery worker (optional; Core already has `ml_studio` admin. UI + libs live on PolySaaS-ML-Studio web.) ---
 # - type: worker
 #   name: PolySaaS-MLStudio-Worker
 #   runtime: docker
