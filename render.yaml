@@ -188,6 +188,23 @@ services:
       mountPath: /var/lib/odoo
       sizeGB: 10
 
+  # --- Peers Adapter (Mattermost outgoing webhook edge; phase 1 proxies to Django ai_peers_webhook) ---
+  - type: web
+    name: PolySaaS-Peers-Adapter
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerfilePath: deploy/peers-adapter/Dockerfile
+    dockerContext: deploy/peers-adapter
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PEERS_UPSTREAM_DJANGO_URL
+        sync: false
+      - key: AI_PEERS_WEBHOOK_TOKEN
+        sync: false
+
 # ------------------------------------------------------------------------------
 # Future Render services (templates — all commented; uncomment one block when ready).
 # Most bundled apps use their own Docker image or upstream chart, NOT Dockerfile.django.
