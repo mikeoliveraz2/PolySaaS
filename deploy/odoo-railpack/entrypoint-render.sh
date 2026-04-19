@@ -40,6 +40,19 @@ DBN_VAL="${DB_NAME:-${ODOO_DB_NAME:-postgres}}"
 export HOST USER="${USER_VAL}" PASSWORD="${DB_PASS}"
 export PGHOST="${HOST}" PGPORT=5432 PGUSER="${USER_VAL}" PGPASSWORD="${DB_PASS}" PGDATABASE="${DBN_VAL}"
 
+# Render Postgres (internal hostnames like dpg-*) expect TLS — "prefer" often never connects.
+# https://render.com/docs/postgresql-creating-a-database
+if [ -z "${PGSSLMODE:-}" ]; then
+  case "$HOST" in
+    dpg-*)
+      export PGSSLMODE=require
+      ;;
+    *)
+      export PGSSLMODE=prefer
+      ;;
+  esac
+fi
+
 # Sanitized config for Odoo runtime (no db_* lines so nothing can override CLI DB settings).
 ODOO_BASE="${ODOO_RC:-/etc/odoo/odoo.conf}"
 TMP_RC="/tmp/odoo-render-odoorc.conf"
@@ -56,17 +69,20 @@ else
   echo "[entrypoint-render] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
 fi
 
-echo "[entrypoint-render] waiting for Postgres ${HOST}:5432 dbname=${DBN_VAL} (PGSSLMODE=${PGSSLMODE:-prefer})..." >&2
+echo "[entrypoint-render] waiting for Postgres ${HOST}:5432 dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
 n=0
 while [ "$n" -lt 60 ]; do
-  if PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE:-prefer}" \
+  if PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
     psql -h "$HOST" -p 5432 -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' >/dev/null 2>&1; then
     echo "[entrypoint-render] Postgres is reachable." >&2
     break
   fi
   n=$((n + 1))
   if [ "$n" -eq 60 ]; then
-    echo "[entrypoint-render] FATAL: could not connect after 60 attempts. Check HOST, ODOO_DB_USER, PASSWORD, DB_NAME, and PGSSLMODE (try PGSSLMODE=require for Render external Postgres)." >&2
+    echo "[entrypoint-render] diagnostic (last psql attempt):" >&2
+    PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
+      psql -h "$HOST" -p 5432 -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' 2>&1 | tail -n 8 >&2 || true
+    echo "[entrypoint-render] FATAL: could not connect after 60 attempts. Verify ODOO_DB_USER/PASSWORD, that database \"${DBN_VAL}\" exists on this server, and PGSSLMODE (Render: we default to require for dpg-* hosts)." >&2
     exit 1
   fi
   sleep 2

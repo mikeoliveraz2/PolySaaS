@@ -32,8 +32,12 @@ connect as database user **`odoo`**, which usually fails with “password authen
 your app database — so the probe failed even when Odoo would work. Our entrypoint uses **`psql`**
 against **`DB_NAME` / `ODOO_DB_NAME`** instead.
 
-**TLS:** If connections require SSL, set **`PGSSLMODE=require`** (or `verify-full`) on the Odoo
-service. Default is **`prefer`**.
+**TLS:** Render Postgres hostnames **`dpg-*`** default to **`PGSSLMODE=require`** in the entrypoint
+(Render expects TLS). Override with **`PGSSLMODE=prefer`** or **`disable`** only if you know you need it.
+
+**Database must exist:** **`DB_NAME`** (e.g. `odoo`) must already exist on that Postgres instance.
+Create it in the Render **Postgres** shell / **Connect** tab, or set **`DB_NAME`** to the default DB
+name shown in your instance (often not literally `odoo` unless you created it).
 
 Purpose
 -------
