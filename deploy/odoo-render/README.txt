@@ -37,7 +37,8 @@ service. Default is **`prefer`**.
 
 Purpose
 -------
-**`Dockerfile`:** Extends **`odoo:18`**, installs **`entrypoint-render.sh`** as **`ENTRYPOINT`**.
+**`Dockerfile`:** Extends **`odoo:18`**, uses **`USER root`** only for **`COPY`/`chmod`**, then **`USER odoo`**
+(the base image runs as `odoo`; without switching to root, `chmod` under **`/usr/local/bin`** fails on build).
 That script binds HTTP to Render’s **`PORT`**, waits for Postgres using **`psql`** against the real
 database name, unsets **`PORT`**, then **`exec odoo`** with **`--proxy-mode`** and explicit **`--db_*`**
 / **`-d`**.
