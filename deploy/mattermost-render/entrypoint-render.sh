@@ -1,0 +1,47 @@
+#!/bin/sh
+set -e
+
+mkdir -p /var/lib/mattermost/config /var/lib/mattermost/data \
+    /var/lib/mattermost/plugins /var/lib/mattermost/client/plugins
+
+# Render routes public HTTP to $PORT (often 10000).
+PORT_LISTEN="${PORT:-10000}"
+export MM_SERVICESETTINGS_LISTENADDRESS=":${PORT_LISTEN}"
+
+# Render Postgres connectionString uses postgresql://; libpq accepts postgres:// reliably.
+if [ -n "${MM_SQLSETTINGS_DATASOURCE:-}" ]; then
+    case "${MM_SQLSETTINGS_DATASOURCE}" in
+        postgresql://*)
+            MM_SQLSETTINGS_DATASOURCE=$(echo "${MM_SQLSETTINGS_DATASOURCE}" | sed 's|^postgresql://|postgres://|')
+            export MM_SQLSETTINGS_DATASOURCE
+            ;;
+    esac
+    export MM_SQLSETTINGS_DRIVERNAME="${MM_SQLSETTINGS_DRIVERNAME:-postgres}"
+fi
+
+# Local file + plugin paths on the persistent disk (single mount at /var/lib/mattermost).
+export MM_FILESETTINGS_DIRECTORY="${MM_FILESETTINGS_DIRECTORY:-/var/lib/mattermost/data/}"
+export MM_PLUGINSETTINGS_DIRECTORY="${MM_PLUGINSETTINGS_DIRECTORY:-/var/lib/mattermost/plugins/}"
+export MM_PLUGINSETTINGS_CLIENTDIRECTORY="${MM_PLUGINSETTINGS_CLIENTDIRECTORY:-/var/lib/mattermost/client/plugins/}"
+
+if [ -z "${MM_SERVICESETTINGS_SITEURL:-}" ]; then
+    echo "ERROR: MM_SERVICESETTINGS_SITEURL must be set to your public https URL (e.g. https://polysaas-mattermost.onrender.com)." >&2
+    exit 1
+fi
+
+if [ -n "${DB_HOST:-}" ] && [ -n "${DB_PORT:-}" ]; then
+    echo "Waiting for Postgres at ${DB_HOST}:${DB_PORT}..."
+    i=0
+    while ! nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do
+        i=$((i + 1))
+        if [ "$i" -gt 90 ]; then
+            echo "Timeout waiting for Postgres." >&2
+            exit 1
+        fi
+        sleep 2
+    done
+    echo "Postgres is reachable."
+fi
+
+# Mattermost reads MM_* env vars over config.json defaults.
+exec "$@"

@@ -15,10 +15,24 @@ from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenan
 
 logger = logging.getLogger(__name__)
 
-MATTERMOST_URL = "https://mm.polysaas.online"
 MATTERMOST_ADMIN_TOKEN_ENV = "MATTERMOST_ADMIN_TOKEN"
 
 OIDC_DISCOVERY = "https://polysaas.online/o/.well-known/openid-configuration"
+
+
+def _get_mattermost_base_url() -> str:
+    """Mattermost origin (no path). Env wins, then Django settings; legacy default if unset."""
+    import os
+
+    from django.conf import settings
+
+    url = (
+        os.environ.get("MATTERMOST_URL", "").strip()
+        or str(getattr(settings, "MATTERMOST_URL", "") or "").strip()
+    ).rstrip("/")
+    if not url:
+        return "https://mm.polysaas.online"
+    return url
 
 
 def _get_admin_token():
@@ -61,7 +75,7 @@ def provision_mattermost_tenant(
 
     admin_token = _get_admin_token()
     headers = {"Authorization": f"Bearer {admin_token}"}
-    mm_url = MATTERMOST_URL
+    mm_url = _get_mattermost_base_url()
 
     try:
         # 1. Create team
