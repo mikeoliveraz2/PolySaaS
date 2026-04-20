@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# This file must use LF line endings only (CRLF breaks the shebang on Linux / Render).
 # Render sets PORT to the HTTP listener (e.g. 10000). Odoo's /entrypoint.sh reuses the name PORT
 # for Postgres — unreliable on Render. We skip /entrypoint.sh for DB checks and run odoo with
 # explicit --http-port / --db_* / -d.

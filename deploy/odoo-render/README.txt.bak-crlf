@@ -91,10 +91,6 @@ Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**.
 
 After push: apply/sync the Blueprint, then **Manual Deploy** on Odoo and check logs for **`[entrypoint-render]`**.
 
-Troubleshooting (Windows / Render)
-----------------------------------
-If the service exits **immediately** after deploy with **no** `[entrypoint-render]` lines, the image may have been built from **`entrypoint-render.sh` saved with CRLF line endings**. Linux then breaks the shebang (bad interpreter) before useful logs. The repo uses **`.gitattributes`** (`deploy/odoo-render/*.sh text eol=lf`) so Git checks out **LF**; re-save the script as LF if you edit on Windows without Git respecting `eol=lf`.
-
 Region
 ------
 Same region as Postgres when possible (e.g. **singapore**).
