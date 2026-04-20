@@ -1,20 +1,8 @@
 # Scripts — Render env helper
 
-## Why this exists
-
-Without a single **naming authority**, every human (and every assistant) invents slightly different service names, env keys, and Odoo DB variable names. That multiplies back-and-forth and typo risk. This folder keeps **one inventory** (`env-master.json`) tied to **`render.yaml`** and **`mysite/settings*.py`**, and generates repeatable checklists.
-
-## Naming authority (use this order; stop debates)
-
-1. **Render service and database resource names** — `render.yaml` → `services[].name`, `databases[].name` (e.g. `PolySaaS-Core`, `PolySaaS-Celery-Worker2`, `PolySaaS-Odoo2`, not legacy `Celery-BP` / `PolySaaS-Odoo` unless you intentionally keep old names).
-2. **Which keys Render’s Blueprint declares** — `render.yaml` → `envVarGroups` (what gets `sync: false` prompts and group linkage).
-3. **Full list of Django-related keys you might set** — `scripts/env-master.json` + `python scripts/render_env_sync.py`. It may include keys not yet added to `render.yaml`; either add them to the YAML group later or set them once on the group in the dashboard.
-
-**Odoo on Render:** use **`ODOO_DB_USER`** and keys from group `polysaas-odoo` in `render.yaml`, not POSIX `USER` for the database user.
-
 ## `render_env_sync.py`
 
-Reduces manual copy-paste when filling **Render** environment groups and services to match `render.yaml` and Django settings.
+Reduces manual copy-paste when filling **Render** environment groups and services to match `render.yaml`.
 
 ### What it does
 
