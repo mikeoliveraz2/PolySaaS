@@ -168,7 +168,8 @@ services:
       - key: ADMINER_DEFAULT_SERVER
         sync: false
 
-  # --- Celery worker (OpenClaw / agents / background jobs) ---
+  # --- Celery worker — same Docker image + pre-deploy as Core. Env: only `fromGroup` below + RUN_MIGRATIONS;
+  #     do not paste DJANGO_SECRET_KEY / DATABASE_URL here manually (use groups to avoid drift with Core).
   - type: worker
     name: PolySaaS-Celery-Worker
     runtime: docker

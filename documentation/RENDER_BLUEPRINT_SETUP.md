@@ -50,6 +50,19 @@ Env groups: **`polysaas-common`**, **`polysaas-bundled-apps`**, **`polysaas-odoo
 
 ---
 
+## Celery worker and `polysaas-common`
+
+**`render.yaml`** already links **`PolySaaS-Celery-Worker`** to **`polysaas-common`** and **`polysaas-bundled-apps`** via `fromGroup` (same pattern as **PolySaaS-Core**). You should **not** copy `DJANGO_SECRET_KEY`, `DATABASE_URL`, or broker URLs onto the worker by hand — set them **once** in the group (or via Blueprint `sync: false` prompts); both web and worker inherit them.
+
+**If the worker shows missing env (e.g. pre-deploy `DJANGO_SECRET_KEY`):**
+
+1. **Blueprint → Sync** the repo so Render applies `fromGroup` to the worker (often fixes drift).
+2. If the worker was created **outside** the Blueprint or names don’t match, either **link** `polysaas-common` on the worker’s **Environment** tab, or **delete** the worker and let the next Blueprint sync **recreate** it from `render.yaml` (same `name:` so it’s one clean resource).
+
+Deleting is optional; syncing the Blueprint is usually enough once the YAML already contains `fromGroup`.
+
+---
+
 ## References
 
 - [Render Blueprints (IaC)](https://render.com/docs/infrastructure-as-code)  
