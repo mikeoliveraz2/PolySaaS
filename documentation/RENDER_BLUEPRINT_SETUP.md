@@ -43,9 +43,8 @@ After connect: optional **Auto Sync** off if you want manual **Sync** only ([Ren
 |------|------|--------|
 | **PolySaaS-Core** | Web (Docker) | `Dockerfile.django`, `preDeployCommand`, env groups |
 | **PolySaaS-Adminer** | Web (image) | Adminer; set **HTTP port 8080** if health checks fail |
-| **PolySaaS-Celery-Worker** | Worker | Same image as Core (legacy name if created manually first) |
-| **PolySaaS-Celery-BP** | Worker | Same as worker above — temporary Blueprint test clone; delete one when satisfied |
-| **PolySaaS-Odoo** | Web (Docker) | `deploy/odoo-render` + disk |
+| **PolySaaS-Celery-Worker2** | Worker | Same image/pre-deploy as Core; delete legacy manual `PolySaaS-Celery-Worker` in Render when green |
+| **PolySaaS-Odoo2** | Web (Docker) | `deploy/odoo-render` + disk `odoo2-filestore` |
 
 Env groups: **`polysaas-common`**, **`polysaas-bundled-apps`**, **`polysaas-odoo`**.
 
@@ -53,14 +52,14 @@ Env groups: **`polysaas-common`**, **`polysaas-bundled-apps`**, **`polysaas-odoo
 
 ## Celery worker and `polysaas-common`
 
-**`render.yaml`** already links **`PolySaaS-Celery-Worker`** to **`polysaas-common`** and **`polysaas-bundled-apps`** via `fromGroup` (same pattern as **PolySaaS-Core**). You should **not** copy `DJANGO_SECRET_KEY`, `DATABASE_URL`, or broker URLs onto the worker by hand — set them **once** in the group (or via Blueprint `sync: false` prompts); both web and worker inherit them.
+**`render.yaml`** links **`PolySaaS-Celery-Worker2`** to **`polysaas-common`** and **`polysaas-bundled-apps`** via `fromGroup` (same pattern as **PolySaaS-Core**). Do **not** copy `DJANGO_SECRET_KEY`, `DATABASE_URL`, or broker URLs onto the worker by hand — set them **once** in the group; Core and **Worker2** inherit them.
 
 **If the worker shows missing env (e.g. pre-deploy `DJANGO_SECRET_KEY`):**
 
-1. **Blueprint → Sync** the repo so Render applies `fromGroup` to the worker (often fixes drift).
-2. If the worker was created **outside** the Blueprint or names don’t match, either **link** `polysaas-common` on the worker’s **Environment** tab, or **delete** the worker and let the next Blueprint sync **recreate** it from `render.yaml` (same `name:` so it’s one clean resource).
+1. **Apply the Blueprint** from `main` so Render applies `fromGroup` to **PolySaaS-Celery-Worker2**.
+2. If a **legacy** manual worker still exists, delete it after **Worker2** is healthy (avoid two workers / double cost).
 
-Deleting is optional; syncing the Blueprint is usually enough once the YAML already contains `fromGroup`.
+Re-applying the Blueprint is optional once `fromGroup` is already correct on the worker.
 
 ---
 

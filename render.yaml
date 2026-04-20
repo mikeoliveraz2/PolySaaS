@@ -168,31 +168,10 @@ services:
       - key: ADMINER_DEFAULT_SERVER
         sync: false
 
-  # --- Celery worker — same Docker image + pre-deploy as Core. Env: only `fromGroup` below + RUN_MIGRATIONS;
-  #     do not paste DJANGO_SECRET_KEY / DATABASE_URL here manually (use groups to avoid drift with Core).
+  # --- Celery worker (fresh Blueprint name; delete legacy manual `PolySaaS-Celery-Worker` in Render when this is green)
+  #     Same image/pre-deploy as Core; env only via `fromGroup` + RUN_MIGRATIONS (no pasted secrets on the service).
   - type: worker
-    name: PolySaaS-Celery-Worker
-    runtime: docker
-    region: singapore
-    plan: starter
-    branch: main
-    dockerfilePath: Dockerfile.django
-    dockerContext: .
-    # Overrides image CMD; ENTRYPOINT still runs bootstrap + collectstatic before this exec
-    dockerCommand: celery -A mysite worker -l INFO --concurrency=2
-    autoDeployTrigger: commit
-    preDeployCommand: /app/render-predeploy.sh
-    envVars:
-      - fromGroup: polysaas-common
-      - fromGroup: polysaas-bundled-apps
-      - key: RUN_MIGRATIONS
-        value: "0"
-
-  # --- Celery (Blueprint-only clone for testing manual→Blueprint migration without renaming the old worker)
-  #     Same image/queues as PolySaaS-Celery-Worker — both consume the broker (like scaled workers). Extra cost
-  #     until you delete PolySaaS-Celery-Worker in the dashboard after PolySaaS-Celery-BP is verified live.
-  - type: worker
-    name: PolySaaS-Celery-BP
+    name: PolySaaS-Celery-Worker2
     runtime: docker
     region: singapore
     plan: starter
@@ -208,10 +187,9 @@ services:
       - key: RUN_MIGRATIONS
         value: "0"
 
-  # --- Odoo (deploy/odoo-render; entrypoint binds Render PORT + PGSSLMODE for dpg-*). No preDeploy:
-  #     Odoo initializes its DB on first boot; do not duplicate this service outside the Blueprint.
+  # --- Odoo (fresh Blueprint name `PolySaaS-Odoo2`; avoids attach conflicts with deleted manual `PolySaaS-Odoo`)
   - type: web
-    name: PolySaaS-Odoo
+    name: PolySaaS-Odoo2
     runtime: docker
     region: singapore
     plan: starter
@@ -223,7 +201,7 @@ services:
     envVars:
       - fromGroup: polysaas-odoo
     disk:
-      name: odoo-filestore
+      name: odoo2-filestore
       mountPath: /var/lib/odoo
       sizeGB: 10
 
@@ -434,14 +412,14 @@ services:
 #     - fromGroup: polysaas-bundled-apps
 #
 # ------------------------------------------------------------------------------
-# Optional: Render-managed Postgres only for Odoo (uncomment + switch PolySaaS-Odoo env to fromDatabase)
+# Optional: Render-managed Postgres only for Odoo (uncomment + switch PolySaaS-Odoo2 env to fromDatabase)
 # ------------------------------------------------------------------------------
 # databases:
 #   - name: polysaas-odoo-db
 #     plan: starter
 #     region: singapore
 #
-# Then replace PolySaaS-Odoo envVars HOST/ODOO_DB_USER/PASSWORD with e.g.:
+# Then replace PolySaaS-Odoo2 envVars HOST/ODOO_DB_USER/PASSWORD with e.g.:
 #   - key: HOST
 #     fromDatabase:
 #       name: polysaas-odoo-db

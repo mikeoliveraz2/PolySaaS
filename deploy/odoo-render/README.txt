@@ -3,7 +3,7 @@ Odoo on Render (PolySaaS repo, in-tree)
 
 Blueprint-first (PolySaaS-Main)
 -------------------------------
-Manage **PolySaaS-Odoo** only through this repo’s **`render.yaml`** in workspace **PolySaaS-Main**.
+Manage **PolySaaS-Odoo2** only through this repo’s **`render.yaml`** in workspace **PolySaaS-Main**.
 Avoid creating a second manual Odoo web service with a different name — that causes drift, double
 billing, and “which URL is live?” confusion. If the Blueprint **`name`** matches an existing
 service, Render **updates** it; if not, it **creates** a new one.
@@ -15,7 +15,7 @@ and database** on that instance so names stay clear:
 |------|--------|
 | Postgres **role** (login) | **`odoouser`** |
 | Database | **`odoodb`** |
-| Web service name | **`PolySaaS-Odoo`** |
+| Web service name | **`PolySaaS-Odoo2`** |
 
 `render.yaml` env group **`polysaas-odoo`** sets **`ODOO_DB_USER=odoouser`** and **`DB_NAME=odoodb`**
 as non-secret defaults. You still set **`HOST`**, **`PASSWORD`**, **`ADMIN_PASSWORD`**,
@@ -59,7 +59,7 @@ Purpose
 **`entrypoint-render.sh`** binds HTTP to Render’s **`PORT`**, waits for Postgres, unsets **`PORT`**,
 then **`exec odoo`** with **`--proxy-mode`** and explicit **`--db_*`** / **`-d`**.
 
-**Blueprint:** **`PolySaaS-Odoo`**, **`healthCheckPath: /web/login`**, disk **`/var/lib/odoo`**.
+**Blueprint:** **`PolySaaS-Odoo2`**, **`healthCheckPath: /web/login`**, disk **`/var/lib/odoo`** (Render disk name **`odoo2-filestore`**).
 
 Django / passthrough
 --------------------
