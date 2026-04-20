@@ -104,7 +104,7 @@ envVarGroups:
       - key: MLSTUDIO_API_KEY
         sync: false
 
-  # Odoo — shared Render Postgres (Option A): convention role `odoouser`, database `odoo`.
+  # Odoo — shared Render Postgres (Option A): role `odoouser`, database `odoodb` (distinct names; avoid confusing with Linux `odoo` user).
   # Create both in Postgres before first deploy (see deploy/odoo-render/README.txt). Secrets: HOST, PASSWORD.
   # Plain env key USER is not used (POSIX collision with login `odoo` in the container).
   - name: polysaas-odoo
@@ -116,7 +116,7 @@ envVarGroups:
       - key: PASSWORD
         sync: false
       - key: DB_NAME
-        value: odoo
+        value: odoodb
       - key: ADMIN_PASSWORD
         sync: false
       - key: ODOO_MASTER_PASSWORD
@@ -435,4 +435,4 @@ services:
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: password
-# (If using a dedicated Render Postgres for Odoo, set DB_NAME in the service to match that DB, e.g. odoo.)
+# (If using a dedicated Render Postgres for Odoo, set DB_NAME in the service to match that DB, e.g. odoodb.)

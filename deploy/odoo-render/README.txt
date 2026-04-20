@@ -14,10 +14,10 @@ and database** on that instance so names stay clear:
 | Item | Value |
 |------|--------|
 | Postgres **role** (login) | **`odoouser`** |
-| Database | **`odoo`** |
+| Database | **`odoodb`** |
 | Web service name | **`PolySaaS-Odoo`** |
 
-`render.yaml` env group **`polysaas-odoo`** sets **`ODOO_DB_USER=odoouser`** and **`DB_NAME=odoo`**
+`render.yaml` env group **`polysaas-odoo`** sets **`ODOO_DB_USER=odoouser`** and **`DB_NAME=odoodb`**
 as non-secret defaults. You still set **`HOST`**, **`PASSWORD`**, **`ADMIN_PASSWORD`**,
 **`ODOO_MASTER_PASSWORD`** in the dashboard / Blueprint sync (`sync: false`).
 
@@ -28,13 +28,13 @@ then:
 
 ```sql
 CREATE ROLE odoouser WITH LOGIN PASSWORD 'choose-a-strong-password-here';
-CREATE DATABASE odoo OWNER odoouser;
+CREATE DATABASE odoodb OWNER odoouser;
 ```
 
 Use **the same password** in Render **`PASSWORD`** for the Odoo service.
 
-If `CREATE ROLE` says the role already exists, skip that line and only ensure **`CREATE DATABASE odoo
-OWNER odoouser`** (or grant `odoouser` access to an existing `odoo` database).
+If `CREATE ROLE` says the role already exists, skip that line and only ensure **`CREATE DATABASE odoodb
+OWNER odoouser`** (or grant `odoouser` access to an existing **`odoodb`** database).
 
 Why Odoo is not like Nextcloud on Render
 -----------------------------------------
@@ -48,7 +48,7 @@ role. **`render.yaml`** uses **`ODOO_DB_USER`** (default **`odoouser`**) for the
 
 **Host:** `HOST` → **`ODOO_DB_HOST`** → **`PGHOST`** (hostname only, never a `postgresql://` URL).
 
-**Wait for DB:** The entrypoint uses **`psql`** against **`DB_NAME`** (default **`odoo`**) — that
+**Wait for DB:** The entrypoint uses **`psql`** against **`DB_NAME`** (default **`odoodb`**) — that
 database must exist before the container will start.
 
 **TLS:** Render Postgres hostnames **`dpg-*`** default to **`PGSSLMODE=require`** in the entrypoint.
@@ -83,7 +83,7 @@ Environment (Odoo service)
 
 **Defaults from Blueprint (polysaas-odoo)**  
   **`ODOO_DB_USER`** = `odoouser`  
-  **`DB_NAME`** = `odoo`
+  **`DB_NAME`** = `odoodb`
 
 Optional: **`ODOO_DB_HOST`** instead of **`HOST`**, **`PGSSLMODE`**, **`ODOO_DB_PASSWORD`** instead of **`PASSWORD`**.
 
