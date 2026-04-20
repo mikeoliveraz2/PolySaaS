@@ -43,7 +43,8 @@ After connect: optional **Auto Sync** off if you want manual **Sync** only ([Ren
 |------|------|--------|
 | **PolySaaS-Core** | Web (Docker) | `Dockerfile.django`, `preDeployCommand`, env groups |
 | **PolySaaS-Adminer** | Web (image) | Adminer; set **HTTP port 8080** if health checks fail |
-| **PolySaaS-Celery-Worker** | Worker | Same image as Core |
+| **PolySaaS-Celery-Worker** | Worker | Same image as Core (legacy name if created manually first) |
+| **PolySaaS-Celery-BP** | Worker | Same as worker above — temporary Blueprint test clone; delete one when satisfied |
 | **PolySaaS-Odoo** | Web (Docker) | `deploy/odoo-render` + disk |
 
 Env groups: **`polysaas-common`**, **`polysaas-bundled-apps`**, **`polysaas-odoo`**.

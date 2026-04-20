@@ -188,6 +188,26 @@ services:
       - key: RUN_MIGRATIONS
         value: "0"
 
+  # --- Celery (Blueprint-only clone for testing manual→Blueprint migration without renaming the old worker)
+  #     Same image/queues as PolySaaS-Celery-Worker — both consume the broker (like scaled workers). Extra cost
+  #     until you delete PolySaaS-Celery-Worker in the dashboard after PolySaaS-Celery-BP is verified live.
+  - type: worker
+    name: PolySaaS-Celery-BP
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerfilePath: Dockerfile.django
+    dockerContext: .
+    dockerCommand: celery -A mysite worker -l INFO --concurrency=2
+    autoDeployTrigger: commit
+    preDeployCommand: /app/render-predeploy.sh
+    envVars:
+      - fromGroup: polysaas-common
+      - fromGroup: polysaas-bundled-apps
+      - key: RUN_MIGRATIONS
+        value: "0"
+
   # --- Odoo (deploy/odoo-render; entrypoint binds Render PORT + PGSSLMODE for dpg-*). No preDeploy:
   #     Odoo initializes its DB on first boot; do not duplicate this service outside the Blueprint.
   - type: web
