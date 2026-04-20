@@ -14,7 +14,7 @@
 # - Django/Celery use Dockerfile.django (never the repo-root stub Dockerfile).
 # - Odoo uses deploy/odoo-render/Dockerfile (official odoo:18 + PORT split; ODOO_DB_USER avoids POSIX USER=odoo collision).
 # - preDeploy runs after image build, before new instances get traffic (web) / start (worker).
-#   Use `sh -c "cmd1 && cmd2"` — Render does not run preDeploy through a shell; bare `&&` breaks argparse.
+#   Pre-deploy: use `/app/render-predeploy.sh` (single argv). Bare `cmd && cmd` in YAML is parsed as extra Django args.
 # - We call migrate_all_schemas explicitly (not `migrate`) to match multi-tenant manage.py.
 # - Scale to more services later by copying a block and changing `name`, `type`, `dockerCommand`.
 # - ML Studio uses deploy/ml-studio-render/Dockerfile (standalone UI + ML libs; grow requirements.txt over time).
@@ -144,8 +144,7 @@ services:
     # Omit dockerCommand → image CMD runs Gunicorn via /entrypoint.sh
     healthCheckPath: /health/
     autoDeployTrigger: commit
-    # Render runs preDeploy without a shell — bare && is passed as args to migrate_all_schemas; use sh -c.
-    preDeployCommand: 'sh -c "python manage.py migrate_all_schemas --noinput && python manage.py bootstrap_auth"'
+    preDeployCommand: /app/render-predeploy.sh
     envVars:
       - fromGroup: polysaas-common
       - fromGroup: polysaas-bundled-apps
@@ -181,8 +180,7 @@ services:
     # Overrides image CMD; ENTRYPOINT still runs bootstrap + collectstatic before this exec
     dockerCommand: celery -A mysite worker -l INFO --concurrency=2
     autoDeployTrigger: commit
-    # Render runs preDeploy without a shell — bare && is passed as args to migrate_all_schemas; use sh -c.
-    preDeployCommand: 'sh -c "python manage.py migrate_all_schemas --noinput && python manage.py bootstrap_auth"'
+    preDeployCommand: /app/render-predeploy.sh
     envVars:
       - fromGroup: polysaas-common
       - fromGroup: polysaas-bundled-apps

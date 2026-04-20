@@ -38,7 +38,8 @@ RUN mkdir -p /app/var/static_root /app/var/media_root \
 COPY scripts/railway-entrypoint.sh /entrypoint.sh
 COPY scripts/railway-celery-worker.sh /celery-worker.sh
 COPY scripts/railway-celery-beat.sh /celery-beat.sh
-RUN chmod +x /entrypoint.sh /celery-worker.sh /celery-beat.sh
+COPY scripts/render-predeploy.sh /app/render-predeploy.sh
+RUN chmod +x /entrypoint.sh /celery-worker.sh /celery-beat.sh /app/render-predeploy.sh
 
 USER django
 EXPOSE 8000
