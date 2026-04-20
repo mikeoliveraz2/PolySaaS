@@ -16,3 +16,10 @@ venv/
 
 # WordPress site — managed by Hostinger, covered by daily backups
 dose/website/
+
+# Cursor Render MCP — keys belong in %USERPROFILE%\.cursor\mcp.json only
+/mcp.json
+/mcp.json.bak
+
+# Local Render env overlay (real secrets) — never commit
+scripts/env-master.local.json

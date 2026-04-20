@@ -1,0 +1,104 @@
+{
+  "_meta": {
+    "description": "Single source of truth for Render env planning. Do not commit real secrets — use FILL_MANUALLY or a local-only overlay (see scripts/README.md).",
+    "align_with": "render.yaml envVarGroups + service fromGroup / inline keys"
+  },
+  "envVarGroups": {
+    "polysaas-common": {
+      "DJANGO_SETTINGS_MODULE": "mysite.settings_railway",
+      "PYTHONUNBUFFERED": "1",
+      "DJANGO_SECRET_KEY": "FILL_MANUALLY",
+      "DATABASE_URL": "FILL_MANUALLY",
+      "CELERY_BROKER_URL": "FILL_MANUALLY",
+      "ALLOWED_HOSTS": "FILL_MANUALLY",
+      "CSRF_TRUSTED_ORIGINS": "FILL_MANUALLY",
+      "LOG_LEVEL": "INFO",
+      "CELERY_LOG_LEVEL": "INFO",
+      "CELERY_CONCURRENCY": "2"
+    },
+    "polysaas-bundled-apps": {
+      "NEXTCLOUD_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "NEXTCLOUD_SERVICE_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_BOT_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_ADMIN_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "DOLIBARR_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "DOLIBARR_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "LIFERAY_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "LIFERAY_OAUTH_CLIENT_SECRET": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "WORDPRESS_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "WORDPRESS_APPLICATION_PASSWORD": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "POLYSYSMON_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "POLYSYSMON_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MONITORLOGGER_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MONITORLOGGER_INGEST_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "AIASPEERS_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "AIASPEERS_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "APPSASPEERS_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "APPSASPEERS_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "ELASTICSEARCH_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "ELASTICSEARCH_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MLSTUDIO_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MLSTUDIO_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY"
+    },
+    "polysaas-odoo": {
+      "HOST": "FILL_MANUALLY",
+      "ODOO_DB_USER": "odoouser",
+      "PASSWORD": "FILL_MANUALLY",
+      "DB_NAME": "odoodb",
+      "ADMIN_PASSWORD": "FILL_MANUALLY",
+      "ODOO_MASTER_PASSWORD": "FILL_MANUALLY"
+    }
+  },
+  "services": {
+    "PolySaaS-Core": {
+      "fromGroups": ["polysaas-common", "polysaas-bundled-apps"],
+      "overrides": {
+        "RUN_MIGRATIONS": "0"
+      },
+      "notes": "Django web; preDeploy uses /app/render-predeploy.sh. Prefer secrets on env groups, not pasted only on this service."
+    },
+    "PolySaaS-Celery-Worker2": {
+      "fromGroups": ["polysaas-common", "polysaas-bundled-apps"],
+      "overrides": {
+        "RUN_MIGRATIONS": "0"
+      },
+      "notes": "Worker must receive same polysaas-common as Core (DJANGO_SECRET_KEY, DATABASE_URL, CELERY_BROKER_URL, etc.)."
+    },
+    "PolySaaS-Adminer": {
+      "fromGroups": [],
+      "overrides": {
+        "ADMINER_DEFAULT_SERVER": "FILL_MANUALLY"
+      },
+      "notes": "Internal Postgres hostname only (e.g. dpg-xxxx-a), not a postgresql:// URL."
+    },
+    "PolySaaS-Odoo2": {
+      "fromGroups": ["polysaas-odoo"],
+      "overrides": {},
+      "notes": "Uses polysaas-odoo only; not Django common."
+    },
+    "PolySaaS-Peers-Adapter": {
+      "fromGroups": [],
+      "overrides": {
+        "PEERS_UPSTREAM_DJANGO_URL": "FILL_MANUALLY",
+        "AI_PEERS_WEBHOOK_TOKEN": "FILL_MANUALLY"
+      }
+    },
+    "PolySaaS-ML-Studio": {
+      "fromGroups": [],
+      "overrides": {
+        "POLYSAAS_CORE_BASE_URL": "FILL_MANUALLY",
+        "MLSTUDIO_SERVICE_TOKEN": "FILL_MANUALLY"
+      }
+    },
+    "PolySaaS-Mattermost": {
+      "fromGroups": [],
+      "overrides": {
+        "MM_SERVICESETTINGS_SITEURL": "FILL_MANUALLY"
+      },
+      "renderInjectedFromDatabase": ["MM_SQLSETTINGS_DATASOURCE", "DB_HOST", "DB_PORT"],
+      "notes": "Blueprint wires MM_SQLSETTINGS_DATASOURCE + DB_HOST + DB_PORT from polysaas-mattermost-db. Set MM_SERVICESETTINGS_SITEURL to public https URL of Mattermost."
+    }
+  }
+}
