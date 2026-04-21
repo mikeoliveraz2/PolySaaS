@@ -95,6 +95,10 @@ Troubleshooting (Windows / Render)
 ----------------------------------
 If the service exits **immediately** after deploy with **no** `[entrypoint-render]` lines, the image may have been built from **`entrypoint-render.sh` saved with CRLF line endings**. Linux then breaks the shebang (bad interpreter) before useful logs. The repo uses **`.gitattributes`** (`deploy/odoo-render/*.sh text eol=lf`) so Git checks out **LF**; re-save the script as LF if you edit on Windows without Git respecting `eol=lf`.
 
+On **Render → Web Service → Settings**: leave **Start Command** / **Docker Command** **empty** unless you intend to override the Dockerfile. A non-empty or wrong start command can exit with status **1** and **no** application logs because the container never runs **`ENTRYPOINT`** as built.
+
+The entrypoint prints **`[entrypoint-render] boot line1`** as the first line; if that never appears, fix shebang/CRLF/start command before debugging Postgres.
+
 Region
 ------
 Same region as Postgres when possible (e.g. **singapore**).
