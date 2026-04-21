@@ -1,6 +1,14 @@
 Odoo on Render (PolySaaS repo, in-tree)
 ======================================
 
+Naming (forward)
+----------------
+**Odoo Postgres:** use only **`ODOO_DB_*`** keys in Render (`polysaas-odoo`). Do not use generic **`HOST`** /
+**`PASSWORD`** / **`DB_NAME`** / **`USER`** for new setups — they are easy to confuse with Core, shell
+POSIX **`USER`**, etc. The entrypoint still accepts legacy names for migration; remove them once **`ODOO_DB_*`** is set.
+
+**Django Core / Celery:** unchanged — **`DATABASE_URL`**, **`DJANGO_SECRET_KEY`**, etc. (see `polysaas-common`).
+
 Blueprint-first (PolySaaS-Main)
 -------------------------------
 Manage **PolySaaS-Odoo2** only through this repo’s **`render.yaml`** in workspace **PolySaaS-Main**.
@@ -17,10 +25,10 @@ and database** on that instance so names stay clear:
 | Database | **`odoodb`** |
 | Web service name | **`PolySaaS-Odoo2`** |
 
-`render.yaml` env group **`polysaas-odoo`** sets **`ODOO_DB_USER=odoouser`** and **`DB_NAME=odoodb`**
-as non-secret defaults. You still set **`ODOO_DB_HOST`** (recommended), **`PASSWORD`**, **`ADMIN_PASSWORD`**,
-**`ODOO_MASTER_PASSWORD`** in the dashboard / Blueprint sync (`sync: false`). You may also set **`HOST`**
-to the same internal hostname; the entrypoint prefers **`ODOO_DB_HOST`** first.
+`render.yaml` env group **`polysaas-odoo`** declares the **canonical** Odoo DB keys (values in Render only):
+**`ODOO_DB_HOST`**, **`ODOO_DB_PASSWORD`**, plus defaults **`ODOO_DB_USER=odoouser`**, **`ODOO_DB_NAME=odoodb`**,
+**`ODOO_DB_PORT=5432`**. Override **`ODOO_DB_USER`** in the dashboard if you use the instance owner role instead.
+Also set **`ADMIN_PASSWORD`** and **`ODOO_MASTER_PASSWORD`** (`sync: false`).
 
 One-time Postgres setup (before first successful Odoo deploy)
 --------------------------------------------------------------
@@ -32,25 +40,31 @@ CREATE ROLE odoouser WITH LOGIN PASSWORD 'choose-a-strong-password-here';
 CREATE DATABASE odoodb OWNER odoouser;
 ```
 
-Use **the same password** in Render **`PASSWORD`** for the Odoo service.
+Use **the same password** in Render **`ODOO_DB_PASSWORD`** for the Odoo service (env group `polysaas-odoo`).
 
 If `CREATE ROLE` says the role already exists, skip that line and only ensure **`CREATE DATABASE odoodb
 OWNER odoouser`** (or grant `odoouser` access to an existing **`odoodb`** database).
 
 Why Odoo is not like Nextcloud on Render
 -----------------------------------------
-The **official Odoo** image **requires** Postgres connection details **before** it starts; if
-**`HOST`** is missing, Odoo’s entrypoint falls back to the hostname **`db`**, which fails on Render.
+The **official Odoo** image **requires** Postgres connection details **before** it starts; PolySaaS
+uses **`entrypoint-render.sh`** so **`ODOO_DB_HOST`** (etc.) must be set — never rely on hostname **`db`** on Render.
 
 POSIX **`USER` vs Postgres role (critical)**
 --------------------------------------------
 Shells set **`USER`** to the **login name** (**`odoo`** in the image). That is **not** the Postgres
 role. **`render.yaml`** uses **`ODOO_DB_USER`** (default **`odoouser`**) for the database role.
 
-**Host (entrypoint resolution order):** **`ODOO_DB_HOST`** → **`PGHOST`** → **`HOST`** (hostname only, never a `postgresql://` URL).
+**Host (canonical + legacy):** **`ODOO_DB_HOST`** (required). Legacy fallbacks: **`PGHOST`**, **`HOST`**
+(hostname only, never a `postgresql://` URL).
 
-**Wait for DB:** The entrypoint uses **`psql`** against **`DB_NAME`** (default **`odoodb`**) — that
-database must exist before the container will start.
+**Password (canonical + legacy):** **`ODOO_DB_PASSWORD`** (required). Legacy: **`PGPASSWORD`**, **`PASSWORD`**.
+
+**Database name (canonical + legacy):** **`ODOO_DB_NAME`** (Blueprint default **`odoodb`**). Legacy: **`DB_NAME`**.
+
+**Port:** **`ODOO_DB_PORT`** (default **5432**).
+
+**Wait for DB:** The entrypoint uses **`psql`** against **`ODOO_DB_NAME`** — that database must exist before the container will start.
 
 **TLS:** Render Postgres hostnames **`dpg-*`** default to **`PGSSLMODE=require`** in the entrypoint.
 
@@ -77,16 +91,22 @@ Environment (Odoo service)
 --------------------------
 **Secrets only in Render** — never commit passwords into the Dockerfile or Git.
 
-**Required (set in dashboard / sync)**  
-  **`ODOO_DB_HOST`** — Postgres hostname only (internal hostname from Connections); **preferred** over **`HOST`**.  
-  **`PASSWORD`** — password for **`odoouser`**.  
-  **`ADMIN_PASSWORD`**, **`ODOO_MASTER_PASSWORD`** — Odoo admin / master (per official docs).
+**Required in Render (env group `polysaas-odoo` or service overrides)**  
+  | Key | Meaning |
+  |-----|--------|
+  | **`ODOO_DB_HOST`** | Postgres internal hostname only (from Render **Connections** / internal DNS). |
+  | **`ODOO_DB_PASSWORD`** | Password for **`ODOO_DB_USER`**. |
+  | **`ADMIN_PASSWORD`** | Odoo web admin (first database init). |
+  | **`ODOO_MASTER_PASSWORD`** | Odoo database manager master password. |
 
-**Defaults from Blueprint (polysaas-odoo)**  
+**Blueprint defaults (non-secret; override in dashboard if needed)**  
   **`ODOO_DB_USER`** = `odoouser`  
-  **`DB_NAME`** = `odoodb`
+  **`ODOO_DB_NAME`** = `odoodb`  
+  **`ODOO_DB_PORT`** = `5432`
 
-Optional: **`PGSSLMODE`**, **`ODOO_DB_PASSWORD`** instead of **`PASSWORD`**, legacy **`HOST`** if you do not set **`ODOO_DB_HOST`**.
+**Migrating from old generic keys** (one-time): copy **`HOST`** → **`ODOO_DB_HOST`**, **`PASSWORD`** → **`ODOO_DB_PASSWORD`**, **`DB_NAME`** → **`ODOO_DB_NAME`** (if different), then **remove** the old keys from the service/group to avoid confusion. **`USER`** → set **`ODOO_DB_USER`** instead (do not rely on **`USER`**).
+
+Optional: **`PGSSLMODE`** (Render `dpg-*` defaults to **require** in the entrypoint if unset).
 
 Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**.
 

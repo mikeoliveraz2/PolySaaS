@@ -23,7 +23,7 @@
 5. **Blueprint path:** `render.yaml` (repo root — default).
 6. **Name** the Blueprint (e.g. `PolySaaS-Main`).
 7. Review the **plan**: Render lists creates/updates. When a service **`name` + `type` + key settings** match an existing resource, Render can **apply YAML to that resource** instead of creating a duplicate (see [Adding an existing resource](https://render.com/docs/infrastructure-as-code#managing-blueprint-resources)).
-8. Fill **`sync: false`** secrets when prompted (`DJANGO_SECRET_KEY`, `DATABASE_URL`, Odoo `HOST` / `USER` / `PASSWORD`, `ADMINER_DEFAULT_SERVER`, etc.).
+8. Fill **`sync: false`** secrets when prompted (`DJANGO_SECRET_KEY`, `DATABASE_URL`, Odoo **`ODOO_DB_HOST`** / **`ODOO_DB_PASSWORD`** (and override **`ODOO_DB_USER`** if not `odoouser`), `ADMINER_DEFAULT_SERVER`, etc.).
 9. **Deploy Blueprint**.
 
 After connect: optional **Auto Sync** off if you want manual **Sync** only ([Render docs](https://render.com/docs/infrastructure-as-code#disabling-automatic-sync)).

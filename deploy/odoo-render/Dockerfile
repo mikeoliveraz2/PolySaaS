@@ -1,10 +1,8 @@
 # PolySaaS — Odoo on Render
-# All database credentials come from the container environment at runtime (Render dashboard).
-# Never bake HOST, USER, PASSWORD, or PGPASSWORD into this file or into image layers.
+# All DB credentials come from runtime env (Render dashboard / env group polysaas-odoo). Never commit secrets.
 #
-# Required: HOST or ODOO_DB_HOST (Postgres hostname only).
-# DB login: ODOO_DB_USER + PASSWORD + DB_NAME (or ODOO_DB_*); avoid plain USER — POSIX sets USER=odoo (see entrypoint).
-# Optional: PGPASSWORD, ADMIN_PASSWORD, ODOO_MASTER_PASSWORD
+# Canonical keys: ODOO_DB_HOST, ODOO_DB_USER, ODOO_DB_PASSWORD, ODOO_DB_NAME, ODOO_DB_PORT (see render.yaml + README.txt).
+# Optional: ADMIN_PASSWORD, ODOO_MASTER_PASSWORD (Odoo app; not Postgres).
 #
 # Render injects PORT for HTTP. Odoo's official /entrypoint.sh maps the same name PORT to Postgres.
 # entrypoint-render.sh skips official entrypoint for DB wiring; see entrypoint-render.sh.

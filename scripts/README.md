@@ -10,7 +10,7 @@ Without a single **naming authority**, every human (and every assistant) invents
 2. **Which keys Render’s Blueprint declares** — `render.yaml` → `envVarGroups` (what gets `sync: false` prompts and group linkage).
 3. **Full list of Django-related keys you might set** — `scripts/env-master.json` + `python scripts/render_env_sync.py`. It may include keys not yet added to `render.yaml`; either add them to the YAML group later or set them once on the group in the dashboard.
 
-**Odoo on Render:** use **`ODOO_DB_USER`** and keys from group `polysaas-odoo` in `render.yaml`, not POSIX `USER` for the database user.
+**Odoo on Render:** use canonical **`ODOO_DB_HOST`**, **`ODOO_DB_USER`**, **`ODOO_DB_PASSWORD`**, **`ODOO_DB_NAME`**, **`ODOO_DB_PORT`** from group `polysaas-odoo` — not generic **`HOST`/`PASSWORD`/`USER`**.
 
 ## `render_env_sync.py`
 

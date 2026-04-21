@@ -7,19 +7,18 @@ echo "[entrypoint-render] boot line1 pid=$$ 0=$0" >&2
 # for Postgres — unreliable on Render. We skip /entrypoint.sh for DB checks and run odoo with
 # explicit --http-port / --db_* / -d.
 #
-# IMPORTANT: Do not read plain "USER" first — POSIX shells set USER to the login name (often
-# "odoo" in this image), which is wrong for Postgres unless you explicitly meant that role.
+# Naming (PolySaaS convention): prefer ODOO_DB_* from Render / polysaas-odoo. Legacy HOST, PASSWORD,
+# DB_NAME, USER still accepted for one-off migration — see deploy/odoo-render/README.txt.
 set -euo pipefail
 
-# Prefer ODOO_DB_HOST, then PGHOST, then HOST — avoids rare cases where HOST is unset at runtime
-# even when set in the Render UI (use ODOO_DB_HOST in env group polysaas-odoo; see render.yaml).
+# --- Postgres host (internal DNS only, never postgresql://) ---
 HOST_VAL="${ODOO_DB_HOST:-${PGHOST:-${HOST:-}}}"
 if [ -z "${HOST_VAL}" ]; then
   _eodb="${ODOO_DB_HOST:-}"
   _pgh="${PGHOST:-}"
   _hst="${HOST:-}"
   echo "[entrypoint-render] debug: ODOO_DB_HOST_empty=$([ -z "${_eodb}" ] && echo yes || echo no) PGHOST_empty=$([ -z "${_pgh}" ] && echo yes || echo no) HOST_empty=$([ -z "${_hst}" ] && echo yes || echo no)" >&2
-  echo "FATAL: Set ODOO_DB_HOST (recommended) or PGHOST or HOST to the Postgres internal hostname only (from Connections), not a postgresql:// URL. Ensure polysaas-odoo is linked to this service and values are saved + redeployed." >&2
+  echo "FATAL: Set ODOO_DB_HOST (required) to the Postgres internal hostname. Legacy: PGHOST or HOST. Not a postgresql:// URL." >&2
   exit 1
 fi
 export HOST="$HOST_VAL"
@@ -27,7 +26,6 @@ export HOST="$HOST_VAL"
 RENDER_HTTP_PORT="${PORT:-8069}"
 
 RUNTIME_LOGIN="$(id -un)"
-# Prefer explicit DB role names (Render / polysaas-odoo env group uses ODOO_DB_USER).
 USER_VAL="${ODOO_DB_USER:-${DB_USER:-${PGUSER:-${POSTGRES_USER:-}}}}"
 if [ -z "${USER_VAL}" ] && [ -n "${USER:-}" ]; then
   if [ "${USER}" != "${RUNTIME_LOGIN}" ] || [ -n "${USE_ENV_USER_FOR_POSTGRES:-}" ]; then
@@ -35,23 +33,23 @@ if [ -z "${USER_VAL}" ] && [ -n "${USER:-}" ]; then
   fi
 fi
 if [ -z "${USER_VAL}" ]; then
-  echo "FATAL: Set ODOO_DB_USER or DB_USER (recommended). Plain USER is ignored when it equals login '${RUNTIME_LOGIN}' (POSIX collision). Set USE_ENV_USER_FOR_POSTGRES=1 if your Postgres role is literally that name." >&2
+  echo "FATAL: Set ODOO_DB_USER (required). Legacy: DB_USER / PGUSER, or USER if not POSIX login '${RUNTIME_LOGIN}'." >&2
   exit 1
 fi
 
-DB_PASS="${PGPASSWORD:-${PASSWORD:-${ODOO_DB_PASSWORD:-${ODOO_PASSWORD:-}}}}"
+# Prefer ODOO_DB_PASSWORD (canonical); legacy PGPASSWORD, PASSWORD
+DB_PASS="${ODOO_DB_PASSWORD:-${PGPASSWORD:-${PASSWORD:-${ODOO_PASSWORD:-}}}}"
 if [ -z "${DB_PASS}" ]; then
-  echo "FATAL: Set PASSWORD or ODOO_DB_PASSWORD (or PGPASSWORD) to that role's password." >&2
+  echo "FATAL: Set ODOO_DB_PASSWORD (required) to the Postgres role password. Legacy: PGPASSWORD or PASSWORD." >&2
   exit 1
 fi
 
-DBN_VAL="${DB_NAME:-${ODOO_DB_NAME:-postgres}}"
+DBN_VAL="${ODOO_DB_NAME:-${DB_NAME:-postgres}}"
+DB_PORT="${ODOO_DB_PORT:-5432}"
 
 export HOST USER="${USER_VAL}" PASSWORD="${DB_PASS}"
-export PGHOST="${HOST}" PGPORT=5432 PGUSER="${USER_VAL}" PGPASSWORD="${DB_PASS}" PGDATABASE="${DBN_VAL}"
+export PGHOST="${HOST}" PGPORT="${DB_PORT}" PGUSER="${USER_VAL}" PGPASSWORD="${DB_PASS}" PGDATABASE="${DBN_VAL}"
 
-# Render Postgres (internal hostnames like dpg-*) expect TLS — "prefer" often never connects.
-# https://render.com/docs/postgresql-creating-a-database
 if [ -z "${PGSSLMODE:-}" ]; then
   case "$HOST" in
     dpg-*)
@@ -63,7 +61,6 @@ if [ -z "${PGSSLMODE:-}" ]; then
   esac
 fi
 
-# Sanitized config for Odoo runtime (no db_* lines so nothing can override CLI DB settings).
 ODOO_BASE="${ODOO_RC:-/etc/odoo/odoo.conf}"
 TMP_RC="/tmp/odoo-render-odoorc.conf"
 if [ -r "$ODOO_BASE" ]; then
@@ -79,11 +76,11 @@ else
   echo "[entrypoint-render] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
 fi
 
-echo "[entrypoint-render] waiting for Postgres ${HOST}:5432 dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
+echo "[entrypoint-render] waiting for Postgres ${HOST}:${DB_PORT} dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
 n=0
 while [ "$n" -lt 60 ]; do
   if PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
-    psql -h "$HOST" -p 5432 -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' >/dev/null 2>&1; then
+    psql -h "$HOST" -p "$DB_PORT" -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' >/dev/null 2>&1; then
     echo "[entrypoint-render] Postgres is reachable." >&2
     break
   fi
@@ -91,16 +88,15 @@ while [ "$n" -lt 60 ]; do
   if [ "$n" -eq 60 ]; then
     echo "[entrypoint-render] diagnostic (last psql attempt):" >&2
     PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
-      psql -h "$HOST" -p 5432 -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' 2>&1 | tail -n 8 >&2 || true
-    echo "[entrypoint-render] FATAL: could not connect after 60 attempts. Verify ODOO_DB_USER/PASSWORD, that database \"${DBN_VAL}\" exists on this server, and PGSSLMODE (Render: we default to require for dpg-* hosts)." >&2
+      psql -h "$HOST" -p "$DB_PORT" -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' 2>&1 | tail -n 8 >&2 || true
+    echo "[entrypoint-render] FATAL: could not connect after 60 attempts. Check ODOO_DB_HOST, ODOO_DB_USER, ODOO_DB_PASSWORD, ODOO_DB_NAME=${DBN_VAL}, ODOO_DB_PORT=${DB_PORT}, PGSSLMODE." >&2
     exit 1
   fi
   sleep 2
 done
 
-echo "[entrypoint-render] starting odoo http_port=${RENDER_HTTP_PORT} db=${HOST}:5432 dbname=${DBN_VAL}" >&2
+echo "[entrypoint-render] starting odoo http_port=${RENDER_HTTP_PORT} db=${HOST}:${DB_PORT} dbname=${DBN_VAL}" >&2
 
-# Drop inherited Render PORT before starting Odoo so nothing in the stack misreads it as DB.
 unset PORT 2>/dev/null || true
 
 if [ "${1:-}" = "odoo" ]; then
@@ -111,7 +107,7 @@ exec odoo \
   --http-port="${RENDER_HTTP_PORT}" \
   --proxy-mode \
   --db_host="$HOST" \
-  --db_port=5432 \
+  --db_port="${DB_PORT}" \
   --db_user="$USER_VAL" \
   --db_password="$DB_PASS" \
   -d "$DBN_VAL" \
