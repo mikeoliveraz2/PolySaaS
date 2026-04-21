@@ -10,6 +10,10 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
     UPDATED: Now also dynamically injects PassThroughEndpoint records into topmenu_links.
     """
     def process_request(self, request):
+        # Jazzmin admin templates (e.g. base_site.html extrahead) assume these exist.
+        request.jazzmin_settings = dict(getattr(settings, "JAZZMIN_SETTINGS", None) or {})
+        request.passthrough_endpoints = []
+
         print(f"[MIDDLEWARE ENTRY] JazzminTenantThemeMiddleware process_request called for {request.path}")
 
         # SCHEMA-PER-TENANT: Get current schema from session (no tenant table lookup needed)
@@ -26,6 +30,9 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
             jazzmin_settings['site_brand'] = f"DoseSaaS - {current_schema.title()}"
 
             # DYNAMIC MENU INTEGRATION: Add PassThroughEndpoint records to topmenu_links
+            # Default must exist before try: if the try fails early, we still assign
+            # request.passthrough_endpoints below (avoids UnboundLocalError â†’ 500 on /admin/).
+            passthrough_endpoints = []
             try:
                 from dose.models.pass_through_endpoint import PassThroughEndpoint
                 from django.db import connection
@@ -77,6 +84,9 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to add dynamic menu items: {e}")
                 print(f"[JAZZMIN ERROR] Failed to add dynamic menu items: {e}")
+                passthrough_endpoints = []
+                jazzmin_settings = settings.JAZZMIN_SETTINGS.copy()
+                jazzmin_settings["site_brand"] = f"DoseSaaS - {current_schema.title()}"
 
             request.jazzmin_settings = jazzmin_settings
 
@@ -85,6 +95,6 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
             print(f"[TEMPLATE DEBUG] Set request.passthrough_endpoints with {len(passthrough_endpoints)} items")
         else:
             print(f"[JAZZMIN DEBUG] No tenant schema found - using default settings")
-            request.jazzmin_settings = settings.JAZZMIN_SETTINGS
+            request.jazzmin_settings = dict(getattr(settings, "JAZZMIN_SETTINGS", None) or {})
             request.passthrough_endpoints = []
             print(f"[TEMPLATE DEBUG] Set empty request.passthrough_endpoints (no tenant schema)")

@@ -23,6 +23,12 @@ class Parameter(models.Model):
         blank=True,
         help_text="JSON data for additional parameters"
     )
+    encrypted_payload = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Fernet-encrypted JSON object for sensitive keys (at rest). "
+        "Admin: superuser-only rows with ciphertext; set via Secrets (JSON) field.",
+    )
     param1 = models.CharField(max_length=200, null=True, blank=True, default='N/A')
     param2 = models.CharField(max_length=200, null=True, blank=True, default='N/A')
     param3 = models.CharField(max_length=200, null=True, blank=True, default='N/A')
@@ -54,14 +60,22 @@ class Parameter(models.Model):
     def __str__(self):
         return f"{self.matchingKey} (Seq: {self.sequence})"
 
+    def has_encrypted_secrets(self) -> bool:
+        return bool(self.encrypted_payload and str(self.encrypted_payload).strip())
+
+    def get_decrypted_secrets(self) -> dict:
+        """Return merged secret key-value dict, or {} if none / decrypt failure."""
+        if not self.has_encrypted_secrets():
+            return {}
+        from parameters.crypto import decrypt_json_dict
+
+        data = decrypt_json_dict(self.encrypted_payload)
+        return data if isinstance(data, dict) else {}
+
     class Meta:
         ordering = ('matchingKey', 'sequence')
         verbose_name = "Parameter"
         verbose_name_plural = "Parameters"
 
     def save(self, *args, **kwargs):
-        """
-        Use the `pygments` library to create a highlighted HTML
-        representation of the code snippet.
-        """
         super(Parameter, self).save(*args, **kwargs)

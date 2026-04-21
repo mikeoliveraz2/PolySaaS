@@ -12,6 +12,9 @@ Parameters (configured in admin):
   param1 = Mattermost base URL  (e.g. http://localhost:8065)
   param2 = Mattermost admin personal access token
   param3 = Team type            (I = invite-only, O = open; default I)
+
+  Superuser optional encrypted JSON on the same row (replaces param1–param3 when keys present):
+  mm_url, admin_token, team_type (aliases: MM_URL, MATTERMOST_ADMIN_TOKEN, TEAM_TYPE).
 """
 import json
 import logging
@@ -104,13 +107,30 @@ class MattermostProvisioningService(AtomicServiceBase):
             key = getattr(p, 'matchingKey', '') if hasattr(p, 'matchingKey') else ''
             if key != 'MattermostProvisioningService':
                 continue
-            mm_url = (getattr(p, 'param1', '') or '').strip()
-            admin_token = (getattr(p, 'param2', '') or '').strip()
+            secrets = {}
+            if hasattr(p, 'get_decrypted_secrets'):
+                secrets = p.get_decrypted_secrets() or {}
+            mm_url = (
+                (secrets.get('mm_url') or secrets.get('MM_URL') or getattr(p, 'param1', '') or '')
+            ).strip()
+            admin_token = (
+                (
+                    secrets.get('admin_token')
+                    or secrets.get('MATTERMOST_ADMIN_TOKEN')
+                    or getattr(p, 'param2', '')
+                    or ''
+                )
+            ).strip()
+            team_type = (
+                (secrets.get('team_type') or secrets.get('TEAM_TYPE') or getattr(p, 'param3', '') or 'I')
+                .strip()
+                or 'I'
+            )
             if mm_url and admin_token:
                 return {
                     'mm_url': mm_url.rstrip('/'),
                     'admin_token': admin_token,
-                    'team_type': (getattr(p, 'param3', '') or 'I').strip() or 'I',
+                    'team_type': team_type,
                 }
         return None
 

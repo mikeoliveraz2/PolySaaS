@@ -1,59 +1,37 @@
-from django.shortcuts import render
-
-# Create your views here.
-from django.contrib.auth.models import User
-from rest_framework import permissions, renderers, viewsets
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from parameters.models import Parameter
-from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
-from django.urls import reverse
-from django.utils import timezone
+from django.db.models import Q
 from django.views import generic
 
+from parameters.models import Parameter
 
 
-# class ParametersViewSet(viewsets.ModelViewSet):
-#     """
-#     This viewset automatically provides `list`, `create`, `retrieve`,
-#     `update` and `destroy` actions.
-
-#     Additionally we also provide an extra `highlight` action.
-#     """
-#     queryset = Parameter.objects.all()
-#     serializer_class = ParameterSerializer
-
-#     def perform_create(self, serializer):
-#         serializer.save(owner=self.request.user)
-
-
+def _parameters_visible_queryset(request):
+    qs = Parameter.objects.all()
+    user = getattr(request, "user", None)
+    if user and user.is_superuser:
+        return qs
+    return qs.filter(Q(encrypted_payload__isnull=True) | Q(encrypted_payload=""))
 
 
 class ParametersIndexView(generic.ListView):
-    template_name = 'parametersindex.html'
-    context_object_name = 'latest_parameter_list'
+    template_name = "parametersindex.html"
+    context_object_name = "latest_parameter_list"
 
     def get_queryset(self):
-        """
-        Return the last five published instructions (not including those set to be
-        published in the future).
-        """
-        return Parameter.objects.all
+        return _parameters_visible_queryset(self.request)
 
 
 class ParametersDetailView(generic.DetailView):
     model = Parameter
-    template_name = 'parameters/parametersdetail.html'
+    template_name = "parameters/parametersdetail.html"
 
     def get_queryset(self):
-        """
-        Excludes any questions that aren't published yet.
-        """
-        return Parameter.objects.all
+        return _parameters_visible_queryset(self.request)
 
 
 class ParametersResultsView(generic.DetailView):
     model = Parameter
-    template_name = 'parameters/parametersresults.html'
+    template_name = "parameters/parametersresults.html"
+
+    def get_queryset(self):
+        return _parameters_visible_queryset(self.request)
 

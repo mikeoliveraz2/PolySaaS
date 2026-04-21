@@ -171,6 +171,10 @@ STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 # --- AI as Peers (Mattermost bot integration) ---
 MATTERMOST_URL = env('MATTERMOST_URL', default='http://localhost:8065')
 MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
+
+# Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
+# If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).
+PARAMETER_FERNET_KEY = env('PARAMETER_FERNET_KEY', default='')
 ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
 XAI_API_KEY = env('XAI_API_KEY', default='')
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
@@ -263,9 +267,16 @@ _oauth2_available = 'oauth2_provider' in INSTALLED_APPS
 # Django Allauth settings for OAuth2 SSO
 SITE_ID = 1
 AUTHENTICATION_BACKENDS = (
-    ('oauth2_provider.backends.OAuth2Backend', 'django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend')
+    (
+        'oauth2_provider.backends.OAuth2Backend',
+        'mysite.auth_backends.CaseInsensitiveModelBackend',
+        'allauth.account.auth_backends.AuthenticationBackend',
+    )
     if _oauth2_available else
-    ('django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend')
+    (
+        'mysite.auth_backends.CaseInsensitiveModelBackend',
+        'allauth.account.auth_backends.AuthenticationBackend',
+    )
 )
 
 LOGIN_REDIRECT_URL = '/'
