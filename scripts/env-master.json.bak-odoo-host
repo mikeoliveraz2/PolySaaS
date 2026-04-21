@@ -90,8 +90,7 @@
       "MLSTUDIO_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY"
     },
     "polysaas-odoo": {
-      "ODOO_DB_HOST": "FILL_MANUALLY",
-      "HOST": "FILL_MANUALLY_OR_USE_ODOO_DB_HOST_ONLY",
+      "HOST": "FILL_MANUALLY",
       "ODOO_DB_USER": "odoouser",
       "PASSWORD": "FILL_MANUALLY",
       "DB_NAME": "odoodb",

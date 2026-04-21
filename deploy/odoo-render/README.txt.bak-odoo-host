@@ -18,9 +18,8 @@ and database** on that instance so names stay clear:
 | Web service name | **`PolySaaS-Odoo2`** |
 
 `render.yaml` env group **`polysaas-odoo`** sets **`ODOO_DB_USER=odoouser`** and **`DB_NAME=odoodb`**
-as non-secret defaults. You still set **`ODOO_DB_HOST`** (recommended), **`PASSWORD`**, **`ADMIN_PASSWORD`**,
-**`ODOO_MASTER_PASSWORD`** in the dashboard / Blueprint sync (`sync: false`). You may also set **`HOST`**
-to the same internal hostname; the entrypoint prefers **`ODOO_DB_HOST`** first.
+as non-secret defaults. You still set **`HOST`**, **`PASSWORD`**, **`ADMIN_PASSWORD`**,
+**`ODOO_MASTER_PASSWORD`** in the dashboard / Blueprint sync (`sync: false`).
 
 One-time Postgres setup (before first successful Odoo deploy)
 --------------------------------------------------------------
@@ -47,7 +46,7 @@ POSIX **`USER` vs Postgres role (critical)**
 Shells set **`USER`** to the **login name** (**`odoo`** in the image). That is **not** the Postgres
 role. **`render.yaml`** uses **`ODOO_DB_USER`** (default **`odoouser`**) for the database role.
 
-**Host (entrypoint resolution order):** **`ODOO_DB_HOST`** → **`PGHOST`** → **`HOST`** (hostname only, never a `postgresql://` URL).
+**Host:** `HOST` → **`ODOO_DB_HOST`** → **`PGHOST`** (hostname only, never a `postgresql://` URL).
 
 **Wait for DB:** The entrypoint uses **`psql`** against **`DB_NAME`** (default **`odoodb`**) — that
 database must exist before the container will start.
@@ -78,7 +77,7 @@ Environment (Odoo service)
 **Secrets only in Render** — never commit passwords into the Dockerfile or Git.
 
 **Required (set in dashboard / sync)**  
-  **`ODOO_DB_HOST`** — Postgres hostname only (internal hostname from Connections); **preferred** over **`HOST`**.  
+  **`HOST`** — Postgres hostname only (internal hostname from Connections).  
   **`PASSWORD`** — password for **`odoouser`**.  
   **`ADMIN_PASSWORD`**, **`ODOO_MASTER_PASSWORD`** — Odoo admin / master (per official docs).
 
@@ -86,7 +85,7 @@ Environment (Odoo service)
   **`ODOO_DB_USER`** = `odoouser`  
   **`DB_NAME`** = `odoodb`
 
-Optional: **`PGSSLMODE`**, **`ODOO_DB_PASSWORD`** instead of **`PASSWORD`**, legacy **`HOST`** if you do not set **`ODOO_DB_HOST`**.
+Optional: **`ODOO_DB_HOST`** instead of **`HOST`**, **`PGSSLMODE`**, **`ODOO_DB_PASSWORD`** instead of **`PASSWORD`**.
 
 Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**.
 

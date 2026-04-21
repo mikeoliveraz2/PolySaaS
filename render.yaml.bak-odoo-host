@@ -112,13 +112,10 @@ envVarGroups:
 
   # Odoo — used only by service `PolySaaS-Odoo2` below (via fromGroup). Shared Render Postgres (Option A):
   # role `odoouser`, database `odoodb` (distinct names; avoid confusing with Linux `odoo` user).
-  # Create both in Postgres before first deploy (see deploy/odoo-render/README.txt). Secrets: ODOO_DB_HOST (recommended), PASSWORD.
-  # HOST is still accepted by entrypoint for backward compat; prefer ODOO_DB_HOST so runtime always sees the DB hostname.
+  # Create both in Postgres before first deploy (see deploy/odoo-render/README.txt). Secrets: HOST, PASSWORD.
   # Plain env key USER is not used (POSIX collision with login `odoo` in the container).
   - name: polysaas-odoo
     envVars:
-      - key: ODOO_DB_HOST
-        sync: false
       - key: HOST
         sync: false
       - key: ODOO_DB_USER
@@ -432,8 +429,8 @@ services:
 #     plan: starter
 #     region: singapore
 #
-# Then replace PolySaaS-Odoo2 envVars ODOO_DB_HOST/ODOO_DB_USER/PASSWORD with e.g.:
-#   - key: ODOO_DB_HOST
+# Then replace PolySaaS-Odoo2 envVars HOST/ODOO_DB_USER/PASSWORD with e.g.:
+#   - key: HOST
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: host

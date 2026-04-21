@@ -11,15 +11,9 @@ echo "[entrypoint-render] boot line1 pid=$$ 0=$0" >&2
 # "odoo" in this image), which is wrong for Postgres unless you explicitly meant that role.
 set -euo pipefail
 
-# Prefer ODOO_DB_HOST, then PGHOST, then HOST — avoids rare cases where HOST is unset at runtime
-# even when set in the Render UI (use ODOO_DB_HOST in env group polysaas-odoo; see render.yaml).
-HOST_VAL="${ODOO_DB_HOST:-${PGHOST:-${HOST:-}}}"
+HOST_VAL="${HOST:-${ODOO_DB_HOST:-${PGHOST:-}}}"
 if [ -z "${HOST_VAL}" ]; then
-  _eodb="${ODOO_DB_HOST:-}"
-  _pgh="${PGHOST:-}"
-  _hst="${HOST:-}"
-  echo "[entrypoint-render] debug: ODOO_DB_HOST_empty=$([ -z "${_eodb}" ] && echo yes || echo no) PGHOST_empty=$([ -z "${_pgh}" ] && echo yes || echo no) HOST_empty=$([ -z "${_hst}" ] && echo yes || echo no)" >&2
-  echo "FATAL: Set ODOO_DB_HOST (recommended) or PGHOST or HOST to the Postgres internal hostname only (from Connections), not a postgresql:// URL. Ensure polysaas-odoo is linked to this service and values are saved + redeployed." >&2
+  echo "FATAL: Set HOST or ODOO_DB_HOST (Postgres hostname only from Connections / internal DNS), not a postgresql:// URL." >&2
   exit 1
 fi
 export HOST="$HOST_VAL"
