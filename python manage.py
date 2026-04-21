@@ -1,0 +1,1 @@
+python manage.py tenant_command changepassword olientAdmin --schema=olient

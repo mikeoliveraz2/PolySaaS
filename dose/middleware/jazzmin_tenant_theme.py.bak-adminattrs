@@ -1,0 +1,96 @@
+from django.conf import settings
+from django.utils.deprecation import MiddlewareMixin
+from dose.middleware.debug import DebugStackMiddleware   # ← ADD THIS
+
+class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST!
+
+    """
+    Middleware to dynamically adjust Jazzmin settings per tenant.
+    This example changes the site_brand and primary_color based on the tenant name.
+    UPDATED: Now also dynamically injects PassThroughEndpoint records into topmenu_links.
+    """
+    def process_request(self, request):
+        print(f"[MIDDLEWARE ENTRY] JazzminTenantThemeMiddleware process_request called for {request.path}")
+
+        # SCHEMA-PER-TENANT: Get current schema from session (no tenant table lookup needed)
+        current_schema = request.session.get('schema_name') or getattr(request, 'schema_name', None)
+
+        # DEBUG: Log schema status
+        print(f"[JAZZMIN DEBUG] Request path: {request.path}")
+        print(f"[JAZZMIN DEBUG] Current schema: {current_schema}")
+
+        if current_schema and current_schema != 'public':
+            print(f"[JAZZMIN DEBUG] Processing for schema: {current_schema}")
+
+            jazzmin_settings = settings.JAZZMIN_SETTINGS.copy()
+            jazzmin_settings['site_brand'] = f"DoseSaaS - {current_schema.title()}"
+
+            # DYNAMIC MENU INTEGRATION: Add PassThroughEndpoint records to topmenu_links
+            # Default must exist before try: if the try fails early, we still assign
+            # request.passthrough_endpoints below (avoids UnboundLocalError → 500 on /admin/).
+            passthrough_endpoints = []
+            try:
+                from dose.models.pass_through_endpoint import PassThroughEndpoint
+                from django.db import connection
+
+                # Set search_path to current tenant schema
+                with connection.cursor() as cursor:
+                    cursor.execute(f'SET search_path TO "{current_schema}",public;')
+
+                    # Get all PassThroughEndpoint records for this schema that should show in menu
+                    passthrough_endpoints = PassThroughEndpoint.objects.filter(
+                        show_in_menu=True
+                    ).exclude(menu_title__isnull=True).exclude(menu_title__exact='')
+
+                    # Convert to list while still in correct schema
+                    passthrough_endpoints = list(passthrough_endpoints)
+
+                print(f"[JAZZMIN DEBUG] Found {len(passthrough_endpoints)} endpoints to add to menu (schema: {current_schema})")
+                for ep in passthrough_endpoints:
+                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: {ep.trigger_path} (id: {ep.id}, enabled: {ep.is_enabled})")
+
+                # Copy existing topmenu_links and add dynamic items
+                topmenu_links = jazzmin_settings.get('topmenu_links', []).copy()
+                print(f"[JAZZMIN DEBUG] Original menu links: {len(topmenu_links)}")
+
+                for endpoint in passthrough_endpoints:
+                    # Don't add duplicates - check if this URL already exists in static config
+                    existing_urls = [link.get('url', '') for link in topmenu_links if 'url' in link]
+                    norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+                    # Embed route keeps Jazzmin sidebar/header; iframe loads /pt/admin/{norm}/
+                    full_url = f"/admin/passthrough-embed/{norm}/"
+                    if full_url not in existing_urls:
+                        menu_link = {
+                            "name": endpoint.menu_title,
+                            "url": full_url,
+                            "permissions": ["auth.view_user"]
+                        }
+                        # Add icon if available
+                        if endpoint.menu_icon and endpoint.menu_icon.strip():
+                            menu_link["icon"] = endpoint.menu_icon
+                        topmenu_links.append(menu_link)
+
+                jazzmin_settings['topmenu_links'] = topmenu_links
+                print(f"[JAZZMIN DEBUG] Final menu links: {len(topmenu_links)}")
+
+            except Exception as e:
+                # Graceful fallback - if there's any error, just use original settings
+                # This prevents the middleware from breaking the entire site
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to add dynamic menu items: {e}")
+                print(f"[JAZZMIN ERROR] Failed to add dynamic menu items: {e}")
+                passthrough_endpoints = []
+                jazzmin_settings = settings.JAZZMIN_SETTINGS.copy()
+                jazzmin_settings["site_brand"] = f"DoseSaaS - {current_schema.title()}"
+
+            request.jazzmin_settings = jazzmin_settings
+
+            # Also add endpoints directly to request for template access
+            request.passthrough_endpoints = passthrough_endpoints
+            print(f"[TEMPLATE DEBUG] Set request.passthrough_endpoints with {len(passthrough_endpoints)} items")
+        else:
+            print(f"[JAZZMIN DEBUG] No tenant schema found - using default settings")
+            request.jazzmin_settings = settings.JAZZMIN_SETTINGS
+            request.passthrough_endpoints = []
+            print(f"[TEMPLATE DEBUG] Set empty request.passthrough_endpoints (no tenant schema)")

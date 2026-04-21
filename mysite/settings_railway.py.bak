@@ -13,7 +13,16 @@ from urllib.parse import urlsplit, urlunsplit
 
 import environ
 
+print("[Django] Loading mysite/settings_railway.py at", os.path.basename(__file__), flush=True)
+
 from mysite.settings import *  # noqa: F401,F403
+
+print("[Django] Base settings loaded, configuring Railway overrides", flush=True)
+
+# Liveness for Railway: respond before SecurityMiddleware (no HTTP→HTTPS redirect on
+# internal probes) and before SessionTenantMiddleware (no DB cursor on cold Postgres).
+MIDDLEWARE.insert(0, "mysite.railway_health_middleware.RailwayLivenessMiddleware")
+print("[Django] RailwayLivenessMiddleware inserted at MIDDLEWARE position 0", flush=True)
 
 _env = environ.Env(
     DEBUG=(bool, False),
@@ -46,7 +55,7 @@ else:
 _database_url = os.environ.get("DATABASE_URL", "").strip()
 if _database_url:
     DATABASES = {"default": environ.Env.db_url_config(_normalize_database_url(_database_url))}
-    DATABASES["default"]["CONN_MAX_AGE"] = int(os.environ.get("DB_CONN_MAX_AGE", "60"))
+    DATABASES["default"]["CONN_MAX_AGE"] = int(os.environ.get("DB_CONN_MAX_AGE", "0"))
 else:
     DATABASES = {
         "default": {
@@ -56,7 +65,7 @@ else:
             "PASSWORD": os.environ.get("DOSE_DB_PASSWORD", os.environ.get("DB_PASSWORD", "")),
             "HOST": os.environ.get("DB_HOST", "localhost"),
             "PORT": os.environ.get("DB_PORT", "5432"),
-            "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+            "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "0")),
         }
     }
 
@@ -87,7 +96,9 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = _env.bool("SECURE_SSL_REDIRECT", default=True)
+    # Default False: Railway terminates TLS; internal health checks are often HTTP
+    # without X-Forwarded-Proto — a True default yields 301 and a failed deploy healthcheck.
+    SECURE_SSL_REDIRECT = _env.bool("SECURE_SSL_REDIRECT", default=False)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -129,7 +140,7 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": os.environ.get("LOG_LEVEL", "INFO"),
+        "level": os.environ.get("LOG_LEVEL", "DEBUG"),
     },
     "loggers": {
         "django": {
@@ -148,3 +159,5 @@ LOGGING = {
 # Quiet startup print from base settings if desired
 if not DEBUG:
     logging.getLogger("django.utils.autoreload").setLevel(logging.WARNING)
+
+print("[Django] mysite/settings_railway.py fully loaded and ready", flush=True)

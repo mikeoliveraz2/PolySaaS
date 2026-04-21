@@ -112,6 +112,16 @@ Do **not** set `PORT=5432` in the dashboard; Render sets **PORT** for **HTTP**.
 
 After push: apply/sync the Blueprint, then **Manual Deploy** on Odoo and check logs for **`[entrypoint-render]`**.
 
+Bootstrap without Render Shell (ODOO_AUTO_INIT)
+-------------------------------------------------
+If **Render Shell** will not load, you can still run the one-time **`base`/`web`** install at boot:
+
+1. On the **Odoo web service**, set **`ODOO_AUTO_INIT`=`1`** (or **`true`** / **`yes`**). Keep **`ADMIN_PASSWORD`** and **`ODOO_MASTER_PASSWORD`** set — Odoo uses them during init.
+2. **Deploy**. Logs should show **`[entrypoint-render] ODOO_AUTO_INIT: installing base,web --stop-after-init`** (often several minutes), then **`install step finished`**, then normal HTTP.
+3. When **`/web/login`** loads, **remove** **`ODOO_AUTO_INIT`** and redeploy so later boots skip the extra **`psql`** probe.
+
+**Safety:** use **only** on a Postgres database **dedicated to Odoo**, not Django’s database. First deploy with **`ODOO_AUTO_INIT`** may exceed default health-check timing if Render is strict — watch the **Logs** tab; if the deploy is killed mid-init, run Shell later with **`odoo -i base,web --stop-after-init`** or retry with a longer deploy window if your plan allows.
+
 Troubleshooting (Windows / Render)
 ----------------------------------
 If the service exits **immediately** after deploy with **no** `[entrypoint-render]` lines, the image may have been built from **`entrypoint-render.sh` saved with CRLF line endings**. Linux then breaks the shebang (bad interpreter) before useful logs. The repo uses **`.gitattributes`** (`deploy/odoo-render/*.sh text eol=lf`) so Git checks out **LF**; re-save the script as LF if you edit on Windows without Git respecting `eol=lf`.

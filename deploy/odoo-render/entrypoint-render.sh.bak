@@ -99,37 +99,6 @@ echo "[entrypoint-render] starting odoo http_port=${RENDER_HTTP_PORT} db=${HOST}
 
 unset PORT 2>/dev/null || true
 
-# Optional bootstrap when Render Shell is unavailable: if ODOO_AUTO_INIT is set and the DB has no
-# Odoo core table yet, run one install pass then continue to normal exec. Remove ODOO_AUTO_INIT from
-# the service after the first good deploy (avoids an extra psql probe every boot).
-_invoke_odoo() {
-  odoo \
-    --http-port="${RENDER_HTTP_PORT}" \
-    --proxy-mode \
-    --db_host="$HOST" \
-    --db_port="${DB_PORT}" \
-    --db_user="$USER_VAL" \
-    --db_password="$DB_PASS" \
-    -d "$DBN_VAL" \
-    "$@"
-}
-
-if [ "${ODOO_AUTO_INIT:-0}" = "1" ] || [ "${ODOO_AUTO_INIT:-}" = "true" ] || [ "${ODOO_AUTO_INIT:-}" = "yes" ]; then
-  IM_EXISTS="$(
-    PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
-      psql -h "$HOST" -p "$DB_PORT" -U "$USER_VAL" -d "$DBN_VAL" -tAc \
-      "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_module_module');"
-  )"
-  IM_EXISTS="$(printf '%s' "${IM_EXISTS}" | tr -d '[:space:]')"
-  if [ "${IM_EXISTS}" = "t" ]; then
-    echo "[entrypoint-render] ODOO_AUTO_INIT: public.ir_module_module present; skipping -i." >&2
-  else
-    echo "[entrypoint-render] ODOO_AUTO_INIT: installing base,web --stop-after-init (often several minutes)..." >&2
-    _invoke_odoo -i base,web --stop-after-init
-    echo "[entrypoint-render] ODOO_AUTO_INIT: install step finished." >&2
-  fi
-fi
-
 if [ "${1:-}" = "odoo" ]; then
   shift
 fi

@@ -1,26 +1,15 @@
 # Render Blueprint — PolySaaS (temporary phase before GCP)
 # https://render.com/docs/blueprint-spec
 #
-# Blueprint-first (PolySaaS-Main): Define and update services here — avoid creating duplicate
-# manual web services for the same app. If a service `name` matches an existing one, Render
-# attaches/updates; mismatched names create duplicates. Prefer one Blueprint per workspace/repo.
-#
 # Apply: Dashboard → New → Blueprint → connect this repo (branch main; default path render.yaml).
 # First-time: use workspace PolySaaS-Main. See documentation/RENDER_BLUEPRINT_SETUP.md for linking
 # existing services (names + regions must match what you already deployed).
 # Add secrets in the dashboard or via `sync: false` prompts on first sync.
 #
-# Who does what (clarity):
-# - In this repo: edit YAML, commit, push. Web/worker services with autoDeployTrigger: commit pick up builds.
-# - On Render (your turn): Blueprint Apply/Sync when you add or rename services; paste secrets for keys marked
-#   sync: false (env groups or per-service); Postgres admin tasks (e.g. create odoouser / odoodb) before Odoo boots;
-#   delete legacy *manual* duplicates (old worker/Odoo names) only after PolySaaS-Celery-Worker2 + PolySaaS-Odoo2 are healthy.
-#
 # Notes:
 # - Django/Celery use Dockerfile.django (never the repo-root stub Dockerfile).
-# - Odoo uses deploy/odoo-render/Dockerfile (official odoo:18 + PORT split; ODOO_DB_USER avoids POSIX USER=odoo collision).
+# - Odoo uses deploy/odoo-render/Dockerfile (official odoo:18 + Render PORT split + --proxy-mode).
 # - preDeploy runs after image build, before new instances get traffic (web) / start (worker).
-#   Pre-deploy: use `/app/render-predeploy.sh` (single argv). Bare `cmd && cmd` in YAML is parsed as extra Django args.
 # - We call migrate_all_schemas explicitly (not `migrate`) to match multi-tenant manage.py.
 # - Scale to more services later by copying a block and changing `name`, `type`, `dockerCommand`.
 # - ML Studio uses deploy/ml-studio-render/Dockerfile (standalone UI + ML libs; grow requirements.txt over time).
@@ -47,10 +36,8 @@ envVarGroups:
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
-      # Optional tuning (set LOG_LEVEL=DEBUG on the service when deep-testing passthrough / PolySniffer)
+      # Optional tuning
       - key: LOG_LEVEL
-        value: INFO
-      - key: CC_LOG_LEVEL
         value: INFO
       - key: CELERY_LOG_LEVEL
         value: INFO
@@ -112,21 +99,21 @@ envVarGroups:
       - key: MLSTUDIO_API_KEY
         sync: false
 
-  # Odoo — used only by service `PolySaaS-Odoo2` (fromGroup). Canonical keys (set values in Render; never commit secrets):
-  #   ODOO_DB_HOST, ODOO_DB_USER, ODOO_DB_PASSWORD, ODOO_DB_NAME, ODOO_DB_PORT — see deploy/odoo-render/README.txt
-  # Defaults below match Option A (dedicated role + DB). Override ODOO_DB_USER in dashboard if you use the instance owner role.
+  # Odoo — official image requires Postgres env at boot (HOST/USER/PASSWORD/…). Nextcloud’s image
+  # can start with no DB env (wizard / defaults). Link this group to PolySaaS-Odoo; fill values on
+  # Blueprint sync or in the dashboard (hostname only for HOST, not the full postgresql:// URL).
+  # PolySaaS: you may use ODOO_DB_USER / ODOO_DB_PASSWORD / ODOO_DB_NAME instead of USER/PASSWORD/DB_NAME
+  # (see deploy/odoo-render/README.txt); same strong secret values, naming choice only.
   - name: polysaas-odoo
     envVars:
-      - key: ODOO_DB_HOST
+      - key: HOST
         sync: false
-      - key: ODOO_DB_USER
-        value: odoouser
-      - key: ODOO_DB_PASSWORD
+      - key: USER
         sync: false
-      - key: ODOO_DB_NAME
-        value: odoodb
-      - key: ODOO_DB_PORT
-        value: "5432"
+      - key: PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
       - key: ADMIN_PASSWORD
         sync: false
       - key: ODOO_MASTER_PASSWORD
@@ -154,7 +141,7 @@ services:
     # Omit dockerCommand → image CMD runs Gunicorn via /entrypoint.sh
     healthCheckPath: /health/
     autoDeployTrigger: commit
-    preDeployCommand: /app/render-predeploy.sh
+    preDeployCommand: python manage.py migrate_all_schemas --noinput && python manage.py bootstrap_auth
     envVars:
       - fromGroup: polysaas-common
       - fromGroup: polysaas-bundled-apps
@@ -178,31 +165,30 @@ services:
       - key: ADMINER_DEFAULT_SERVER
         sync: false
 
-  # --- Celery worker — `PolySaaS-Celery-Worker2` (renamed on purpose: avoids Blueprint vs manual name fights).
-  #     When this service is healthy, delete any legacy manual worker (`PolySaaS-Celery-Worker`, `PolySaaS-Celery-BP`).
-  #     Same image + preDeploy as Core; secrets come from polysaas-common + polysaas-bundled-apps only (fromGroup).
+  # --- Celery worker (OpenClaw / agents / background jobs) ---
   - type: worker
-    name: PolySaaS-Celery-Worker2
+    name: PolySaaS-Celery-Worker
     runtime: docker
     region: singapore
     plan: starter
     branch: main
     dockerfilePath: Dockerfile.django
     dockerContext: .
+    # Overrides image CMD; ENTRYPOINT still runs bootstrap + collectstatic before this exec
     dockerCommand: celery -A mysite worker -l INFO --concurrency=2
     autoDeployTrigger: commit
-    preDeployCommand: /app/render-predeploy.sh
+    preDeployCommand: python manage.py migrate_all_schemas --noinput && python manage.py bootstrap_auth
     envVars:
       - fromGroup: polysaas-common
       - fromGroup: polysaas-bundled-apps
       - key: RUN_MIGRATIONS
         value: "0"
 
-  # --- Odoo — `PolySaaS-Odoo2` (service name on Render). Disk `odoo2-filestore` is the persistent volume resource name;
-  #     mountPath `/var/lib/odoo` is what the container sees. Env: group `polysaas-odoo` only (not Django common).
-  #     When healthy, remove any leftover manual `PolySaaS-Odoo` so you do not run two Odoo stacks.
+  # --- Odoo (official Hub image via deploy/odoo-render; matches Render support pattern except we
+  #     do NOT set PORT=5432 in env — that breaks Render's HTTP PORT. The Dockerfile snapshots HTTP
+  #     PORT then forces Postgres 5432 before /entrypoint.sh. Persistent disk for filestore.)
   - type: web
-    name: PolySaaS-Odoo2
+    name: PolySaaS-Odoo
     runtime: docker
     region: singapore
     plan: starter
@@ -214,7 +200,7 @@ services:
     envVars:
       - fromGroup: polysaas-odoo
     disk:
-      name: odoo2-filestore
+      name: odoo-filestore
       mountPath: /var/lib/odoo
       sizeGB: 10
 
@@ -425,24 +411,24 @@ services:
 #     - fromGroup: polysaas-bundled-apps
 #
 # ------------------------------------------------------------------------------
-# Optional: Render-managed Postgres only for Odoo (uncomment + switch PolySaaS-Odoo2 env to fromDatabase)
+# Optional: Render-managed Postgres only for Odoo (uncomment + switch PolySaaS-Odoo env to fromDatabase)
 # ------------------------------------------------------------------------------
 # databases:
 #   - name: polysaas-odoo-db
 #     plan: starter
 #     region: singapore
 #
-# Then replace PolySaaS-Odoo2 envVars ODOO_DB_HOST/ODOO_DB_USER/ODOO_DB_PASSWORD with e.g.:
-#   - key: ODOO_DB_HOST
+# Then replace PolySaaS-Odoo envVars HOST/USER/PASSWORD with e.g.:
+#   - key: HOST
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: host
-#   - key: ODOO_DB_USER
+#   - key: USER
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: user
-#   - key: ODOO_DB_PASSWORD
+#   - key: PASSWORD
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: password
-# (If using a dedicated Render Postgres for Odoo, set ODOO_DB_NAME on the service to match that DB, e.g. odoodb.)
+# (Keep DB_NAME as sync:false or set database name per Render docs for your plan.)

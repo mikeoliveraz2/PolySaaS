@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Render sets PORT to the HTTP listener (e.g. 10000). Odoo's /entrypoint.sh reuses the name PORT
+# for Postgres and builds wait-for-psql from that — unreliable on Render. We skip /entrypoint.sh
+# for DB checks and invoke wait-for-psql.py + odoo with explicit --db_port=5432.
+set -euo pipefail
+
+if [ -z "${HOST:-}" ]; then
+  echo "FATAL: HOST is unset or empty. Set HOST to Postgres hostname only (from Connections), not a postgresql:// URL." >&2
+  exit 1
+fi
+
+RENDER_HTTP_PORT="${PORT:-8069}"
+
+USER_VAL="${USER:-${ODOO_DB_USER:-}}"
+if [ -z "${USER_VAL}" ]; then
+  echo "FATAL: Set USER or ODOO_DB_USER to the Postgres role for this Odoo database." >&2
+  exit 1
+fi
+
+DB_PASS="${PGPASSWORD:-${PASSWORD:-${ODOO_DB_PASSWORD:-${ODOO_PASSWORD:-}}}}"
+if [ -z "${DB_PASS}" ]; then
+  echo "FATAL: Set PASSWORD or ODOO_DB_PASSWORD (or PGPASSWORD) to that role's password." >&2
+  exit 1
+fi
+
+DBN_VAL="${DB_NAME:-${ODOO_DB_NAME:-postgres}}"
+
+export HOST USER="${USER_VAL}" PASSWORD="${DB_PASS}"
+export PGHOST="${HOST}" PGPORT=5432 PGUSER="${USER_VAL}" PGPASSWORD="${DB_PASS}" PGDATABASE="${DBN_VAL}"
+
+# Sanitized config for Odoo runtime (no db_* lines so nothing can override CLI DB settings).
+ODOO_BASE="${ODOO_RC:-/etc/odoo/odoo.conf}"
+TMP_RC="/tmp/odoo-render-odoorc.conf"
+if [ -r "$ODOO_BASE" ]; then
+  umask 077
+  grep -Ev '^[[:space:]]*(db_port|db_host|db_user|db_password)[[:space:]]*=' "$ODOO_BASE" >"$TMP_RC" || true
+  if [ ! -s "$TMP_RC" ]; then
+    echo "[entrypoint-render] WARNING: stripped odoo.conf empty; using minimal [options] only." >&2
+    printf '%s\n' '[options]' >"$TMP_RC"
+  fi
+  chmod 600 "$TMP_RC" 2>/dev/null || true
+  export ODOO_RC="$TMP_RC"
+else
+  echo "[entrypoint-render] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
+fi
+
+echo "[entrypoint-render] wait-for-psql + odoo http_port=${RENDER_HTTP_PORT} db=${HOST}:5432 dbname=${DBN_VAL}" >&2
+
+/usr/local/bin/wait-for-psql.py \
+  --db_host="$HOST" \
+  --db_port=5432 \
+  --db_user="$USER_VAL" \
+  --db_password="$DB_PASS" \
+  --timeout=30
+
+# Drop inherited Render PORT before starting Odoo so nothing in the stack misreads it as DB.
+unset PORT 2>/dev/null || true
+
+if [ "${1:-}" = "odoo" ]; then
+  shift
+fi
+
+exec odoo \
+  --http-port="${RENDER_HTTP_PORT}" \
+  --proxy-mode \
+  --db_host="$HOST" \
+  --db_port=5432 \
+  --db_user="$USER_VAL" \
+  --db_password="$DB_PASS" \
+  -d "$DBN_VAL" \
+  "$@"

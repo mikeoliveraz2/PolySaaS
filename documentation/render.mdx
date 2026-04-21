@@ -1,0 +1,61 @@
+---
+title: Deploy OpenClaw on Render
+summary: One-click deployment and manual setup instructions for OpenClaw on Render.com
+---
+
+Deploy OpenClaw on Render for a resilient, easy-to-manage cloud setup. This guide covers both one-click and manual deployment.
+
+## One-Click Deploy (Blueprint)
+
+_Coming soon: A Render Blueprint for instant deploy!_
+
+## Manual Setup (Recommended)
+
+1. **Create a new Web Service**
+   - Connect your GitHub repo or use the OpenClaw public repo.
+   - Environment: Python 3.x
+
+2. **Configure Environment Variables**
+   - `OPENCLAW_GATEWAY_PORT=8080` (required)
+   - `OPENCLAW_GATEWAY_TOKEN` (required; set a strong secret)
+   - `OPENCLAW_STATE_DIR=/data/.openclaw` (recommended)
+   - `OPENCLAW_WORKSPACE_DIR=/data/workspace` (recommended)
+
+3. **Add a Persistent Disk**
+   - Mount path: `/data`
+   - Size: 1GB+ (adjust as needed)
+
+4. **Set Start Command**
+   - Example: `python -m openclaw.gateway`
+   - Or your preferred entrypoint
+
+5. **Expose Port**
+   - Set to `8080` (matches `OPENCLAW_GATEWAY_PORT`)
+
+6. **Deploy**
+   - Click "Create Web Service" and wait for build/deploy.
+
+7. **Access Control UI**
+   - Visit `https://<your-service-name>.onrender.com/openclaw`
+   - Log in with your `OPENCLAW_GATEWAY_TOKEN`
+
+## Updating Tokens & Config
+
+- Update environment variables or secrets anytime in the Render dashboard.
+- No need to redeploy for token changes—just restart the service.
+
+## Backups
+
+- Use the Render shell or web terminal:
+  ```bash
+  openclaw backup create
+  ```
+- Download the backup archive from `/data`.
+
+## Next Steps
+- Set up channels (Telegram, Discord, etc.) via the Control UI
+- Keep OpenClaw updated
+
+---
+
+Let me know if you want the one-click Render Blueprint YAML for instant deploy!

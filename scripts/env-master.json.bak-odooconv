@@ -1,0 +1,152 @@
+{
+  "_meta": {
+    "description": "Inventory of env KEY NAMES for Render (values: FILL_MANUALLY or env-master.local.json, never commit secrets).",
+    "align_with": "render.yaml groups + mysite/settings.py + mysite/settings_railway.py",
+    "naming_authority": [
+      "1) Render service disk resource names: render.yaml `services[].name` (e.g. PolySaaS-Core, PolySaaS-Celery-Worker2, PolySaaS-Odoo2).",
+      "2) Env group keys declared for Blueprint: render.yaml `envVarGroups` (add new keys there when you want sync/prompts).",
+      "3) Full Django/app inventory and checklists: this file + `python scripts/render_env_sync.py` (may list keys not yet in render.yaml — add them on Render or extend YAML)."
+    ]
+  },
+  "envVarGroups": {
+    "polysaas-common": {
+      "AI_PEER_PROVIDER_COPILOT": "anthropic",
+      "AI_PEER_PROVIDER_CURSOR": "anthropic",
+      "AI_PEER_PROVIDER_GEM": "gemini",
+      "AI_PEER_PROVIDER_GROK": "xai",
+      "AI_PEER_PROVIDER_OPENCLAW": "anthropic",
+      "AI_PEER_PROVIDER_ROUTER": "anthropic",
+      "AI_PEERS_WEBHOOK_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "ALLOWED_HOSTS": "FILL_MANUALLY",
+      "ANTHROPIC_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_CC": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_COPILOT": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_CURSOR": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_GEM": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_GROK": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_OPENCLAW": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_ROUTER": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "BOT_TOKEN_SUPERGROK": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "CELERY_BROKER_URL": "FILL_MANUALLY",
+      "CELERY_CONCURRENCY": "2",
+      "CELERY_LOG_LEVEL": "INFO",
+      "CSRF_TRUSTED_ORIGINS": "FILL_MANUALLY",
+      "DATABASE_URL": "FILL_MANUALLY",
+      "DB_CONN_MAX_AGE": "0",
+      "DEBUG": "False",
+      "DEFAULT_FROM_EMAIL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "DEEPSEEK_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "DJANGO_LOG_LEVEL": "INFO",
+      "DJANGO_SECRET_KEY": "FILL_MANUALLY",
+      "DJANGO_SETTINGS_MODULE": "mysite.settings_railway",
+      "DOSE_LOG_LEVEL": "INFO",
+      "EMAIL_HOST": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "EMAIL_HOST_PASSWORD": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "EMAIL_HOST_USER": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "EMAIL_PORT": "587",
+      "GEMINI_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "LOG_LEVEL": "INFO",
+      "MEDIA_ROOT": "/app/var/media_root/",
+      "OIDC_ISS_ENDPOINT": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "OIDC_RSA_PRIVATE_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "POLYSAAS_SUPERUSER_EMAILS": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "PYTHONUNBUFFERED": "1",
+      "STATIC_ROOT": "/app/var/static_root/",
+      "STRIPE_LIVE_SECRET_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_PRICE_ID": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_PRICE_ID_POLYSAAS_1": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_PRICE_ID_POLYSAAS_3": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_PRICE_ID_POLYSAAS_UNLIMITED": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_PRICE_ID_STORAGE": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_PUBLISHABLE_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_SECRET_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "STRIPE_WEBHOOK_SECRET": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "XAI_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY"
+    },
+    "polysaas-bundled-apps": {
+      "NEXTCLOUD_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "NEXTCLOUD_SERVICE_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_BOT_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MATTERMOST_ADMIN_TOKEN": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "DOLIBARR_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "DOLIBARR_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "LIFERAY_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "LIFERAY_OAUTH_CLIENT_SECRET": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "WORDPRESS_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "WORDPRESS_APPLICATION_PASSWORD": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "POLYSYSMON_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "POLYSYSMON_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MONITORLOGGER_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MONITORLOGGER_INGEST_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "AIASPEERS_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "AIASPEERS_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "APPSASPEERS_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "APPSASPEERS_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "ELASTICSEARCH_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "ELASTICSEARCH_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MLSTUDIO_BASE_URL": "FILL_MANUALLY_OR_LEAVE_EMPTY",
+      "MLSTUDIO_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY"
+    },
+    "polysaas-odoo": {
+      "ODOO_DB_HOST": "FILL_MANUALLY",
+      "HOST": "FILL_MANUALLY_OR_USE_ODOO_DB_HOST_ONLY",
+      "ODOO_DB_USER": "odoouser",
+      "PASSWORD": "FILL_MANUALLY",
+      "DB_NAME": "odoodb",
+      "ADMIN_PASSWORD": "FILL_MANUALLY",
+      "ODOO_MASTER_PASSWORD": "FILL_MANUALLY"
+    }
+  },
+  "services": {
+    "PolySaaS-Core": {
+      "fromGroups": ["polysaas-common", "polysaas-bundled-apps"],
+      "overrides": {
+        "RUN_MIGRATIONS": "0"
+      },
+      "notes": "Django web; preDeploy uses /app/render-predeploy.sh. Prefer secrets on env groups, not pasted only on this service."
+    },
+    "PolySaaS-Celery-Worker2": {
+      "fromGroups": ["polysaas-common", "polysaas-bundled-apps"],
+      "overrides": {
+        "RUN_MIGRATIONS": "0"
+      },
+      "notes": "Worker must receive same polysaas-common as Core (DJANGO_SECRET_KEY, DATABASE_URL, CELERY_BROKER_URL, etc.)."
+    },
+    "PolySaaS-Adminer": {
+      "fromGroups": [],
+      "overrides": {
+        "ADMINER_DEFAULT_SERVER": "FILL_MANUALLY"
+      },
+      "notes": "Internal Postgres hostname only (e.g. dpg-xxxx-a), not a postgresql:// URL."
+    },
+    "PolySaaS-Odoo2": {
+      "fromGroups": ["polysaas-odoo"],
+      "overrides": {},
+      "notes": "Uses polysaas-odoo only; not Django common."
+    },
+    "PolySaaS-Peers-Adapter": {
+      "fromGroups": [],
+      "overrides": {
+        "PEERS_UPSTREAM_DJANGO_URL": "FILL_MANUALLY",
+        "AI_PEERS_WEBHOOK_TOKEN": "FILL_MANUALLY"
+      }
+    },
+    "PolySaaS-ML-Studio": {
+      "fromGroups": [],
+      "overrides": {
+        "POLYSAAS_CORE_BASE_URL": "FILL_MANUALLY",
+        "MLSTUDIO_SERVICE_TOKEN": "FILL_MANUALLY"
+      }
+    },
+    "PolySaaS-Mattermost": {
+      "fromGroups": [],
+      "overrides": {
+        "MM_SERVICESETTINGS_SITEURL": "FILL_MANUALLY"
+      },
+      "renderInjectedFromDatabase": ["MM_SQLSETTINGS_DATASOURCE", "DB_HOST", "DB_PORT"],
+      "notes": "Blueprint wires MM_SQLSETTINGS_DATASOURCE + DB_HOST + DB_PORT from polysaas-mattermost-db. Set MM_SERVICESETTINGS_SITEURL to public https URL of Mattermost."
+    }
+  }
+}

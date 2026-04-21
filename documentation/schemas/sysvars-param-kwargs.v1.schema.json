@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polysaas.local/schemas/sysvars-param-kwargs.v1.schema.json",
+  "title": "PolySaaS public sysvars (Parameter in public schema)",
+  "description": "Stored in parameters.Parameter.param_kwargs_json for rows reserved for platform sysvars (public only). Parameter.param1..param10 may mirror the first up to 10 env entries for tooling and atomic-service compatibility; slot_keys defines the env var name for each slot index 0..9.",
+  "type": "object",
+  "required": ["version", "env"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump when breaking structure changes."
+    },
+    "service": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Logical target (e.g. Render service name, internal slug)."
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Operator-only context; not for end users."
+    },
+    "slot_keys": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "description": "Optional. Length N <= 10: slot_keys[i] is the env var name whose value is mirrored to Parameter.param(i+1) for that row."
+    },
+    "env": {
+      "type": "object",
+      "description": "ENV_VAR_NAME -> string value. Most bundled web services fit within 10 keys per row; overflow may use a second Parameter row with the same service and sequence+1.",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 8192
+      },
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "maxProperties": 10
+    }
+  }
+}

@@ -122,35 +122,74 @@ if (_oidc_iss or _oidc_pem) and isinstance(OAUTH2_PROVIDER, dict):
         _oauth2_provider["OIDC_RSA_PRIVATE_KEY"] = _oidc_pem.replace("\\n", "\n")
     OAUTH2_PROVIDER = _oauth2_provider
 
-# --- Logging: stdout only ---
+# --- Logging: explicit stdout for Render / Railway log streams ---
+# Python's StreamHandler defaults to stderr; Render shows both, but stdout matches
+# ops expectations and matches gunicorn --error-logfile - style piping.
+# Env: LOG_LEVEL (root), DJANGO_LOG_LEVEL, DOSE_LOG_LEVEL, CC_LOG_LEVEL (polysaas.*).
+# Container: set PYTHONUNBUFFERED=1 (already in Dockerfile.django + render.yaml polysaas-common).
+_ALLOWED_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+
+
+def _env_log_level(name: str, default: str) -> str:
+    raw = os.environ.get(name, default).strip().upper()
+    return raw if raw in _ALLOWED_LOG_LEVELS else default
+
+
+_root_level = _env_log_level("LOG_LEVEL", "INFO")
+_django_level = _env_log_level("DJANGO_LOG_LEVEL", _root_level)
+_dose_level = _env_log_level("DOSE_LOG_LEVEL", _root_level)
+_cc_level = _env_log_level("CC_LOG_LEVEL", _root_level)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "railway": {
-            "format": "{levelname} {asctime} {name} {message}",
-            "style": "{",
+        "render": {
+            "format": "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
     "handlers": {
-        "console": {
+        "stdout": {
             "class": "logging.StreamHandler",
-            "formatter": "railway",
+            "formatter": "render",
+            "stream": "ext://sys.stdout",
         },
     },
     "root": {
-        "handlers": ["console"],
-        "level": os.environ.get("LOG_LEVEL", "DEBUG"),
+        "handlers": ["stdout"],
+        "level": _root_level,
     },
     "loggers": {
         "django": {
-            "handlers": ["console"],
-            "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO"),
+            "handlers": ["stdout"],
+            "level": _django_level,
+            "propagate": False,
+        },
+        "django.server": {
+            "handlers": ["stdout"],
+            "level": _django_level,
             "propagate": False,
         },
         "dose": {
-            "handlers": ["console"],
-            "level": os.environ.get("DOSE_LOG_LEVEL", "INFO"),
+            "handlers": ["stdout"],
+            "level": _dose_level,
+            "propagate": False,
+        },
+        # Cross-cutting / passthrough / PolySniffer style code: logging.getLogger("polysaas.cc")
+        "polysaas": {
+            "handlers": ["stdout"],
+            "level": _cc_level,
+            "propagate": False,
+        },
+        "gunicorn.error": {
+            "handlers": ["stdout"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "gunicorn.access": {
+            "handlers": ["stdout"],
+            "level": "INFO",
             "propagate": False,
         },
     },

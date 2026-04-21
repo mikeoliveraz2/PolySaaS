@@ -47,10 +47,8 @@ envVarGroups:
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
-      # Optional tuning (set LOG_LEVEL=DEBUG on the service when deep-testing passthrough / PolySniffer)
+      # Optional tuning
       - key: LOG_LEVEL
-        value: INFO
-      - key: CC_LOG_LEVEL
         value: INFO
       - key: CELERY_LOG_LEVEL
         value: INFO
@@ -112,21 +110,23 @@ envVarGroups:
       - key: MLSTUDIO_API_KEY
         sync: false
 
-  # Odoo — used only by service `PolySaaS-Odoo2` (fromGroup). Canonical keys (set values in Render; never commit secrets):
-  #   ODOO_DB_HOST, ODOO_DB_USER, ODOO_DB_PASSWORD, ODOO_DB_NAME, ODOO_DB_PORT — see deploy/odoo-render/README.txt
-  # Defaults below match Option A (dedicated role + DB). Override ODOO_DB_USER in dashboard if you use the instance owner role.
+  # Odoo — used only by service `PolySaaS-Odoo2` below (via fromGroup). Shared Render Postgres (Option A):
+  # role `odoouser`, database `odoodb` (distinct names; avoid confusing with Linux `odoo` user).
+  # Create both in Postgres before first deploy (see deploy/odoo-render/README.txt). Secrets: ODOO_DB_HOST (recommended), PASSWORD.
+  # HOST is still accepted by entrypoint for backward compat; prefer ODOO_DB_HOST so runtime always sees the DB hostname.
+  # Plain env key USER is not used (POSIX collision with login `odoo` in the container).
   - name: polysaas-odoo
     envVars:
       - key: ODOO_DB_HOST
         sync: false
+      - key: HOST
+        sync: false
       - key: ODOO_DB_USER
         value: odoouser
-      - key: ODOO_DB_PASSWORD
+      - key: PASSWORD
         sync: false
-      - key: ODOO_DB_NAME
+      - key: DB_NAME
         value: odoodb
-      - key: ODOO_DB_PORT
-        value: "5432"
       - key: ADMIN_PASSWORD
         sync: false
       - key: ODOO_MASTER_PASSWORD
@@ -432,7 +432,7 @@ services:
 #     plan: starter
 #     region: singapore
 #
-# Then replace PolySaaS-Odoo2 envVars ODOO_DB_HOST/ODOO_DB_USER/ODOO_DB_PASSWORD with e.g.:
+# Then replace PolySaaS-Odoo2 envVars ODOO_DB_HOST/ODOO_DB_USER/PASSWORD with e.g.:
 #   - key: ODOO_DB_HOST
 #     fromDatabase:
 #       name: polysaas-odoo-db
@@ -441,8 +441,8 @@ services:
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: user
-#   - key: ODOO_DB_PASSWORD
+#   - key: PASSWORD
 #     fromDatabase:
 #       name: polysaas-odoo-db
 #       property: password
-# (If using a dedicated Render Postgres for Odoo, set ODOO_DB_NAME on the service to match that DB, e.g. odoodb.)
+# (If using a dedicated Render Postgres for Odoo, set DB_NAME in the service to match that DB, e.g. odoodb.)
