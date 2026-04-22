@@ -1,4 +1,4 @@
-# Deprecated for Railway: installing Odoo from git here is slow and often fails (OOM / timeouts).
+# Deprecated: installing Odoo from git here is slow and often fails (OOM / timeouts).
 # Prefer Dockerfile in this folder (same odoo:18 + entrypoint as deploy/odoo-render).
 [variables]
 PYTHONUNBUFFERED = "1"

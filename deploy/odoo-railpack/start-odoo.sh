@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DB_HOST="${ODOO_DB_HOST:-${DB_HOST:-${PGHOST:-postgres.railway.internal}}}"
+DB_HOST="${ODOO_DB_HOST:-${DB_HOST:-${PGHOST:-postgres}}}"
 DB_PORT="${ODOO_DB_PORT:-${DB_PORT:-${PGPORT:-5432}}}"
 DB_USER="${ODOO_DB_USER:-${DB_USER:-${PGUSER:-odoo}}}"
 DB_PASSWORD="${ODOO_DB_PASSWORD:-${DB_PASSWORD:-${PGPASSWORD:-odoo}}}"

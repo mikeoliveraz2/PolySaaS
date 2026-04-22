@@ -57,4 +57,4 @@ When `render.yaml` gains a new `sync: false` key or service, add the key under t
 
 ### Other scripts
 
-See repo root and `documentation/` for Railway, WordPress, and other tooling; this README focuses on the Render env sync flow.
+See repo root and `documentation/` for Render, WordPress, and other tooling; this README focuses on the Render env sync flow.

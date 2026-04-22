@@ -1,0 +1,15 @@
+---
+summary: "Deploy OpenClaw on managed container hosting"
+tags:
+  - Deploying OpenClaw
+  - Containers
+title: "Managed hosting (OpenClaw)"
+---
+
+Deploy OpenClaw using your preferred container platform (for PolySaaS we standardize on **Render**; other providers use the same pattern: set `PORT`, persist `/data`, configure `OPENCLAW_GATEWAY_TOKEN` or password auth).
+
+1. Build from the OpenClaw image or template your team maintains.
+2. Set environment variables per upstream OpenClaw documentation.
+3. Open `https://<your-public-host>/openclaw` and complete onboarding.
+
+Use your host’s dashboard for logs, domains, and shell access instead of vendor-specific CLIs.

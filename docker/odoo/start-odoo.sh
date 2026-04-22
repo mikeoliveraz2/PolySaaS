@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Railway volume is often mounted as root-owned; fix ownership for Odoo filestore writes.
+# Data volume is often mounted as root-owned; fix ownership for Odoo filestore writes.
 mkdir -p /var/lib/odoo/filestore
 chown -R odoo:odoo /var/lib/odoo
 
@@ -16,7 +16,7 @@ first_non_empty() {
 }
 
 DB_NAME="$(first_non_empty "${DB_NAME:-}" "${PGDATABASE:-}" "${POSTGRES_DB:-}" "${POSTGRES_DATABASE:-}" "${ODOO_DATABASE_NAME:-}" "odoo")"
-DB_HOST="$(first_non_empty "${DB_HOST:-}" "${PGHOST:-}" "${POSTGRES_HOST:-}" "${ODOO_DATABASE_HOST:-}" "postgres.railway.internal")"
+DB_HOST="$(first_non_empty "${DB_HOST:-}" "${PGHOST:-}" "${POSTGRES_HOST:-}" "${ODOO_DATABASE_HOST:-}" "postgres")"
 DB_PORT="$(first_non_empty "${DB_PORT:-}" "${PGPORT:-}" "${POSTGRES_PORT:-}" "${ODOO_DATABASE_PORT_NUMBER:-}" "5432")"
 DB_USER="$(first_non_empty "${DB_USER:-}" "${PGUSER:-}" "${POSTGRES_USER:-}" "${ODOO_DATABASE_USER:-}" "odoo")"
 DB_PASSWORD="$(first_non_empty "${DB_PASSWORD:-}" "${PGPASSWORD:-}" "${POSTGRES_PASSWORD:-}" "${ODOO_DATABASE_PASSWORD:-}" "")"
@@ -58,7 +58,7 @@ params = {
 	"dbname": os.environ.get("DB_NAME", "odoo"),
 	"user": os.environ.get("DB_USER", "odoo"),
 	"password": os.environ.get("DB_PASSWORD", ""),
-	"host": os.environ.get("DB_HOST", "postgres.railway.internal"),
+	"host": os.environ.get("DB_HOST", "postgres"),
 	"port": int(os.environ.get("DB_PORT", "5432")),
 	"connect_timeout": 5,
 }

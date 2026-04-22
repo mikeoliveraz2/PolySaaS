@@ -1,8 +1,8 @@
 """
-Railway / container production settings.
+Render / container production settings.
 
 Usage:
-  export DJANGO_SETTINGS_MODULE=mysite.settings_railway
+  export DJANGO_SETTINGS_MODULE=mysite.settings_render
 
 Extends mysite.settings and overrides database, broker, sessions, static files,
 logging, and security for a 12-factor deploy (env vars only).
@@ -13,16 +13,16 @@ from urllib.parse import urlsplit, urlunsplit
 
 import environ
 
-print("[Django] Loading mysite/settings_railway.py at", os.path.basename(__file__), flush=True)
+print("[Django] Loading mysite/settings_render.py at", os.path.basename(__file__), flush=True)
 
 from mysite.settings import *  # noqa: F401,F403
 
-print("[Django] Base settings loaded, configuring Railway overrides", flush=True)
+print("[Django] Base settings loaded, configuring Render overrides", flush=True)
 
-# Liveness for Railway: respond before SecurityMiddleware (no HTTP→HTTPS redirect on
+# Liveness: respond before SecurityMiddleware (no HTTP→HTTPS redirect on
 # internal probes) and before SessionTenantMiddleware (no DB cursor on cold Postgres).
-MIDDLEWARE.insert(0, "mysite.railway_health_middleware.RailwayLivenessMiddleware")
-print("[Django] RailwayLivenessMiddleware inserted at MIDDLEWARE position 0", flush=True)
+MIDDLEWARE.insert(0, "mysite.render_health_middleware.RenderLivenessMiddleware")
+print("[Django] RenderLivenessMiddleware inserted at MIDDLEWARE position 0", flush=True)
 
 _env = environ.Env(
     DEBUG=(bool, False),
@@ -48,10 +48,10 @@ if _allowed:
 elif DEBUG:
     ALLOWED_HOSTS = ["*"]
 else:
-    # Railway default hostname pattern + localhost for health probes
-    ALLOWED_HOSTS = [".railway.app", ".up.railway.app", "localhost", "127.0.0.1"]
+    # Render default hostname pattern + localhost for health probes
+    ALLOWED_HOSTS = [".onrender.com", "localhost", "127.0.0.1"]
 
-# --- Database: DATABASE_URL preferred (Railway), else discrete vars ---
+# --- Database: DATABASE_URL preferred (Render), else discrete vars ---
 _database_url = os.environ.get("DATABASE_URL", "").strip()
 if _database_url:
     DATABASES = {"default": environ.Env.db_url_config(_normalize_database_url(_database_url))}
@@ -91,12 +91,12 @@ if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
 STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 WHITENOISE_KEEP_ONLY_HASHED_FILES = False
 
-# --- HTTPS / proxy (Railway terminates TLS) ---
+# --- HTTPS / proxy (Render terminates TLS) ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
 if not DEBUG:
-    # Default False: Railway terminates TLS; internal health checks are often HTTP
+    # Default False: Render terminates TLS; internal health checks are often HTTP
     # without X-Forwarded-Proto — a True default yields 301 and a failed deploy healthcheck.
     SECURE_SSL_REDIRECT = _env.bool("SECURE_SSL_REDIRECT", default=False)
     SESSION_COOKIE_SECURE = True
@@ -110,8 +110,8 @@ _csrf_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "").strip()
 if _csrf_origins:
     CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(",") if o.strip()]
 
-# --- OAuth2 / OIDC (Railway): public issuer URL + optional PEM via env ---
-# See documentation/deployment/railway/OAUTH2-RAILWAY.md
+# --- OAuth2 / OIDC (Render): public issuer URL + optional PEM via env ---
+# See documentation/deployment/render/OAUTH2-RENDER.md
 _oidc_iss = os.environ.get("OIDC_ISS_ENDPOINT", "").strip()
 _oidc_pem = os.environ.get("OIDC_RSA_PRIVATE_KEY", "").strip()
 if (_oidc_iss or _oidc_pem) and isinstance(OAUTH2_PROVIDER, dict):
@@ -122,7 +122,7 @@ if (_oidc_iss or _oidc_pem) and isinstance(OAUTH2_PROVIDER, dict):
         _oauth2_provider["OIDC_RSA_PRIVATE_KEY"] = _oidc_pem.replace("\\n", "\n")
     OAUTH2_PROVIDER = _oauth2_provider
 
-# --- Logging: explicit stdout for Render / Railway log streams ---
+# --- Logging: explicit stdout for Render log streams ---
 # Python's StreamHandler defaults to stderr; Render shows both, but stdout matches
 # ops expectations and matches gunicorn --error-logfile - style piping.
 # Env: LOG_LEVEL (root), DJANGO_LOG_LEVEL, DOSE_LOG_LEVEL, CC_LOG_LEVEL (polysaas.*).
@@ -199,4 +199,4 @@ LOGGING = {
 if not DEBUG:
     logging.getLogger("django.utils.autoreload").setLevel(logging.WARNING)
 
-print("[Django] mysite/settings_railway.py fully loaded and ready", flush=True)
+print("[Django] mysite/settings_render.py fully loaded and ready", flush=True)

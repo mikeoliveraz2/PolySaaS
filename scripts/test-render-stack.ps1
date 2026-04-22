@@ -1,5 +1,5 @@
-# Quick probes for docker-compose.railway-stack.yml services (run after `docker compose ... up -d`).
-# Usage: .\scripts\test-railway-stack.ps1
+# Quick probes for docker-compose.render-stack.yml services (run after `docker compose ... up -d`).
+# Usage: .\scripts\test-render-stack.ps1
 # Exit 0 if all pass, 1 if any fail.
 
 $ErrorActionPreference = 'Stop'
@@ -29,7 +29,7 @@ function Test-Http {
     }
 }
 
-Write-Host "Railway stack probes:" -ForegroundColor Cyan
+Write-Host "Local Render-stack probes (Postgres, MQ, ES, Grafana, MonitorLogger):" -ForegroundColor Cyan
 Test-Tcp -Port 5433 -Label 'PostgreSQL'
 Test-Tcp -Port 5672 -Label 'RabbitMQ AMQP'
 Test-Tcp -Port 15672 -Label 'RabbitMQ management UI'

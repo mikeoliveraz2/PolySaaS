@@ -9,7 +9,7 @@
 
 ## Summary
 
-**PolySaaS-Core** (Django / DOSE) is **running on Render** in workspace **PolySaaS-Main**, using the **existing** container path: **`Dockerfile.django`**, **`scripts/railway-entrypoint.sh`**, and **`mysite.settings_railway`**. No replacement entrypoint was required; naming is legacy (“Railway”) only.
+**PolySaaS-Core** (Django / DOSE) is **running on Render** in workspace **PolySaaS-Main**, using the container path: **`Dockerfile.django`**, **`scripts/render-entrypoint.sh`**, and **`mysite.settings_render`**.
 
 This BINGO certifies the **Render cutover for the main Django web service** after resolving Dockerfile mis-selection, Postgres connectivity (workspace-internal host), credential precedence, and **`DATABASE_URL` parsing** (`django-environ` / `urllib` — malformed URLs when passwords contained unescaped `@` / `:` or typos in host).
 
@@ -20,7 +20,7 @@ This BINGO certifies the **Render cutover for the main Django web service** afte
 | Area | Notes |
 |------|--------|
 | **Build** | Service uses **`Dockerfile.django`** with Docker context **`.`** (repo root). **Not** repo-root stub **`Dockerfile`** (Alpine guard). |
-| **Runtime** | **`DJANGO_SECRET_KEY`**, **`DJANGO_SETTINGS_MODULE=mysite.settings_railway`**, Postgres reachable from same workspace. |
+| **Runtime** | **`DJANGO_SECRET_KEY`**, **`DJANGO_SETTINGS_MODULE=mysite.settings_render`**, Postgres reachable from same workspace. |
 | **Database** | Working pattern: **`DB_*`** discrete vars **or** a single correctly formed **`DATABASE_URL`** (encoded password, explicit **`:5432`** when helpful). **`DOSE_DB_PASSWORD`** overrides **`DB_PASSWORD`** when set — remove or align. |
 | **Health** | Render health check path **`/health/`** (per `render.yaml` / ops). |
 | **UI** | Custom admin login (**`admin/login.html`**) renders; “DOSE LOGIN PAGE” path confirmed in browser. |

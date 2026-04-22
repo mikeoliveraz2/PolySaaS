@@ -33,7 +33,7 @@ envVarGroups:
   - name: polysaas-common
     envVars:
       - key: DJANGO_SETTINGS_MODULE
-        value: mysite.settings_railway
+        value: mysite.settings_render
       - key: PYTHONUNBUFFERED
         value: "1"
       # Set in dashboard / Blueprint sync prompts (never commit real secrets)
@@ -161,6 +161,9 @@ services:
       # First-time / disaster recovery: set to 1 on the web service only if you need migrate on boot too
       - key: RUN_MIGRATIONS
         value: "0"
+      # Admin /admin/ index diagnostics (dose.admin_index_diag); set 0 when done debugging
+      - key: ADMIN_INDEX_DIAG
+        value: "1"
 
   # --- Adminer (PostgreSQL UI; deploy in same workspace + region as polysaas-postgres for internal host)
   #     Image listens on 8080 — after sync, confirm Dashboard → Settings → the service listens on port 8080.

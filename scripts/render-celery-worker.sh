@@ -1,5 +1,5 @@
 #!/bin/sh
-# Same image as web (Dockerfile.django); Railway: set Start Command to this script
+# Same image as web (Dockerfile.django); Render: set Start Command to this script
 # or: celery -A mysite worker -l INFO --concurrency 2
 set -e
 cd /app

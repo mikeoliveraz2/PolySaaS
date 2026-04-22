@@ -3,6 +3,13 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+
+# Jazzmin reads ``JAZZMIN_SETTINGS["index_template"]`` for UI docs, but Django's AdminSite
+# only uses ``admin.site.index_template``. Without this, ``/admin/`` renders the stock
+# ``admin/index.html`` (cards only) and skips ``templates/jazzmin/admin/index.html`` (orchestration strip).
+_jazzmin_index = (getattr(settings, "JAZZMIN_SETTINGS", None) or {}).get("index_template")
+if _jazzmin_index:
+    admin.site.index_template = _jazzmin_index
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from dose.views import subscribe_view

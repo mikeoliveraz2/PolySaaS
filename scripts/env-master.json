@@ -1,7 +1,7 @@
 {
   "_meta": {
     "description": "Inventory of env KEY NAMES for Render (values: FILL_MANUALLY or env-master.local.json, never commit secrets).",
-    "align_with": "render.yaml groups + mysite/settings.py + mysite/settings_railway.py",
+    "align_with": "render.yaml groups + mysite/settings.py + mysite/settings_render.py",
     "naming_authority": [
       "1) Render service disk resource names: render.yaml `services[].name` (e.g. PolySaaS-Core, PolySaaS-Celery-Worker2, PolySaaS-Odoo2).",
       "2) Env group keys declared for Blueprint: render.yaml `envVarGroups` (add new keys there when you want sync/prompts).",
@@ -38,7 +38,7 @@
       "DEEPSEEK_API_KEY": "FILL_MANUALLY_OR_LEAVE_EMPTY",
       "DJANGO_LOG_LEVEL": "INFO",
       "DJANGO_SECRET_KEY": "FILL_MANUALLY",
-      "DJANGO_SETTINGS_MODULE": "mysite.settings_railway",
+      "DJANGO_SETTINGS_MODULE": "mysite.settings_render",
       "DOSE_LOG_LEVEL": "INFO",
       "EMAIL_HOST": "FILL_MANUALLY_OR_LEAVE_EMPTY",
       "EMAIL_HOST_PASSWORD": "FILL_MANUALLY_OR_LEAVE_EMPTY",

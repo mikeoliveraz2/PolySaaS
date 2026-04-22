@@ -1,7 +1,7 @@
-# PolySaaS Complete Stack for Railway
+# PolySaaS Complete Stack for Render
 # All services (core infrastructure + bundled applications) in one compose file
-# Usage: docker compose -f docker-compose.railway.yml up -d
-# On Railway: Create a template with this file and set environment variables via Railway UI
+# Usage: docker compose -f docker-compose.render.yml up -d
+# On Render: Create a template with this file and set environment variables via Render UI
 
 version: '3.8'
 
@@ -12,13 +12,13 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: ps-railway-pg
+    container_name: ps-render-pg
     environment:
       POSTGRES_USER: ${DOSE_DB_USER:-dosedbadmin}
       POSTGRES_PASSWORD: ${DOSE_DB_PASSWORD:-changeme}
       POSTGRES_DB: ${DOSE_DB:-dosedbsaas}
     volumes:
-      - railway_pg_data:/var/lib/postgresql/data
+      - renderstack_pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DOSE_DB_USER:-dosedbadmin} -d ${DOSE_DB:-dosedbsaas}"]
       interval: 10s
@@ -30,12 +30,12 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: ps-railway-rmq
+    container_name: ps-render-rmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
     volumes:
-      - railway_rmq_data:/var/lib/rabbitmq
+      - renderstack_rmq_data:/var/lib/rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 15s
@@ -47,13 +47,13 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: ps-railway-es
+    container_name: ps-render-es
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     volumes:
-      - railway_es_data:/usr/share/elasticsearch/data
+      - renderstack_es_data:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -66,26 +66,26 @@ services:
 
   grafana:
     image: grafana/grafana:10.4.3
-    container_name: ps-railway-grafana
+    container_name: ps-render-grafana
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
-      - railway_grafana_data:/var/lib/grafana
+      - renderstack_grafana_data:/var/lib/grafana
     restart: unless-stopped
     networks:
       - polysaas-network
 
   monitorlogger:
     image: public.ecr.aws/zinclabs/openobserve:latest
-    container_name: ps-railway-monitorlogger
+    container_name: ps-render-monitorlogger
     environment:
       ZO_ROOT_USER_EMAIL: ${MONITORLOGGER_ROOT_USER_EMAIL:-admin@example.com}
       ZO_ROOT_USER_PASSWORD: ${MONITORLOGGER_ROOT_USER_PASSWORD:-changeme}
       ZO_LOCAL_MODE: "true"
     volumes:
-      - railway_monitorlogger_data:/data
+      - renderstack_monitorlogger_data:/data
     restart: unless-stopped
     networks:
       - polysaas-network
@@ -403,11 +403,11 @@ services:
 
 volumes:
   # Core
-  railway_pg_data:
-  railway_rmq_data:
-  railway_es_data:
-  railway_grafana_data:
-  railway_monitorlogger_data:
+  renderstack_pg_data:
+  renderstack_rmq_data:
+  renderstack_es_data:
+  renderstack_grafana_data:
+  renderstack_monitorlogger_data:
   # Mattermost
   mattermost_db_data:
   mattermost_data:

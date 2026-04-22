@@ -1,8 +1,8 @@
-# go.ps1 - PolySaaS Launcher: Pull -> Railway Docker stack -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) pip freeze + Backup
-# Skip internal stack: $env:POLYSAAS_SKIP_RAILWAY_DOCKER = '1'
-# Faster go when Docker stack is already up: $env:POLYSAAS_SKIP_RAILWAY_DOCKER = '1' (still runs app check + services + runserver)
+# go.ps1 - PolySaaS Launcher: Pull -> local Docker stack (Render parity) -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) pip freeze + Backup
+# Skip internal stack: $env:POLYSAAS_SKIP_INTERNAL_DOCKER = '1'
+# Faster go when Docker stack is already up: $env:POLYSAAS_SKIP_INTERNAL_DOCKER = '1' (still runs app check + services + runserver)
 #
-# Implementation: scripts\go\*.ps1 (dot-sourced). Validate syntax: scripts\Parse-Ps1File.ps1 -Path scripts\go\Go-RailwayDocker.ps1
+# Implementation: scripts\go\*.ps1 (dot-sourced). Validate syntax: scripts\Parse-Ps1File.ps1 -Path scripts\go\Go-RenderDocker.ps1
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
@@ -11,7 +11,7 @@ $goDir = Join-Path $scriptDir "scripts\go"
 . (Join-Path $goDir "Go-Env.ps1")
 . (Join-Path $goDir "Go-DailyBackup.ps1")
 . (Join-Path $goDir "Go-MorningSync.ps1")
-. (Join-Path $goDir "Go-RailwayDocker.ps1")
+. (Join-Path $goDir "Go-RenderDocker.ps1")
 . (Join-Path $goDir "Go-Services.ps1")
 . (Join-Path $goDir "Go-SessionEnd.ps1")
 
@@ -43,15 +43,15 @@ if (-Not (Test-Path $venvActivate)) {
     exit
 }
 
-# ── Railway Docker stack (before app check - Django expects Postgres on 5433) ─
+# ── Local Docker stack — Postgres/MQ/ES/Grafana/MonitorLogger (before app check; Django uses 5433) ─
 
 Write-Host ""
-Write-Host '── Railway Docker stack (internal services) ───────────' -ForegroundColor Cyan
-if ($env:POLYSAAS_SKIP_RAILWAY_DOCKER -eq '1') {
-    Write-Host "  SKIPPED - POLYSAAS_SKIP_RAILWAY_DOCKER=1" -ForegroundColor DarkYellow
+Write-Host '── Local Docker stack (Render parity services) ───────' -ForegroundColor Cyan
+if ($env:POLYSAAS_SKIP_INTERNAL_DOCKER -eq '1') {
+    Write-Host "  SKIPPED - POLYSAAS_SKIP_INTERNAL_DOCKER=1" -ForegroundColor DarkYellow
     Write-Host ""
 } else {
-    Invoke-RailwayDockerStack -RootDir $scriptDir
+    Invoke-RenderDockerStack -RootDir $scriptDir
 }
 
 # ── App load check: only if this passes do we backup and commit/push ───

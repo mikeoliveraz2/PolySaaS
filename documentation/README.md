@@ -20,8 +20,8 @@ Never treat the PostgreSQL **`public`** schema as a tenant. Shared registry tabl
 
 | Doc | Purpose |
 |-----|---------|
-| [deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md](deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md) | Railway-first plan and operator checklist (§7). |
-| [BINGO_RAILWAY_FOUNDATION_AND_REMAINING.md](../BINGO_RAILWAY_FOUNDATION_AND_REMAINING.md) | Repo root: certified foundation vs remaining P1–P6 work. |
+| [deployment/render/RENDER-DEPLOYMENT-PLAN.md](deployment/render/RENDER-DEPLOYMENT-PLAN.md) | Render-first plan and operator checklist (§7). |
+| [BINGO_RENDER_FOUNDATION_AND_REMAINING.md](BINGO_RENDER_FOUNDATION_AND_REMAINING.md) | Certified foundation vs remaining P1–P6 work. |
 
 ## Collaboration
 

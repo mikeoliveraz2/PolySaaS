@@ -6,7 +6,7 @@ PolySaaS is the product formerly code-named DOSE. In this repository, the live a
 
 - Web app: Django / Gunicorn via `mysite.wsgi:application` (there is no FastAPI or alternate `src/` web app in this repo; use `Dockerfile.django` for containers)
 - Main settings: `mysite.settings`
-- Railway/container settings: `mysite.settings_railway`
+- Render/container settings: `mysite.settings_render`
 - Health endpoints: `/health/` and `/health/ready/`
 
 ## Local Development
@@ -18,24 +18,24 @@ python manage.py runserver
 
 The project expects PostgreSQL and, for async work, RabbitMQ. There are multiple local compose files in the repo for supporting services.
 
-## Railway Deploy
+## Render deploy
 
-This repository already contains a Railway-oriented deployment path:
+This repository uses **Render** as the primary managed hosting path (see root `render.yaml`):
 
-- Config: `railway.toml`
+- Blueprint: `render.yaml`
 - Image: `Dockerfile.django`
-- Entry point: `scripts/railway-entrypoint.sh`
-- Settings: `mysite.settings_railway`
+- Entry point: `scripts/render-entrypoint.sh`
+- Settings: `mysite.settings_render`
 
 Recommended web service environment:
 
 ```text
-DJANGO_SETTINGS_MODULE=mysite.settings_railway
+DJANGO_SETTINGS_MODULE=mysite.settings_render
 DJANGO_SECRET_KEY=<secret>
 DEBUG=False
-DATABASE_URL=<railway postgres url>
-ALLOWED_HOSTS=<your railway host>
-CSRF_TRUSTED_ORIGINS=https://<your railway host>
+DATABASE_URL=<render postgres url>
+ALLOWED_HOSTS=<your onrender.com host>
+CSRF_TRUSTED_ORIGINS=https://<your onrender.com host>
 RUN_MIGRATIONS=0
 GUNICORN_WORKERS=1
 GUNICORN_THREADS=2
@@ -45,7 +45,7 @@ GUNICORN_TIMEOUT=30
 Optional worker environment:
 
 ```text
-CELERY_BROKER_URL=<railway rabbitmq url>
+CELERY_BROKER_URL=<render rabbitmq or amqp url>
 ```
 
-See `documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md` for the fuller operator checklist.
+See `documentation/deployment/render/RENDER-DEPLOYMENT-PLAN.md` for the fuller operator checklist.

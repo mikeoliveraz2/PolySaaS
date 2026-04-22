@@ -1,8 +1,8 @@
-# PolySaaS Complete Stack Deployment — Railway
+# PolySaaS Complete Stack Deployment — Render
 
 ## Overview
 
-This guide explains how to deploy **all PolySaaS services** (core infrastructure + 3 bundled applications) to a **single Railway project**.
+This guide explains how to deploy **all PolySaaS services** (core infrastructure + 3 bundled applications) to a **single Render project**.
 
 **Services included:**
 - ✅ PostgreSQL (DOSE core database)
@@ -22,7 +22,7 @@ This guide explains how to deploy **all PolySaaS services** (core infrastructure
 
 ## Architecture
 
-All services run on a **single Docker network** (`polysaas-network`) managed by Railway.
+All services run on a **single Docker network** (`polysaas-network`) managed by Render.
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -48,11 +48,11 @@ All services run on a **single Docker network** (`polysaas-network`) managed by 
 
 ---
 
-## Option 1: Deploy via Railway UI (Recommended for first-time)
+## Option 1: Deploy via Render UI (Recommended for first-time)
 
-### Step 1: Create Railway Project & Link Repo
+### Step 1: Create Render Project & Link Repo
 
-1. Go to **https://railway.app**
+1. Go to **https://render.com**
 2. Click **+ New Project**
 3. Select **Deploy from GitHub**
 4. Authorize & select `mikeoliveraz2/PolySaaS`
@@ -60,20 +60,20 @@ All services run on a **single Docker network** (`polysaas-network`) managed by 
 
 ### Step 2: Switch to Docker Compose
 
-1. In Railway project, click **Settings** (top right)
+1. In Render project, click **Settings** (top right)
 2. Under **Build**, change **Build Command** to:
    ```bash
-   docker compose -f docker-compose.railway.yml up -d
+   docker compose -f docker-compose.Render.yml up -d
    ```
 3. Under **Start Command**, change to:
    ```bash
-   docker compose -f docker-compose.railway.yml up -d
+   docker compose -f docker-compose.Render.yml up -d
    ```
-4. **Optional:** Delete the auto-created Django service; Railway will use the compose file instead
+4. **Optional:** Delete the auto-created Django service; Render will use the compose file instead
 
 ### Step 3: Add Environment Variables
 
-Railway → **Variables** tab → Add the following:
+Render → **Variables** tab → Add the following:
 
 #### Core Infrastructure
 ```
@@ -96,7 +96,7 @@ MONITORLOGGER_ROOT_USER_PASSWORD=<generate-strong-password>
 DJANGO_SETTINGS_MODULE=mysite.settings
 DJANGO_SECRET_KEY=<generate-strong-secret-key>
 DEBUG=false
-ALLOWED_HOSTS=polysaas-prod.up.railway.app,production.polysaas.online
+ALLOWED_HOSTS=polysaas-prod.onrender.com,production.polysaas.online
 DATABASE_URL=postgresql://dosedbadmin:<password>@postgres:5432/dosedbsaas
 CELERY_BROKER_URL=amqp://guest:<password>@rabbitmq:5672//
 ELASTICSEARCH_HOST=http://elasticsearch:9200
@@ -144,15 +144,15 @@ DB_NAME=odoo
 
 1. Commit & push changes to repo (if modifying compose etc.)
    ```bash
-   git add docker-compose.railway.yml
-   git commit -m "Add complete PolySaaS stack for Railway deployment"
+   git add docker-compose.Render.yml
+   git commit -m "Add complete PolySaaS stack for Render deployment"
    git push origin main
    ```
-2. Railway will auto-redeploy on push, **or** manually trigger via Railway UI
+2. Render will auto-redeploy on push, **or** manually trigger via Render UI
 
 ### Step 5: Monitor Services
 
-1. Railway → **View Logs** — watch all services boot
+1. Render → **View Logs** — watch all services boot
 2. Expected order:
    - Postgres, RabbitMQ start first
    - Elasticsearch, Grafana, MonitorLogger start
@@ -163,40 +163,40 @@ DB_NAME=odoo
 
 ---
 
-## Option 2: Deploy via Railway CLI
+## Option 2: Deploy via Render CLI
 
 If you prefer command-line (faster iteration):
 
 ```bash
-# Install Railway CLI
-npm install -g @railway/cli
+# Install Render CLI
+npm install -g @Render/cli
 
 # Login
-railway login
+Render login
 
 # Create project
-railway init
+Render init
 
-# Deploy with docker-compose.railway.yml
-railway up --config docker-compose.railway.yml
+# Deploy with docker-compose.Render.yml
+Render up --config docker-compose.Render.yml
 
-# Open Railway dashboard
-railway open
+# Open Render dashboard
+Render open
 ```
 
 ---
 
-## Option 3: Deploy via `railway.toml`
+## Option 3: Deploy via `Render.toml`
 
-Create `railway.toml` in repo root:
+Create `Render.toml` in repo root:
 
 ```toml
 [build]
 builder = "docker"
-dockerfile = "docker-compose.railway.yml"
+dockerfile = "docker-compose.Render.yml"
 
 [deploy]
-startCommand = "docker compose -f docker-compose.railway.yml up -d"
+startCommand = "docker compose -f docker-compose.Render.yml up -d"
 healthchecks = {cmd = "docker ps"}
 
 [env]
@@ -206,7 +206,7 @@ DEBUG = "false"
 
 Then:
 ```bash
-railway up
+Render up
 ```
 
 ---
@@ -238,7 +238,7 @@ curl https://production.polysaas.online:8181/web/guest/home
 
 ### 5. Odoo
 ```bash
-curl -I https://odoo-production-ed0e.up.railway.app/web/login
+curl -I https://odoo-production-ed0e.onrender.com/web/login
 # Expected: HTTP 200/303
 ```
 
@@ -258,7 +258,7 @@ celery -A mysite inspect active
 
 ## Updating Endpoint URLs in Django Admin
 
-Once all services are live on Railway, update the **PassThroughEndpoint** records in Django admin:
+Once all services are live on Render, update the **PassThroughEndpoint** records in Django admin:
 
 1. Go to **https://production.polysaas.online/admin/dose/passthroughendpoint/**
 2. For **Mattermost**:
@@ -272,27 +272,27 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
    - or if external: `https://production.polysaas.online:8181`
 5. For **Odoo**:
    - URL: `http://odoo:8069`
-   - or if external: `https://odoo-production-ed0e.up.railway.app`
+   - or if external: `https://odoo-production-ed0e.onrender.com`
 
 **Option A: Internal networking** (recommended)
 - Set endpoint URLs to internal hostnames: `http://mattermost:8065`, `http://nextcloud`, etc.
 - All services communicate via Docker network (fast, no external routing)
 
 **Option B: External access**
-- Set endpoint URLs to per-service Railway public domains:
+- Set endpoint URLs to per-service Render public domains:
   ```
-   https://<mattermost-service>.up.railway.app  (Mattermost)
-   https://<odoo-service>.up.railway.app        (Odoo)
-   https://<nextcloud-service>.up.railway.app   (Nextcloud)
-   https://<liferay-service>.up.railway.app     (Liferay)
+   https://<mattermost-service>.onrender.com  (Mattermost)
+   https://<odoo-service>.onrender.com        (Odoo)
+   https://<nextcloud-service>.onrender.com   (Nextcloud)
+   https://<liferay-service>.onrender.com     (Liferay)
   ```
-- Railway routes public traffic to each service domain directly; avoid relying on custom port suffixes on a shared domain
+- Render routes public traffic to each service domain directly; avoid relying on custom port suffixes on a shared domain
 
 ---
 
 ## Size & Cost Estimates
 
-**On Railway's free/starter tier (~$5/month):**
+**On Render's free/starter tier (~$5/month):**
 - Core services (Postgres 256MB, RabbitMQ, ES, Grafana, MonitorLogger) = ~$3–4/month
 - Django + Celery workers = ~$1–2/month
 - Mattermost, Nextcloud, Liferay = ~$4–6/month (depends on image size)
@@ -300,26 +300,26 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
 
 **If you need more capacity:**
 - Upgrade individual services to larger plans
-- Add multiple Celery workers (separate Railway services)
-- Use external databases (Railway PostgreSQL plugin) to separate load
+- Add multiple Celery workers (separate Render services)
+- Use external databases (Render PostgreSQL plugin) to separate load
 
 ---
 
 ## Troubleshooting
 
 ### Services stuck in "Deploying"
-- Check logs: Railway → **View Logs** → scroll to bottom
-- Look for OOM (out of memory) — container too small, increase Railway plan
+- Check logs: Render → **View Logs** → scroll to bottom
+- Look for OOM (out of memory) — container too small, increase Render plan
 - Check for missing env vars — verify all `${VAR}` substitutions in compose file
 
 ### Mattermost/Nextcloud/Liferay not reachable
-- Verify services are running: `docker ps` or Railway UI → **Services**
+- Verify services are running: `docker ps` or Render UI → **Services**
 - Check health checks: look for failed health check logs
 - Verify port mappings: all ports exposed in compose file?
 - Check DNS: `nslookup production.polysaas.online` from test terminal
 
 ### Django can't connect to PostgreSQL
-- Verify PostgreSQL pod is healthy: Railway UI → Services → postgres → Logs
+- Verify PostgreSQL pod is healthy: Render UI → Services → postgres → Logs
 
 ### Odoo: `password authentication failed for user "odoo_user"`
 - Root cause: `DB_PASSWORD` in Odoo service does not match the password set for `odoo_user` in Postgres
@@ -332,7 +332,7 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
    ```
 - In Odoo service variables, set exactly:
    ```
-   DB_HOST=postgres.railway.internal
+   DB_HOST=postgres.Render.internal
    DB_PORT=5432
    DB_USER=odoo_user
    DB_PASSWORD=PolySaaS2026!
@@ -340,12 +340,12 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
    ```
 - Remove conflicting vars on Odoo service: `USER`, `PASSWORD`, `HOST`, `PORT`, `DATABASE`, and any `PG*`
 
-### Adminer quick setup (in Railway project)
+### Adminer quick setup (in Render project)
 - Create service from image: `adminer:latest`
-- Set `ADMINER_DEFAULT_SERVER=postgres.railway.internal`
+- Set `ADMINER_DEFAULT_SERVER=postgres.Render.internal`
 - Login values:
    - System: `PostgreSQL`
-   - Server: `postgres.railway.internal`
+   - Server: `postgres.Render.internal`
    - Username: `postgres`
    - Database: `postgres`
 - Verify env var `DATABASE_URL` is set correctly
@@ -366,19 +366,19 @@ Once all services are live on Railway, update the **PassThroughEndpoint** record
 ## Next Steps (Future: GCP Deployment)
 
 For GCP (Google Cloud), you can use:
-- **Google Cloud Run** — container-to-service mesh (similar to Railway)
-- **Google Kubernetes Engine (GKE)** — convert compose to Kubernetes manifests (`kompose convert docker-compose.railway.yml`)
+- **Google Cloud Run** — container-to-service mesh (similar to Render)
+- **Google Kubernetes Engine (GKE)** — convert compose to Kubernetes manifests (`kompose convert docker-compose.Render.yml`)
 - **Cloud SQL + Compute Engine** — traditional VMs with docker-compose
 
-We'll document the GCP path once Railway is stable. The docker-compose approach makes it easy to move between cloud providers.
+We'll document the GCP path once Render is stable. The docker-compose approach makes it easy to move between cloud providers.
 
 ---
 
 ## Deployment Checklist
 
-- [ ] Repo linked to Railway (GitHub auth)
-- [ ] `docker-compose.railway.yml` committed & pushed
-- [ ] All environment variables set in Railway UI
+- [ ] Repo linked to Render (GitHub auth)
+- [ ] `docker-compose.Render.yml` committed & pushed
+- [ ] All environment variables set in Render UI
 - [ ] Services booting (check logs for errors)
 - [ ] Django migrations ran successfully
 - [ ] Mattermost/Nextcloud/Liferay health checks passing
@@ -386,13 +386,13 @@ We'll document the GCP path once Railway is stable. The docker-compose approach 
 - [ ] Test endpoints reachable from curl
 - [ ] PassThroughEndpoint URLs updated in admin
 - [ ] Sidebar links to bundled apps now working
-- [ ] Backup plan in place (Railway snapshots, DB backups)
+- [ ] Backup plan in place (Render snapshots, DB backups)
 
 ---
 
 ## Support & Questions
 
 For issues, check:
-- Railway logs: `railway logs`
-- Docker compose syntax: `docker compose -f docker-compose.railway.yml config` (validates YAML)
+- Render logs: `Render logs`
+- Docker compose syntax: `docker compose -f docker-compose.Render.yml config` (validates YAML)
 - Health checks: `docker ps --format "{{.Names}}\t{{.RunningFor}}\t{{.Status}}"`

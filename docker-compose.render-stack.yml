@@ -1,14 +1,16 @@
-# Local / lab stack mirroring Railway "internal" services (Postgres, RabbitMQ, ES, Grafana, MonitorLogger).
+# Local / lab stack mirroring Render backing services (Postgres, RabbitMQ, ES, Grafana, MonitorLogger).
 # PolySaaS core (DOSE) runs inside Django — not a separate product. This file only starts backing services;
-# run DOSE via manage.py on the host against these ports, or use Dockerfile.django on Railway (same codebase).
+# run DOSE via manage.py on the host against these ports, or use Dockerfile.django on Render (same codebase).
 #
-# Usage: docker compose -f docker-compose.railway-stack.yml up -d
-# See: documentation/deployment/railway/RAILWAY-DEPLOYMENT-PLAN.md
+# Usage: docker compose -f docker-compose.render-stack.yml up -d
+# See: documentation/deployment/render/RENDER-DEPLOYMENT-PLAN.md
+#
+# Note: Docker volume keys changed from older compose files; previous volumes may still exist under old names until you remove or migrate data.
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ps-railway-pg
+    container_name: ps-render-pg
     environment:
       POSTGRES_USER: dosedbadmin
       POSTGRES_PASSWORD: ${DOSE_DB_PASSWORD:-changeme}
@@ -16,7 +18,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - railway_pg_data:/var/lib/postgresql/data
+      - renderstack_pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dosedbadmin -d dosedbsaas"]
       interval: 10s
@@ -25,7 +27,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: ps-railway-rmq
+    container_name: ps-render-rmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
@@ -33,7 +35,7 @@ services:
       - "5672:5672"
       - "15672:15672"
     volumes:
-      - railway_rmq_data:/var/lib/rabbitmq
+      - renderstack_rmq_data:/var/lib/rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 15s
@@ -42,7 +44,7 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: ps-railway-es
+    container_name: ps-render-es
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -50,12 +52,12 @@ services:
     ports:
       - "9200:9200"
     volumes:
-      - railway_es_data:/usr/share/elasticsearch/data
+      - renderstack_es_data:/usr/share/elasticsearch/data
     mem_limit: 1g
 
   grafana:
     image: grafana/grafana:10.4.3
-    container_name: ps-railway-grafana
+    container_name: ps-render-grafana
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
@@ -63,13 +65,13 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - railway_grafana_data:/var/lib/grafana
+      - renderstack_grafana_data:/var/lib/grafana
     # No hard dependency on ES; add datasources in Grafana UI when ready.
 
   # MonitorLogger — PolySaaS product name; container image is upstream OpenObserve-compatible.
   monitorlogger:
     image: public.ecr.aws/zinclabs/openobserve:latest
-    container_name: ps-railway-monitorlogger
+    container_name: ps-render-monitorlogger
     environment:
       ZO_ROOT_USER_EMAIL: ${MONITORLOGGER_ROOT_USER_EMAIL:-admin@example.com}
       ZO_ROOT_USER_PASSWORD: ${MONITORLOGGER_ROOT_USER_PASSWORD:-changeme}
@@ -77,11 +79,11 @@ services:
     ports:
       - "5080:5080"
     volumes:
-      - railway_monitorlogger_data:/data
+      - renderstack_monitorlogger_data:/data
 
 volumes:
-  railway_pg_data:
-  railway_rmq_data:
-  railway_es_data:
-  railway_grafana_data:
-  railway_monitorlogger_data:
+  renderstack_pg_data:
+  renderstack_rmq_data:
+  renderstack_es_data:
+  renderstack_grafana_data:
+  renderstack_monitorlogger_data:

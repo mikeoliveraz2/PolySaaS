@@ -1,6 +1,6 @@
 # Local backing services for development. The PolySaaS app is Django (manage.py).
-# Full local parity stack: docker-compose.railway-stack.yml
-# Containerized Django image: Dockerfile.django (see railway.toml).
+# Full local parity stack: docker-compose.render-stack.yml
+# Containerized Django image: Dockerfile.django (see render.yaml).
 version: '3.8'
 
 services:

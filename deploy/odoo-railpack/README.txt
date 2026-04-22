@@ -1,29 +1,13 @@
-Railway Odoo service root (deploy/odoo-railpack)
-================================================
+Legacy Odoo pack (deploy/odoo-railpack)
 
-Recommended: **Dockerfile** (same pattern as `deploy/odoo-render` on Render)
------------------------------------------------------------------------------
-Set the Railway service **root** to this folder and ensure the service **builds from Dockerfile**
-(`Dockerfile` + `entrypoint-render.sh` are copied from `odoo-render` logic). This uses the official
-**`odoo:18`** image and avoids Nixpacks + `pip install git+https://github.com/odoo/odoo.git@18.0`,
-which is slow and often fails (timeouts / OOM).
+This folder is an older Odoo-on-containers layout kept for reference.
+For current Render deployments, prefer deploy/odoo-render/ and the root render.yaml blueprint.
 
-**`nixpacks.toml`** in this folder is **legacy / discouraged** — kept only as a reference.
+If you still build from this folder:
 
-Environment (matches `entrypoint-render.sh`)
-----------------------------------------------
-- **HOST** or **`ODOO_DB_HOST`** or **`PGHOST`** — Postgres hostname only  
-- **`ODOO_DB_USER`** or **`DB_USER`** or **`PGUSER`** — database role (do not rely on plain **`USER`**; see `deploy/odoo-render/README.txt`)  
-- **PASSWORD** or **`ODOO_DB_PASSWORD`** or **`PGPASSWORD`**  
-- **DB_NAME** or **`ODOO_DB_NAME`**  
-- **`PORT`** — HTTP port (Railway injects)  
-- **`PGSSLMODE`** — set **`require`** if your provider needs TLS  
+- Set the Render service **root** to this folder and ensure the service **builds from Dockerfile**
+- **`PORT`** — HTTP port (Render injects `PORT`; map Odoo to match, e.g. 8069)
 
-Optional: **`ODOO_MASTER_PASSWORD`**, **`ADMIN_PASSWORD`**
+Logs (example — adjust service name in the Render dashboard):
 
-After deploy, check logs for **`[entrypoint-render]`** lines.
-
-CLI example:
-
-    npx @railway/cli logs --service Odoo --latest --tail 120
-
+    # Use Render dashboard → Logs, or the Render CLI against your workspace.

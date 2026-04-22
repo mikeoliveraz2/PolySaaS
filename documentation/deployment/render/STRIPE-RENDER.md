@@ -1,4 +1,4 @@
-# Stripe on Railway (PolySaaS Django)
+# Stripe on Render (PolySaaS Django)
 
 ## Environment variables (web service)
 
@@ -12,7 +12,7 @@
 
 ## Webhook URL
 
-**Production:** `https://<your-railway-domain>/dose/webhook/stripe/`
+**Production:** `https://<your-Render-domain>/dose/webhook/stripe/`
 
 In **Stripe Dashboard → Developers → Webhooks → Add endpoint**, use that URL and select events you handle in `dose/views/stripe_webhook.py` (e.g. `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`).
 

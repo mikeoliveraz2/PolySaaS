@@ -43,12 +43,12 @@ function Add-PolySaaSDockerBinToPath {
     }
 }
 
-function Invoke-RailwayDockerStack {
+function Invoke-RenderDockerStack {
     param([string]$RootDir)
 
-    $composeFile = Join-Path $RootDir "docker-compose.railway-stack.yml"
+    $composeFile = Join-Path $RootDir "docker-compose.render-stack.yml"
     if (-Not (Test-Path $composeFile)) {
-        Write-Host "  docker-compose.railway-stack.yml not found -> SKIPPING" -ForegroundColor DarkYellow
+        Write-Host "  docker-compose.render-stack.yml not found -> SKIPPING" -ForegroundColor DarkYellow
         return
     }
 
@@ -100,9 +100,9 @@ function Invoke-RailwayDockerStack {
         Write-Host '  Docker Desktop ready' -ForegroundColor Green
     }
 
-    Write-Host '  docker compose up -d (railway-stack)...' -ForegroundColor Cyan
+    Write-Host '  docker compose up -d (render-stack)...' -ForegroundColor Cyan
     Push-Location $RootDir
-    & $dockerCli compose -f "docker-compose.railway-stack.yml" up -d 2>&1
+    & $dockerCli compose -f "docker-compose.render-stack.yml" up -d 2>&1
     $upOk = ($LASTEXITCODE -eq 0)
     Pop-Location
 
@@ -146,20 +146,20 @@ function Invoke-RailwayDockerStack {
         Start-Sleep -Seconds 3
     }
 
-    $testScript = Join-Path $RootDir "scripts\test-railway-stack.ps1"
+    $testScript = Join-Path $RootDir "scripts\test-render-stack.ps1"
     if (Test-Path $testScript) {
-        Write-Host '--- Railway stack probe ---' -ForegroundColor Cyan
+        Write-Host '--- Local stack probe (Render-style services) ---' -ForegroundColor Cyan
         & $testScript
         if ($LASTEXITCODE -ne 0) {
-            Write-Host '  One or more probes failed - check containers: docker compose -f docker-compose.railway-stack.yml ps' -ForegroundColor Yellow
+            Write-Host '  One or more probes failed - check containers: docker compose -f docker-compose.render-stack.yml ps' -ForegroundColor Yellow
         } else {
-            Write-Host '  Railway stack probes: all OK' -ForegroundColor Green
+            Write-Host '  Stack probes: all OK' -ForegroundColor Green
         }
     } else {
         if ($stackReady) {
-            Write-Host '  Railway stack: core endpoints responded (no test-railway-stack.ps1)' -ForegroundColor Green
+            Write-Host '  Stack: core endpoints responded (no test-render-stack.ps1)' -ForegroundColor Green
         } else {
-            Write-Host '  Railway stack: timeout waiting for all services - run: docker compose -f docker-compose.railway-stack.yml ps' -ForegroundColor Yellow
+            Write-Host '  Stack: timeout waiting for all services - run: docker compose -f docker-compose.render-stack.yml ps' -ForegroundColor Yellow
         }
     }
     Write-Host ""
