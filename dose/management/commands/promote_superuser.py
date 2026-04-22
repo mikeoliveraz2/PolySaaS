@@ -1,6 +1,8 @@
 """
 Grant is_staff + is_superuser to an existing user (Render / fresh DB).
 
+Lives under the ``dose`` app so Django discovers it (``mysite`` is not in INSTALLED_APPS).
+
 Examples (Render Shell, same env as the web service):
 
   python manage.py promote_superuser --email you@example.com
