@@ -42,7 +42,9 @@ class Command(BaseCommand):
         if email:
             user = User.objects.filter(email__iexact=email).first()
         elif username:
-            user = User.objects.filter(username=username).first()
+            user = User.objects.filter(
+                **{f"{User.USERNAME_FIELD}__iexact": username}
+            ).first()
         else:
             user = User.objects.filter(is_superuser=True).first()
 
