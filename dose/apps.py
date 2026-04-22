@@ -33,6 +33,21 @@ class DoseConfig(AppConfig):
         except ImportError as e:
             print(f"[Django] Failed to import dose.polysniffer.admin: {e}", flush=True, file=sys.stderr)
             pass  # polysniffer may not be available
+
+        # Startup registry diagnostic — visible in Render boot logs.
+        # Compare registry_len here vs admin_index_diag log on /admin/ hit to detect
+        # whether models are registered but hidden (Jazzmin/permissions) or never registered.
+        try:
+            from django.contrib import admin as _admin_site
+            _reg_len = len(getattr(_admin_site.site, "_registry", {}) or {})
+            print(
+                f"[admin_registry_diag] ready() registry_len={_reg_len}",
+                flush=True,
+                file=sys.stderr,
+            )
+        except Exception as _e:
+            print(f"[admin_registry_diag] could not read registry: {_e}", flush=True, file=sys.stderr)
+
         print("[Django] DoseConfig.ready() completed", flush=True, file=sys.stderr)
 
 
