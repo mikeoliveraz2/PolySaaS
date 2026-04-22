@@ -2,8 +2,9 @@
 # Stripe price ID for subscriptions (replace with your actual Stripe price ID)
 
 import environ
-import os
 import importlib
+import json
+import os
 from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env = environ.Env()
@@ -199,6 +200,30 @@ AI_PEERS_WEBHOOK_TOKEN = env('AI_PEERS_WEBHOOK_TOKEN', default='')
 # Recent posts fetched for LLM context (Option 1). Pinned posts are merged into system prompt (Option 2).
 AI_PEERS_CHANNEL_MESSAGE_LIMIT = env.int('AI_PEERS_CHANNEL_MESSAGE_LIMIT', default=75)
 
+# --- LLM Router (OpenClaw-style in-process, Option 1) ---
+# Used by orchestration, ML Studio, DoseAI, and Peers — classifies prompts and picks provider/model.
+LLM_ROUTER_ENABLED = env.bool("LLM_ROUTER_ENABLED", default=True)
+LLM_ROUTER_DEFAULT_USER_TIER = env("LLM_ROUTER_DEFAULT_USER_TIER", default="standard")
+LLM_ROUTER_LOG_FULL_PROMPT = env.bool("LLM_ROUTER_LOG_FULL_PROMPT", default=False)
+LLM_ROUTER_LOG_PROMPT_MAX_CHARS = env.int("LLM_ROUTER_LOG_PROMPT_MAX_CHARS", default=200)
+LLM_ROUTER_LITE_PROVIDER = env("LLM_ROUTER_LITE_PROVIDER", default="anthropic")
+LLM_ROUTER_LITE_MODEL = env("LLM_ROUTER_LITE_MODEL", default="claude-3-5-haiku-20241022")
+LLM_ROUTER_STANDARD_PROVIDER = env("LLM_ROUTER_STANDARD_PROVIDER", default="anthropic")
+LLM_ROUTER_STANDARD_MODEL = env("LLM_ROUTER_STANDARD_MODEL", default="claude-sonnet-4-6")
+LLM_ROUTER_HEAVY_PROVIDER = env("LLM_ROUTER_HEAVY_PROVIDER", default="anthropic")
+LLM_ROUTER_HEAVY_MODEL = env("LLM_ROUTER_HEAVY_MODEL", default="claude-sonnet-4-6")
+# Optional JSON map for log hints only, e.g. {"anthropic:claude-3-5-haiku-20241022": 0.25}
+_llm_cost_raw = env.str("LLM_ROUTER_COST_HINTS_USD_PER_1K", default="").strip()
+if _llm_cost_raw:
+    try:
+        LLM_ROUTER_COST_HINTS_USD_PER_1K = json.loads(_llm_cost_raw)
+        if not isinstance(LLM_ROUTER_COST_HINTS_USD_PER_1K, dict):
+            LLM_ROUTER_COST_HINTS_USD_PER_1K = {}
+    except json.JSONDecodeError:
+        LLM_ROUTER_COST_HINTS_USD_PER_1K = {}
+else:
+    LLM_ROUTER_COST_HINTS_USD_PER_1K = {}
+
 # --- SESSION SETTINGS ---
 SESSION_ENGINE = 'django.contrib.sessions.backends.file'
 SESSION_COOKIE_AGE = 86400  # 1 day in seconds
@@ -235,6 +260,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',  # PATCHED: Enable Google OAuth2
     'rest_framework',
     'dose.apps.DoseConfig',
+    'llm_router.apps.LlmRouterConfig',  # In-process LLM routing (OpenClaw-style Option 1)
     'ml_studio',  # Machine Learning Studio - grouped ML models
     'parameters.apps.ParametersConfig',
     'alerts.apps.AlertsConfig',

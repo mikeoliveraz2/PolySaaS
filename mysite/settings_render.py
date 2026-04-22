@@ -192,6 +192,16 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        "llm_router": {
+            "handlers": ["stdout"],
+            "level": _dose_level,
+            "propagate": False,
+        },
+        "llm_router.decisions": {
+            "handlers": ["stdout"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
 
