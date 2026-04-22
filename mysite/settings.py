@@ -48,6 +48,7 @@ JAZZMIN_SETTINGS = {
         {"name": "Toggle light/dark", "url": "/admin/select-theme/", "permissions": ["auth.view_user"]},
 
         {"name": "API Docs", "url": "/swagger/", "new_window": True, "icon": "fas fa-book"},
+        {"name": "Platform help", "url": "/help/", "permissions": ["auth.view_user"], "icon": "fas fa-life-ring"},
     ],
     "usermenu_links": [
         {"name": "My Profile",  "url": "/profile/", "icon": "fas fa-user"},

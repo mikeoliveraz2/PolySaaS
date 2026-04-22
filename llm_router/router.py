@@ -3,6 +3,10 @@ Public routing API: choose provider + model from prompt and tenant/user tier.
 
 Used by orchestration, ML Studio, DoseAI, and Peers features — call
 ``route()`` then ``providers.complete_chat()`` (or your own client).
+
+First-party context (Swagger / OpenAPI, logs, passthrough) for system prompts:
+see ``llm_router.integrations.platform_link_map`` and
+``platform_context_for_system_prompt``.
 """
 
 from __future__ import annotations

@@ -27,13 +27,6 @@
             align-self: flex-start;
         }
 
-        /* Secondary CTA: not the same as Django model admin above */
-        .orchestration-cta-muted {
-            font-size: 0.95rem;
-            opacity: 0.92;
-            margin: 0;
-            max-width: 42rem;
-        }
     </style>
     {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
 {% endblock %}
@@ -42,20 +35,45 @@
     {# Model admin (apps / CRUD) first — this is what "Admin home" in the sidebar refers to. #}
     {{ block.super }}
 
-    {# Separate product area: orchestration flow UI (not Django's admin index). #}
-    <section class="dashboard-section mt-4" style="background: linear-gradient(135deg, #5a67d8 0%, #6b5596 100%); color: white;" aria-label="Orchestration workspace">
-        <div style="display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center;">
-            <div>
-                <h3 class="h5" style="color: white; margin-bottom: 0.35rem;">
-                    <i class="fas fa-network-wired" aria-hidden="true"></i> Orchestration workspace
-                </h3>
-                <p class="orchestration-cta-muted">
-                    Atomic services and flow demos — separate from <strong>model administration</strong> (users, tenants, and registered apps) shown above.
-                </p>
+    {# Shortcut cards (same visual language as Jazzmin model cards) — dashboards + orchestration + help. #}
+    <div class="row mt-3">
+        <div class="col-md-6 col-lg-4">
+            <div class="card mb-3 h-100 border-primary">
+                <div class="card-header">
+                    <h5 class="m-0 text-primary"><i class="fas fa-th-large" aria-hidden="true"></i> Dose workspace</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Tenant home, navigation panels, DoseAI entry, and user-facing tools.</p>
+                    <a href="{% url 'dose:dashboard' %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-external-link-alt" aria-hidden="true"></i> Open workspace
+                    </a>
+                </div>
             </div>
-            <a href="{% url 'dose:orchestration_dashboard' %}" class="btn btn-light" style="padding: 10px 20px; font-weight: 600; text-decoration: none; white-space: nowrap;">
-                <i class="fas fa-rocket" aria-hidden="true"></i> Open orchestration UI
-            </a>
         </div>
-    </section>
+        <div class="col-md-6 col-lg-4">
+            <div class="card mb-3 h-100 border-secondary" style="border-color: #6b5596 !important;">
+                <div class="card-header text-white" style="background: linear-gradient(135deg, #5a67d8 0%, #6b5596 100%);">
+                    <h5 class="m-0"><i class="fas fa-network-wired" aria-hidden="true"></i> Dynamic Orchestration</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Instructions, atomic services, and live flow demos — not the same as model CRUD above.</p>
+                    <a href="{% url 'dose:orchestration_dashboard' %}" class="btn btn-sm text-white" style="background: linear-gradient(135deg, #5a67d8 0%, #6b5596 100%); font-weight: 600;">
+                        <i class="fas fa-rocket" aria-hidden="true"></i> Open orchestration dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card mb-3 h-100">
+                <div class="card-header">
+                    <h5 class="m-0"><i class="fas fa-life-ring" aria-hidden="true"></i> Platform help</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">LLM router, OpenClaw options, env vars, and smoke tests (staff).</p>
+                    <a href="/help/" class="btn btn-outline-secondary btn-sm">Help home</a>
+                    <a href="/help/llm-router/" class="btn btn-outline-secondary btn-sm ms-1">LLM router</a>
+                </div>
+            </div>
+        </div>
+    </div>
 {% endblock %}

@@ -1,0 +1,13 @@
+{% extends "mysite/help_base.html" %}
+{% block title %}Help home{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Help home</h1>
+  <p class="muted">These pages are for <strong>staff</strong> (same access as the admin user menu &quot;Help&quot; link).</p>
+  <hr>
+  <h2>Topics</h2>
+  <ul>
+    <li><a href="{% url 'help_llm_router' %}"><strong>LLM router &amp; OpenClaw</strong></a> — in-app routing (Option&nbsp;1), external router service (Option&nbsp;2), env vars, and smoke tests.</li>
+  </ul>
+</div>
+{% endblock %}

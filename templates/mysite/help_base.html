@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title|default:"Help" }} — PolySaaS{% endblock %}</title>
+  <style>
+    :root { --bg: #f4f6f9; --card: #fff; --text: #1a202c; --muted: #4a5568; --accent: #2b6cb0; --border: #e2e8f0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
+    header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0.75rem 1.25rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+    header a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    header a:hover { text-decoration: underline; }
+    main { max-width: 52rem; margin: 0 auto; padding: 1.25rem 1rem 2.5rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem 1.35rem; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    h1 { font-size: 1.45rem; margin: 0 0 0.75rem; }
+    h2 { font-size: 1.1rem; margin: 1.35rem 0 0.5rem; color: #2d3748; }
+    p, li { color: var(--muted); }
+    code, pre { font-family: ui-monospace, Consolas, monospace; font-size: 0.88rem; background: #edf2f7; padding: 0.12rem 0.35rem; border-radius: 4px; }
+    pre { padding: 0.75rem 1rem; overflow-x: auto; display: block; }
+    ul { padding-left: 1.2rem; }
+    .muted { color: var(--muted); font-size: 0.92rem; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+  </style>
+  {% block extrahead %}{% endblock %}
+</head>
+<body>
+  <header>
+    <span><strong>PolySaaS</strong> <span class="muted">— staff help</span></span>
+    <nav>
+      <a href="{% url 'help_index' %}">Help home</a>
+      · <a href="{% url 'help_llm_router' %}">LLM router</a>
+      · <a href="/admin/">Admin</a>
+      · <a href="/dose/dashboard/">Dose workspace</a>
+    </nav>
+  </header>
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

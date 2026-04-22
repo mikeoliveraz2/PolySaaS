@@ -1,0 +1,50 @@
+{% extends "mysite/help_base.html" %}
+{% block title %}LLM router &amp; OpenClaw{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>LLM router &amp; OpenClaw-style routing</h1>
+  <p>PolySaaS uses two layers so <strong>orchestration</strong>, <strong>ML Studio</strong>, <strong>DoseAI</strong>, and <strong>AI / Apps as Peers</strong> can share one routing policy without each feature hard-coding models.</p>
+  <p class="muted">The in-process router is meant to see the platform <strong>first</strong>: use <code>llm_router.integrations.platform_link_map</code> and <code>platform_context_for_system_prompt</code> so models know where <strong>OpenAPI / Swagger</strong>, <strong>RequestLog / ErrorLog</strong>, and <strong>passthrough</strong> APIs and admin screens live (prompts point at URLs; they do not auto-fetch the full schema).</p>
+</div>
+
+<div class="card">
+  <h2>Option 1 — In-process Django app (<code>llm_router</code>)</h2>
+  <p>Python API inside the same Gunicorn process as the rest of Django.</p>
+  <ul>
+    <li><strong>Classify</strong> a prompt into buckets <code>lite</code>, <code>standard</code>, or <code>heavy</code> using length and simple keyword rules (optional <code>task_hint</code> such as <code>code</code>, <code>analysis</code>, <code>agent</code>).</li>
+    <li><strong>Route</strong> to a provider + model per user tier (<code>free</code>, <code>standard</code>, <code>premium</code>, <code>staff</code>) via environment variables <code>LLM_ROUTER_*</code> (see <code>.env.example</code> in the repo).</li>
+    <li><strong>Call</strong> Anthropic, xAI, or Gemini using the same API keys as AI Peers (<code>ANTHROPIC_API_KEY</code>, <code>XAI_API_KEY</code>, <code>GEMINI_API_KEY</code>).</li>
+    <li><strong>Logs</strong>: logger <code>llm_router.decisions</code> records provider, model, tier, bucket, and a short prompt excerpt (never full prompts unless <code>LLM_ROUTER_LOG_FULL_PROMPT=true</code>).</li>
+  </ul>
+  <h2>Developer usage</h2>
+  <pre>from llm_router.router import route
+from llm_router.providers import complete_chat
+
+plan = route(prompt=user_text, task_hint="code", user_tier="standard")
+text = complete_chat(
+    plan,
+    messages=[{"role": "user", "content": user_text}],
+    system_prompt="You are a concise assistant.",
+)
+</pre>
+  <h2>Smoke test (shell)</h2>
+  <pre>python manage.py llm_router_smoke --prompt "Hello" --tier standard
+python manage.py llm_router_smoke --prompt "..." --call   # uses API quota</pre>
+</div>
+
+<div class="card">
+  <h2>Option 2 — External service (<code>openclaw_router/</code>)</h2>
+  <p>Separate <strong>FastAPI</strong> app in the repo with <code>POST /v1/chat/completions</code> (OpenAI-shaped JSON) for <strong>internal</strong> jobs: batch work, ops helpers, long tasks — not a public anonymous API.</p>
+  <ul>
+    <li>Build with <code>openclaw_router/Dockerfile</code>; tune <code>openclaw_router/config.yaml</code>.</li>
+    <li>Deploy on Render as a <strong>private</strong> web service; set <code>ANTHROPIC_API_KEY</code> (extend <code>main.py</code> for more providers as needed).</li>
+    <li>See repo file <code>documentation/deployment/render/OPENCLAW_ROUTER_OPTION2.md</code> and <code>openclaw_router/README.md</code>.</li>
+  </ul>
+  <p class="muted"><strong>Mattermost</strong> <code>#router</code> / <code>#openclaw</code> still go through <strong>AI Peers</strong> today; Option&nbsp;2 is optional infrastructure you can wire later.</p>
+</div>
+
+<div class="card">
+  <h2>Where this appears in the UI</h2>
+  <p>Jazzmin <strong>Help</strong> (user menu, top right) points to <code>/help/</code>. This page is linked from there and from the help header.</p>
+</div>
+{% endblock %}

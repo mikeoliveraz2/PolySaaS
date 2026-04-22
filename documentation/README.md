@@ -22,6 +22,7 @@ Never treat the PostgreSQL **`public`** schema as a tenant. Shared registry tabl
 |-----|---------|
 | [deployment/render/RENDER-DEPLOYMENT-PLAN.md](deployment/render/RENDER-DEPLOYMENT-PLAN.md) | Render-first plan and operator checklist (§7). |
 | [BINGO_RENDER_FOUNDATION_AND_REMAINING.md](BINGO_RENDER_FOUNDATION_AND_REMAINING.md) | Certified foundation vs remaining P1–P6 work. |
+| [BINGO_RENDER_ADMIN_JAZZMIN_TILES_AND_DIAGNOSTICS.md](BINGO_RENDER_ADMIN_JAZZMIN_TILES_AND_DIAGNOSTICS.md) | **BINGO:** Render `/admin/` empty tiles → superuser, command placement, `testserver` Host, `promote_superuser` / `diagnose_admin_dashboard`, `ADMIN_INDEX_DIAG`. |
 
 ## Collaboration
 
