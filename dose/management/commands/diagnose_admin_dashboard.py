@@ -114,6 +114,6 @@ class Command(BaseCommand):
         cards = text.count('class="card mb-3"')
         self.stdout.write(f'HTML count of class="card mb-3" (Jazzmin cards) = {cards}')
         self.stdout.write(
-            "HTML contains 'Dynamic Orchestration Dashboard' = "
-            f"{('Dynamic Orchestration Dashboard' in text)}"
+            "HTML contains orchestration CTA section = "
+            f"{('Orchestration workspace' in text or 'Dynamic Orchestration Dashboard' in text)}"
         )

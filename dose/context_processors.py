@@ -479,9 +479,10 @@ def admin_navigation(request):
         # Detect if we're in admin context
         is_admin_context = request.path.startswith('/admin/')
 
+        # Names avoid implying /admin/ is the "orchestration dashboard" (see templates/jazzmin/admin/index.html).
         top_navigation_items = [
-            {'name': 'Dashboard (Admin)' if is_admin_context else 'Dashboard (User)', 'url': '/admin/' if is_admin_context else '/dose/dashboard/', 'icon': '📊'},
-            {'name': 'Dashboard (User)' if is_admin_context else 'Dashboard (Admin)', 'url': '/dose/dashboard/' if is_admin_context else '/admin/', 'icon': '📋'},
+            {'name': 'Admin home (models)' if is_admin_context else 'Dose workspace', 'url': '/admin/' if is_admin_context else '/dose/dashboard/', 'icon': '📊'},
+            {'name': 'Dose workspace' if is_admin_context else 'Admin home (models)', 'url': '/dose/dashboard/' if is_admin_context else '/admin/', 'icon': '📋'},
             {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
             {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
             {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'}

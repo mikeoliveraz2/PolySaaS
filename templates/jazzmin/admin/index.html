@@ -1,4 +1,4 @@
-<!-- templates/jazzmin/admin/index.html — parent is Jazzmin package admin/index.html (not this path) -->
+<!-- templates/jazzmin/admin/index.html — extends Jazzmin's admin/index.html (app_list + recent actions) -->
 {% extends "admin/index.html" %}
 {% load i18n static %}
 
@@ -8,43 +8,54 @@
         .dashboard-section { margin-bottom: 32px; padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .widget { padding: 16px; border: 1px solid #ddd; border-radius: 8px; margin: 8px 0; cursor: pointer; transition: all 0.3s; }
         .widget:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.2); transform: translateY(-2px); }
-        
+
         /* Layout for reorganized dashboard */
         #dashboard-wrapper {
             display: flex;
             gap: 20px;
         }
-        
+
         #dashboard-main {
             flex: 1;
             min-width: 0;
         }
-        
+
         #dashboard-sidebar {
             width: 320px;
             position: sticky;
             top: 20px;
             align-self: flex-start;
         }
+
+        /* Secondary CTA: not the same as Django model admin above */
+        .orchestration-cta-muted {
+            font-size: 0.95rem;
+            opacity: 0.92;
+            margin: 0;
+            max-width: 42rem;
+        }
     </style>
     {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
 {% endblock %}
 
 {% block content %}
-    <!-- Dynamic Orchestration Dashboard Link -->
-    <div class="dashboard-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+    {# Model admin (apps / CRUD) first — this is what "Admin home" in the sidebar refers to. #}
+    {{ block.super }}
+
+    {# Separate product area: orchestration flow UI (not Django's admin index). #}
+    <section class="dashboard-section mt-4" style="background: linear-gradient(135deg, #5a67d8 0%, #6b5596 100%); color: white;" aria-label="Orchestration workspace">
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center;">
             <div>
-                <h3 style="color: white; margin-bottom: 8px;">
-                    <i class="fas fa-network-wired"></i> Dynamic Orchestration Dashboard
+                <h3 class="h5" style="color: white; margin-bottom: 0.35rem;">
+                    <i class="fas fa-network-wired" aria-hidden="true"></i> Orchestration workspace
                 </h3>
-                <p style="opacity: 0.9; margin: 0;">Create instructions, select atomic services, and see dynamic orchestration in action!</p>
+                <p class="orchestration-cta-muted">
+                    Atomic services and flow demos — separate from <strong>model administration</strong> (users, tenants, and registered apps) shown above.
+                </p>
             </div>
-            <a href="{% url 'dose:orchestration_dashboard' %}" class="btn btn-light" style="padding: 12px 24px; font-weight: 600; text-decoration: none;">
-                <i class="fas fa-rocket"></i> Launch Dashboard
+            <a href="{% url 'dose:orchestration_dashboard' %}" class="btn btn-light" style="padding: 10px 20px; font-weight: 600; text-decoration: none; white-space: nowrap;">
+                <i class="fas fa-rocket" aria-hidden="true"></i> Open orchestration UI
             </a>
         </div>
-    </div>
-
-    {{ block.super }}  <!-- Keep original Jazzmin CRUD content -->
+    </section>
 {% endblock %}
