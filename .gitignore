@@ -23,3 +23,9 @@ dose/website/
 
 # Local Render env overlay (real secrets) — never commit
 scripts/env-master.local.json
+
+# Large binaries — were Git LFS; removed from Git to avoid LFS quota blocking Render/GitHub CI.
+documentation/Capital Raise Project/*.pptx
+documentation/Capital Raise Project/*.ppt
+large_files_backup/**/*.wpress
+large_files_backup/**/*.pptx
