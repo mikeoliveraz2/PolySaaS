@@ -851,13 +851,22 @@ document.addEventListener('DOMContentLoaded', function() {
         rightSidebar.style.height = 'fit-content';
         rightSidebar.style.padding = '0 15px';
         
-        // Find Recent Actions module (various possible selectors)
-        const recentActions = document.querySelector('#recent-actions-module') ||
-                            document.querySelector('[class*="recent"]') ||
-                            Array.from(document.querySelectorAll('.card')).find(card => {
-                                const heading = card.querySelector('h3, .card-header');
-                                return heading && heading.textContent.toLowerCase().includes('recent');
-                            });
+        // Find Recent Actions only — never use [class*="recent"] (matches unrelated wrappers
+        // like *content-recent* first in DOM and can reparent the whole dashboard into #recent-actions-sidebar).
+        const recentActions = (function () {
+            var byId = document.querySelector('#recent-actions-module');
+            if (byId) return byId;
+            var modules = Array.from(document.querySelectorAll('.module'));
+            var byHeading = modules.find(function (el) {
+                var h = el.querySelector('h2, h3, .card-header');
+                return h && /recent\s+actions/i.test((h.textContent || '').trim());
+            });
+            if (byHeading) return byHeading;
+            return Array.from(document.querySelectorAll('.card')).find(function (card) {
+                var heading = card.querySelector('h3, .card-header');
+                return heading && heading.textContent.toLowerCase().indexOf('recent') !== -1;
+            });
+        })();
         
         if (recentActions) {
             console.log('[ADMIN SIDEBAR] Found Recent Actions, moving to right sidebar');
