@@ -16,6 +16,9 @@ if not SECRET_KEY:
 DEBUG = True
 # Passthrough: log upstream + final HTML diagnostics to console (all endpoints). See dose/passthrough/stream_debug.py
 POLYSNIFFER_PASSTHROUGH_DEBUG = env.bool("POLYSNIFFER_PASSTHROUGH_DEBUG", default=False)
+# When True, append AdminIndexDiagMiddleware (logs one line per /admin/ index hit).
+# Compare local vs Render: app_list length, template name, schema_name, user flags.
+ADMIN_INDEX_DIAG = env.bool("ADMIN_INDEX_DIAG", default=False)
 # Jazzmin admin theme settings (customize as needed)
 JAZZMIN_SETTINGS = {
     "custom_links": {},
@@ -437,6 +440,9 @@ if _oauth2_available:
         MIDDLEWARE.index('django.contrib.auth.middleware.AuthenticationMiddleware') + 1,
         'oauth2_provider.middleware.OAuth2TokenMiddleware',
     )
+
+if ADMIN_INDEX_DIAG:
+    MIDDLEWARE.append("mysite.admin_index_diag.AdminIndexDiagMiddleware")
 
 ROOT_URLCONF = 'mysite.urls'
 

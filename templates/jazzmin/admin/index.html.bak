@@ -1,0 +1,50 @@
+<!-- templates/jazzmin/admin/index.html — parent is Jazzmin package admin/index.html (not this path) -->
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .dashboard-section { margin-bottom: 32px; padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .widget { padding: 16px; border: 1px solid #ddd; border-radius: 8px; margin: 8px 0; cursor: pointer; transition: all 0.3s; }
+        .widget:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.2); transform: translateY(-2px); }
+        
+        /* Layout for reorganized dashboard */
+        #dashboard-wrapper {
+            display: flex;
+            gap: 20px;
+        }
+        
+        #dashboard-main {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        #dashboard-sidebar {
+            width: 320px;
+            position: sticky;
+            top: 20px;
+            align-self: flex-start;
+        }
+    </style>
+    {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
+{% endblock %}
+
+{% block content %}
+    <!-- Dynamic Orchestration Dashboard Link -->
+    <div class="dashboard-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="color: white; margin-bottom: 8px;">
+                    <i class="fas fa-network-wired"></i> Dynamic Orchestration Dashboard
+                </h3>
+                <p style="opacity: 0.9; margin: 0;">Create instructions, select atomic services, and see dynamic orchestration in action!</p>
+            </div>
+            <a href="{% url 'dose:orchestration_dashboard' %}" class="btn btn-light" style="padding: 12px 24px; font-weight: 600; text-decoration: none;">
+                <i class="fas fa-rocket"></i> Launch Dashboard
+            </a>
+        </div>
+    </div>
+
+    {{ block.super }}  <!-- Keep original Jazzmin CRUD content -->
+{% endblock %}
