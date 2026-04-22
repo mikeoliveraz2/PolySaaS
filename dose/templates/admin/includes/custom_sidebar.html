@@ -85,16 +85,12 @@
     .admin-content-grid > .dose-content-col,
     .admin-content-grid > div:nth-child(2) {
         min-width: 0;
-        overflow: hidden;
+        /* Do not clip vertically — overflow:hidden hid Jazzmin index cards on some viewports */
+        overflow-x: hidden;
+        overflow-y: visible;
     }
 
-    /* Force Bootstrap columns inside content area to full width — grid handles layout */
-    .dose-content-col .col-lg-9,
-    .dose-content-col .col-lg-3 {
-        width: 100% !important;
-        max-width: 100% !important;
-        flex: 0 0 100% !important;
-    }
+    /* Jazzmin 3 / BS5 often use col-md-* / row — do not force col-lg-* to 100% (breaks index layout) */
 
     /* Make container-fluid truly full width */
     .dose-content-col .container-fluid {
@@ -851,28 +847,15 @@ document.addEventListener('DOMContentLoaded', function() {
         rightSidebar.style.height = 'fit-content';
         rightSidebar.style.padding = '0 15px';
         
-        // Find Recent Actions only — never use [class*="recent"] (matches unrelated wrappers
-        // like *content-recent* first in DOM and can reparent the whole dashboard into #recent-actions-sidebar).
-        const recentActions = (function () {
-            var byId = document.querySelector('#recent-actions-module');
-            if (byId) return byId;
-            var modules = Array.from(document.querySelectorAll('.module'));
-            var byHeading = modules.find(function (el) {
-                var h = el.querySelector('h2, h3, .card-header');
-                return h && /recent\s+actions/i.test((h.textContent || '').trim());
-            });
-            if (byHeading) return byHeading;
-            return Array.from(document.querySelectorAll('.card')).find(function (card) {
-                var heading = card.querySelector('h3, .card-header');
-                return heading && heading.textContent.toLowerCase().indexOf('recent') !== -1;
-            });
-        })();
-        
+        // Jazzmin index does NOT emit #recent-actions-module (Django classic only). Heuristic moves
+        // (.module / .card) matched wrong nodes on Render and emptied the center column — only
+        // reparent when the stock admin id exists.
+        const recentActions = document.querySelector('#recent-actions-module');
         if (recentActions) {
-            console.log('[ADMIN SIDEBAR] Found Recent Actions, moving to right sidebar');
+            console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
             rightSidebar.appendChild(recentActions);
         } else {
-            console.log('[ADMIN SIDEBAR] Recent Actions not found, sidebar will be empty');
+            console.log('[ADMIN SIDEBAR] No #recent-actions-module (Jazzmin index); skip Recent Actions reparent');
         }
         
         // Add to grid as third column
