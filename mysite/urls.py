@@ -42,6 +42,7 @@ from dose.polysniffer.views import (
 from dose.passthrough.handlers.registry import native_passthrough_path_regex
 from mysite.health import health_live, health_ready
 from mysite.help_views import help_index, help_llm_router
+from llm_router.admin_chat import admin_llm_router_chat_api, polysaas_ai_chat_page
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -59,6 +60,17 @@ urlpatterns = [
     path('subscribe/', subscribe_view, name='subscribe'),
     path('help/', help_index, name='help_index'),
     path('help/llm-router/', help_llm_router, name='help_llm_router'),
+    # Must be registered before ``admin/`` so it is not swallowed by AdminSite.
+    path(
+        'admin/llm-router/chat-api/',
+        admin_llm_router_chat_api,
+        name='admin_llm_router_chat_api',
+    ),
+    path(
+        'admin/polysaas-ai/',
+        polysaas_ai_chat_page,
+        name='admin_polysaas_ai',
+    ),
     path('admin/select-theme/', __import__('dose.admin_views').admin_views.select_theme, name='select_theme'),
     path('admin/select-theme/api/', __import__('dose.admin_views').admin_views.select_theme_api, name='select_theme_api'),
     path('admin/set-theme/', __import__('dose.admin_views').admin_views.set_theme, name='set_theme'),

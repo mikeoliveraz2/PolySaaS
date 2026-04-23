@@ -213,6 +213,11 @@ LLM_ROUTER_STANDARD_PROVIDER = env("LLM_ROUTER_STANDARD_PROVIDER", default="anth
 LLM_ROUTER_STANDARD_MODEL = env("LLM_ROUTER_STANDARD_MODEL", default="claude-sonnet-4-6")
 LLM_ROUTER_HEAVY_PROVIDER = env("LLM_ROUTER_HEAVY_PROVIDER", default="anthropic")
 LLM_ROUTER_HEAVY_MODEL = env("LLM_ROUTER_HEAVY_MODEL", default="claude-sonnet-4-6")
+# Phase 1: extra system text for staff PolySaaS AI admin chat (after platform link block).
+LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT = env.str("LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT", default="").strip()
+# Phase 2: tenant MLPrompt.key — refine (two-step LLM) or inject (single-call) for admin chat.
+LLM_ROUTER_ML_STUDIO_REFINE_KEY = env("LLM_ROUTER_ML_STUDIO_REFINE_KEY", default="polysaas_admin_chat_refine")
+LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM = env.bool("LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM", default=True)
 # Optional JSON map for log hints only, e.g. {"anthropic:claude-3-5-haiku-20241022": 0.25}
 _llm_cost_raw = env.str("LLM_ROUTER_COST_HINTS_USD_PER_1K", default="").strip()
 if _llm_cost_raw:

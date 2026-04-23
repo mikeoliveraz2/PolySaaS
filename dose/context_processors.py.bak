@@ -158,8 +158,9 @@ def admin_active_urls(request):
     if not (request.user.is_authenticated and request.user.is_staff):
         return {}
 
-    # Only provide data for admin paths
-    if not request.path.startswith('/admin/'):
+    # Only provide data for admin paths (include ``/admin`` index, no trailing slash)
+    _p = request.path or ''
+    if not (_p == '/admin' or _p.startswith('/admin/')):
         return {}
 
     try:
@@ -185,6 +186,32 @@ def admin_active_urls(request):
         # Fail silently in production, just return empty context
         print(f"[ADMIN_CONTEXT] Error getting active URLs: {e}")
         return {}
+
+
+def _admin_home_sidebar_links(request):
+    """
+    HOME row for the custom admin sidebar (above passthrough).
+
+    Same as ``staff_admin_home_sidebar_links`` — data rows first, then optional DB rows.
+    """
+    from dose.admin_home_sidebar import staff_admin_home_sidebar_links
+
+    return staff_admin_home_sidebar_links(request)
+
+
+def admin_home_sidebar_links(request):
+    """
+    Inject ``admin_home_links`` after ``admin_navigation``.
+
+    Staff only: two DATA rows (Dashboard, PolySaaS AI) plus optional DB extras—see
+    ``dose.admin_home_sidebar.staff_admin_home_sidebar_links``. Independent of
+    ``admin_navigation`` DB failures.
+    """
+    from dose.admin_home_sidebar import staff_admin_home_sidebar_links
+
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        return {"admin_home_links": []}
+    return {"admin_home_links": staff_admin_home_sidebar_links(request)}
 
 
 def admin_navigation(request):
@@ -422,7 +449,16 @@ def admin_navigation(request):
             })
 
         # Now process each panel with its items
+        from dose.admin_home_sidebar import is_admin_home_extension_panel
+
         for panel_info in panels_data:
+            if is_admin_home_extension_panel(panel_info["panel_title"]):
+                print(
+                    f"[ADMIN_NAV] Skip panel '{panel_info['panel_title']}' "
+                    "(items are merged into HOME after data rows)"
+                )
+                continue
+
             panel = panel_info['panel']
             panel_schema = panel_info['panel_schema']
             panel_id = panel_info['panel_id']
@@ -476,16 +512,25 @@ def admin_navigation(request):
                 print(f"[ADMIN_NAV] Added panel '{panel_info['panel_title']}' with {len(filtered_items)} visible items")
 
         # Top navigation items (system links) - MUST MATCH landing_page.py view
-        # Detect if we're in admin context
-        is_admin_context = request.path.startswith('/admin/')
+        # Index URL is often ``/admin`` (no trailing slash); ``startswith('/admin/')`` misses it.
+        _admin_path = request.path or ''
+        is_admin_context = _admin_path == '/admin' or _admin_path.startswith('/admin/')
 
-        top_navigation_items = [
-            {'name': 'Dashboard (Admin)' if is_admin_context else 'Dashboard (User)', 'url': '/admin/' if is_admin_context else '/dose/dashboard/', 'icon': '📊'},
-            {'name': 'Dashboard (User)' if is_admin_context else 'Dashboard (Admin)', 'url': '/dose/dashboard/' if is_admin_context else '/admin/', 'icon': '📋'},
-            {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
-            {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
-            {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'}
-        ]
+        if is_admin_context:
+            # No /admin/ “dashboard” link and no DoseAI/AI URLs in the admin sidebar.
+            top_navigation_items = [
+                {'name': 'Dose workspace', 'url': '/dose/dashboard/', 'icon': '📋'},
+                {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
+                {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
+            ]
+        else:
+            top_navigation_items = [
+                {'name': 'Dose workspace', 'url': '/dose/dashboard/', 'icon': '📊'},
+                {'name': 'Admin home (models)', 'url': '/admin/', 'icon': '📋'},
+                {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
+                {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
+                {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
+            ]
 
         # Add external services from 'External Services' NavigationPanel
         # Search across ALL schemas (schema-aware like PassThroughEndpoint)
@@ -639,7 +684,8 @@ def admin_navigation(request):
             print(f"[ADMIN_NAV] ERROR getting navigation data (encoding issue, see log)")
         logger.error(f"[ADMIN_NAV] Error: {e}")
         logger.error(tb)
-        # Always return the expected structure, even on error
+        # Always return the expected structure, even on error. HOME links come from
+        # ``admin_home_sidebar_links`` (separate context processor).
         return {
             'passthrough_services': [],
             'external_services': [],

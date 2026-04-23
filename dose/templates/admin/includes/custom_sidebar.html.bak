@@ -1,10 +1,67 @@
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
-{% load static %}
+{% load i18n static custom_menu_tags %}
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
-    /* Header height — must match AdminLTE fixed navbar */
-    :root { --pss-header-h: 40px; }
+    /* Header height — tuned to the live Jazzmin navbar so the grid clears the fixed header. */
+    :root {
+        --pss-header-h: 64px;
+        --pss-sidebar-shell-bg: #1e293b;
+        --pss-sidebar-shell-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        --pss-sidebar-header-bg: #34495e;
+        --pss-sidebar-header-hover-bg: #1e293b;
+        --pss-sidebar-header-text: #ffffff;
+        --pss-sidebar-header-border: #2c3e50;
+        --pss-sidebar-surface: #f8fafc;
+        --pss-sidebar-scroll-track: #f1f1f1;
+        --pss-sidebar-scroll-thumb: #888;
+        --pss-sidebar-scroll-thumb-hover: #555;
+        --pss-sidebar-item-text: #334155;
+        --pss-sidebar-item-hover-bg: rgba(37, 99, 235, 0.08);
+        --pss-sidebar-item-active-bg: rgba(37, 99, 235, 0.18);
+        --pss-sidebar-item-active-text: #1e3a8a;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #2563eb;
+        --pss-sidebar-icon: #64748b;
+        --pss-sidebar-icon-hover: #2563eb;
+        --pss-sidebar-icon-active: #2563eb;
+        --pss-sidebar-panel-bg: #f1f5f9;
+        --pss-sidebar-panel-text: #64748b;
+        --pss-sidebar-panel-border: #e2e8f0;
+        --pss-sidebar-passthrough-bg: #eff6ff;
+        --pss-sidebar-passthrough-text: #1e40af;
+        --pss-sidebar-passthrough-border: #3b82f6;
+    }
+
+    html[data-ps-theme="darkly"],
+    html[data-ps-theme="cyborg"],
+    html[data-ps-theme="slate"],
+    html[data-ps-theme="solar"],
+    html[data-ps-theme="superhero"] {
+        --pss-sidebar-shell-bg: #20252b;
+        --pss-sidebar-shell-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+        --pss-sidebar-header-bg: #2f353c;
+        --pss-sidebar-header-hover-bg: #252a31;
+        --pss-sidebar-header-text: #f5f7fa;
+        --pss-sidebar-header-border: #454d55;
+        --pss-sidebar-surface: #2b2b2b;
+        --pss-sidebar-scroll-track: #252525;
+        --pss-sidebar-scroll-thumb: #626b75;
+        --pss-sidebar-scroll-thumb-hover: #7a848f;
+        --pss-sidebar-item-text: #d9e2ec;
+        --pss-sidebar-item-hover-bg: rgba(41, 128, 185, 0.2);
+        --pss-sidebar-item-active-bg: rgba(77, 182, 255, 0.22);
+        --pss-sidebar-item-active-text: #f5fbff;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #4db6ff;
+        --pss-sidebar-icon: #a7b3c2;
+        --pss-sidebar-icon-hover: #4db6ff;
+        --pss-sidebar-icon-active: #8ecbff;
+        --pss-sidebar-panel-bg: #3a3a3a;
+        --pss-sidebar-panel-text: #d0d7de;
+        --pss-sidebar-panel-border: #4b525a;
+        --pss-sidebar-passthrough-bg: #16324f;
+        --pss-sidebar-passthrough-text: #8ecbff;
+        --pss-sidebar-passthrough-border: #2196f3;
+    }
 
     /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
     .admin-content-grid {
@@ -28,16 +85,12 @@
     .admin-content-grid > .dose-content-col,
     .admin-content-grid > div:nth-child(2) {
         min-width: 0;
-        overflow: hidden;
+        /* Do not clip vertically — overflow:hidden hid Jazzmin index cards on some viewports */
+        overflow-x: hidden;
+        overflow-y: visible;
     }
 
-    /* Force Bootstrap columns inside content area to full width — grid handles layout */
-    .dose-content-col .col-lg-9,
-    .dose-content-col .col-lg-3 {
-        width: 100% !important;
-        max-width: 100% !important;
-        flex: 0 0 100% !important;
-    }
+    /* Jazzmin 3 / BS5 often use col-md-* / row — do not force col-lg-* to 100% (breaks index layout) */
 
     /* Make container-fluid truly full width */
     .dose-content-col .container-fluid {
@@ -55,10 +108,10 @@
 
     /* Sidebar Container - positioned in grid, not fixed */
     .collapsible-nav {
-        background: #1e293b;
+        background: var(--pss-sidebar-shell-bg);
         border-radius: 0;
         overflow: hidden;
-        box-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        box-shadow: var(--pss-sidebar-shell-shadow);
         height: calc(100vh - var(--pss-header-h));
         position: sticky;
         top: var(--pss-header-h); /* stick just below the fixed header */
@@ -73,8 +126,8 @@
     }
 
     .nav-header {
-        background: #34495e;
-        color: white;
+        background: var(--pss-sidebar-header-bg);
+        color: var(--pss-sidebar-header-text);
         padding: 12px 15px;
         cursor: pointer;
         display: flex;
@@ -83,22 +136,48 @@
         font-weight: 600;
         font-size: 0.95rem;
         transition: all 0.2s ease;
-        border-bottom: 1px solid #2c3e50;
+        border-bottom: 1px solid var(--pss-sidebar-header-border);
         white-space: nowrap;
         overflow: hidden;
     }
 
     .collapsible-nav.collapsed .nav-header {
         justify-content: center;
-        padding: 12px 5px;
+        padding: 8px 5px;
+        background: #2563eb !important;   /* bright blue — unmistakably a button */
+        border-bottom: 2px solid #1d4ed8;
+        min-height: 48px;
     }
 
     .collapsible-nav.collapsed .nav-header > span:first-child {
         display: none;
     }
 
+    /* Make the fa-bars icon look like a proper restore button when collapsed */
+    .collapsible-nav.collapsed .nav-toggle {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        font-size: 1.3rem !important;
+        transition: background 0.2s ease;
+        cursor: pointer;
+    }
+
+    .collapsible-nav.collapsed .nav-toggle i {
+        font-size: 1.2rem;
+        color: #fff;
+    }
+
+    .collapsible-nav.collapsed .nav-header:hover .nav-toggle {
+        background: rgba(255,255,255,0.35);
+    }
+
     .nav-header:hover {
-        background: #1e293b;
+        background: var(--pss-sidebar-header-hover-bg);
     }
 
     .nav-toggle {
@@ -107,11 +186,25 @@
         font-weight: normal;
     }
 
+    /* applyFont() in base_site.html sets el.style.fontFamily on every element,
+       overriding FA's glyph font and making icons vanish.
+       These !important rules beat the JS inline-style (no !important) and restore rendering. */
+    .nav-toggle i,
+    .nav-toggle i.fas,
+    .nav-toggle i.far,
+    .nav-toggle i.fab {
+        font-family: "Font Awesome 5 Free" !important;
+        font-weight: 900 !important;
+        font-size: inherit !important;
+        display: inline-block !important;
+        color: #fff !important;
+    }
+
     .nav-items {
         max-height: 85vh;
         overflow-y: auto;
         overflow-x: hidden;
-        background: #f8fafc;
+        background: var(--pss-sidebar-surface);
         display: flex;
         flex-direction: column;
         flex-grow: 1;
@@ -133,16 +226,16 @@
     }
 
     .nav-items::-webkit-scrollbar-track {
-        background: #f1f1f1;
+        background: var(--pss-sidebar-scroll-track);
     }
 
     .nav-items::-webkit-scrollbar-thumb {
-        background: #888;
+        background: var(--pss-sidebar-scroll-thumb);
         border-radius: 3px;
     }
 
     .nav-items::-webkit-scrollbar-thumb:hover {
-        background: #555;
+        background: var(--pss-sidebar-scroll-thumb-hover);
     }
 
     /* Admin-style compact nav items */
@@ -152,7 +245,7 @@
         gap: 10px;
         padding: 8px 15px;
         margin: 2px 8px;
-        color: #334155;
+        color: var(--pss-sidebar-item-text);
         text-decoration: none;
         border: none;
         border-radius: 6px;
@@ -240,11 +333,47 @@
     }
 
     .nav-item:hover {
-        background: rgba(37, 99, 235, 0.08) !important;
+        background: var(--pss-sidebar-item-hover-bg) !important;
         padding-left: 15px;
     }
 
+    #dose-custom-sidebar .nav-item.is-active,
+    #dose-custom-sidebar .nav-item[aria-current="page"] {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        box-shadow: var(--pss-sidebar-item-active-shadow) !important;
+        border-left: 3px solid var(--pss-sidebar-icon-active);
+        font-weight: 600 !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active:hover,
+    #dose-custom-sidebar .nav-item[aria-current="page"]:hover {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-icon,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-icon {
+        color: var(--pss-sidebar-icon-active) !important;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-text,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-text {
+        color: inherit;
+    }
+
     .collapsible-nav.collapsed .nav-item:hover {
+        padding-left: 10px;
+    }
+
+    .collapsible-nav.collapsed .nav-item.is-active,
+    #dose-custom-sidebar.collapsed .nav-item.is-active,
+    .collapsible-nav.collapsed .nav-item[aria-current="page"],
+    #dose-custom-sidebar.collapsed .nav-item[aria-current="page"] {
+        box-shadow: inset 0 0 0 2px var(--pss-sidebar-passthrough-border);
+        border-left: none;
         padding-left: 10px;
     }
 
@@ -255,7 +384,7 @@
         align-items: center;
         justify-content: center;
         background: transparent;
-        color: #64748b;
+        color: var(--pss-sidebar-icon);
         border-radius: 6px;
         font-size: 0.85rem;
         flex-shrink: 0;
@@ -272,7 +401,7 @@
     }
 
     .nav-item:hover .nav-icon {
-        color: #2563eb;
+        color: var(--pss-sidebar-icon-hover);
     }
 
     /* Ensure icons from FontAwesome/Bootstrap work */
@@ -295,24 +424,24 @@
     }
 
     .nav-panel-title {
-        background: #f1f5f9;
+        background: var(--pss-sidebar-panel-bg);
         padding: 8px 15px;
         margin: 0;
         font-size: 0.75rem;
         font-weight: 600;
-        color: #64748b;
+        color: var(--pss-sidebar-panel-text);
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--pss-sidebar-panel-border);
         white-space: nowrap;
         overflow: hidden;
     }
 
     /* Passthrough panel — subtle accent, not loud green */
     .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title {
-        background: #eff6ff;
-        color: #1e40af;
-        border-left: 3px solid #3b82f6;
+        background: var(--pss-sidebar-passthrough-bg);
+        color: var(--pss-sidebar-passthrough-text);
+        border-left: 3px solid var(--pss-sidebar-passthrough-border);
         padding-left: 12px;
     }
 
@@ -360,7 +489,7 @@
 
     /* Wrapper for grid container */
     .admin-main-wrapper {
-        min-height: calc(100vh - 50px);
+        min-height: calc(100vh - var(--pss-header-h));
     }
 
     /* Ensure grid and sidebar are visible */
@@ -424,9 +553,9 @@
 <div class="admin-content-grid">
     <!-- Sidebar Column -->
     <div class="collapsible-nav" id="dose-custom-sidebar" style="">
-    <div class="nav-header" onclick="toggleDoseSidebar()">
+    <div class="nav-header" onclick="toggleDoseSidebar()" id="dose-nav-header" title="Collapse sidebar">
         <span>Navigation Bar</span>
-        <span class="nav-toggle" id="dose-nav-toggle">☰</span>
+        <span class="nav-toggle" id="dose-nav-toggle"><i class="fas fa-bars"></i></span>
     </div>
     <div class="nav-items" id="dose-nav-items">
         <!-- DEBUG: Log context data for admin sidebar -->
@@ -450,6 +579,23 @@
         console.log('===============================');
         </script>
 
+        {# HOME — Dashboard + PolySaaS AI (hardcoded; no context list). #}
+        {% if user.is_staff %}
+        <div class="nav-panel" data-panel-type="admin_home">
+            <h4 class="nav-panel-title">HOME</h4>
+            <div class="nav-panel-items">
+                <a href="{% url 'admin:index' %}" class="nav-item{% if request.path == '/admin' or request.path == '/admin/' or request.path_info == '/admin' or request.path_info == '/admin/' %} is-active{% endif %}" {% if request.path == '/admin' or request.path == '/admin/' or request.path_info == '/admin' or request.path_info == '/admin/' %}aria-current="page"{% endif %} data-sidebar-exact="1" title="Jazzmin model dashboard">
+                    <span class="nav-icon"><i class="fas fa-tachometer-alt" aria-hidden="true"></i></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="{% url 'admin_polysaas_ai' %}" class="nav-item{% if request.path_info|path_starts_with:'/admin/polysaas-ai' or request.path|path_starts_with:'/admin/polysaas-ai' %} is-active{% endif %}" {% if request.path_info|path_starts_with:'/admin/polysaas-ai' or request.path|path_starts_with:'/admin/polysaas-ai' %}aria-current="page"{% endif %} title="PolySaaS AI chat (full page)">
+                    <span class="nav-icon"><i class="fas fa-comments" aria-hidden="true"></i></span>
+                    <span class="nav-text">PolySaaS AI</span>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Passthrough Services (AJAX-loaded) -->
         {% if passthrough_services %}
             <div class="nav-panel" data-panel-type="passthrough_services">
@@ -457,7 +603,8 @@
                 <div class="nav-panel-items">
                     {% for service in passthrough_services %}
                         <a href="{{ service.url }}"
-                           class="nav-item"
+                           class="nav-item{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
+                           {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            title="{{ service.description }}">
                             <span class="nav-icon">{{ service.icon }}</span>
                             <span class="nav-text">{{ service.title }}</span>
@@ -474,10 +621,11 @@
                 <div class="nav-panel-items">
                     {% for service in external_services %}
                         <a href="{{ service.url }}"
-                           class="nav-item"
+                           class="nav-item{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
                            data-item-id="{{ service.id }}"
                            data-item-type="external"
                            target="{{ service.target|default:'_blank' }}"
+                           {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            title="{{ service.description }}">
                             <span class="nav-icon">{{ service.icon }}</span>
                             <span class="nav-text">{{ service.title }}</span>
@@ -546,10 +694,11 @@
                 <div class="nav-panel-items">
                     {% for item in panel.filtered_items %}
                         <a href="{{ item.url }}"
-                           class="nav-item"
+                           class="nav-item{% if request.path_info|path_starts_with:item.url %} is-active{% endif %}"
                            target="{{ item.target }}"
                            data-item-id="{{ item.id }}"
                            data-item-type="{{ item.item_type }}"
+                           {% if request.path_info|path_starts_with:item.url %}aria-current="page"{% endif %}
                            title="{{ item.description }}">
                             {% if item.icon_style == 'emoji' and item.icon_value %}
                                 <span class="nav-icon material-icon">{{ item.icon_value }}</span>
@@ -572,8 +721,18 @@
         <!-- Static top navigation items -->
         <div class="nav-panel static-nav" data-panel-type="system">
             <h4 class="nav-panel-title">SYSTEM NAVIGATION</h4>
+            {% if user.is_staff %}
+            <a href="{% url 'admin:index' %}" class="nav-item system-nav-item{% if request.path == '/admin' or request.path == '/admin/' or request.path_info == '/admin' or request.path_info == '/admin/' %} is-active{% endif %}" style="max-width: 100%; white-space: normal;" {% if request.path == '/admin' or request.path == '/admin/' or request.path_info == '/admin' or request.path_info == '/admin/' %}aria-current="page"{% endif %} title="Jazzmin model dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Dashboard</span>
+            </a>
+            <a href="{% url 'admin_polysaas_ai' %}" class="nav-item system-nav-item{% if request.path_info|path_starts_with:'/admin/polysaas-ai' or request.path|path_starts_with:'/admin/polysaas-ai' %} is-active{% endif %}" style="max-width: 100%; white-space: normal;" {% if request.path_info|path_starts_with:'/admin/polysaas-ai' or request.path|path_starts_with:'/admin/polysaas-ai' %}aria-current="page"{% endif %} title="PolySaaS AI chat (full page)">
+                <span class="nav-icon">💬</span>
+                <span class="nav-text">PolySaaS AI</span>
+            </a>
+            {% endif %}
             {% for item in top_navigation_items %}
-                <a href="{{ item.url }}" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;">
+                <a href="{{ item.url }}" class="nav-item system-nav-item{% if request.path_info|path_starts_with:item.url %} is-active{% endif %}" style="max-width: 100%; white-space: normal;" {% if request.path_info|path_starts_with:item.url %}aria-current="page"{% endif %}>
                     <span class="nav-icon">{{ item.icon }}</span>
                     <span class="nav-text">{{ item.name }}</span>
                 </a>
@@ -588,6 +747,77 @@
 <!-- End Grid Container - content will be moved here by script -->
 
 <script>
+function normalizeSidebarPath(value) {
+    if (!value) {
+        return '';
+    }
+
+    try {
+        const parsedUrl = new URL(value, window.location.origin);
+        let normalizedPath = parsedUrl.pathname || '';
+        normalizedPath = normalizedPath.replace(/\/+$/, '');
+        return normalizedPath || '/';
+    } catch (error) {
+        return '';
+    }
+}
+
+function applyActiveSidebarLink() {
+    const currentPath = normalizeSidebarPath(window.location.pathname);
+    const sidebarLinks = Array.from(document.querySelectorAll('#dose-custom-sidebar a.nav-item[href]'));
+    let bestMatch = null;
+    let bestScore = -1;
+
+    sidebarLinks.forEach(function(link) {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) {
+            return;
+        }
+
+        const targetUrl = new URL(href, window.location.origin);
+        if (targetUrl.origin !== window.location.origin) {
+            return;
+        }
+
+        const linkPath = normalizeSidebarPath(targetUrl.pathname);
+        if (!linkPath) {
+            return;
+        }
+
+        const exactOnly = link.getAttribute('data-sidebar-exact') === '1';
+        const isExactMatch = currentPath === linkPath;
+        const isSubpathMatch =
+            !exactOnly && linkPath !== '/' && currentPath.startsWith(linkPath + '/');
+
+        if (exactOnly) {
+            if (!isExactMatch) {
+                return;
+            }
+        } else if (!isExactMatch && !isSubpathMatch) {
+            return;
+        }
+
+        const matchScore = linkPath.length;
+        if (matchScore > bestScore) {
+            bestMatch = link;
+            bestScore = matchScore;
+        }
+    });
+
+    if (bestMatch) {
+        sidebarLinks.forEach(function(link) {
+            link.classList.remove('is-active');
+            link.removeAttribute('aria-current');
+        });
+        bestMatch.classList.add('is-active');
+        bestMatch.setAttribute('aria-current', 'page');
+    }
+}
+
+window.addEventListener('pageshow', function() {
+    applyActiveSidebarLink();
+});
+
 // Move content-wrapper into grid on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('[ADMIN SIDEBAR] DOMContentLoaded - setting up grid');
@@ -619,6 +849,9 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    applyActiveSidebarLink();
+    window.setTimeout(applyActiveSidebarLink, 150);
+
     // Ensure grid is visible
     if (grid) {
         grid.style.display = 'grid';
@@ -647,19 +880,15 @@ document.addEventListener('DOMContentLoaded', function() {
         rightSidebar.style.height = 'fit-content';
         rightSidebar.style.padding = '0 15px';
         
-        // Find Recent Actions module (various possible selectors)
-        const recentActions = document.querySelector('#recent-actions-module') ||
-                            document.querySelector('[class*="recent"]') ||
-                            Array.from(document.querySelectorAll('.card')).find(card => {
-                                const heading = card.querySelector('h3, .card-header');
-                                return heading && heading.textContent.toLowerCase().includes('recent');
-                            });
-        
+        // Jazzmin index does NOT emit #recent-actions-module (Django classic only). Heuristic moves
+        // (.module / .card) matched wrong nodes on Render and emptied the center column — only
+        // reparent when the stock admin id exists.
+        const recentActions = document.querySelector('#recent-actions-module');
         if (recentActions) {
-            console.log('[ADMIN SIDEBAR] Found Recent Actions, moving to right sidebar');
+            console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
             rightSidebar.appendChild(recentActions);
         } else {
-            console.log('[ADMIN SIDEBAR] Recent Actions not found, sidebar will be empty');
+            console.log('[ADMIN SIDEBAR] No #recent-actions-module (Jazzmin index); skip Recent Actions reparent');
         }
         
         // Add to grid as third column
@@ -690,8 +919,27 @@ document.addEventListener('DOMContentLoaded', function() {
             sidebar.classList.add('collapsed');
             document.body.classList.add('polysaas-collapsed');
             if (grid) grid.classList.add('sidebar-collapse');
+            // Apply blue + icon styles inline (same as toggleDoseSidebar collapsed path)
+            const header = document.getElementById('dose-nav-header');
+            if (header) {
+                header.title = 'Expand sidebar';
+                header.style.background = '#2563eb';
+                header.style.borderBottom = '2px solid #1d4ed8';
+                header.style.justifyContent = 'center';
+            }
             const toggle = document.getElementById('dose-nav-toggle');
-            if (toggle) toggle.style.transform = 'rotate(90deg)';
+            if (toggle) {
+                toggle.style.transform = '';
+                toggle.style.display = 'inline-flex';
+                toggle.style.alignItems = 'center';
+                toggle.style.justifyContent = 'center';
+                toggle.style.width = '40px';
+                toggle.style.height = '40px';
+                toggle.style.fontSize = '1.3rem';
+                toggle.style.color = '#fff';
+                toggle.style.background = 'rgba(255,255,255,0.2)';
+                toggle.style.borderRadius = '8px';
+            }
         }
     } else {
         console.error('[ADMIN SIDEBAR] ERROR: dose-custom-sidebar not found!');
@@ -936,7 +1184,32 @@ function toggleDoseSidebar() {
     document.body.classList.toggle('polysaas-collapsed', isCollapsed);
     localStorage.setItem('pss_sidebar_collapsed', isCollapsed ? '1' : '0');
 
-    // Rotate hamburger icon
-    navToggle.style.transform = isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
+    // Drive blue header background + tooltip via JS (overrides any CSS conflicts)
+    const header = document.getElementById('dose-nav-header');
+    if (header) {
+        header.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+        header.style.background = isCollapsed ? '#2563eb' : '';
+        header.style.borderBottom = isCollapsed ? '2px solid #1d4ed8' : '';
+        header.style.justifyContent = isCollapsed ? 'center' : '';
+    }
+    // No rotation — fa-bars rotated 90° looks like ||| not ☰
+    navToggle.style.transform = '';
+    // Make icon clearly visible in both states
+    navToggle.style.display = 'inline-flex';
+    navToggle.style.alignItems = 'center';
+    navToggle.style.justifyContent = 'center';
+    navToggle.style.fontSize = '1.3rem';
+    navToggle.style.color = '#fff';
+    if (isCollapsed) {
+        navToggle.style.width = '40px';
+        navToggle.style.height = '40px';
+        navToggle.style.background = 'rgba(255,255,255,0.2)';
+        navToggle.style.borderRadius = '8px';
+    } else {
+        navToggle.style.width = '';
+        navToggle.style.height = '';
+        navToggle.style.background = '';
+        navToggle.style.borderRadius = '';
+    }
 }
 </script>

@@ -582,4 +582,11 @@
     loadFont();
   });
 </script>
+
+{# Staff PolySaaS AI chat — inline in content by default; pop-out floating + transcript in sessionStorage. #}
+{% if user.is_staff %}
+{% if not request.resolver_match or request.resolver_match.url_name != 'admin_polysaas_ai' %}
+{% include "admin/includes/polysaas_ai_chat_dock.html" %}
+{% endif %}
+{% endif %}
 {% endblock %}

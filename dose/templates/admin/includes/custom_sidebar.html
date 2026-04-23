@@ -1,5 +1,5 @@
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
-{% load static custom_menu_tags %}
+{% load i18n static custom_menu_tags %}
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <style>
@@ -579,6 +579,21 @@
         console.log('===============================');
         </script>
 
+        {# HOME — Dashboard + PolySaaS AI, always shown, no conditions. #}
+        <div class="nav-panel" data-panel-type="admin_home">
+            <h4 class="nav-panel-title">HOME</h4>
+            <div class="nav-panel-items">
+                <a href="/admin/" class="nav-item" title="Jazzmin model dashboard">
+                    <span class="nav-icon"><i class="fas fa-tachometer-alt" aria-hidden="true"></i></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="/admin/polysaas-ai/" class="nav-item" title="PolySaaS AI chat (full page)">
+                    <span class="nav-icon"><i class="fas fa-comments" aria-hidden="true"></i></span>
+                    <span class="nav-text">PolySaaS AI</span>
+                </a>
+            </div>
+        </div>
+
         <!-- Passthrough Services (AJAX-loaded) -->
         {% if passthrough_services %}
             <div class="nav-panel" data-panel-type="passthrough_services">
@@ -704,6 +719,14 @@
         <!-- Static top navigation items -->
         <div class="nav-panel static-nav" data-panel-type="system">
             <h4 class="nav-panel-title">SYSTEM NAVIGATION</h4>
+            <a href="/admin/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" title="Jazzmin model dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Dashboard</span>
+            </a>
+            <a href="/admin/polysaas-ai/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" title="PolySaaS AI chat (full page)">
+                <span class="nav-icon">💬</span>
+                <span class="nav-text">PolySaaS AI</span>
+            </a>
             {% for item in top_navigation_items %}
                 <a href="{{ item.url }}" class="nav-item system-nav-item{% if request.path_info|path_starts_with:item.url %} is-active{% endif %}" style="max-width: 100%; white-space: normal;" {% if request.path_info|path_starts_with:item.url %}aria-current="page"{% endif %}>
                     <span class="nav-icon">{{ item.icon }}</span>
@@ -757,10 +780,16 @@ function applyActiveSidebarLink() {
             return;
         }
 
+        const exactOnly = link.getAttribute('data-sidebar-exact') === '1';
         const isExactMatch = currentPath === linkPath;
-        const isSubpathMatch = linkPath !== '/' && currentPath.startsWith(linkPath + '/');
+        const isSubpathMatch =
+            !exactOnly && linkPath !== '/' && currentPath.startsWith(linkPath + '/');
 
-        if (!isExactMatch && !isSubpathMatch) {
+        if (exactOnly) {
+            if (!isExactMatch) {
+                return;
+            }
+        } else if (!isExactMatch && !isSubpathMatch) {
             return;
         }
 

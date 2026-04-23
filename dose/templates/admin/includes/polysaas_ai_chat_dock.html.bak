@@ -1,0 +1,357 @@
+{# Floating PolySaaS AI chat — staff only; included from base_site extrajs. Persists via sessionStorage across admin navigations. #}
+{% load i18n static %}
+<style>
+    #pssAdminAiChatDock {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 10050;
+        font-family: inherit;
+        font-size: 0.875rem;
+    }
+    #pssAdminAiChatDockFab {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: none;
+        background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+    }
+    #pssAdminAiChatDockFab:hover { filter: brightness(1.06); }
+    #pssAdminAiChatDockFab:focus { outline: 2px solid #93c5fd; outline-offset: 2px; }
+    #pssAdminAiChatDockPanel {
+        display: none;
+        width: min(400px, calc(100vw - 32px));
+        max-height: min(72vh, 640px);
+        flex-direction: column;
+        background: var(--bs-body-bg, #fff);
+        color: var(--bs-body-color, #212529);
+        border: 1px solid rgba(37, 99, 235, 0.35);
+        border-radius: 12px;
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+        overflow: hidden;
+    }
+    #pssAdminAiChatDock.pss-dock-open #pssAdminAiChatDockFab { display: none; }
+    #pssAdminAiChatDock.pss-dock-open #pssAdminAiChatDockPanel { display: flex; }
+    #pssAdminAiChatDockHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+        border-bottom: 1px solid rgba(37, 99, 235, 0.2);
+        font-weight: 600;
+    }
+    html[data-ps-theme="darkly"] #pssAdminAiChatDockHeader,
+    html[data-ps-theme="cyborg"] #pssAdminAiChatDockHeader,
+    html[data-ps-theme="slate"] #pssAdminAiChatDockHeader,
+    html[data-ps-theme="solar"] #pssAdminAiChatDockHeader,
+    html[data-ps-theme="superhero"] #pssAdminAiChatDockHeader {
+        background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+        border-bottom-color: rgba(148, 163, 184, 0.25);
+    }
+    #pssAdminAiChatDockLog {
+        flex: 1 1 auto;
+        min-height: 160px;
+        max-height: 38vh;
+        overflow-y: auto;
+        padding: 10px 12px;
+        font-size: 0.8125rem;
+        background: var(--bs-body-bg, #fff);
+    }
+    #pssAdminAiChatDock .llm-chat-role-user { color: #1a5276; }
+    #pssAdminAiChatDock .llm-chat-role-assistant { color: #145a32; }
+    #pssAdminAiChatDock .llm-chat-role-error { color: #922b21; }
+    #pssAdminAiChatDockFooter {
+        padding: 10px 12px 12px;
+        border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    #pssAdminAiChatDockMode { font-size: 0.75rem; margin-bottom: 8px; }
+    #pssAdminAiChatDockInput {
+        width: 100%;
+        min-height: 64px;
+        resize: vertical;
+        font-size: 0.8125rem;
+    }
+    #pssAdminAiChatDockMeta { font-size: 0.7rem; color: #64748b; margin-top: 6px; min-height: 1em; }
+</style>
+<div id="pssAdminAiChatDock" class="admin-llm-router-chat-dock" aria-label="PolySaaS AI chat">
+    <button type="button" id="pssAdminAiChatDockFab" title="Open PolySaaS AI chat" aria-expanded="false">
+        <i class="fas fa-comments" aria-hidden="true"></i>
+    </button>
+    <div id="pssAdminAiChatDockPanel" role="dialog" aria-label="PolySaaS AI">
+        <div id="pssAdminAiChatDockHeader">
+            <span><i class="fas fa-robot text-info" aria-hidden="true"></i> PolySaaS AI</span>
+            <span style="display:flex;gap:6px;align-items:center;">
+                <a href="{% url 'admin_polysaas_ai' %}" class="btn btn-sm btn-outline-primary py-0" style="font-size:0.7rem;">Full page</a>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pssAdminAiChatDockMin" title="Minimize" aria-label="Minimize chat">&minus;</button>
+            </span>
+        </div>
+        <div id="pssAdminAiChatDockLog"></div>
+        <div id="pssAdminAiChatDockFooter">
+            <div id="pssAdminAiChatDockMode" class="text-muted">
+                <span class="me-2">Mode:</span>
+                <label class="me-2 mb-0"><input type="radio" name="pssDockAiMode" value="standard" checked> Standard</label>
+                <label class="mb-0"><input type="radio" name="pssDockAiMode" value="ml_studio"> ML Studio</label>
+            </div>
+            <textarea id="pssAdminAiChatDockInput" class="form-control form-control-sm" rows="2" placeholder="Message… (Enter to send, Shift+Enter for newline)" autocomplete="off"></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-2" style="gap:8px;">
+                <button type="button" class="btn btn-info btn-sm" id="pssAdminAiChatDockSend"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="pssAdminAiChatDockClear">Clear</button>
+            </div>
+            <p id="pssAdminAiChatDockMeta" class="mb-0"></p>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var SK_HISTORY = 'pss_admin_llm_v1_history';
+    var SK_META = 'pss_admin_llm_v1_meta';
+    var SK_MODE = 'pss_admin_llm_v1_mode';
+    var SK_DOCK_OPEN = 'pss_admin_llm_v1_dock_open';
+
+    var dock = document.getElementById('pssAdminAiChatDock');
+    if (!dock) return;
+
+    var apiUrl = '{% url "admin_llm_router_chat_api" %}';
+    var logEl = document.getElementById('pssAdminAiChatDockLog');
+    var input = document.getElementById('pssAdminAiChatDockInput');
+    var sendBtn = document.getElementById('pssAdminAiChatDockSend');
+    var clearBtn = document.getElementById('pssAdminAiChatDockClear');
+    var meta = document.getElementById('pssAdminAiChatDockMeta');
+    var fab = document.getElementById('pssAdminAiChatDockFab');
+    var minBtn = document.getElementById('pssAdminAiChatDockMin');
+    var history = [];
+
+    function getCookie(name) {
+        var cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    function getCsrf() {
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (el && el.value) return el.value;
+        return getCookie('csrftoken');
+    }
+    function selectedMode() {
+        var el = document.querySelector('input[name="pssDockAiMode"]:checked');
+        return el ? el.value : 'standard';
+    }
+    function persistMode() {
+        try {
+            sessionStorage.setItem(SK_MODE, selectedMode());
+        } catch (e) {}
+    }
+    function loadModeRadios() {
+        try {
+            var m = sessionStorage.getItem(SK_MODE);
+            if (m === 'ml_studio') {
+                var r = document.querySelector('input[name="pssDockAiMode"][value="ml_studio"]');
+                if (r) r.checked = true;
+            }
+        } catch (e) {}
+    }
+    function persistHistory() {
+        try {
+            var s = JSON.stringify(history);
+            if (s.length > 450000) {
+                history = history.slice(-40);
+                s = JSON.stringify(history);
+            }
+            sessionStorage.setItem(SK_HISTORY, s);
+        } catch (e) {}
+    }
+    function persistMeta(t) {
+        try {
+            sessionStorage.setItem(SK_META, t || '');
+        } catch (e) {}
+    }
+    function loadHistoryFromStorage() {
+        history = [];
+        try {
+            var raw = sessionStorage.getItem(SK_HISTORY);
+            if (!raw) return;
+            var arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) return;
+            for (var i = 0; i < arr.length; i++) {
+                var it = arr[i];
+                if (!it || (it.role !== 'user' && it.role !== 'assistant')) continue;
+                history.push({ role: it.role, content: String(it.content || '') });
+            }
+        } catch (e) {
+            history = [];
+        }
+    }
+    function renderLogFromHistory() {
+        if (!logEl) return;
+        logEl.innerHTML = '';
+        for (var j = 0; j < history.length; j++) {
+            var h = history[j];
+            appendLine(h.role === 'user' ? 'user' : 'assistant', h.content);
+        }
+    }
+    function appendLine(role, text) {
+        var wrap = document.createElement('div');
+        wrap.className = 'mb-2 text-break';
+        var strong = document.createElement('div');
+        strong.className = 'font-weight-bold llm-chat-role-' + role;
+        strong.textContent = role === 'user' ? 'You' : (role === 'error' ? 'Error' : 'Assistant');
+        var body = document.createElement('div');
+        body.textContent = text;
+        wrap.appendChild(strong);
+        wrap.appendChild(body);
+        logEl.appendChild(wrap);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+    function setMeta(text) {
+        if (meta) meta.textContent = text || '';
+        persistMeta(text || '');
+    }
+    function clearChat() {
+        history = [];
+        if (logEl) logEl.innerHTML = '';
+        setMeta('');
+        try {
+            sessionStorage.removeItem(SK_HISTORY);
+            sessionStorage.removeItem(SK_META);
+        } catch (e) {}
+    }
+    function setDockOpen(open) {
+        if (open) {
+            dock.classList.add('pss-dock-open');
+            if (fab) fab.setAttribute('aria-expanded', 'true');
+        } else {
+            dock.classList.remove('pss-dock-open');
+            if (fab) fab.setAttribute('aria-expanded', 'false');
+        }
+        try {
+            sessionStorage.setItem(SK_DOCK_OPEN, open ? '1' : '0');
+        } catch (e) {}
+    }
+    function pageContextForSend() {
+        try {
+            var path = window.location.pathname + window.location.search;
+            return path.trim().slice(0, 500);
+        } catch (e) {
+            return '';
+        }
+    }
+
+    loadHistoryFromStorage();
+    renderLogFromHistory();
+    loadModeRadios();
+    try {
+        var mt = sessionStorage.getItem(SK_META);
+        if (mt && meta) meta.textContent = mt;
+    } catch (e) {}
+    try {
+        if (sessionStorage.getItem(SK_DOCK_OPEN) === '1') {
+            setDockOpen(true);
+        }
+    } catch (e) {}
+
+    document.querySelectorAll('input[name="pssDockAiMode"]').forEach(function (r) {
+        r.addEventListener('change', persistMode);
+    });
+
+    if (fab) {
+        fab.addEventListener('click', function () {
+            setDockOpen(true);
+        });
+    }
+    if (minBtn) {
+        minBtn.addEventListener('click', function () {
+            setDockOpen(false);
+        });
+    }
+
+    if (sendBtn) {
+        sendBtn.addEventListener('click', function () {
+            var text = (input && input.value || '').trim();
+            if (!text) return;
+            sendBtn.disabled = true;
+            appendLine('user', text);
+            if (input) input.value = '';
+            setMeta('Sending…');
+            var pageContext = pageContextForSend();
+            fetch(apiUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrf()
+                },
+                body: JSON.stringify({
+                    message: text,
+                    history: history,
+                    mode: selectedMode(),
+                    page_context: pageContext
+                })
+            }).then(function (r) {
+                return r.json().then(function (data) {
+                    if (!r.ok) {
+                        throw new Error(data.detail || data.error || ('HTTP ' + r.status));
+                    }
+                    return data;
+                });
+            }).then(function (data) {
+                var reply = data.reply || '';
+                appendLine('assistant', reply);
+                history.push({ role: 'user', content: text });
+                history.push({ role: 'assistant', content: reply });
+                persistHistory();
+                var tail = (data.provider || '') + ' / ' + (data.model || '') +
+                    (data.task_bucket ? (' · ' + data.task_bucket) : '');
+                if (data.meta && data.meta.ml_studio) {
+                    try {
+                        tail += ' · ML ' + JSON.stringify(data.meta.ml_studio);
+                    } catch (e) {
+                        tail += ' · ML (meta)';
+                    }
+                }
+                setMeta(tail.trim());
+            }).catch(function (err) {
+                appendLine('error', err.message || String(err));
+                setMeta('');
+            }).finally(function () {
+                sendBtn.disabled = false;
+            });
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearChat);
+    }
+
+    if (input) {
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (sendBtn) sendBtn.click();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && dock.classList.contains('pss-dock-open')) {
+            setDockOpen(false);
+        }
+    });
+})();
+</script>

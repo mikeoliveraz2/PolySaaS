@@ -3,6 +3,13 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+
+# Jazzmin reads ``JAZZMIN_SETTINGS["index_template"]`` for UI docs, but Django's AdminSite
+# only uses ``admin.site.index_template``. Without this, ``/admin/`` renders the stock
+# ``admin/index.html`` (cards only) and skips ``templates/jazzmin/admin/index.html`` (orchestration strip).
+_jazzmin_index = (getattr(settings, "JAZZMIN_SETTINGS", None) or {}).get("index_template")
+if _jazzmin_index:
+    admin.site.index_template = _jazzmin_index
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from dose.views import subscribe_view
@@ -34,6 +41,8 @@ from dose.polysniffer.views import (
 )
 from dose.passthrough.handlers.registry import native_passthrough_path_regex
 from mysite.health import health_live, health_ready
+from mysite.help_views import help_index, help_llm_router
+from llm_router.admin_chat import admin_llm_router_chat_api
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -49,6 +58,14 @@ urlpatterns = [
     path('health/', health_live, name='health_live'),
     path('health/ready/', health_ready, name='health_ready'),
     path('subscribe/', subscribe_view, name='subscribe'),
+    path('help/', help_index, name='help_index'),
+    path('help/llm-router/', help_llm_router, name='help_llm_router'),
+    # Must be registered before ``admin/`` so it is not swallowed by AdminSite.
+    path(
+        'admin/llm-router/chat-api/',
+        admin_llm_router_chat_api,
+        name='admin_llm_router_chat_api',
+    ),
     path('admin/select-theme/', __import__('dose.admin_views').admin_views.select_theme, name='select_theme'),
     path('admin/select-theme/api/', __import__('dose.admin_views').admin_views.select_theme_api, name='select_theme_api'),
     path('admin/set-theme/', __import__('dose.admin_views').admin_views.set_theme, name='set_theme'),

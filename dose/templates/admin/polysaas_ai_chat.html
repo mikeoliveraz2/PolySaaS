@@ -1,0 +1,307 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}PolySaaS AI | {{ block.super }}{% endblock %}
+
+{% block bodyclass %}polysaas-ai-chat-page {{ block.super }}{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        body.polysaas-ai-chat-page .admin-content-grid {
+            grid-template-columns: 280px 1fr !important;
+        }
+        body.polysaas-ai-chat-page .admin-content-grid.sidebar-collapse,
+        body.polysaas-ai-chat-page.polysaas-collapsed .admin-content-grid {
+            grid-template-columns: 60px 1fr !important;
+        }
+        body.polysaas-ai-chat-page #recent-actions-sidebar {
+            display: none !important;
+        }
+        .admin-llm-router-chat .llm-chat-role-user { color: #1a5276; }
+        .admin-llm-router-chat .llm-chat-role-assistant { color: #145a32; }
+        .admin-llm-router-chat .llm-chat-role-error { color: #922b21; }
+        #adminLlmRouterChatLog {
+            min-height: 280px;
+            max-height: 55vh;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-2"><i class="fas fa-comments text-info" aria-hidden="true"></i> PolySaaS AI</h1>
+
+    <div class="alert alert-secondary small mb-3" role="status">
+        <strong>Roadmap:</strong> In-chat API reference, slash commands, and tool-calling orchestration are
+        <strong>deferred</strong> until bundled apps are fully up and traffic-sniffed (Phase&nbsp;3).
+        You can still give explicit step-by-step instructions in your messages today.
+    </div>
+
+    <p class="text-muted small mb-2">
+        Default staff routing uses <strong>{{ llm_standard_provider }}</strong> /
+        <code>{{ llm_standard_model }}</code> for the standard bucket (override via <code>LLM_ROUTER_*</code> in env).
+        Optional <code>LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT</code> adds a persistent system block after platform URLs.
+    </p>
+
+    <div class="card border-light mb-3">
+        <div class="card-body py-2">
+            <div class="font-weight-bold small mb-2">Mode</div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="polysaasAiMode" id="polysaasAiModeStandard" value="standard" checked>
+                <label class="form-check-label small" for="polysaasAiModeStandard">Standard</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="polysaasAiMode" id="polysaasAiModeMl" value="ml_studio">
+                <label class="form-check-label small" for="polysaasAiModeMl">ML Studio–assisted</label>
+            </div>
+            <p class="text-muted small mb-0 mt-2">
+                {% if ml_studio_use_llm %}
+                <strong>ML Studio–assisted:</strong> when a tenant <code>MLPrompt</code> exists with key
+                <code>{{ ml_studio_refine_key }}</code>, a <em>lite</em> model pass rewrites your request, then the main model answers.
+                {% else %}
+                <strong>ML Studio–assisted:</strong> merges that prompt into the system message (single main LLM call).
+                {% endif %}
+                {% if not ml_studio_prompt_registered %}
+                <span class="text-warning d-block mt-1">No prompt registered for this tenant yet — ML Studio mode will fall back until you add one in Machine Learning Studio → ML Prompts (key <code>{{ ml_studio_refine_key }}</code>).</span>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if page_context_initial %}
+    <p class="small text-info mb-2">
+        <strong>Page context</strong> (from URL <code>?context=</code>): <code>{{ page_context_initial|truncatechars:120 }}</code>
+    </p>
+    {% endif %}
+
+    {% csrf_token %}
+    <input type="hidden" id="polysaasAiPageContext" value="{{ page_context_initial|escape }}">
+    <div
+        id="adminLlmRouterChatRoot"
+        class="admin-llm-router-chat card border-info"
+        data-api-url="{% url 'admin_llm_router_chat_api' %}"
+    >
+        <div class="card-body">
+            <div id="adminLlmRouterChatLog" class="border rounded p-2 mb-3 bg-white" style="overflow-y: auto; font-size: 0.875rem;"></div>
+            <div class="d-flex flex-wrap align-items-start" style="gap: 8px;">
+                <label class="sr-only" for="adminLlmRouterChatInput">Message</label>
+                <textarea
+                    id="adminLlmRouterChatInput"
+                    class="form-control"
+                    rows="3"
+                    style="min-width: 220px; flex: 1 1 320px;"
+                    placeholder="Ask about APIs, passthrough, logs… (be explicit; model picker and tools come later)"
+                    autocomplete="off"
+                ></textarea>
+                <div class="d-flex flex-column" style="gap: 6px;">
+                    <button type="button" class="btn btn-info" id="adminLlmRouterChatSend">
+                        <i class="fas fa-paper-plane" aria-hidden="true"></i> Send
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="adminLlmRouterChatClear">
+                        Clear
+                    </button>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0" id="adminLlmRouterChatMeta"></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+    {{ block.super }}
+    <script>
+    (function () {
+        var SK_HISTORY = 'pss_admin_llm_v1_history';
+        var SK_META = 'pss_admin_llm_v1_meta';
+        var SK_MODE = 'pss_admin_llm_v1_mode';
+
+        var root = document.getElementById('adminLlmRouterChatRoot');
+        if (!root) return;
+        var apiUrl = root.getAttribute('data-api-url');
+        var logEl = document.getElementById('adminLlmRouterChatLog');
+        var input = document.getElementById('adminLlmRouterChatInput');
+        var sendBtn = document.getElementById('adminLlmRouterChatSend');
+        var clearBtn = document.getElementById('adminLlmRouterChatClear');
+        var meta = document.getElementById('adminLlmRouterChatMeta');
+        var pageCtxEl = document.getElementById('polysaasAiPageContext');
+        var history = [];
+
+        function persistHistory() {
+            try {
+                var s = JSON.stringify(history);
+                if (s.length > 450000) {
+                    history = history.slice(-40);
+                    s = JSON.stringify(history);
+                }
+                sessionStorage.setItem(SK_HISTORY, s);
+            } catch (e) {}
+        }
+        function persistMeta(text) {
+            try {
+                sessionStorage.setItem(SK_META, text || '');
+            } catch (e) {}
+        }
+        function persistMode() {
+            try {
+                sessionStorage.setItem(SK_MODE, selectedMode());
+            } catch (e) {}
+        }
+        function loadHistoryFromStorage() {
+            history = [];
+            try {
+                var raw = sessionStorage.getItem(SK_HISTORY);
+                if (!raw) return;
+                var arr = JSON.parse(raw);
+                if (!Array.isArray(arr)) return;
+                for (var i = 0; i < arr.length; i++) {
+                    var it = arr[i];
+                    if (!it || (it.role !== 'user' && it.role !== 'assistant')) continue;
+                    history.push({ role: it.role, content: String(it.content || '') });
+                }
+            } catch (e) {
+                history = [];
+            }
+        }
+        function renderLogFromHistory() {
+            if (!logEl) return;
+            logEl.innerHTML = '';
+            for (var j = 0; j < history.length; j++) {
+                var h = history[j];
+                appendLine(h.role === 'user' ? 'user' : 'assistant', h.content);
+            }
+        }
+        function loadModeFromStorage() {
+            try {
+                var m = sessionStorage.getItem(SK_MODE);
+                if (m === 'ml_studio') {
+                    var r = document.getElementById('polysaasAiModeMl');
+                    if (r) r.checked = true;
+                }
+            } catch (e) {}
+        }
+
+        function selectedMode() {
+            var el = document.querySelector('input[name="polysaasAiMode"]:checked');
+            return el ? el.value : 'standard';
+        }
+
+        function getCookie(name) {
+            var cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                    var cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        function getCsrf() {
+            var el = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (el && el.value) return el.value;
+            return getCookie('csrftoken');
+        }
+        function appendLine(role, text) {
+            var wrap = document.createElement('div');
+            wrap.className = 'mb-2 text-break';
+            var strong = document.createElement('div');
+            strong.className = 'font-weight-bold llm-chat-role-' + role;
+            strong.textContent = role === 'user' ? 'You' : (role === 'error' ? 'Error' : 'Assistant');
+            var body = document.createElement('div');
+            body.textContent = text;
+            wrap.appendChild(strong);
+            wrap.appendChild(body);
+            logEl.appendChild(wrap);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        function setMeta(text) {
+            meta.textContent = text || '';
+            persistMeta(text || '');
+        }
+        function clearChat() {
+            history = [];
+            logEl.innerHTML = '';
+            setMeta('');
+            try {
+                sessionStorage.removeItem(SK_HISTORY);
+                sessionStorage.removeItem(SK_META);
+            } catch (e) {}
+        }
+        sendBtn.addEventListener('click', function () {
+            var text = (input.value || '').trim();
+            if (!text) return;
+            sendBtn.disabled = true;
+            appendLine('user', text);
+            input.value = '';
+            setMeta('Sending…');
+            var pageContext = pageCtxEl ? (pageCtxEl.value || '').trim().slice(0, 500) : '';
+            fetch(apiUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrf()
+                },
+                body: JSON.stringify({
+                    message: text,
+                    history: history,
+                    mode: selectedMode(),
+                    page_context: pageContext
+                })
+            }).then(function (r) {
+                return r.json().then(function (data) {
+                    if (!r.ok) {
+                        throw new Error(data.detail || data.error || ('HTTP ' + r.status));
+                    }
+                    return data;
+                });
+            }).then(function (data) {
+                var reply = data.reply || '';
+                appendLine('assistant', reply);
+                history.push({ role: 'user', content: text });
+                history.push({ role: 'assistant', content: reply });
+                persistHistory();
+                var tail = (data.provider || '') + ' / ' + (data.model || '') +
+                    (data.task_bucket ? (' · ' + data.task_bucket) : '');
+                if (data.meta && data.meta.ml_studio) {
+                    try {
+                        tail += ' · ML ' + JSON.stringify(data.meta.ml_studio);
+                    } catch (e) {
+                        tail += ' · ML (meta)';
+                    }
+                }
+                setMeta(tail.trim());
+            }).catch(function (err) {
+                appendLine('error', err.message || String(err));
+                setMeta('');
+            }).finally(function () {
+                sendBtn.disabled = false;
+            });
+        });
+        clearBtn.addEventListener('click', clearChat);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendBtn.click();
+            }
+        });
+
+        document.querySelectorAll('input[name="polysaasAiMode"]').forEach(function (r) {
+            r.addEventListener('change', persistMode);
+        });
+
+        loadHistoryFromStorage();
+        renderLogFromHistory();
+        loadModeFromStorage();
+        try {
+            var sm = sessionStorage.getItem(SK_META);
+            if (sm) meta.textContent = sm;
+        } catch (e) {}
+    })();
+    </script>
+{% endblock %}

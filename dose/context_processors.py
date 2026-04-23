@@ -158,8 +158,9 @@ def admin_active_urls(request):
     if not (request.user.is_authenticated and request.user.is_staff):
         return {}
 
-    # Only provide data for admin paths
-    if not request.path.startswith('/admin/'):
+    # Only provide data for admin paths (include ``/admin`` index, no trailing slash)
+    _p = request.path or ''
+    if not (_p == '/admin' or _p.startswith('/admin/')):
         return {}
 
     try:
@@ -476,17 +477,25 @@ def admin_navigation(request):
                 print(f"[ADMIN_NAV] Added panel '{panel_info['panel_title']}' with {len(filtered_items)} visible items")
 
         # Top navigation items (system links) - MUST MATCH landing_page.py view
-        # Detect if we're in admin context
-        is_admin_context = request.path.startswith('/admin/')
+        # Index URL is often ``/admin`` (no trailing slash); ``startswith('/admin/')`` misses it.
+        _admin_path = request.path or ''
+        is_admin_context = _admin_path == '/admin' or _admin_path.startswith('/admin/')
 
-        # Names avoid implying /admin/ is the "orchestration dashboard" (see templates/jazzmin/admin/index.html).
-        top_navigation_items = [
-            {'name': 'Admin home (models)' if is_admin_context else 'Dose workspace', 'url': '/admin/' if is_admin_context else '/dose/dashboard/', 'icon': '📊'},
-            {'name': 'Dose workspace' if is_admin_context else 'Admin home (models)', 'url': '/dose/dashboard/' if is_admin_context else '/admin/', 'icon': '📋'},
-            {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
-            {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
-            {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'}
-        ]
+        if is_admin_context:
+            # No /admin/ “dashboard” link and no DoseAI/AI URLs in the admin sidebar.
+            top_navigation_items = [
+                {'name': 'Dose workspace', 'url': '/dose/dashboard/', 'icon': '📋'},
+                {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
+                {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
+            ]
+        else:
+            top_navigation_items = [
+                {'name': 'Dose workspace', 'url': '/dose/dashboard/', 'icon': '📊'},
+                {'name': 'Admin home (models)', 'url': '/admin/', 'icon': '📋'},
+                {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
+                {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
+                {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
+            ]
 
         # Add external services from 'External Services' NavigationPanel
         # Search across ALL schemas (schema-aware like PassThroughEndpoint)
@@ -640,7 +649,7 @@ def admin_navigation(request):
             print(f"[ADMIN_NAV] ERROR getting navigation data (encoding issue, see log)")
         logger.error(f"[ADMIN_NAV] Error: {e}")
         logger.error(tb)
-        # Always return the expected structure, even on error
+        # Always return the expected structure, even on error.
         return {
             'passthrough_services': [],
             'external_services': [],
