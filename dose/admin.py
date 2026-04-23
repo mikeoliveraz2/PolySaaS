@@ -58,9 +58,23 @@ class DoseAIPromptAdmin(admin.ModelAdmin):
         return super().get_model_perms(request)
     def get_queryset(self, request):
         return super().get_queryset(request)
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        return form
+        def get_form(self, request, obj=None, **kwargs):
+            # Guarantee tenant exists in DB before any form processing or save
+            from dose.tenant_utils import get_current_tenant
+            from dose.models.tenant import Tenant
+            tenant = get_current_tenant(request)
+            if tenant:
+                try:
+                    Tenant.objects.get(id=tenant.id)
+                except Tenant.DoesNotExist:
+                    Tenant.objects.create(
+                        id=tenant.id,
+                        name=getattr(tenant, 'name', 'Session Tenant'),
+                        slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
+                        schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
+                    )
+            form = super().get_form(request, obj, **kwargs)
+            return form
     def get_fieldsets(self, request, obj=None):
         return super().get_fieldsets(request, obj)
     def get_list_display(self, request):
