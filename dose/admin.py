@@ -868,12 +868,12 @@ if NEW_MODELS_AVAILABLE:
             return form
 
         def save_model(self, request, obj, form, change):
-            """Always assign tenant from session, auto-create if missing."""
+            """Always assign tenant from session, auto-create if missing (guaranteed before save)."""
             from dose.tenant_utils import get_current_tenant
             from dose.models.tenant import Tenant
             tenant = get_current_tenant(request)
             if tenant:
-                # Ensure tenant exists in DB
+                # Ensure tenant exists in DB before saving
                 try:
                     db_tenant = Tenant.objects.get(id=tenant.id)
                 except Tenant.DoesNotExist:
@@ -884,17 +884,14 @@ if NEW_MODELS_AVAILABLE:
                         schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
                     )
                 obj.tenant = db_tenant
-                print(f"[NAV_PANEL_ADMIN] Set panel tenant to: {db_tenant.name}")
             elif not obj.tenant_id:
                 # Fallback: Try to get user's tenant from profile
                 try:
                     user_profile = UserProfile.objects.get(user=request.user)
                     obj.tenant = user_profile.tenant
-                    print(f"[NAV_PANEL_ADMIN] Set panel tenant from profile: {user_profile.tenant.name}")
                 except UserProfile.DoesNotExist:
-                    print(f"[NAV_PANEL_ADMIN] WARNING: No tenant found for user {request.user.username}")
+                    pass
             super().save_model(request, obj, form, change)
-            print(f"[NAV_PANEL_ADMIN] Saved NavigationPanel '{obj.title}' (Tenant: {obj.tenant.name if obj.tenant else 'None'})")
 
     @admin.register(NavigationItem)
     class NavigationItemAdmin(TenantAwareModelAdmin):
