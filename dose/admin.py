@@ -887,12 +887,11 @@ if NEW_MODELS_AVAILABLE:
                 if tenant and 'tenant' in form.base_fields:
                     if not obj:
                         form.base_fields['tenant'].initial = tenant
-                    # Hide tenant dropdown (single choice)
+                    # Only set background color for clarity, do not block interaction
                     form.base_fields['tenant'].widget.can_add_related = False
                     form.base_fields['tenant'].widget.can_change_related = False
                     form.base_fields['tenant'].widget.can_delete_related = False
-                    form.base_fields['tenant'].widget.attrs['readonly'] = True
-                    form.base_fields['tenant'].widget.attrs['style'] = 'background-color: #e9ecef; cursor: not-allowed; pointer-events: none;'
+                    form.base_fields['tenant'].widget.attrs['style'] = 'background-color: #e9ecef;'
             except Exception as e:
                 print(f"[NAV_PANEL_ADMIN] Error setting tenant: {e}")
             return form
