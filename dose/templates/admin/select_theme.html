@@ -12,22 +12,40 @@
   <form method="post" action="/admin/select-theme/" id="theme-selector-form">{% csrf_token %}
     <label for="light_theme">Light theme</label>
     <select name="light_theme" id="light_theme">
-      {% for t in themes %}
-        <option value="{{ t }}" {% if t == light_theme %}selected{% endif %}>{{ t }}</option>
+      {% for t in light_themes %}
+        <option value="{{ t }}" {% if t == light_theme %}selected{% endif %}>{{ t|title }}</option>
       {% endfor %}
     </select>
     <br><br>
     <label for="dark_theme">Dark theme</label>
     <select name="dark_theme" id="dark_theme">
-      {% for t in themes %}
-        <option value="{{ t }}" {% if t == dark_theme %}selected{% endif %}>{{ t }}</option>
+      {% for t in dark_themes %}
+        <option value="{{ t }}" {% if t == dark_theme %}selected{% endif %}>{{ t|title }}</option>
       {% endfor %}
     </select>
     <br><br>
-    <label>
-      <input type="checkbox" name="use_system_pref" {% if use_system_pref %}checked{% endif %}>
-      Use system dark mode preference
-    </label>
+    <div style="margin: 1em 0;">
+      <label for="use_system_pref_toggle" style="margin-right: 1em;">Use system dark mode preference</label>
+      <input type="checkbox" id="use_system_pref_toggle" name="use_system_pref" {% if use_system_pref %}checked{% endif %} style="display:none;">
+      <button type="button" id="toggleBtn" onclick="toggleSystemPref()" style="padding: 0.5em 1.5em; border-radius: 2em; border: none; background: {% if use_system_pref %}#007bff{% else %}#ccc{% endif %}; color: white; font-weight: bold; cursor: pointer;">
+        <span id="toggleBtnText">{% if use_system_pref %}On{% else %}Off{% endif %}</span>
+      </button>
+    </div>
+    <script>
+      function toggleSystemPref() {
+        var cb = document.getElementById('use_system_pref_toggle');
+        var btn = document.getElementById('toggleBtn');
+        var txt = document.getElementById('toggleBtnText');
+        cb.checked = !cb.checked;
+        if (cb.checked) {
+          btn.style.background = '#007bff';
+          txt.textContent = 'On';
+        } else {
+          btn.style.background = '#ccc';
+          txt.textContent = 'Off';
+        }
+      }
+    </script>
     <br><br>
     <input type="submit" value="Save" style="font-size:1.2em;padding:8px 24px;background:#007bff;color:#fff;border:none;border-radius:4px;">
     {% if request.GET.saved %}

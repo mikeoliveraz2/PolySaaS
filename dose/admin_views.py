@@ -124,9 +124,17 @@ from dose.models import UserProfile
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+
+# Theme classification
 THEMES = [
     "flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux","minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab","superhero","united","yeti"
 ]
+LIGHT_THEMES = sorted([
+    "flatly","cerulean","cosmo","journal","litera","lumen","lux","minty","pulse","sandstone","simplex","sketchy","spacelab","united","yeti"
+])
+DARK_THEMES = sorted([
+    "cyborg","darkly","slate","solar","superhero"
+])
 
 @login_required
 def select_theme_api(request):
@@ -223,7 +231,8 @@ def select_theme(request):
     else:
         logging.info(f"Theme selector GET: user={request.user.username}, light_theme={profile.light_theme}, dark_theme={profile.dark_theme}")
         context = {
-            "themes": THEMES,
+            "light_themes": LIGHT_THEMES,
+            "dark_themes": DARK_THEMES,
             "light_theme": profile.light_theme,
             "dark_theme": profile.dark_theme,
             "use_system_pref": profile.use_system_pref,

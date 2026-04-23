@@ -18,12 +18,109 @@
         body.polysaas-ai-chat-page #recent-actions-sidebar {
             display: none !important;
         }
-        .admin-llm-router-chat .llm-chat-role-user { color: #1a5276; }
-        .admin-llm-router-chat .llm-chat-role-assistant { color: #145a32; }
-        .admin-llm-router-chat .llm-chat-role-error { color: #922b21; }
+        /* Chat log main box */
         #adminLlmRouterChatLog {
             min-height: 280px;
             max-height: 55vh;
+            background: #fff !important;
+            color: #111 !important;
+            border-radius: 14px !important;
+            padding: 2rem !important;
+            font-size: 1.45rem !important;
+            font-family: 'Segoe UI', Arial, sans-serif !important;
+            font-weight: 800 !important;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.10) !important;
+        }
+        /* Input box styles */
+        #adminLlmRouterChatInput {
+            font-weight: 900 !important;
+            color: #222 !important;
+            background: #f5f7fa !important;
+            border: 2.5px solid #0056b3 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.10) !important;
+            font-size: 1.35rem !important;
+            padding: 1.2rem !important;
+            transition: background 0.2s, color 0.2s;
+        }
+        #adminLlmRouterChatInput:focus {
+            background: #fffbe6 !important;
+            outline: 2.5px solid #0056b3 !important;
+            color: #111 !important;
+        }
+        #adminLlmRouterChatInput::placeholder {
+            color: #888 !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+        }
+        /* User and assistant message roles */
+        .admin-llm-router-chat .llm-chat-role-user {
+            color: #0056b3 !important;
+            font-weight: 900 !important;
+            font-size: 1.18em !important;
+            letter-spacing: 0.01em !important;
+        }
+        .admin-llm-router-chat .llm-chat-role-assistant {
+            color: #0bbd87 !important;
+            font-weight: 900 !important;
+            font-size: 1.18em !important;
+            letter-spacing: 0.01em !important;
+        }
+        .admin-llm-router-chat .llm-chat-role-error {
+            color: #ff3860 !important;
+            font-weight: 900 !important;
+        }
+        /* Make AI response text bold and bright */
+        .admin-llm-router-chat .llm-chat-role-assistant + div {
+            font-weight: 900 !important;
+            color: #0bbd87 !important;
+            font-size: 1.18em !important;
+        }
+        /* Make user text a different color */
+        .admin-llm-router-chat .llm-chat-role-user + div {
+            color: #0056b3 !important;
+            font-weight: 900 !important;
+            font-size: 1.18em !important;
+        }
+        /* Dark mode overrides */
+        html[data-bs-theme="dark"] #adminLlmRouterChatLog {
+            background: #181c22 !important;
+            color: #ffe066 !important;
+        }
+        html[data-bs-theme="dark"] #adminLlmRouterChatInput {
+            background: #23272e !important;
+            color: #ffe066 !important;
+            border: 2.5px solid #ffe066 !important;
+            font-weight: 900 !important;
+        }
+        html[data-bs-theme="dark"] #adminLlmRouterChatInput:focus {
+            background: #23272e !important;
+            outline: 2.5px solid #ffe066 !important;
+            color: #ffe066 !important;
+        }
+        html[data-bs-theme="dark"] #adminLlmRouterChatInput::placeholder {
+            color: #ffe066 !important;
+            font-weight: 900 !important;
+            opacity: 1 !important;
+        }
+        html[data-bs-theme="dark"] .admin-llm-router-chat .llm-chat-role-user {
+            color: #ffe066 !important;
+            font-weight: 900 !important;
+        }
+        html[data-bs-theme="dark"] .admin-llm-router-chat .llm-chat-role-assistant {
+            color: #00ffae !important;
+            font-weight: 900 !important;
+        }
+        html[data-bs-theme="dark"] .admin-llm-router-chat .llm-chat-role-error {
+            color: #ff3860 !important;
+        }
+        html[data-bs-theme="dark"] .admin-llm-router-chat .llm-chat-role-assistant + div {
+            color: #00ffae !important;
+            font-weight: 900 !important;
+        }
+        html[data-bs-theme="dark"] .admin-llm-router-chat .llm-chat-role-user + div {
+            color: #ffe066 !important;
+            font-weight: 900 !important;
         }
     </style>
 {% endblock %}

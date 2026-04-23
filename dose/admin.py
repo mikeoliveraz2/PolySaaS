@@ -823,6 +823,37 @@ if NEW_MODELS_AVAILABLE:
             }),
         ]
 
+        def formfield_for_foreignkey(self, db_field, request, **kwargs):
+            """Restrict tenant dropdown to current session tenant only, or auto-create if missing. Add debug logging."""
+            import logging
+            logger = logging.getLogger("dose.admin.NavigationPanelAdmin")
+            logger.info(f"[DEBUG] Session keys: {list(request.session.keys())}")
+            logger.info(f"[DEBUG] Session tenant_id: {request.session.get('tenant_id')}")
+            if db_field.name == 'tenant':
+                from dose.tenant_utils import get_current_tenant
+                from dose.models.tenant import Tenant
+                tenant = get_current_tenant(request)
+                logger.info(f"[DEBUG] get_current_tenant: {tenant}")
+                if tenant:
+                    # Ensure tenant exists in DB (auto-create if missing)
+                    try:
+                        db_tenant = Tenant.objects.get(id=tenant.id)
+                        logger.info(f"[DEBUG] Found tenant in DB: {db_tenant}")
+                    except Tenant.DoesNotExist:
+                        db_tenant = Tenant.objects.create(
+                            id=tenant.id,
+                            name=getattr(tenant, 'name', 'Session Tenant'),
+                            slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
+                            schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
+                        )
+                        logger.info(f"[DEBUG] Created tenant in DB: {db_tenant}")
+                    kwargs['queryset'] = Tenant.objects.filter(id=tenant.id)
+                    logger.info(f"[DEBUG] Tenant queryset: {list(kwargs['queryset'])}")
+                else:
+                    kwargs['queryset'] = Tenant.objects.none()
+                    logger.warning("[DEBUG] No tenant found in session or DB.")
+            return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
         def get_item_count(self, obj):
             """Display the number of navigation items in this panel."""
             count = obj.navigation_items.count()
@@ -848,35 +879,42 @@ if NEW_MODELS_AVAILABLE:
             return queryset
 
         def get_form(self, request, obj=None, **kwargs):
-            """Auto-set tenant field to user's tenant and make it readonly."""
+            """Auto-set tenant field to session tenant, hide dropdown, and make readonly."""
             form = super().get_form(request, obj, **kwargs)
-
-            # Auto-set tenant to user's tenant
             try:
-                from dose.utils import get_current_tenant
+                from dose.tenant_utils import get_current_tenant
                 tenant = get_current_tenant(request)
                 if tenant and 'tenant' in form.base_fields:
-                    # Set initial value to user's tenant
-                    if not obj:  # New object
+                    if not obj:
                         form.base_fields['tenant'].initial = tenant
-                    # Make tenant field readonly (not disabled - disabled fields don't submit)
+                    # Hide tenant dropdown (single choice)
+                    form.base_fields['tenant'].widget.can_add_related = False
+                    form.base_fields['tenant'].widget.can_change_related = False
+                    form.base_fields['tenant'].widget.can_delete_related = False
                     form.base_fields['tenant'].widget.attrs['readonly'] = True
-                    form.base_fields['tenant'].widget.attrs['style'] = 'background-color: #e9ecef; cursor: not-allowed;'
-                    print(f"[NAV_PANEL_ADMIN] Set tenant to: {tenant.name} (readonly)")
+                    form.base_fields['tenant'].widget.attrs['style'] = 'background-color: #e9ecef; cursor: not-allowed; pointer-events: none;'
             except Exception as e:
                 print(f"[NAV_PANEL_ADMIN] Error setting tenant: {e}")
-
             return form
 
         def save_model(self, request, obj, form, change):
-            """Auto-assign tenant to user's tenant if not set."""
-            from dose.utils import get_current_tenant
-
+            """Always assign tenant from session, auto-create if missing."""
+            from dose.tenant_utils import get_current_tenant
+            from dose.models.tenant import Tenant
             tenant = get_current_tenant(request)
             if tenant:
-                # Always set to user's tenant (override any form input)
-                obj.tenant = tenant
-                print(f"[NAV_PANEL_ADMIN] Set panel tenant to: {tenant.name}")
+                # Ensure tenant exists in DB
+                try:
+                    db_tenant = Tenant.objects.get(id=tenant.id)
+                except Tenant.DoesNotExist:
+                    db_tenant = Tenant.objects.create(
+                        id=tenant.id,
+                        name=getattr(tenant, 'name', 'Session Tenant'),
+                        slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
+                        schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
+                    )
+                obj.tenant = db_tenant
+                print(f"[NAV_PANEL_ADMIN] Set panel tenant to: {db_tenant.name}")
             elif not obj.tenant_id:
                 # Fallback: Try to get user's tenant from profile
                 try:
@@ -885,7 +923,6 @@ if NEW_MODELS_AVAILABLE:
                     print(f"[NAV_PANEL_ADMIN] Set panel tenant from profile: {user_profile.tenant.name}")
                 except UserProfile.DoesNotExist:
                     print(f"[NAV_PANEL_ADMIN] WARNING: No tenant found for user {request.user.username}")
-
             super().save_model(request, obj, form, change)
             print(f"[NAV_PANEL_ADMIN] Saved NavigationPanel '{obj.title}' (Tenant: {obj.tenant.name if obj.tenant else 'None'})")
 
