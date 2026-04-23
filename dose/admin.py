@@ -824,21 +824,15 @@ if NEW_MODELS_AVAILABLE:
         ]
 
         def formfield_for_foreignkey(self, db_field, request, **kwargs):
-            """Restrict tenant dropdown to current session tenant only, or auto-create if missing. Add debug logging."""
-            import logging
-            logger = logging.getLogger("dose.admin.NavigationPanelAdmin")
-            logger.info(f"[DEBUG] Session keys: {list(request.session.keys())}")
-            logger.info(f"[DEBUG] Session tenant_id: {request.session.get('tenant_id')}")
+            """Force tenant dropdown to only show the session tenant, always grab from session before building field."""
             if db_field.name == 'tenant':
                 from dose.tenant_utils import get_current_tenant
                 from dose.models.tenant import Tenant
                 tenant = get_current_tenant(request)
-                logger.info(f"[DEBUG] get_current_tenant: {tenant}")
                 if tenant:
                     # Ensure tenant exists in DB (auto-create if missing)
                     try:
                         db_tenant = Tenant.objects.get(id=tenant.id)
-                        logger.info(f"[DEBUG] Found tenant in DB: {db_tenant}")
                     except Tenant.DoesNotExist:
                         db_tenant = Tenant.objects.create(
                             id=tenant.id,
@@ -846,12 +840,11 @@ if NEW_MODELS_AVAILABLE:
                             slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
                             schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
                         )
-                        logger.info(f"[DEBUG] Created tenant in DB: {db_tenant}")
+                    # Only show this tenant in the dropdown
                     kwargs['queryset'] = Tenant.objects.filter(id=tenant.id)
-                    logger.info(f"[DEBUG] Tenant queryset: {list(kwargs['queryset'])}")
+                    kwargs['initial'] = tenant.id
                 else:
                     kwargs['queryset'] = Tenant.objects.none()
-                    logger.warning("[DEBUG] No tenant found in session or DB.")
             return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
         def get_item_count(self, obj):
