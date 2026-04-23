@@ -886,7 +886,7 @@ if NEW_MODELS_AVAILABLE:
                 tenant = get_current_tenant(request)
                 if tenant and 'tenant' in form.base_fields:
                     if not obj:
-                        form.base_fields['tenant'].initial = tenant
+                        form.base_fields['tenant'].initial = tenant.id
                     # Only set background color for clarity, do not block interaction
                     form.base_fields['tenant'].widget.can_add_related = False
                     form.base_fields['tenant'].widget.can_change_related = False
