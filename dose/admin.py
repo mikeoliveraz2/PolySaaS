@@ -819,33 +819,11 @@ if NEW_MODELS_AVAILABLE:
 
         fieldsets = [
             (None, {
-                'fields': ['tenant', 'title', 'panel_type', 'description', 'is_active', 'sort_order', 'panel_css_class', 'panel_background_color']
+                'fields': ['title', 'panel_type', 'description', 'is_active', 'sort_order', 'panel_css_class', 'panel_background_color']
             }),
         ]
 
-        def formfield_for_foreignkey(self, db_field, request, **kwargs):
-            """Force tenant dropdown to only show the session tenant, always grab from session before building field."""
-            if db_field.name == 'tenant':
-                from dose.tenant_utils import get_current_tenant
-                from dose.models.tenant import Tenant
-                tenant = get_current_tenant(request)
-                if tenant:
-                    # Ensure tenant exists in DB (auto-create if missing)
-                    try:
-                        db_tenant = Tenant.objects.get(id=tenant.id)
-                    except Tenant.DoesNotExist:
-                        db_tenant = Tenant.objects.create(
-                            id=tenant.id,
-                            name=getattr(tenant, 'name', 'Session Tenant'),
-                            slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
-                            schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
-                        )
-                    # Only show this tenant in the dropdown
-                    kwargs['queryset'] = Tenant.objects.filter(id=tenant.id)
-                    kwargs['initial'] = tenant.id
-                else:
-                    kwargs['queryset'] = Tenant.objects.none()
-            return super().formfield_for_foreignkey(db_field, request, **kwargs)
+        # Remove tenant field from form; always set from session in save_model
 
         def get_item_count(self, obj):
             """Display the number of navigation items in this panel."""
