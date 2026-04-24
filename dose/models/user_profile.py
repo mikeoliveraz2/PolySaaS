@@ -9,7 +9,7 @@ class UserProfile(models.Model):
     Links users to tenants for session-based multi-tenancy
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
+    tenant = models.ForeignKey(Tenant, to_field='slug', db_column='tenant_slug', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     dark_mode = models.BooleanField(default=False)
     theme = models.CharField(max_length=20, default='flatly', help_text="Jazzmin/Bootswatch theme name (e.g., 'flatly', 'cyborg', 'darkly')")

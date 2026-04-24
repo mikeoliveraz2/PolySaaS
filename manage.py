@@ -15,15 +15,15 @@ if __name__ == '__main__':
 
     # CRITICAL: Auto-migrate ALL schemas in multi-tenant system
     # When 'migrate' is called, redirect to migrate_all_schemas command
-    if 'migrate' in sys.argv and 'migrate_all_schemas' not in sys.argv:
-        print("\n" + "="*80)
-        print("[*] Multi-Tenant Migration Redirect")
-        print("    Using migrate_all_schemas to handle all tenant schemas...")
-        print("="*80 + "\n")
+    # if 'migrate' in sys.argv and 'migrate_all_schemas' not in sys.argv:
+    #     print("\n" + "="*80)
+    #     print("[*] Multi-Tenant Migration Redirect")
+    #     print("    Using migrate_all_schemas to handle all tenant schemas...")
+    #     print("="*80 + "\n")
 
-        # Replace 'migrate' with 'migrate_all_schemas' in argv and re-execute
-        sys.argv[sys.argv.index('migrate')] = 'migrate_all_schemas'
-        execute_from_command_line(sys.argv)
-        sys.exit(0)  # Exit after redirecting to migrate_all_schemas
+    #     # Replace 'migrate' with 'migrate_all_schemas' in argv and re-execute
+    #     sys.argv[sys.argv.index('migrate')] = 'migrate_all_schemas'
+    #     execute_from_command_line(sys.argv)
+    #     sys.exit(0)  # Exit after redirecting to migrate_all_schemas
 
     execute_from_command_line(sys.argv)

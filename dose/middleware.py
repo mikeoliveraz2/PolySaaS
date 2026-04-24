@@ -3,21 +3,20 @@ from dose.models.tenant import Tenant
 
 class EnsureSessionTenantExistsMiddleware(MiddlewareMixin):
     def process_request(self, request):
-        tenant_id = request.session.get('tenant_id')
+        tenant_slug = request.session.get('tenant_slug')
         tenant_name = request.session.get('tenant_name', 'Session Tenant')
-        tenant_slug = request.session.get('tenant_slug', f'session-{tenant_id}')
         tenant_schema = request.session.get('tenant_schema', tenant_slug)
-        print(f'[DEBUG] EnsureSessionTenantExistsMiddleware: tenant_id={tenant_id}')
-        if tenant_id:
+        print(f'[DEBUG] EnsureSessionTenantExistsMiddleware: tenant_slug={tenant_slug}')
+        if tenant_slug:
+            from dose.models.tenant import Tenant
             tenant, created = Tenant.objects.get_or_create(
-                id=tenant_id,
+                slug=tenant_slug,
                 defaults={
                     'name': tenant_name,
-                    'slug': tenant_slug,
                     'schema_name': tenant_schema
                 }
             )
             if created:
-                print(f'[DEBUG] Tenant created: id={tenant_id}, name={tenant_name}, slug={tenant_slug}, schema={tenant_schema}')
+                print(f'[DEBUG] Tenant created: slug={tenant_slug}, name={tenant_name}, schema={tenant_schema}')
             else:
-                print(f'[DEBUG] Tenant already exists: id={tenant_id}')
+                print(f'[DEBUG] Tenant already exists: slug={tenant_slug}')

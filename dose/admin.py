@@ -65,10 +65,10 @@ class DoseAIPromptAdmin(admin.ModelAdmin):
             tenant = get_current_tenant(request)
             if tenant:
                 try:
-                    Tenant.objects.get(id=tenant.id)
+                    Tenant.objects.get(slug=tenant.slug)
                 except Tenant.DoesNotExist:
                     Tenant.objects.create(
-                        id=tenant.id,
+                        slug=tenant.slug,
                         name=getattr(tenant, 'name', 'Session Tenant'),
                         slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
                         schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
@@ -871,7 +871,7 @@ if NEW_MODELS_AVAILABLE:
                 tenant = get_current_tenant(request)
                 if tenant and 'tenant' in form.base_fields:
                     if not obj:
-                        form.base_fields['tenant'].initial = tenant.id
+                        form.base_fields['tenant'].initial = tenant.slug
                     # Only set background color for clarity, do not block interaction
                     form.base_fields['tenant'].widget.can_add_related = False
                     form.base_fields['tenant'].widget.can_change_related = False
@@ -885,26 +885,34 @@ if NEW_MODELS_AVAILABLE:
             """Always assign tenant from session, auto-create if missing (guaranteed before save)."""
             from dose.tenant_utils import get_current_tenant
             from dose.models.tenant import Tenant
+            import logging
+            logger = logging.getLogger(__name__)
             tenant = get_current_tenant(request)
+            logger.info(f"[DEBUG] save_model: session tenant from get_current_tenant = {tenant}")
+            # Log all tenants in public schema
+            all_tenants = list(Tenant.objects.all().values('slug', 'name', 'schema_name', 'is_active'))
+            logger.info(f"[DEBUG] save_model: all tenants in public schema: {all_tenants}")
             if tenant:
                 # Ensure tenant exists in DB before saving
                 try:
-                    db_tenant = Tenant.objects.get(id=tenant.id)
+                    db_tenant = Tenant.objects.get(slug=tenant.slug)
                 except Tenant.DoesNotExist:
                     db_tenant = Tenant.objects.create(
-                        id=tenant.id,
+                        slug=tenant.slug,
                         name=getattr(tenant, 'name', 'Session Tenant'),
-                        slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
-                        schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
+                        schema_name=getattr(tenant, 'schema_name', f'session_{tenant.slug}')
                     )
+                    logger.info(f"[DEBUG] save_model: created tenant {db_tenant}")
                 obj.tenant = db_tenant
+                logger.info(f"[DEBUG] save_model: assigned obj.tenant = {db_tenant}")
             elif not obj.tenant_id:
                 # Fallback: Try to get user's tenant from profile
                 try:
                     user_profile = UserProfile.objects.get(user=request.user)
                     obj.tenant = user_profile.tenant
+                    logger.info(f"[DEBUG] save_model: fallback assigned obj.tenant = {obj.tenant}")
                 except UserProfile.DoesNotExist:
-                    pass
+                    logger.warning(f"[DEBUG] save_model: no tenant found for user {request.user}")
             super().save_model(request, obj, form, change)
 
     @admin.register(NavigationItem)
@@ -1070,7 +1078,7 @@ if NEW_MODELS_AVAILABLE:
                         try:
                             with connection.cursor() as cursor:
                                 cursor.execute(f'SET search_path TO "{schema_name}",public;')
-                                panel_check = NavigationPanel.objects.filter(id=obj.panel.id).first()
+                                panel_check = NavigationPanel.objects.filter(slug=obj.panel.slug).first()
                                 if panel_check:
                                     panel_schema = schema_name
                                     panel_tenant = panel_check.tenant if hasattr(panel_check, 'tenant') and panel_check.tenant else None
@@ -1084,7 +1092,7 @@ if NEW_MODELS_AVAILABLE:
                     with connection.cursor() as cursor:
                         cursor.execute(f'SET search_path TO "{panel_schema}",public;')
                         # Get the panel in the correct schema context
-                        panel_in_schema = NavigationPanel.objects.filter(id=obj.panel.id).first()
+                        panel_in_schema = NavigationPanel.objects.filter(slug=obj.panel.slug).first()
                         if panel_in_schema:
                             obj.panel = panel_in_schema
                             super().save_model(request, obj, form, change)

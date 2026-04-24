@@ -5,26 +5,24 @@ from dose.utils import create_schema_and_copy_tables
 
 
 class Tenant(models.Model):
-    primary_color = models.CharField(
-        max_length=20,
-        blank=True,
-        default="#007bff",
-        help_text="Primary color for this tenant's admin theme (e.g., #007bff)"
-    )
-    """
-    Simple tenant model for session-based multi-tenancy with schema separation
-    """
-    name = models.CharField(max_length=100, help_text="Tenant organization name")
     slug = models.SlugField(
         max_length=50,
-        help_text="Unique identifier for the tenant",
+        primary_key=True,
+        help_text="Unique identifier for the tenant (primary key)",
         default="default"
     )
+    name = models.CharField(max_length=100, help_text="Tenant organization name")
     schema_name = models.CharField(
         max_length=63, 
         unique=True,
         help_text="PostgreSQL schema name for this tenant (auto-generated from slug)",
         blank=True
+    )
+    primary_color = models.CharField(
+        max_length=20,
+        blank=True,
+        default="#007bff",
+        help_text="Primary color for this tenant's admin theme (e.g., #007bff)"
     )
     description = models.TextField(
         blank=True, 

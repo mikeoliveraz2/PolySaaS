@@ -40,7 +40,7 @@ class NavigationPanel(TenantAwareModel):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     def __str__(self):
-        return f"{self.tenant.name} - {self.title}"
+        return f"{self.tenant.slug if self.tenant else ''} - {self.title}"
     class Meta:
         verbose_name = "Navigation Panel"
         verbose_name_plural = "Navigation Panels"
