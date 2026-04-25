@@ -68,9 +68,8 @@ class DoseAIPromptAdmin(admin.ModelAdmin):
                     Tenant.objects.get(slug=tenant.slug)
                 except Tenant.DoesNotExist:
                     Tenant.objects.create(
-                        slug=tenant.slug,
-                        name=getattr(tenant, 'name', 'Session Tenant'),
                         slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
+                        name=getattr(tenant, 'name', 'Session Tenant'),
                         schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
                     )
             form = super().get_form(request, obj, **kwargs)

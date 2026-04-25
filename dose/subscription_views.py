@@ -173,7 +173,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         tenant_shortname = data.get('tenant_shortname')
         token = data.get('stripe_token')
         card_name = data.get('card_name')
-        tenant_id = data.get('tenant')
+        tenant_slug = data.get('tenant')  # now a slug, not an int
         username = data.get('username')
         email = data.get('email')
         password = data.get('password')
@@ -235,7 +235,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         test_bypass = tenant_name and tenant_name.lower().startswith('a')
 
         if not test_bypass:
-            if not tenant_id and not needs_new_tenant:
+            if not tenant_slug and not needs_new_tenant:
                 return Response({'error': 'Missing tenant or stripe_token'}, status=status.HTTP_400_BAD_REQUEST)
             if not token:
                 return Response({'error': 'Missing tenant or stripe_token'}, status=status.HTTP_400_BAD_REQUEST)
@@ -278,6 +278,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
         # ── Phase 3: all DB writes in one atomic block ───────────────
         try:
+
             with transaction.atomic():
                 # auth_user and Tenant live in the public schema.
                 # Force search_path=public so a logged-in subscriber's tenant
@@ -301,24 +302,23 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                         defaults={'slug': slug, 'schema_name': schema_name,
                                   'description': 'Created via subscribe.'},
                     )
-                    tenant_id = tenant_obj.id
+                    tenant_slug = tenant_obj.slug
+                elif tenant_slug:
+                    tenant_obj = Tenant.objects.get(slug=tenant_slug)
+                else:
+                    tenant_obj = None
 
-                if user_obj and tenant_id:
+                if user_obj and tenant_obj:
                     try:
                         user_profile = UserProfile.objects.get(user=user_obj)
-                        user_profile.tenant_id = tenant_id
+                        user_profile.tenant = tenant_obj
                         user_profile.save()
                     except UserProfile.DoesNotExist:
-                        UserProfile.objects.create(user=user_obj, tenant_id=tenant_id)
+                        UserProfile.objects.create(user=user_obj, tenant=tenant_obj)
                     UserTenantMembership.objects.get_or_create(
-                        user=user_obj, tenant_id=tenant_id,
+                        user=user_obj, tenant=tenant_obj,
                         defaults={'role': UserTenantMembership.Role.OWNER},
                     )
-
-                try:
-                    tenant_id = int(tenant_id)
-                except (TypeError, ValueError):
-                    tenant_id = None
 
                 if not test_bypass and _djstripe_models is not None:
                     djstripe_customer = _djstripe_models.Customer.sync_from_stripe_data(customer)
@@ -328,7 +328,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     _djstripe_models.Subscription.sync_from_stripe_data(stripe_sub)
 
                 sub = Subscription.objects.create(
-                    tenant_id=tenant_id,
+                    tenant=tenant_obj,
                     plan_tier=plan_tier,
                     stripe_customer_id=stripe_customer_id,
                     stripe_subscription_id=stripe_subscription_id,
@@ -338,7 +338,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )
 
                 if not test_bypass:
-                    self._register_provisioning_on_commit(data, tenant_id, user_obj)
+                    self._register_provisioning_on_commit(data, tenant_obj, user_obj)
 
         except Exception:
             if not test_bypass:

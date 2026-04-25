@@ -100,11 +100,11 @@ def set_tenant_in_session(sender, user, request, **kwargs):
                     defaults={"role": UserTenantMembership.Role.MEMBER},
                 )
             apply_tenant_to_session(request, tenant, m)
-            print(f"set_tenant_in_session: Set session for user {user.username} with tenant {tenant.name} (ID: {tenant.id})")
+            print(f"set_tenant_in_session: Set session for user {user.username} with tenant {tenant.name} (Slug: {tenant.slug})")
         else:
             print(
                 f"set_tenant_in_session: No UserProfile/tenant for user {user.username}; "
-                f"session left without tenant_id (assign a tenant or create a Tenant row)"
+                f"session left without tenant (assign a tenant or create a Tenant row)"
             )
     except Exception as e:
         print(f"set_tenant_in_session: Error setting tenant session for user {user.username}: {e}")
@@ -130,8 +130,8 @@ from dose.models import UserProfile, UserTenantMembership
 def sync_membership_from_user_profile(sender, instance, **kwargs):
     """Keep user_tenant_memberships aligned when UserProfile.tenant changes."""
     UserTenantMembership.objects.get_or_create(
-        user_id=instance.user_id,
-        tenant_id=instance.tenant_id,
+        user=instance.user,
+        tenant=instance.tenant,
         defaults={"role": UserTenantMembership.Role.MEMBER},
     )
 

@@ -9,9 +9,12 @@ def forwards_backfill_memberships(apps, schema_editor):
     UserProfile = apps.get_model("dose", "UserProfile")
     UserTenantMembership = apps.get_model("dose", "UserTenantMembership")
     for profile in UserProfile.objects.all().iterator():
+        if not profile.tenant_id:
+            continue  # Skip profiles without a tenant
         UserTenantMembership.objects.get_or_create(
             user_id=profile.user_id,
-            tenant_id=profile.tenant_id,
+            tenant_id=None,  # legacy field, not used
+            tenant=profile.tenant_id,  # tenant_id is now a slug string, use as FK
             defaults={"role": "admin"},
         )
 
