@@ -132,6 +132,34 @@ envVarGroups:
       - key: ODOO_MASTER_PASSWORD
         sync: false
 
+  # WordPress (MariaDB in a private service)
+  - name: polysaas-wordpress
+    envVars:
+      - key: WORDPRESS_DB_HOST
+        value: PolySaaS-WordPress-DB
+      - key: WORDPRESS_DB_NAME
+        value: wordpress
+      - key: WORDPRESS_DB_USER
+        value: wp
+      - key: WORDPRESS_DB_PASSWORD
+        sync: false
+      - key: WORDPRESS_TABLE_PREFIX
+        value: wp_
+
+  # Liferay (Postgres in a private service)
+  - name: polysaas-liferay
+    envVars:
+      - key: LIFERAY_DB_HOST
+        value: PolySaaS-Liferay-DB
+      - key: LIFERAY_DB_PORT
+        value: "5432"
+      - key: LIFERAY_DB_NAME
+        value: liferay
+      - key: LIFERAY_DB_USER
+        value: liferay
+      - key: LIFERAY_DB_PASSWORD
+        sync: false
+
 # Dedicated Postgres for Mattermost only (do not point it at PolySaaS-Core’s application database).
 databases:
   - name: polysaas-mattermost-db
@@ -284,6 +312,78 @@ services:
           name: polysaas-mattermost-db
           property: port
       - key: MM_SERVICESETTINGS_SITEURL
+        sync: false
+
+  # --- WordPress (Apache) + MariaDB (private service) ---
+  - type: pserv
+    name: PolySaaS-WordPress-DB
+    runtime: image
+    region: singapore
+    plan: starter
+    image:
+      url: docker.io/library/mariadb:11.4
+    disk:
+      name: wordpress-db-persist
+      mountPath: /var/lib/mysql
+      sizeGB: 10
+    envVars:
+      - key: MYSQL_DATABASE
+        value: wordpress
+      - key: MYSQL_USER
+        value: wp
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_ROOT_PASSWORD
+        sync: false
+
+  - type: web
+    name: PolySaaS-WordPress
+    runtime: image
+    region: singapore
+    plan: starter
+    healthCheckPath: /
+    image:
+      url: docker.io/library/wordpress:6.5-apache
+    envVars:
+      - fromGroup: polysaas-wordpress
+
+  # --- Liferay + Postgres (private service) ---
+  - type: pserv
+    name: PolySaaS-Liferay-DB
+    runtime: image
+    region: singapore
+    plan: starter
+    image:
+      url: docker.io/library/postgres:16
+    disk:
+      name: liferay-db-persist
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 10
+    envVars:
+      - key: POSTGRES_DB
+        value: liferay
+      - key: POSTGRES_USER
+        value: liferay
+      - key: POSTGRES_PASSWORD
+        sync: false
+
+  - type: web
+    name: PolySaaS-Liferay
+    runtime: image
+    region: singapore
+    plan: starter
+    healthCheckPath: /
+    image:
+      url: docker.io/liferay/portal:7.4.3.112-ga112
+    envVars:
+      - fromGroup: polysaas-liferay
+      - key: LIFERAY_JDBC_DEFAULT_DRIVER_CLASS_NAME
+        value: org.postgresql.Driver
+      - key: LIFERAY_JDBC_DEFAULT_URL
+        value: jdbc:postgresql://PolySaaS-Liferay-DB:5432/liferay
+      - key: LIFERAY_JDBC_DEFAULT_USERNAME
+        value: liferay
+      - key: LIFERAY_JDBC_DEFAULT_PASSWORD
         sync: false
 
 # ------------------------------------------------------------------------------
