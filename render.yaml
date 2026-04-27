@@ -312,7 +312,7 @@ services:
           name: polysaas-mattermost-db
           property: port
       - key: MM_SERVICESETTINGS_SITEURL
-        sync: false
+        value: https://mattermost.production.polysaas.online
 
   # --- WordPress (Apache) + MariaDB (private service) ---
   - type: pserv
