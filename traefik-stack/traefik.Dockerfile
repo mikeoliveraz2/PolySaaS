@@ -4,7 +4,8 @@ FROM traefik:v3.0
 RUN mkdir -p /letsencrypt
 
 # Copy Traefik configuration
-COPY traefik.yml /etc/traefik/traefik.yml
+COPY traefik.render.yml /etc/traefik/traefik.yml
+COPY dynamic.yml /etc/traefik/dynamic.yml
 
 # Expose ports
 EXPOSE 80 443 8080
