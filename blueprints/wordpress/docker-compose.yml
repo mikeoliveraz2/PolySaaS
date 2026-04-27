@@ -1,0 +1,78 @@
+services:
+  wp-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polysaas/wordpress-bedrock:${TENANT_SLUG}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TENANT_SLUG: ${TENANT_SLUG}
+      DOMAIN: ${DOMAIN}
+      SUBDOMAIN: ${SUBDOMAIN}
+      DB_HOST: ${DB_HOST:-wp-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-wordpress}
+      DB_USER: ${DB_USER:-wp}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      wp-db:
+        condition: service_healthy
+    volumes:
+      - wp_uploads_${TENANT_SLUG}:/app/web/app/uploads
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  wp-nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      wp-app:
+        condition: service_healthy
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - wp_uploads_${TENANT_SLUG}:/app/web/app/uploads
+    networks:
+      - internal
+      - ${TRAEFIK_NETWORK:-proxy}
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.http.routers.wordpress-${TENANT_SLUG}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.wordpress-${TENANT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.wordpress-${TENANT_SLUG}.tls=true
+      - traefik.http.services.wordpress-${TENANT_SLUG}.loadbalancer.server.port=80
+
+  wp-db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-wordpress}
+      MARIADB_USER: ${DB_USER:-wp}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - wp_db_${TENANT_SLUG}:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}
+
+volumes:
+  wp_uploads_${TENANT_SLUG}:
+  wp_db_${TENANT_SLUG}:

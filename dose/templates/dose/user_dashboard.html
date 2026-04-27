@@ -157,7 +157,7 @@
                 <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
             </li>
             <li class="nav-item d-none d-sm-inline-block">
-                <a href="{% url 'user_dashboard' %}" class="nav-link">Home</a>
+                <a href="{% url 'dose:landing_page' %}" class="nav-link">Home</a>
             </li>
 
             <!-- Passthrough Endpoint Links (same as admin interface) -->
@@ -212,7 +212,7 @@
     <!-- Main Sidebar Container -->
     <aside class="main-sidebar sidebar-dark-primary elevation-4">
         <!-- Brand Logo -->
-        <a href="{% url 'user_dashboard' %}" class="brand-link">
+        <a href="{% url 'dose:landing_page' %}" class="brand-link">
             <span class="brand-text font-weight-light">{{ tenant_name }}</span>
         </a>
 
@@ -233,7 +233,7 @@
                 <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
                     <!-- Dashboard -->
                     <li class="nav-item">
-                        <a href="{% url 'user_dashboard' %}" class="nav-link active">
+                        <a href="{% url 'dose:landing_page' %}" class="nav-link active">
                             <i class="nav-icon fas fa-tachometer-alt"></i>
                             <p>Dashboard</p>
                         </a>

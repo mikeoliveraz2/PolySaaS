@@ -37,10 +37,10 @@ class TenantSessionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
 
         # If user is authenticated, try to get tenant from session
         if hasattr(request, 'user') and request.user.is_authenticated:
-            tenant_id = request.session.get('tenant_id')
-            if tenant_id:
+            tenant_slug = request.session.get('tenant_slug') or request.session.get('tenant_id')
+            if tenant_slug:
                 try:
-                    tenant = Tenant.objects.get(id=tenant_id, is_active=True)
+                    tenant = Tenant.objects.get(slug=tenant_slug, is_active=True)
                     request.tenant = tenant
                 except Tenant.DoesNotExist:
                     # Invalid tenant in session, clear it
@@ -61,10 +61,10 @@ class TenantSessionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
 
 def get_current_tenant(request):
     """Utility function to get current tenant from session"""
-    tenant_id = request.session.get('tenant_id')
-    if tenant_id:
+    tenant_slug = request.session.get('tenant_slug') or request.session.get('tenant_id')
+    if tenant_slug:
         try:
-            return Tenant.objects.get(id=tenant_id, is_active=True)
+            return Tenant.objects.get(slug=tenant_slug, is_active=True)
         except Tenant.DoesNotExist:
             clear_tenant_from_session(request)
     return None
@@ -79,9 +79,9 @@ def clear_tenant_from_session(request):
 
 def set_tenant_in_session(request, tenant):
     """Manually set tenant in session (for login views)"""
-    request.session['tenant_id'] = tenant.id
-    request.session['tenant_name'] = tenant.name
     request.session['tenant_slug'] = tenant.slug
+    request.session['tenant_id'] = tenant.slug
+    request.session['tenant_name'] = tenant.name
     request.session['tenant_description'] = tenant.description or ''
     if tenant.logo:
         request.session['tenant_logo_url'] = tenant.logo.url

@@ -9,7 +9,8 @@ class Subscription(TenantAwareModel):
         ('polysaas-unlimited', 'PolySaaS-Unlimited'),
     ]
 
-    tenant = models.OneToOneField('Tenant', on_delete=models.CASCADE)
+    # Use inherited tenant FK from TenantAwareModel, enforce uniqueness for one-to-one behavior
+    # The unique constraint will be set in the migration
     plan_tier = models.CharField(max_length=30, choices=PLAN_TIER_CHOICES, default='polysaas-1')
     stripe_customer_id = models.CharField(max_length=128, blank=True, null=True)
     stripe_subscription_id = models.CharField(max_length=128, blank=True, null=True)

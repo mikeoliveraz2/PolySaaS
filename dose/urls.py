@@ -18,6 +18,8 @@ from django.urls import path, re_path
 from django.views.generic import TemplateView
 from django.shortcuts import render
 from rest_framework import permissions
+from django.shortcuts import redirect
+from urllib.parse import urlencode
 
 
 # Simple unread messages page view
@@ -34,7 +36,7 @@ from django.urls import include
 from rest_framework import routers
 from dose.views import RequestLogViewSet, ErrorLogViewSet, AtomicServiceViewSet, debug_tenant_session
 from dose.views import (
-    index, login_view, logout_view, dashboard, landing_page, switch_tenant, tenant_settings,
+    index, login_view, logout_view, dashboard, switch_tenant, tenant_settings,
     tenant_users, get_user_tenants_api, get_tenant_info_api, update_tenant_api,
     track_navigation_click, track_dashboard_button_click, debug_view, setup_demo_view,
     create_sample_dashboard_buttons, health_check, custom_swagger_view, debug_session_view, about_page,
@@ -68,6 +70,15 @@ schema_view = get_schema_view(
 
 def staff_required(view_func):
     return login_required(user_passes_test(lambda u: u.is_staff)(view_func))
+
+
+def login_redirect_view(request):
+    next_url = request.GET.get('next') or request.POST.get('next') or '/'
+    query = urlencode({'next': next_url}) if next_url else ''
+    target = '/accounts/login/'
+    if query:
+        target = f'{target}?{query}'
+    return redirect(target)
 
 
 app_name = 'dose'
@@ -115,9 +126,9 @@ urlpatterns = [
     path('connect-social-after-subscribe/', connect_social_after_subscribe, name='connect_social_after_subscribe'),
     path('unread-messages/', unread_messages_view, name='unread_messages'),
     # Core views
-    path('', landing_page, name='landing_page'),
+    path('', index, name='landing_page'),
     # Authentication
-    path('login/', login_view, name='login'),
+    path('login/', login_redirect_view, name='login'),
     path('logout/', logout_view, name='logout'),
     # Dashboard and main views
     path('dashboard/', dashboard, name='dashboard'),

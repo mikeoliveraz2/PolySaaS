@@ -2,26 +2,32 @@
 def get_current_tenant(request):
     import logging
     logger = logging.getLogger(__name__)
-    tenant_id = getattr(request, "current_tenant_id", None)
-    if tenant_id is None:
-        tenant_id = request.session.get("tenant_id")
-    logger.info(f"get_current_tenant: tenant_id from session = {tenant_id}")
+    tenant_slug = getattr(request, "current_tenant_slug", None)
+    if tenant_slug is None:
+        tenant_slug = request.session.get("tenant_slug")
+    if tenant_slug is None:
+        tenant_slug = request.session.get("tenant_id")
+    logger.info(f"get_current_tenant: tenant_slug from session = {tenant_slug}")
     logger.info(f"get_current_tenant: session keys = {dict(request.session.items())}")
-    if tenant_id:
+    if tenant_slug:
         from django.db import connection
         from dose.models import Tenant
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SET search_path TO public;")
-                tenant = Tenant.objects.get(id=tenant_id, is_active=True)
-            logger.info(f"get_current_tenant: found tenant {tenant.name} (id={tenant.id}, active={tenant.is_active})")
+                tenant = Tenant.objects.get(slug=tenant_slug, is_active=True)
+            logger.info(
+                f"get_current_tenant: found tenant {tenant.name} (slug={tenant.slug}, active={tenant.is_active})"
+            )
             return tenant
         except Tenant.DoesNotExist:
-            logger.warning(f"get_current_tenant: Tenant with id={tenant_id} and is_active=True not found (public schema)")
+            logger.warning(
+                f"get_current_tenant: Tenant with slug={tenant_slug} and is_active=True not found (public schema)"
+            )
         except Exception as e:
             logger.error(f"get_current_tenant: Exception during tenant lookup (public schema): {e}")
     else:
-        logger.warning("get_current_tenant: No tenant_id in session")
+        logger.warning("get_current_tenant: No tenant_slug in session")
 
 
 def get_current_tenant_role(request):

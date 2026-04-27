@@ -1,0 +1,68 @@
+services:
+  odoo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polysaas/odoo:${TENANT_SLUG}
+    restart: unless-stopped
+    environment:
+      HOST: ${ODOO_HOST:-0.0.0.0}
+      PORT: ${ODOO_PORT:-8069}
+      PGHOST: ${DB_HOST:-odoo-db}
+      PGPORT: ${DB_PORT:-5432}
+      PGDATABASE: ${DB_NAME:-odoo}
+      PGUSER: ${DB_USER:-odoo}
+      PGPASSWORD: ${DB_PASSWORD}
+      ADMIN_PASSWORD: ${ODOO_ADMIN_PASSWORD}
+      TENANT_SLUG: ${TENANT_SLUG}
+      DOMAIN: ${DOMAIN}
+      SUBDOMAIN: ${SUBDOMAIN}
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    volumes:
+      - odoo_data_${TENANT_SLUG}:/var/lib/odoo
+      - odoo_addons_${TENANT_SLUG}:/mnt/extra-addons
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+      - ${TRAEFIK_NETWORK:-proxy}
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.http.routers.odoo-${TENANT_SLUG}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.odoo-${TENANT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.odoo-${TENANT_SLUG}.tls=true
+      - traefik.http.services.odoo-${TENANT_SLUG}.loadbalancer.server.port=${ODOO_PORT:-8069}
+
+  odoo-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-odoo}
+      POSTGRES_USER: ${DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - odoo_db_${TENANT_SLUG}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-odoo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}
+
+volumes:
+  odoo_data_${TENANT_SLUG}:
+  odoo_addons_${TENANT_SLUG}:
+  odoo_db_${TENANT_SLUG}:

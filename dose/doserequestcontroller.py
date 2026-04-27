@@ -49,21 +49,21 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
 
         # Ensure request.tenant is set from session if not already present
         if not hasattr(request, 'tenant') or request.tenant is None:
-            tenant_id = request.session.get('tenant_id')
-            if tenant_id:
+            tenant_slug = request.session.get('tenant_slug') or request.session.get('tenant_id')
+            if tenant_slug:
                 try:
                     from django.db import connection
-                    from dose.models.tenant import Tenant
+                    from dose.models import Tenant
                     with connection.cursor() as cursor:
                         cursor.execute('SET search_path TO public')
                         all_tenants = list(Tenant.objects.all())
                         logger.info(f"[DEBUG] All tenants visible to controller (public schema): {all_tenants}")
-                        request.tenant = Tenant.objects.get(id=tenant_id)
+                        request.tenant = Tenant.objects.get(slug=tenant_slug)
                         logger.info(f"[DEBUG] Set request.tenant from session: {request.tenant}")
                 except Exception as e:
-                    logger.warning(f"[DEBUG] Could not set request.tenant from session tenant_id={tenant_id}: {e}")
+                    logger.warning(f"[DEBUG] Could not set request.tenant from session tenant_slug={tenant_slug}: {e}")
             else:
-                logger.warning("[DEBUG] No tenant_id in session; request.tenant remains None.")
+                logger.warning("[DEBUG] No tenant_slug in session; request.tenant remains None.")
         # Exclude public subscription page, load-balancer health, DoseMessage, i18n paths,
         # and all passthrough proxy paths (/pt/) which are handled by ExternalPassthroughMiddleware.
         if (

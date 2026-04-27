@@ -1,0 +1,11 @@
+{
+  "name": "polysaas/wordpress-bedrock",
+  "type": "project",
+  "require": {
+    "php": ">=8.3",
+    "roots/bedrock": "^1.23"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

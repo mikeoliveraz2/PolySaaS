@@ -23,7 +23,7 @@ class CustomAccountAdapter(DefaultAccountAdapter):
             .exclude(tenant__schema_name="public")
         )
 
-        if len(memberships) > 1 and not request.session.get("tenant_id"):
+        if len(memberships) > 1 and not request.session.get("tenant_slug"):
             return "/dose/select-tenant/"
 
         if len(memberships) == 1:

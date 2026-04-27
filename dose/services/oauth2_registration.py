@@ -24,7 +24,7 @@ from dose.oauth import get_redirect_uri
 logger = logging.getLogger(__name__)
 
 
-def register_oauth2_app_for_tenant(tenant_id, app_name, user):
+def register_oauth2_app_for_tenant(tenant_pk, app_name, user):
     """
     Register an OAuth2 Application in DOT for a tenant+app pair.
 
@@ -36,7 +36,7 @@ def register_oauth2_app_for_tenant(tenant_id, app_name, user):
             "django-oauth-toolkit is not installed; install it to use OAuth2 app registration."
         )
 
-    tenant = Tenant.objects.get(id=tenant_id)
+    tenant = Tenant.objects.get(pk=tenant_pk)
 
     redirect_uri = get_redirect_uri(app_name, tenant.schema_name)
 

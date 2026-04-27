@@ -68,11 +68,11 @@ def set_theme(request):
         )
     profile = None
     if user and user.is_authenticated:
-        try:
-            profile = UserProfile.objects.get(user=user, tenant=tenant)
-        except UserProfile.DoesNotExist:
-            print(f"[DEBUG] UserProfile not found for user={user}, tenant={tenant}. Creating new.")
-            profile = UserProfile(user=user, tenant=tenant)
+        profile, created = UserProfile.objects.get_or_create(user=user, tenant=tenant)
+        if created:
+            print(f"[DEBUG] UserProfile created for user={user}, tenant={tenant}.")
+        else:
+            print(f"[DEBUG] UserProfile already exists for user={user}, tenant={tenant}.")
     print(f"[DEBUG] profile: {profile}")
     import logging
     # Main POST logic

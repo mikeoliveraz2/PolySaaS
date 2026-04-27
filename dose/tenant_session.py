@@ -12,9 +12,8 @@ def apply_tenant_to_session(request, tenant, membership):
     Persist active tenant and role on the session after switch or login.
     membership may be None for superuser-only flows (role not stored).
     """
-    request.session["tenant_id"] = tenant.id
-    request.session["tenant_name"] = tenant.name
     request.session["tenant_slug"] = tenant.slug
+    request.session["tenant_name"] = tenant.name
     request.session["tenant_description"] = getattr(tenant, "description", "") or ""
     if hasattr(tenant, "logo") and tenant.logo:
         request.session["tenant_logo_url"] = tenant.logo.url
@@ -27,21 +26,21 @@ def apply_tenant_to_session(request, tenant, membership):
     request.session.save()
 
 
-def membership_for_user_tenant(user, tenant_id):
+def membership_for_user_tenant(user, tenant_slug):
     if not user.is_authenticated:
         return None
     return UserTenantMembership.objects.filter(
-        user_id=user.id, tenant_id=tenant_id
+        user_id=user.id, tenant__slug=tenant_slug
     ).first()
 
 
-def resolve_active_membership(request, tenant_id):
+def resolve_active_membership(request, tenant_slug):
     """
-    Return UserTenantMembership for the current user and given tenant, or None.
+    Return UserTenantMembership for the current user and given tenant_slug, or None.
     """
-    if not request.user.is_authenticated or not tenant_id:
+    if not request.user.is_authenticated or not tenant_slug:
         return None
-    return membership_for_user_tenant(request.user, tenant_id)
+    return membership_for_user_tenant(request.user, tenant_slug)
 
 
 def tenant_search_path_for_request(tenant):

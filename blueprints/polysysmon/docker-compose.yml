@@ -1,0 +1,37 @@
+services:
+  polysysmon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polysaas/polysysmon:${TENANT_SLUG}
+    restart: unless-stopped
+    environment:
+      TENANT_SLUG: ${TENANT_SLUG}
+      DOMAIN: ${DOMAIN}
+      SUBDOMAIN: ${SUBDOMAIN}
+    volumes:
+      - grafana_data_${TENANT_SLUG}:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+      - ${TRAEFIK_NETWORK:-proxy}
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.http.routers.polysysmon-${TENANT_SLUG}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.polysysmon-${TENANT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.polysysmon-${TENANT_SLUG}.tls=true
+      - traefik.http.services.polysysmon-${TENANT_SLUG}.loadbalancer.server.port=${GRAFANA_PORT:-3000}
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}
+
+volumes:
+  grafana_data_${TENANT_SLUG}:

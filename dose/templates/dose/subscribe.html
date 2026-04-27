@@ -707,6 +707,10 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_polysysmon: !!document.getElementById('enable-polysysmon').checked,
     };
 
+    try {
+        console.log('[subscribe] POST /dose/api/subscriptions/ payload:', payload);
+    } catch (e) {}
+
     var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
     if (!csrfInput || !csrfInput.value) {
         showSubscribeFeedback('Security token missing \u2014 refresh the page and try again.', { isError: true });
@@ -726,7 +730,16 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
             resetSubscribeButton(); if (card) card.clear(); return;
         }
         var data = null;
-        if (rawText) { try { data = JSON.parse(rawText); } catch (e) {} }
+        if (rawText) {
+            try {
+                data = JSON.parse(rawText);
+            } catch (e) {
+                try {
+                    console.warn('[subscribe] Non-JSON response (likely HTML error). status=' + response.status);
+                    console.warn(rawText.slice(0, 800));
+                } catch (e2) {}
+            }
+        }
 
         if (!response.ok) {
             var errMsg = data ? payloadErrorMessage(data) : null;
@@ -755,12 +768,11 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
             sessionStorage.setItem('polysaas_new_user_creds', JSON.stringify({ u: newUsername, p: newPassword }));
         } catch(e) {}
         var loginUrl = '/accounts/login/?next=/admin/';
-        var logoutThenLogin = '/accounts/logout/?next=' + encodeURIComponent(loginUrl);
         showSubscribeFeedback(
-            'Subscription saved! <a href="' + logoutThenLogin + '" style="color:#1565c0;font-weight:700;text-decoration:underline;">Click here to log in</a> \u2014 redirecting in 4 seconds\u2026',
+            'Subscription saved! <a href="' + loginUrl + '" style="color:#1565c0;font-weight:700;text-decoration:underline;">Click here to log in</a> \u2014 redirecting in 4 seconds\u2026',
             { isError: false, html: true }
         );
-        setTimeout(function() { window.location.assign(logoutThenLogin); }, 4000);
+        setTimeout(function() { window.location.assign(loginUrl); }, 4000);
     }).catch(function(err) {
         showSubscribeFeedback('Network error: ' + (err && err.message ? err.message : String(err)), { isError: true });
         resetSubscribeButton(); if (card) card.clear();

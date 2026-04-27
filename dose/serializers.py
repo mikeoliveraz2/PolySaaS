@@ -136,7 +136,15 @@ class SubscriptionCreateSerializer(serializers.Serializer):
     card_name = serializers.CharField(max_length=255)
     stripe_token = serializers.CharField(max_length=255)
     plan_tier = serializers.ChoiceField(
-        choices=['starter', 'team', 'unlimited'],
-        default='starter',
+        choices=['polysaas-1', 'polysaas-3', 'polysaas-unlimited'],
+        default='polysaas-1',
         required=False
     )
+    enable_odoo = serializers.BooleanField(required=False, default=False)
+    enable_nextcloud = serializers.BooleanField(required=False, default=False)
+    enable_dolibarr = serializers.BooleanField(required=False, default=False)
+    enable_mattermost = serializers.BooleanField(required=False, default=False)
+    enable_wordpress = serializers.BooleanField(required=False, default=False)
+    enable_liferay = serializers.BooleanField(required=False, default=False)
+    enable_monitor_logger = serializers.BooleanField(required=False, default=False)
+    enable_polysysmon = serializers.BooleanField(required=False, default=False)

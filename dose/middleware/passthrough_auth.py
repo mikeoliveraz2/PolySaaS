@@ -28,9 +28,8 @@ def _get_tenant_info(user):
     """Safely extract tenant info from user's profile."""
     try:
         profile = getattr(user, 'userprofile', None)
-        if profile and profile.tenant_id:
+        if profile and profile.tenant:
             return {
-                'tenant_id': str(profile.tenant_id),
                 'tenant_name': profile.tenant.name,
                 'tenant_slug': profile.tenant.slug,
             }
@@ -81,7 +80,6 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
 
         tenant_info = _get_tenant_info(user)
         if tenant_info:
-            headers['X-Tenant-ID'] = tenant_info['tenant_id']
             headers['X-Tenant-Name'] = tenant_info['tenant_name']
             headers['X-Tenant-Slug'] = tenant_info['tenant_slug']
 

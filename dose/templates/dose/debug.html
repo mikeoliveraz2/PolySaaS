@@ -87,7 +87,7 @@
         {% if current_user %}
         <a href="{% url 'dose:dashboard' %}" class="btn">Dashboard</a>
         {% else %}
-        <a href="{% url 'dose:login' %}" class="btn">Login</a>
+        <a href="{% url 'account_login' %}" class="btn">Login</a>
         {% endif %}
     </div>
 </div>

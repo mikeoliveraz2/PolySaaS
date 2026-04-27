@@ -1,3 +1,26 @@
+# Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)
+# Debug logging for Allauth authentication troubleshooting
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'allauth': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
 # DO NOT MODIFY: Critical system file. Ask before making changes.
 # Stripe price ID for subscriptions (replace with your actual Stripe price ID)
 
@@ -301,18 +324,10 @@ _oauth2_available = 'oauth2_provider' in INSTALLED_APPS
 # `active_urls` removed from `INSTALLED_APPS` per user request.
 # Django Allauth settings for OAuth2 SSO
 SITE_ID = 1
-AUTHENTICATION_BACKENDS = (
-    (
-        'oauth2_provider.backends.OAuth2Backend',
-        'mysite.auth_backends.CaseInsensitiveModelBackend',
-        'allauth.account.auth_backends.AuthenticationBackend',
-    )
-    if _oauth2_available else
-    (
-        'mysite.auth_backends.CaseInsensitiveModelBackend',
-        'allauth.account.auth_backends.AuthenticationBackend',
-    )
-)
+AUTHENTICATION_BACKENDS = [
+    'mysite.auth_backends_allauth.AllauthCaseInsensitiveBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 LOGIN_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
@@ -656,6 +671,14 @@ LOGGING = {
             'handlers': ['console', 'file', 'info_file'],
             'level': 'INFO',
             'propagate': True,
+        },
+        'django.contrib.auth': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+        'allauth.account': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
         },
     },
     'root': {

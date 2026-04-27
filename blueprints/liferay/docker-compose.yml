@@ -1,0 +1,62 @@
+services:
+  liferay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polysaas/liferay:${TENANT_SLUG}
+    restart: unless-stopped
+    environment:
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_DRIVERCLASSNAME: org.postgresql.Driver
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_URL: jdbc:postgresql://${DB_HOST:-liferay-db}:${DB_PORT:-5432}/${DB_NAME:-liferay}
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_USERNAME: ${DB_USER:-liferay}
+      LIFERAY_JDBC_PERIOD_DEFAULT_PERIOD_PASSWORD: ${DB_PASSWORD}
+      TENANT_SLUG: ${TENANT_SLUG}
+      DOMAIN: ${DOMAIN}
+      SUBDOMAIN: ${SUBDOMAIN}
+    depends_on:
+      liferay-db:
+        condition: service_healthy
+    volumes:
+      - liferay_data_${TENANT_SLUG}:/opt/liferay/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
+      - ${TRAEFIK_NETWORK:-proxy}
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.http.routers.liferay-${TENANT_SLUG}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.liferay-${TENANT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.liferay-${TENANT_SLUG}.tls=true
+      - traefik.http.services.liferay-${TENANT_SLUG}.loadbalancer.server.port=${LIFERAY_HTTP_PORT:-8080}
+
+  liferay-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-liferay}
+      POSTGRES_USER: ${DB_USER:-liferay}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - liferay_db_${TENANT_SLUG}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-liferay}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}
+
+volumes:
+  liferay_data_${TENANT_SLUG}:
+  liferay_db_${TENANT_SLUG}:

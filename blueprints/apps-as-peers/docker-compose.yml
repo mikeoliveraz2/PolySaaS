@@ -1,0 +1,36 @@
+services:
+  apps-as-peers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polysaas/apps-as-peers:${TENANT_SLUG}
+    restart: unless-stopped
+    environment:
+      TENANT_SLUG: ${TENANT_SLUG}
+      DOMAIN: ${DOMAIN}
+      SUBDOMAIN: ${SUBDOMAIN}
+      PORT: ${APPSASPEERS_PORT:-3000}
+      OAUTH2_CLIENT_ID: ${OAUTH2_CLIENT_ID}
+      OAUTH2_CLIENT_SECRET: ${OAUTH2_CLIENT_SECRET}
+      OAUTH2_ISSUER_URL: ${OAUTH2_ISSUER_URL}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${APPSASPEERS_PORT:-3000}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+      - ${TRAEFIK_NETWORK:-proxy}
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.http.routers.apps-as-peers-${TENANT_SLUG}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.apps-as-peers-${TENANT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.apps-as-peers-${TENANT_SLUG}.tls=true
+      - traefik.http.services.apps-as-peers-${TENANT_SLUG}.loadbalancer.server.port=${APPSASPEERS_PORT:-3000}
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}

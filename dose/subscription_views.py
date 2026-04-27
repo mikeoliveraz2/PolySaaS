@@ -166,6 +166,8 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _create_saga(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
         data = request.data
 
         # ── Phase 1: validate ────────────────────────────────────────
@@ -195,7 +197,9 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         if needs_new_tenant:
             slug = tenant_shortname.lower()
             schema_name = slug.replace('-', '_')
+            logger.warning(f"[DEBUG] Creating new tenant: name={tenant_name}, slug={slug}, schema_name={schema_name}")
             if Tenant.objects.filter(name=tenant_name).exists():
+                logger.warning(f"[DEBUG] Tenant name '{tenant_name}' already exists. Aborting new tenant creation.")
                 return Response({'error': f"Tenant name '{tenant_name}' already exists."},
                                 status=status.HTTP_400_BAD_REQUEST)
             if Tenant.objects.filter(schema_name=schema_name).exists():
@@ -290,6 +294,9 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
                 user_obj = None
                 if needs_new_user:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"[DEBUG] Creating user: username={username}, email={email}, password={password}")
                     user_obj = User.objects.create_user(username=username, email=email, password=password)
                     user_obj.is_staff = True
                     user_obj.is_superuser = True
@@ -303,9 +310,17 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                                   'description': 'Created via subscribe.'},
                     )
                     tenant_slug = tenant_obj.slug
+                    logger.warning(f"[DEBUG] New tenant created: {tenant_obj}")
                 elif tenant_slug:
-                    tenant_obj = Tenant.objects.get(slug=tenant_slug)
+                    # Only assign an existing tenant if explicitly requested (not fallback)
+                    try:
+                        tenant_obj = Tenant.objects.get(slug=tenant_slug)
+                        logger.warning(f"[DEBUG] Existing tenant explicitly assigned: {tenant_obj}")
+                    except Tenant.DoesNotExist:
+                        logger.warning(f"[DEBUG] Provided tenant_slug '{tenant_slug}' does not exist. No tenant assigned.")
+                        tenant_obj = None
                 else:
+                    logger.warning(f"[DEBUG] No tenant created or assigned for this signup.")
                     tenant_obj = None
 
                 if user_obj and tenant_obj:
@@ -338,7 +353,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )
 
                 if not test_bypass:
-                    self._register_provisioning_on_commit(data, tenant_obj, user_obj)
+                    self._register_provisioning_on_commit(data, tenant_slug, user_obj)
 
         except Exception:
             if not test_bypass:
@@ -369,9 +384,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _register_provisioning_on_commit(data, tenant_id, user_obj):
+    def _register_provisioning_on_commit(data, tenant_slug, user_obj):
         """Register Celery tasks via on_commit so workers never see rolled-back data."""
-        tenant = Tenant.objects.get(id=tenant_id)
+        tenant = Tenant.objects.get(slug=tenant_slug)
+        tenant_pk = tenant.pk
         admin_email = user_obj.email if user_obj else data.get('email')
         base = dict(tenant_schema=tenant.schema_name, tenant_name=tenant.name,
                     admin_email=admin_email, company_name=tenant.name)
@@ -396,7 +412,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             kwargs = dict(base)
             try:
                 cid, csecret, tapp = register_oauth2_app_for_tenant(
-                    tenant_id, app_key.replace('enable_', ''), user_obj,
+                    tenant_pk, app_key.replace('enable_', ''), user_obj,
                 )
                 kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
             except Exception as e:

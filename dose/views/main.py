@@ -47,7 +47,13 @@ def debug_tenant_session(request):
     return render(request, 'dose/debug_tenant.html', {'user': user, 'session_keys': session_keys})
 
 def index(request):
-    return render(request, 'dose/index.html')
+    if not request.user.is_authenticated:
+        login_url = f"/accounts/login/?next={request.path}"
+        return redirect(login_url)
+    context, response = _build_landing_page_context(request)
+    if response is not None:
+        return response
+    return render(request, 'dose/user_dashboard.html', context)
 
 def logout_view(request):
     """Basic logout view for Django with debug logging."""
@@ -301,15 +307,14 @@ def debug_view(request):
     """Debug view to check system status"""
     # Debug: only aggregate profiles when a real tenant is selected (never treat DB public as a tenant)
     show_profiles = False
-    if request.user.is_superuser and request.session.get("tenant_id"):
+    if request.user.is_superuser and request.session.get("tenant_slug"):
         show_profiles = True
     context = {
         'users': User.objects.all(),
         'tenants': Tenant.objects.all(),
         'user_profiles': UserProfile.objects.all() if show_profiles else [],
-        'current_tenant_id': request.session.get('tenant_id'),
-        'current_tenant_name': request.session.get('tenant_name'),
         'current_tenant_slug': request.session.get('tenant_slug'),
+        'current_tenant_name': request.session.get('tenant_name'),
         'current_user': request.user if request.user.is_authenticated else None,
         'session_data': dict(request.session.items()),
     }
@@ -426,7 +431,7 @@ def update_tenant_api(request):
             'success': True,
             'message': 'Tenant updated successfully',
             'tenant': {
-                'id': current_tenant.id,
+                'slug': current_tenant.slug,
                 'name': current_tenant.name,
                 'description': current_tenant.description,
                 'tagline': current_tenant.tagline
@@ -449,9 +454,8 @@ def get_tenant_info_api(request):
     return JsonResponse({
         'success': True,
         'tenant': {
-            'id': current_tenant.id,
-            'name': current_tenant.name,
             'slug': current_tenant.slug,
+            'name': current_tenant.name,
             'description': current_tenant.description,
             'logo': current_tenant.logo.url if current_tenant.logo else None,
             'tagline': current_tenant.tagline,
@@ -468,7 +472,7 @@ from django.http import JsonResponse
 @login_required
 def get_user_tenants_api(request):
     """API endpoint to get user's available tenants (from user_tenant_memberships)."""
-    current_tenant_id = request.session.get("tenant_id")
+    current_tenant_slug = request.session.get("tenant_slug")
     memberships = UserTenantMembership.objects.filter(user=request.user).select_related(
         "tenant"
     )
@@ -477,20 +481,19 @@ def get_user_tenants_api(request):
         t = m.tenant
         tenants.append(
             {
-                "id": t.id,
-                "name": t.name,
                 "slug": t.slug,
+                "name": t.name,
                 "description": t.description,
                 "logo": t.logo.url if t.logo else None,
                 "role": m.role,
-                "is_current": current_tenant_id == t.id,
+                "is_current": current_tenant_slug == t.slug,
             }
         )
     return JsonResponse(
         {
             "success": True,
             "tenants": tenants,
-            "current_tenant_id": current_tenant_id,
+            "current_tenant_slug": current_tenant_slug,
             "current_tenant_role": request.session.get("tenant_role"),
         }
     )
@@ -504,7 +507,7 @@ def tenant_users(request):
     if not current_tenant:
         return HttpResponseForbidden("No active tenant")
     user_ids = UserTenantMembership.objects.filter(
-        tenant_id=current_tenant.id
+        tenant__slug=current_tenant.slug
     ).values_list("user_id", flat=True)
     tenant_users = User.objects.filter(id__in=user_ids)
     context = {
@@ -734,10 +737,12 @@ def _build_landing_page_context(request):
 
     context = {
         'current_tenant': current_tenant,
+        'tenant_name': current_tenant.name if current_tenant else '',
         'user_profile': user_profile,
         'theme_info': theme_info,
         'theme_colors': theme_colors,
         'status_info': status_info,
+        'passthrough_endpoints': passthrough_endpoints,
         'passthrough_services': passthrough_services,
         'external_services': external_services,
         'navigation_panels': filtered_panels,
@@ -773,26 +778,26 @@ def _retarget_passthrough_prefixes_for_dose(html, trigger):
         return html
     admin_prefix = f'/pt/admin/{trigger}'
     dose_prefix = f'/pt/dose/{trigger}'
-    return (
-        html.replace(f'"{admin_prefix}', f'"{dose_prefix}')
-        .replace(f"'{admin_prefix}", f"'{dose_prefix}")
-        .replace(admin_prefix, dose_prefix)
-    )
-
-
-def landing_page(request):
-    """
-    Comprehensive landing page with themed layout and table-driven navigation
-    Includes: header, menu bar, tenant-specific navigation panels, main body, status bar
-    Redirects to login with tenant selection if no active tenant
-    """
-    context, response = _build_landing_page_context(request)
-    if response is not None:
-        return response
-    return render(request, 'dose/landing_page.html', context)
-
-
-@never_cache
+    try:
+        profile = UserProfile.objects.get(user=user)
+        profile_info = {
+            'user_id': profile.user.id,
+            'tenant_slug': profile.tenant.slug,
+            'tenant_name': profile.tenant.name,
+        }
+        tenant_info = {
+            'slug': profile.tenant.slug,
+            'name': profile.tenant.name,
+            'is_active': profile.tenant.is_active,
+        }
+    except UserProfile.DoesNotExist:
+        profile_info = 'No UserProfile found'
+    return JsonResponse({
+        'user': user.username,
+        'session_keys': session_keys,
+        'profile_info': profile_info,
+        'tenant_info': tenant_info,
+    })
 @login_required
 def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
     from dose.admin_views import _process_upstream_html_for_embed, _split_html_document_for_jazzmin_embed
@@ -884,10 +889,10 @@ def dashboard(request):
         profile = UserProfile.objects.get(user=request.user)
         tenant = profile.tenant
     except (UserProfile.DoesNotExist, AttributeError):
-        tenant_id = request.session.get('tenant_id')
-        if tenant_id:
+        tenant_slug = request.session.get('tenant_slug') or request.session.get('tenant_id')
+        if tenant_slug:
             try:
-                tenant = Tenant.objects.get(id=tenant_id)
+                tenant = Tenant.objects.get(slug=tenant_slug)
             except Tenant.DoesNotExist:
                 pass
 
@@ -940,27 +945,33 @@ def login_view(request):
             login(request, user)
             logger = logging.getLogger(__name__)
             try:
-                profile = UserProfile.objects.get(user=user)
+                # Ensure UserProfile and UserTenantMembership exist for this user/tenant
+                try:
+                    profile = UserProfile.objects.get(user=user)
+                except UserProfile.DoesNotExist:
+                    # Fallback: assign to first tenant or create a default tenant
+                    tenant = Tenant.objects.first()
+                    if not tenant:
+                        tenant = Tenant.objects.create(name="Default Tenant", slug="default-tenant", schema_name="public")
+                    profile = UserProfile.objects.create(user=user, tenant=tenant)
                 tenant = profile.tenant
+                # Always ensure UserTenantMembership exists
+                m, _ = UserTenantMembership.objects.get_or_create(
+                    user=user,
+                    tenant=tenant,
+                    defaults={"role": UserTenantMembership.Role.MEMBER},
+                )
                 from django.db import connection
                 schema_name = tenant.slug if hasattr(tenant, 'slug') else tenant.schema_name
                 with connection.cursor() as cursor:
                     cursor.execute(f'SET search_path TO "{schema_name}",public;')
-                m = UserTenantMembership.objects.filter(user=user, tenant=tenant).first()
-                if not m:
-                    m, _ = UserTenantMembership.objects.get_or_create(
-                        user=user,
-                        tenant=tenant,
-                        defaults={"role": UserTenantMembership.Role.MEMBER},
-                    )
                 apply_tenant_to_session(request, tenant, m)
                 logger.info(
-                    f"login_view: Set tenant session keys for user {user.username}: tenant_id={tenant.id}, tenant_name={tenant.name}"
+                    f"login_view: Set tenant session keys for user {user.username}: tenant_slug={tenant.slug}, tenant_name={tenant.name}"
                 )
                 logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
-            except UserProfile.DoesNotExist:
-                logger.warning(f"login_view: No UserProfile found for user {user.username}")
-                pass
+            except Exception as e:
+                logger.warning(f"login_view: Exception in tenant session setup for user {user.username}: {e}")
             next_url = request.GET.get('next') or '/'
             return redirect(next_url)
         else:
@@ -977,11 +988,11 @@ def debug_tenant_session(request):
         profile = UserProfile.objects.get(user=user)
         profile_info = {
             'user_id': profile.user.id,
-            'tenant_id': profile.tenant.id,
+            'tenant_slug': profile.tenant.slug,
             'tenant_name': profile.tenant.name,
         }
         tenant_info = {
-            'id': profile.tenant.id,
+            'slug': profile.tenant.slug,
             'name': profile.tenant.name,
             'is_active': profile.tenant.is_active,
         }

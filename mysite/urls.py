@@ -12,8 +12,8 @@ if _jazzmin_index:
     admin.site.index_template = _jazzmin_index
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
+from urllib.parse import urlencode
 from dose.views import subscribe_view
-from dose.views_custom_login import CustomLoginView
 from test_decompression_view import test_decompression, simple_html_test, external_direct_test
 
 try:
@@ -29,6 +29,14 @@ except ImportError:
 @login_required
 def profile_view(request):
     return render(request, 'account/profile.html')
+
+def admin_login_redirect_view(request):
+    next_url = request.GET.get('next') or '/admin/'
+    query = urlencode({'next': next_url}) if next_url else ''
+    target = '/accounts/login/'
+    if query:
+        target = f'{target}?{query}'
+    return redirect(target)
 
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -122,8 +130,8 @@ urlpatterns = [
     path('admin/polysniffer/', include((polysniffer_urls, 'polysniffer'))),
     path('', lambda request: redirect('dose:landing_page'), name='home'),
 
+    path('admin/login/', admin_login_redirect_view, name='admin_login_redirect'),
     path('admin/', admin.site.urls),
-    path('accounts/login/', CustomLoginView.as_view(), name='account_login'),
     path('accounts/', include('allauth.urls')),
     path('profile/', profile_view, name='profile'),
     path('test-decompress/', test_decompression, name='test_decompression'),

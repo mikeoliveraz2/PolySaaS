@@ -38,6 +38,7 @@ class DoseConfig(AppConfig):
         # Compare registry_len here vs admin_index_diag log on /admin/ hit to detect
         # whether models are registered but hidden (Jazzmin/permissions) or never registered.
         try:
+            import mysite.auth_backends_allauth  # Force load custom Allauth backend for debug
             from django.contrib import admin as _admin_site
             _reg_len = len(getattr(_admin_site.site, "_registry", {}) or {})
             print(
