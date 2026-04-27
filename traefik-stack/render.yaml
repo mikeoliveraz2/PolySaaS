@@ -1,0 +1,102 @@
+services:
+  # Traefik Reverse Proxy
+  - type: web
+    name: traefik
+    env: docker
+    plan: starter
+    dockerContext: .
+    dockerfilePath: ./traefik.Dockerfile
+    envVars:
+      - key: ACME_EMAIL
+        value: admin@polysaas.online
+      - key: TRAEFIK_BASIC_AUTH
+        generateValue: true
+    domains:
+      - domainName: production.polysaas.online
+    healthCheckPath: /ping
+
+  # PolySaaS Django Core (already exists - reference only)
+  # This is your existing Render web service
+  # - type: web
+  #   name: polysaas-core
+  #   env: python
+  #   ...
+
+  # Mattermost
+  - type: web
+    name: mattermost
+    env: docker
+    plan: starter
+    dockerContext: ../blueprints/mattermost
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: MM_SQLSETTINGS_DRIVERNAME
+        value: postgres
+      - key: MM_SQLSETTINGS_DATASOURCE
+        fromDatabase:
+          name: postgres
+          property: connectionString
+      - key: MM_SERVICESETTINGS_SITEURL
+        value: https://production.polysaas.online/mattermost
+    healthCheckPath: /api/v4/system/ping
+
+  # Odoo
+  - type: web
+    name: odoo
+    env: docker
+    plan: starter
+    dockerContext: ../blueprints/odoo
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: HOST
+        fromDatabase:
+          name: postgres
+          property: host
+      - key: USER
+        fromDatabase:
+          name: postgres
+          property: user
+      - key: PASSWORD
+        fromDatabase:
+          name: postgres
+          property: password
+      - key: PORT
+        fromDatabase:
+          name: postgres
+          property: port
+    healthCheckPath: /
+
+  # Nextcloud
+  - type: web
+    name: nextcloud
+    env: docker
+    plan: starter
+    dockerContext: ../blueprints/nextcloud
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: postgres
+          property: host
+      - key: POSTGRES_DB
+        value: nextcloud
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: postgres
+          property: password
+      - key: NEXTCLOUD_TRUSTED_DOMAINS
+        value: production.polysaas.online
+      - key: OVERWRITEPROTOCOL
+        value: https
+      - key: OVERWRITECLIURL
+        value: https://production.polysaas.online/nextcloud
+    healthCheckPath: /status.php
+
+databases:
+  - name: postgres
+    databaseName: polysaas
+    user: polysaas

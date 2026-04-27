@@ -1,0 +1,202 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - //var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`traefik.production.polysaas.online`)"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api.service=api@internal"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.api.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_BASIC_AUTH}"
+
+  # PolySaaS Django Core (running on Render - use as upstream)
+  # For local development, uncomment and use local build instead
+  # polysaas-core:
+  #   build:
+  #     context: ..
+  #     dockerfile: Dockerfile
+  #   container_name: polysaas-core
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   environment:
+  #     - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+  #     - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - ALLOWED_HOSTS=production.polysaas.online,localhost,127.0.0.1
+  #     - CSRF_TRUSTED_ORIGINS=https://production.polysaas.online,http://production.polysaas.online
+  #   volumes:
+  #     - ../media:/app/media
+  #     - ../static:/app/static
+  #   networks:
+  #     - traefik-public
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.polysaas.rule=Host(`production.polysaas.online`)"
+  #     - "traefik.http.routers.polysaas.tls=true"
+  #     - "traefik.http.routers.polysaas.tls.certresolver=letsencrypt"
+  #     - "traefik.http.routers.polysaas.entrypoints=websecure"
+  #     - "traefik.http.services.polysaas.loadbalancer.server.port=8000"
+
+  # PostgreSQL (for local services)
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - traefik-public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (for local services)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - traefik-public
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mattermost
+  mattermost:
+    image: mattermost/mattermost:latest
+    container_name: mattermost
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      - MM_SQLSETTINGS_DRIVERNAME=postgres
+      - MM_SQLSETTINGS_DATASOURCE=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mattermost?sslmode=disable
+      - MM_SERVICESETTINGS_SITEURL=https://production.polysaas.online/mattermost
+      - MM_SERVICESETTINGS_LISTENANDADDRESS=:8065
+    volumes:
+      - mattermost-data:/mattermost/data
+      - mattermost-config:/mattermost/config
+      - mattermost-plugins:/mattermost/plugins
+      - mattermost-client-plugins:/mattermost/client/plugins
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mattermost.rule=Host(`production.polysaas.online`) && PathPrefix(`/mattermost`)"
+      - "traefik.http.routers.mattermost.tls=true"
+      - "traefik.http.routers.mattermost.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.mattermost.entrypoints=websecure"
+      - "traefik.http.services.mattermost.loadbalancer.server.port=8065"
+      - "traefik.http.middlewares.mattermost-stripprefix.stripprefix.prefixes=/mattermost"
+      - "traefik.http.middlewares.mattermost-stripprefix.stripprefix.forceSlash=false"
+      - "traefik.http.routers.mattermost.middlewares=mattermost-stripprefix"
+      - "traefik.http.routers.mattermost-websocket.rule=Host(`production.polysaas.online`) && PathPrefix(`/mattermost/api/v4/websocket`)"
+      - "traefik.http.routers.mattermost-websocket.tls=true"
+      - "traefik.http.routers.mattermost-websocket.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.mattermost-websocket.entrypoints=websecure"
+      - "traefik.http.services.mattermost-websocket.loadbalancer.server.port=8065"
+      - "traefik.http.routers.mattermost-websocket.middlewares=mattermost-stripprefix"
+
+  # Odoo
+  odoo:
+    image: odoo:17.0
+    container_name: odoo
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      - HOST=postgres
+      - USER=${POSTGRES_USER}
+      - PASSWORD=${POSTGRES_PASSWORD}
+      - PORT=5432
+    volumes:
+      - odoo-data:/var/lib/odoo
+      - odoo-addons:/mnt/extra-addons
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.odoo.rule=Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
+      - "traefik.http.routers.odoo.tls=true"
+      - "traefik.http.routers.odoo.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.odoo.entrypoints=websecure"
+      - "traefik.http.services.odoo.loadbalancer.server.port=8069"
+      - "traefik.http.middlewares.odoo-stripprefix.stripprefix.prefixes=/odoo"
+      - "traefik.http.middlewares.odoo-stripprefix.stripprefix.forceSlash=false"
+      - "traefik.http.routers.odoo.middlewares=odoo-stripprefix"
+
+  # Nextcloud
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - NEXTCLOUD_TRUSTED_DOMAINS=production.polysaas.online
+      - OVERWRITEPROTOCOL=https
+      - OVERWRITECLIURL=https://production.polysaas.online/nextcloud
+    volumes:
+      - nextcloud-data:/var/www/html
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nextcloud.rule=Host(`production.polysaas.online`) && PathPrefix(`/nextcloud`)"
+      - "traefik.http.routers.nextcloud.tls=true"
+      - "traefik.http.routers.nextcloud.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nextcloud.entrypoints=websecure"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.nextcloud-stripprefix.stripprefix.prefixes=/nextcloud"
+      - "traefik.http.middlewares.nextcloud-stripprefix.stripprefix.forceSlash=false"
+      - "traefik.http.routers.nextcloud.middlewares=nextcloud-stripprefix"
+
+networks:
+  traefik-public:
+    external: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  mattermost-data:
+  mattermost-config:
+  mattermost-plugins:
+  mattermost-client-plugins:
+  odoo-data:
+  odoo-addons:
+  nextcloud-data:

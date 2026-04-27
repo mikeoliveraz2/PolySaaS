@@ -1,0 +1,94 @@
+# Traefik v3 Configuration
+# Path-based routing for production.polysaas.online
+
+global:
+  checkNewVersion: true
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false  # Set to true for local testing only
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls: true
+      middlewares:
+        - security-headers
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ${ACME_EMAIL:-admin@polysaas.online}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+      # Uncomment for production with DNS challenge (recommended)
+      # dnsChallenge:
+      #   provider: cloudflare
+      #   delayBeforeCheck: 30
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false  # Security: only enable services with traefik.enable=true
+    network: traefik-public
+
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+# Global security headers middleware
+http:
+  middlewares:
+    security-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+        customResponseHeaders:
+          X-Frame-Options: SAMEORIGIN
+          X-Content-Type-Options: nosniff
+          X-XSS-Protection: 1; mode=block
+          Referrer-Policy: strict-origin-when-cross-origin
+          Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+        sslRedirect: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+
+    # WebSocket support middleware
+    websocket-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+        customResponseHeaders:
+          X-Forwarded-Proto: https
+
+    # CORS middleware for API endpoints
+    cors:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - OPTIONS
+          - PUT
+          - POST
+          - DELETE
+          - PATCH
+        accessControlAllowHeaders:
+          - Authorization
+          - Content-Type
+        accessControlAllowOriginList:
+          - https://production.polysaas.online
+        accessControlMaxAge: 100
+        addVaryHeader: true

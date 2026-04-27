@@ -1,0 +1,141 @@
+# Traefik v3 Configuration for Render Deployment
+# This configuration proxies to Render service URLs, not Docker containers
+
+global:
+  checkNewVersion: true
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls: true
+      middlewares:
+        - security-headers
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ${ACME_EMAIL:-admin@polysaas.online}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+http:
+  middlewares:
+    security-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+        customResponseHeaders:
+          X-Frame-Options: SAMEORIGIN
+          X-Content-Type-Options: nosniff
+          X-XSS-Protection: 1; mode=block
+          Referrer-Policy: strict-origin-when-cross-origin
+          Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+        sslRedirect: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+
+    strip-mattermost:
+      stripprefix:
+        prefixes:
+          - /mattermost
+        forceSlash: false
+
+    strip-odoo:
+      stripprefix:
+        prefixes:
+          - /odoo
+        forceSlash: false
+
+    strip-nextcloud:
+      stripprefix:
+        prefixes:
+          - /nextcloud
+        forceSlash: false
+
+  routers:
+    # PolySaaS Core (Render web service)
+    polysaas-core:
+      rule: "Host(`production.polysaas.online`) && Path(`/`)"
+      service: polysaas-core
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+    # Mattermost
+    mattermost:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost`)"
+      service: mattermost
+      entryPoints:
+        - websecure
+      middlewares:
+        - strip-mattermost
+      tls:
+        certResolver: letsencrypt
+
+    # Odoo
+    odoo:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
+      service: odoo
+      entryPoints:
+        - websecure
+      middlewares:
+        - strip-odoo
+      tls:
+        certResolver: letsencrypt
+
+    # Nextcloud
+    nextcloud:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/nextcloud`)"
+      service: nextcloud
+      entryPoints:
+        - websecure
+      middlewares:
+        - strip-nextcloud
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    # Render service URLs will be set via environment variables
+    polysaas-core:
+      loadBalancer:
+        servers:
+          - url: ${POLYSAAS_CORE_URL:-https://polysaas-core.onrender.com}
+
+    mattermost:
+      loadBalancer:
+        servers:
+          - url: ${MATTERMOST_URL:-https://mattermost.onrender.com}
+
+    odoo:
+      loadBalancer:
+        servers:
+          - url: ${ODOO_URL:-https://odoo.onrender.com}
+
+    nextcloud:
+      loadBalancer:
+        servers:
+          - url: ${NEXTCLOUD_URL:-https://nextcloud.onrender.com}
