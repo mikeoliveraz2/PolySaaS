@@ -53,7 +53,9 @@ def index(request):
     context, response = _build_landing_page_context(request)
     if response is not None:
         return response
-    return render(request, 'dose/user_dashboard.html', context)
+    if context.get('tenant_prompt'):
+        return redirect('dose:select_tenant')
+    return render(request, 'dose/landing_page.html', context)
 
 def logout_view(request):
     """Basic logout view for Django with debug logging."""

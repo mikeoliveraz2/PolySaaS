@@ -16,6 +16,28 @@ class CustomLoginView(LoginView):
             request.POST._mutable = mutable
         return super().dispatch(request, *args, **kwargs)
 
+    def post(self, request, *args, **kwargs):
+        from django.contrib.auth import authenticate, login
+        from django.shortcuts import redirect
+
+        raw_login = request.POST.get('login') or request.POST.get('username')
+        raw_password = request.POST.get('password')
+
+        if raw_login and raw_password:
+            user = authenticate(
+                request,
+                username=raw_login,
+                login=raw_login,
+                password=raw_password,
+            )
+            print("[DEBUG] CustomLoginView.post authenticate() returned:", user)
+            if user is not None:
+                login(request, user)
+                print("[DEBUG] CustomLoginView.post logged in user:", user)
+                return redirect(self.get_success_url())
+
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
         from django.contrib.auth import authenticate, login
         credentials = form.cleaned_data.copy()

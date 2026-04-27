@@ -15,6 +15,7 @@ from django.contrib.auth.decorators import login_required
 from urllib.parse import urlencode
 from dose.views import subscribe_view
 from test_decompression_view import test_decompression, simple_html_test, external_direct_test
+from dose.views_custom_login import CustomLoginView
 
 try:
     from dose.views.oauth_consent import TenantAwareAuthorizationView
@@ -132,6 +133,7 @@ urlpatterns = [
 
     path('admin/login/', admin_login_redirect_view, name='admin_login_redirect'),
     path('admin/', admin.site.urls),
+    path('accounts/login/', CustomLoginView.as_view(), name='account_login'),
     path('accounts/', include('allauth.urls')),
     path('profile/', profile_view, name='profile'),
     path('test-decompress/', test_decompression, name='test_decompression'),
