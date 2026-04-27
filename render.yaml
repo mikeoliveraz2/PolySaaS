@@ -327,13 +327,13 @@ services:
       mountPath: /var/lib/mysql
       sizeGB: 10
     envVars:
+      - key: MARIADB_RANDOM_ROOT_PASSWORD
+        value: "1"
       - key: MARIADB_DATABASE
         value: wordpress
       - key: MARIADB_USER
         value: wp
       - key: MARIADB_PASSWORD
-        sync: false
-      - key: MARIADB_ROOT_PASSWORD
         sync: false
 
   - type: web
