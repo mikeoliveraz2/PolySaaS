@@ -15,10 +15,6 @@ entryPoints:
 
   websecure:
     address: ":443"
-    http:
-      tls: true
-      middlewares:
-        - security-headers
 
 certificatesResolvers:
   letsencrypt:

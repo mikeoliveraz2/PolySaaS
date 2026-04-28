@@ -8,7 +8,7 @@ http:
       rule: "Host(`traefik-yw2j.onrender.com`)"
       service: polysaas-core
       entryPoints:
-        - websecure
+        - web
       priority: 1
 
     # PolySaaS Core (Render web service)
@@ -16,7 +16,7 @@ http:
       rule: "Host(`production.polysaas.online`)"
       service: polysaas-core
       entryPoints:
-        - websecure
+        - web
       priority: 100
 
     # Odoo
@@ -24,7 +24,7 @@ http:
       rule: "Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
       service: odoo
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - strip-odoo
 
