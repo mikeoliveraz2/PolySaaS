@@ -450,6 +450,16 @@ services:
       - key: LIFERAY_JDBC_DEFAULT_PASSWORD
         sync: false
 
+  - type: pserv
+    name: PolySaaS-Nextcloud
+    runtime: image
+    image:
+      url: docker.io/library/nextcloud:stable-apache
+    region: singapore
+    plan: starter
+    envVars:
+      - fromGroup: polysaas-bundled-apps
+
 # ------------------------------------------------------------------------------
 # Future Render services (templates — all commented; uncomment one block when ready).
 # Most bundled apps use their own Docker image or upstream chart, NOT Dockerfile.django.
