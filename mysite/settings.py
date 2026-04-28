@@ -690,4 +690,22 @@ LOGGING = {
 # Only keep the first LOGGING config above, which defines all handlers and loggers.
 # Custom user session settings
 
+# =============================================
+# SECURITY - PROXY SETTINGS (Traefik + Render)
+# =============================================
+
+# Critical when running behind Traefik / Render
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+# Let Traefik handle HTTPS redirects (disable Django redirect)
+SECURE_SSL_REDIRECT = False
+SECURE_REDIRECT_EXEMPT = [r'^.*']
+
+# Disable HSTS while debugging the redirect loop
+SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+
 
