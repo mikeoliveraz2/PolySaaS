@@ -450,6 +450,26 @@ services:
       - key: LIFERAY_JDBC_DEFAULT_PASSWORD
         sync: false
 
+  # --- Nextcloud + Postgres (private service) ---
+  - type: pserv
+    name: PolySaaS-Nextcloud-DB
+    runtime: image
+    region: singapore
+    plan: starter
+    image:
+      url: docker.io/library/postgres:16
+    disk:
+      name: nextcloud-db-persist
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 10
+    envVars:
+      - key: POSTGRES_DB
+        value: nextcloud
+      - key: POSTGRES_USER
+        value: nextcloud
+      - key: POSTGRES_PASSWORD
+        sync: false
+
   - type: pserv
     name: PolySaaS-Nextcloud
     runtime: image
@@ -459,6 +479,18 @@ services:
     plan: starter
     envVars:
       - fromGroup: polysaas-bundled-apps
+      - key: POSTGRES_DB
+        value: nextcloud
+      - key: POSTGRES_USER
+        value: nextcloud
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_HOST
+        value: PolySaaS-Nextcloud-DB
+      - key: NEXTCLOUD_ADMIN_USER
+        sync: false
+      - key: NEXTCLOUD_ADMIN_PASSWORD
+        sync: false
 
 # ------------------------------------------------------------------------------
 # Future Render services (templates — all commented; uncomment one block when ready).
