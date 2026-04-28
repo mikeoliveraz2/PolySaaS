@@ -583,7 +583,12 @@ USE_L10N = True
 
 USE_TZ = True
 
-CSRF_TRUSTED_ORIGINS = ["http://localhost:8000", "http://localhost:444"]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://localhost:444",
+    "https://production.polysaas.online",
+    "https://polysaas-core.onrender.com",
+]
 #CSRF_COOKIE_DOMAIN = '.localhost'
 
 # Static files (CSS, JavaScript, Images)
