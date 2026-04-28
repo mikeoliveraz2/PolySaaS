@@ -267,7 +267,15 @@ logging.info(f"SESSION_ENGINE: {SESSION_ENGINE}, SESSION_COOKIE_AGE: {SESSION_CO
 if DEBUG:                     # ← your .env probably sets DEBUG=True already
     ALLOWED_HOSTS = ['*']     # ← this is the missing line for dev
 else:
-    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.poly-saas.local', 'yourdomain.com']
+    ALLOWED_HOSTS = [
+        '127.0.0.1',
+        'localhost',
+        '.poly-saas.local',
+        'production.polysaas.online',
+        'polysaas-core.onrender.com',
+        '.onrender.com',
+        '.polysaas.online',
+    ]
 
 SITE_ID = 1
 
