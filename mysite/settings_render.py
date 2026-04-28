@@ -48,14 +48,12 @@ if _allowed:
 elif DEBUG:
     ALLOWED_HOSTS = ["*"]
 else:
-    # Render default hostname pattern + localhost for health probes + custom domains
-    ALLOWED_HOSTS = [
-        ".onrender.com",
-        ".polysaas.online",
-        "production.polysaas.online",
-        "localhost",
-        "127.0.0.1",
-    ]
+    ALLOWED_HOSTS = [".onrender.com", "localhost", "127.0.0.1"]
+
+# Always include PolySaaS production domains (regardless of env var)
+for _host in (".polysaas.online", "production.polysaas.online"):
+    if _host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_host)
 
 # --- Database: DATABASE_URL preferred (Render), else discrete vars ---
 _database_url = os.environ.get("DATABASE_URL", "").strip()
