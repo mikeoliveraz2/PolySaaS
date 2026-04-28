@@ -64,8 +64,6 @@ http:
       service: polysaas-core
       entryPoints:
         - websecure
-      tls:
-        certResolver: letsencrypt
       priority: 100
 
     # Odoo
@@ -76,8 +74,6 @@ http:
         - websecure
       middlewares:
         - strip-odoo
-      tls:
-        certResolver: letsencrypt
 
   services:
     # Render service URLs
