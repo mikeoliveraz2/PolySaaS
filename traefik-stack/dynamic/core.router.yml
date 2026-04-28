@@ -1,7 +1,7 @@
 http:
   routers:
-    # Main Production Dashboard / Django Core
-    production-core:
+    # Main Production Entry Point - All Render apps live here
+    production-root:
       rule: "Host(production.polysaas.online)"
       service: PolySaaS-Core
       entryPoints:
@@ -10,7 +10,7 @@ http:
         certResolver: letsencrypt
       priority: 100
 
-    # Example for other services (add more as needed)
+    # Odoo (add more services below as needed)
     production-odoo:
       rule: "Host(production.polysaas.online) && PathPrefix(/odoo)"
       service: PolySaaS-Odoo
