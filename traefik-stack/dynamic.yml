@@ -28,6 +28,15 @@ http:
       middlewares:
         - strip-odoo
 
+    # Mattermost
+    mattermost:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost`)"
+      service: mattermost
+      entryPoints:
+        - web
+      middlewares:
+        - strip-mattermost
+
   services:
     # Render service URLs
     polysaas-core:
@@ -42,9 +51,21 @@ http:
         servers:
           - url: https://polysaas-odoo2.onrender.com
 
+    mattermost:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://polysaas-mattermost.onrender.com
+
   middlewares:
     strip-odoo:
       stripprefix:
         prefixes:
           - /odoo
+        forceSlash: false
+
+    strip-mattermost:
+      stripprefix:
+        prefixes:
+          - /mattermost
         forceSlash: false
