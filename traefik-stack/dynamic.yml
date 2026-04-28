@@ -32,11 +32,13 @@ http:
     # Render service URLs
     polysaas-core:
       loadBalancer:
+        passHostHeader: false
         servers:
           - url: https://polysaas-core.onrender.com
 
     odoo:
       loadBalancer:
+        passHostHeader: false
         servers:
           - url: https://polysaas-odoo2.onrender.com
 
