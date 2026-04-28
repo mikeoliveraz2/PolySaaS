@@ -25,12 +25,12 @@ http:
     PolySaaS-Core:
       loadBalancer:
         servers:
-          - url: "http://PolySaaS-Core:8000"
+          - url: "https://polysaas-core.onrender.com"
 
     PolySaaS-Odoo:
       loadBalancer:
         servers:
-          - url: "http://PolySaaS-Odoo:8069"
+          - url: "https://polysaas-odoo2.onrender.com"
 
   middlewares:
     strip-odoo:
