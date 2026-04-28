@@ -2,21 +2,47 @@
 # This file is watched by Traefik and allows runtime updates
 
 http:
+  routers:
+    # Default Traefik service route (for testing)
+    traefik-default:
+      rule: "Host(`traefik-yw2j.onrender.com`)"
+      service: polysaas-core
+      entryPoints:
+        - websecure
+      priority: 1
+
+    # PolySaaS Core (Render web service)
+    polysaas-core:
+      rule: "Host(`production.polysaas.online`)"
+      service: polysaas-core
+      entryPoints:
+        - websecure
+      priority: 100
+
+    # Odoo
+    odoo:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
+      service: odoo
+      entryPoints:
+        - websecure
+      middlewares:
+        - strip-odoo
+
+  services:
+    # Render service URLs
+    polysaas-core:
+      loadBalancer:
+        servers:
+          - url: https://polysaas-core.onrender.com
+
+    odoo:
+      loadBalancer:
+        servers:
+          - url: https://polysaas-odoo2.onrender.com
+
   middlewares:
-    # CORS middleware for API endpoints
-    cors:
-      headers:
-        accessControlAllowMethods:
-          - GET
-          - OPTIONS
-          - PUT
-          - POST
-          - DELETE
-          - PATCH
-        accessControlAllowHeaders:
-          - Authorization
-          - Content-Type
-        accessControlAllowOriginList:
-          - https://production.polysaas.online
-        accessControlMaxAge: 100
-        addVaryHeader: true
+    strip-odoo:
+      stripprefix:
+        prefixes:
+          - /odoo
+        forceSlash: false
