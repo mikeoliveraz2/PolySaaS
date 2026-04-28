@@ -48,8 +48,14 @@ if _allowed:
 elif DEBUG:
     ALLOWED_HOSTS = ["*"]
 else:
-    # Render default hostname pattern + localhost for health probes
-    ALLOWED_HOSTS = [".onrender.com", "localhost", "127.0.0.1"]
+    # Render default hostname pattern + localhost for health probes + custom domains
+    ALLOWED_HOSTS = [
+        ".onrender.com",
+        ".polysaas.online",
+        "production.polysaas.online",
+        "localhost",
+        "127.0.0.1",
+    ]
 
 # --- Database: DATABASE_URL preferred (Render), else discrete vars ---
 _database_url = os.environ.get("DATABASE_URL", "").strip()
@@ -109,6 +115,13 @@ if not DEBUG:
 _csrf_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "").strip()
 if _csrf_origins:
     CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(",") if o.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://production.polysaas.online",
+        "https://polysaas-core.onrender.com",
+        "https://*.polysaas.online",
+        "https://*.onrender.com",
+    ]
 
 # --- OAuth2 / OIDC (Render): public issuer URL + optional PEM via env ---
 # See documentation/deployment/render/OAUTH2-RENDER.md
