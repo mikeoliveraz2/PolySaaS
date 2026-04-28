@@ -160,6 +160,28 @@ envVarGroups:
       - key: LIFERAY_DB_PASSWORD
         sync: false
 
+  # Odoo multi-tenant (shared web service; db-per-tenant via dbfilter)
+  - name: polysaas-odoo-master
+    envVars:
+      - key: HOST
+        value: PolySaaS-Odoo-DB-Master
+      - key: USER
+        value: odoo
+      - key: PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: odoo_master
+      - key: ODOO_DB_HOST
+        value: PolySaaS-Odoo-DB-Master
+      - key: ODOO_DB_PORT
+        value: "5432"
+      - key: ODOO_DB_USER
+        value: odoo
+      - key: ODOO_DB_PASSWORD
+        sync: false
+      - key: ODOO_DB_NAME
+        value: odoo_master
+
 # Dedicated Postgres for Mattermost only (do not point it at PolySaaS-Core’s application database).
 databases:
   - name: polysaas-mattermost-db
@@ -228,6 +250,48 @@ services:
       - fromGroup: polysaas-bundled-apps
       - key: RUN_MIGRATIONS
         value: "0"
+
+  # --- Odoo multi-tenant (shared) ---
+  - type: pserv
+    name: PolySaaS-Odoo-DB-Master
+    runtime: image
+    region: singapore
+    plan: starter
+    image:
+      url: docker.io/library/postgres:16
+    disk:
+      name: odoo-master-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 20
+    envVars:
+      - key: POSTGRES_DB
+        value: odoo_master
+      - key: POSTGRES_USER
+        value: odoo
+      - key: POSTGRES_PASSWORD
+        sync: false
+
+  - type: web
+    name: PolySaaS-Odoo
+    runtime: image
+    region: singapore
+    plan: standard
+    healthCheckPath: /web/login
+    image:
+      url: docker.io/library/odoo:18
+    envVars:
+      - fromGroup: polysaas-odoo-master
+      - key: ODOO_CONFIG
+        value: |
+          dbfilter = ^%d$
+          proxy_mode = True
+          workers = 4
+          limit_memory_hard = 2147483648
+          limit_memory_soft = 1610612736
+    disk:
+      name: odoo-filestore
+      mountPath: /var/lib/odoo
+      sizeGB: 30
 
   # --- Odoo — `PolySaaS-Odoo2` (service name on Render). Disk `odoo2-filestore` is the persistent volume resource name;
   #     mountPath `/var/lib/odoo` is what the container sees. Env: group `polysaas-odoo` only (not Django common).
@@ -384,6 +448,48 @@ services:
       - key: LIFERAY_JDBC_DEFAULT_USERNAME
         value: liferay
       - key: LIFERAY_JDBC_DEFAULT_PASSWORD
+        sync: false
+
+  # --- Nextcloud + Postgres (private service) ---
+  - type: pserv
+    name: PolySaaS-Nextcloud-DB
+    runtime: image
+    region: singapore
+    plan: starter
+    image:
+      url: docker.io/library/postgres:16
+    disk:
+      name: nextcloud-db-persist
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 10
+    envVars:
+      - key: POSTGRES_DB
+        value: nextcloud
+      - key: POSTGRES_USER
+        value: nextcloud
+      - key: POSTGRES_PASSWORD
+        sync: false
+
+  - type: pserv
+    name: PolySaaS-Nextcloud
+    runtime: image
+    image:
+      url: docker.io/library/nextcloud:stable-apache
+    region: singapore
+    plan: starter
+    envVars:
+      - fromGroup: polysaas-bundled-apps
+      - key: POSTGRES_DB
+        value: nextcloud
+      - key: POSTGRES_USER
+        value: nextcloud
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_HOST
+        value: PolySaaS-Nextcloud-DB
+      - key: NEXTCLOUD_ADMIN_USER
+        sync: false
+      - key: NEXTCLOUD_ADMIN_PASSWORD
         sync: false
 
 # ------------------------------------------------------------------------------

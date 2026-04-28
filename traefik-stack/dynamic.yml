@@ -3,32 +3,69 @@
 
 http:
   routers:
-    # WebSocket support for Mattermost
-    mattermost-websocket:
-      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost/api/v4/websocket`)"
+    # Default Traefik service route (for testing)
+    traefik-default:
+      rule: "Host(`traefik-yw2j.onrender.com`)"
+      service: polysaas-core
+      entryPoints:
+        - web
+      priority: 1
+
+    # PolySaaS Core (Render web service)
+    polysaas-core:
+      rule: "Host(`production.polysaas.online`)"
+      service: polysaas-core
+      entryPoints:
+        - web
+      priority: 100
+
+    # Odoo
+    odoo:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
+      service: odoo
+      entryPoints:
+        - web
+      middlewares:
+        - strip-odoo
+
+    # Mattermost
+    mattermost:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost`)"
       service: mattermost
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - strip-mattermost
-      tls:
-        certResolver: letsencrypt
+
+  services:
+    # Render service URLs
+    polysaas-core:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://polysaas-core.onrender.com
+
+    odoo:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://polysaas-odoo2.onrender.com
+
+    mattermost:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://polysaas-mattermost.onrender.com
 
   middlewares:
-    # CORS middleware for API endpoints
-    cors:
-      headers:
-        accessControlAllowMethods:
-          - GET
-          - OPTIONS
-          - PUT
-          - POST
-          - DELETE
-          - PATCH
-        accessControlAllowHeaders:
-          - Authorization
-          - Content-Type
-        accessControlAllowOriginList:
-          - https://production.polysaas.online
-        accessControlMaxAge: 100
-        addVaryHeader: true
+    strip-odoo:
+      stripprefix:
+        prefixes:
+          - /odoo
+        forceSlash: false
+
+    strip-mattermost:
+      stripprefix:
+        prefixes:
+          - /mattermost
+        forceSlash: false

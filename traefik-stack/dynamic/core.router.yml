@@ -1,0 +1,40 @@
+http:
+  routers:
+    # Main Production Entry Point - All Render apps live here
+    production-root:
+      rule: "Host(production.polysaas.online)"
+      service: PolySaaS-Core
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      priority: 100
+
+    # Odoo (add more services below as needed)
+    production-odoo:
+      rule: "Host(production.polysaas.online) && PathPrefix(/odoo)"
+      service: PolySaaS-Odoo
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - strip-odoo
+
+  services:
+    PolySaaS-Core:
+      loadBalancer:
+        servers:
+          - url: "https://polysaas-core.onrender.com"
+
+    PolySaaS-Odoo:
+      loadBalancer:
+        servers:
+          - url: "https://polysaas-odoo2.onrender.com"
+
+  middlewares:
+    strip-odoo:
+      stripPrefix:
+        prefixes:
+          - "/odoo"
+        forceSlash: true
