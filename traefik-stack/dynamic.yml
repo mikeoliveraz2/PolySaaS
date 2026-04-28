@@ -2,18 +2,6 @@
 # This file is watched by Traefik and allows runtime updates
 
 http:
-  routers:
-    # WebSocket support for Mattermost
-    mattermost-websocket:
-      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost/api/v4/websocket`)"
-      service: mattermost
-      entryPoints:
-        - websecure
-      middlewares:
-        - strip-mattermost
-      tls:
-        certResolver: letsencrypt
-
   middlewares:
     # CORS middleware for API endpoints
     cors:
