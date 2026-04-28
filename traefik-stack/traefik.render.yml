@@ -80,13 +80,13 @@ http:
         certResolver: letsencrypt
 
   services:
-    # Render service URLs will be set via environment variables
+    # Render service URLs
     polysaas-core:
       loadBalancer:
         servers:
-          - url: ${POLYSAAS_CORE_URL:-https://polysaas-core.onrender.com}
+          - url: https://polysaas-core.onrender.com
 
     odoo:
       loadBalancer:
         servers:
-          - url: ${ODOO_URL:-https://polysaas-odoo2.onrender.com}
+          - url: https://polysaas-odoo2.onrender.com
