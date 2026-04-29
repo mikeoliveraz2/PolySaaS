@@ -196,7 +196,7 @@ class Command(BaseCommand):
                     user=tenant_admin_user,
                     defaults={"tenant": tenant_obj},
                 )
-                if profile.tenant_id != tenant_obj.id:
+                if profile.tenant_id != tenant_obj.slug:
                     profile.tenant = tenant_obj
                     profile.save(update_fields=["tenant"])
 
