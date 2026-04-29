@@ -31,6 +31,12 @@ class PassThroughEndpoint(models.Model):
         default=False,
         help_text="If True, this trigger_path will NOT be processed by passthrough middleware (use for dedicated views like Gmail that handle their own routing)"
     )
+    starting_uri = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Starting URI path for this endpoint (e.g., /web for Odoo, / for Mattermost)"
+    )
     passthrough_type = models.CharField(
         max_length=20,
         choices=PASSTHROUGH_TYPE_CHOICES,
