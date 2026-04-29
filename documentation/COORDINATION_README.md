@@ -9,7 +9,7 @@ This document tracks session activity across machines (laptop/desktop) for synch
 **Branch**: main
 
 ### Summary
-Explored existing passthrough infrastructure to understand how to wire Odoo and Mattermost for dynamic event orchestration with AI adapters. Confirmed both Odoo and Mattermost passthrough handlers already exist and are PolySniffer-generated for dynamic event capture during passthrough sessions.
+Explored existing passthrough infrastructure and implemented permanent passthrough infrastructure for Odoo and Mattermost. This is production infrastructure, not a one-off demo - users subscribe and have instant access to the apps they subscribed to. Confirmed both Odoo and Mattermost passthrough handlers already exist and are PolySniffer-generated for dynamic event capture during passthrough sessions.
 
 ### Key Findings
 - **PassthroughAuthMiddleware**: Injects auth headers/JWT on `/pt/` paths with tenant info (tenant_slug, tenant_name)
@@ -18,8 +18,8 @@ Explored existing passthrough infrastructure to understand how to wire Odoo and 
 - **Handler Registry**: Both handlers registered with trigger_path matching
 - **PassThroughEndpoint model**: Stores endpoint configuration (trigger_path, endpoint_url, menu integration)
 - **TenantApp model**: Tracks which apps are provisioned per tenant (odoo, mattermost, nextcloud, etc.)
-- **setup_demo_sync.py**: Shows pattern for creating Odoo PassThroughEndpoint
-- **Tenant provisioners**: Both odoo_tenant_provisioner.py and mattermost_tenant_provisioner.py exist
+- **Subscription flow**: Automatically creates TenantApp records when users select apps during subscription
+- **Tenant provisioners**: Both odoo_tenant_provisioner.py and mattermost_tenant_provisioner.py exist and are wired to subscription
 
 ### Files Reviewed
 - `dose/middleware/passthrough_auth.py` - Auth injection middleware
@@ -32,13 +32,30 @@ Explored existing passthrough infrastructure to understand how to wire Odoo and 
 - `dose/passthrough/handlers/registry.py` - Handler registry
 - `dose/services/odoo_tenant_provisioner.py` - Odoo provisioning service
 - `dose/services/mattermost_tenant_provisioner.py` - Mattermost provisioning service
-- `dose/management/commands/setup_demo_sync.py` - Demo setup command with Odoo endpoint creation
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - Production setup command for default endpoints
+- `dose/subscription_views.py` - Subscription flow with provisioner wiring
+
+### Changes Made
+- Added `starting_uri` field to PassThroughEndpoint model (migration 0043)
+- Fixed TenantApp tenant_id column type from bigint to varchar (migration 0044)
+- Created PassThroughEndpoint records for Odoo (http://localhost:8069) and Mattermost (http://localhost:8065)
+- Created management command `setup_default_passthrough_endpoints` for production endpoint setup
+- Renamed from demo-focused naming to production-focused naming
+
+### Files Changed
+- `dose/models/pass_through_endpoint.py` - Added starting_uri field
+- `dose/migrations/0043_passthroughendpoint_starting_uri.py` - Migration for starting_uri field
+- `dose/migrations/0044_alter_tenantapp_tenant_id_to_varchar.py` - Migration for tenant_id type fix
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - Production endpoint setup command
 
 ### Follow-ups
-1. User will check if PassThroughEndpoint records exist for Odoo and Mattermost
-2. Create PassThroughEndpoint records if missing
-3. Ensure TenantApp records exist and are marked active
-4. Wire PolySniffer to capture Mattermost chat events for AI adapter triggering
-5. Implement AI Adapter using Windsurf API
-6. Implement AI Adapter using Grok API
-7. Wire passthrough dynamic event handling for 3-way AI conversation (Windsurf + Grok + human/Mattermost)
+1. Ensure Odoo and Mattermost services running at configured URLs
+2. Test subscription flow with enable_odoo and enable_mattermost
+3. Verify Odoo passthrough auto-login and navigation
+4. Verify callback data capture for Odoo events
+5. Verify Mattermost team creation with tenant slug
+6. Verify Mattermost passthrough and town square posting
+7. Wire PolySniffer to capture Mattermost chat events for AI adapter triggering
+8. Implement AI Adapter using Windsurf API
+9. Implement AI Adapter using Grok API
+10. Wire passthrough dynamic event handling for 3-way AI conversation (Windsurf + Grok + human/Mattermost)
