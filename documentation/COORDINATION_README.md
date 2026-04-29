@@ -59,3 +59,23 @@ Explored existing passthrough infrastructure and implemented permanent passthrou
 8. Implement AI Adapter using Windsurf API
 9. Implement AI Adapter using Grok API
 10. Wire passthrough dynamic event handling for 3-way AI conversation (Windsurf + Grok + human/Mattermost)
+
+---
+
+## 2026-04-29 (Session End)
+**Status**: Session Complete
+**Branch**: main
+
+### Summary
+Implemented permanent passthrough infrastructure for Odoo and Mattermost. User clarified this is production behavior (not one-off demo) - users subscribe and have instant access to apps they selected. All infrastructure is now permanent and committed to GitHub.
+
+### Files Changed
+- `dose/models/pass_through_endpoint.py` - Added starting_uri field
+- `dose/migrations/0043_passthroughendpoint_starting_uri.py` - Migration for starting_uri field
+- `dose/migrations/0044_alter_tenantapp_tenant_id_to_varchar.py` - Migration for tenant_id type fix
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - Production endpoint setup command (renamed from demo)
+- `documentation/COORDINATION_README.md` - Updated coordination log
+
+### Commits
+- 95b3b4c: Add permanent passthrough infrastructure for Odoo and Mattermost
+- 31a2894: Update coordination log with production passthrough infrastructure changes
