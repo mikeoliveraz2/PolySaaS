@@ -17,19 +17,19 @@ class Command(BaseCommand):
         # Try to load the change_form template
         try:
             template = engine.get_template('admin/auth/user/change_form.html')
-            self.stdout.write(f"Template origin: {template.origin}")
-            self.stdout.write(f"Template name: {template.template.name}")
+            self.stdout.write(f"Change form template origin: {template.origin}")
+            self.stdout.write(f"Change form template name: {template.template.name}")
             
             # Check if the template has the expected blocks
             if hasattr(template, 'template'):
                 source = template.template.source
                 if 'block content' in source:
-                    self.stdout.write("✓ Has 'content' block")
+                    self.stdout.write("✓ Change form has 'content' block")
                 if 'block page_content' in source:
-                    self.stdout.write("✓ Has 'page_content' block")
+                    self.stdout.write("✓ Change form has 'page_content' block")
                     
         except Exception as e:
-            self.stdout.write(f"Error loading template: {e}")
+            self.stdout.write(f"Error loading change_form template: {e}")
             import traceback
             traceback.print_exc()
         
@@ -48,5 +48,25 @@ class Command(BaseCommand):
                     
         except Exception as e:
             self.stdout.write(f"Error loading base template: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Check base_site.html
+        try:
+            base_site_template = engine.get_template('admin/base_site.html')
+            self.stdout.write(f"\nBase site template origin: {base_site_template.origin}")
+            self.stdout.write(f"Base site template name: {base_site_template.template.name}")
+            
+            if hasattr(base_site_template, 'template'):
+                source = base_site_template.template.source
+                if 'block page_content' in source:
+                    self.stdout.write("✓ Base site has 'page_content' block")
+                if 'block content' in source:
+                    self.stdout.write("✓ Base site has 'content' block")
+                if 'block.super' in source:
+                    self.stdout.write("✓ Base site uses block.super")
+                    
+        except Exception as e:
+            self.stdout.write(f"Error loading base_site template: {e}")
             import traceback
             traceback.print_exc()
