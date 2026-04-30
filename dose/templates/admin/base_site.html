@@ -387,40 +387,7 @@
 <div class="admin-main-wrapper">
     {% include "admin/includes/custom_sidebar.html" %}
     <div class="dose-content-col">
-        {# Inlined replacement for jazzmin/admin/base.html page_content because
-           {{ block.super }} renders empty on production for unknown reasons. #}
-        {% if not is_popup %}
-        <div class="app-content-header">
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-sm-6">
-                        <h3 class="mb-0">{% block content_title %}{% endblock %}</h3>
-                    </div>
-                    <div class="col-sm-6">
-                        <div class="float-sm-end">{% block breadcrumbs %}{% endblock %}</div>
-                        {% block page_actions %}{% endblock %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        <div class="app-content">
-            <div class="container-fluid">
-                {% block messages %}
-                    {% for message in messages %}
-                        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
-                            {{ message|capfirst }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    {% endfor %}
-                {% endblock messages %}
-                <div class="row">
-                    <!-- DIAG-CONTENT: before content block -->
-                    {% block content %}<!-- DIAG-CONTENT: DEFAULT (change_form override NOT applied) -->{% endblock %}
-                    <!-- DIAG-CONTENT: after content block -->
-                </div>
-            </div>
-        </div>
+        {{ block.super }}
     </div>
 </div>
 {% endblock %}
