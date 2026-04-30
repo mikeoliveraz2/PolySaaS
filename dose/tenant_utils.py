@@ -64,9 +64,22 @@ def tenants_for_user_assignment():
     Active tenants that are allowed to hold tenant-isolated app data.
     The PostgreSQL catalog schema 'public' is never a tenant (shared registry only).
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     from dose.models import Tenant
 
-    return Tenant.objects.filter(is_active=True).exclude(schema_name__iexact="public")
+    queryset = Tenant.objects.filter(is_active=True).exclude(schema_name__iexact="public")
+    count = queryset.count()
+    logger.info(f"tenants_for_user_assignment: found {count} active tenants (excluding public)")
+    
+    # Log all tenants for debugging
+    all_tenants = Tenant.objects.all()
+    logger.info(f"tenants_for_user_assignment: total tenants in DB: {all_tenants.count()}")
+    for tenant in all_tenants:
+        logger.info(f"  - {tenant.slug}: is_active={tenant.is_active}, schema_name={tenant.schema_name}")
+    
+    return queryset
 
 
 def get_current_tenant(request):

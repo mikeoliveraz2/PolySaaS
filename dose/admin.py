@@ -772,23 +772,31 @@ if NEW_MODELS_AVAILABLE:
             fields = ['tenant']
 
         def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            from dose.tenant_utils import tenants_for_user_assignment
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            try:
+                super().__init__(*args, **kwargs)
+                from dose.tenant_utils import tenants_for_user_assignment
 
-            # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
-            self.fields['tenant'].queryset = tenants_for_user_assignment()
-            self.fields['tenant'].empty_label = "Select a tenant..."
-            self.fields['tenant'].required = True
+                # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
+                self.fields['tenant'].queryset = tenants_for_user_assignment()
+                self.fields['tenant'].empty_label = "Select a tenant..."
+                self.fields['tenant'].required = True
 
-            # If this is an existing UserProfile, keep the current tenant selection
-            if self.instance.pk and self.instance.tenant:
-                # Don't override existing tenant assignment
-                pass
-            elif not self.instance.pk:
-                # For new UserProfiles, default to first assignable tenant
-                qs = tenants_for_user_assignment()
-                if qs.exists():
-                    self.fields['tenant'].initial = qs.first()
+                # If this is an existing UserProfile, keep the current tenant selection
+                if self.instance.pk and self.instance.tenant:
+                    # Don't override existing tenant assignment
+                    logger.info(f"UserProfileInlineForm: Editing existing UserProfile {self.instance.pk} with tenant {self.instance.tenant}")
+                elif not self.instance.pk:
+                    # For new UserProfiles, default to first assignable tenant
+                    qs = tenants_for_user_assignment()
+                    if qs.exists():
+                        self.fields['tenant'].initial = qs.first()
+                        logger.info(f"UserProfileInlineForm: New UserProfile, defaulting to tenant {qs.first()}")
+            except Exception as e:
+                logger.error(f"UserProfileInlineForm.__init__ error: {e}", exc_info=True)
+                raise
 
     # Removed signal that auto-creates UserProfile for superusers to prevent duplicate key errors
 
