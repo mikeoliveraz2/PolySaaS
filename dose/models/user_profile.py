@@ -21,7 +21,10 @@ class UserProfile(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.user.username} - {self.tenant.name}"
+        try:
+            return f"{self.user.username} - {self.tenant.name}"
+        except User.DoesNotExist:
+            return f"UserProfile (user_id={self.user_id}) - {self.tenant.name}"
 
     class Meta:
         verbose_name = "User Profile"
