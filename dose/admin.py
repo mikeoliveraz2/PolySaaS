@@ -780,9 +780,20 @@ if NEW_MODELS_AVAILABLE:
                 from dose.tenant_utils import tenants_for_user_assignment
 
                 # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
-                self.fields['tenant'].queryset = tenants_for_user_assignment()
+                qs = tenants_for_user_assignment()
+                tenant_count = qs.count()
+                logger.info(f"UserProfileInlineForm: tenants_for_user_assignment returned {tenant_count} tenants")
+                
+                # Log all tenants in queryset
+                for tenant in qs:
+                    logger.info(f"  Tenant in queryset: {tenant.slug} (schema={tenant.schema_name}, active={tenant.is_active})")
+                
+                self.fields['tenant'].queryset = qs
                 self.fields['tenant'].empty_label = "Select a tenant..."
                 self.fields['tenant'].required = True
+                
+                logger.info(f"UserProfileInlineForm: Set tenant field queryset with {tenant_count} items")
+                logger.info(f"UserProfileInlineForm: Field widget is {type(self.fields['tenant'].widget).__name__}")
 
                 # If this is an existing UserProfile, keep the current tenant selection
                 if self.instance.pk and self.instance.tenant:
@@ -790,10 +801,11 @@ if NEW_MODELS_AVAILABLE:
                     logger.info(f"UserProfileInlineForm: Editing existing UserProfile {self.instance.pk} with tenant {self.instance.tenant}")
                 elif not self.instance.pk:
                     # For new UserProfiles, default to first assignable tenant
-                    qs = tenants_for_user_assignment()
                     if qs.exists():
                         self.fields['tenant'].initial = qs.first()
                         logger.info(f"UserProfileInlineForm: New UserProfile, defaulting to tenant {qs.first()}")
+                    else:
+                        logger.warning("UserProfileInlineForm: No tenants available for assignment!")
             except Exception as e:
                 logger.error(f"UserProfileInlineForm.__init__ error: {e}", exc_info=True)
                 raise
@@ -816,6 +828,36 @@ if NEW_MODELS_AVAILABLE:
     class CustomUserAdmin(BaseUserAdmin):
         inlines = [UserProfileInline]
         list_display = ('username', 'email', 'is_active', 'is_staff', 'is_superuser')
+        
+        def get_queryset(self, request):
+            """Always query User from public schema - users are shared across tenants"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Set search_path to public to find all users
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                logger.info("CustomUserAdmin.get_queryset: Set search_path to public")
+            
+            return super().get_queryset(request)
+        
+        def change_view(self, request, object_id, form_url='', extra_context=None):
+            """Ensure we're looking in public schema for the user"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"CustomUserAdmin.change_view: object_id={object_id}")
+            
+            # Force public schema for user lookup
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                cursor.execute("SHOW search_path")
+                search_path = cursor.fetchone()
+                logger.info(f"CustomUserAdmin.change_view: search_path set to {search_path}")
+            
+            return super().change_view(request, object_id, form_url, extra_context)
 
     admin.site.register(User, CustomUserAdmin)
 
