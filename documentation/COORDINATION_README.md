@@ -79,3 +79,40 @@ Implemented permanent passthrough infrastructure for Odoo and Mattermost. User c
 ### Commits
 - 95b3b4c: Add permanent passthrough infrastructure for Odoo and Mattermost
 - 31a2894: Update coordination log with production passthrough infrastructure changes
+
+---
+
+## 2026-05-01
+**Status**: ✅ COMPLETE - BINGO!
+**Branch**: main
+
+### Summary
+Fixed blank Django admin user edit page on production (Render). The issue was caused by a multi-tenancy schema mismatch where UserProfile objects were in tenant schemas but trying to reference User objects in public schema. When the inline form tried to render, it crashed because the related User wasn't accessible in the tenant schema context.
+
+### Key Fixes
+- Fixed `CustomUserAdmin.get_object()` to force `search_path TO public` before querying users
+- Added `get_queryset` to `UserProfileInline` to query from public schema and filter inaccessible profiles
+- Fixed `UserProfile.__str__` to handle `User.DoesNotExist` gracefully
+- Fixed template block inheritance in `base_site.html`
+
+### Files Changed
+- `dose/admin.py` - Schema-aware User and UserProfile query handling
+- `dose/models/user_profile.py` - Graceful handling of missing user in __str__
+- `dose/templates/admin/base_site.html` - Fixed Jazzmin block inheritance
+- `dose/tenant_utils.py` - Added tenant debugging logging
+- `dose/management/commands/migrate_users_to_public.py` - User migration command
+- `dose/management/commands/check_template_loading.py` - Template diagnostics
+
+### Verification
+- ✅ User list page loads correctly
+- ✅ User edit form displays with all fields
+- ✅ Can save changes to users
+- ✅ No more `DoesNotExist` errors
+
+### Follow-ups
+- Consider moving UserProfile table to public schema for consistency
+- Ensure future user creation always happens in public schema
+- Document this multi-tenancy pattern to prevent regression
+
+### Commits
+- See `documentation/BINGO_Blank_Admin_User_Edit_Fix.md` for full details
