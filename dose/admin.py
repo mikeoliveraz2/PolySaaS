@@ -816,6 +816,16 @@ if NEW_MODELS_AVAILABLE:
     class CustomUserAdmin(BaseUserAdmin):
         inlines = [UserProfileInline]
         list_display = ('username', 'email', 'is_active', 'is_staff', 'is_superuser')
+        
+        # DEBUG: Force change form template and log which one is used
+        def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"DEBUG: change_form_template = {getattr(self, 'change_form_template', 'NOT SET')}")
+            logger.error(f"DEBUG: context keys = {list(context.keys())}")
+            logger.error(f"DEBUG: adminform = {context.get('adminform', 'NOT SET')}")
+            logger.error(f"DEBUG: inline_admin_formsets = {len(context.get('inline_admin_formsets', []))}")
+            return super().render_change_form(request, context, add=add, change=change, form_url=form_url, obj=obj)
 
     admin.site.register(User, CustomUserAdmin)
 
