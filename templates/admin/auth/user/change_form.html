@@ -2,20 +2,35 @@
 {% load i18n jazzmin %}
 
 {% block field_sets %}
-<!-- Direct form rendering without relying on block.super -->
+<!-- MARKER: field_sets block start -->
+<div style="background: lime; color: black; padding: 10px; font-size: 20px; border: 5px solid red;">
+    <strong>FORM CONTENT START</strong> - If you see this, template is working
+</div>
+
 <div class="col-12 col-lg-9">
     <div class="card">
         <div class="card-body">
-<!-- Fieldsets -->
+            <!-- Fieldsets -->
             {% for fieldset in adminform %}
+                <div style="background: cyan; padding: 5px; margin: 5px;">
+                    Fieldset: {{ fieldset.name|default:"General" }}
+                </div>
                 {% include "admin/includes/fieldset.html" with card=True %}
             {% endfor %}
             
             <!-- Inlines -->
             {% for inline_admin_formset in inline_admin_formsets %}
+                <div style="background: magenta; padding: 5px; margin: 5px;">
+                    Inline: {{ inline_admin_formset.opts.verbose_name_plural }}
+                </div>
                 {% include inline_admin_formset.opts.template %}
             {% endfor %}
         </div>
     </div>
 </div>
+
+<div style="background: lime; color: black; padding: 10px; font-size: 20px; border: 5px solid red;">
+    <strong>FORM CONTENT END</strong>
+</div>
+<!-- MARKER: field_sets block end -->
 {% endblock %}
