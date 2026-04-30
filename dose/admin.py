@@ -816,16 +816,31 @@ if NEW_MODELS_AVAILABLE:
     class CustomUserAdmin(BaseUserAdmin):
         inlines = [UserProfileInline]
         list_display = ('username', 'email', 'is_active', 'is_staff', 'is_superuser')
-        
-        # DEBUG: Force change form template and log which one is used
-        def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"DEBUG: change_form_template = {getattr(self, 'change_form_template', 'NOT SET')}")
-            logger.error(f"DEBUG: context keys = {list(context.keys())}")
-            logger.error(f"DEBUG: adminform = {context.get('adminform', 'NOT SET')}")
-            logger.error(f"DEBUG: inline_admin_formsets = {len(context.get('inline_admin_formsets', []))}")
-            return super().render_change_form(request, context, add=add, change=change, form_url=form_url, obj=obj)
+
+        @staticmethod
+        def _force_public_schema():
+            """auth_user lives in the public schema; SessionTenantMiddleware sets search_path
+            to the tenant schema which can shadow public.auth_user with a tenant-local copy
+            (created by migrations into each tenant schema). Force public for User admin queries."""
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public;")
+
+        def get_queryset(self, request):
+            self._force_public_schema()
+            return super().get_queryset(request)
+
+        def get_object(self, request, object_id, from_field=None):
+            self._force_public_schema()
+            return super().get_object(request, object_id, from_field=from_field)
+
+        def save_model(self, request, obj, form, change):
+            self._force_public_schema()
+            super().save_model(request, obj, form, change)
+
+        def delete_model(self, request, obj):
+            self._force_public_schema()
+            super().delete_model(request, obj)
 
     admin.site.register(User, CustomUserAdmin)
 
