@@ -387,7 +387,9 @@
 <div class="admin-main-wrapper">
     {% include "admin/includes/custom_sidebar.html" %}
     <div class="dose-content-col">
+        <!-- DIAG: before block.super -->
         {{ block.super }}
+        <!-- DIAG: after block.super -->
     </div>
 </div>
 {% endblock %}
