@@ -848,26 +848,53 @@ if NEW_MODELS_AVAILABLE:
             import logging
             logger = logging.getLogger(__name__)
             
-            # Force public schema before querying
+            # First, check what schemas exist and where the user might be
+            logger.info(f"CustomUserAdmin.get_object: Looking for user id={object_id}")
+            
+            # Check all schemas for this user
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT schema_name 
+                    FROM information_schema.schemata 
+                    WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                    AND schema_name NOT LIKE 'pg_%'
+                """)
+                schemas = [row[0] for row in cursor.fetchall()]
+                logger.info(f"CustomUserAdmin.get_object: Available schemas: {schemas}")
+                
+                # Check each schema for the user
+                for schema in schemas:
+                    cursor.execute(f"SET search_path TO {schema}")
+                    cursor.execute("SELECT id, username FROM auth_user WHERE id = %s", [object_id])
+                    result = cursor.fetchone()
+                    if result:
+                        logger.info(f"CustomUserAdmin.get_object: FOUND user {result[1]} (id={result[0]}) in schema '{schema}'")
+                        # Found the user - set search_path back to public for the actual query
+                        cursor.execute("SET search_path TO public")
+                        break
+                else:
+                    logger.error(f"CustomUserAdmin.get_object: User id={object_id} not found in ANY schema")
+                    # Show all users in all schemas
+                    for schema in schemas:
+                        cursor.execute(f"SET search_path TO {schema}")
+                        cursor.execute("SELECT id, username FROM auth_user LIMIT 5")
+                        users = cursor.fetchall()
+                        if users:
+                            logger.info(f"CustomUserAdmin.get_object: Schema '{schema}' has users: {users}")
+                    # Reset to public
+                    cursor.execute("SET search_path TO public")
+            
+            # Force public schema before the actual Django query
             with connection.cursor() as cursor:
                 cursor.execute("SET search_path TO public")
-            
-            logger.info(f"CustomUserAdmin.get_object: Looking for user id={object_id}")
             
             try:
                 obj = super().get_object(request, object_id, from_field)
                 if obj:
-                    logger.info(f"CustomUserAdmin.get_object: Found user {obj.username}")
+                    logger.info(f"CustomUserAdmin.get_object: Django found user {obj.username}")
                 return obj
             except User.DoesNotExist:
-                logger.error(f"CustomUserAdmin.get_object: User id={object_id} not found in public schema")
-                # List available users for debugging
-                from django.db import connection
-                with connection.cursor() as cursor:
-                    cursor.execute("SET search_path TO public")
-                    cursor.execute("SELECT id, username FROM auth_user LIMIT 10")
-                    users = cursor.fetchall()
-                    logger.info(f"CustomUserAdmin.get_object: Available users in public: {users}")
+                logger.error(f"CustomUserAdmin.get_object: Django ORM could not find user id={object_id} even after setting search_path")
                 raise
         
         def change_view(self, request, object_id, form_url='', extra_context=None):
