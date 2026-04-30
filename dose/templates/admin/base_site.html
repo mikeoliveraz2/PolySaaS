@@ -415,7 +415,9 @@
                     {% endfor %}
                 {% endblock messages %}
                 <div class="row">
-                    {% block content %} {% endblock %}
+                    <!-- DIAG-CONTENT: before content block -->
+                    {% block content %}<!-- DIAG-CONTENT: DEFAULT (change_form override NOT applied) -->{% endblock %}
+                    <!-- DIAG-CONTENT: after content block -->
                 </div>
             </div>
         </div>
