@@ -1,23 +1,10 @@
-{% extends "admin/change_form.html" %}
-{% load i18n jazzmin %}
+<!-- PLAIN TEST TEMPLATE - NO BLOCKS -->
+<div style="background: red; color: yellow; padding: 20px; font-size: 24px; position: fixed; top: 0; left: 0; z-index: 99999;">
+<strong>TEST TEMPLATE LOADED</strong><br>
+If you see this, template override is working.<br>
+Adminform: {{ adminform|default:"NOT SET" }}<br>
+Inline count: {{ inline_admin_formsets|length }}
+</div>
 
-{% block field_sets %}
-<!-- DEBUG: field_sets block start -->
-<div style="background: orange; padding: 10px; margin: 10px;">
-    <strong>DEBUG field_sets:</strong><br>
-    {% get_changeform_template adminform as changeform_template %}
-    changeform_template: {{ changeform_template }}<br>
-    adminform: {{ adminform|default:"NOT SET" }}<br>
-    inline_admin_formsets: {{ inline_admin_formsets|length }}
-</div>
-<div class="col-12 col-lg-9">
-    <div class="card">
-        <div class="card-body">
-            {% get_sections adminform inline_admin_formsets as forms %}
-            <div style="background: lightgreen; padding: 5px;">forms count: {{ forms|length }}</div>
-            {% include changeform_template %}
-        </div>
-    </div>
-</div>
-<!-- DEBUG: field_sets block end -->
-{% endblock %}
+<!-- Now try to render the actual form content -->
+{{ block.super }}
