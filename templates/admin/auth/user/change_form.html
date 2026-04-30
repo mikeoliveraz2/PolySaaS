@@ -1,13 +1,23 @@
 {% extends "admin/change_form.html" %}
 {% load i18n jazzmin %}
 
-{% block content %}
-<!-- DEBUG: change_form content block start -->
-<div style="background: yellow; padding: 10px; margin: 10px;">
-    <strong>DEBUG:</strong> Adminform: {{ adminform|default:"NOT SET" }}<br>
-    <strong>DEBUG:</strong> Inline formsets count: {{ inline_admin_formsets|length }}<br>
-    <strong>DEBUG:</strong> Has fieldsets: {{ adminform.fieldsets|yesno:"yes,no" }}<br>
+{% block field_sets %}
+<!-- DEBUG: field_sets block start -->
+<div style="background: orange; padding: 10px; margin: 10px;">
+    <strong>DEBUG field_sets:</strong><br>
+    {% get_changeform_template adminform as changeform_template %}
+    changeform_template: {{ changeform_template }}<br>
+    adminform: {{ adminform|default:"NOT SET" }}<br>
+    inline_admin_formsets: {{ inline_admin_formsets|length }}
 </div>
-{{ block.super }}
-<!-- DEBUG: change_form content block end -->
+<div class="col-12 col-lg-9">
+    <div class="card">
+        <div class="card-body">
+            {% get_sections adminform inline_admin_formsets as forms %}
+            <div style="background: lightgreen; padding: 5px;">forms count: {{ forms|length }}</div>
+            {% include changeform_template %}
+        </div>
+    </div>
+</div>
+<!-- DEBUG: field_sets block end -->
 {% endblock %}
