@@ -1,36 +1,51 @@
 {% extends "admin/change_form.html" %}
 {% load i18n jazzmin %}
 
-{% block field_sets %}
-<!-- MARKER: field_sets block start -->
-<div style="background: lime; color: black; padding: 10px; font-size: 20px; border: 5px solid red;">
-    <strong>FORM CONTENT START</strong> - If you see this, template is working
+{% block content %}
+<!-- DEBUG: Rendering form directly in content block -->
+<div style="background: orange; color: black; padding: 10px; font-size: 18px; margin: 10px 0;">
+    <strong>FORM RENDERING START (content block)</strong>
 </div>
 
-<div class="col-12 col-lg-9">
-    <div class="card">
-        <div class="card-body">
-            <!-- Fieldsets -->
-            {% for fieldset in adminform %}
-                <div style="background: cyan; padding: 5px; margin: 5px;">
-                    Fieldset: {{ fieldset.name|default:"General" }}
+<div id="content-main" class="col-12">
+    <form {% if has_file_field %}enctype="multipart/form-data" {% endif %}action="{{ form_url }}" method="post" id="{{ opts.model_name }}_form" novalidate>
+        {% csrf_token %}
+        
+        <div class="row">
+            <!-- Fieldsets and Inlines -->
+            <div class="col-12 col-lg-9">
+                <div class="card">
+                    <div class="card-body">
+                        <!-- Fieldsets -->
+                        {% for fieldset in adminform %}
+                            <div style="background: lightblue; padding: 5px; margin: 5px;">
+                                Fieldset: {{ fieldset.name|default:"General" }}
+                            </div>
+                            {% include "admin/includes/fieldset.html" with card=True %}
+                        {% endfor %}
+                        
+                        <!-- Inlines -->
+                        {% for inline_admin_formset in inline_admin_formsets %}
+                            <div style="background: lightgreen; padding: 5px; margin: 5px;">
+                                Inline: {{ inline_admin_formset.opts.verbose_name_plural }}
+                            </div>
+                            {% include inline_admin_formset.opts.template %}
+                        {% endfor %}
+                    </div>
                 </div>
-                {% include "admin/includes/fieldset.html" with card=True %}
-            {% endfor %}
+            </div>
             
-            <!-- Inlines -->
-            {% for inline_admin_formset in inline_admin_formsets %}
-                <div style="background: magenta; padding: 5px; margin: 5px;">
-                    Inline: {{ inline_admin_formset.opts.verbose_name_plural }}
+            <!-- Submit buttons -->
+            <div class="col-12 col-lg-3">
+                <div id="jazzy-actions" class="{{ jazzmin_ui.actions_classes }}">
+                    {% submit_row %}
                 </div>
-                {% include inline_admin_formset.opts.template %}
-            {% endfor %}
+            </div>
         </div>
-    </div>
+    </form>
 </div>
 
-<div style="background: lime; color: black; padding: 10px; font-size: 20px; border: 5px solid red;">
-    <strong>FORM CONTENT END</strong>
+<div style="background: orange; color: black; padding: 10px; font-size: 18px; margin: 10px 0;">
+    <strong>FORM RENDERING END</strong>
 </div>
-<!-- MARKER: field_sets block end -->
 {% endblock %}
