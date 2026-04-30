@@ -146,6 +146,36 @@ def provision_mattermost_tenant(
         except Exception as e:
             logger.warning("Mattermost welcome email failed: %s", e)
 
+        # 4. Create PassThroughEndpoint in tenant schema for sidebar navigation
+        try:
+            from django.db import connection
+            from dose.models import PassThroughEndpoint
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{tenant_schema}"')
+                mm_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
+                    trigger_path='mattermost',
+                    defaults={
+                        'endpoint_url': mm_url,
+                        'description': 'Mattermost Team Chat - tenant-specific team',
+                        'is_enabled': True,
+                        'passthrough_type': 'scraper',
+                        'integration_mode': 'web_api',
+                        'api_endpoint': f"{mm_url}/api/v4",
+                        'show_in_menu': True,
+                        'menu_title': 'Mattermost',
+                        'menu_icon': 'chat',
+                        'menu_sort_order': 25,
+                        'starting_uri': '/',
+                    }
+                )
+                if ep_created:
+                    logger.info("Created PassThroughEndpoint for Mattermost in tenant %s", tenant_schema)
+                else:
+                    logger.info("Updated PassThroughEndpoint for Mattermost in tenant %s", tenant_schema)
+        except Exception as e:
+            logger.warning("Failed to create PassThroughEndpoint for Mattermost: %s", e)
+            # Non-fatal: continue even if endpoint creation fails
+
         if tenant_app:
             mark_tenant_app_active(tenant_app, app_url=mm_url)
 

@@ -8,6 +8,7 @@ import secrets
 import string
 from dose.services.email_service import GmailEmailService
 from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
+from dose.models import TenantApp, PassThroughEndpoint
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,6 @@ def provision_odoo_tenant(
         # Continue with provisioning even if email fails
 
     # 4. Configure OAuth2/OIDC provider if credentials provided
-    from dose.models import TenantApp
     tenant_app = None
     if tenant_app_id:
         try:
@@ -121,6 +121,34 @@ def provision_odoo_tenant(
             logger.info("OAuth2 credentials ready for Odoo tenant %s (client_id=%s)", tenant_name, oauth_client_id)
         except Exception as e:
             logger.warning("Odoo OAuth2 config failed for %s: %s", tenant_name, e)
+
+    # 5. Create PassThroughEndpoint in tenant schema for sidebar navigation
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant_schema}"')
+            odoo_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
+                trigger_path='odoo',
+                defaults={
+                    'endpoint_url': odoo_url,
+                    'description': 'Odoo ERP - tenant-specific instance',
+                    'is_enabled': True,
+                    'passthrough_type': 'scraper',
+                    'integration_mode': 'web_api',
+                    'api_endpoint': f"{odoo_url}/xmlrpc/2",
+                    'show_in_menu': True,
+                    'menu_title': 'Odoo',
+                    'menu_icon': 'building',
+                    'menu_sort_order': 20,
+                    'starting_uri': '/web',
+                }
+            )
+            if ep_created:
+                logger.info("Created PassThroughEndpoint for Odoo in tenant %s", tenant_schema)
+            else:
+                logger.info("Updated PassThroughEndpoint for Odoo in tenant %s", tenant_schema)
+    except Exception as e:
+        logger.warning("Failed to create PassThroughEndpoint for Odoo: %s", e)
+        # Non-fatal: continue even if endpoint creation fails
 
     if tenant_app:
         mark_tenant_app_active(tenant_app, app_url=odoo_url)
