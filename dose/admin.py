@@ -888,14 +888,24 @@ if NEW_MODELS_AVAILABLE:
             with connection.cursor() as cursor:
                 cursor.execute("SET search_path TO public")
             
+            # DEBUG: Check current search_path and public schema contents
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW search_path")
+                current_search_path = cursor.fetchone()[0]
+                cursor.execute("SELECT id, username FROM auth_user ORDER BY id LIMIT 10")
+                all_users = cursor.fetchall()
+            
+            diagnostic_msg = f"search_path={current_search_path}, available_users={all_users}"
+            
             try:
                 obj = super().get_object(request, object_id, from_field)
                 if obj:
                     logger.info(f"CustomUserAdmin.get_object: Django found user {obj.username}")
                 return obj
             except User.DoesNotExist:
-                logger.error(f"CustomUserAdmin.get_object: Django ORM could not find user id={object_id} even after setting search_path")
-                raise
+                logger.error(f"CustomUserAdmin.get_object: Django ORM could not find user id={object_id}. {diagnostic_msg}")
+                # Raise with diagnostic info
+                raise User.DoesNotExist(f"User id={object_id} not found. DIAGNOSTIC: {diagnostic_msg}")
         
         def change_view(self, request, object_id, form_url='', extra_context=None):
             """Ensure we're looking in public schema for the user"""
