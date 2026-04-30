@@ -822,6 +822,37 @@ if NEW_MODELS_AVAILABLE:
         extra = 1  # Ensure form always shows
         max_num = 1
         min_num = 1  # Ensure at least one tenant assignment exists
+        
+        def get_queryset(self, request):
+            """Handle UserProfiles that reference users in different schemas"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            qs = super().get_queryset(request)
+            
+            # Force public schema to find user profiles
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                logger.info("UserProfileInline.get_queryset: Set search_path to public")
+            
+            # Re-query from public schema
+            qs = UserProfile.objects.all()
+            
+            # Filter to only include profiles where we can actually find the user
+            valid_ids = []
+            for profile in qs:
+                try:
+                    # Try to access the user - this will fail if user not in schema
+                    _ = profile.user.username
+                    valid_ids.append(profile.pk)
+                except User.DoesNotExist:
+                    logger.warning(f"UserProfileInline: Skipping profile {profile.pk} - user not accessible")
+                    pass
+            
+            if valid_ids:
+                return UserProfile.objects.filter(pk__in=valid_ids)
+            return UserProfile.objects.none()
 
     # Unregister the default User admin and register our custom one
     admin.site.unregister(User)
