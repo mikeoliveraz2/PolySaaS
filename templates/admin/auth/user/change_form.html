@@ -1,10 +1,14 @@
-<!-- PLAIN TEST TEMPLATE - NO BLOCKS -->
+{% extends "admin/change_form.html" %}
+{% load i18n jazzmin %}
+
+{% block content %}
+<!-- DEBUG: custom user change form template loaded -->
 <div style="background: red; color: yellow; padding: 20px; font-size: 24px; position: fixed; top: 0; left: 0; z-index: 99999;">
-<strong>TEST TEMPLATE LOADED</strong><br>
-If you see this, template override is working.<br>
+<strong>TEST TEMPLATE LOADED (inside content block)</strong><br>
 Adminform: {{ adminform|default:"NOT SET" }}<br>
 Inline count: {{ inline_admin_formsets|length }}
 </div>
 
-<!-- Now try to render the actual form content -->
+<!-- Render parent content -->
 {{ block.super }}
+{% endblock %}
