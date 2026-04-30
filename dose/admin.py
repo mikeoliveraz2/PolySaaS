@@ -842,6 +842,34 @@ if NEW_MODELS_AVAILABLE:
             
             return super().get_queryset(request)
         
+        def get_object(self, request, object_id, from_field=None):
+            """Force public schema when retrieving user object"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Force public schema before querying
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+            
+            logger.info(f"CustomUserAdmin.get_object: Looking for user id={object_id}")
+            
+            try:
+                obj = super().get_object(request, object_id, from_field)
+                if obj:
+                    logger.info(f"CustomUserAdmin.get_object: Found user {obj.username}")
+                return obj
+            except User.DoesNotExist:
+                logger.error(f"CustomUserAdmin.get_object: User id={object_id} not found in public schema")
+                # List available users for debugging
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute("SET search_path TO public")
+                    cursor.execute("SELECT id, username FROM auth_user LIMIT 10")
+                    users = cursor.fetchall()
+                    logger.info(f"CustomUserAdmin.get_object: Available users in public: {users}")
+                raise
+        
         def change_view(self, request, object_id, form_url='', extra_context=None):
             """Ensure we're looking in public schema for the user"""
             from django.db import connection
@@ -850,7 +878,7 @@ if NEW_MODELS_AVAILABLE:
             
             logger.info(f"CustomUserAdmin.change_view: object_id={object_id}")
             
-            # Force public schema for user lookup
+            # Force public schema
             with connection.cursor() as cursor:
                 cursor.execute("SET search_path TO public")
                 cursor.execute("SHOW search_path")
