@@ -508,8 +508,18 @@ TEMPLATES = [
             os.path.join(BASE_DIR, 'dose', 'templates'),
             os.path.join(BASE_DIR, 'templates'),
         ],
-        'APP_DIRS': True,
+        # NOTE: APP_DIRS is mutually exclusive with explicit `loaders` (below). We use explicit
+        # uncached loaders to bypass Django's auto-applied cached.Loader (active when DEBUG=False).
+        # The cached.Loader has been observed to mis-resolve {{ block.super }} on multi-level
+        # template inheritance (model change_form -> jazzmin/change_form -> dose/base_site ->
+        # jazzmin/base) on production, producing empty page_content output for change_form views
+        # while change_list (simpler inheritance) renders fine. Same code works on dev because
+        # dev runs with DEBUG=True which doesn't apply cached.Loader.
         'OPTIONS': {
+            'loaders': [
+                'django.template.loaders.filesystem.Loader',
+                'django.template.loaders.app_directories.Loader',
+            ],
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',

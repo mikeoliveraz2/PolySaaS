@@ -774,13 +774,14 @@ if NEW_MODELS_AVAILABLE:
         def __init__(self, *args, **kwargs):
             import logging
             logger = logging.getLogger(__name__)
-            
+
+            super().__init__(*args, **kwargs)
+
             try:
-                super().__init__(*args, **kwargs)
                 from dose.tenant_utils import tenants_for_user_assignment
 
-                # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
                 qs = tenants_for_user_assignment()
+                # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
                 tenant_count = qs.count()
                 logger.info(f"UserProfileInlineForm: tenants_for_user_assignment returned {tenant_count} tenants")
                 
@@ -790,7 +791,7 @@ if NEW_MODELS_AVAILABLE:
                 
                 self.fields['tenant'].queryset = qs
                 self.fields['tenant'].empty_label = "Select a tenant..."
-                self.fields['tenant'].required = True
+                self.fields['tenant'].required = False
                 
                 logger.info(f"UserProfileInlineForm: Set tenant field queryset with {tenant_count} items")
                 logger.info(f"UserProfileInlineForm: Field widget is {type(self.fields['tenant'].widget).__name__}")
@@ -808,7 +809,6 @@ if NEW_MODELS_AVAILABLE:
                         logger.warning("UserProfileInlineForm: No tenants available for assignment!")
             except Exception as e:
                 logger.error(f"UserProfileInlineForm.__init__ error: {e}", exc_info=True)
-                raise
 
     # Removed signal that auto-creates UserProfile for superusers to prevent duplicate key errors
 
@@ -858,6 +858,31 @@ if NEW_MODELS_AVAILABLE:
                 logger.info(f"CustomUserAdmin.change_view: search_path set to {search_path}")
             
             return super().change_view(request, object_id, form_url, extra_context)
+
+        @staticmethod
+        def _force_public_schema():
+            """auth_user lives in the public schema; SessionTenantMiddleware sets search_path
+            to the tenant schema which can shadow public.auth_user with a tenant-local copy
+            (created by migrations into each tenant schema). Force public for User admin queries."""
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public;")
+
+        def get_queryset(self, request):
+            self._force_public_schema()
+            return super().get_queryset(request)
+
+        def get_object(self, request, object_id, from_field=None):
+            self._force_public_schema()
+            return super().get_object(request, object_id, from_field=from_field)
+
+        def save_model(self, request, obj, form, change):
+            self._force_public_schema()
+            super().save_model(request, obj, form, change)
+
+        def delete_model(self, request, obj):
+            self._force_public_schema()
+            super().delete_model(request, obj)
 
     admin.site.register(User, CustomUserAdmin)
 
