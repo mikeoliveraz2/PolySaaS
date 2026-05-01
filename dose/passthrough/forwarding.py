@@ -10,7 +10,7 @@ from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 
 logger = logging.getLogger(__name__)
 
-_SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE"})
+_SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE", "HTTP_ACCEPT_ENCODING"})
 
 
 def _should_follow_upstream_redirects(handler, request, *, target_url, upstream_path):
@@ -320,7 +320,7 @@ def fetch_upstream_index_html(
         print(f"POLY SNIFFER — Initial HTML capture failed: {ps_exc}")
     # ───────────────────────────────────────────────────────────────────
 
-    return resp.content.decode("utf-8", errors="ignore")
+    return resp.text
 
 
 def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None):
@@ -364,6 +364,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
 
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
         outbound_headers = _outbound_headers_from_request(request)
+        outbound_headers["Accept-Encoding"] = "identity"
 
         if handler and hasattr(handler, "augment_outbound_headers"):
             try:
@@ -648,7 +649,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print("=" * 120 + "\n")
             return response
 
-        content = resp.content.decode("utf-8", errors="ignore")
+        content = resp.text
 
         if handler:
             print(f"HANDLER RUNNING -> {handler.__class__.__name__}")
