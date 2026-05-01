@@ -16,23 +16,35 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
     Atomic Service: Create Dolibarr tenant + admin user on new subscription
     Triggered when "Dolibarr" is checked on subscribe form
     """
-    # 1. Generate secure password
+    # 1. Set tenant schema for PassThroughEndpoint creation
+    with connection.cursor() as cursor:
+        cursor.execute(f'SET search_path TO "{tenant_schema}"')
+
+    # 2. Generate secure password
     password = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*") for _ in range(20))
 
-    # 2. Create PassThroughEndpoint for Dolibarr
-    dolibarr_endpoint = PassThroughEndpoint.objects.create(
-        menu_title='Dolibarr ERP/CRM',
-        endpoint_url=DOLIBARR_API_BASE,
-        trigger_path=f'/admin/dolibarr/',
-        is_enabled=True,
-        show_in_menu=True,
-        passthrough_type='scraper'
+    # 3. Create PassThroughEndpoint for Dolibarr
+    dolibarr_endpoint, _created = PassThroughEndpoint.objects.update_or_create(
+        trigger_path='dolibarr',
+        defaults={
+            'endpoint_url': DOLIBARR_API_BASE,
+            'description': 'Dolibarr ERP/CRM - tenant-specific instance',
+            'is_enabled': True,
+            'passthrough_type': 'scraper',
+            'integration_mode': 'web_api',
+            'api_endpoint': f"{DOLIBARR_API_BASE}/api/index.php",
+            'show_in_menu': True,
+            'menu_title': 'Dolibarr',
+            'menu_icon': 'briefcase',
+            'menu_sort_order': 40,
+            'starting_uri': '/',
+        }
     )
     print(f"Created PassThroughEndpoint for Dolibarr: {dolibarr_endpoint.trigger_path} -> {dolibarr_endpoint.endpoint_url}")
 
     dolibarr_url = f"http://dolibarr.polysaas.online/admin/{tenant_schema}/dolibarr/"  # Assuming hosts file maps this
 
-    # 3. Send welcome email via Gmail API
+    # 4. Send welcome email via Gmail API
     try:
         email_svc = GmailEmailService(credentials_file='gmail_creds.json')
         welcome_subject = f"Welcome to PolySaaS + Dolibarr – Your ERP/CRM is Ready"

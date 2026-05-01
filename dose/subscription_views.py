@@ -39,15 +39,15 @@ from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
 from dose.services.mattermost_tenant_provisioner import provision_mattermost_tenant
-from dose.services.extended_bundle_provisioner import (
-    provision_liferay_tenant,
-    provision_monitor_logger_tenant,
-    provision_polysysmon_tenant,
-)
+from dose.services.liferay_tenant_provisioner import provision_liferay_tenant
 try:
     from dose.services.wordpress_tenant_provisioner import provision_wordpress_tenant
 except ImportError:
     provision_wordpress_tenant = None
+from dose.services.extended_bundle_provisioner import (
+    provision_monitor_logger_tenant,
+    provision_polysysmon_tenant,
+)
 from dose.services.oauth2_registration import register_oauth2_app_for_tenant
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
