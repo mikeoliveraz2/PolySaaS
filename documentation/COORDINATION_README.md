@@ -79,3 +79,45 @@ Implemented permanent passthrough infrastructure for Odoo and Mattermost. User c
 ### Commits
 - 95b3b4c: Add permanent passthrough infrastructure for Odoo and Mattermost
 - 31a2894: Update coordination log with production passthrough infrastructure changes
+
+---
+
+## 2026-04-30
+**Status**: Session Complete
+**Branch**: main
+
+### Objective
+Fix blank admin change_form (user edit + all model update forms) on production (Render). Same code worked on dev.
+
+### Root Cause 1 — Django cached.Loader + multi-level template inheritance
+When `DEBUG=False`, Django auto-wraps template loaders in `cached.Loader`. This mis-resolves `{{ block.super }}` in deep multi-level template inheritance chains (model `change_form.html` → `jazzmin/change_form.html` → `dose/base_site.html` → `jazzmin/base.html`), producing empty `page_content` for all admin change_form views. `change_list` was unaffected (simpler inheritance, no `block.super` for content). Dev used `DEBUG=True` which does not apply `cached.Loader`.
+
+**Fix**: Replaced `APP_DIRS: True` with explicit uncached loaders in `mysite/settings.py` TEMPLATES config.
+
+### Root Cause 2 — Tenant schema shadowing public.auth_user
+`SessionTenantMiddleware` sets `SET search_path TO "<tenant_schema>", public`. Django runs migrations into each tenant schema, creating a local copy of `auth_user` in tenant schemas. When `BaseUserAdmin.get_object()` ran `User.objects.get(pk=N)`, Postgres resolved it against the tenant schema copy (which had different/missing rows), raising `DoesNotExist` for all users.
+
+**Fix**: Added `_force_public_schema()` to `CustomUserAdmin` in `dose/admin.py`, called in `get_queryset`, `get_object`, `save_model`, `delete_model`.
+
+### Architecture Rule (user-stated, repeated)
+`public` schema is SHARED — not for any specific tenant. Only these belong in public:
+- `auth_user`, `dose_tenant`, `dose_userprofile`, `dose_usertenantmembership`, subscriptions, site config
+- Everything else belongs in per-tenant schemas
+
+Tenant migrations should NOT create `auth_user` copies in tenant schemas. Long-term fix: audit migrate targets per app. Short-term: `_force_public_schema()` guards on affected ModelAdmins.
+
+### Files Changed
+- `mysite/settings.py` — disable cached.Loader (explicit uncached filesystem + app_directories loaders)
+- `dose/admin.py` — `CustomUserAdmin._force_public_schema()` for all User admin DB operations
+- `templates/admin/auth/user/change_form.html` — User change_form override (belt-and-suspenders fallback if inheritance still fails)
+
+### Commits
+- d427bc3: fix(templates): disable cached.Loader to fix block.super failure in change_form views on prod
+- 5d1a8e1: fix(admin): force public schema for User admin queries — auth_user shadowed by tenant schema copy
+
+### Pending Follow-ups
+1. Test `/admin/auth/user/1/change/` on production — should now show full edit form
+2. Test other models' change_form pages on production
+3. Long-term: audit which Django apps migrate into tenant schemas vs public-only
+4. Apply `_force_public_schema` to Tenant admin and other public-only ModelAdmins
+5. After admin bug confirmed fixed, proceed to passthrough integration (Odoo + Mattermost)
