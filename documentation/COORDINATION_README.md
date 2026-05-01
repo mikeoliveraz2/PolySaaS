@@ -163,3 +163,69 @@ Fixed passthrough endpoint visibility and functionality for the corent tenant. T
 3. Test NextCloud passthrough functionality
 4. Verify auto-login works when TenantApp is active
 5. Document tenant schema search_path pattern for future reference
+
+---
+
+## 2026-05-02 (Morning Session)
+**Status**: In Progress
+**Branch**: main
+
+### Summary
+Extended passthrough infrastructure to all 6 bundled apps (Odoo, Mattermost, NextCloud, Dolibarr, Liferay, WordPress). Created AI WebChat Bridge architecture plan with Sheila's review feedback, and implemented Mattermost Bot skeleton with Kimi + Claude adapters.
+
+### Key Changes
+- Extended `setup_default_passthrough_endpoints` command to support all 6 bundled apps with `--dolibarr-url`, `--liferay-url`, `--wordpress-url` arguments
+- Fixed `dolibarr_tenant_provisioner.py` - correct trigger_path (`dolibarr` not `/admin/dolibarr/`), added tenant schema `search_path` support, used `update_or_create` instead of `create`
+- Created `liferay_tenant_provisioner.py` - new provisioner with PassThroughEndpoint creation in tenant schema
+- Created `wordpress_tenant_provisioner.py` - new provisioner with PassThroughEndpoint creation in tenant schema
+- Updated `subscription_views.py` imports to use dedicated Liferay provisioner module (removed from extended_bundle_provisioner)
+- Created comprehensive AI WebChat Bridge Plan (`documentation/AI_WebChat_Bridge_Plan.md`) - 9-section architecture document reviewed by Sheila
+- Implemented `dose/ai_bridge/` package:
+  - `adapters/base.py` - Base adapter class (AIWebAdapter, AIResponse dataclass)
+  - `adapters/kimi_adapter.py` - Kimi (Moonshot AI) web automation with human-like typing, SMS login flow, response stability detection
+  - `adapters/claude_adapter.py` - Claude (Anthropic) web automation with email + verification code login, multi-check response stability
+  - `mattermost_bot.py` - Bot orchestrator with @mention routing, session management, slash command support, multi-AI panel discussions
+
+### AI Bridge Features
+- `@kimi` / `@claude` mention routing in Mattermost
+- `/ai <service> <message>` slash command support
+- Session management per user/service with health checks
+- Human-like typing delays (anti-bot detection)
+- Response stability checking (waits for complete streaming response)
+- PolySniffer integration hooks ready
+- Extensible adapter registry for adding more AIs
+- Multi-AI panel discussions (`/ai panel` or `/ai all`)
+
+### Files Changed
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - All 6 bundled apps supported
+- `dose/services/dolibarr_tenant_provisioner.py` - Fixed trigger_path, added tenant schema support
+- `dose/services/liferay_tenant_provisioner.py` - NEW
+- `dose/services/wordpress_tenant_provisioner.py` - NEW
+- `dose/subscription_views.py` - Updated imports for Liferay provisioner
+- `documentation/AI_WebChat_Bridge_Plan.md` - NEW (Sheila reviewed)
+- `dose/ai_bridge/` - NEW package (base, kimi, claude adapters + bot)
+
+### Sheila's Feedback on AI Plan
+- **Strengths**: Clean separation, tenant isolation, realistic phases, rich UX, security considerations
+- **Suggestions**: Start with one strong adapter first (Kimi or Claude), then expand. Add hybrid mode for code-heavy tasks (forward to Windsurf/Cursor). Implement rate limit handling + anti-bot detection. Add fallback to official APIs when web automation fails.
+- **Recommended starting set**: Kimi (strong coder, currently accessible) + Claude (excellent reasoning) for demo
+
+### Status
+- ✅ All 6 bundled app provisioners committed and pushed
+- ✅ AI WebChat Bridge Plan committed (Sheila reviewed)
+- ✅ Kimi + Claude adapters + Mattermost Bot committed
+- ⚠️ Odoo display shell still shows blank content (fix pushed but not tested)
+- ⚠️ Mattermost and NextCloud passthrough need testing
+- ⚠️ AI Bridge needs: mattermostdriver dependency, webhook endpoint, credential vault, browser pool
+
+### Follow-ups
+1. Run `setup_default_passthrough_endpoints` on Render to create all 6 endpoints
+2. Test Odoo passthrough after latest fix (check logs for `[ODOO HANDLER]` messages)
+3. Test Mattermost and NextCloud passthrough links
+4. Add `mattermostdriver` to requirements.txt
+5. Create Django webhook endpoint for Mattermost bot
+6. Implement browser context pool (Playwright)
+7. Add credential vault for AI service logins
+8. Test Kimi/Claude adapters in headless browser
+9. Consider adding API fallback mode for ChatGPT/Gemini (official APIs are more reliable)
+10. Add Windsurf/Cursor hybrid mode for code-heavy tasks per Sheila's suggestion
