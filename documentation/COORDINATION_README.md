@@ -116,3 +116,50 @@ Fixed blank Django admin user edit page on production (Render). The issue was ca
 
 ### Commits
 - See `documentation/BINGO_Blank_Admin_User_Edit_Fix.md` for full details
+
+---
+
+## 2026-05-01 (Morning Session)
+**Status**: In Progress
+**Branch**: main
+
+### Summary
+Fixed passthrough endpoint visibility and functionality for the corent tenant. The passthrough endpoints (Odoo, Mattermost, NextCloud) are now correctly displayed in the Django admin sidebar and functional. Fixed middleware and views to properly query `PassThroughEndpoint` records within tenant schemas by setting `search_path` before database queries.
+
+### Key Fixes
+- Modified `setup_default_passthrough_endpoints` command to support tenant schemas with `--tenant-slug` argument
+- Added NextCloud endpoint creation to the setup command
+- Updated Odoo, Mattermost, NextCloud provisioners to create `PassThroughEndpoint` records in tenant schemas on subscription
+- Fixed `admin_views.py` `passthrough_embed_view` to set tenant schema `search_path` before querying endpoints
+- Fixed `passthrough/middleware.py` `run_pt_admin_passthrough_core` to set tenant schema `search_path` before querying endpoints
+- Changed `URLField` to `CharField` for `endpoint_url` and `api_endpoint` in `PassThroughEndpoint` model to allow internal Docker hostnames
+- Added fallback and debug logging to Odoo handler for when HTML body tag extraction fails
+
+### Files Changed
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - Added tenant slug argument, NextCloud endpoint, schema-aware creation
+- `dose/services/odoo_tenant_provisioner.py` - Added PassThroughEndpoint creation in tenant schema
+- `dose/services/mattermost_tenant_provisioner.py` - Added PassThroughEndpoint creation in tenant schema
+- `dose/services/nextcloud_tenant_provisioner.py` - Added PassThroughEndpoint creation in tenant schema
+- `dose/admin_views.py` - Fixed passthrough view to set tenant schema search_path
+- `dose/passthrough/middleware.py` - Fixed middleware to set tenant schema search_path
+- `dose/models/pass_through_endpoint.py` - Changed URLField to CharField for Docker hostname support
+- `dose/passthrough/handlers/odoo_handler.py` - Added fallback and debug logging for body extraction
+
+### URLs Configured
+- Odoo: `https://polysaas-odoo2.onrender.com`
+- Mattermost: `https://polysaas-mattermost.onrender.com`
+- NextCloud: `http://polysaas-nextcloud:80` (internal Docker)
+
+### Status
+- ✅ Passthrough endpoints visible in sidebar for corent tenant
+- ✅ Endpoint queries work correctly in tenant schemas
+- ✅ Docker/internal hostnames now accepted
+- ⚠️ Odoo display shell shows blank content (needs further debugging)
+- ⚠️ Mattermost and NextCloud need testing
+
+### Follow-ups
+1. Debug Odoo display shell blank content issue
+2. Test Mattermost passthrough functionality
+3. Test NextCloud passthrough functionality
+4. Verify auto-login works when TenantApp is active
+5. Document tenant schema search_path pattern for future reference
