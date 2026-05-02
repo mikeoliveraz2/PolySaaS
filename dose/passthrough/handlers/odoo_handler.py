@@ -979,22 +979,47 @@ Location.prototype.assign = function(url) {
     return _locAssign.call(this, guarded);
 };
 
-// Patch location.href setter
+// Patch location.href AND pathname getters so Odoo's router sees the upstream
+// path (stripped of proxy prefix), not /pt/admin/<host>/...
+// Without this Odoo's Owl router sees an unknown route and renders nothing.
 try {
     var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-    if (hrefDesc && hrefDesc.set) {
+    var pathnameDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'pathname');
+    function _stripProxy(raw) {
+        if (raw && raw.indexOf(PROXY) === 0) return raw.slice(PROXY.length) || '/';
+        return raw;
+    }
+    if (hrefDesc && hrefDesc.get && hrefDesc.set) {
         Object.defineProperty(Location.prototype, 'href', {
-            get: hrefDesc.get,
+            get: function() {
+                var raw = hrefDesc.get.call(this);
+                // Strip proxy prefix from the path portion so Odoo reads the upstream URL
+                try {
+                    var u = new URL(raw);
+                    u.pathname = _stripProxy(u.pathname);
+                    return u.toString();
+                } catch(e2) { return raw; }
+            },
             set: function(v) {
-                var guarded = guardUrl(v);
-                return hrefDesc.set.call(this, guarded);
+                return hrefDesc.set.call(this, guardUrl(v));
             },
             configurable: true,
             enumerable: true
         });
     }
+    if (pathnameDesc && pathnameDesc.get) {
+        Object.defineProperty(Location.prototype, 'pathname', {
+            get: function() {
+                return _stripProxy(pathnameDesc.get.call(this));
+            },
+            set: pathnameDesc.set,
+            configurable: true,
+            enumerable: true
+        });
+    }
+    console.log('[PolySaaS Odoo] location.href/pathname getters patched — router sees upstream path');
 } catch(e) {
-    console.warn('[PolySaaS Odoo] Could not patch location.href:', e);
+    console.warn('[PolySaaS Odoo] Could not patch location.href/pathname:', e);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
