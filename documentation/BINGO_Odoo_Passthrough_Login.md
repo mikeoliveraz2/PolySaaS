@@ -1,0 +1,66 @@
+# BINGO: Odoo Passthrough Login Screen Working
+
+**Date:** 2026-05-03  
+**Status:** ✅ BINGO  
+**Branch:** main  
+
+## Summary
+
+Odoo login form is now rendering correctly inside the PolySaaS admin shell via the passthrough proxy. The "POLYSAAS ORCHESTRATION ACTIVE — PASSTHROUGH EMBED" banner is live and the Odoo login form (Email + Password + Log in button) displays properly.
+
+## Root Cause Chain (what was broken)
+
+1. **Sidebar URL used `trigger_path` norm** (`/pt/admin/odoo/`) — needed to use `endpoint_url` hostname (`/pt/admin/polysaas-odoo2.onrender.com/`) so the forwarder can reconstruct the upstream URL directly from the URL without a second lookup.
+2. **Middleware did DB lookup by `trigger_path`** — when trigger is a hostname (`polysaas-odoo2.onrender.com`), lookup by `trigger_path__iexact` never matched. Fixed to look up by `endpoint_url__icontains=f"://{trigger}"`.
+3. **No root redirect for hostname triggers** — browser hit `/` on Odoo which returned a garbled response. Fixed: `try_root_display_shell_response` redirects the browser to `/web/login` when the root proxy path is hit.
+4. **Brotli encoding not handled** — Render's CDN serves responses with `Content-Encoding: br`. Python `requests` cannot decode Brotli without `brotlicffi`. The raw bytes were decoded as UTF-8 → garbled content. Fixed: added `brotlicffi==1.1.0.0` to `requirements.txt`.
+5. **`allow_redirects=False` caused 502 on Render** — reverted to `allow_redirects=True`; the Django-level root redirect keeps browser URL correct.
+
+## Commits This Session
+
+| Hash | Change |
+|------|--------|
+| Rollback | `git reset --hard 0616583` — rolled back 47 bad commits to last BINGO; saved work as `passthrough-wip` branch |
+| `46290b9` | Sidebar uses `endpoint_url` hostname; middleware matches by hostname; `allow_redirects=False` (later fixed) |
+| `394be75` | Hostname root redirect to `/web/login` + reverted `allow_redirects=True` |
+| `783d2b7` | Add `brotlicffi` to requirements.txt for Brotli decoding |
+
+## Architecture (confirmed working)
+
+```
+Sidebar link href:  /pt/admin/polysaas-odoo2.onrender.com/
+                          ↓
+Middleware:         trigger = "polysaas-odoo2.onrender.com" (has ".")
+                    → DB lookup: endpoint_url__icontains="://polysaas-odoo2.onrender.com"
+                    → finds PassThroughEndpoint → gets OdooPassthroughHandler
+                          ↓
+try_root_display_shell_response:
+                    → root path → Django redirect to /web/login
+                    → other paths → return None → forward_request_standardized
+                          ↓
+forward_request_standardized:
+                    → strips /pt/admin/polysaas-odoo2.onrender.com
+                    → prepends https://
+                    → allow_redirects=True → follows Odoo redirect chain
+                    → brotlicffi decodes Brotli response
+                          ↓
+_wrap_in_admin_template:
+                    → extracts <head> and <body>
+                    → renders admin/passthrough_embed.html
+                    → Odoo login form shown inside PolySaaS shell ✅
+```
+
+## Files Changed
+
+- `dose/context_processors.py` — sidebar URL uses `endpoint_url` hostname
+- `dose/passthrough/middleware.py` — endpoint lookup by `endpoint_url` hostname for hostname triggers
+- `dose/passthrough/handlers/odoo_handler.py` — root redirect + `allow_redirects=True`
+- `requirements.txt` — `brotlicffi==1.1.0.0`
+
+## Follow-ups / Next Session
+
+- Test Odoo **post-login** flow (form submit → session → main app `/odoo/`)
+- Verify post-login redirect is rewritten correctly through proxy
+- Test Mattermost passthrough link (same hostname-based approach)
+- Re-integrate AI Bridge (Kimi/Claude adapters) from `passthrough-wip` branch
+- Re-integrate provisioners for all 6 bundled apps from `passthrough-wip` branch

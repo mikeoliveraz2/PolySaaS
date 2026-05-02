@@ -116,3 +116,41 @@ Fixed blank Django admin user edit page on production (Render). The issue was ca
 
 ### Commits
 - See `documentation/BINGO_Blank_Admin_User_Edit_Fix.md` for full details
+
+---
+
+## 2026-05-03 (Early Morning — Laptop)
+**Status**: ✅ BINGO  
+**Branch**: main
+
+### Summary
+Fixed Odoo passthrough blank/garbled screen. Odoo login form now renders correctly inside PolySaaS admin shell.
+
+### Root Cause Chain
+1. Sidebar URL used `trigger_path` norm instead of `endpoint_url` hostname → middleware lookup always missed
+2. No root redirect for hostname triggers → browser hit Odoo `/` returning garbled bytes
+3. `brotlicffi` missing from requirements.txt → Render CDN's Brotli-encoded responses decoded as garbled UTF-8
+4. `allow_redirects=False` caused 502 on Render → reverted to True
+
+### Key Architecture Rule
+- Sidebar href = `/pt/admin/<endpoint_url hostname>/`
+- Middleware matches endpoint by `endpoint_url__icontains="://<hostname>"`
+- Root path → Django redirect to `/web/login` (browser URL stays correct)
+- `allow_redirects=True` + `brotlicffi` = clean login page HTML
+
+### Files Changed
+- `dose/context_processors.py` — sidebar URL from `endpoint_url` hostname
+- `dose/passthrough/middleware.py` — endpoint lookup by `endpoint_url` hostname
+- `dose/passthrough/handlers/odoo_handler.py` — root redirect to `/web/login`
+- `requirements.txt` — added `brotlicffi==1.1.0.0`
+- `documentation/BINGO_Odoo_Passthrough_Login.md` — this session's BINGO doc
+
+### Rollback Note
+Rolled back 47 commits to `0616583` (last BINGO). All discarded work saved on `passthrough-wip` branch on GitHub.
+
+### Follow-ups for Next Session
+- Test Odoo **post-login** (form submit → session → `/odoo/` apps page)
+- Verify Location header rewriting works for post-login redirect
+- Test Mattermost passthrough (same hostname approach)
+- Re-integrate AI Bridge (Kimi/Claude adapters) from `passthrough-wip` branch
+- Re-integrate provisioners for all 6 bundled apps from `passthrough-wip` branch
