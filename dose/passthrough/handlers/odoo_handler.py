@@ -530,6 +530,9 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             """Rewrite a single path."""
             if not path or not path.startswith('/'):
                 return path
+            # Already proxied — never double-rewrite
+            if path.startswith('/pt/'):
+                return path
             # Odoo native paths -> proxy
             if (
                 path.startswith('/web/')
@@ -1296,25 +1299,9 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                 except Exception as follow_exc:
                     print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
 
-        # Derive dynamic proxy prefix from endpoint_url
-        proxy_prefix = '/pt/admin/odoo'  # fallback
-        if endpoint_url:
-            parsed = urlparse(endpoint_url.rstrip('/'))
-            proxy_prefix = f'/pt/admin/{parsed.netloc}'
-        
-        if resp.content and b'</head>' in resp.content:
-            content = resp.content
-            pp = proxy_prefix.encode('utf-8')
-            content = content.replace(b'"/odoo/', b'"' + pp + b'/odoo/')
-            content = content.replace(b"'/odoo/", b"'" + pp + b'/odoo/')
-            content = content.replace(b'"/web/', b'"' + pp + b'/web/')
-            content = content.replace(b"'/web/", b"'" + pp + b'/web/')
-            content = content.replace(b'"/bus/', b'"' + pp + b'/bus/')
-            content = content.replace(b"'/bus/", b"'" + pp + b'/bus/')
-            content = content.replace(b'"/websocket', b'"' + pp + b'/websocket')
-            content = content.replace(b"'/websocket", b"'" + pp + b'/websocket')
-            resp._content = content
-            print(f"=== ODOO: Path rewriting applied with prefix={proxy_prefix} ===")
+        # HTML path rewriting is handled exclusively by process_html_response/_rewrite_static_paths.
+        # Do NOT do byte-string replacements here — they run before process_html_response
+        # and cause double-rewriting (path gets proxied twice → upstream URL gets proxy prefix embedded).
 
         print("Body preview (first 400 chars):")
         print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")
