@@ -131,7 +131,9 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
         wrapped_response = DjangoHttpResponse(wrapped_html, status=response.status_code)
         wrapped_response['Content-Type'] = 'text/html; charset=utf-8'
         wrapped_response['X-Frame-Options'] = 'ALLOWALL'
-        wrapped_response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        wrapped_response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        wrapped_response['Pragma'] = 'no-cache'
+        wrapped_response['Expires'] = '0'
         
         # Copy cookies from original response
         for cookie_name in response.cookies:

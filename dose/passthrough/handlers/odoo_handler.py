@@ -656,9 +656,11 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     # ------------------------------------------------------------------ #
 
     def _inject_client_shim(self, html, base_origin, session_id='', proxy_prefix='/pt/admin/odoo'):
+        import time
         base_json    = json.dumps(base_origin)
         session_json = json.dumps(session_id)
         proxy_json   = json.dumps(proxy_prefix)
+        ts_json      = json.dumps(str(int(time.time())))
 
         # ── Odoo 18 Base Path Fix ──
         # Odoo 18 often uses a <base> tag or internal logic that assumes it is at /odoo/
@@ -816,10 +818,11 @@ html, body {
 var B = BASE_JSON;       // upstream origin e.g. http://localhost:8069
 var S = SESSION_JSON;    // server-side session_id (bootstrap only)
 var PROXY = PROXY_JSON;
+var TS = TS_JSON;        // timestamp to verify fresh code
 var O = window.location.origin;
 var SCOPE_SELECTOR = '.polysaas-passthrough-scope';
 
-console.log('[PolySaaS Odoo] Shim starting, upstream=' + B + ', origin=' + O);
+console.log('[PolySaaS Odoo] Shim v' + TS + ' starting, PROXY=' + PROXY + ', upstream=' + B + ', origin=' + O);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. SESSION COOKIE SEEDING
@@ -1182,6 +1185,7 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         patch = patch.replace('BASE_JSON', base_json)
         patch = patch.replace('SESSION_JSON', session_json)
         patch = patch.replace('PROXY_JSON', proxy_json)
+        patch = patch.replace('TS_JSON', ts_json)
         
         return html.replace('<head>', '<head>' + patch)
 
