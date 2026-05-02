@@ -1355,23 +1355,7 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
 
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get('Location', '')
-            print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
-            if location and (location.startswith('/odoo') or location.startswith('/web')):
-                parsed = urlparse(endpoint_url)
-                follow_url = f"{parsed.scheme}://{parsed.netloc}{location}"
-                print(f"=== ODOO: Following redirect to {follow_url} ===")
-                try:
-                    follow_resp = requests.get(
-                        follow_url,
-                        headers=outbound_headers,
-                        cookies=upstream_cookies,
-                        allow_redirects=True,
-                        timeout=60,
-                    )
-                    resp = follow_resp
-                    print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
-                except Exception as follow_exc:
-                    print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
+            print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} (letting forwarder rewrite) ===")
 
         # HTML path rewriting is handled exclusively by process_html_response/_rewrite_static_paths.
         # Do NOT do byte-string replacements here — they run before process_html_response
