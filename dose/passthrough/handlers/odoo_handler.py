@@ -508,23 +508,26 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         # Rewrite initial HTML asset paths BEFORE the JS shim runs.
         # <link> and <script> tags are fetched by the browser before JS executes, so we must
         # rewrite them server-side to route through our proxy.
-        html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix)
+        html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix, base_origin=base_origin)
         html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix)
 
         return html_str, None
 
-    def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo'):
+    def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo', base_origin=''):
         """
-        Rewrite src/href/data-src/srcset attributes in <link>/<script>/<img> tags
-        that start with /web/, /website/, /odoo/, or /bus/ to go through our
-        PolySaaS proxy. Also rewrites CSS url() references for @font-face and backgrounds.
+        Rewrite src/href/data-src/srcset attributes in <link>/<script>/<img> tags.
+        
+        Strategy:
+        1. Odoo native paths (/web/, /odoo/, /bus/, etc.) -> route through proxy
+        2. Other relative paths (/images/, /static/, etc.) -> make absolute with upstream origin
         """
         import re
 
         def _rewrite_path(path):
-            """Rewrite a single path if it matches Odoo patterns."""
+            """Rewrite a single path."""
             if not path or not path.startswith('/'):
                 return path
+            # Odoo native paths -> proxy
             if (
                 path.startswith('/web/')
                 or path.startswith('/website/')
@@ -533,6 +536,9 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 or path.startswith('/websocket')
             ):
                 return proxy_prefix + path
+            # Other relative paths -> absolute upstream URL
+            if base_origin:
+                return base_origin + path
             return path
 
         # 1. Rewrite standard attributes: href="...", src="...", action="..."
