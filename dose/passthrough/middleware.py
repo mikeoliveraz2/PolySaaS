@@ -7,7 +7,6 @@ from dose.passthrough.handlers.registry import (
     get_handler_for_endpoint,
     pt_admin_core_delegated_to_urlconf,
 )
-from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
 from dose.utils import get_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -257,9 +256,6 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         This is the LAST middleware before the request leaves Django
         -> Perfect place for PASSTHROUGH-OUT
         """
-        # Handlers may rewrite native app paths onto /pt/admin/<trigger>/… (see incoming_path_rewrite).
-        apply_incoming_path_rewrites(request)
-
         if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
             print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
             return self.get_response(request)

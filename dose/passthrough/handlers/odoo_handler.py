@@ -82,28 +82,6 @@ class OdooPassthroughHandler:
             headers["X-Forwarded-Port"] = "443" if request.is_secure() else "80"
         headers.pop("Referer", None)
 
-    def try_rewrite_incoming_path(self, request, endpoint) -> bool:
-        """
-        Remap native Odoo URLs (/web/, /odoo/, /bus/, /websocket) onto this endpoint's proxy prefix.
-        """
-        path = request.path_info
-        if path.startswith("/pt/"):
-            return False
-        native_prefixes = tuple(prefix + "/" for prefix in self.native_passthrough_prefixes())
-        if path not in self.native_passthrough_prefixes() and not path.startswith(native_prefixes):
-            return False
-        seg = (
-            (getattr(endpoint, "trigger_path", None) or "odoo")
-            .strip("/")
-            .lower()
-            .split("/")[-1]
-            .replace("-", "_")
-        )
-        proxy_prefix = f"/pt/admin/{seg}"
-        request.path_info = proxy_prefix + path
-        print(f"[ODOO-HANDLER] native path rewrite → {request.path_info}")
-        return True
-
     def upstream_url_for_subpath(self, endpoint_url, clean_path):
         """
         Initial HTML (path /): use the full configured endpoint_url (e.g. .../web/login).
