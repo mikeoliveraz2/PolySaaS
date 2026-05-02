@@ -1204,6 +1204,7 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         if 'javascript' in ct or 'css' in ct:
             try:
                 text = body.decode('utf-8', errors='ignore')
+                print(f"[ODOO REWRITE] Processing {ct} with proxy_prefix={proxy_prefix}")
                 # Owl's mount target replacement.
                 # Odoo 17 style: app.mount(document.body)       → matches .mount(document.body
                 # Odoo 18 style: mount(WebClient, document.body) → matches ,document.body,
@@ -1219,17 +1220,18 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                     ',document.body,', f',{SCOPE_JS},'
                 )
 
-                # Also rewrite paths hidden in JS/CSS strings
                 def _proxy_css_url(m):
                     quote = m.group(1) or ''
                     path  = m.group(2)
                     close = m.group(3) or ''
                     if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
-                        path = proxy_prefix + path
+                        new_path = proxy_prefix + path
+                        print(f"[ODOO REWRITE] CSS/JS url(): {path} -> {new_path}")
+                        return f'url({quote}{new_path}{close})'
                     return f'url({quote}{path}{close})'
 
                 patched = re.sub(
-                    r'url\(([""]?)(/(?:web|odoo|bus|websocket)/[^)"\']*)(["\']?)\)',
+                    r'url\(([\"\"]?)(/(?:web|odoo|bus|websocket)/[^)\"\']*)([\"\']?)\)',
                     _proxy_css_url, patched,
                 )
 
@@ -1294,18 +1296,25 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                 except Exception as follow_exc:
                     print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
 
+        # Derive dynamic proxy prefix from endpoint_url
+        proxy_prefix = '/pt/admin/odoo'  # fallback
+        if endpoint_url:
+            parsed = urlparse(endpoint_url.rstrip('/'))
+            proxy_prefix = f'/pt/admin/{parsed.netloc}'
+        
         if resp.content and b'</head>' in resp.content:
             content = resp.content
-            content = content.replace(b'"/odoo/', b'"/pt/admin/odoo/odoo/')
-            content = content.replace(b"'/odoo/", b"'/pt/admin/odoo/odoo/")
-            content = content.replace(b'"/web/', b'"/pt/admin/odoo/web/')
-            content = content.replace(b"'/web/", b"'/pt/admin/odoo/web/")
-            content = content.replace(b'"/bus/', b'"/pt/admin/odoo/bus/')
-            content = content.replace(b"'/bus/", b"'/pt/admin/odoo/bus/")
-            content = content.replace(b'"/websocket', b'"/pt/admin/odoo/websocket')
-            content = content.replace(b"'/websocket", b"'/pt/admin/odoo/websocket")
+            pp = proxy_prefix.encode('utf-8')
+            content = content.replace(b'"/odoo/', b'"' + pp + b'/odoo/')
+            content = content.replace(b"'/odoo/", b"'" + pp + b'/odoo/')
+            content = content.replace(b'"/web/', b'"' + pp + b'/web/')
+            content = content.replace(b"'/web/", b"'" + pp + b'/web/')
+            content = content.replace(b'"/bus/', b'"' + pp + b'/bus/')
+            content = content.replace(b"'/bus/", b"'" + pp + b'/bus/')
+            content = content.replace(b'"/websocket', b'"' + pp + b'/websocket')
+            content = content.replace(b"'/websocket", b"'" + pp + b'/websocket')
             resp._content = content
-            print("=== ODOO: Path rewriting applied ===")
+            print(f"=== ODOO: Path rewriting applied with prefix={proxy_prefix} ===")
 
         print("Body preview (first 400 chars):")
         print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")
