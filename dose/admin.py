@@ -1017,10 +1017,19 @@ if NEW_MODELS_AVAILABLE:
         get_item_count.short_description = 'Items'
 
         def get_queryset(self, request):
-            """Show all panels in the current schema (tenant filter relaxed for visibility)."""
+            """Filter queryset to show only panels from user's session tenant."""
             queryset = super().get_queryset(request)
             queryset = queryset.select_related('tenant').prefetch_related('navigation_items')
-            print(f"[NAV_PANEL_ADMIN] Showing {queryset.count()} panels in current schema")
+
+            try:
+                from dose.utils import get_current_tenant
+                tenant = get_current_tenant(request)
+                if tenant:
+                    queryset = queryset.filter(tenant=tenant)
+                    print(f"[NAV_PANEL_ADMIN] Filtered panels to tenant: {tenant.name}")
+            except Exception as e:
+                print(f"[NAV_PANEL_ADMIN] Error filtering by tenant: {e}")
+
             return queryset
 
         def get_form(self, request, obj=None, **kwargs):
@@ -1181,7 +1190,7 @@ if NEW_MODELS_AVAILABLE:
                         try:
                             with connection.cursor() as cursor:
                                 cursor.execute(f'SET search_path TO "{schema_name}",public;')
-                                panels = NavigationPanel.objects.filter(is_active=True)
+                                panels = NavigationPanel.objects.filter(tenant=tenant, is_active=True)
                                 for panel in panels:
                                     all_panels.append(panel)
                         except Exception as e:
@@ -1238,7 +1247,7 @@ if NEW_MODELS_AVAILABLE:
                         try:
                             with connection.cursor() as cursor:
                                 cursor.execute(f'SET search_path TO "{schema_name}",public;')
-                                panel_check = NavigationPanel.objects.filter(slug=obj.panel.slug).first()
+                                panel_check = NavigationPanel.objects.filter(id=obj.panel.id).first()
                                 if panel_check:
                                     panel_schema = schema_name
                                     panel_tenant = panel_check.tenant if hasattr(panel_check, 'tenant') and panel_check.tenant else None
@@ -1252,7 +1261,7 @@ if NEW_MODELS_AVAILABLE:
                     with connection.cursor() as cursor:
                         cursor.execute(f'SET search_path TO "{panel_schema}",public;')
                         # Get the panel in the correct schema context
-                        panel_in_schema = NavigationPanel.objects.filter(slug=obj.panel.slug).first()
+                        panel_in_schema = NavigationPanel.objects.filter(id=obj.panel.id).first()
                         if panel_in_schema:
                             obj.panel = panel_in_schema
                             super().save_model(request, obj, form, change)
