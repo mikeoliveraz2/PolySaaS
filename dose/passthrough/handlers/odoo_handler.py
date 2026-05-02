@@ -1023,7 +1023,24 @@ try {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 8. ADAPTIVE UI - Make Odoo think it has the scope's dimensions
+// 8. FORM SUBMISSION INTERCEPTION
+// Odoo's Owl-rendered login form sets action="/web/login" in its component
+// template — not in the server HTML we rewrite. Without this, the form
+// submits directly to Django (bypassing the proxy) and hits CSRF rejection.
+// ═══════════════════════════════════════════════════════════════════════════
+document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    var rawAction = form.action || '';
+    var proxied = toProxy(rawAction);
+    if (proxied !== rawAction) {
+        console.log('[PolySaaS Odoo] Form action rewrite:', rawAction, '->', proxied);
+        form.setAttribute('action', proxied);
+    }
+}, true);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. ADAPTIVE UI - Make Odoo think it has the scope's dimensions
 // ═══════════════════════════════════════════════════════════════════════════
 function getScopeWidth() {
     var scope = document.querySelector(SCOPE_SELECTOR);
