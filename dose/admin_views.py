@@ -395,20 +395,39 @@ def passthrough_embed_view(request, trigger):
     embed_body = ""
     debug_info = {}  # collect debug info for the banner
 
-    # Query PassThroughEndpoint BEFORE setting tenant schema (it's in public)
-    # Force public schema to avoid tenant schema issues
+    # Query PassThroughEndpoint from public schema using raw SQL (shared table, not tenant-specific)
     from django.db import connection
-    # Use direct execute to ensure search_path persists for ORM queries
-    connection.cursor().execute("SET search_path TO public;")
-    endpoint = PassThroughEndpoint.objects.filter(
-        trigger_path__iexact=norm,
-        is_enabled=True,
-    ).order_by("-id").first()
+
+    def _get_endpoint_from_public(trigger):
+        """Query PassThroughEndpoint from public schema using raw SQL."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, trigger_path, endpoint_url, is_enabled, passthrough_type, description
+                FROM public.dose_passthroughendpoint
+                WHERE LOWER(trigger_path) = LOWER(%s) AND is_enabled = true
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                [trigger]
+            )
+            row = cursor.fetchone()
+            if row:
+                # Create a mock endpoint object with needed attributes
+                class MockEndpoint:
+                    def __init__(self, id, trigger_path, endpoint_url, is_enabled, passthrough_type, description):
+                        self.id = id
+                        self.trigger_path = trigger_path
+                        self.endpoint_url = endpoint_url
+                        self.is_enabled = is_enabled
+                        self.passthrough_type = passthrough_type
+                        self.description = description
+                return MockEndpoint(*row)
+        return None
+
+    endpoint = _get_endpoint_from_public(norm)
     if endpoint is None and "_" in norm:
-        endpoint = PassThroughEndpoint.objects.filter(
-            trigger_path__iexact=norm.replace("_", ""),
-            is_enabled=True,
-        ).order_by("-id").first()
+        endpoint = _get_endpoint_from_public(norm.replace("_", ""))
 
     # CRITICAL: Set search_path to tenant schema AFTER querying public models
     if tenant and tenant.schema_name:
