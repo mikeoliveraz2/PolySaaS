@@ -171,24 +171,40 @@ def run_pt_admin_passthrough_core(request):
     print(f"[PT-CORE] trigger={trigger}")
 
     url_key = normalize_trigger_segment(trigger)
-    endpoint = PassThroughEndpoint.objects.filter(
-        trigger_path__iexact=trigger,
-        is_enabled=True,
-    ).order_by("-id").first()
-    if endpoint is None and "_" in trigger:
+
+    # If trigger looks like a hostname (e.g. polysaas-odoo2.onrender.com), the sidebar
+    # link already encodes the full upstream target.  Match against endpoint_url so we
+    # get the right handler without requiring trigger_path == hostname in the DB.
+    if "." in trigger:
+        endpoint = (
+            PassThroughEndpoint.objects.filter(
+                endpoint_url__icontains=f"://{trigger}",
+                is_enabled=True,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if endpoint:
+            print(f"[PT-CORE] matched endpoint by endpoint_url hostname: {trigger!r} -> {endpoint}")
+    else:
         endpoint = PassThroughEndpoint.objects.filter(
-            trigger_path__iexact=trigger.replace("_", ""),
+            trigger_path__iexact=trigger,
             is_enabled=True,
         ).order_by("-id").first()
-    if endpoint is None and url_key:
-        for ep in PassThroughEndpoint.objects.filter(is_enabled=True).order_by("-id"):
-            if normalize_trigger_segment(ep.trigger_path) == url_key:
-                endpoint = ep
-                print(
-                    f"[PT-CORE] matched endpoint by normalized trigger "
-                    f"(url_key={url_key!r} trigger_path={ep.trigger_path!r})"
-                )
-                break
+        if endpoint is None and "_" in trigger:
+            endpoint = PassThroughEndpoint.objects.filter(
+                trigger_path__iexact=trigger.replace("_", ""),
+                is_enabled=True,
+            ).order_by("-id").first()
+        if endpoint is None and url_key:
+            for ep in PassThroughEndpoint.objects.filter(is_enabled=True).order_by("-id"):
+                if normalize_trigger_segment(ep.trigger_path) == url_key:
+                    endpoint = ep
+                    print(
+                        f"[PT-CORE] matched endpoint by normalized trigger "
+                        f"(url_key={url_key!r} trigger_path={ep.trigger_path!r})"
+                    )
+                    break
     print(f"[PT-CORE] endpoint={endpoint}")
 
     if not endpoint:
