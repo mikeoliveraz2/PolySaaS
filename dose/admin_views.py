@@ -398,8 +398,8 @@ def passthrough_embed_view(request, trigger):
     # Query PassThroughEndpoint BEFORE setting tenant schema (it's in public)
     # Force public schema to avoid tenant schema issues
     from django.db import connection
-    with connection.cursor() as cursor:
-        cursor.execute("SET search_path TO public;")
+    # Use direct execute to ensure search_path persists for ORM queries
+    connection.cursor().execute("SET search_path TO public;")
     endpoint = PassThroughEndpoint.objects.filter(
         trigger_path__iexact=norm,
         is_enabled=True,
