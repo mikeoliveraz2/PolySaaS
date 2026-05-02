@@ -1181,7 +1181,7 @@ if NEW_MODELS_AVAILABLE:
                         try:
                             with connection.cursor() as cursor:
                                 cursor.execute(f'SET search_path TO "{schema_name}",public;')
-                                panels = NavigationPanel.objects.filter(tenant=tenant, is_active=True)
+                                panels = NavigationPanel.objects.filter(is_active=True)
                                 for panel in panels:
                                     all_panels.append(panel)
                         except Exception as e:
