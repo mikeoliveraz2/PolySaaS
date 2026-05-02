@@ -59,13 +59,8 @@ class OdooPassthroughHandler:
         return ("/web", "/odoo", "/bus", "/websocket", "/longpolling")
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """
-        Do NOT follow redirects internally — let the forwarder receive the 3xx and rewrite
-        the Location header to go through the proxy (/pt/admin/<hostname>/...).
-        The browser then follows the redirect to the correct proxied URL, which keeps
-        window.location in sync so the pathname patch and Odoo's router work correctly.
-        """
-        return False
+        """Follow upstream redirects so the full Odoo response is returned."""
+        return True
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
@@ -132,6 +127,20 @@ class OdooPassthroughHandler:
         """
         if request.method != "GET":
             return None
+
+        # Hostname triggers (e.g. polysaas-odoo2.onrender.com): the sidebar link encodes
+        # the upstream host directly.  Redirect the browser from the proxy root to /web/login
+        # so the browser URL is /pt/admin/<host>/web/login — the shim then strips the proxy
+        # prefix and Odoo's router sees /web/login instead of /, which avoids blank/garbled page.
+        if "." in url_trigger_segment:
+            proxy_prefix = f"/pt/admin/{url_trigger_segment.strip('/')}"
+            if request.path_info.rstrip("/") == proxy_prefix:
+                from django.http import HttpResponseRedirect
+                print(f"[ODOO] Hostname root → redirecting browser to {proxy_prefix}/web/login")
+                return HttpResponseRedirect(f"{proxy_prefix}/web/login")
+            # All other sub-paths for hostname trigger: let forward_request_standardized handle
+            return None
+
         seg = (
             url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
         )
