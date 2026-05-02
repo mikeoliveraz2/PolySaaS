@@ -490,15 +490,17 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     # ------------------------------------------------------------------ #
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        logger.info("[ODOO HANDLER] Processing HTML")
+        print(f"[ODOO HANDLER] Processing HTML for {endpoint_url}")
 
         if not endpoint_url:
+            print("[ODOO HANDLER] No endpoint_url - returning raw HTML")
             return html_str, None
 
         parsed      = urlparse(endpoint_url.rstrip('/'))
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
         hostname    = parsed.netloc  # e.g., polysaas-odoo2.onrender.com
         proxy_prefix = f'/pt/admin/{hostname}'
+        print(f"[ODOO HANDLER] proxy_prefix={proxy_prefix}, base_origin={base_origin}")
 
         session_id = (self.get_upstream_cookies(request) or {}).get('session_id') or ''
 
@@ -511,6 +513,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix, base_origin=base_origin)
         html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix)
 
+        print(f"[ODOO HANDLER] HTML processing complete")
         return html_str, None
 
     def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo', base_origin=''):
@@ -535,10 +538,14 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 or path.startswith('/bus/')
                 or path.startswith('/websocket')
             ):
-                return proxy_prefix + path
+                new_path = proxy_prefix + path
+                print(f"[ODOO REWRITE] {path} -> {new_path}")
+                return new_path
             # Other relative paths -> absolute upstream URL
             if base_origin:
-                return base_origin + path
+                new_path = base_origin + path
+                print(f"[ODOO REWRITE] {path} -> {new_path}")
+                return new_path
             return path
 
         # 1. Rewrite standard attributes: href="...", src="...", action="..."
