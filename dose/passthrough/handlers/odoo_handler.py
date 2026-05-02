@@ -72,8 +72,13 @@ class OdooPassthroughHandler:
         return False
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """Odoo often redirects internally before landing on the usable page/document."""
-        return True
+        """
+        Do NOT follow redirects internally — let the forwarder receive the 3xx and rewrite
+        the Location header to go through the proxy (/pt/admin/<hostname>/...).
+        The browser then follows the redirect to the correct proxied URL, which keeps
+        window.location in sync so the pathname patch and Odoo's router work correctly.
+        """
+        return False
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
