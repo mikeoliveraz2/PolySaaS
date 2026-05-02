@@ -1027,9 +1027,9 @@ try {
 // Odoo's Owl-rendered login form sets action="/web/login" in its component
 // template — not in the server HTML we rewrite. Without this, the form
 // submits directly to Django (bypassing the proxy) and hits CSRF rejection.
+// Covers both native submit event AND direct form.submit() calls.
 // ═══════════════════════════════════════════════════════════════════════════
-document.addEventListener('submit', function(e) {
-    var form = e.target;
+function _rewriteFormAction(form) {
     if (!form || form.tagName !== 'FORM') return;
     var rawAction = form.action || '';
     var proxied = toProxy(rawAction);
@@ -1037,7 +1037,24 @@ document.addEventListener('submit', function(e) {
         console.log('[PolySaaS Odoo] Form action rewrite:', rawAction, '->', proxied);
         form.setAttribute('action', proxied);
     }
-}, true);
+}
+document.addEventListener('submit', function(e) { _rewriteFormAction(e.target); }, true);
+var _formSubmit = HTMLFormElement.prototype.submit;
+HTMLFormElement.prototype.submit = function() {
+    _rewriteFormAction(this);
+    return _formSubmit.call(this);
+};
+var _formObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+        mutation.addedNodes.forEach(function(node) {
+            if (!node || node.nodeType !== 1) return;
+            if (node.tagName === 'FORM') { _rewriteFormAction(node); }
+            var nested = node.querySelectorAll ? node.querySelectorAll('form') : [];
+            for (var i = 0; i < nested.length; i++) { _rewriteFormAction(nested[i]); }
+        });
+    });
+});
+_formObserver.observe(document.documentElement, { childList: true, subtree: true });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 9. ADAPTIVE UI - Make Odoo think it has the scope's dimensions
