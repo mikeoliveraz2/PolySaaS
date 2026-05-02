@@ -58,6 +58,19 @@ class OdooPassthroughHandler:
     def native_passthrough_prefixes(self):
         return ("/web", "/odoo", "/bus", "/websocket", "/longpolling")
 
+    def should_exempt_csrf_for_path(self, path_info: str) -> bool:
+        """
+        Safety net: exempt native Odoo paths from Django CSRF.
+        The client-side shim rewrites form actions to go through /pt/, but if it
+        fails (timing, Owl re-render), the POST lands here without a Django CSRF
+        token. Exempting these paths prevents a confusing 403 — the request will
+        either be forwarded by ExternalPassthroughMiddleware or 404 via urlconf.
+        """
+        for prefix in self.native_passthrough_prefixes():
+            if path_info == prefix or path_info.startswith(prefix + "/"):
+                return True
+        return False
+
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
         """Odoo often redirects internally before landing on the usable page/document."""
         return True
@@ -1031,10 +1044,13 @@ try {
 // ═══════════════════════════════════════════════════════════════════════════
 function _rewriteFormAction(form) {
     if (!form || form.tagName !== 'FORM') return;
+    var attrVal = form.getAttribute('action') || '';
+    if (!attrVal) return;
+    if (attrVal.indexOf(PROXY) === 0 || attrVal.indexOf('/pt/') === 0) return;
     var rawAction = form.action || '';
     var proxied = toProxy(rawAction);
     if (proxied !== rawAction) {
-        console.log('[PolySaaS Odoo] Form action rewrite:', rawAction, '->', proxied);
+        console.log('[PolySaaS Odoo] Form action rewrite:', attrVal, '->', proxied);
         form.setAttribute('action', proxied);
     }
 }
@@ -1046,15 +1062,22 @@ HTMLFormElement.prototype.submit = function() {
 };
 var _formObserver = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
-        mutation.addedNodes.forEach(function(node) {
-            if (!node || node.nodeType !== 1) return;
-            if (node.tagName === 'FORM') { _rewriteFormAction(node); }
-            var nested = node.querySelectorAll ? node.querySelectorAll('form') : [];
-            for (var i = 0; i < nested.length; i++) { _rewriteFormAction(nested[i]); }
-        });
+        if (mutation.type === 'attributes' && mutation.target.tagName === 'FORM') {
+            _rewriteFormAction(mutation.target);
+        } else if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach(function(node) {
+                if (!node || node.nodeType !== 1) return;
+                if (node.tagName === 'FORM') { _rewriteFormAction(node); }
+                var nested = node.querySelectorAll ? node.querySelectorAll('form') : [];
+                for (var i = 0; i < nested.length; i++) { _rewriteFormAction(nested[i]); }
+            });
+        }
     });
 });
-_formObserver.observe(document.documentElement, { childList: true, subtree: true });
+_formObserver.observe(document.documentElement, {
+    childList: true, subtree: true,
+    attributes: true, attributeFilter: ['action'], attributeOldValue: false
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 9. ADAPTIVE UI - Make Odoo think it has the scope's dimensions
