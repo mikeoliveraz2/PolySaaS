@@ -613,6 +613,17 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             _rewrite_css_url, html, flags=re.IGNORECASE,
         )
 
+        # 6. Rewrite onsubmit inline JS containing this.action = '<path>'
+        # Odoo login form: onsubmit="this.action = '/web/login' + location.hash"
+        # Without this, onsubmit fires first and resets the correctly-rewritten action
+        # back to the native path, bypassing the proxy and hitting Django's CSRF check.
+        html = re.sub(
+            r"(onsubmit=[\"'][^\"']*this\.action\s*=\s*')(/[^']+)(')",
+            lambda m: m.group(1) + _rewrite_path(m.group(2)) + m.group(3),
+            html,
+            flags=re.IGNORECASE,
+        )
+
         return html
 
     # ------------------------------------------------------------------ #
