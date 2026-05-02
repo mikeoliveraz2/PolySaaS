@@ -1194,7 +1194,14 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         Server-side body rewriting for Odoo.
         Intercepts JavaScript bundles to redirect Owl's mount target.
         """
-        if 'javascript' in ct:
+        # Derive proxy prefix from endpoint_url
+        proxy_prefix = '/pt/admin/odoo'  # fallback
+        if endpoint_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(endpoint_url.rstrip('/'))
+            proxy_prefix = f'/pt/admin/{parsed.netloc}'
+        
+        if 'javascript' in ct or 'css' in ct:
             try:
                 text = body.decode('utf-8', errors='ignore')
                 # Owl's mount target replacement.
@@ -1212,17 +1219,17 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                     ',document.body,', f',{SCOPE_JS},'
                 )
 
-                # Also rewrite paths hidden in JS strings
+                # Also rewrite paths hidden in JS/CSS strings
                 def _proxy_css_url(m):
                     quote = m.group(1) or ''
                     path  = m.group(2)
                     close = m.group(3) or ''
                     if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
-                        path = '/pt/admin/odoo' + path
+                        path = proxy_prefix + path
                     return f'url({quote}{path}{close})'
 
                 patched = re.sub(
-                    r'url\((["\']?)(/(?:web|odoo|bus|websocket)/[^)"\']*)(["\']?)\)',
+                    r'url\(([""]?)(/(?:web|odoo|bus|websocket)/[^)"\']*)(["\']?)\)',
                     _proxy_css_url, patched,
                 )
 
@@ -1232,7 +1239,7 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
                 if '/websocket' in patched:
                     patched = re.sub(
                         r'(?<!/odoo)/websocket(?!_)',
-                        '/pt/admin/odoo/websocket',
+                        proxy_prefix + '/websocket',
                         patched,
                     )
 
