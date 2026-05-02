@@ -497,6 +497,8 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
 
         parsed      = urlparse(endpoint_url.rstrip('/'))
         base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        hostname    = parsed.netloc  # e.g., polysaas-odoo2.onrender.com
+        proxy_prefix = f'/pt/admin/{hostname}'
 
         session_id = (self.get_upstream_cookies(request) or {}).get('session_id') or ''
 
@@ -506,21 +508,23 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         # Rewrite initial HTML asset paths BEFORE the JS shim runs.
         # <link> and <script> tags are fetched by the browser before JS executes, so we must
         # rewrite them server-side to route through our proxy.
-        html_str = self._rewrite_static_paths(html_str)
-        html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id)
+        html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix)
+        html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix)
 
         return html_str, None
 
-    def _rewrite_static_paths(self, html):
+    def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo'):
         """
-        Rewrite src/href attributes in <link>/<script>/<img> tags that start with /web/, /website/,
-        /odoo/, or /bus/ to go through our PolySaaS proxy at /pt/admin/odoo/.
-        This must happen server-side because the browser fetches these before JS runs.
-        Also rewrites CSS url() references inside <style> blocks (for @font-face).
+        Rewrite src/href/data-src/srcset attributes in <link>/<script>/<img> tags
+        that start with /web/, /website/, /odoo/, or /bus/ to go through our
+        PolySaaS proxy. Also rewrites CSS url() references for @font-face and backgrounds.
         """
-        def _rewrite_attr(m):
-            prefix = m.group(1)
-            path   = m.group(2)
+        import re
+
+        def _rewrite_path(path):
+            """Rewrite a single path if it matches Odoo patterns."""
+            if not path or not path.startswith('/'):
+                return path
             if (
                 path.startswith('/web/')
                 or path.startswith('/website/')
@@ -528,34 +532,89 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 or path.startswith('/bus/')
                 or path.startswith('/websocket')
             ):
-                path = '/pt/admin/odoo' + path
-            return prefix + path
+                return proxy_prefix + path
+            return path
 
-        # Rewrite href="...", src="...", and action="..." in tag attributes
+        # 1. Rewrite standard attributes: href="...", src="...", action="..."
+        def _rewrite_attr(m):
+            prefix = m.group(1)  # e.g., 'src="' or "src='"
+            path = m.group(2)
+            return prefix + _rewrite_path(path)
+
         html = re.sub(
             r'((?:href|src|action)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
-            _rewrite_attr, html,
+            _rewrite_attr, html, flags=re.IGNORECASE,
         )
 
-        # Rewrite url(...) inside inline <style> blocks (covers @font-face and background-image)
+        # 2. Rewrite data-src (lazy loading) and data-original (some frameworks)
+        html = re.sub(
+            r'((?:data-src|data-original)=["\'])(/(?:web|website|odoo|bus)[^"\']*)',
+            _rewrite_attr, html, flags=re.IGNORECASE,
+        )
+
+        # 3. Rewrite srcset (responsive images) - handles comma-separated URLs
+        def _rewrite_srcset(m):
+            prefix = m.group(1)
+            srcset = m.group(2)
+            # srcset format: "url1 1x, url2 2x" or "url1 100w, url2 200w"
+            parts = []
+            for part in srcset.split(','):
+                part = part.strip()
+                if not part:
+                    continue
+                # Extract URL and descriptor (e.g., "1x" or "100w")
+                space_idx = part.find(' ')
+                if space_idx > 0:
+                    url = part[:space_idx]
+                    descriptor = part[space_idx:]
+                else:
+                    url = part
+                    descriptor = ''
+                # Rewrite the URL if it matches
+                if url.startswith('/'):
+                    url = _rewrite_path(url)
+                parts.append(url + descriptor)
+            return prefix + ', '.join(parts)
+
+        html = re.sub(
+            r'(srcset=["\'])([^"\']+)',
+            _rewrite_srcset, html, flags=re.IGNORECASE,
+        )
+
+        # 4. Rewrite inline style="background-image:url(...)" and similar
+        def _rewrite_inline_style(m):
+            prefix = m.group(1)  # style="... or style='
+            style_val = m.group(2)
+            # Rewrite url() inside the style value
+            def _rewrite_style_url(url_m):
+                quote = url_m.group(1) or ''
+                path = url_m.group(2)
+                close = url_m.group(3) or ''
+                return f'url({quote}{_rewrite_path(path)}{close})'
+
+            style_val = re.sub(
+                r'url\((["\']?)(/[^)"\']*)(["\']?)\)',
+                _rewrite_style_url, style_val,
+            )
+            return prefix + style_val
+
+        html = re.sub(
+            r'(style=["\'])([^"\']*url\([^"\']*)',
+            _rewrite_inline_style, html, flags=re.IGNORECASE,
+        )
+
+        # 5. Rewrite url(...) inside <style> blocks (covers @font-face, background-image)
         def _rewrite_css_url(m):
             quote = m.group(1) or ''
-            path  = m.group(2)
+            path = m.group(2)
             close = m.group(3) or ''
-            if (
-                path.startswith('/web')
-                or path.startswith('/website')
-                or path.startswith('/odoo')
-                or path.startswith('/bus')
-                or path.startswith('/websocket')
-            ):
-                path = '/pt/admin/odoo' + path
-            return f'url({quote}{path}{close})'
+            return f'url({quote}{_rewrite_path(path)}{close})'
 
         html = re.sub(
             r'url\((["\']?)(/(?:web|website|odoo|bus|websocket)[^)"\']*)(["\']?)\)',
-            _rewrite_css_url, html,
+            _rewrite_css_url, html, flags=re.IGNORECASE,
         )
+
         return html
 
     # ------------------------------------------------------------------ #
@@ -582,10 +641,9 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     # Client-side shim                                                     #
     # ------------------------------------------------------------------ #
 
-    def _inject_client_shim(self, html, base_origin, session_id=''):
+    def _inject_client_shim(self, html, base_origin, session_id='', proxy_prefix='/pt/admin/odoo'):
         base_json    = json.dumps(base_origin)
         session_json = json.dumps(session_id)
-        proxy_prefix = '/pt/admin/odoo'
         proxy_json   = json.dumps(proxy_prefix)
 
         # ── Odoo 18 Base Path Fix ──
