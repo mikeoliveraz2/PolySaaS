@@ -395,13 +395,7 @@ def passthrough_embed_view(request, trigger):
     embed_body = ""
     debug_info = {}  # collect debug info for the banner
 
-    # CRITICAL: Set search_path to tenant schema before querying endpoints
-    if tenant and tenant.schema_name:
-        from django.db import connection
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
-            log.info(f"[PSS_SHELL] Set search_path to tenant schema: {tenant.schema_name}")
-
+    # Query PassThroughEndpoint BEFORE setting tenant schema (it's in public)
     endpoint = PassThroughEndpoint.objects.filter(
         trigger_path__iexact=norm,
         is_enabled=True,
@@ -411,6 +405,13 @@ def passthrough_embed_view(request, trigger):
             trigger_path__iexact=norm.replace("_", ""),
             is_enabled=True,
         ).order_by("-id").first()
+
+    # CRITICAL: Set search_path to tenant schema AFTER querying public models
+    if tenant and tenant.schema_name:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
+            log.info(f"[PSS_SHELL] Set search_path to tenant schema: {tenant.schema_name}")
 
     if endpoint:
         handler = get_handler_for_endpoint(endpoint, request)

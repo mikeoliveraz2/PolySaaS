@@ -27,7 +27,23 @@ def get_current_tenant(request):
         except Exception as e:
             logger.error(f"get_current_tenant: Exception during tenant lookup (public schema): {e}")
     else:
-        logger.warning("get_current_tenant: No tenant_slug in session")
+        logger.warning("get_current_tenant: No tenant_slug in session, checking user profile")
+        # Fallback: use user's profile tenant if session has no tenant
+        try:
+            from django.db import connection
+            from dose.models import UserProfile, Tenant
+            user = getattr(request, 'user', None)
+            if user and user.is_authenticated:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET search_path TO public;")
+                    profile = UserProfile.objects.filter(user=user).select_related('tenant').first()
+                    if profile and profile.tenant:
+                        logger.info(f"get_current_tenant: using profile tenant {profile.tenant.name}")
+                        # Set session tenant for future requests
+                        request.session['tenant_slug'] = profile.tenant.slug
+                        return profile.tenant
+        except Exception as e:
+            logger.error(f"get_current_tenant: Error checking user profile: {e}")
 
 
 def get_current_tenant_role(request):

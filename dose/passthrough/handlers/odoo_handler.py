@@ -435,16 +435,19 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             password = "admin"
             db_name = extra.get("odoo_db") or "odoo"
 
-            # Resolve Odoo base URL from the PassThroughEndpoint
+            # Resolve Odoo base URL from the PassThroughEndpoint (query from public schema)
             odoo_url = 'http://localhost:8069'
             try:
+                from django.db import connection
                 from dose.models import PassThroughEndpoint
-                ep = PassThroughEndpoint.objects.filter(
-                    trigger_path__iexact="odoo", is_enabled=True
-                ).order_by("-id").first()
-                if ep:
-                    p = urlparse(ep.endpoint_url)
-                    odoo_url = f"{p.scheme}://{p.netloc}"
+                with connection.cursor() as cursor:
+                    cursor.execute("SET search_path TO public;")
+                    ep = PassThroughEndpoint.objects.filter(
+                        trigger_path__iexact="odoo", is_enabled=True
+                    ).order_by("-id").first()
+                    if ep:
+                        p = urlparse(ep.endpoint_url)
+                        odoo_url = f"{p.scheme}://{p.netloc}"
             except Exception:
                 pass
 
