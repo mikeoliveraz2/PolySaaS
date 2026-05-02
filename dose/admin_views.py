@@ -396,6 +396,10 @@ def passthrough_embed_view(request, trigger):
     debug_info = {}  # collect debug info for the banner
 
     # Query PassThroughEndpoint BEFORE setting tenant schema (it's in public)
+    # Force public schema to avoid tenant schema issues
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute("SET search_path TO public;")
     endpoint = PassThroughEndpoint.objects.filter(
         trigger_path__iexact=norm,
         is_enabled=True,
@@ -429,6 +433,9 @@ def passthrough_embed_view(request, trigger):
 
         raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/", handler=handler)
 
+        # PICOLLO PASSO: Raw mode for initial testing — set raw=1 query param to bypass all processing
+        raw_mode = request.GET.get('raw', '0') == '1'
+
         if raw_html and raw_html.startswith("REDIRECT:"):
             parts = raw_html.split(":", 2)
             status_code = int(parts[1]) if len(parts) > 1 else 302
@@ -439,6 +446,17 @@ def passthrough_embed_view(request, trigger):
                 _passthrough_debug_banner(norm, debug_info) +
                 f'<div class="alert alert-warning">Upstream returned {status_code} redirect to: <code>{escape(location)}</code></div>'
             )
+        elif raw_mode and raw_html:
+            # PICOLLO PASSO: Raw passthrough — handler fetches but no HTML processing
+            debug_info['result'] = f'RAW MODE ({len(raw_html)} chars)'
+            # NOTE: _process_upstream_html_for_embed and _split_html_document_for_jazzmin_embed
+            # are bypassed in raw mode — no string replacements, no head/body split
+            embed_body = mark_safe(
+                f'<div class="alert alert-info">🧪 RAW MODE — No string replacements</div>'
+                f'<div class="polysaas-raw-passthrough" style="width:100%;height:100%;">'
+                f'{raw_html}</div>'
+            )
+            print(f"[PSS_SHELL] passthrough_embed RAW MODE trigger={norm!r} chars={len(raw_html)}")
         elif raw_html:
             debug_info['result'] = f'OK ({len(raw_html)} chars)'
             processed = _process_upstream_html_for_embed(
