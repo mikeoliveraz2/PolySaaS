@@ -542,19 +542,20 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             return path
 
         # 1. Rewrite standard attributes: href="...", src="...", action="..."
+        # Match ALL relative paths starting with / (not just Odoo-specific ones)
         def _rewrite_attr(m):
             prefix = m.group(1)  # e.g., 'src="' or "src='"
             path = m.group(2)
             return prefix + _rewrite_path(path)
 
         html = re.sub(
-            r'((?:href|src|action)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
+            r'((?:href|src|action)=["\'])(/[^"\']+)',
             _rewrite_attr, html, flags=re.IGNORECASE,
         )
 
         # 2. Rewrite data-src (lazy loading) and data-original (some frameworks)
         html = re.sub(
-            r'((?:data-src|data-original)=["\'])(/(?:web|website|odoo|bus)[^"\']*)',
+            r'((?:data-src|data-original)=["\'])(/[^"\']+)',
             _rewrite_attr, html, flags=re.IGNORECASE,
         )
 

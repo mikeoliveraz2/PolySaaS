@@ -20,10 +20,44 @@
             <input type="text" class="form-control" value="{{ jazzmin_theme }}" readonly style="width:100%;margin-bottom:1em;padding:8px 12px;border-radius:6px;border:1px solid #bbb;background:#222;color:#f8f9fa;font-size:1em;box-sizing:border-box;" />
         </div>
 
-        <div class="form-check mb-3" style="margin-bottom:1em;">
-            <input class="form-check-input" type="checkbox" id="display-mode-toggle" checked style="margin-right:0.5em;">
-            <label class="form-check-label" for="display-mode-toggle" style="margin-bottom:0.5em;">Use light theme for display</label>
+        <div class="mb-3" style="margin-bottom:1em;">
+            <button type="button" id="display-mode-toggle-btn" class="btn btn-outline-light btn-sm" style="width:100%;padding:0.5em;font-weight:bold;"
+                onclick="toggleDisplayMode()">
+                <i class="fas fa-adjust"></i> <span id="display-mode-btn-text">Change to Dark</span>
+            </button>
+            <input type="hidden" id="display-mode-toggle" value="light">
         </div>
+        <script>
+        function toggleDisplayMode() {
+            var hiddenInput = document.getElementById('display-mode-toggle');
+            var btnText = document.getElementById('display-mode-btn-text');
+            var currentMode = hiddenInput.value;
+            if (currentMode === 'light') {
+                hiddenInput.value = 'dark';
+                btnText.textContent = 'Change to Light';
+                document.body.classList.add('dark-mode');
+                document.body.classList.remove('light-mode');
+            } else {
+                hiddenInput.value = 'light';
+                btnText.textContent = 'Change to Dark';
+                document.body.classList.remove('dark-mode');
+                document.body.classList.add('light-mode');
+            }
+        }
+        // Initialize button text based on current state
+        document.addEventListener('DOMContentLoaded', function() {
+            var hiddenInput = document.getElementById('display-mode-toggle');
+            var btnText = document.getElementById('display-mode-btn-text');
+            var isDark = document.body.classList.contains('dark-mode') || document.body.classList.contains('theme-dark');
+            if (isDark) {
+                hiddenInput.value = 'dark';
+                btnText.textContent = 'Change to Light';
+            } else {
+                hiddenInput.value = 'light';
+                btnText.textContent = 'Change to Dark';
+            }
+        });
+        </script>
 
         <div class="mb-1">
             <label for="jazzmin-dark-mode-theme-chooser" style="margin-bottom:0.5em;display:block;font-weight:500;">Dark Theme:</label>
@@ -82,7 +116,7 @@
                     const selectedTheme = themeSelector.value;
                     const selectedDarkTheme = darkThemeSelector.value;
                     const displayModeToggle = document.getElementById('display-mode-toggle');
-                    const displayMode = displayModeToggle && displayModeToggle.checked ? 'light' : 'dark';
+                    const displayMode = displayModeToggle ? displayModeToggle.value : 'light';
                     console.log('[ThemePicker] Save POST:', {
                         light_theme: selectedTheme,
                         dark_theme: selectedDarkTheme,
