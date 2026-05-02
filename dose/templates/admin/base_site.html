@@ -420,9 +420,12 @@
   <label for="ps-light-theme">Light Theme:</label>
   <select id="ps-light-theme"></select>
   <label style="margin-bottom:12px;">Last Saved Theme: <strong id="ps-last-saved">—</strong></label>
-  <div class="ps-use-light">
-    <input type="checkbox" id="ps-use-light-cb">
-    <label for="ps-use-light-cb" style="margin:0;color:#334155;">Use light theme for display</label>
+  <div class="ps-use-light" style="margin-bottom:14px;">
+    <button type="button" id="ps-theme-toggle-btn" class="btn btn-outline-secondary btn-sm" style="width:100%;padding:0.5em;font-weight:bold;"
+        onclick="toggleThemeDisplayMode()">
+      <i class="fas fa-adjust"></i> <span id="ps-theme-toggle-text">Change to Dark</span>
+    </button>
+    <input type="hidden" id="ps-use-light-cb" value="light">
   </div>
   <label for="ps-dark-theme">Dark Theme:</label>
   <select id="ps-dark-theme"></select>
@@ -451,16 +454,36 @@
         buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, d.light_theme);
         buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, d.dark_theme);
         document.getElementById('ps-last-saved').textContent = d.light_theme || '—';
-        document.getElementById('ps-use-light-cb').checked = d.use_light_mode !== false;
+        var isLight = d.use_light_mode !== false;
+        document.getElementById('ps-use-light-cb').value = isLight ? 'light' : 'dark';
+        document.getElementById('ps-theme-toggle-text').textContent = isLight ? 'Change to Dark' : 'Change to Light';
       })
       .catch(function() {
         buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, 'flatly');
         buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, 'darkly');
+        document.getElementById('ps-use-light-cb').value = 'light';
+        document.getElementById('ps-theme-toggle-text').textContent = 'Change to Dark';
       });
   }
   function closeThemeModal() {
     document.getElementById('ps-theme-modal').style.display = 'none';
     document.getElementById('ps-theme-modal-overlay').style.display = 'none';
+  }
+  function toggleThemeDisplayMode() {
+    var hiddenInput = document.getElementById('ps-use-light-cb');
+    var btnText = document.getElementById('ps-theme-toggle-text');
+    var currentMode = hiddenInput.value;
+    if (currentMode === 'light') {
+      hiddenInput.value = 'dark';
+      btnText.textContent = 'Change to Light';
+      document.body.classList.add('dark-mode');
+      document.body.classList.remove('light-mode');
+    } else {
+      hiddenInput.value = 'light';
+      btnText.textContent = 'Change to Dark';
+      document.body.classList.remove('dark-mode');
+      document.body.classList.add('light-mode');
+    }
   }
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
@@ -471,7 +494,7 @@
     document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
       var light = document.getElementById('ps-light-theme').value;
       var dark  = document.getElementById('ps-dark-theme').value;
-      var useLightMode = document.getElementById('ps-use-light-cb').checked;
+      var useLightMode = document.getElementById('ps-use-light-cb').value === 'light';
       var csrf = (document.cookie.split(';').map(function(c){return c.trim();})
                   .filter(function(c){return c.startsWith('csrftoken=');})[0] || '=').split('=')[1];
       fetch('/admin/select-theme/', {
