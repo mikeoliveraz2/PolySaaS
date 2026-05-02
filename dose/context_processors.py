@@ -342,15 +342,14 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
-            # CRITICAL: DO NOT CHANGE THIS URL PATTERN
-            # The /pt/admin/ prefix is the ONLY correct passthrough path.
-            # /admin/passthrough-embed/ was an unauthorized change that broke the system.
-            # See Process Rule 1: No Unilateral Changes
-            # Use the clean normalized name for the URL; ignore any /admin/ or /dose/ prefix
-            # stored in the trigger_path — that is middleware routing, not part of the endpoint.
-            url = f'/pt/admin/{norm}/'
+            # PICOLLO PASSO: Direct URL passthrough - use hostname from endpoint_url
+            # Extract hostname from endpoint_url (e.g., https://polysaas-odoo2.onrender.com -> polysaas-odoo2.onrender.com)
+            from urllib.parse import urlparse
+            parsed = urlparse(endpoint.endpoint_url)
+            hostname = parsed.netloc or norm  # fallback to norm if no netloc
+            url = f'/pt/admin/{hostname}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
-            print(f"[ADMIN_NAV] Passthrough service: {title} -> {url}")
+            print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")
 
             service_data = {
                 'id': endpoint.id,

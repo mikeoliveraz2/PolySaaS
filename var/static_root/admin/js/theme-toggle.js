@@ -3,12 +3,26 @@ console.log('Theme toggle JS loaded');
 document.addEventListener('DOMContentLoaded', function() {
     // Find both dropdown and top menu toggle links
     const toggleDropdowns = Array.from(document.querySelectorAll('a.dropdown-item')).filter(a => a.textContent.trim().includes('Toggle Theme'));
-    const toggleTopMenus = Array.from(document.querySelectorAll('a')).filter(a => a.textContent.trim().includes('Toggle light/dark'));
+    const toggleTopMenus = Array.from(document.querySelectorAll('a')).filter(a => a.textContent.trim().includes('Toggle light/dark') || a.textContent.trim().includes('Change to'));
     const allToggleLinks = [...toggleDropdowns, ...toggleTopMenus];
+    
+    // Also check for usermenu toggle
+    const userMenuToggle = document.querySelector('.usermenu a[href="javascript:void(0)"]');
+    if (userMenuToggle && !allToggleLinks.includes(userMenuToggle)) {
+        allToggleLinks.push(userMenuToggle);
+    }
+    
+    // Set initial button text based on current state
+    const isDark = document.body.classList.contains('dark-mode') || document.body.classList.contains('theme-dark');
+    const buttonText = isDark ? 'Change to Light' : 'Change to Dark';
+    const iconClass = isDark ? 'fa-sun' : 'fa-moon';
+    
     if (allToggleLinks.length === 0) {
         console.log('No theme toggle links found');
     } else {
         allToggleLinks.forEach(function(toggleBtn) {
+            // Update button text to show opposite state
+            toggleBtn.innerHTML = `<i class="fas ${iconClass}"></i> ${buttonText}`;
             console.log('Theme toggle link found:', toggleBtn);
             toggleBtn.addEventListener('click', function(e) {
                 e.preventDefault();

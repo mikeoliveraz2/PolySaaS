@@ -3,7 +3,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!toggleBtn) return;
     const isDark = document.body.classList.contains('dark-mode');
     toggleBtn.classList.toggle('dark-mode', isDark);
-    toggleBtn.innerHTML = isDark ? '<i class="fas fa-sun"></i> Light Mode' : '<i class="fas fa-moon"></i> Dark Mode';
+    // Show opposite state: "Change to Dark" when light, "Change to Light" when dark
+    toggleBtn.innerHTML = isDark 
+        ? '<i class="fas fa-sun"></i> Change to Light' 
+        : '<i class="fas fa-moon"></i> Change to Dark';
     toggleBtn.addEventListener('click', function(e) {
         e.preventDefault();
         fetch('/toggle-theme/', {
