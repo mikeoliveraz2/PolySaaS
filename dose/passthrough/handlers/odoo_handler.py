@@ -127,9 +127,7 @@ class OdooPassthroughHandler:
         """
         if request.method != "GET":
             return None
-        seg = (
-            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
-        )
+        seg = url_trigger_segment.strip("/")
         proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
         norm = path_info.rstrip("/")

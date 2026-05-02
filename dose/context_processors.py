@@ -342,11 +342,15 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
-            # PICOLLO PASSO: Direct URL passthrough - use hostname from endpoint_url
-            # Extract hostname from endpoint_url (e.g., https://polysaas-odoo2.onrender.com -> polysaas-odoo2.onrender.com)
+            # Build the sidebar URL from the endpoint_url hostname.
+            # The trigger in the URL must be the real hostname — never a short name.
+            # If endpoint_url is missing/invalid, skip this endpoint to avoid broken links.
             from urllib.parse import urlparse
-            parsed = urlparse(endpoint.endpoint_url)
-            hostname = parsed.netloc or norm  # fallback to norm if no netloc
+            parsed = urlparse(endpoint.endpoint_url or '')
+            hostname = parsed.netloc
+            if not hostname:
+                print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.trigger_path}' — endpoint_url missing or invalid: {endpoint.endpoint_url!r}")
+                continue
             url = f'/pt/admin/{hostname}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")

@@ -101,8 +101,10 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     if not raw_html or len(raw_html) < 100:
         return response
     
-    norm = trigger.strip('/').lower().split('/')[-1].replace('-', '_')
-    embed_title = norm.replace('_', ' ').title()
+    # Use the trigger as-is for the URL (it's a hostname like polysaas-odoo2.onrender.com).
+    # Only mangle for display title, never for URL construction.
+    norm = trigger.strip('/')
+    embed_title = norm.split('.')[0].replace('-', ' ').title()
     embed_src = f'/pt/admin/{norm}/'
     
     # Extract head and body from the upstream HTML document
@@ -172,20 +174,19 @@ def run_pt_admin_passthrough_core(request):
     trigger = parts[2]
     print(f"[PT-CORE] trigger={trigger}")
 
-    # PICOLLO PASSO: Direct URL passthrough - trigger IS the hostname
-    # e.g., trigger = "polysaas-odoo2.onrender.com" -> endpoint_url = "https://polysaas-odoo2.onrender.com"
+    # The trigger IS the hostname — derived directly from the sidebar URL which was built
+    # from endpoint.endpoint_url in context_processors. No DB lookup needed here.
     class SimpleEndpoint:
         def __init__(self, hostname):
             self.endpoint_url = f"https://{hostname}"
             self.trigger_path = hostname
             self.is_enabled = True
             self.passthrough_type = 'proxy'
-            # Minimal attrs for handler compatibility
             self.passthrough_stream_debug = False
             self.passthrough_log_requests = False
             self.headers_to_forward = ''
             self.description = f'Passthrough to {hostname}'
-    
+
     endpoint = SimpleEndpoint(trigger)
     print(f"[PT-CORE] SimpleEndpoint created: {endpoint.endpoint_url}")
     request._passthrough_endpoint = endpoint
