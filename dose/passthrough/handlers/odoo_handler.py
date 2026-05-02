@@ -105,7 +105,12 @@ class OdooPassthroughHandler:
         """
         if request.method != "GET":
             return None
+        # Skip display shell for remote hostname triggers (e.g. polysaas-odoo2.onrender.com).
+        # The server-side pre-fetch fails for remote hosts; forward_request_standardized
+        # is the correct path — it proxies the real browser request with its cookies.
         seg = url_trigger_segment.strip("/")
+        if "." in seg:
+            return None
         proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
         norm = path_info.rstrip("/")
