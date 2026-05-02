@@ -72,13 +72,8 @@ class OdooPassthroughHandler:
         return False
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """
-        Do NOT follow redirects internally — let the forwarder receive the 3xx and rewrite
-        the Location header to go through the proxy (/pt/admin/<hostname>/...).
-        The browser then follows the redirect to the correct proxied URL, which keeps
-        window.location in sync so the pathname patch and Odoo's router work correctly.
-        """
-        return False
+        """Follow upstream redirects so the full Odoo response is returned."""
+        return True
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
@@ -128,6 +123,13 @@ class OdooPassthroughHandler:
         # is the correct path — it proxies the real browser request with its cookies.
         seg = url_trigger_segment.strip("/")
         if "." in seg:
+            # Remote host: redirect browser to /web/login for the root path so the browser
+            # URL is /pt/admin/<hostname>/web/login — the pathname patch then strips the proxy
+            # prefix and Odoo's router sees /web/login instead of / (which renders blank).
+            proxy_prefix = f"/pt/admin/{seg}"
+            if request.path_info.rstrip("/") == proxy_prefix:
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(f"{proxy_prefix}/web/login")
             return None
         proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
