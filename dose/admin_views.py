@@ -395,111 +395,85 @@ def passthrough_embed_view(request, trigger):
     embed_body = ""
     debug_info = {}  # collect debug info for the banner
 
-    # Query PassThroughEndpoint from public schema using raw SQL (shared table, not tenant-specific)
-    from django.db import connection
+    # PICOLLO PASSO: Direct URL passthrough — no DB lookup needed
+    # trigger is the hostname from the URL path: /pt/admin/polysaas-odoo2.onrender.com/
+    # Strip /pt/admin/ prefix, prepend https://
+    target_host = trigger.strip('/')
+    endpoint_url = f"https://{target_host}"
 
-    def _get_endpoint_from_public(trigger):
-        """Query PassThroughEndpoint from public schema using raw SQL."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, trigger_path, endpoint_url, is_enabled, passthrough_type, description
-                FROM public.dose_passthroughendpoint
-                WHERE LOWER(trigger_path) = LOWER(%s) AND is_enabled = true
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                [trigger]
-            )
-            row = cursor.fetchone()
-            if row:
-                # Create a mock endpoint object with needed attributes
-                class MockEndpoint:
-                    def __init__(self, id, trigger_path, endpoint_url, is_enabled, passthrough_type, description):
-                        self.id = id
-                        self.trigger_path = trigger_path
-                        self.endpoint_url = endpoint_url
-                        self.is_enabled = is_enabled
-                        self.passthrough_type = passthrough_type
-                        self.description = description
-                return MockEndpoint(*row)
-        return None
+    debug_info['endpoint_url'] = endpoint_url
+    debug_info['fetch_url'] = endpoint_url.rstrip('/') + '/'
 
-    endpoint = _get_endpoint_from_public(norm)
-    if endpoint is None and "_" in norm:
-        endpoint = _get_endpoint_from_public(norm.replace("_", ""))
+    # Create a minimal endpoint-like object for handler compatibility
+    class SimpleEndpoint:
+        def __init__(self, url, path):
+            self.endpoint_url = url
+            self.trigger_path = path
+            self.is_enabled = True
+            self.passthrough_type = 'proxy'
+    endpoint = SimpleEndpoint(endpoint_url, target_host)
 
-    # CRITICAL: Set search_path to tenant schema AFTER querying public models
-    if tenant and tenant.schema_name:
-        from django.db import connection
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
-            log.info(f"[PSS_SHELL] Set search_path to tenant schema: {tenant.schema_name}")
+    handler = get_handler_for_endpoint(endpoint, request)
 
-    if endpoint:
-        handler = get_handler_for_endpoint(endpoint, request)
+    # Collect debug info before fetch
+    upstream_cookies = {}
+    if hasattr(handler, 'get_upstream_cookies'):
+        try:
+            upstream_cookies = handler.get_upstream_cookies(request) or {}
+        except Exception as exc:
+            debug_info['cookie_error'] = str(exc)
+    debug_info['mmauthtoken'] = (upstream_cookies.get('MMAUTHTOKEN', '') or '')[:12] + '...' if upstream_cookies.get('MMAUTHTOKEN') else 'NONE'
 
-        # Collect debug info before fetch
-        debug_info['endpoint_url'] = endpoint.endpoint_url
-        debug_info['fetch_url'] = endpoint.endpoint_url.rstrip('/') + '/'
-        upstream_cookies = {}
-        if hasattr(handler, 'get_upstream_cookies'):
-            try:
-                upstream_cookies = handler.get_upstream_cookies(request) or {}
-            except Exception as exc:
-                debug_info['cookie_error'] = str(exc)
-        debug_info['mmauthtoken'] = (upstream_cookies.get('MMAUTHTOKEN', '') or '')[:12] + '...' if upstream_cookies.get('MMAUTHTOKEN') else 'NONE'
+    raw_html = fetch_upstream_index_html(request, endpoint_url, "/", handler=handler)
 
-        raw_html = fetch_upstream_index_html(request, endpoint.endpoint_url, "/", handler=handler)
+    # PICOLLO PASSO: Raw mode for initial testing — set raw=1 query param to bypass all processing
+    raw_mode = request.GET.get('raw', '0') == '1'
 
-        # PICOLLO PASSO: Raw mode for initial testing — set raw=1 query param to bypass all processing
-        raw_mode = request.GET.get('raw', '0') == '1'
-
-        if raw_html and raw_html.startswith("REDIRECT:"):
-            parts = raw_html.split(":", 2)
-            status_code = int(parts[1]) if len(parts) > 1 else 302
-            location = parts[2] if len(parts) > 2 else "/"
-            debug_info['result'] = f'REDIRECT {status_code} -> {location}'
-            # Show debug banner instead of silently following the redirect
-            embed_body = mark_safe(
-                _passthrough_debug_banner(norm, debug_info) +
-                f'<div class="alert alert-warning">Upstream returned {status_code} redirect to: <code>{escape(location)}</code></div>'
-            )
-        elif raw_mode and raw_html:
-            # PICOLLO PASSO: Raw passthrough — handler fetches but no HTML processing
-            debug_info['result'] = f'RAW MODE ({len(raw_html)} chars)'
-            # NOTE: _process_upstream_html_for_embed and _split_html_document_for_jazzmin_embed
-            # are bypassed in raw mode — no string replacements, no head/body split
-            embed_body = mark_safe(
-                f'<div class="alert alert-info">🧪 RAW MODE — No string replacements</div>'
-                f'<div class="polysaas-raw-passthrough" style="width:100%;height:100%;">'
-                f'{raw_html}</div>'
-            )
-            print(f"[PSS_SHELL] passthrough_embed RAW MODE trigger={norm!r} chars={len(raw_html)}")
-        elif raw_html:
-            debug_info['result'] = f'OK ({len(raw_html)} chars)'
-            processed = _process_upstream_html_for_embed(
-                handler, raw_html, request, endpoint.endpoint_url
-            )
-            _head, body_html = _split_html_document_for_jazzmin_embed(processed)
-            debug_info['head_chars'] = len(_head or '')
-            debug_info['body_chars'] = len(body_html or '')
-            embed_body = mark_safe(
-                _passthrough_debug_banner(norm, debug_info) +
-                '<div class="polysaas-passthrough-scope" '
-                f'data-polysaas-embed-trigger="{escape(norm)}">'
-                f"{_head or ''}{body_html or ''}</div>"
-            )
-            print(
-                f"[PSS_SHELL] passthrough_embed full_document trigger={norm!r} "
-                f"head_chars={len(_head or '')} body_chars={len(body_html or '')}"
-            )
-        else:
-            debug_info['result'] = 'EMPTY — upstream returned no HTML'
-            embed_body = mark_safe(
-                _passthrough_debug_banner(norm, debug_info) +
-                '<div class="alert alert-warning">Could not load upstream HTML (check endpoint URL and network).</div>'
-            )
+    if raw_html and raw_html.startswith("REDIRECT:"):
+        parts = raw_html.split(":", 2)
+        status_code = int(parts[1]) if len(parts) > 1 else 302
+        location = parts[2] if len(parts) > 2 else "/"
+        debug_info['result'] = f'REDIRECT {status_code} -> {location}'
+        # Show debug banner instead of silently following the redirect
+        embed_body = mark_safe(
+            _passthrough_debug_banner(norm, debug_info) +
+            f'<div class="alert alert-warning">Upstream returned {status_code} redirect to: <code>{escape(location)}</code></div>'
+        )
+    elif raw_mode and raw_html:
+        # PICOLLO PASSO: Raw passthrough — handler fetches but no HTML processing
+        debug_info['result'] = f'RAW MODE ({len(raw_html)} chars)'
+        # NOTE: _process_upstream_html_for_embed and _split_html_document_for_jazzmin_embed
+        # are bypassed in raw mode — no string replacements, no head/body split
+        embed_body = mark_safe(
+            f'<div class="alert alert-info">🧪 RAW MODE — No string replacements</div>'
+            f'<div class="polysaas-raw-passthrough" style="width:100%;height:100%;">'
+            f'{raw_html}</div>'
+        )
+        print(f"[PSS_SHELL] passthrough_embed RAW MODE trigger={norm!r} chars={len(raw_html)}")
+    elif raw_html:
+        debug_info['result'] = f'OK ({len(raw_html)} chars)'
+        processed = _process_upstream_html_for_embed(
+            handler, raw_html, request, endpoint.endpoint_url
+        )
+        _head, body_html = _split_html_document_for_jazzmin_embed(processed)
+        debug_info['head_chars'] = len(_head or '')
+        debug_info['body_chars'] = len(body_html or '')
+        embed_body = mark_safe(
+            _passthrough_debug_banner(norm, debug_info) +
+            '<div class="polysaas-passthrough-scope" '
+            f'data-polysaas-embed-trigger="{escape(norm)}">'
+            f"{_head or ''}{body_html or ''}</div>"
+        )
+        print(
+            f"[PSS_SHELL] passthrough_embed full_document trigger={norm!r} "
+            f"head_chars={len(_head or '')} body_chars={len(body_html or '')}"
+        )
+    else:
+        debug_info['result'] = 'EMPTY — upstream returned no HTML'
+        embed_body = mark_safe(
+            _passthrough_debug_banner(norm, debug_info) +
+            '<div class="alert alert-warning">Could not load upstream HTML (check endpoint URL and network).</div>'
+        )
 
     response = render(
         request,
