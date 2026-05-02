@@ -188,7 +188,26 @@ def run_pt_admin_passthrough_core(request):
     print(f"[PT-CORE] SimpleEndpoint created: {endpoint.endpoint_url}")
     request._passthrough_endpoint = endpoint
 
-    handler = get_handler_for_endpoint(endpoint, request)
+    # PICOLLO PASSO: Direct handler selection by hostname - avoids DB-dependent registry lookup
+    trigger_lower = trigger.lower()
+    handler = None
+    if 'odoo' in trigger_lower:
+        from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
+        handler = OdooPassthroughHandler()
+        print(f"[PT-CORE] Selected OdooPassthroughHandler for {trigger}")
+    elif 'mattermost' in trigger_lower:
+        from dose.passthrough.handlers.mattermost_handler import MattermostPassthroughHandler
+        handler = MattermostPassthroughHandler()
+        print(f"[PT-CORE] Selected MattermostPassthroughHandler for {trigger}")
+    elif 'nextcloud' in trigger_lower:
+        from dose.passthrough.handlers.nextcloud_handler import NextcloudPassthroughHandler
+        handler = NextcloudPassthroughHandler()
+        print(f"[PT-CORE] Selected NextcloudPassthroughHandler for {trigger}")
+    else:
+        # Fallback to registry for unknown hostnames
+        handler = get_handler_for_endpoint(endpoint, request)
+        print(f"[PT-CORE] Fallback registry handler for {trigger}: {handler}")
+
     try_root = (
         getattr(handler, "try_root_display_shell_response", None)
         if handler is not None
