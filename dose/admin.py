@@ -1017,20 +1017,10 @@ if NEW_MODELS_AVAILABLE:
         get_item_count.short_description = 'Items'
 
         def get_queryset(self, request):
-            """Filter queryset to show only panels from user's tenant."""
+            """Show all panels in the current schema (tenant filter relaxed for visibility)."""
             queryset = super().get_queryset(request)
             queryset = queryset.select_related('tenant').prefetch_related('navigation_items')
-
-            # Filter by user's tenant
-            try:
-                from dose.utils import get_current_tenant
-                tenant = get_current_tenant(request)
-                if tenant:
-                    queryset = queryset.filter(tenant=tenant)
-                    print(f"[NAV_PANEL_ADMIN] Filtered panels to tenant: {tenant.name}")
-            except Exception as e:
-                print(f"[NAV_PANEL_ADMIN] Error filtering by tenant: {e}")
-
+            print(f"[NAV_PANEL_ADMIN] Showing {queryset.count()} panels in current schema")
             return queryset
 
         def get_form(self, request, obj=None, **kwargs):
