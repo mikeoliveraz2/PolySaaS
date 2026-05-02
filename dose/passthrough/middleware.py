@@ -1,14 +1,13 @@
 # dose/passthrough/middleware.py — FINAL — OUT = LAST, IN = FIRST — CHIEF ARCHITECT APPROVED
 import logging
 from django.utils.deprecation import MiddlewareMixin
-from dose.models import PassThroughEndpoint, UserTenantMembership
+from dose.models import UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.handlers.registry import (
     get_handler_for_endpoint,
     pt_admin_core_delegated_to_urlconf,
 )
 from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
-from dose.passthrough.utils import normalize_trigger_segment
 from dose.utils import get_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -151,8 +150,9 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
 
 def run_pt_admin_passthrough_core(request):
     """
-    Handle /pt/admin/<trigger>/... when path matches a PassThroughEndpoint.
-    Returns HttpResponse, or None to let URLconf continue (static proxy, building pen, no endpoint).
+    Handle /pt/admin/<hostname>/... direct passthrough without DB lookup.
+    The trigger segment IS the hostname (e.g., polysaas-odoo2.onrender.com).
+    Returns HttpResponse, or None to let URLconf continue (static proxy, building pen).
     Caller must already enforce auth, tenant, and membership.
     """
     path = request.path_info
@@ -170,39 +170,22 @@ def run_pt_admin_passthrough_core(request):
     trigger = parts[2]
     print(f"[PT-CORE] trigger={trigger}")
 
-    # CRITICAL: Set search_path to tenant schema before querying endpoints
-    from dose.utils import get_current_tenant
-    from django.db import connection
-    tenant = get_current_tenant(request)
-    if tenant and tenant.schema_name:
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
-            print(f"[PT-CORE] Set search_path to tenant schema: {tenant.schema_name}")
-
-    url_key = normalize_trigger_segment(trigger)
-    endpoint = PassThroughEndpoint.objects.filter(
-        trigger_path__iexact=trigger,
-        is_enabled=True,
-    ).order_by("-id").first()
-    if endpoint is None and "_" in trigger:
-        endpoint = PassThroughEndpoint.objects.filter(
-            trigger_path__iexact=trigger.replace("_", ""),
-            is_enabled=True,
-        ).order_by("-id").first()
-    if endpoint is None and url_key:
-        for ep in PassThroughEndpoint.objects.filter(is_enabled=True).order_by("-id"):
-            if normalize_trigger_segment(ep.trigger_path) == url_key:
-                endpoint = ep
-                print(
-                    f"[PT-CORE] matched endpoint by normalized trigger "
-                    f"(url_key={url_key!r} trigger_path={ep.trigger_path!r})"
-                )
-                break
-    print(f"[PT-CORE] endpoint={endpoint}")
-
-    if not endpoint:
-        return None
-
+    # PICOLLO PASSO: Direct URL passthrough - trigger IS the hostname
+    # e.g., trigger = "polysaas-odoo2.onrender.com" -> endpoint_url = "https://polysaas-odoo2.onrender.com"
+    class SimpleEndpoint:
+        def __init__(self, hostname):
+            self.endpoint_url = f"https://{hostname}"
+            self.trigger_path = hostname
+            self.is_enabled = True
+            self.passthrough_type = 'proxy'
+            # Minimal attrs for handler compatibility
+            self.passthrough_stream_debug = False
+            self.passthrough_log_requests = False
+            self.headers_to_forward = ''
+            self.description = f'Passthrough to {hostname}'
+    
+    endpoint = SimpleEndpoint(trigger)
+    print(f"[PT-CORE] SimpleEndpoint created: {endpoint.endpoint_url}")
     request._passthrough_endpoint = endpoint
 
     handler = get_handler_for_endpoint(endpoint, request)
