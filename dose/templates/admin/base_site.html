@@ -473,16 +473,55 @@
     var hiddenInput = document.getElementById('ps-use-light-cb');
     var btnText = document.getElementById('ps-theme-toggle-text');
     var currentMode = hiddenInput.value;
+    var DARK_THEMES = ['darkly','cyborg','slate','solar','superhero'];
+    var isDark;
+    var theme;
     if (currentMode === 'light') {
       hiddenInput.value = 'dark';
       btnText.textContent = 'Change to Light';
       document.body.classList.add('dark-mode');
       document.body.classList.remove('light-mode');
+      isDark = true;
+      theme = document.getElementById('ps-dark-theme').value || 'darkly';
     } else {
       hiddenInput.value = 'light';
       btnText.textContent = 'Change to Dark';
       document.body.classList.remove('dark-mode');
       document.body.classList.add('light-mode');
+      isDark = false;
+      theme = document.getElementById('ps-light-theme').value || 'flatly';
+    }
+    // Immediately swap theme CSS
+    var el = document.getElementById('jazzmin-theme');
+    var newHref = '/static/vendor/bootswatch/' + theme + '/bootstrap.min.css';
+    if (el) {
+      el.href = newHref;
+    } else {
+      var l = document.createElement('link');
+      l.rel = 'stylesheet'; l.id = 'jazzmin-theme'; l.href = newHref;
+      document.head.appendChild(l);
+    }
+    // Swap navbar dark style
+    var oldStyle = document.getElementById('ps-dark-navbar');
+    if (oldStyle) oldStyle.remove();
+    if (isDark) {
+      document.documentElement.setAttribute('data-ps-theme', theme);
+      var style = document.createElement('style');
+      style.id = 'ps-dark-navbar';
+      style.textContent = [
+        '#jazzy-navbar { background-color: #343a40 !important; border-color: #454d55 !important; }',
+        '#jazzy-navbar *, #jazzy-navbar .nav-link, #jazzy-navbar .nav-item a, #jazzy-navbar span,',
+        '#jazzy-navbar .breadcrumb-item, #jazzy-navbar .breadcrumb-item a, #jazzy-navbar .breadcrumb-item.active,',
+        '#jazzy-navbar .usermenu, #jazzy-navbar .usermenu *, #jazzy-navbar .user-panel, #jazzy-navbar .user-panel *,',
+        '.navbar-nav .nav-item .nav-link { color: #f8f9fa !important; }',
+        '#jazzy-navbar .nav-link:hover, #jazzy-navbar .nav-item a:hover { color: #ffffff !important; background-color: rgba(255,255,255,0.1) !important; }',
+        '#jazzy-navbar .dropdown-menu { background-color: #3d4349 !important; border-color: #555 !important; }',
+        '#jazzy-navbar .dropdown-menu .dropdown-item { color: #f8f9fa !important; }',
+        '#jazzy-navbar .dropdown-menu .dropdown-item:hover { background-color: rgba(255,255,255,0.1) !important; }'
+      ].join('\n');
+      document.head.appendChild(style);
+    } else {
+      document.documentElement.removeAttribute('data-ps-theme');
     }
   }
   document.addEventListener('DOMContentLoaded', function() {
