@@ -82,42 +82,150 @@ Implemented permanent passthrough infrastructure for Odoo and Mattermost. User c
 
 ---
 
-## 2026-04-30
-**Status**: Session Complete
+## 2026-05-01
+**Status**: ✅ COMPLETE - BINGO!
 **Branch**: main
 
-### Objective
-Fix blank admin change_form (user edit + all model update forms) on production (Render). Same code worked on dev.
+### Summary
+Fixed blank Django admin user edit page on production (Render). The issue was caused by a multi-tenancy schema mismatch where UserProfile objects were in tenant schemas but trying to reference User objects in public schema. When the inline form tried to render, it crashed because the related User wasn't accessible in the tenant schema context.
 
-### Root Cause 1 — Django cached.Loader + multi-level template inheritance
-When `DEBUG=False`, Django auto-wraps template loaders in `cached.Loader`. This mis-resolves `{{ block.super }}` in deep multi-level template inheritance chains (model `change_form.html` → `jazzmin/change_form.html` → `dose/base_site.html` → `jazzmin/base.html`), producing empty `page_content` for all admin change_form views. `change_list` was unaffected (simpler inheritance, no `block.super` for content). Dev used `DEBUG=True` which does not apply `cached.Loader`.
-
-**Fix**: Replaced `APP_DIRS: True` with explicit uncached loaders in `mysite/settings.py` TEMPLATES config.
-
-### Root Cause 2 — Tenant schema shadowing public.auth_user
-`SessionTenantMiddleware` sets `SET search_path TO "<tenant_schema>", public`. Django runs migrations into each tenant schema, creating a local copy of `auth_user` in tenant schemas. When `BaseUserAdmin.get_object()` ran `User.objects.get(pk=N)`, Postgres resolved it against the tenant schema copy (which had different/missing rows), raising `DoesNotExist` for all users.
-
-**Fix**: Added `_force_public_schema()` to `CustomUserAdmin` in `dose/admin.py`, called in `get_queryset`, `get_object`, `save_model`, `delete_model`.
-
-### Architecture Rule (user-stated, repeated)
-`public` schema is SHARED — not for any specific tenant. Only these belong in public:
-- `auth_user`, `dose_tenant`, `dose_userprofile`, `dose_usertenantmembership`, subscriptions, site config
-- Everything else belongs in per-tenant schemas
-
-Tenant migrations should NOT create `auth_user` copies in tenant schemas. Long-term fix: audit migrate targets per app. Short-term: `_force_public_schema()` guards on affected ModelAdmins.
+### Key Fixes
+- Fixed `CustomUserAdmin.get_object()` to force `search_path TO public` before querying users
+- Added `get_queryset` to `UserProfileInline` to query from public schema and filter inaccessible profiles
+- Fixed `UserProfile.__str__` to handle `User.DoesNotExist` gracefully
+- Fixed template block inheritance in `base_site.html`
 
 ### Files Changed
-- `mysite/settings.py` — disable cached.Loader (explicit uncached filesystem + app_directories loaders)
-- `dose/admin.py` — `CustomUserAdmin._force_public_schema()` for all User admin DB operations
-- `templates/admin/auth/user/change_form.html` — User change_form override (belt-and-suspenders fallback if inheritance still fails)
+- `dose/admin.py` - Schema-aware User and UserProfile query handling
+- `dose/models/user_profile.py` - Graceful handling of missing user in __str__
+- `dose/templates/admin/base_site.html` - Fixed Jazzmin block inheritance
+- `dose/tenant_utils.py` - Added tenant debugging logging
+- `dose/management/commands/migrate_users_to_public.py` - User migration command
+- `dose/management/commands/check_template_loading.py` - Template diagnostics
+
+### Verification
+- ✅ User list page loads correctly
+- ✅ User edit form displays with all fields
+- ✅ Can save changes to users
+- ✅ No more `DoesNotExist` errors
+
+### Follow-ups
+- Consider moving UserProfile table to public schema for consistency
+- Ensure future user creation always happens in public schema
+- Document this multi-tenancy pattern to prevent regression
 
 ### Commits
-- d427bc3: fix(templates): disable cached.Loader to fix block.super failure in change_form views on prod
-- 5d1a8e1: fix(admin): force public schema for User admin queries — auth_user shadowed by tenant schema copy
+- See `documentation/BINGO_Blank_Admin_User_Edit_Fix.md` for full details
 
-### Pending Follow-ups
-1. Test `/admin/auth/user/1/change/` on production — should now show full edit form
-2. Test other models' change_form pages on production
-3. Long-term: audit which Django apps migrate into tenant schemas vs public-only
-4. Apply `_force_public_schema` to Tenant admin and other public-only ModelAdmins
-5. After admin bug confirmed fixed, proceed to passthrough integration (Odoo + Mattermost)
+---
+
+## 2026-05-01 (Morning Session)
+**Status**: In Progress
+**Branch**: main
+
+### Summary
+Fixed passthrough endpoint visibility and functionality for the corent tenant. The passthrough endpoints (Odoo, Mattermost, NextCloud) are now correctly displayed in the Django admin sidebar and functional. Fixed middleware and views to properly query `PassThroughEndpoint` records within tenant schemas by setting `search_path` before database queries.
+
+### Key Fixes
+- Modified `setup_default_passthrough_endpoints` command to support tenant schemas with `--tenant-slug` argument
+- Added NextCloud endpoint creation to the setup command
+- Updated Odoo, Mattermost, NextCloud provisioners to create `PassThroughEndpoint` records in tenant schemas on subscription
+- Fixed `admin_views.py` `passthrough_embed_view` to set tenant schema `search_path` before querying endpoints
+- Fixed `passthrough/middleware.py` `run_pt_admin_passthrough_core` to set tenant schema `search_path` before querying endpoints
+- Changed `URLField` to `CharField` for `endpoint_url` and `api_endpoint` in `PassThroughEndpoint` model to allow internal Docker hostnames
+- Added fallback and debug logging to Odoo handler for when HTML body tag extraction fails
+
+### Files Changed
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - Added tenant slug argument, NextCloud endpoint, schema-aware creation
+- `dose/services/odoo_tenant_provisioner.py` - Added PassThroughEndpoint creation in tenant schema
+- `dose/services/mattermost_tenant_provisioner.py` - Added PassThroughEndpoint creation in tenant schema
+- `dose/services/nextcloud_tenant_provisioner.py` - Added PassThroughEndpoint creation in tenant schema
+- `dose/admin_views.py` - Fixed passthrough view to set tenant schema search_path
+- `dose/passthrough/middleware.py` - Fixed middleware to set tenant schema search_path
+- `dose/models/pass_through_endpoint.py` - Changed URLField to CharField for Docker hostname support
+- `dose/passthrough/handlers/odoo_handler.py` - Added fallback and debug logging for body extraction
+
+### URLs Configured
+- Odoo: `https://polysaas-odoo2.onrender.com`
+- Mattermost: `https://polysaas-mattermost.onrender.com`
+- NextCloud: `http://polysaas-nextcloud:80` (internal Docker)
+
+### Status
+- ✅ Passthrough endpoints visible in sidebar for corent tenant
+- ✅ Endpoint queries work correctly in tenant schemas
+- ✅ Docker/internal hostnames now accepted
+- ⚠️ Odoo display shell shows blank content (needs further debugging)
+- ⚠️ Mattermost and NextCloud need testing
+
+### Follow-ups
+1. Debug Odoo display shell blank content issue
+2. Test Mattermost passthrough functionality
+3. Test NextCloud passthrough functionality
+4. Verify auto-login works when TenantApp is active
+5. Document tenant schema search_path pattern for future reference
+
+---
+
+## 2026-05-02 (Morning Session)
+**Status**: In Progress
+**Branch**: main
+
+### Summary
+Extended passthrough infrastructure to all 6 bundled apps (Odoo, Mattermost, NextCloud, Dolibarr, Liferay, WordPress). Created AI WebChat Bridge architecture plan with Sheila's review feedback, and implemented Mattermost Bot skeleton with Kimi + Claude adapters.
+
+### Key Changes
+- Extended `setup_default_passthrough_endpoints` command to support all 6 bundled apps with `--dolibarr-url`, `--liferay-url`, `--wordpress-url` arguments
+- Fixed `dolibarr_tenant_provisioner.py` - correct trigger_path (`dolibarr` not `/admin/dolibarr/`), added tenant schema `search_path` support, used `update_or_create` instead of `create`
+- Created `liferay_tenant_provisioner.py` - new provisioner with PassThroughEndpoint creation in tenant schema
+- Created `wordpress_tenant_provisioner.py` - new provisioner with PassThroughEndpoint creation in tenant schema
+- Updated `subscription_views.py` imports to use dedicated Liferay provisioner module (removed from extended_bundle_provisioner)
+- Created comprehensive AI WebChat Bridge Plan (`documentation/AI_WebChat_Bridge_Plan.md`) - 9-section architecture document reviewed by Sheila
+- Implemented `dose/ai_bridge/` package:
+  - `adapters/base.py` - Base adapter class (AIWebAdapter, AIResponse dataclass)
+  - `adapters/kimi_adapter.py` - Kimi (Moonshot AI) web automation with human-like typing, SMS login flow, response stability detection
+  - `adapters/claude_adapter.py` - Claude (Anthropic) web automation with email + verification code login, multi-check response stability
+  - `mattermost_bot.py` - Bot orchestrator with @mention routing, session management, slash command support, multi-AI panel discussions
+
+### AI Bridge Features
+- `@kimi` / `@claude` mention routing in Mattermost
+- `/ai <service> <message>` slash command support
+- Session management per user/service with health checks
+- Human-like typing delays (anti-bot detection)
+- Response stability checking (waits for complete streaming response)
+- PolySniffer integration hooks ready
+- Extensible adapter registry for adding more AIs
+- Multi-AI panel discussions (`/ai panel` or `/ai all`)
+
+### Files Changed
+- `dose/management/commands/setup_default_passthrough_endpoints.py` - All 6 bundled apps supported
+- `dose/services/dolibarr_tenant_provisioner.py` - Fixed trigger_path, added tenant schema support
+- `dose/services/liferay_tenant_provisioner.py` - NEW
+- `dose/services/wordpress_tenant_provisioner.py` - NEW
+- `dose/subscription_views.py` - Updated imports for Liferay provisioner
+- `documentation/AI_WebChat_Bridge_Plan.md` - NEW (Sheila reviewed)
+- `dose/ai_bridge/` - NEW package (base, kimi, claude adapters + bot)
+
+### Sheila's Feedback on AI Plan
+- **Strengths**: Clean separation, tenant isolation, realistic phases, rich UX, security considerations
+- **Suggestions**: Start with one strong adapter first (Kimi or Claude), then expand. Add hybrid mode for code-heavy tasks (forward to Windsurf/Cursor). Implement rate limit handling + anti-bot detection. Add fallback to official APIs when web automation fails.
+- **Recommended starting set**: Kimi (strong coder, currently accessible) + Claude (excellent reasoning) for demo
+
+### Status
+- ✅ All 6 bundled app provisioners committed and pushed
+- ✅ AI WebChat Bridge Plan committed (Sheila reviewed)
+- ✅ Kimi + Claude adapters + Mattermost Bot committed
+- ⚠️ Odoo display shell still shows blank content (fix pushed but not tested)
+- ⚠️ Mattermost and NextCloud passthrough need testing
+- ⚠️ AI Bridge needs: mattermostdriver dependency, webhook endpoint, credential vault, browser pool
+
+### Follow-ups
+1. Run `setup_default_passthrough_endpoints` on Render to create all 6 endpoints
+2. Test Odoo passthrough after latest fix (check logs for `[ODOO HANDLER]` messages)
+3. Test Mattermost and NextCloud passthrough links
+4. Add `mattermostdriver` to requirements.txt
+5. Create Django webhook endpoint for Mattermost bot
+6. Implement browser context pool (Playwright)
+7. Add credential vault for AI service logins
+8. Test Kimi/Claude adapters in headless browser
+9. Consider adding API fallback mode for ChatGPT/Gemini (official APIs are more reliable)
+10. Add Windsurf/Cursor hybrid mode for code-heavy tasks per Sheila's suggestion

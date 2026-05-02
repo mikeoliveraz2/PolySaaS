@@ -8,6 +8,7 @@ import secrets
 import string
 from dose.services.email_service import GmailEmailService
 from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
+from dose.models import TenantApp, PassThroughEndpoint
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,6 @@ def provision_nextcloud_tenant(
         # Continue with provisioning even if email fails
 
     # 4. Configure OIDC provider if credentials provided
-    from dose.models import TenantApp
     tenant_app = None
     if tenant_app_id:
         try:
@@ -110,6 +110,34 @@ def provision_nextcloud_tenant(
             logger.info("OAuth2 credentials ready for Nextcloud tenant %s (client_id=%s)", tenant_name, oauth_client_id)
         except Exception as e:
             logger.warning("Nextcloud OIDC config failed for %s: %s", tenant_name, e)
+
+    # 5. Create PassThroughEndpoint in tenant schema for sidebar navigation
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant_schema}"')
+            nc_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
+                trigger_path='nextcloud',
+                defaults={
+                    'endpoint_url': nextcloud_url,
+                    'description': 'NextCloud File Storage - tenant-specific instance',
+                    'is_enabled': True,
+                    'passthrough_type': 'scraper',
+                    'integration_mode': 'web_api',
+                    'api_endpoint': f"{nextcloud_url}/ocs/v1.php",
+                    'show_in_menu': True,
+                    'menu_title': 'NextCloud',
+                    'menu_icon': 'cloud',
+                    'menu_sort_order': 30,
+                    'starting_uri': '/',
+                }
+            )
+            if ep_created:
+                logger.info("Created PassThroughEndpoint for NextCloud in tenant %s", tenant_schema)
+            else:
+                logger.info("Updated PassThroughEndpoint for NextCloud in tenant %s", tenant_schema)
+    except Exception as e:
+        logger.warning("Failed to create PassThroughEndpoint for NextCloud: %s", e)
+        # Non-fatal: continue even if endpoint creation fails
 
     if tenant_app:
         mark_tenant_app_active(tenant_app, app_url=nextcloud_url)

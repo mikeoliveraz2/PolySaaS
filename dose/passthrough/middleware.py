@@ -170,6 +170,15 @@ def run_pt_admin_passthrough_core(request):
     trigger = parts[2]
     print(f"[PT-CORE] trigger={trigger}")
 
+    # CRITICAL: Set search_path to tenant schema before querying endpoints
+    from dose.utils import get_current_tenant
+    from django.db import connection
+    tenant = get_current_tenant(request)
+    if tenant and tenant.schema_name:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
+            print(f"[PT-CORE] Set search_path to tenant schema: {tenant.schema_name}")
+
     url_key = normalize_trigger_segment(trigger)
     endpoint = PassThroughEndpoint.objects.filter(
         trigger_path__iexact=trigger,

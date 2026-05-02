@@ -44,7 +44,7 @@ class PassThroughEndpoint(models.Model):
         help_text="Type of passthrough: 'api' for REST APIs (Gmail), 'scraper' for HTML content"
     )
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='custom', help_text="OAuth2 provider or passthrough method")
-    endpoint_url = models.URLField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online)")
+    endpoint_url = models.CharField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online or http://service-name:80 for internal Docker)")
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
     trigger_path = models.CharField(max_length=200, blank=True, default="", help_text="One word, no slashes please", verbose_name="Trigger Word")
@@ -90,11 +90,11 @@ class PassThroughEndpoint(models.Model):
     )
 
     # API Configuration (optional, depends on integration_mode)
-    api_endpoint = models.URLField(
+    api_endpoint = models.CharField(
         max_length=300,
         blank=True,
         default="",
-        help_text="API base URL (e.g., https://www.googleapis.com/gmail/v1) - required for web_api and api_only modes"
+        help_text="API base URL for programmatic access (e.g., https://api.gmail.com/v1 or http://service-name:port)"
     )
     api_auth_type = models.CharField(
         max_length=20,

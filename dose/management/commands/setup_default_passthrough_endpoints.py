@@ -7,9 +7,15 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--odoo-url', default='http://localhost:8069', help="Odoo service URL")
         parser.add_argument('--mattermost-url', default='http://localhost:8065', help="Mattermost service URL")
+        parser.add_argument('--nextcloud-url', default='http://localhost:8080', help="NextCloud service URL")
+        parser.add_argument('--dolibarr-url', default='http://localhost:8083', help="Dolibarr service URL")
+        parser.add_argument('--liferay-url', default='http://localhost:8084', help="Liferay service URL")
+        parser.add_argument('--wordpress-url', default='http://localhost:8085', help="WordPress service URL")
+        parser.add_argument('--tenant-slug', help="Specific tenant slug to setup endpoints for (default: first tenant)")
 
     def handle(self, *args, **options):
         from dose.models import PassThroughEndpoint, Tenant
+        from django.db import connection
 
         self.stdout.write("\n" + "="*60)
         self.stdout.write("Setting up Default Passthrough Endpoints")
@@ -18,13 +24,26 @@ class Command(BaseCommand):
         odoo_url = options['odoo_url']
         mattermost_url = options['mattermost_url']
 
-        # Get first tenant
-        tenant = Tenant.objects.first()
-        if not tenant:
-            self.stdout.write(self.style.ERROR("No tenant found. Please create a tenant first."))
-            return
+        # Get tenant - either by slug or first available
+        tenant_slug = options.get('tenant_slug')
+        if tenant_slug:
+            try:
+                tenant = Tenant.objects.get(slug=tenant_slug)
+            except Tenant.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f"Tenant with slug '{tenant_slug}' not found."))
+                return
+        else:
+            tenant = Tenant.objects.first()
+            if not tenant:
+                self.stdout.write(self.style.ERROR("No tenant found. Please create a tenant first."))
+                return
 
         self.stdout.write(f"Using tenant: {tenant.name} (schema: {tenant.schema_name})\n")
+
+        # CRITICAL: Set search_path to tenant schema so endpoints are created there
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
+            self.stdout.write(f"Set search_path to tenant schema: {tenant.schema_name}\n")
 
         # 1. Odoo PassThroughEndpoint
         odoo_ep, created = PassThroughEndpoint.objects.update_or_create(
@@ -82,14 +101,127 @@ class Command(BaseCommand):
                 mattermost_ep.save()
                 self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {mattermost_url}"))
 
+        # 3. NextCloud PassThroughEndpoint
+        nextcloud_url = options['nextcloud_url']
+        nextcloud_ep, created = PassThroughEndpoint.objects.update_or_create(
+            trigger_path='nextcloud',
+            defaults={
+                'endpoint_url': nextcloud_url,
+                'description': 'NextCloud File Storage - tenant-specific instance',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{nextcloud_url}/ocs/v1.php",
+                'show_in_menu': True,
+                'menu_title': 'NextCloud',
+                'menu_icon': 'cloud',
+                'menu_sort_order': 30,
+                'starting_uri': '/',
+            }
+        )
+
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✓ Created NextCloud PassThroughEndpoint: {nextcloud_url}"))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"✓ NextCloud PassThroughEndpoint already exists: {nextcloud_ep.endpoint_url}"))
+            if nextcloud_ep.endpoint_url != nextcloud_url:
+                nextcloud_ep.endpoint_url = nextcloud_url
+                nextcloud_ep.save()
+                self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {nextcloud_url}"))
+
+        # 4. Dolibarr PassThroughEndpoint
+        dolibarr_url = options['dolibarr_url']
+        dolibarr_ep, created = PassThroughEndpoint.objects.update_or_create(
+            trigger_path='dolibarr',
+            defaults={
+                'endpoint_url': dolibarr_url,
+                'description': 'Dolibarr ERP/CRM - tenant-specific instance',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{dolibarr_url}/api/index.php",
+                'show_in_menu': True,
+                'menu_title': 'Dolibarr',
+                'menu_icon': 'briefcase',
+                'menu_sort_order': 40,
+                'starting_uri': '/',
+            }
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✓ Created Dolibarr PassThroughEndpoint: {dolibarr_url}"))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"✓ Dolibarr PassThroughEndpoint already exists: {dolibarr_ep.endpoint_url}"))
+            if dolibarr_ep.endpoint_url != dolibarr_url:
+                dolibarr_ep.endpoint_url = dolibarr_url
+                dolibarr_ep.save()
+                self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {dolibarr_url}"))
+
+        # 5. Liferay PassThroughEndpoint
+        liferay_url = options['liferay_url']
+        liferay_ep, created = PassThroughEndpoint.objects.update_or_create(
+            trigger_path='liferay',
+            defaults={
+                'endpoint_url': liferay_url,
+                'description': 'Liferay Portal - tenant-specific instance',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{liferay_url}/api/jsonws",
+                'show_in_menu': True,
+                'menu_title': 'Liferay',
+                'menu_icon': 'landmark',
+                'menu_sort_order': 50,
+                'starting_uri': '/web/guest',
+            }
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✓ Created Liferay PassThroughEndpoint: {liferay_url}"))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"✓ Liferay PassThroughEndpoint already exists: {liferay_ep.endpoint_url}"))
+            if liferay_ep.endpoint_url != liferay_url:
+                liferay_ep.endpoint_url = liferay_url
+                liferay_ep.save()
+                self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {liferay_url}"))
+
+        # 6. WordPress PassThroughEndpoint
+        wordpress_url = options['wordpress_url']
+        wordpress_ep, created = PassThroughEndpoint.objects.update_or_create(
+            trigger_path='wordpress',
+            defaults={
+                'endpoint_url': wordpress_url,
+                'description': 'WordPress CMS - tenant-specific instance',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{wordpress_url}/wp-json/wp/v2",
+                'show_in_menu': True,
+                'menu_title': 'WordPress',
+                'menu_icon': 'wordpress',
+                'menu_sort_order': 60,
+                'starting_uri': '/wp-admin',
+            }
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✓ Created WordPress PassThroughEndpoint: {wordpress_url}"))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"✓ WordPress PassThroughEndpoint already exists: {wordpress_ep.endpoint_url}"))
+            if wordpress_ep.endpoint_url != wordpress_url:
+                wordpress_ep.endpoint_url = wordpress_url
+                wordpress_ep.save()
+                self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {wordpress_url}"))
+
         self.stdout.write("\n" + "="*60)
         self.stdout.write(self.style.SUCCESS("Default Passthrough Endpoints Setup Complete!"))
         self.stdout.write("="*60)
         self.stdout.write(f"\nEndpoints configured:")
-        self.stdout.write(f"  Odoo:      /pt/admin/odoo/ -> {odoo_ep.endpoint_url}")
+        self.stdout.write(f"  Odoo:       /pt/admin/odoo/ -> {odoo_ep.endpoint_url}")
         self.stdout.write(f"  Mattermost: /pt/admin/mattermost/ -> {mattermost_ep.endpoint_url}")
+        self.stdout.write(f"  NextCloud:  /pt/admin/nextcloud/ -> {nextcloud_ep.endpoint_url}")
+        self.stdout.write(f"  Dolibarr:   /pt/admin/dolibarr/ -> {dolibarr_ep.endpoint_url}")
+        self.stdout.write(f"  Liferay:    /pt/admin/liferay/ -> {liferay_ep.endpoint_url}")
+        self.stdout.write(f"  WordPress:  /pt/admin/wordpress/ -> {wordpress_ep.endpoint_url}")
         self.stdout.write("\nThese will appear in the sidebar for tenants with active TenantApp records.")
         self.stdout.write("\nTenantApp records are created automatically during subscription when users select these apps.")
         self.stdout.write("\nNext steps:")
-        self.stdout.write("1. Ensure Odoo and Mattermost services are running at the configured URLs")
+        self.stdout.write("1. Ensure all services are running at the configured URLs")
         self.stdout.write("2. Test subscription flow to verify provisioning")

@@ -782,9 +782,19 @@ if NEW_MODELS_AVAILABLE:
 
                 qs = tenants_for_user_assignment()
                 # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
+                tenant_count = qs.count()
+                logger.info(f"UserProfileInlineForm: tenants_for_user_assignment returned {tenant_count} tenants")
+                
+                # Log all tenants in queryset
+                for tenant in qs:
+                    logger.info(f"  Tenant in queryset: {tenant.slug} (schema={tenant.schema_name}, active={tenant.is_active})")
+                
                 self.fields['tenant'].queryset = qs
                 self.fields['tenant'].empty_label = "Select a tenant..."
                 self.fields['tenant'].required = False
+                
+                logger.info(f"UserProfileInlineForm: Set tenant field queryset with {tenant_count} items")
+                logger.info(f"UserProfileInlineForm: Field widget is {type(self.fields['tenant'].widget).__name__}")
 
                 # If this is an existing UserProfile, keep the current tenant selection
                 if self.instance.pk and self.instance.tenant:
@@ -795,6 +805,8 @@ if NEW_MODELS_AVAILABLE:
                     if qs.exists():
                         self.fields['tenant'].initial = qs.first()
                         logger.info(f"UserProfileInlineForm: New UserProfile, defaulting to tenant {qs.first()}")
+                    else:
+                        logger.warning("UserProfileInlineForm: No tenants available for assignment!")
             except Exception as e:
                 logger.error(f"UserProfileInlineForm.__init__ error: {e}", exc_info=True)
 
@@ -810,12 +822,138 @@ if NEW_MODELS_AVAILABLE:
         extra = 1  # Ensure form always shows
         max_num = 1
         min_num = 1  # Ensure at least one tenant assignment exists
+        
+        def get_queryset(self, request):
+            """Handle UserProfiles that reference users in different schemas"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            qs = super().get_queryset(request)
+            
+            # Force public schema to find user profiles
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                logger.info("UserProfileInline.get_queryset: Set search_path to public")
+            
+            # Re-query from public schema
+            qs = UserProfile.objects.all()
+            
+            # Filter to only include profiles where we can actually find the user
+            valid_ids = []
+            for profile in qs:
+                try:
+                    # Try to access the user - this will fail if user not in schema
+                    _ = profile.user.username
+                    valid_ids.append(profile.pk)
+                except User.DoesNotExist:
+                    logger.warning(f"UserProfileInline: Skipping profile {profile.pk} - user not accessible")
+                    pass
+            
+            if valid_ids:
+                return UserProfile.objects.filter(pk__in=valid_ids)
+            return UserProfile.objects.none()
 
     # Unregister the default User admin and register our custom one
     admin.site.unregister(User)
     class CustomUserAdmin(BaseUserAdmin):
         inlines = [UserProfileInline]
         list_display = ('username', 'email', 'is_active', 'is_staff', 'is_superuser')
+        
+        def get_queryset(self, request):
+            """Always query User from public schema - users are shared across tenants"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Set search_path to public to find all users
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                logger.info("CustomUserAdmin.get_queryset: Set search_path to public")
+            
+            return super().get_queryset(request)
+        
+        def get_object(self, request, object_id, from_field=None):
+            """Force public schema when retrieving user object"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # First, check what schemas exist and where the user might be
+            logger.info(f"CustomUserAdmin.get_object: Looking for user id={object_id}")
+            
+            # Check all schemas for this user
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT schema_name 
+                    FROM information_schema.schemata 
+                    WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                    AND schema_name NOT LIKE 'pg_%'
+                """)
+                schemas = [row[0] for row in cursor.fetchall()]
+                logger.info(f"CustomUserAdmin.get_object: Available schemas: {schemas}")
+                
+                # Check each schema for the user
+                for schema in schemas:
+                    cursor.execute(f"SET search_path TO {schema}")
+                    cursor.execute("SELECT id, username FROM auth_user WHERE id = %s", [object_id])
+                    result = cursor.fetchone()
+                    if result:
+                        logger.info(f"CustomUserAdmin.get_object: FOUND user {result[1]} (id={result[0]}) in schema '{schema}'")
+                        # Found the user - set search_path back to public for the actual query
+                        cursor.execute("SET search_path TO public")
+                        break
+                else:
+                    logger.error(f"CustomUserAdmin.get_object: User id={object_id} not found in ANY schema")
+                    # Show all users in all schemas
+                    for schema in schemas:
+                        cursor.execute(f"SET search_path TO {schema}")
+                        cursor.execute("SELECT id, username FROM auth_user LIMIT 5")
+                        users = cursor.fetchall()
+                        if users:
+                            logger.info(f"CustomUserAdmin.get_object: Schema '{schema}' has users: {users}")
+                    # Reset to public
+                    cursor.execute("SET search_path TO public")
+            
+            # Force public schema before the actual Django query
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+            
+            # DEBUG: Check current search_path and public schema contents
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW search_path")
+                current_search_path = cursor.fetchone()[0]
+                cursor.execute("SELECT id, username FROM auth_user ORDER BY id LIMIT 10")
+                all_users = cursor.fetchall()
+            
+            diagnostic_msg = f"search_path={current_search_path}, available_users={all_users}"
+            
+            try:
+                obj = super().get_object(request, object_id, from_field)
+                if obj:
+                    logger.info(f"CustomUserAdmin.get_object: Django found user {obj.username}")
+                return obj
+            except User.DoesNotExist:
+                logger.error(f"CustomUserAdmin.get_object: Django ORM could not find user id={object_id}. {diagnostic_msg}")
+                # Raise with diagnostic info
+                raise User.DoesNotExist(f"User id={object_id} not found. DIAGNOSTIC: {diagnostic_msg}")
+        
+        def change_view(self, request, object_id, form_url='', extra_context=None):
+            """Ensure we're looking in public schema for the user"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"CustomUserAdmin.change_view: object_id={object_id}")
+            
+            # Force public schema
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                cursor.execute("SHOW search_path")
+                search_path = cursor.fetchone()
+                logger.info(f"CustomUserAdmin.change_view: search_path set to {search_path}")
+            
+            return super().change_view(request, object_id, form_url, extra_context)
 
         @staticmethod
         def _force_public_schema():

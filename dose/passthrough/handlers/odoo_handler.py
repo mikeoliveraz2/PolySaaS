@@ -212,6 +212,7 @@ class OdooPassthroughHandler:
                         fetch_debug=fetch_dbg,
                     )
             if raw_html and not raw_html.startswith("REDIRECT:"):
+                logger.info(f"[ODOO HANDLER] Processing HTML ({len(raw_html)} chars)")
                 m = re.search(
                     r"<head[^>]*>(.*?)</head>",
                     raw_html,
@@ -220,6 +221,9 @@ class OdooPassthroughHandler:
                 if m:
                     head_raw = m.group(1).strip()
                     display_head_inner = self._strip_base_tags(head_raw)
+                    logger.info(f"[ODOO HANDLER] Extracted head ({len(display_head_inner)} chars)")
+                else:
+                    logger.warning("[ODOO HANDLER] No <head> tag found in HTML")
                 # TEMP DEBUG (CC): always extract upstream <body> so display.html <pre> shows raw HTML.
                 # Revert: wrap below in `if upstream_subpath.rstrip("/") not in ("", "/"):` — root was
                 # body-empty so SPA mounts #wrapwrap client-side; full body here can break layout.
@@ -230,6 +234,11 @@ class OdooPassthroughHandler:
                 )
                 if m_body:
                     display_body_inner = m_body.group(1).strip()
+                    logger.info(f"[ODOO HANDLER] Extracted body ({len(display_body_inner)} chars)")
+                else:
+                    # Fallback: no body tag found - wrap entire HTML for display
+                    logger.warning("[ODOO HANDLER] No <body> tag found, using raw HTML fallback")
+                    display_body_inner = f'<div class="odoo-raw-content">{raw_html}</div>'
             elif raw_html and raw_html.startswith("REDIRECT:"):
                 from django.utils.html import escape as _esc
 
