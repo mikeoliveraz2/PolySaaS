@@ -59,8 +59,9 @@ class OdooPassthroughHandler:
         return ("/web", "/odoo", "/bus", "/websocket", "/longpolling")
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """Follow upstream redirects so the full Odoo response is returned."""
-        return True
+        """Follow GET redirect chains (e.g. login page) but NOT POST — the browser must
+        receive the post-login 3xx so it navigates to the correct proxied URL."""
+        return request.method != "POST"
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
@@ -75,7 +76,7 @@ class OdooPassthroughHandler:
         headers["Host"] = parsed.netloc
         headers["X-Forwarded-For"] = request.META.get("REMOTE_ADDR", "")
         headers["X-Forwarded-Proto"] = "https" if request.is_secure() else "http"
-        headers["X-Forwarded-Host"] = request.get_host()
+        headers["X-Forwarded-Host"] = parsed.netloc
         try:
             headers["X-Forwarded-Port"] = str(request.get_port())
         except Exception:

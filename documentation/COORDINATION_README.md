@@ -154,3 +154,48 @@ Rolled back 47 commits to `0616583` (last BINGO). All discarded work saved on `p
 - Test Mattermost passthrough (same hostname approach)
 - Re-integrate AI Bridge (Kimi/Claude adapters) from `passthrough-wip` branch
 - Re-integrate provisioners for all 6 bundled apps from `passthrough-wip` branch
+
+---
+
+## 2026-05-03 — Odoo DB Disaster Recovery + Infrastructure Hardening
+
+### Status: IN PROGRESS (Core down at session end)
+
+### Branch: main
+
+### Summary
+Attempted to reset Odoo admin credentials via Odoo DB manager → the "Delete Database" 
+operation succeeded (despite showing a 500 error), wiping `polysaas_postgres` which was 
+shared by BOTH Django (Core) and Odoo. Both services went down.
+
+Recovery steps taken:
+- Created `polysaas_postgres` database in PgAdmin (reconnected to Render PostgreSQL)
+- PolySaaS-Core redeployment still failing — DATABASE_URL may point to a DIFFERENT 
+  Render PostgreSQL than where the DB was recreated. Need to verify `DATABASE_URL` host.
+- Set `PolySaaS-Odoo2 autoDeployTrigger: off` in render.yaml to prevent Python commits 
+  from triggering unnecessary Odoo redeployments.
+- Identified root cause of shared DB: individual env vars on Odoo2 overrode group 
+  `ODOO_DB_NAME: odoodb` with `polysaas_postgres` (Django's DB name).
+
+### Files Changed
+- `render.yaml` — `PolySaaS-Odoo2 autoDeployTrigger: off`
+- `dose/passthrough/handlers/odoo_handler.py` — X-Forwarded-Host fix + POST allow_redirects=False (uncommitted)
+
+### CRITICAL Next-Session Actions (do these FIRST)
+1. Check `DATABASE_URL` in Render → PolySaaS-Core → Environment — get the DB hostname
+2. Connect PgAdmin to THAT specific PostgreSQL host and create `polysaas_postgres` there
+3. Manual Deploy PolySaaS-Core — wait for pre-deploy (migrate_all_schemas) to succeed
+4. In Render → `polysaas-odoo` env group, set:
+   - `ODOO_DB_HOST` = `dpg-d7lple0ebus73e3le4ug-a`
+   - `ODOO_DB_USER` = `polysaas_postgres_user`
+   - `ODOO_DB_NAME` = `odoodb` (NOT polysaas_postgres — keep them separate!)
+   - `ODOO_DB_PASSWORD` = `yTfbrzBFpCpSfLCICemNZUbqnfq1G5yU`
+5. Create `odoodb` database in PgAdmin: `CREATE DATABASE odoodb OWNER polysaas_postgres_user;`
+6. Remove individual Odoo2 env overrides: `ODOO_DB_NAME`, `ODOO_DB_USER`, `HOST` 
+   (group values will take over cleanly)
+7. Manual Deploy PolySaaS-Odoo2
+8. Go to Odoo DB manager, create database with known admin password
+9. Test Odoo login via passthrough — verify post-login redirect to apps page
+
+### Uncommitted Changes
+- `dose/passthrough/handlers/odoo_handler.py` — commit after Core is healthy
