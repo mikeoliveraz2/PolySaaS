@@ -173,8 +173,9 @@ def run_pt_admin_passthrough_core(request):
     trigger = parts[2]
     print(f"[PT-CORE] trigger={trigger}")
 
-    # The trigger IS the hostname — derived directly from the sidebar URL which was built
-    # from endpoint.endpoint_url in context_processors. No DB lookup needed here.
+    url_key = normalize_trigger_segment(trigger)
+
+    # Fallback for when DB is unavailable (recovery scenarios)
     class SimpleEndpoint:
         def __init__(self, hostname):
             self.endpoint_url = f"https://{hostname}"
@@ -186,8 +187,49 @@ def run_pt_admin_passthrough_core(request):
             self.headers_to_forward = ''
             self.description = f'Passthrough to {hostname}'
 
-    endpoint = SimpleEndpoint(trigger)
-    print(f"[PT-CORE] SimpleEndpoint created: {endpoint.endpoint_url}")
+    # Prefer DB lookup — gets the real endpoint record (correct handler, endpoint_url, etc.).
+    # Fall back to SimpleEndpoint if DB is unavailable.
+    endpoint = None
+    try:
+        if "." in trigger:
+            endpoint = (
+                PassThroughEndpoint.objects.filter(
+                    endpoint_url__icontains=f"://{trigger}",
+                    is_enabled=True,
+                )
+                .order_by("-id")
+                .first()
+            )
+            if endpoint:
+                print(f"[PT-CORE] matched endpoint by endpoint_url hostname: {trigger!r} -> {endpoint}")
+        else:
+            endpoint = PassThroughEndpoint.objects.filter(
+                trigger_path__iexact=trigger,
+                is_enabled=True,
+            ).order_by("-id").first()
+            if endpoint is None and "_" in trigger:
+                endpoint = PassThroughEndpoint.objects.filter(
+                    trigger_path__iexact=trigger.replace("_", ""),
+                    is_enabled=True,
+                ).order_by("-id").first()
+            if endpoint is None and url_key:
+                for ep in PassThroughEndpoint.objects.filter(is_enabled=True).order_by("-id"):
+                    if normalize_trigger_segment(ep.trigger_path) == url_key:
+                        endpoint = ep
+                        print(
+                            f"[PT-CORE] matched endpoint by normalized trigger "
+                            f"(url_key={url_key!r} trigger_path={ep.trigger_path!r})"
+                        )
+                        break
+        print(f"[PT-CORE] endpoint={endpoint}")
+    except Exception as _db_exc:
+        print(f"[PT-CORE] DB lookup failed ({_db_exc}), falling back to SimpleEndpoint")
+
+    if not endpoint:
+        # DB miss or DB down — construct a minimal endpoint from the URL-encoded hostname
+        endpoint = SimpleEndpoint(trigger)
+        print(f"[PT-CORE] SimpleEndpoint fallback: {endpoint.endpoint_url}")
+
     request._passthrough_endpoint = endpoint
 
     # PICOLLO PASSO: Direct handler selection by hostname - avoids DB-dependent registry lookup

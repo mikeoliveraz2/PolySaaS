@@ -304,7 +304,7 @@ services:
     branch: main
     dockerfilePath: deploy/odoo-render/Dockerfile
     dockerContext: deploy/odoo-render
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
     healthCheckPath: /web/login
     envVars:
       - fromGroup: polysaas-odoo

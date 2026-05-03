@@ -72,8 +72,9 @@ class OdooPassthroughHandler:
         return False
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """Follow upstream redirects so the full Odoo response is returned."""
-        return True
+        """Follow GET redirect chains (e.g. login page) but NOT POST — the browser must
+        receive the post-login 3xx so it navigates to the correct proxied URL."""
+        return request.method != "POST"
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
@@ -88,7 +89,7 @@ class OdooPassthroughHandler:
         headers["Host"] = parsed.netloc
         headers["X-Forwarded-For"] = request.META.get("REMOTE_ADDR", "")
         headers["X-Forwarded-Proto"] = "https" if request.is_secure() else "http"
-        headers["X-Forwarded-Host"] = request.get_host()
+        headers["X-Forwarded-Host"] = parsed.netloc
         try:
             headers["X-Forwarded-Port"] = str(request.get_port())
         except Exception:
@@ -118,19 +119,23 @@ class OdooPassthroughHandler:
         """
         if request.method != "GET":
             return None
-        # Skip display shell for remote hostname triggers (e.g. polysaas-odoo2.onrender.com).
-        # The server-side pre-fetch fails for remote hosts; forward_request_standardized
-        # is the correct path — it proxies the real browser request with its cookies.
-        seg = url_trigger_segment.strip("/")
-        if "." in seg:
-            # Remote host: redirect browser to /web/login for the root path so the browser
-            # URL is /pt/admin/<hostname>/web/login — the pathname patch then strips the proxy
-            # prefix and Odoo's router sees /web/login instead of / (which renders blank).
-            proxy_prefix = f"/pt/admin/{seg}"
+
+        # Hostname triggers (e.g. polysaas-odoo2.onrender.com): the sidebar link encodes
+        # the upstream host directly.  Redirect the browser from the proxy root to /web/login
+        # so the browser URL is /pt/admin/<host>/web/login — the shim then strips the proxy
+        # prefix and Odoo's router sees /web/login instead of /, which avoids blank/garbled page.
+        if "." in url_trigger_segment:
+            proxy_prefix = f"/pt/admin/{url_trigger_segment.strip('/')}"
             if request.path_info.rstrip("/") == proxy_prefix:
                 from django.http import HttpResponseRedirect
+                print(f"[ODOO] Hostname root → redirecting browser to {proxy_prefix}/web/login")
                 return HttpResponseRedirect(f"{proxy_prefix}/web/login")
+            # All other sub-paths for hostname trigger: let forward_request_standardized handle
             return None
+
+        seg = (
+            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
+        )
         proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
         norm = path_info.rstrip("/")

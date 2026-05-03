@@ -124,7 +124,7 @@ Fixed blank Django admin user edit page on production (Render). The issue was ca
 **Branch**: main
 
 ### Summary
-Fixed passthrough endpoint visibility and functionality for the corent tenant. The passthrough endpoints (Odoo, Mattermost, NextCloud) are now correctly displayed in the Django admin sidebar and functional. Fixed middleware and views to properly query `PassThroughEndpoint` records within tenant schemas by setting `search_path` before database queries.
+Fixed passthrough endpoint visibility and functionality for the current tenant. The passthrough endpoints (Odoo, Mattermost, NextCloud) are now correctly displayed in the Django admin sidebar and functional. Fixed middleware and views to properly query `PassThroughEndpoint` records within tenant schemas by setting `search_path` before database queries.
 
 ### Key Fixes
 - Modified `setup_default_passthrough_endpoints` command to support tenant schemas with `--tenant-slug` argument
@@ -150,20 +150,6 @@ Fixed passthrough endpoint visibility and functionality for the corent tenant. T
 - Mattermost: `https://polysaas-mattermost.onrender.com`
 - NextCloud: `http://polysaas-nextcloud:80` (internal Docker)
 
-### Status
-- ✅ Passthrough endpoints visible in sidebar for corent tenant
-- ✅ Endpoint queries work correctly in tenant schemas
-- ✅ Docker/internal hostnames now accepted
-- ⚠️ Odoo display shell shows blank content (needs further debugging)
-- ⚠️ Mattermost and NextCloud need testing
-
-### Follow-ups
-1. Debug Odoo display shell blank content issue
-2. Test Mattermost passthrough functionality
-3. Test NextCloud passthrough functionality
-4. Verify auto-login works when TenantApp is active
-5. Document tenant schema search_path pattern for future reference
-
 ---
 
 ## 2026-05-02 (Morning Session)
@@ -174,58 +160,94 @@ Fixed passthrough endpoint visibility and functionality for the corent tenant. T
 Extended passthrough infrastructure to all 6 bundled apps (Odoo, Mattermost, NextCloud, Dolibarr, Liferay, WordPress). Created AI WebChat Bridge architecture plan with Sheila's review feedback, and implemented Mattermost Bot skeleton with Kimi + Claude adapters.
 
 ### Key Changes
-- Extended `setup_default_passthrough_endpoints` command to support all 6 bundled apps with `--dolibarr-url`, `--liferay-url`, `--wordpress-url` arguments
-- Fixed `dolibarr_tenant_provisioner.py` - correct trigger_path (`dolibarr` not `/admin/dolibarr/`), added tenant schema `search_path` support, used `update_or_create` instead of `create`
-- Created `liferay_tenant_provisioner.py` - new provisioner with PassThroughEndpoint creation in tenant schema
-- Created `wordpress_tenant_provisioner.py` - new provisioner with PassThroughEndpoint creation in tenant schema
-- Updated `subscription_views.py` imports to use dedicated Liferay provisioner module (removed from extended_bundle_provisioner)
-- Created comprehensive AI WebChat Bridge Plan (`documentation/AI_WebChat_Bridge_Plan.md`) - 9-section architecture document reviewed by Sheila
-- Implemented `dose/ai_bridge/` package:
-  - `adapters/base.py` - Base adapter class (AIWebAdapter, AIResponse dataclass)
-  - `adapters/kimi_adapter.py` - Kimi (Moonshot AI) web automation with human-like typing, SMS login flow, response stability detection
-  - `adapters/claude_adapter.py` - Claude (Anthropic) web automation with email + verification code login, multi-check response stability
-  - `mattermost_bot.py` - Bot orchestrator with @mention routing, session management, slash command support, multi-AI panel discussions
-
-### AI Bridge Features
-- `@kimi` / `@claude` mention routing in Mattermost
-- `/ai <service> <message>` slash command support
-- Session management per user/service with health checks
-- Human-like typing delays (anti-bot detection)
-- Response stability checking (waits for complete streaming response)
-- PolySniffer integration hooks ready
-- Extensible adapter registry for adding more AIs
-- Multi-AI panel discussions (`/ai panel` or `/ai all`)
-
-### Files Changed
-- `dose/management/commands/setup_default_passthrough_endpoints.py` - All 6 bundled apps supported
-- `dose/services/dolibarr_tenant_provisioner.py` - Fixed trigger_path, added tenant schema support
-- `dose/services/liferay_tenant_provisioner.py` - NEW
-- `dose/services/wordpress_tenant_provisioner.py` - NEW
-- `dose/subscription_views.py` - Updated imports for Liferay provisioner
-- `documentation/AI_WebChat_Bridge_Plan.md` - NEW (Sheila reviewed)
-- `dose/ai_bridge/` - NEW package (base, kimi, claude adapters + bot)
-
-### Sheila's Feedback on AI Plan
-- **Strengths**: Clean separation, tenant isolation, realistic phases, rich UX, security considerations
-- **Suggestions**: Start with one strong adapter first (Kimi or Claude), then expand. Add hybrid mode for code-heavy tasks (forward to Windsurf/Cursor). Implement rate limit handling + anti-bot detection. Add fallback to official APIs when web automation fails.
-- **Recommended starting set**: Kimi (strong coder, currently accessible) + Claude (excellent reasoning) for demo
+- Extended `setup_default_passthrough_endpoints` command to support all 6 bundled apps
+- Fixed `dolibarr_tenant_provisioner.py`, created `liferay_tenant_provisioner.py` and `wordpress_tenant_provisioner.py`
+- Created comprehensive AI WebChat Bridge Plan (`documentation/AI_WebChat_Bridge_Plan.md`) — Sheila reviewed
+- Implemented `dose/ai_bridge/` package (base, kimi, claude adapters + mattermost bot)
 
 ### Status
 - ✅ All 6 bundled app provisioners committed and pushed
 - ✅ AI WebChat Bridge Plan committed (Sheila reviewed)
 - ✅ Kimi + Claude adapters + Mattermost Bot committed
-- ⚠️ Odoo display shell still shows blank content (fix pushed but not tested)
-- ⚠️ Mattermost and NextCloud passthrough need testing
-- ⚠️ AI Bridge needs: mattermostdriver dependency, webhook endpoint, credential vault, browser pool
+- ⚠️ Odoo passthrough blank — root cause was DB gone (app on cache), NOT code bugs
 
-### Follow-ups
-1. Run `setup_default_passthrough_endpoints` on Render to create all 6 endpoints
-2. Test Odoo passthrough after latest fix (check logs for `[ODOO HANDLER]` messages)
-3. Test Mattermost and NextCloud passthrough links
-4. Add `mattermostdriver` to requirements.txt
-5. Create Django webhook endpoint for Mattermost bot
-6. Implement browser context pool (Playwright)
-7. Add credential vault for AI service logins
-8. Test Kimi/Claude adapters in headless browser
-9. Consider adding API fallback mode for ChatGPT/Gemini (official APIs are more reliable)
-10. Add Windsurf/Cursor hybrid mode for code-heavy tasks per Sheila's suggestion
+---
+
+## 2026-05-03 (Early Morning — Laptop)
+**Status**: ✅ BINGO
+**Branch**: main
+
+### Summary
+Fixed Odoo passthrough blank/garbled screen. Odoo login form now renders correctly inside PolySaaS admin shell.
+
+### Root Cause Chain
+1. Sidebar URL used `trigger_path` norm instead of `endpoint_url` hostname → middleware lookup always missed
+2. No root redirect for hostname triggers → browser hit Odoo `/` returning garbled bytes
+3. `brotlicffi` missing from requirements.txt → Render CDN's Brotli-encoded responses decoded as garbled UTF-8
+4. `allow_redirects=False` caused 502 on Render → reverted to True
+5. **KEY INSIGHT**: Many apparent "code bugs" in previous sessions were actually caused by `polysaas_postgres` DB being gone — app was running on cached session data
+
+### Key Architecture Rule
+- Sidebar href = `/pt/admin/<endpoint_url hostname>/`
+- Middleware matches endpoint by `endpoint_url__icontains="://<hostname>"` (DB lookup)
+- Root path → Django redirect to `/web/login` (browser URL stays correct)
+- `allow_redirects=True` for GET, `False` for POST (browser follows post-login redirect to correct URL)
+- `brotlicffi==1.1.0.0` in requirements.txt for Brotli decompression
+
+### Files Changed
+- `dose/context_processors.py` — sidebar URL from `endpoint_url` hostname
+- `dose/passthrough/middleware.py` — endpoint lookup by `endpoint_url` hostname
+- `dose/passthrough/handlers/odoo_handler.py` — root redirect to `/web/login`, smarter allow_redirects
+- `requirements.txt` — added `brotlicffi==1.1.0.0`
+- `documentation/BINGO_Odoo_Passthrough_Login.md` — this session's BINGO doc
+
+### Rollback Note
+Rolled back 47 commits to `0616583` (last BINGO). All discarded work saved on `passthrough-wip` branch on GitHub.
+
+### Follow-ups for Next Session
+- Test Odoo **post-login** (form submit → session → `/odoo/` apps page)
+- Verify Location header rewriting works for post-login redirect
+- Test Mattermost passthrough (same hostname approach)
+- Re-integrate AI Bridge (Kimi/Claude adapters) from `passthrough-wip` branch
+- Re-integrate provisioners for all 6 bundled apps from `passthrough-wip` branch
+
+---
+
+## 2026-05-03 — Odoo DB Disaster Recovery + Infrastructure Hardening
+
+### Status: IN PROGRESS (Core down at session end)
+
+### Branch: main
+
+### Summary
+Attempted to reset Odoo admin credentials via Odoo DB manager → the "Delete Database"
+operation succeeded (despite showing a 500 error), wiping `polysaas_postgres` which was
+shared by BOTH Django (Core) and Odoo. Both services went down.
+
+Recovery steps taken:
+- Created `polysaas_postgres` database in PgAdmin (reconnected to Render PostgreSQL)
+- PolySaaS-Core redeployment still failing — DATABASE_URL may point to a DIFFERENT
+  Render PostgreSQL than where the DB was recreated. Need to verify `DATABASE_URL` host.
+- Set `PolySaaS-Odoo2 autoDeployTrigger: off` in render.yaml to prevent Python commits
+  from triggering unnecessary Odoo redeployments.
+- Identified root cause of shared DB: individual env vars on Odoo2 overrode group
+  `ODOO_DB_NAME: odoodb` with `polysaas_postgres` (Django's DB name).
+
+### Files Changed
+- `render.yaml` — `PolySaaS-Odoo2 autoDeployTrigger: off`
+
+### CRITICAL Next-Session Actions (do these FIRST)
+1. Check `DATABASE_URL` in Render → PolySaaS-Core → Environment — get the DB hostname
+2. Connect PgAdmin to THAT specific PostgreSQL host and create `polysaas_postgres` there
+3. Manual Deploy PolySaaS-Core — wait for pre-deploy (migrate_all_schemas) to succeed
+4. In Render → `polysaas-odoo` env group, set:
+   - `ODOO_DB_HOST` = `dpg-d7lple0ebus73e3le4ug-a`
+   - `ODOO_DB_USER` = `polysaas_postgres_user`
+   - `ODOO_DB_NAME` = `odoodb` (NOT polysaas_postgres — keep them separate!)
+   - `ODOO_DB_PASSWORD` = `yTfbrzBFpCpSfLCICemNZUbqnfq1G5yU`
+5. Create `odoodb` database in PgAdmin: `CREATE DATABASE odoodb OWNER polysaas_postgres_user;`
+6. Remove individual Odoo2 env overrides: `ODOO_DB_NAME`, `ODOO_DB_USER`, `HOST`
+   (group values will take over cleanly)
+7. Manual Deploy PolySaaS-Odoo2
+8. Go to Odoo DB manager, create database with known admin password
+9. Test Odoo login via passthrough — verify post-login redirect to apps page

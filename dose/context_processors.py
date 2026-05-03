@@ -342,16 +342,17 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
-            # Build the sidebar URL from the endpoint_url hostname.
-            # The trigger in the URL must be the real hostname — never a short name.
-            # If endpoint_url is missing/invalid, skip this endpoint to avoid broken links.
-            from urllib.parse import urlparse
-            parsed = urlparse(endpoint.endpoint_url or '')
-            hostname = parsed.netloc
-            if not hostname:
+            # Build URL from the endpoint_url hostname.
+            # The hostname encodes the upstream target directly — the middleware strips
+            # /pt/admin/ and prepends https:// to reconstruct the upstream URL, so no
+            # second DB lookup is required to know where to forward the request.
+            from urllib.parse import urlparse as _urlparse
+            _parsed = _urlparse(endpoint.endpoint_url or '')
+            _hostname = _parsed.netloc
+            if not _hostname:
                 print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.trigger_path}' — endpoint_url missing or invalid: {endpoint.endpoint_url!r}")
                 continue
-            url = f'/pt/admin/{hostname}/'
+            url = f'/pt/admin/{_hostname}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")
 
