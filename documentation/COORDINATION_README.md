@@ -251,3 +251,34 @@ Recovery steps taken:
 7. Manual Deploy PolySaaS-Odoo2
 8. Go to Odoo DB manager, create database with known admin password
 9. Test Odoo login via passthrough — verify post-login redirect to apps page
+
+---
+
+## 2026-05-04 (Early Morning — Laptop → Office)
+**Status**: IN PROGRESS — env group fixed, deploy pending
+**Branch**: main
+
+### Summary
+Picked up at office. Odoo was in crash loop due to stale env group values. Fixed `polysaas-odoo` 
+environment group to use correct Render PostgreSQL credentials and point to `odoo_prod` DB.
+
+### Actions Completed
+- Identified `polysaas-odoo` group had wrong values: `odoodb` (non-existent), `odoouser`, missing host/password
+- Updated group values:
+  - `DB_NAME` / `ODOO_DB_NAME`: `odoo_prod`
+  - `ODOO_DB_USER`: `polysaas_postgres_user`
+  - `ODOO_DB_HOST`: `dpg-d7lple0ebus73e3le4ug-a`
+  - `ODOO_DB_PASSWORD`: `yTfbrzBFpCpSfLCICemNZUbqnfq1G5yU`
+- Committed `render.yaml` changes:
+  - Hardcoded `ODOO_DB_NAME=odoo_prod` on service (overrides group if needed)
+  - Added `ODOO_AUTO_INIT=1` to force re-initialization (fixes missing `web.login` template)
+
+### Pending (Next Session at Office)
+- Wait for PolySaaS-Odoo2 Manual Deploy to complete init
+- Verify `/web/login` renders without 500
+- Reset admin password via SQL or DB manager
+- Test passthrough login end-to-end
+- **Remove `ODOO_AUTO_INIT`** from render.yaml after successful init
+
+### Files Changed
+- `render.yaml` — hardcoded `ODOO_DB_NAME` and `ODOO_AUTO_INIT` for Odoo2 service
