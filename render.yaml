@@ -120,7 +120,7 @@ envVarGroups:
       - key: ODOO_DB_HOST
         sync: false
       - key: ODOO_DB_USER
-        value: odoouser
+        value: polysaas_postgres_user
       - key: ODOO_DB_PASSWORD
         sync: false
       - key: ODOO_DB_NAME
@@ -306,6 +306,7 @@ services:
     dockerContext: deploy/odoo-render
     autoDeployTrigger: off
     healthCheckPath: /web/login
+    initialDelaySeconds: 300
     envVars:
       - fromGroup: polysaas-odoo
     disk:
