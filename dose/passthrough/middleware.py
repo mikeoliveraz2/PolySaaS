@@ -82,6 +82,10 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     We extract the <head> content (styles, scripts, shims) and <body> content separately,
     then inject them into the appropriate blocks of the admin template.
     """
+    print(f"[_WRAP] _wrap_in_admin_template CALLED")
+    print(f"[_WRAP]   trigger={trigger}, status={response.status_code}")
+    print(f"[_WRAP]   content_type={response.get('Content-Type', 'NONE')}")
+    
     from django.template.loader import render_to_string
     from django.http import HttpResponse as DjangoHttpResponse
     from django.utils.safestring import mark_safe
@@ -89,16 +93,20 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     # Only wrap HTML responses
     content_type = response.get('Content-Type', '')
     if 'text/html' not in content_type:
+        print(f"[_WRAP]   SKIP: not HTML content type")
         return response
     
     # Get the raw HTML content
     try:
         raw_html = response.content.decode('utf-8', errors='ignore')
-    except Exception:
+        print(f"[_WRAP]   raw_html length={len(raw_html)}")
+    except Exception as e:
+        print(f"[_WRAP]   ERROR decoding content: {e}")
         return response
     
     # Don't wrap if it's an error page or empty
     if not raw_html or len(raw_html) < 100:
+        print(f"[_WRAP]   SKIP: content too short ({len(raw_html) if raw_html else 0} chars)")
         return response
     
     # Use the trigger as-is for the URL (it's a hostname like polysaas-odoo2.onrender.com).
@@ -259,12 +267,17 @@ def run_pt_admin_passthrough_core(request):
         else None
     )
     if callable(try_root):
+        print(f"[PT-CORE] Calling handler.try_root_display_shell_response...")
         shell = try_root(request, endpoint, trigger)
+        print(f"[PT-CORE] Handler returned: {type(shell).__name__ if shell else 'None'}")
         if shell is not None:
-            print("[PT-CORE] Handler display shell — admin/display.html (no forward)")
+            print(f"[PT-CORE] Handler display shell — returning {type(shell).__name__} (no forward)")
             request._passthrough_handled = True
             request._passthrough_response = shell
             return shell
+        print(f"[PT-CORE] Handler returned None, falling through to forward")
+    else:
+        print(f"[PT-CORE] No try_root method on handler")
 
     print("\n" + "=" * 120)
     print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")

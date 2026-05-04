@@ -117,13 +117,20 @@ class OdooPassthroughHandler:
         body inner only for non-root paths (root stays empty so the SPA owns #wrapwrap — avoids
         double DOM vs server snapshot). quoted /web/ rewrite + XHR patch. Static ext → forward.
         """
+        print(f"[ODOO HANDLER] try_root_display_shell_response CALLED")
+        print(f"[ODOO HANDLER]   method={request.method}, path_info={request.path_info}")
+        print(f"[ODOO HANDLER]   url_trigger_segment={url_trigger_segment}")
+        print(f"[ODOO HANDLER]   endpoint={endpoint}")
+        
         if request.method != "GET":
+            print(f"[ODOO HANDLER]   RETURN None: not GET")
             return None
 
         # Hostname triggers (e.g. polysaas-odoo2.onrender.com): the sidebar link encodes
         # the upstream host directly.  Redirect the browser from the proxy root to /web/login
         # so the browser URL is /pt/admin/<host>/web/login — the shim then strips the proxy
         # prefix and Odoo's router sees /web/login instead of /, which avoids blank/garbled page.
+        print(f"[ODOO HANDLER]   checking hostname trigger...")
         if "." in url_trigger_segment:
             proxy_prefix = f"/pt/admin/{url_trigger_segment.strip('/')}"
             if request.path_info.rstrip("/") == proxy_prefix:
