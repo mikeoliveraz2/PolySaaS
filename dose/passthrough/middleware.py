@@ -7,6 +7,7 @@ from dose.passthrough.handlers.registry import (
     get_handler_for_endpoint,
     pt_admin_core_delegated_to_urlconf,
 )
+from dose.passthrough.utils import normalize_trigger_segment
 from dose.utils import get_current_tenant
 
 logger = logging.getLogger(__name__)
