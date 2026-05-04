@@ -115,16 +115,17 @@ _invoke_odoo() {
 }
 
 if [ "${ODOO_AUTO_INIT:-0}" = "1" ] || [ "${ODOO_AUTO_INIT:-}" = "true" ] || [ "${ODOO_AUTO_INIT:-}" = "yes" ]; then
-  IM_EXISTS="$(
+  # Check if web module is actually installed (not just if table exists)
+  WEB_INSTALLED="$(
     PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
       psql -h "$HOST" -p "$DB_PORT" -U "$USER_VAL" -d "$DBN_VAL" -tAc \
-      "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_module_module');"
+      "SELECT state FROM ir_module_module WHERE name = 'web' LIMIT 1;" 2>/dev/null || echo ""
   )"
-  IM_EXISTS="$(printf '%s' "${IM_EXISTS}" | tr -d '[:space:]')"
-  if [ "${IM_EXISTS}" = "t" ]; then
-    echo "[entrypoint-render] ODOO_AUTO_INIT: public.ir_module_module present; skipping -i." >&2
+  WEB_INSTALLED="$(printf '%s' "${WEB_INSTALLED}" | tr -d '[:space:]')"
+  if [ "${WEB_INSTALLED}" = "installed" ]; then
+    echo "[entrypoint-render] ODOO_AUTO_INIT: web module already installed; skipping -i." >&2
   else
-    echo "[entrypoint-render] ODOO_AUTO_INIT: installing base,web --stop-after-init (often several minutes)..." >&2
+    echo "[entrypoint-render] ODOO_AUTO_INIT: web module not installed (state='${WEB_INSTALLED}'); installing base,web --stop-after-init..." >&2
     _invoke_odoo -i base,web --stop-after-init
     echo "[entrypoint-render] ODOO_AUTO_INIT: install step finished." >&2
   fi
