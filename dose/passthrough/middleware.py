@@ -290,7 +290,20 @@ def run_pt_admin_passthrough_core(request):
         request, endpoint.endpoint_url, handler=handler, endpoint=endpoint
     )
 
-    if _is_initial_page_load(request):
+    # Check if upstream service is down
+    if response.status_code in (502, 503, 504):
+        from django.http import HttpResponse
+        error_html = f"""
+        <div style="padding: 40px; text-align: center;">
+            <h2 style="color: #dc3545;">Service Unavailable</h2>
+            <p>The external service <code>{trigger}</code> is currently not running.</p>
+            <p>Status: {response.status_code}</p>
+            <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
+        </div>
+        """
+        response = HttpResponse(error_html, status=503)
+        print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} — showing error page")
+    elif _is_initial_page_load(request):
         print("[PT-CORE] Initial page load — wrapping in admin template")
         response = _wrap_in_admin_template(request, response, trigger, endpoint)
     else:
