@@ -282,3 +282,32 @@ environment group to use correct Render PostgreSQL credentials and point to `odo
 
 ### Files Changed
 - `render.yaml` — hardcoded `ODOO_DB_NAME` and `ODOO_AUTO_INIT` for Odoo2 service
+
+---
+
+## 2026-05-04 (Evening — Condo)
+**Status**: PAUSED — 15hr day, new SDLC plan for tomorrow
+**Branch**: main
+
+### Summary
+Odoo2 still not showing login via passthrough (blank screen on sidebar click). After frustrating 
+debug cycle with Render logs, realized current SDLC is backwards: committing infra changes and 
+waiting for Render deploy to test passthrough logic is painfully slow.
+
+### New SDLC Rule (Effective Tomorrow)
+1. **Develop and test passthrough logic LOCALLY first** — add logging, find errors, fix immediately
+2. **Only commit/push to Render after local validation** — minimize Render cycle to final verification
+3. **Local Django + local Postgres** for all passthrough development
+4. **External services (Odoo, Mattermost, etc.) stay on Render** — accessed via passthrough as designed
+
+### Tomorrow's First Task
+Test Odoo passthrough locally:
+- `python manage.py runserver`
+- Click Odoo sidebar
+- Add tracing to `odoo_handler.py` to find blank screen root cause
+- Fix locally, verify, then commit/push
+
+### Current Render Status
+- PolySaaS-Odoo2: Running but passthrough shows blank (not 500)
+- Env group values correct (`odoo_prod`, proper credentials)
+- `ODOO_AUTO_INIT` still in YAML (remove after login works)
