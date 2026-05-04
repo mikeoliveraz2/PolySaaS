@@ -4,6 +4,78 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-04 — The "Stupid Debug Session" (Paradigm Shift)
+
+**Status**: Debugging in progress  
+**Branch**: main  
+**Time**: ~6 hours of cloud-deploy-debug iterations before realizing local dev is the only sane approach
+
+### Summary
+Spent 6+ hours debugging Odoo passthrough blank screen issue using the **insane** methodology: edit code → commit → push → wait for Render deploy → check gimpy logs → repeat. This is the **wrong way** to debug. Both user and assistant failed to recognize this immediately.
+
+The actual working approach: **Develop and test locally first**, then deploy once it's working. User has full local setup (Postgres, Docker apps) but wasn't using it for passthrough debugging.
+
+### Key Issues Discovered
+
+**1. Template Missing Bug**
+- `_wrap_in_admin_template()` in `middleware.py` tried to render `admin/passthrough_embed.html` which **did not exist**
+- Created `templates/admin/passthrough_embed.html` to fix
+
+**2. Odoo Auto-Init Bug**
+- Entrypoint script checked if `ir_module_module` **table existed**, not if `web` module was **installed**
+- Database had empty tables from failed init → `web.login` template not found → 500 errors
+- Fixed entrypoint to check `SELECT state FROM ir_module_module WHERE name = 'web'`
+
+**3. Handler Returns None for /web/login**
+- `try_root_display_shell_response` returns `None` for non-root paths
+- Falls through to forwarder, which wraps raw Odoo response
+- This is actually working as designed (handler only handles root path redirect)
+
+**4. 502 Error Handling**
+- Added better error display when upstream service returns 502/503/504 instead of blank page
+
+### Root Cause of Blank Page
+The blank page persists despite fixes. Current theory:
+1. Handler returns `None` for `/web/login` → falls through to forwarder
+2. Forwarder gets 200 OK from Odoo with valid HTML
+3. `_is_initial_page_load()` may be returning `False` for some reason (treating HTML as API/asset)
+4. OR the wrapped template is rendering empty content
+
+**Next Step**: Test locally with full debug output to see exactly what `_is_initial_page_load` decides and what the wrapped HTML looks like.
+
+### Files Changed Today
+1. `templates/admin/passthrough_embed.html` — CREATED (missing template)
+2. `deploy/odoo-render/entrypoint-render.sh` — FIXED (check web module state, not just table existence)
+3. `dose/passthrough/middleware.py` — ADDED error handling for 502/503/504
+
+### Paradigm Shift
+**OLD (stupid) workflow:**
+- Edit → Commit → Push → Wait 2-5 min for deploy → Check gimpy Render logs → Repeat
+- 6+ hours, no resolution
+
+**NEW (correct) workflow:**
+- Run Core locally on localhost:8000
+- Test passthrough pointing to Render Odoo (or local Docker Odoo)
+- Full console logs, instant turnaround, can use debugger
+- When working, commit → push → quick Render verification
+
+### Next Session (2026-05-05)
+**User will:**
+1. Set `DOSE_DB_PASSWORD` in `.env` for local Postgres
+2. Run `python manage.py runserver`
+3. Access `http://localhost:8000/admin/`
+4. Click Odoo passthrough link
+5. Check full debug output in console
+
+**Or:** Test via URL directly: `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/web/login`
+
+**Assistant will:**
+- Help interpret local debug output
+- Fix whatever `_is_initial_page_load` or wrapper issue is causing blank page
+- Once working locally, commit and push to Render
+
+---
+
 ## 2026-04-29
 **Status**: In Progress
 **Branch**: main
