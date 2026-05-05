@@ -383,3 +383,23 @@ Test Odoo passthrough locally:
 - PolySaaS-Odoo2: Running but passthrough shows blank (not 500)
 - Env group values correct (`odoo_prod`, proper credentials)
 - `ODOO_AUTO_INIT` still in YAML (remove after login works)
+
+---
+
+## 2026-05-05 (Evening — Condo)
+**Status**: IN PROGRESS — Odoo login working, Mattermost admin lost
+**Branch**: main
+
+### Summary
+Pulled from GitHub (38 objects from desktop session). Big news: **Odoo passthrough login is working** — apps screen renders after login. The earlier blank screen issue is resolved.
+
+Mattermost admin credentials lost (thought they were `mmadmin` / `PolySaaS2026!` but not working). Recovery options identified:
+- `mmctl user list` / `mmctl user change-password` in Render Shell
+- `mattermost user create --local --system_admin` in Render Shell  
+- Direct SQL on `mattermost` DB in PgAdmin as fallback
+
+### Ultimate Goal (The North Star)
+New subscriber → provision apps (Odoo, Mattermost, NextCloud, etc.) → SSO to those apps in the company's name seamlessly.
+
+### Tomorrow's First Task
+Recover Mattermost admin credentials, verify Mattermost passthrough login works end-to-end.
