@@ -129,6 +129,7 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
         """
         Look up the app trigger from the path, find the TenantApp,
         and inject the app-specific auth token if one is stored.
+        Uses raw SQL to query public schema directly.
         """
         parts = request.path.strip('/').split('/')
         if len(parts) < 3 or parts[0] != 'pt':
@@ -140,20 +141,27 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
             return
 
         try:
-            from dose.models import TenantApp
-            from dose.utils import get_current_tenant
+            import json
+            from django.db import connection
 
-            tenant = get_current_tenant(request)
-            if not tenant:
+            extra_config = None
+            with connection.cursor() as cur:
+                cur.execute("SET search_path TO public,pg_catalog")
+                cur.execute(
+                    """SELECT extra_config FROM dose_tenantapp
+                       WHERE app_name = %s AND status = 'active'
+                       LIMIT 1""",
+                    [trigger],
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    cfg = row[0]
+                    extra_config = json.loads(cfg) if isinstance(cfg, str) else cfg
+
+            if not extra_config:
                 return
 
-            ta = TenantApp.objects.filter(
-                tenant=tenant, app_name=trigger, status='active',
-            ).first()
-            if not ta or not ta.extra_config:
-                return
-
-            app_token = ta.extra_config.get(token_key)
+            app_token = extra_config.get(token_key)
             if app_token:
                 request.META['HTTP_AUTHORIZATION'] = f'Bearer {app_token}'
                 logger.debug(

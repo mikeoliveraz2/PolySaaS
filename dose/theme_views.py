@@ -7,24 +7,38 @@ import json
 
 @login_required
 def toggle_theme(request):
-    tenant = get_current_tenant(request)
-    if not tenant:
-        return JsonResponse({'error': 'No tenant found for this session.'}, status=400)
-    profile, _ = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
-    # Use user's preferred light/dark theme for toggling
-    current_theme = getattr(profile, 'last_selected_theme', 'flatly')
-    light_theme = getattr(profile, 'light_theme', 'flatly')
-    dark_theme = getattr(profile, 'dark_theme', 'darkly')
+    """
+    Toggle between light and dark mode.
+    Stores preference in session and cookie (not database - follows user across requests).
+    """
+    # Get user's preferred themes from session or defaults
+    light_theme = request.session.get('light_theme', 'flatly')
+    dark_theme = request.session.get('dark_theme', 'darkly')
+
+    # Get current mode from session, cookie, or default to light
+    current_mode = request.session.get('display_mode', 'light')
+    # Also check cookie for persistence across sessions
+    if 'display_mode' in request.COOKIES:
+        current_mode = request.COOKIES.get('display_mode', 'light')
+
     dark_themes = ['darkly', 'cyborg', 'slate', 'superhero', 'solar']
-    # If current theme is a dark theme, switch to light; else switch to dark
-    if current_theme in dark_themes:
+
+    # Toggle logic: if currently dark, switch to light; else switch to dark
+    if current_mode == 'dark' or (current_mode in dark_themes):
+        new_mode = 'light'
         new_theme = light_theme
     else:
+        new_mode = 'dark'
         new_theme = dark_theme
-    # Only update last_selected_theme, do NOT overwrite light_theme or dark_theme
-    profile.last_selected_theme = new_theme
-    profile.save()
-    return JsonResponse({'theme': new_theme})
+
+    # Store in session
+    request.session['display_mode'] = new_mode
+
+    # Build response with cookie
+    response = JsonResponse({'theme': new_theme, 'mode': new_mode})
+    response.set_cookie('display_mode', new_mode, max_age=31536000, path='/')  # 1 year
+
+    return response
 
 @login_required
 @require_POST

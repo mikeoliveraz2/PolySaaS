@@ -23,6 +23,24 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
+    def _get_endpoint_url(self):
+        """Get the actual Mattermost endpoint URL from the database config."""
+        try:
+            from dose.models import PassThroughEndpoint
+            ep = PassThroughEndpoint.objects.filter(
+                trigger_path='mattermost', is_enabled=True
+            ).first()
+            if ep and ep.endpoint_url:
+                return ep.endpoint_url.rstrip('/')
+        except Exception:
+            pass
+        # Fallback to settings or localhost
+        try:
+            from django.conf import settings
+            return getattr(settings, 'MATTERMOST_URL', 'http://localhost:8065').rstrip('/')
+        except Exception:
+            return 'http://localhost:8065'
+
     def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
         """Static bundle URLs are served by mattermost_static_proxy in URLconf, not PT core."""
         return path_info.startswith("/pt/admin/mattermost/static/")
@@ -47,43 +65,69 @@ class MattermostPassthroughHandler:
 
         display_head_inner = ""
         display_body_inner = ""
-        raw_html = fetch_upstream_index_html(
-            request, endpoint.endpoint_url, "/", handler=self
+        # Use _get_endpoint_url to get the actual configured URL, not the fallback
+        actual_endpoint_url = self._get_endpoint_url() or endpoint.endpoint_url
+        print(f"[MATTERMOST_DISPLAY] Endpoint URL: {actual_endpoint_url}")
+        upstream_result = fetch_upstream_index_html(
+            request, actual_endpoint_url, "/", handler=self
         )
+        print(f"[MATTERMOST_DISPLAY] upstream_result type: {type(upstream_result).__name__}")
+        
+        # fetch_upstream_index_html returns HttpResponse on success, str sentinel on redirect, "" on error
+        raw_html = ""
+        if hasattr(upstream_result, 'content'):
+            try:
+                raw_html = upstream_result.content.decode('utf-8')
+                print(f"[MATTERMOST_DISPLAY] Got HttpResponse, content length: {len(upstream_result.content)}")
+            except Exception as e:
+                print(f"[MATTERMOST_DISPLAY] Decode error: {e}")
+                raw_html = upstream_result.content.decode('utf-8', errors='replace')
+        elif isinstance(upstream_result, str):
+            raw_html = upstream_result
+            print(f"[MATTERMOST_DISPLAY] Got string, length: {len(raw_html)}, starts with: {raw_html[:50] if raw_html else 'EMPTY'}")
+
+        print(f"[MATTERMOST_DISPLAY] raw_html length: {len(raw_html)}, has head: {'<head' in raw_html}, has body: {'<body' in raw_html}")
+        
+        # fetch_upstream_index_html does NOT call process_html_response — we must do it here
+        processed_html = raw_html
         if raw_html and not raw_html.startswith("REDIRECT:"):
-            proxy_prefix = "/pt/admin/mattermost"
-            _static_attr = re.compile(
-                r'(src|href)=(["\'])(/static/[^"\']*)', re.IGNORECASE
-            )
-
-            def _rewrite_static_attrs(fragment):
-                if not fragment:
-                    return fragment
-                return _static_attr.sub(
-                    lambda m2: (
-                        f"{m2.group(1)}={m2.group(2)}{proxy_prefix}{m2.group(3)}{m2.group(2)}"
-                    ),
-                    fragment,
+            try:
+                processed, _ = self.process_html_response(
+                    raw_html, request, endpoint_url=actual_endpoint_url
                 )
-
+                if processed:
+                    processed_html = processed
+                    print(f"[MATTERMOST_DISPLAY] process_html_response applied, URLs rewritten")
+            except Exception as e:
+                print(f"[MATTERMOST_DISPLAY] process_html_response failed: {e}")
+        
+        if processed_html and not processed_html.startswith("REDIRECT:"):
             m = re.search(
                 r"<head[^>]*>(.*?)</head>",
-                raw_html,
+                processed_html,
                 re.DOTALL | re.IGNORECASE,
             )
             if m:
-                display_head_inner = _rewrite_static_attrs(m.group(1).strip())
+                display_head_inner = m.group(1).strip()
+                print(f"[MATTERMOST_DISPLAY] Extracted head, length: {len(display_head_inner)}")
+            else:
+                print("[MATTERMOST_DISPLAY] No <head> found in processed_html")
             m_body = re.search(
                 r"<body[^>]*>(.*?)</body>",
-                raw_html,
+                processed_html,
                 re.DOTALL | re.IGNORECASE,
             )
             if m_body:
-                display_body_inner = _rewrite_static_attrs(m_body.group(1).strip())
+                display_body_inner = m_body.group(1).strip()
+                print(f"[MATTERMOST_DISPLAY] Extracted body, length: {len(display_body_inner)}")
+            else:
+                print("[MATTERMOST_DISPLAY] No <body> found in processed_html")
+        else:
+            print(f"[MATTERMOST_DISPLAY] processed_html empty or redirect: {processed_html[:100] if processed_html else 'EMPTY'}")
 
         # Full shim: token + webpack + fetch/XHR/WebSocket (display shell had only the first half → spinner).
         proxy_prefix = "/pt/admin/mattermost"
-        _origin = endpoint.endpoint_url.rstrip("/")
+        _origin = actual_endpoint_url.rstrip("/")
         _p = urlparse(_origin)
         base_origin = f"{_p.scheme}://{_p.netloc}"
         shim_html = self._mattermost_display_shim_html(
@@ -126,16 +170,26 @@ class MattermostPassthroughHandler:
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
 
+        # Rewrite file paths with extensions (capture query param as part of group 3, not separate)
         html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map))',
+            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
 
         html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*)',
+            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
             lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Rewrite absolute upstream-origin URLs (e.g. https://polysaas-mattermost.onrender.com/static/...)
+        _abs_static = re.escape(base_origin) + r'/static/'
+        html_str = re.sub(
+            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static/{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
@@ -146,70 +200,111 @@ class MattermostPassthroughHandler:
 
         return html_str, None
 
+    def _get_tenantapp_extra_config(self):
+        """Query TenantApp extra_config from public schema using raw SQL to avoid schema issues."""
+        import json
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("SET search_path TO public,pg_catalog")
+            cur.execute(
+                """SELECT extra_config FROM dose_tenantapp
+                   WHERE app_name = 'mattermost' AND status = 'active'
+                   LIMIT 1""",
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                cfg = row[0]
+                # PostgreSQL JSONField may return dict or JSON string
+                if isinstance(cfg, str):
+                    return json.loads(cfg)
+                return cfg
+        return None
+
+    def _save_tenantapp_token(self, token):
+        """Save refreshed token to public schema TenantApp using raw SQL."""
+        import json
+        import time
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("SET search_path TO public,pg_catalog")
+            # Build updated extra_config with new token
+            extra = self._get_tenantapp_extra_config() or {}
+            extra['mmauthtoken'] = token
+            extra['mmauthtoken_time'] = time.time()
+            extra['mm_session_token'] = token
+            extra['mm_session_token_time'] = time.time()
+            cur.execute(
+                """UPDATE dose_tenantapp SET extra_config = %s
+                   WHERE app_name = 'mattermost' AND status = 'active'""",
+                [json.dumps(extra)],
+            )
+
     def get_upstream_cookies(self, request):
         """
         Provide session cookies for SSO/auto-login to Mattermost.
         Mattermost primarily uses MMAUTHTOKEN header/cookie.
         """
         try:
-            from dose.models import TenantApp
             from dose.utils import get_current_tenant
             import requests as _req
 
             tenant = get_current_tenant(request)
+            print(f"[MM_AUTH] tenant: {tenant}")
             if not tenant:
                 return {}
 
-            ta = TenantApp.objects.filter(
-                tenant=tenant, app_name='mattermost', status='active'
-            ).first()
+            extra_config = self._get_tenantapp_extra_config()
+            print(f"[MM_AUTH] extra_config found: {extra_config is not None}")
 
-            if not ta or not ta.extra_config:
+            if not extra_config:
+                print("[MM_AUTH] No extra_config for mattermost TenantApp")
                 return {}
 
-            # Try cached MMAUTHTOKEN first (check multiple possible key names)
-            token = (ta.extra_config.get('mmauthtoken') or 
-                     ta.extra_config.get('mm_session_token') or
-                     ta.extra_config.get('mm_token'))
-            token_time = (ta.extra_config.get('mmauthtoken_time') or 
-                          ta.extra_config.get('mm_session_token_time', 0))
+            # Try cached MMAUTHTOKEN first
+            token = (extra_config.get('mmauthtoken') or 
+                     extra_config.get('mm_session_token') or
+                     extra_config.get('mm_token'))
+            token_time = (extra_config.get('mmauthtoken_time') or 
+                          extra_config.get('mm_session_token_time', 0))
 
             if token and (time.time() - token_time < 3600):
                 logger.info("[MattermostPassthroughHandler] Using cached token: %s...", token[:8] if token else 'None')
                 return {'MMAUTHTOKEN': token}
 
-            # Refresh session if needed (check multiple possible key names)
-            password = (ta.extra_config.get('mattermost_password') or 
-                        ta.extra_config.get('mm_password') or
-                        ta.extra_config.get('password'))
+            # Refresh session if needed
+            password = (extra_config.get('mattermost_password') or 
+                        extra_config.get('mm_password') or
+                        extra_config.get('password'))
+            print(f"[MM_AUTH] password present: {bool(password)}")
             if not password:
                 logger.warning("[MattermostPassthroughHandler] No password available in extra_config")
                 return {}
 
-            login_id = (ta.extra_config.get('mattermost_login_id') or 
-                        ta.extra_config.get('mm_login_id') or
+            login_id = (extra_config.get('mattermost_login_id') or 
+                        extra_config.get('mm_login_id') or
                         request.user.email)
+            print(f"[MM_AUTH] login_id: {login_id}")
 
+            mm_origin = self._get_endpoint_url()
+            print(f"[MM_AUTH] mm_origin: {mm_origin}")
             resp = _req.post(
-                'http://localhost:8065/api/v4/users/login',
+                f'{mm_origin}/api/v4/users/login',
                 json={'login_id': login_id, 'password': password},
                 timeout=10,
             )
+            print(f"[MM_AUTH] login response status: {resp.status_code}")
 
             if resp.status_code == 200:
                 token = resp.headers.get('Token')
+                print(f"[MM_AUTH] Token header present: {bool(token)}")
                 if token:
-                    # Save with both key names for compatibility
-                    ta.extra_config['mmauthtoken'] = token
-                    ta.extra_config['mmauthtoken_time'] = time.time()
-                    ta.extra_config['mm_session_token'] = token
-                    ta.extra_config['mm_session_token_time'] = time.time()
-                    ta.save(update_fields=['extra_config'])
+                    self._save_tenantapp_token(token)
                     logger.info("[MattermostPassthroughHandler] MMAUTHTOKEN refreshed: %s...", token[:8])
                     return {'MMAUTHTOKEN': token}
 
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] get_upstream_cookies failed: %s", exc)
+            print(f"[MM_AUTH] EXCEPTION: {exc}")
 
         return {}
 
@@ -287,19 +382,23 @@ class MattermostPassthroughHandler:
 
     var _f = window.fetch;
     window.fetch = function(input, init) {{
+        var original = input;
         if (typeof input === 'string') {{
             input = toProxy(input);
         }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
             var u = toProxy(input.url);
             if (u !== input.url) input = new Request(u, input);
         }}
+        if (original !== input) console.log('[PolySaaS MM] fetch:', original, '->', input);
         return _f.call(this, input, init);
     }};
 
     var _xo = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url) {{
+        var proxied = toProxy(url);
+        if (url !== proxied) console.log('[PolySaaS MM] XHR:', method, url, '->', proxied);
         var rest = Array.prototype.slice.call(arguments, 2);
-        return _xo.apply(this, [method, toProxy(url)].concat(rest));
+        return _xo.apply(this, [method, proxied].concat(rest));
     }};
 
     var _WS = WebSocket;
@@ -353,6 +452,19 @@ class MattermostPassthroughHandler:
         return _setAttr.call(this, name, value);
     }};
 
+    // Monitor script errors from Mattermost bundles
+    window.addEventListener('error', function(e) {{
+        console.error('[PolySaaS MM] Global error:', e.message, 'at', e.filename, ':', e.lineno);
+    }});
+    window.addEventListener('unhandledrejection', function(e) {{
+        console.error('[PolySaaS MM] Unhandled promise rejection:', e.reason);
+    }});
+    // Log when scripts are loaded
+    var _origAppend = HTMLHeadElement.prototype.appendChild;
+    HTMLHeadElement.prototype.appendChild = function(node) {{
+        if (node.tagName === 'SCRIPT') console.log('[PolySaaS MM] Script appended:', node.src || '(inline)');
+        return _origAppend.call(this, node);
+    }};
     console.log('[PolySaaS Mattermost] Full shim loaded, proxy=', PROXY);
 }})();
 </script>

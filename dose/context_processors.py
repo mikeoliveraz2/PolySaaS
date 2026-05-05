@@ -31,8 +31,6 @@ def tenant_context(request):
 
 def jazzmin_theme(request):
     import logging
-    import logging
-    import logging
     themes = [
         "default","cerulean","cosmo","cyborg","darkly","flatly","journal","litera","lumen","lux","materia","minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab","superhero","united","yeti"
     ]
@@ -44,10 +42,7 @@ def jazzmin_theme(request):
         from dose.models import UserProfile
         from dose.tenant_utils import get_current_tenant
 
-        # Get the user's actual tenant, not hardcoded public
         tenant = get_current_tenant(request)
-
-        # If no tenant from session, try to get from user's existing profile
         if not tenant:
             try:
                 existing_profile = getattr(request.user, 'userprofile', None)
@@ -61,17 +56,20 @@ def jazzmin_theme(request):
         if tenant:
             try:
                 profile = UserProfile.objects.get(user=request.user, tenant=tenant)
-                theme = profile.last_selected_theme or "flatly"
                 jazzmin_light_theme = profile.light_theme or "default"
                 jazzmin_dark_theme = profile.dark_theme or ""
-                # print(f"[CTXPROC] Found profile for {request.user.username} in {tenant.name}: light={jazzmin_light_theme}, dark={jazzmin_dark_theme}")
             except UserProfile.DoesNotExist:
-                # print(f"[CTXPROC] No profile found for {request.user.username} in {tenant.name}")
                 pass
+
+        # ACTIVE THEME: read from session/cookie (not database) for scalability
+        display_mode = request.session.get('display_mode', 'light')
+        if 'display_mode' in request.COOKIES:
+            display_mode = request.COOKIES.get('display_mode', 'light')
+        # Use light/dark preference based on display_mode
+        theme = jazzmin_light_theme if display_mode == 'light' else (jazzmin_dark_theme or 'darkly')
         if theme not in themes:
             theme = "flatly"
-        logging.info(f"Jazzmin context processor: user={request.user.username}, tenant={tenant}, injected jazzmin_theme={theme}, light={jazzmin_light_theme}, dark={jazzmin_dark_theme}")
-    # print(f"[CTXPROC] Injecting jazzmin_theme={theme}, jazzmin_light_theme={jazzmin_light_theme}, jazzmin_dark_theme={jazzmin_dark_theme} for user={getattr(request.user, 'username', None)}")
+        logging.info(f"Jazzmin context processor: user={request.user.username}, display_mode={display_mode}, injected jazzmin_theme={theme}, light={jazzmin_light_theme}, dark={jazzmin_dark_theme}")
     return {
         "jazzmin_theme": theme,
         "jazzmin_light_theme": jazzmin_light_theme,
@@ -124,11 +122,16 @@ def jazzmin_ui_tweaks(request):
     if not profile:
         return context
 
-    theme = getattr(profile, "last_selected_theme", "flatly")
+    # ACTIVE THEME: read from session/cookie (not database)
+    display_mode = request.session.get('display_mode', 'light')
+    if 'display_mode' in request.COOKIES:
+        display_mode = request.COOKIES.get('display_mode', 'light')
+
     light_theme = getattr(profile, "light_theme", "flatly")
     dark_theme = getattr(profile, "dark_theme", "darkly")
     use_system_pref = getattr(profile, "use_system_pref", False)
-    logging.info(f"Jazzmin context processor: user={request.user.username}, theme={theme}, light_theme={light_theme}, dark_theme={dark_theme}, use_system_pref={use_system_pref}")
+    theme = light_theme if display_mode == 'light' else dark_theme
+    logging.info(f"Jazzmin context processor: user={request.user.username}, display_mode={display_mode}, theme={theme}, light_theme={light_theme}, dark_theme={dark_theme}, use_system_pref={use_system_pref}")
 
     # Add theme-related context
     context.update({

@@ -138,26 +138,36 @@ DARK_THEMES = sorted([
 
 @login_required
 def select_theme_api(request):
-    """JSON endpoint — returns current theme settings for the popup modal."""
+    """JSON endpoint — returns current theme settings for the popup modal.
+    Display mode comes from session/cookie (not database) for scalability.
+    """
     from dose.tenant_utils import get_current_tenant
-    tenant = get_current_tenant(request)
-    if not tenant:
-        try:
-            existing = getattr(request.user, 'userprofile', None)
-            if existing and existing.tenant and existing.tenant.schema_name.lower() != 'public':
-                tenant = existing.tenant
-        except Exception:
-            pass
-    if not tenant:
-        from django.http import JsonResponse as _J
-        return _J({'light_theme': 'flatly', 'dark_theme': 'darkly', 'use_light_mode': True})
     from dose.models import UserProfile as _UP
-    profile, _ = _UP.objects.get_or_create(user=request.user, tenant=tenant)
     from django.http import JsonResponse as _J
+
+    tenant = get_current_tenant(request)
+    profile = None
+    if tenant:
+        profile, _ = _UP.objects.get_or_create(user=request.user, tenant=tenant)
+
+    # Get theme preferences from database (these are the theme names like flatly, darkly)
+    light_theme = profile.light_theme if profile else 'flatly'
+    dark_theme = profile.dark_theme if profile else 'darkly'
+
+    # Get display mode from session or cookie (NOT database - follows user across requests)
+    display_mode = request.session.get('display_mode', 'light')
+    cookie_mode = request.COOKIES.get('display_mode', 'not-set')
+    print(f"[API] Session display_mode: {display_mode}, Cookie display_mode: {cookie_mode}")
+    if 'display_mode' in request.COOKIES:
+        display_mode = request.COOKIES.get('display_mode', 'light')
+
+    use_light_mode = display_mode == 'light'
+    print(f"[API] Final display_mode: {display_mode}, use_light_mode: {use_light_mode}")
+
     return _J({
-        'light_theme': profile.light_theme or 'flatly',
-        'dark_theme':  profile.dark_theme  or 'darkly',
-        'use_light_mode': not bool(getattr(profile, 'use_dark_mode', False)),
+        'light_theme': light_theme or 'flatly',
+        'dark_theme':  dark_theme  or 'darkly',
+        'use_light_mode': use_light_mode,
     })
 
 
@@ -200,7 +210,9 @@ def select_theme(request):
     profile, created = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
     print(f"[DEBUG] Profile {'created' if created else 'found'}: light={profile.light_theme}, dark={profile.dark_theme}")
     if request.method == "POST":
-        print(f"[DEBUG] POST request received")
+        # Save ONLY theme preferences (light_theme, dark_theme, use_system_pref)
+        # display_mode is NOT saved here - it's session/cookie based and handled by toggle_theme
+        print(f"[DEBUG] POST request received - saving theme preferences only")
         print(f"[DEBUG] POST data: {dict(request.POST.items())}")
 
         old_light = profile.light_theme
@@ -208,17 +220,21 @@ def select_theme(request):
         new_light = request.POST.get("light_theme", profile.light_theme)
         new_dark = request.POST.get("dark_theme", profile.dark_theme)
         new_system_pref = request.POST.get("use_system_pref") == "on"
-        display_mode = request.POST.get("display_mode", "light")
 
-        print(f"[DEBUG] Theme changes: {old_light}->{new_light}, old_dark->{new_dark}, system_pref: {new_system_pref}, display_mode: {display_mode}")
+        print(f"[DEBUG] Theme changes: {old_light}->{new_light}, {old_dark}->{new_dark}, system_pref: {new_system_pref}")
 
+        # Only save theme preferences - NOT display_mode
         profile.light_theme = new_light
         profile.dark_theme = new_dark
         profile.use_system_pref = new_system_pref
-        profile.last_selected_theme = new_light if display_mode == "light" else new_dark
+        # NOTE: last_selected_theme is NOT updated here - display mode is session/cookie based
         profile.save()
 
-        print(f"[DEBUG] Profile saved: light={profile.light_theme}, dark={profile.dark_theme}, last={profile.last_selected_theme}")
+        # Store theme preferences in session too for quick access
+        request.session['light_theme'] = new_light
+        request.session['dark_theme'] = new_dark
+
+        print(f"[DEBUG] Profile saved: light={profile.light_theme}, dark={profile.dark_theme}")
         logging.info(f"Theme selector POST: user={request.user.username}, old_light={old_light}, new_light={profile.light_theme}, old_dark={old_dark}, new_dark={profile.dark_theme}, use_system_pref={profile.use_system_pref}")
 
         return JsonResponse({
@@ -226,16 +242,21 @@ def select_theme(request):
             'message': 'Theme saved successfully',
             'light_theme': profile.light_theme,
             'dark_theme': profile.dark_theme,
-            'last_selected_theme': profile.last_selected_theme
         })
     else:
         logging.info(f"Theme selector GET: user={request.user.username}, light_theme={profile.light_theme}, dark_theme={profile.dark_theme}")
+        # Get display mode from session or cookie (NOT database)
+        display_mode = request.session.get('display_mode', 'light')
+        if 'display_mode' in request.COOKIES:
+            display_mode = request.COOKIES.get('display_mode', 'light')
+        print(f"[DEBUG] display_mode from session/cookie: {display_mode}")
         context = {
             "light_themes": LIGHT_THEMES,
             "dark_themes": DARK_THEMES,
             "light_theme": profile.light_theme,
             "dark_theme": profile.dark_theme,
             "use_system_pref": profile.use_system_pref,
+            "display_mode": display_mode,
         }
         print(f"[DEBUG] Template context: {context}")
         return render(request, "admin/select_theme.html", context)

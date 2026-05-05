@@ -422,8 +422,8 @@
   <label style="margin-bottom:12px;">Last Saved Theme: <strong id="ps-last-saved">—</strong></label>
   <div class="ps-use-light" style="margin-bottom:14px;">
     <button type="button" id="ps-theme-toggle-btn" class="btn btn-outline-secondary btn-sm" style="width:100%;padding:0.5em;font-weight:bold;"
-        onclick="toggleThemeDisplayMode()">
-      <i class="fas fa-adjust"></i> <span id="ps-theme-toggle-text">Change to Dark</span>
+        onclick="event.stopPropagation(); toggleThemeDisplayMode();">
+      <i class="fas fa-adjust"></i> <span id="ps-theme-toggle-text">Change to Dark Mode</span>
     </button>
     <input type="hidden" id="ps-use-light-cb" value="light">
   </div>
@@ -433,9 +433,10 @@
 </div>
 <script>
 (function() {
-  var PS_THEMES = ["flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux",
-                   "minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab",
-                   "superhero","united","yeti"];
+  var PS_LIGHT_THEMES = ["flatly","cerulean","cosmo","journal","litera","lumen","lux",
+                         "minty","pulse","sandstone","simplex","sketchy","spacelab",
+                         "united","yeti"];
+  var PS_DARK_THEMES = ["cyborg","darkly","slate","solar","superhero"];
   function buildSelect(el, themes, current) {
     el.innerHTML = '';
     themes.forEach(function(t) {
@@ -451,79 +452,47 @@
     fetch('/admin/select-theme/api/', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
       .then(function(r) { return r.json(); })
       .then(function(d) {
-        buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, d.light_theme);
-        buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, d.dark_theme);
+        buildSelect(document.getElementById('ps-light-theme'), PS_LIGHT_THEMES, d.light_theme);
+        buildSelect(document.getElementById('ps-dark-theme'),  PS_DARK_THEMES, d.dark_theme);
         document.getElementById('ps-last-saved').textContent = d.light_theme || '—';
         var isLight = d.use_light_mode !== false;
         document.getElementById('ps-use-light-cb').value = isLight ? 'light' : 'dark';
-        document.getElementById('ps-theme-toggle-text').textContent = isLight ? 'Change to Dark' : 'Change to Light';
+        document.getElementById('ps-theme-toggle-text').textContent = isLight ? 'Change to Dark Mode' : 'Change to Light Mode';
       })
       .catch(function() {
-        buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, 'flatly');
-        buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, 'darkly');
+        buildSelect(document.getElementById('ps-light-theme'), PS_LIGHT_THEMES, 'flatly');
+        buildSelect(document.getElementById('ps-dark-theme'),  PS_DARK_THEMES, 'darkly');
         document.getElementById('ps-use-light-cb').value = 'light';
-        document.getElementById('ps-theme-toggle-text').textContent = 'Change to Dark';
+        document.getElementById('ps-theme-toggle-text').textContent = 'Change to Dark Mode';
       });
   }
   function closeThemeModal() {
     document.getElementById('ps-theme-modal').style.display = 'none';
     document.getElementById('ps-theme-modal-overlay').style.display = 'none';
   }
-  function toggleThemeDisplayMode() {
-    var hiddenInput = document.getElementById('ps-use-light-cb');
-    var btnText = document.getElementById('ps-theme-toggle-text');
-    var currentMode = hiddenInput.value;
-    var DARK_THEMES = ['darkly','cyborg','slate','solar','superhero'];
-    var isDark;
-    var theme;
-    if (currentMode === 'light') {
-      hiddenInput.value = 'dark';
-      btnText.textContent = 'Change to Light';
-      document.body.classList.add('dark-mode');
-      document.body.classList.remove('light-mode');
-      isDark = true;
-      theme = document.getElementById('ps-dark-theme').value || 'darkly';
-    } else {
-      hiddenInput.value = 'light';
-      btnText.textContent = 'Change to Dark';
-      document.body.classList.remove('dark-mode');
-      document.body.classList.add('light-mode');
-      isDark = false;
-      theme = document.getElementById('ps-light-theme').value || 'flatly';
-    }
-    // Immediately swap theme CSS
-    var el = document.getElementById('jazzmin-theme');
-    var newHref = '/static/vendor/bootswatch/' + theme + '/bootstrap.min.css';
-    if (el) {
-      el.href = newHref;
-    } else {
-      var l = document.createElement('link');
-      l.rel = 'stylesheet'; l.id = 'jazzmin-theme'; l.href = newHref;
-      document.head.appendChild(l);
-    }
-    // Swap navbar dark style
-    var oldStyle = document.getElementById('ps-dark-navbar');
-    if (oldStyle) oldStyle.remove();
-    if (isDark) {
-      document.documentElement.setAttribute('data-ps-theme', theme);
-      var style = document.createElement('style');
-      style.id = 'ps-dark-navbar';
-      style.textContent = [
-        '#jazzy-navbar { background-color: #343a40 !important; border-color: #454d55 !important; }',
-        '#jazzy-navbar *, #jazzy-navbar .nav-link, #jazzy-navbar .nav-item a, #jazzy-navbar span,',
-        '#jazzy-navbar .breadcrumb-item, #jazzy-navbar .breadcrumb-item a, #jazzy-navbar .breadcrumb-item.active,',
-        '#jazzy-navbar .usermenu, #jazzy-navbar .usermenu *, #jazzy-navbar .user-panel, #jazzy-navbar .user-panel *,',
-        '.navbar-nav .nav-item .nav-link { color: #f8f9fa !important; }',
-        '#jazzy-navbar .nav-link:hover, #jazzy-navbar .nav-item a:hover { color: #ffffff !important; background-color: rgba(255,255,255,0.1) !important; }',
-        '#jazzy-navbar .dropdown-menu { background-color: #3d4349 !important; border-color: #555 !important; }',
-        '#jazzy-navbar .dropdown-menu .dropdown-item { color: #f8f9fa !important; }',
-        '#jazzy-navbar .dropdown-menu .dropdown-item:hover { background-color: rgba(255,255,255,0.1) !important; }'
-      ].join('\n');
-      document.head.appendChild(style);
-    } else {
-      document.documentElement.removeAttribute('data-ps-theme');
-    }
-  }
+  window.toggleThemeDisplayMode = function() {
+    console.log('[MODAL TOGGLE] Button clicked');
+    var csrf = (document.cookie.split(';').map(function(c){return c.trim();})
+                .filter(function(c){return c.startsWith('csrftoken=');})[0] || '=').split('=')[1];
+    console.log('[MODAL TOGGLE] CSRF:', csrf ? 'found' : 'missing');
+    console.log('[MODAL TOGGLE] Fetching /dose/toggle-theme/');
+    fetch('/dose/toggle-theme/', {
+      method: 'GET',
+      headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf}
+    })
+    .then(function(r) {
+      console.log('[MODAL TOGGLE] Response status:', r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      console.log('[MODAL TOGGLE] Success, theme:', data.theme, 'mode:', data.mode);
+      window.location.reload();
+    })
+    .catch(function(err) {
+      console.error('[MODAL TOGGLE] Failed:', err);
+      alert('Failed to toggle theme: ' + err.message);
+    });
+  };
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
       a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
@@ -533,14 +502,13 @@
     document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
       var light = document.getElementById('ps-light-theme').value;
       var dark  = document.getElementById('ps-dark-theme').value;
-      var useLightMode = document.getElementById('ps-use-light-cb').value === 'light';
       var csrf = (document.cookie.split(';').map(function(c){return c.trim();})
                   .filter(function(c){return c.startsWith('csrftoken=');})[0] || '=').split('=')[1];
+      // Save ONLY theme preferences - NOT display_mode (that's session/cookie based)
       fetch('/admin/select-theme/', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
-      body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
-           + '&display_mode=' + (useLightMode ? 'light' : 'dark')
+        body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
       })
       .then(function(r) { return r.json(); })
       .then(function() { closeThemeModal(); window.location.reload(); })

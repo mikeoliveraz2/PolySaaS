@@ -1,7 +1,7 @@
-# dose/passthrough/middleware.py — FINAL — OUT = LAST, IN = FIRST — CHIEF ARCHITECT APPROVED
+# dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
 from django.utils.deprecation import MiddlewareMixin
-from dose.models import UserTenantMembership
+from dose.models import PassThroughEndpoint, UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.handlers.registry import (
     get_handler_for_endpoint,
@@ -18,28 +18,43 @@ def _is_initial_page_load(request):
     Detect if this is an initial page load (browser navigation) vs API/asset request.
     Initial page loads should be wrapped in the admin template for embedded display.
     """
+    print(f"[_IS_INITIAL-ENTRY] path={request.path_info}, Accept={request.headers.get('Accept', 'NONE')[:50]}...")
+    path = request.path_info
+    print(f"[_IS_INITIAL] Checking path: {path}")
+    
     # XHR/fetch requests are NOT initial page loads
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+    xrw = request.headers.get('X-Requested-With', '')
+    if xrw == 'XMLHttpRequest':
+        print(f"[_IS_INITIAL] FALSE: X-Requested-With={xrw}")
         return False
     
     # Check Accept header - browsers send text/html for navigation
     accept = request.headers.get('Accept', '')
+    print(f"[_IS_INITIAL] Accept header raw: '{accept}'")
+    print(f"[_IS_INITIAL] Accept header length: {len(accept)}")
+    print(f"[_IS_INITIAL] 'text/html' in accept: {'text/html' in accept}")
+    print(f"[_IS_INITIAL] Accept header: {accept[:100]}...")
     if 'text/html' not in accept:
+        print(f"[_IS_INITIAL] FALSE: no text/html in Accept")
         return False
     
     # Check if path has a file extension (static assets)
-    path = request.path_info
-    if '.' in path.split('/')[-1]:
-        ext = path.split('.')[-1].lower()
+    last_segment = path.split('/')[-1]
+    if '.' in last_segment:
+        ext = last_segment.split('.')[-1].lower()
+        print(f"[_IS_INITIAL] Path has extension: .{ext}")
         if ext in ('js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'map'):
+            print(f"[_IS_INITIAL] FALSE: static asset extension .{ext}")
             return False
     
     # API paths are not initial page loads
     api_prefixes = ('/api/', '/plugins/', '/boards/', '/calls/', '/bus/', '/websocket')
     for prefix in api_prefixes:
         if prefix in path:
+            print(f"[_IS_INITIAL] FALSE: API prefix {prefix}")
             return False
     
+    print(f"[_IS_INITIAL] TRUE: This is an initial page load")
     return True
 
 
@@ -82,6 +97,7 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     We extract the <head> content (styles, scripts, shims) and <body> content separately,
     then inject them into the appropriate blocks of the admin template.
     """
+    print(f"\n[_WRAP-ENTRY] _wrap_in_admin_template - trigger={trigger}, status={response.status_code}")
     print(f"[_WRAP] _wrap_in_admin_template CALLED")
     print(f"[_WRAP]   trigger={trigger}, status={response.status_code}")
     print(f"[_WRAP]   content_type={response.get('Content-Type', 'NONE')}")
@@ -167,6 +183,7 @@ def run_pt_admin_passthrough_core(request):
     Returns HttpResponse, or None to let URLconf continue (static proxy, building pen).
     Caller must already enforce auth, tenant, and membership.
     """
+    print(f"\n[PT-CORE-ENTRY] run_pt_admin_passthrough_core - path={request.path_info}, method={request.method}")
     path = request.path_info
     if pt_admin_core_delegated_to_urlconf(request, path):
         print(f"[PT-CORE] Delegate to URLconf (handler): {path}")
@@ -196,7 +213,7 @@ def run_pt_admin_passthrough_core(request):
             self.headers_to_forward = ''
             self.description = f'Passthrough to {hostname}'
 
-    # Prefer DB lookup — gets the real endpoint record (correct handler, endpoint_url, etc.).
+    # Prefer DB lookup - gets the real endpoint record (correct handler, endpoint_url, etc.).
     # Fall back to SimpleEndpoint if DB is unavailable.
     endpoint = None
     try:
@@ -235,7 +252,7 @@ def run_pt_admin_passthrough_core(request):
         print(f"[PT-CORE] DB lookup failed ({_db_exc}), falling back to SimpleEndpoint")
 
     if not endpoint:
-        # DB miss or DB down — construct a minimal endpoint from the URL-encoded hostname
+        # DB miss or DB down - construct a minimal endpoint from the URL-encoded hostname
         endpoint = SimpleEndpoint(trigger)
         print(f"[PT-CORE] SimpleEndpoint fallback: {endpoint.endpoint_url}")
 
@@ -271,7 +288,7 @@ def run_pt_admin_passthrough_core(request):
         shell = try_root(request, endpoint, trigger)
         print(f"[PT-CORE] Handler returned: {type(shell).__name__ if shell else 'None'}")
         if shell is not None:
-            print(f"[PT-CORE] Handler display shell — returning {type(shell).__name__} (no forward)")
+            print(f"[PT-CORE] Handler display shell - returning {type(shell).__name__} (no forward)")
             request._passthrough_handled = True
             request._passthrough_response = shell
             return shell
@@ -302,12 +319,12 @@ def run_pt_admin_passthrough_core(request):
         </div>
         """
         response = HttpResponse(error_html, status=503)
-        print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} — showing error page")
+        print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
     elif _is_initial_page_load(request):
-        print("[PT-CORE] Initial page load — wrapping in admin template")
+        print("[PT-CORE] Initial page load - wrapping in admin template")
         response = _wrap_in_admin_template(request, response, trigger, endpoint)
     else:
-        print("[PT-CORE] API/asset — raw response")
+        print("[PT-CORE] API/asset - raw response")
 
     request._passthrough_handled = True
     request._passthrough_response = response
@@ -321,10 +338,12 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
 
     def __call__(self, request):
         """
-        REQUEST PHASE — runs for every request
+        REQUEST PHASE - runs for every request
         This is the LAST middleware before the request leaves Django
         -> Perfect place for PASSTHROUGH-OUT
         """
+        print(f"\n[PT-MW-ENTRY] __call__ - path={request.path_info}, method={request.method}")
+        
         if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
             print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
             return self.get_response(request)
@@ -353,15 +372,17 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
             if resp is not None:
                 return resp
 
-        # Not a passthrough request — continue down the stack
+        # Not a passthrough request - continue down the stack
         return self.get_response(request)
 
     def process_response(self, request, response):
         """
-        RESPONSE PHASE — runs for every response
+        RESPONSE PHASE - runs for every response
         This is the FIRST middleware that sees the response coming back
         -> Perfect place for PASSTHROUGH-IN
         """
+        print(f"[PT-MW-ENTRY] process_response - path={request.path_info}, status={response.status_code}")
+        
         if getattr(request, '_passthrough_handled', False):
             print("\n" + "="*120)
             print("PASSTHROUGH-IN <- RESPONSE RECEIVED (FIRST ON RETURN)")

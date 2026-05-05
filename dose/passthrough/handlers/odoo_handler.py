@@ -524,6 +524,10 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         # <link> and <script> tags are fetched by the browser before JS executes, so we must
         # rewrite them server-side to route through our proxy.
         html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix, base_origin=base_origin)
+        # Debug: Check if forms still have unproxied actions
+        unproxied_forms = re.findall(r'<form[^>]*action=["\'](?!/pt/)(/[^"\']+)["\']', html_str, flags=re.IGNORECASE)
+        if unproxied_forms:
+            print(f"[ODOO HANDLER] WARNING: Unproxied form actions found: {unproxied_forms}")
         html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix)
 
         print(f"[ODOO HANDLER] HTML processing complete")
@@ -645,16 +649,24 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             _rewrite_css_url, html, flags=re.IGNORECASE,
         )
 
-        # 6. Rewrite onsubmit inline JS containing this.action = '<path>'
+        # 6. Remove onsubmit handlers that reset form action to unproxied paths
         # Odoo login form: onsubmit="this.action = '/web/login' + location.hash"
-        # Without this, onsubmit fires first and resets the correctly-rewritten action
-        # back to the native path, bypassing the proxy and hitting Django's CSRF check.
-        html = re.sub(
-            r"(onsubmit=[\"'][^\"']*this\.action\s*=\s*')(/[^']+)(')",
-            lambda m: m.group(1) + _rewrite_path(m.group(2)) + m.group(3),
-            html,
-            flags=re.IGNORECASE,
-        )
+        # This handler overwrites our proxied action and causes CSRF errors.
+        # STRIP the onsubmit entirely - the shim handles form submission via submit event.
+        onsubmit_matches = re.findall(r'onsubmit=["\'][^"\']*this\.action\s*=\s*', html, flags=re.IGNORECASE)
+        if onsubmit_matches:
+            print(f"[ODOO REWRITE] REMOVING onsubmit handlers that reset action: {len(onsubmit_matches)} found")
+            # Remove onsubmit="...this.action..." patterns entirely
+            html = re.sub(
+                r'\s*onsubmit=["\'][^"\']*this\.action[^"\']*["\']',
+                '',
+                html,
+                flags=re.IGNORECASE,
+            )
+
+        # Debug: Check form actions after rewrite
+        form_action_matches = re.findall(r'<form[^>]*action=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
+        print(f"[ODOO REWRITE] Form actions after rewrite: {form_action_matches}")
 
         return html
 
@@ -850,6 +862,10 @@ var O = window.location.origin;
 var SCOPE_SELECTOR = '.polysaas-passthrough-scope';
 
 console.log('[PolySaaS Odoo] Shim v' + TS + ' starting, PROXY=' + PROXY + ', upstream=' + B + ', origin=' + O);
+
+// Debug: Check if passthrough scope exists
+var _scopeCheck = document.querySelector(SCOPE_SELECTOR);
+console.log('[PolySaaS Odoo] Passthrough scope found:', !!_scopeCheck, 'selector:', SCOPE_SELECTOR);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. SESSION COOKIE SEEDING
@@ -1063,40 +1079,72 @@ try {
 // ═══════════════════════════════════════════════════════════════════════════
 function _rewriteFormAction(form) {
     if (!form || form.tagName !== 'FORM') return;
-    var attrVal = form.getAttribute('action') || '';
-    if (!attrVal) return;
-    if (attrVal.indexOf(PROXY) === 0 || attrVal.indexOf('/pt/') === 0) return;
+    // Use form.action property (resolves absolute URL) not getAttribute
+    // Owl sets action via JS property: form.action = '/web/login'
     var rawAction = form.action || '';
+    if (!rawAction) return;
+    // Check if already proxied
+    if (rawAction.indexOf(PROXY) !== -1 || rawAction.indexOf('/pt/') !== -1) return;
     var proxied = toProxy(rawAction);
     if (proxied !== rawAction) {
-        console.log('[PolySaaS Odoo] Form action rewrite:', attrVal, '->', proxied);
+        console.log('[PolySaaS Odoo] Form action rewrite:', rawAction, '->', proxied);
         form.setAttribute('action', proxied);
     }
 }
-document.addEventListener('submit', function(e) { _rewriteFormAction(e.target); }, true);
+// Form submission interception - simpler: rewrite all forms with unproxied Odoo paths
+document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    _rewriteFormAction(form);
+}, true);
 var _formSubmit = HTMLFormElement.prototype.submit;
 HTMLFormElement.prototype.submit = function() {
     _rewriteFormAction(this);
     return _formSubmit.call(this);
 };
+// Image src rewriting for dynamically loaded assets (icons, images)
+function _rewriteImageSrc(img) {
+    if (!img || (img.tagName !== 'IMG' && img.tagName !== 'SOURCE')) return;
+    var rawSrc = img.src || img.getAttribute('src') || '';
+    if (!rawSrc) return;
+    // Skip data URIs and already proxied URLs
+    if (rawSrc.indexOf('data:') === 0) return;
+    if (rawSrc.indexOf(PROXY) !== -1 || rawSrc.indexOf('/pt/') !== -1) return;
+    // Only rewrite if it's pointing to localhost or upstream URL
+    var proxied = toProxy(rawSrc);
+    if (proxied !== rawSrc) {
+        console.log('[PolySaaS Odoo] Image src rewrite:', rawSrc, '->', proxied);
+        img.src = proxied;
+    }
+}
+
 var _formObserver = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
         if (mutation.type === 'attributes' && mutation.target.tagName === 'FORM') {
             _rewriteFormAction(mutation.target);
+        } else if (mutation.type === 'attributes' && (mutation.target.tagName === 'IMG' || mutation.target.tagName === 'SOURCE')) {
+            _rewriteImageSrc(mutation.target);
         } else if (mutation.type === 'childList') {
             mutation.addedNodes.forEach(function(node) {
                 if (!node || node.nodeType !== 1) return;
                 if (node.tagName === 'FORM') { _rewriteFormAction(node); }
-                var nested = node.querySelectorAll ? node.querySelectorAll('form') : [];
-                for (var i = 0; i < nested.length; i++) { _rewriteFormAction(nested[i]); }
+                if (node.tagName === 'IMG' || node.tagName === 'SOURCE') { _rewriteImageSrc(node); }
+                var nestedForms = node.querySelectorAll ? node.querySelectorAll('form') : [];
+                for (var i = 0; i < nestedForms.length; i++) { _rewriteFormAction(nestedForms[i]); }
+                var nestedImgs = node.querySelectorAll ? node.querySelectorAll('img, source') : [];
+                for (var i = 0; i < nestedImgs.length; i++) { _rewriteImageSrc(nestedImgs[i]); }
             });
         }
     });
 });
-_formObserver.observe(document.documentElement, {
-    childList: true, subtree: true,
-    attributes: true, attributeFilter: ['action'], attributeOldValue: false
-});
+// Only observe within passthrough scope, not entire document
+var passthroughScope = document.querySelector('.polysaas-passthrough-scope');
+if (passthroughScope) {
+    _formObserver.observe(passthroughScope, {
+        childList: true, subtree: true,
+        attributes: true, attributeFilter: ['action', 'src'], attributeOldValue: false
+    });
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 9. ADAPTIVE UI - Make Odoo think it has the scope's dimensions

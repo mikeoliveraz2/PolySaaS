@@ -21,9 +21,10 @@ WEBPACK_STATIC_PREFIX = "/pt/admin/mattermost/static/"
 # Main + large chunks; skip huge source maps if needed
 MAX_BODY_REWRITE_BYTES = 25 * 1024 * 1024
 
-# First path segment after /static/: these stay on /static/<path> upstream (not /static/plugins/).
+# First path segment after /static/: these are CORE paths that stay on /static/<path> upstream.
+# Only "plugins" gets special handling — everything else is a core static asset.
 _MM_STATIC_CORE_PREFIXES = frozenset(
-    ("images", "emoji", "fonts", "files", "metadata", "sounds", "plugins")
+    ("images", "emoji", "fonts", "files", "metadata", "sounds", "css", "js", "json", "html", "ico", "txt", "xml", "map")
 )
 
 
@@ -33,16 +34,25 @@ def _upstream_rel_for_mm_static(path: str) -> str:
         return f"/static/{path}"
     first, _, _rest = path.partition("/")
     fl = first.lower()
-    if fl in _MM_STATIC_CORE_PREFIXES:
+    # Only "plugins" paths go under /static/plugins/; everything else is core /static/
+    if fl == "plugins":
         return f"/static/{path}"
-    return f"/static/plugins/{path}"
+    return f"/static/{path}"
 
 
 def _upstream_static_base():
     try:
+        from dose.models import PassThroughEndpoint
+        ep = PassThroughEndpoint.objects.filter(
+            trigger_path='mattermost', is_enabled=True
+        ).first()
+        if ep and ep.endpoint_url:
+            return ep.endpoint_url.rstrip("/")
+    except Exception:
+        pass
+    try:
         from django.conf import settings
-
-        return getattr(settings, "MATTERMOST_STATIC_ORIGIN", DEFAULT_MM_ORIGIN).rstrip("/")
+        return getattr(settings, "MATTERMOST_URL", DEFAULT_MM_ORIGIN).rstrip("/")
     except Exception:
         return DEFAULT_MM_ORIGIN
 
