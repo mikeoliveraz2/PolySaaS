@@ -403,3 +403,27 @@ New subscriber → provision apps (Odoo, Mattermost, NextCloud, etc.) → SSO to
 
 ### Tomorrow's First Task
 Recover Mattermost admin credentials, verify Mattermost passthrough login works end-to-end.
+
+---
+
+## 2026-05-06 (Morning — Condo → Office)
+**Status**: DONE — Mattermost passthrough working
+**Branch**: main
+
+### Summary
+Created Django superuser `mmadmin@polysaas.online` / `PolySaaS2026!` for local admin access.
+
+**Mattermost passthrough is LIVE**: Clicking "Mattermost" in the PolySaaS admin sidebar loads the full Mattermost UI inside the passthrough proxy. User can log in with `mikeoliveraz` / `PolySaaS2026!` and sees Town Square, channels, direct messages. The shim correctly rewrites static assets (`/pt/admin/mattermost/static/...`) and API calls.
+
+**Known cosmetic issues (non-blocking):**
+- WebSocket banner "Mattermost unreachable" — Render free tier doesn't support WS upgrade; Mattermost falls back to HTTP polling automatically
+- Plugin bundles (github, playbooks, nps, calls) return 404 — non-critical, core chat works
+- External telemetry CORS errors (`pdat.matterlytics.com`) — unrelated to passthrough
+
+**Pending for future sessions:**
+- Auto-login via `MMAUTHTOKEN` injection (requires tenant app `extra_config` with Mattermost credentials)
+- Fix plugin static asset routing through proxy
+- WebSocket passthrough support (if Render plan supports it)
+
+### Files Changed
+- `documentation/COORDINATION_README.md` (this entry)
