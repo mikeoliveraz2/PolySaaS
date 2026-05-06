@@ -31,8 +31,9 @@ def provision_nextcloud_tenant(
     Atomic Service: Create Nextcloud tenant + admin user on new subscription
     Triggered when "Nextcloud" is checked on subscribe form
     """
-    # 1. Generate secure password
-    password = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*") for _ in range(20))
+    # 1. Use standardized app-admin password (convention: [appslug]Admin / POLYSAAS_APP_ADMIN_PASSWORD)
+    from django.conf import settings
+    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
 
     # 2. Create Nextcloud tenant (multi-tenant via separate DB schema or prefix)
     # Using Nextcloud's REST API + our internal provisioning endpoint
@@ -41,6 +42,7 @@ def provision_nextcloud_tenant(
         "tenant_schema": tenant_schema,        # e.g. tenant_acme
         "company_name": company_name or tenant_name,
         "admin_email": admin_email,
+        "admin_username": "nextcloudAdmin",
         "admin_password": password,
         "plan": "professional"  # or map from PolySaaS tier
     }

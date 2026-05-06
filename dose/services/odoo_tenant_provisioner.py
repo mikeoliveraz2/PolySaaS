@@ -36,8 +36,9 @@ def provision_odoo_tenant(
     Atomic Service: Create Odoo tenant + admin user on new subscription
     Triggered when "Odoo ERP" is checked on subscribe form
     """
-    # 1. Generate secure password
-    password = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*") for _ in range(20))
+    # 1. Use standardized app-admin password (convention: [appslug]Admin / POLYSAAS_APP_ADMIN_PASSWORD)
+    from django.conf import settings
+    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
 
     # 2. Create Odoo tenant (multi-tenant via separate DB schema or prefix)
     # Using Odoo's REST API + our internal provisioning endpoint
@@ -46,6 +47,7 @@ def provision_odoo_tenant(
         "tenant_schema": tenant_schema,        # e.g. tenant_acme
         "company_name": company_name or tenant_name,
         "admin_email": admin_email,
+        "admin_username": "odooAdmin",
         "admin_password": password,
         "plan": "professional"  # or map from PolySaaS tier
     }

@@ -82,8 +82,17 @@ class MattermostProvisioningService(AtomicServiceBase):
                 token = MattermostProvisioningService._create_user_token(
                     mm_url, headers, user_id, result,
                 )
+                # Pass username + password for passthrough auto-login
+                mm_username = (user.username if user else '') or ''
+                mm_password = (
+                    getattr(user, '_plaintext_password', None)
+                    or (request.POST.get('password') if request and hasattr(request, 'POST') else None)
+                    or ''
+                )
                 MattermostProvisioningService._store_credentials(
                     tenant, token, result,
+                    mm_username=mm_username,
+                    mm_password=mm_password,
                 )
 
             result['success'] = True
@@ -261,10 +270,8 @@ class MattermostProvisioningService(AtomicServiceBase):
             return None
 
     @staticmethod
-    def _store_credentials(tenant, token, result):
-        """Store the Mattermost token on TenantApp.extra_config for passthrough auth."""
-        if not token:
-            return
+    def _store_credentials(tenant, token, result, mm_username='', mm_password=''):
+        """Store the Mattermost token and login credentials on TenantApp.extra_config for passthrough auth."""
         try:
             from dose.models import TenantApp
             ta = TenantApp.objects.filter(
@@ -272,11 +279,16 @@ class MattermostProvisioningService(AtomicServiceBase):
             ).first()
             if ta:
                 cfg = ta.extra_config or {}
-                cfg['mm_token'] = token
+                if token:
+                    cfg['mm_token'] = token
+                if mm_username:
+                    cfg['mm_login_id'] = mm_username
+                if mm_password:
+                    cfg['mm_password'] = mm_password
                 ta.extra_config = cfg
                 ta.save(update_fields=['extra_config'])
                 result['credentials_stored'] = True
-                logger.info('[MM-PROVISION] Stored token on TenantApp for %s', tenant.name)
+                logger.info('[MM-PROVISION] Stored credentials on TenantApp for %s', tenant.name)
         except Exception as exc:
             logger.warning('[MM-PROVISION] Could not store credentials: %s', exc)
             result['credentials_error'] = str(exc)

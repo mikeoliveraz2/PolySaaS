@@ -199,6 +199,7 @@ STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 # --- AI as Peers (Mattermost bot integration) ---
 MATTERMOST_URL = env('MATTERMOST_URL', default='http://localhost:8065')
 MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
+POLYSAAS_APP_ADMIN_PASSWORD = env('POLYSAAS_APP_ADMIN_PASSWORD', default='PolySaaS2026!')
 
 # Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
 # If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).

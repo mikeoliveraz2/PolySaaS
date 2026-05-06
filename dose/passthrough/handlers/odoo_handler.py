@@ -441,11 +441,10 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             # if session_id and (time.time() - session_time < 3600):
             #     return {"session_id": session_id}
 
-            # TEMP (explicit user request): sidebar passthrough always JSON-RPC logs in as Odoo
-            # admin/admin so you can reset Discuss/history on that account. Revert to
-            # extra_config odoo_login / odoo_password when done.
-            login_id = "admin"
-            password = "admin"
+            # Standardized app-admin credentials: odooAdmin / POLYSAAS_APP_ADMIN_PASSWORD
+            from django.conf import settings
+            login_id = extra.get("odoo_login") or "odooAdmin"
+            password = extra.get("odoo_password") or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
             db_name = extra.get("odoo_db") or "odoo"
 
             # Resolve Odoo base URL from the PassThroughEndpoint (query from public schema)
