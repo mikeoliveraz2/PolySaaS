@@ -360,15 +360,16 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 _compensate_stripe(stripe_subscription_id, stripe_customer_id)
             raise
 
-        # ── Phase 4: login + tenant session (outside DB transaction) ──
-        if user_obj:
-            login(request, user_obj)
-            if tenant_obj:
-                from dose.tenant_session import apply_tenant_to_session
-                membership = UserTenantMembership.objects.filter(
-                    user=user_obj, tenant=tenant_obj,
-                ).first()
-                apply_tenant_to_session(request, tenant_obj, membership)
+        # ── Phase 4: (Demo flow: do NOT auto-login so user sees prefilled login page)
+        # Credentials are passed via sessionStorage by the subscribe page JS.
+        # if user_obj:
+        #     login(request, user_obj)
+        #     if tenant_obj:
+        #         from dose.tenant_session import apply_tenant_to_session
+        #         membership = UserTenantMembership.objects.filter(
+        #             user=user_obj, tenant=tenant_obj,
+        #         ).first()
+        #         apply_tenant_to_session(request, tenant_obj, membership)
 
         return Response(
             _subscription_response_payload(
