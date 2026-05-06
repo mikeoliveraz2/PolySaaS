@@ -203,7 +203,7 @@ services:
     dockerContext: .
     # Omit dockerCommand → image CMD runs Gunicorn via /entrypoint.sh
     healthCheckPath: /health/
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
     preDeployCommand: /app/render-predeploy.sh
     envVars:
       - fromGroup: polysaas-common
@@ -243,7 +243,7 @@ services:
     dockerfilePath: Dockerfile.django
     dockerContext: .
     dockerCommand: celery -A mysite worker -l INFO --concurrency=2
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
     preDeployCommand: /app/render-predeploy.sh
     envVars:
       - fromGroup: polysaas-common
@@ -330,7 +330,7 @@ services:
     dockerfilePath: deploy/peers-adapter/Dockerfile
     dockerContext: deploy/peers-adapter
     healthCheckPath: /health
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
     envVars:
       - key: PEERS_UPSTREAM_DJANGO_URL
         sync: false
@@ -347,7 +347,7 @@ services:
     dockerfilePath: deploy/ml-studio-render/Dockerfile
     dockerContext: deploy/ml-studio-render
     healthCheckPath: /health
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
     envVars:
       - key: POLYSAAS_CORE_BASE_URL
         sync: false
@@ -364,7 +364,7 @@ services:
     dockerfilePath: deploy/mattermost-render/Dockerfile
     dockerContext: deploy/mattermost-render
     healthCheckPath: /api/v4/system/ping
-    autoDeployTrigger: commit
+    autoDeployTrigger: off
     disk:
       name: mattermost-persist
       mountPath: /var/lib/mattermost
