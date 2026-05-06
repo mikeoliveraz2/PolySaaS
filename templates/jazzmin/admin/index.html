@@ -107,6 +107,9 @@
             font-size: 16px;
             margin-bottom: 6px;
         }
+        .ps-sidebar-apps .ps-app-logo-img img {
+            border-radius: 8px;
+        }
         .ps-sidebar-apps .ps-app-label {
             font-size: 11px;
             color: #c2c7d0;
@@ -134,6 +137,21 @@
         .ps-creds-pwd:hover { background: #e9ecef; }
         .ps-creds-note { font-size: 11px; color: #868e96; margin-top: 8px; }
         .ps-sidebar-title { margin: 0; }
+
+        /* ── App logo images (override gradient + text) ── */
+        .ps-app-logo-img {
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+        .ps-app-logo-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 10px;
+            display: block;
+        }
     </style>
     {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
 {% endblock %}
@@ -152,8 +170,22 @@
                         {% with app_slug=ep.trigger_path|default:''|lower|cut:'/'|cut:'pt'|cut:'admin'|cut:'_' %}
                         <a href="/admin/passthrough-embed/{{ app_slug }}/" class="ps-app-card"
                            title="{{ ep.description|default:ep.menu_title }}">
-                            <div class="ps-app-logo {{ app_slug|default:'generic' }}">
-                                {{ ep.menu_title|first|upper }}
+                            <div class="ps-app-logo {% if app_slug in 'odoo,mattermost,nextcloud,dolibarr,wordpress,liferay' %}ps-app-logo-img{% else %}{{ app_slug|default:'generic' }}{% endif %}">
+                                {% if app_slug == 'odoo' %}
+                                    <img src="{% static 'img/apps/odoo-logo.svg' %}" alt="Odoo">
+                                {% elif app_slug == 'mattermost' %}
+                                    <img src="{% static 'img/apps/mattermost-logo.svg' %}" alt="Mattermost">
+                                {% elif app_slug == 'nextcloud' %}
+                                    <img src="{% static 'img/apps/nextcloud-logo.svg' %}" alt="Nextcloud">
+                                {% elif app_slug == 'dolibarr' %}
+                                    <img src="{% static 'img/apps/dolibarr-logo.svg' %}" alt="Dolibarr">
+                                {% elif app_slug == 'wordpress' %}
+                                    <img src="{% static 'img/apps/wordpress-logo.svg' %}" alt="WordPress">
+                                {% elif app_slug == 'liferay' %}
+                                    <img src="{% static 'img/apps/liferay-logo.svg' %}" alt="Liferay">
+                                {% else %}
+                                    {{ ep.menu_title|first|upper }}
+                                {% endif %}
                             </div>
                             <span class="ps-app-label">{{ ep.menu_title }}</span>
                         </a>
