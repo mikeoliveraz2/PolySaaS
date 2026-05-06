@@ -45,6 +45,12 @@ gmail_send,
 from dose.views.orchestration import (
 orchestration_dashboard,
 create_instruction,
+demo_view_invoices,
+)
+
+from dose.views.callbackdata import (
+callbackdata_view,
+callback_log_viewer,
 )
 
 from dose.views.tenant_switch_api import switch_tenant_api

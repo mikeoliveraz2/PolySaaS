@@ -51,7 +51,7 @@ from .viewsets import (
     PassThroughEndpointViewSet
 )
 from dose.views import connect_social_after_subscribe
-from dose.views.callbackdata import callbackdata_view
+from dose.views.callbackdata import callbackdata_view, callback_log_viewer
 from dose.theme_views import toggle_theme
 from dose.admin_views import set_theme, select_theme, test_post
 from dose.views.upgrade import upgrade_view
@@ -171,6 +171,7 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('swagger.json', schema_view.without_ui(cache_timeout=0), name='dose-swagger-json'),
     path('callbackdata/<int:id>/', callbackdata_view, name='callbackdata_view'),
+    path('admin/callback-logs/', callback_log_viewer, name='callback_log_viewer'),
 ]
 
 urlpatterns += [
