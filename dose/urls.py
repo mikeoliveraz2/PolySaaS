@@ -131,6 +131,7 @@ urlpatterns = [
     path('login/', login_redirect_view, name='login'),
     path('logout/', logout_view, name='logout'),
     # Dashboard and main views
+    path('dashboard/', dashboard, name='dashboard'),
     path('orchestration/create-instruction/', create_instruction, name='create_instruction'),
     path('orchestration-dashboard/', orchestration_dashboard, name='orchestration_dashboard'),
     path('orchestration/demo/view-invoices/', demo_view_invoices, name='demo_view_invoices'),
