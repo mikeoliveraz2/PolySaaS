@@ -91,3 +91,54 @@ def create_instruction(request):
             messages.error(request, f'Error creating instruction: {str(e)}')
     
     return redirect('dose:orchestration_dashboard')
+
+
+@login_required
+def demo_view_invoices(request):
+    """
+    Demo: simulate 'View Invoices' orchestration trigger.
+    Creates an instruction for GET /web/dataset/call_kw/account.move if it doesn't exist,
+    and shows a green toast confirming the orchestration flow.
+    """
+    tenant = getattr(request, 'tenant', None)
+
+    try:
+        from django.db import connection
+        # Ensure tenant schema context
+        if tenant and tenant.schema_name:
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
+
+        # Create or get the invoice-view instruction
+        instruction, created = Instruction.objects.get_or_create(
+            tenant=tenant,
+            requestpath='/web/dataset/call_kw/account.move',
+            requestmethod='POST',
+            defaults={
+                'eventKey': 'polysaas.odoo.invoice.viewed',
+                'description': 'Demo: Odoo View Invoices orchestration',
+                'direction': 'REQ',
+                'executescript': 'EndpointDataExtractorService',
+                'appusername': 'demo',
+                'save_callbackdata': True,
+            },
+        )
+
+        # Log the demo action
+        RequestLog.objects.create(
+            method='DEMO',
+            path='/orchestration/demo/view-invoices/',
+            body={'instruction_id': instruction.pk, 'event': 'demo_view_invoices'},
+            tenant=tenant,
+        )
+
+        messages.success(
+            request,
+            f'✅ View Invoices orchestration triggered! Instruction {"created" if created else "reused"} (ID: {instruction.pk}). '
+            f'Odoo invoice data will be captured and published to topic: {instruction.eventKey}'
+        )
+
+    except Exception as e:
+        messages.error(request, f'View Invoices demo failed: {str(e)}')
+
+    return redirect('dose:orchestration_dashboard')

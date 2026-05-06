@@ -40,7 +40,7 @@ from dose.views import (
     tenant_users, get_user_tenants_api, get_tenant_info_api, update_tenant_api,
     track_navigation_click, track_dashboard_button_click, debug_view, setup_demo_view,
     create_sample_dashboard_buttons, health_check, custom_swagger_view, debug_session_view, about_page,
-    orchestration_dashboard, create_instruction, switch_tenant_api,
+    orchestration_dashboard, create_instruction, demo_view_invoices, switch_tenant_api,
 )
 from . import jira_integration
 from .viewsets import (
@@ -131,8 +131,9 @@ urlpatterns = [
     path('login/', login_redirect_view, name='login'),
     path('logout/', logout_view, name='logout'),
     # Dashboard and main views
-    path('dashboard/', dashboard, name='dashboard'),
-    path('orchestration/', orchestration_dashboard, name='orchestration_dashboard'),
+    path('orchestration/create-instruction/', create_instruction, name='create_instruction'),
+    path('orchestration-dashboard/', orchestration_dashboard, name='orchestration_dashboard'),
+    path('orchestration/demo/view-invoices/', demo_view_invoices, name='demo_view_invoices'),
     path('create-instruction/', create_instruction, name='create_instruction'),
     path('about/', about_page, name='about'),
     # Tenant management

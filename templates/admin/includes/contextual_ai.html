@@ -1,0 +1,71 @@
+{# Contextual AI greeting for admin change forms — include in any change_form template #}
+<script>
+(function() {
+    'use strict';
+    // Only run on change forms (add or edit)
+    var isChangeForm = document.querySelector('form#user_form, form#{{ opts.model_name }}_form, .change-form, [class*="change"]');
+    if (!isChangeForm && !window.location.pathname.includes('/change/')) return;
+
+    var username = '{{ request.user.username|escapejs }}';
+    // Extract model name from page title or breadcrumbs
+    var modelName = '';
+    var breadcrumb = document.querySelector('.breadcrumb-item.active, .breadcrumb .active, .content-header h1, .card-title, #content h1');
+    if (breadcrumb) {
+        modelName = breadcrumb.textContent.trim();
+    }
+    // Fallback: parse from URL
+    if (!modelName) {
+        var parts = window.location.pathname.split('/').filter(Boolean);
+        // URL pattern: /admin/<app>/<model>/change/ or /admin/<app>/<model>/add/
+        if (parts.length >= 3 && parts[0] === 'admin') {
+            modelName = parts.slice(1, -1).map(function(p) {
+                return p.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+            }).join(' — ');
+        }
+    }
+
+    // Build greeting
+    var greeting = 'Hello ' + (username || 'there');
+    if (modelName) {
+        greeting += ', how can I assist with the ' + modelName + '?';
+    } else {
+        greeting += ', how can I assist you today?';
+    }
+
+    // Insert a floating AI greeting widget (bottom-right)
+    var widget = document.createElement('div');
+    widget.id = 'ps-contextual-ai';
+    widget.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;max-width:320px;background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.15);padding:14px 18px;font-size:14px;line-height:1.5;animation:psAiSlideIn 0.4s ease-out;cursor:pointer;';
+    widget.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="font-size:20px;">🤖</span><strong style="color:#495057;">PolySaaS AI</strong></div><div style="color:#6c757d;">' + greeting + '</div>';
+
+    var style = document.createElement('style');
+    style.textContent = '@keyframes psAiSlideIn{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}} #ps-contextual-ai:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,0.2);} #ps-contextual-ai .ps-ai-close{position:absolute;top:6px;right:10px;font-size:16px;color:#adb5bd;cursor:pointer;line-height:1;} #ps-contextual-ai .ps-ai-close:hover{color:#495057;}';
+    document.head.appendChild(style);
+
+    // Add close button
+    var closeBtn = document.createElement('span');
+    closeBtn.className = 'ps-ai-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = function(e) { e.stopPropagation(); widget.remove(); };
+    widget.appendChild(closeBtn);
+
+    // Click to open full AI chat
+    widget.onclick = function() {
+        var aiUrl = '/dose/doseai/';
+        // Try to open in a small popup
+        window.open(aiUrl, 'PolySaaSAI', 'width=480,height=640,scrollbars=yes');
+        widget.remove();
+    };
+
+    // Auto-dismiss after 15 seconds
+    setTimeout(function() {
+        if (widget.parentNode) {
+            widget.style.transition = 'opacity 0.5s';
+            widget.style.opacity = '0';
+            setTimeout(function() { widget.remove(); }, 500);
+        }
+    }, 15000);
+
+    document.body.appendChild(widget);
+})();
+</script>
