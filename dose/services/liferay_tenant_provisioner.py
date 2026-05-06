@@ -25,6 +25,8 @@ def provision_liferay_tenant(
     Triggered when "Liferay" is checked on subscribe form
     """
     # 1. Set tenant schema for PassThroughEndpoint creation
+    from django.conf import settings
+    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
     with connection.cursor() as cursor:
         cursor.execute(f'SET search_path TO "{tenant_schema}"')
 
@@ -51,9 +53,9 @@ def provision_liferay_tenant(
         "success": True,
         "liferay_url": LIFERAY_API_BASE,
         "liferay_credentials": {
-            "email": "test@liferay.com",
-            "password": "test",
-            "note": "Default Liferay test credentials"
+            "username": "liferayAdmin",
+            "password": password,
+            "note": "Standard app-admin credentials"
         },
         "message": "Liferay tenant provisioned successfully"
     }

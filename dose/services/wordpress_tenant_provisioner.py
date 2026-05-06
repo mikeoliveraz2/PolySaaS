@@ -25,6 +25,8 @@ def provision_wordpress_tenant(
     Triggered when "WordPress" is checked on subscribe form
     """
     # 1. Set tenant schema for PassThroughEndpoint creation
+    from django.conf import settings
+    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
     with connection.cursor() as cursor:
         cursor.execute(f'SET search_path TO "{tenant_schema}"')
 
@@ -51,9 +53,9 @@ def provision_wordpress_tenant(
         "success": True,
         "wordpress_url": WORDPRESS_API_BASE,
         "wordpress_credentials": {
-            "username": "admin",
-            "password": "admin",
-            "note": "Default WordPress admin credentials"
+            "username": "wordpressAdmin",
+            "password": password,
+            "note": "Standard app-admin credentials"
         },
         "message": "WordPress tenant provisioned successfully"
     }

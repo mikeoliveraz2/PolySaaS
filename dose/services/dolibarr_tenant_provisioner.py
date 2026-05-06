@@ -20,8 +20,9 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
     with connection.cursor() as cursor:
         cursor.execute(f'SET search_path TO "{tenant_schema}"')
 
-    # 2. Generate secure password
-    password = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*") for _ in range(20))
+    # 2. Use standardized app-admin password (convention: [appslug]Admin / POLYSAAS_APP_ADMIN_PASSWORD)
+    from django.conf import settings
+    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
 
     # 3. Create PassThroughEndpoint for Dolibarr
     dolibarr_endpoint, _created = PassThroughEndpoint.objects.update_or_create(
@@ -55,8 +56,8 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
 
         <p><strong>Login Credentials:</strong></p>
         <ul>
-            <li><strong>Email:</strong> admin@dolibarr.com (default)</li>
-            <li><strong>Password:</strong> admin</li>
+            <li><strong>Username:</strong> dolibarrAdmin</li>
+            <li><strong>Password:</strong> {password}</li>
         </ul>
 
         <p><em>Note: This is a shared Dolibarr instance for demo purposes. In production, each tenant would have isolated access.</em></p>

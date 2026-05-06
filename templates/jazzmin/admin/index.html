@@ -118,8 +118,22 @@
             letter-spacing: 0.5px;
             color: #adb5bd;
             padding: 0 4px 8px;
-            margin: 0;
         }
+
+        /* ── App Admin Credentials Card ── */
+        .ps-creds-card { font-size: 13px; }
+        .ps-creds-card .table { margin-bottom: 0; }
+        .ps-creds-card .table th { border-top: 0; font-weight: 600; font-size: 12px; color: #6c757d; }
+        .ps-creds-card .table td { vertical-align: middle; }
+        .ps-creds-pwd {
+            font-family: monospace; font-size: 12px;
+            background: #f1f3f5; padding: 2px 6px;
+            border-radius: 4px; color: #495057;
+            cursor: pointer; user-select: all;
+        }
+        .ps-creds-pwd:hover { background: #e9ecef; }
+        .ps-creds-note { font-size: 11px; color: #868e96; margin-top: 8px; }
+        .ps-sidebar-title { margin: 0; }
     </style>
     {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
 {% endblock %}
@@ -147,6 +161,32 @@
                     {% endif %}
                 {% endfor %}
             </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── App Admin Credentials (staff only) ── #}
+    {% if request.user.is_staff %}
+    <div class="card mb-3 ps-creds-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="m-0"><i class="fas fa-key" aria-hidden="true"></i> App Admin Credentials</h5>
+            <span class="badge badge-secondary">dev helper</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm">
+                <thead>
+                    <tr><th>App</th><th>Username</th><th>Password</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Odoo</td><td><code>odooAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
+                    <tr><td>Nextcloud</td><td><code>nextcloudAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
+                    <tr><td>Dolibarr</td><td><code>dolibarrAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
+                    <tr><td>Liferay</td><td><code>liferayAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
+                    <tr><td>WordPress</td><td><code>wordpressAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
+                    <tr><td>Mattermost</td><td colspan="2"><em>SSO via PolySaaS — no separate admin password</em></td></tr>
+                </tbody>
+            </table>
+            <p class="ps-creds-note px-3 pb-2 mb-0">Override via <code>POLYSAAS_APP_ADMIN_PASSWORD</code> env var. Click password to copy.</p>
         </div>
     </div>
     {% endif %}
