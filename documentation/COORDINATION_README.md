@@ -427,3 +427,23 @@ Created Django superuser `mmadmin@polysaas.online` / `PolySaaS2026!` for local a
 
 ### Files Changed
 - `documentation/COORDINATION_README.md` (this entry)
+
+---
+
+## 2026-05-08 (Morning — Condo → Office)
+**Status**: DONE — dashboard fix + Odoo2 deploy recovered
+**Branch**: main
+
+### Summary
+1. **Fixed Django admin NoReverseMatch**: Added missing `path('dashboard/', dashboard, name='dashboard')` to `dose/urls.py`. The `templates/jazzmin/admin/index.html` references `{% url 'dose:dashboard' %}` but the route was never registered. Committed and pushed.
+2. **Odoo2 deploy fixed**: Previous deploy failed because `ODOO_DB_NAME=odoo_prod` but database `odoo_prod` never existed. Changed to `odoodb` in `render.yaml` (which matches the DB initialized earlier). Also updated directly in Render dashboard env vars and triggered manual deploy. Build and deploy succeeded; service is live.
+3. **Auto-deploy remains OFF**: All Render services have `autoDeployTrigger: off`. Manual deploys required from dashboard.
+
+### Login Credentials Note
+- Default Odoo superuser after `-i base,web` init: `admin / admin` (not `odooAdmin / PolySaaS2026!`)
+- `odooAdmin / PolySaaS2026!` is only created by the tenant provisioner when a user subscribes
+
+### Files Changed
+- `dose/urls.py` — added missing `dashboard` named route
+- `render.yaml` — changed `ODOO_DB_NAME` from `odoo_prod` to `odoodb`
+- `documentation/COORDINATION_README.md` (this entry)
