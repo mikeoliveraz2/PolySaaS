@@ -311,7 +311,7 @@ services:
       - fromGroup: polysaas-odoo
       # Override group DB name to use the initialized database
       - key: ODOO_DB_NAME
-        value: odoo_prod
+        value: odoodb
       # Force re-init to fix missing web.login template (remove after first successful deploy)
       - key: ODOO_AUTO_INIT
         value: "1"
