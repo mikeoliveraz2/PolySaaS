@@ -206,6 +206,17 @@
         ● POLYSAAS ORCHESTRATION ACTIVE — DISPLAY SHELL (PHASE 1)<br>
         <span style="color:#86efac;font-size:13px;">Phase 1 Shell — Use browser refresh (F5) to reload. Do not use the in-app Reload button yet.</span><br>
         <span style="color:#86efac;font-size:13px;">Note: In-app Reload currently takes you out of Phase 1 shell. Use browser refresh (F5) to return.</span>
+        {% if orchestration_executed %}
+        <div style="margin-top:8px;padding:6px 10px;background:#166534;border-radius:4px;">
+            <span style="color:#86efac;font-size:12px;">⚡ Dynamic orchestration triggered:</span>
+            {% for result in orchestration_results %}
+            <div style="color:#fff;font-size:11px;margin-top:2px;">
+                • {{ result.instruction_path }} → {{ result.executescript|default:"page capture" }}
+                {% if result.callback_data_id %}(CallBackData #{{ result.callback_data_id }}){% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
 
     <div id="polysaas-display-head-inject">{{ display_head_inner|safe }}</div>
@@ -492,6 +503,31 @@
                 return _rj.call(self).catch(function () { return null; });
             };
         }
+    })();
+    </script>
+    {% endif %}
+
+    {# Toast notification for orchestration success #}
+    {% if orchestration_executed %}
+    <script>
+    (function() {
+        'use strict';
+        function showToast(message, duration) {
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#166534;color:#fff;padding:12px 20px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;font-size:14px;font-family:system-ui,-apple-system,sans-serif;animation:slideIn 0.3s ease;';
+            toast.textContent = message;
+            var style = document.createElement('style');
+            style.textContent = '@keyframes slideIn{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}';
+            document.head.appendChild(style);
+            document.body.appendChild(toast);
+            setTimeout(function() {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(function() { toast.remove(); }, 300);
+            }, duration || 5000);
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            showToast('✅ Atomic service executed successfully — dynamic integration active', 6000);
+        });
     })();
     </script>
     {% endif %}
