@@ -566,22 +566,34 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         """
         import re
 
+        _PS_PREFIXES = (
+            '/admin/', '/accounts/', '/dose/', '/media/', '/favicon',
+            '/static/admin/', '/static/img/', '/static/css/',
+            '/static/js/', '/static/fonts/', '/static/jazzmin/',
+            '/swagger', '/api/', '/openapi',
+        )
+
+        rewritten_count = 0
+
         def _rewrite_path(path):
-            """Rewrite a single path — ALL root-relative paths go through proxy."""
+            nonlocal rewritten_count
+            """Rewrite a single path — ALL non-PolySaaS root-relative paths go through proxy."""
             if not path or not path.startswith('/'):
                 return path
             # Already proxied — never double-rewrite
             if path.startswith('/pt/'):
                 return path
-            # PolySaaS native paths — do NOT proxy (admin, accounts, dose, etc.)
-            if path.startswith('/admin/') or path.startswith('/accounts/') or path.startswith('/dose/') or path.startswith('/static/admin/'):
+            # PolySaaS native paths — do NOT proxy
+            if any(path.startswith(p) for p in _PS_PREFIXES):
                 return path
             # Everything else (Odoo assets, static files, app icons) -> proxy
             new_path = proxy_prefix + path
-            print(f"[ODOO REWRITE] {path} -> {new_path}")
+            rewritten_count += 1
+            if rewritten_count <= 50:
+                print(f"[ODOO REWRITE DEBUG] {path} -> {new_path}")
             return new_path
 
-        # 1. Rewrite standard attributes: href="...", src="...", action="..."
+        # 1. Rewrite standard attributes: href="...", src="...", action="...", data-src="..."
         # Match ALL relative paths starting with / (not just Odoo-specific ones)
         def _rewrite_attr(m):
             prefix = m.group(1)  # e.g., 'src="' or "src='"
@@ -589,13 +601,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             return prefix + _rewrite_path(path)
 
         html = re.sub(
-            r'((?:href|src|action)=["\'])(/[^"\']+)',
-            _rewrite_attr, html, flags=re.IGNORECASE,
-        )
-
-        # 2. Rewrite data-src (lazy loading) and data-original (some frameworks)
-        html = re.sub(
-            r'((?:data-src|data-original)=["\'])(/[^"\']+)',
+            r'((?:href|src|data-src|action)=["\'])(/[^"\']+)',
             _rewrite_attr, html, flags=re.IGNORECASE,
         )
 
@@ -650,6 +656,13 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             _rewrite_inline_style, html, flags=re.IGNORECASE,
         )
 
+        # 4b. Rewrite background-image:url(...) outside of style="" (e.g. in JS templates or CSS blocks)
+        html = re.sub(
+            r'(background-image:\s*url\()([^)]+)',
+            lambda m: m.group(1) + _rewrite_path(m.group(2).strip('"\' ')) + ')',
+            html, flags=re.IGNORECASE,
+        )
+
         # 5. Rewrite url(...) inside <style> blocks (covers @font-face, background-image, app icons)
         def _rewrite_css_url(m):
             quote = m.group(1) or ''
@@ -680,6 +693,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         # Debug: Check form actions after rewrite
         form_action_matches = re.findall(r'<form[^>]*action=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
         print(f"[ODOO REWRITE] Form actions after rewrite: {form_action_matches}")
+        print(f"[ODOO REWRITE DEBUG] Total paths rewritten: {rewritten_count}")
 
         return html
 
@@ -903,7 +917,8 @@ if (S) {
 // 2. PATH CLASSIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 var PS_PREFIXES = ['/static/admin/', '/static/img/', '/static/fonts/', '/static/css/',
-                   '/static/js/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+                   '/static/js/', '/static/jazzmin/', '/admin/', '/dose/', '/media/',
+                   '/accounts/', '/pt/', '/favicon', '/swagger', '/api/', '/openapi'];
 
 function isPolySaaSPath(s) {
     if (!s || typeof s !== 'string') return false;
@@ -1157,13 +1172,39 @@ var _formObserver = new MutationObserver(function(mutations) {
         }
     });
 });
-// Only observe within passthrough scope, not entire document
-var passthroughScope = document.querySelector('.polysaas-passthrough-scope');
-if (passthroughScope) {
-    _formObserver.observe(passthroughScope, {
+
+// Set up observer on passthrough scope, retrying if scope doesn't exist yet (script runs in <head>)
+function _setupFormObserver() {
+    var scope = document.querySelector('.polysaas-passthrough-scope');
+    if (!scope) {
+        console.log('[PolySaaS Odoo] Passthrough scope not found yet, retrying observer setup...');
+        return false;
+    }
+    _formObserver.observe(scope, {
         childList: true, subtree: true,
         attributes: true, attributeFilter: ['action', 'src'], attributeOldValue: false
     });
+    console.log('[PolySaaS Odoo] Form/image observer attached to passthrough scope');
+    // Bulk-rewrite any images that were already added before observer was ready
+    var existingImgs = scope.querySelectorAll('img, source');
+    for (var i = 0; i < existingImgs.length; i++) {
+        _rewriteImageSrc(existingImgs[i]);
+    }
+    return true;
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!_setupFormObserver()) {
+            setTimeout(_setupFormObserver, 500);
+            setTimeout(_setupFormObserver, 1500);
+        }
+    });
+} else {
+    if (!_setupFormObserver()) {
+        setTimeout(_setupFormObserver, 500);
+        setTimeout(_setupFormObserver, 1500);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
