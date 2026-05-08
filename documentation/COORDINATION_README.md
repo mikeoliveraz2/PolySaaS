@@ -447,3 +447,27 @@ Created Django superuser `mmadmin@polysaas.online` / `PolySaaS2026!` for local a
 - `dose/urls.py` — added missing `dashboard` named route
 - `render.yaml` — changed `ODOO_DB_NAME` from `odoo_prod` to `odoodb`
 - `documentation/COORDINATION_README.md` (this entry)
+
+---
+
+## 2026-05-09 (Morning — Condo)
+**Status**: IN PROGRESS — subscribe + demo testing, UI fixes applied
+**Branch**: main
+
+### Summary
+Started testing the full subscribe → provision → passthrough → demo flow.
+
+**Fixes applied today:**
+1. **Subscribe page checkbox alignment**: Added `.app-checkbox-row` flexbox styling so checkboxes are vertically centered and left-aligned with text to the right.
+2. **Odoo passthrough login prepopulation**: Added `get_upstream_credentials()` method and client-side JS shim code to auto-fill the Odoo login form with tenant credentials (login/password/db) when navigating through the passthrough proxy.
+3. **Odoo apps page missing icons**: Broadened `_rewrite_path` in `odoo_handler.py` to proxy ALL root-relative paths (not just `/web/`, `/odoo/` prefixes). Previously paths like `/base/static/` (app icons) were being made absolute to upstream origin, which browsers can't reach through the proxy. Now all assets route correctly through `/pt/admin/<host>/...`.
+4. **CSS url() rewrite broadened**: The `<style>` block URL rewriter now catches ALL `url(...)` paths, fixing background-image-based icons.
+
+**Notes / Pending:**
+- **75x75 logo size**: User reports a change was made yesterday (May 8) to set passthrough app logos to 75x75 with labels underneath. This change should be verified and committed if not already in repo.
+- **"Activate Invoicing" error**: `psycopg2.InterfaceError: cursor already closed` — this is an Odoo internal error during module installation. Likely caused by long-running DB transactions being interrupted by Render free-tier limitations or proxy timeouts. Not a proxy bug; Odoo's module install needs a stable long-lived connection.
+
+### Files Changed
+- `dose/templates/dose/subscribe.html` — checkbox alignment fix
+- `dose/passthrough/handlers/odoo_handler.py` — login prepopulation + icon path rewriting fix
+- `documentation/COORDINATION_README.md` (this entry)

@@ -79,6 +79,32 @@
     .plan-select-btn:hover { background: #e3f2fd; }
     .plan-card.selected .plan-select-btn:hover { background: #1565c0; }
 
+    /* ── App checkbox rows ── */
+    .app-checkbox-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5em;
+        gap: 0.5em;
+    }
+    .app-checkbox-row input[type="checkbox"] {
+        margin: 0;
+        flex-shrink: 0;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    .app-checkbox-row label {
+        font-weight: normal;
+        color: #555;
+        margin: 0;
+        cursor: pointer;
+        line-height: 1.4;
+    }
+    .app-slot-label {
+        color: #1976d2;
+        font-size: 0.85em;
+    }
+
     /* ── Slot advisory messages ── */
     #slot-advisory {
         margin: 0.5em 0; padding: 0.75em 1em; border-radius: 6px;
@@ -141,37 +167,37 @@
             A plan that fits will be recommended below.
             Bundled apps are queued after subscribe; you will get email when each is ready.
         </small>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox">
+            <label for="enable-odoo">Odoo ERP <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox">
+            <label for="enable-nextcloud">Nextcloud File Storage <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox">
+            <label for="enable-dolibarr">Dolibarr ERP/CRM <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-mattermost" style="font-weight: normal; color: #555;">Mattermost Team Chat <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox">
+            <label for="enable-mattermost">Mattermost Team Chat <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
-            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(2 slots)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2">
+            <label for="enable-wordpress">WordPress CMS <span class="app-slot-label">(2 slots)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-liferay" style="font-weight: normal; color: #555;">Liferay <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox">
+            <label for="enable-liferay">Liferay <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-monitor-logger" style="font-weight: normal; color: #555;">Monitor Logger <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox">
+            <label for="enable-monitor-logger">Monitor Logger <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
-            <label for="enable-polysysmon" style="font-weight: normal; color: #555;">PolySysMon <span style="color:#1976d2; font-size:0.85em;">(2 slots)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2">
+            <label for="enable-polysysmon">PolySysMon <span class="app-slot-label">(2 slots)</span></label>
         </div>
         <div id="slot-advisory"></div>
     </div>

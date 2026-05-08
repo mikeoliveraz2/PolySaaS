@@ -497,6 +497,29 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             logger.warning("[ODOO HANDLER] get_upstream_cookies failed: %s", exc)
         return {}
 
+    def get_upstream_credentials(self, request):
+        """Return dict with login, password, db for client-side form prepopulation."""
+        try:
+            tenant = getattr(request, 'tenant', None)
+            if not tenant:
+                return {}
+            from dose.models import TenantApp
+            ta = TenantApp.objects.filter(
+                tenant=tenant, app_name='odoo', status='active',
+            ).first()
+            if not ta:
+                return {}
+            extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
+            from django.conf import settings
+            return {
+                'login': extra.get("odoo_login") or "odooAdmin",
+                'password': extra.get("odoo_password") or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+                'db': extra.get("odoo_db") or "odoo",
+            }
+        except Exception as exc:
+            logger.warning("[ODOO HANDLER] get_upstream_credentials failed: %s", exc)
+            return {}
+
     # ------------------------------------------------------------------ #
     # HTML processing                                                      #
     # ------------------------------------------------------------------ #
@@ -527,7 +550,8 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         unproxied_forms = re.findall(r'<form[^>]*action=["\'](?!/pt/)(/[^"\']+)["\']', html_str, flags=re.IGNORECASE)
         if unproxied_forms:
             print(f"[ODOO HANDLER] WARNING: Unproxied form actions found: {unproxied_forms}")
-        html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix)
+        creds = self.get_upstream_credentials(request)
+        html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix, credentials=creds)
 
         print(f"[ODOO HANDLER] HTML processing complete")
         return html_str, None
@@ -543,29 +567,19 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         import re
 
         def _rewrite_path(path):
-            """Rewrite a single path."""
+            """Rewrite a single path — ALL root-relative paths go through proxy."""
             if not path or not path.startswith('/'):
                 return path
             # Already proxied — never double-rewrite
             if path.startswith('/pt/'):
                 return path
-            # Odoo native paths -> proxy
-            if (
-                path.startswith('/web/')
-                or path.startswith('/website/')
-                or path.startswith('/odoo/')
-                or path.startswith('/bus/')
-                or path.startswith('/websocket')
-            ):
-                new_path = proxy_prefix + path
-                print(f"[ODOO REWRITE] {path} -> {new_path}")
-                return new_path
-            # Other relative paths -> absolute upstream URL
-            if base_origin:
-                new_path = base_origin + path
-                print(f"[ODOO REWRITE] {path} -> {new_path}")
-                return new_path
-            return path
+            # PolySaaS native paths — do NOT proxy (admin, accounts, dose, etc.)
+            if path.startswith('/admin/') or path.startswith('/accounts/') or path.startswith('/dose/') or path.startswith('/static/admin/'):
+                return path
+            # Everything else (Odoo assets, static files, app icons) -> proxy
+            new_path = proxy_prefix + path
+            print(f"[ODOO REWRITE] {path} -> {new_path}")
+            return new_path
 
         # 1. Rewrite standard attributes: href="...", src="...", action="..."
         # Match ALL relative paths starting with / (not just Odoo-specific ones)
@@ -636,7 +650,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             _rewrite_inline_style, html, flags=re.IGNORECASE,
         )
 
-        # 5. Rewrite url(...) inside <style> blocks (covers @font-face, background-image)
+        # 5. Rewrite url(...) inside <style> blocks (covers @font-face, background-image, app icons)
         def _rewrite_css_url(m):
             quote = m.group(1) or ''
             path = m.group(2)
@@ -644,7 +658,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             return f'url({quote}{_rewrite_path(path)}{close})'
 
         html = re.sub(
-            r'url\((["\']?)(/(?:web|website|odoo|bus|websocket)[^)"\']*)(["\']?)\)',
+            r'url\((["\']?)(/[^)"\']*)(["\']?)\)',
             _rewrite_css_url, html, flags=re.IGNORECASE,
         )
 
@@ -693,12 +707,16 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     # Client-side shim                                                     #
     # ------------------------------------------------------------------ #
 
-    def _inject_client_shim(self, html, base_origin, session_id='', proxy_prefix='/pt/admin/odoo'):
+    def _inject_client_shim(self, html, base_origin, session_id='', proxy_prefix='/pt/admin/odoo', credentials=None):
         import time
         base_json    = json.dumps(base_origin)
         session_json = json.dumps(session_id)
         proxy_json   = json.dumps(proxy_prefix)
         ts_json      = json.dumps(str(int(time.time())))
+        creds = credentials or {}
+        cred_login_json  = json.dumps(creds.get('login', ''))
+        cred_pass_json   = json.dumps(creds.get('password', ''))
+        cred_db_json     = json.dumps(creds.get('db', ''))
 
         # ── Odoo 18 Base Path Fix ──
         # Odoo 18 often uses a <base> tag or internal logic that assumes it is at /odoo/
@@ -857,6 +875,9 @@ var B = BASE_JSON;       // upstream origin e.g. http://localhost:8069
 var S = SESSION_JSON;    // server-side session_id (bootstrap only)
 var PROXY = PROXY_JSON;
 var TS = TS_JSON;        // timestamp to verify fresh code
+var CRED_LOGIN = CRED_LOGIN_JSON;   // tenant login for form prepopulation
+var CRED_PASS  = CRED_PASS_JSON;    // tenant password
+var CRED_DB    = CRED_DB_JSON;      // tenant db name
 var O = window.location.origin;
 var SCOPE_SELECTOR = '.polysaas-passthrough-scope';
 
@@ -1319,6 +1340,39 @@ if (document.body) {
     });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. LOGIN FORM PREPOPULATION
+// ═══════════════════════════════════════════════════════════════════════════
+function prepopulateLoginForm() {
+    if (!CRED_LOGIN && !CRED_PASS) return;
+    // Odoo 18 login form uses specific input names/IDs
+    var dbSelect = document.querySelector('input[name="db"], select[name="db"], #db');
+    var loginInput = document.querySelector('input[name="login"], input[name="email"], #login, #email');
+    var passInput = document.querySelector('input[name="password"], input[type="password"], #password');
+    if (dbSelect && CRED_DB) {
+        dbSelect.value = CRED_DB;
+        console.log('[PolySaaS Odoo] Prepopulated db:', CRED_DB);
+    }
+    if (loginInput && CRED_LOGIN) {
+        loginInput.value = CRED_LOGIN;
+        // Trigger input event so Owl validation picks up the value
+        var ev = new Event('input', { bubbles: true });
+        loginInput.dispatchEvent(ev);
+        console.log('[PolySaaS Odoo] Prepopulated login:', CRED_LOGIN);
+    }
+    if (passInput && CRED_PASS) {
+        passInput.value = CRED_PASS;
+        var ev2 = new Event('input', { bubbles: true });
+        passInput.dispatchEvent(ev2);
+        console.log('[PolySaaS Odoo] Prepopulated password');
+    }
+}
+// Try immediately and periodically (Owl renders form asynchronously)
+document.addEventListener('DOMContentLoaded', prepopulateLoginForm);
+setTimeout(prepopulateLoginForm, 500);
+setTimeout(prepopulateLoginForm, 1500);
+setTimeout(prepopulateLoginForm, 3000);
+
 console.log('[PolySaaS Odoo] Shim initialization complete');
 
 })();
@@ -1329,6 +1383,9 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         patch = patch.replace('SESSION_JSON', session_json)
         patch = patch.replace('PROXY_JSON', proxy_json)
         patch = patch.replace('TS_JSON', ts_json)
+        patch = patch.replace('CRED_LOGIN_JSON', cred_login_json)
+        patch = patch.replace('CRED_PASS_JSON', cred_pass_json)
+        patch = patch.replace('CRED_DB_JSON', cred_db_json)
         
         return html.replace('<head>', '<head>' + patch)
 
