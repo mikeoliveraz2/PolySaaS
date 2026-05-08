@@ -583,11 +583,30 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
 
             return path
 
-        # Only target image-related attributes + CSS urls
+        # Target src/data-src for images + href/action for links/forms
+        # But only rewrite paths that look like Odoo assets or API calls
+        def _should_rewrite(path):
+            """Check if path is an Odoo asset that needs proxying."""
+            if not path.startswith('/'):
+                return False
+            odoo_patterns = (
+                '/web/', '/odoo/', '/bus/', '/base/', '/static/',
+                '/im_', '/description/icon', '.png', '.jpg', '.svg', '.gif', '.css', '.js'
+            )
+            return any(p in path.lower() for p in odoo_patterns)
+
+        def _rewrite_attr(m):
+            prefix = m.group(1)  # e.g., 'src="' or "href='"
+            path = m.group(2)
+            if _should_rewrite(path):
+                new_path = proxy_prefix + path
+                print(f"[ODOO REWRITE] {path} -> {new_path}")
+                return prefix + new_path
+            return prefix + path
+
         html = re.sub(
-            r'((?:src|data-src)=["\'])(/[^"\']+)',
-            lambda m: m.group(1) + _rewrite_path(m.group(2)),
-            html, flags=re.IGNORECASE
+            r'((?:src|data-src|href|action)=["\'])(/[^"\']+)',
+            _rewrite_attr, html, flags=re.IGNORECASE
         )
 
         # 2. CSS url() for background icons (using same targeted _rewrite_path)

@@ -416,6 +416,19 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     tenant_pk, app_key.replace('enable_', ''), user_obj,
                 )
                 kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
+                # Store user credentials for passthrough prepopulation
+                if app_key == 'enable_odoo' and user_obj:
+                    try:
+                        extra = tapp.extra_config or {}
+                        extra.update({
+                            'odoo_login': user_obj.email,
+                            'odoo_password': data.get('password'),  # Raw password from signup form
+                            'odoo_db': tenant.schema_name,
+                        })
+                        tapp.extra_config = extra
+                        tapp.save(update_fields=['extra_config'])
+                    except Exception as e:
+                        logger.warning("Failed to store Odoo credentials for passthrough: %s", e)
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
             def _safe_enqueue(task=provisioner, kw=dict(kwargs), key=app_key):
