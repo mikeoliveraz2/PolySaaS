@@ -566,104 +566,31 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         """
         import re
 
-        _PS_PREFIXES = (
-            '/admin/', '/accounts/', '/dose/', '/media/', '/favicon',
-            '/static/admin/', '/static/img/', '/static/css/',
-            '/static/js/', '/static/fonts/', '/static/jazzmin/',
-            '/swagger', '/api/', '/openapi',
-        )
-
-        rewritten_count = 0
-
         def _rewrite_path(path):
-            nonlocal rewritten_count
-            """Rewrite a single path — ALL non-PolySaaS root-relative paths go through proxy."""
             if not path or not path.startswith('/'):
                 return path
-            # Already proxied — never double-rewrite
             if path.startswith('/pt/'):
                 return path
-            # PolySaaS native paths — do NOT proxy
-            if any(path.startswith(p) for p in _PS_PREFIXES):
-                return path
-            # Everything else (Odoo assets, static files, app icons) -> proxy
-            new_path = proxy_prefix + path
-            rewritten_count += 1
-            if rewritten_count <= 50:
-                print(f"[ODOO REWRITE DEBUG] {path} -> {new_path}")
-            return new_path
 
-        # 1. Rewrite standard attributes: href="...", src="...", action="...", data-src="..."
-        # Match ALL relative paths starting with / (not just Odoo-specific ones)
-        def _rewrite_attr(m):
-            prefix = m.group(1)  # e.g., 'src="' or "src='"
-            path = m.group(2)
-            return prefix + _rewrite_path(path)
+            # Only rewrite paths that are likely static assets / icons
+            if any(keyword in path.lower() for keyword in (
+                '/static/', '/base/static/', '/im_', '/web/static/',
+                '/description/icon', '.png', '.jpg', '.svg', '.gif'
+            )):
+                new_path = proxy_prefix + path
+                print(f"[ODOO ICON FIX] {path} -> {new_path}")
+                return new_path
 
+            return path
+
+        # Only target image-related attributes + CSS urls
         html = re.sub(
-            r'((?:href|src|data-src|action)=["\'])(/[^"\']+)',
-            _rewrite_attr, html, flags=re.IGNORECASE,
+            r'((?:src|data-src)=["\'])(/[^"\']+)',
+            lambda m: m.group(1) + _rewrite_path(m.group(2)),
+            html, flags=re.IGNORECASE
         )
 
-        # 3. Rewrite srcset (responsive images) - handles comma-separated URLs
-        def _rewrite_srcset(m):
-            prefix = m.group(1)
-            srcset = m.group(2)
-            # srcset format: "url1 1x, url2 2x" or "url1 100w, url2 200w"
-            parts = []
-            for part in srcset.split(','):
-                part = part.strip()
-                if not part:
-                    continue
-                # Extract URL and descriptor (e.g., "1x" or "100w")
-                space_idx = part.find(' ')
-                if space_idx > 0:
-                    url = part[:space_idx]
-                    descriptor = part[space_idx:]
-                else:
-                    url = part
-                    descriptor = ''
-                # Rewrite the URL if it matches
-                if url.startswith('/'):
-                    url = _rewrite_path(url)
-                parts.append(url + descriptor)
-            return prefix + ', '.join(parts)
-
-        html = re.sub(
-            r'(srcset=["\'])([^"\']+)',
-            _rewrite_srcset, html, flags=re.IGNORECASE,
-        )
-
-        # 4. Rewrite inline style="background-image:url(...)" and similar
-        def _rewrite_inline_style(m):
-            prefix = m.group(1)  # style="... or style='
-            style_val = m.group(2)
-            # Rewrite url() inside the style value
-            def _rewrite_style_url(url_m):
-                quote = url_m.group(1) or ''
-                path = url_m.group(2)
-                close = url_m.group(3) or ''
-                return f'url({quote}{_rewrite_path(path)}{close})'
-
-            style_val = re.sub(
-                r'url\((["\']?)(/[^)"\']*)(["\']?)\)',
-                _rewrite_style_url, style_val,
-            )
-            return prefix + style_val
-
-        html = re.sub(
-            r'(style=["\'])([^"\']*url\([^"\']*)',
-            _rewrite_inline_style, html, flags=re.IGNORECASE,
-        )
-
-        # 4b. Rewrite background-image:url(...) outside of style="" (e.g. in JS templates or CSS blocks)
-        html = re.sub(
-            r'(background-image:\s*url\()([^)]+)',
-            lambda m: m.group(1) + _rewrite_path(m.group(2).strip('"\' ')) + ')',
-            html, flags=re.IGNORECASE,
-        )
-
-        # 5. Rewrite url(...) inside <style> blocks (covers @font-face, background-image, app icons)
+        # 2. CSS url() for background icons (using same targeted _rewrite_path)
         def _rewrite_css_url(m):
             quote = m.group(1) or ''
             path = m.group(2)
@@ -672,28 +599,8 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
 
         html = re.sub(
             r'url\((["\']?)(/[^)"\']*)(["\']?)\)',
-            _rewrite_css_url, html, flags=re.IGNORECASE,
+            _rewrite_css_url, html, flags=re.IGNORECASE
         )
-
-        # 6. Remove onsubmit handlers that reset form action to unproxied paths
-        # Odoo login form: onsubmit="this.action = '/web/login' + location.hash"
-        # This handler overwrites our proxied action and causes CSRF errors.
-        # STRIP the onsubmit entirely - the shim handles form submission via submit event.
-        onsubmit_matches = re.findall(r'onsubmit=["\'][^"\']*this\.action\s*=\s*', html, flags=re.IGNORECASE)
-        if onsubmit_matches:
-            print(f"[ODOO REWRITE] REMOVING onsubmit handlers that reset action: {len(onsubmit_matches)} found")
-            # Remove onsubmit="...this.action..." patterns entirely
-            html = re.sub(
-                r'\s*onsubmit=["\'][^"\']*this\.action[^"\']*["\']',
-                '',
-                html,
-                flags=re.IGNORECASE,
-            )
-
-        # Debug: Check form actions after rewrite
-        form_action_matches = re.findall(r'<form[^>]*action=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
-        print(f"[ODOO REWRITE] Form actions after rewrite: {form_action_matches}")
-        print(f"[ODOO REWRITE DEBUG] Total paths rewritten: {rewritten_count}")
 
         return html
 

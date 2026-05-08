@@ -40,7 +40,35 @@ def provision_odoo_tenant(
     from django.conf import settings
     password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
 
-    # 2. Create Odoo tenant (multi-tenant via separate DB schema or prefix)
+    # Build default tenant URL (updated after successful API call)
+    odoo_url = f"https://{tenant_schema}.odoo.polysaas.online"
+
+    # 2. Create PassThroughEndpoint FIRST — ensures sidebar link appears
+    # even if external Odoo API is unreachable.
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant_schema}"')
+            odoo_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
+                trigger_path='odoo',
+                defaults={
+                    'endpoint_url': odoo_url,
+                    'description': 'Odoo ERP - tenant-specific instance',
+                    'is_enabled': True,
+                    'passthrough_type': 'scraper',
+                    'integration_mode': 'web_api',
+                    'api_endpoint': f"{odoo_url}/api",
+                    'show_in_menu': True,
+                    'menu_title': 'Odoo',
+                    'menu_icon': 'building',
+                    'menu_sort_order': 20,
+                    'starting_uri': '/web/login',
+                }
+            )
+            logger.info("PassThroughEndpoint for Odoo %s (created=%s)", tenant_schema, ep_created)
+    except Exception as e:
+        logger.warning("Failed to create PassThroughEndpoint for Odoo: %s", e)
+
+    # 3. Create Odoo tenant (multi-tenant via separate DB schema or prefix)
     # Using Odoo's REST API + our internal provisioning endpoint
     create_tenant_payload = {
         "action": "create_tenant",
@@ -52,9 +80,28 @@ def provision_odoo_tenant(
         "plan": "professional"  # or map from PolySaaS tier
     }
 
-    tenant_resp = requests.post(f"{ODOO_API_BASE}/tenants", json=create_tenant_payload, timeout=30)
-    tenant_resp.raise_for_status()
-    odoo_url = tenant_resp.json()["tenant_url"]  # e.g. https://acme.odoo.polysaas.online
+    api_ok = False
+    try:
+        tenant_resp = requests.post(f"{ODOO_API_BASE}/tenants", json=create_tenant_payload, timeout=30)
+        tenant_resp.raise_for_status()
+        odoo_url = tenant_resp.json()["tenant_url"]  # e.g. https://acme.odoo.polysaas.online
+        api_ok = True
+    except Exception as e:
+        logger.warning("Odoo tenant API call failed for %s: %s", tenant_name, e)
+        # Continue — endpoint already created, provisioning can retry later
+
+    # Update endpoint URL if API call succeeded and returned a different URL
+    if api_ok:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{tenant_schema}"')
+                PassThroughEndpoint.objects.filter(trigger_path='odoo').update(
+                    endpoint_url=odoo_url,
+                    api_endpoint=f"{odoo_url}/api",
+                )
+                logger.info("Updated Odoo endpoint_url to %s", odoo_url)
+        except Exception as e:
+            logger.warning("Failed to update Odoo endpoint URL: %s", e)
 
     # 3. Send welcome email via Gmail API
     try:
@@ -124,33 +171,9 @@ def provision_odoo_tenant(
         except Exception as e:
             logger.warning("Odoo OAuth2 config failed for %s: %s", tenant_name, e)
 
-    # 5. Create PassThroughEndpoint in tenant schema for sidebar navigation
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant_schema}"')
-            odoo_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
-                trigger_path='odoo',
-                defaults={
-                    'endpoint_url': odoo_url,
-                    'description': 'Odoo ERP - tenant-specific instance',
-                    'is_enabled': True,
-                    'passthrough_type': 'scraper',
-                    'integration_mode': 'web_api',
-                    'api_endpoint': f"{odoo_url}/xmlrpc/2",
-                    'show_in_menu': True,
-                    'menu_title': 'Odoo',
-                    'menu_icon': 'building',
-                    'menu_sort_order': 20,
-                    'starting_uri': '/web',
-                }
-            )
-            if ep_created:
-                logger.info("Created PassThroughEndpoint for Odoo in tenant %s", tenant_schema)
-            else:
-                logger.info("Updated PassThroughEndpoint for Odoo in tenant %s", tenant_schema)
-    except Exception as e:
-        logger.warning("Failed to create PassThroughEndpoint for Odoo: %s", e)
-        # Non-fatal: continue even if endpoint creation fails
+    # 5. PassThroughEndpoint already created at step 2 so sidebar link appears
+    # even if external Odoo API is unreachable. URL is updated at step 4
+    # if the API call succeeds.
 
     if tenant_app:
         mark_tenant_app_active(tenant_app, app_url=odoo_url)
