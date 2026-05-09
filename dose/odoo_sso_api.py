@@ -53,46 +53,59 @@ def odoo_sso_api(request):
     ta = TenantApp.objects.filter(tenant=tenant, app_name='odoo').first()
     extra = (ta.extra_config or {}) if ta else {}
     default_pw = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
-    login = extra.get("odoo_login") or "odooAdmin"
-    password = extra.get("odoo_password") or default_pw
-    db = extra.get("odoo_db") or "odoodb"
 
-    logger.info("[ODOO SSO] Authenticating login=%s db=%s at %s", login, db, odoo_base)
+    # odoo_db stored during subscription is tenant.schema_name — not the Odoo DB name.
+    # Always use 'odoodb' (the Odoo instance DB) regardless of what is stored.
+    db = "odoodb"
 
-    # Authenticate via Odoo JSON-RPC /web/session/authenticate
-    try:
-        import requests as _req
-        resp = _req.post(
-            f"{odoo_base}/web/session/authenticate",
-            json={
-                "jsonrpc": "2.0",
-                "method": "call",
-                "id": 1,
-                "params": {"db": db, "login": login, "password": password},
-            },
-            headers={"Content-Type": "application/json"},
-            timeout=30,
-        )
-        data = resp.json()
-        uid = (data.get("result") or {}).get("uid")
-        session_id = resp.cookies.get("session_id")
+    # Try tenant user first, fall back to admin
+    stored_login = extra.get("odoo_login") or ""
+    stored_pw    = extra.get("odoo_password") or ""
+    credential_sets = []
+    if stored_login and stored_pw:
+        credential_sets.append((stored_login, stored_pw, "tenant-user"))
+    credential_sets.append(("odooAdmin", default_pw, "admin-fallback"))
 
-        if uid and session_id:
-            logger.info("[ODOO SSO] Success uid=%s session=%s...", uid, session_id[:8])
-            return JsonResponse({
-                "ok": True,
-                "session_id": session_id,
-                "uid": uid,
-                "redirect_url": redirect_url,
-            })
-        else:
-            error_msg = (data.get("error") or {}).get("message") or "Authentication failed"
-            logger.warning("[ODOO SSO] Failed uid=%s has_session=%s msg=%s", uid, bool(session_id), error_msg)
-            return JsonResponse({
-                "error": error_msg,
-                "uid": uid,
-                "has_session": bool(session_id),
-            }, status=401)
-    except Exception as exc:
-        logger.exception("[ODOO SSO] Request failed: %s", exc)
-        return JsonResponse({"error": str(exc)}, status=500)
+    logger.info("[ODOO SSO] db=%s at %s — trying %d credential set(s)", db, odoo_base, len(credential_sets))
+
+    import requests as _req
+
+    last_error = "Authentication failed"
+    for login, password, cred_label in credential_sets:
+        try:
+            resp = _req.post(
+                f"{odoo_base}/web/session/authenticate",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "call",
+                    "id": 1,
+                    "params": {"db": db, "login": login, "password": password},
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            data = resp.json()
+            uid = (data.get("result") or {}).get("uid")
+            session_id = resp.cookies.get("session_id")
+
+            if uid and session_id:
+                logger.info("[ODOO SSO] Success cred=%s uid=%s session=%s...", cred_label, uid, session_id[:8])
+                return JsonResponse({
+                    "ok": True,
+                    "session_id": session_id,
+                    "uid": uid,
+                    "redirect_url": redirect_url,
+                })
+
+            odoo_err = (data.get("error") or {})
+            last_error = odoo_err.get("data", {}).get("message") or odoo_err.get("message") or "Authentication failed"
+            logger.warning("[ODOO SSO] cred=%s login=%s db=%s => uid=%s err=%s", cred_label, login, db, uid, last_error)
+
+        except Exception as exc:
+            last_error = str(exc)
+            logger.exception("[ODOO SSO] Request failed cred=%s: %s", cred_label, exc)
+
+    return JsonResponse({
+        "error": last_error,
+        "debug": f"tried login={stored_login or 'odooAdmin'} db={db} at {odoo_base}",
+    }, status=401)
