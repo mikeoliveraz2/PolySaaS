@@ -558,7 +558,7 @@ Started testing the full subscribe → provision → passthrough → demo flow.
 ---
 
 ## 2026-05-09 (Evening — Condo)
-**Status**: IN PROGRESS — SSO endpoint 404 fixed, awaiting browser test
+**Status**: ✅ BINGO — Odoo SSO working, apps page loads after login
 **Branch**: main
 **Commit**: `b2396a7`
 
