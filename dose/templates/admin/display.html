@@ -324,6 +324,53 @@
     {# Odoo passthrough: must run at end of body (after Jazzmin extrajs) so XHR/fetch are patched before deferred Odoo modules execute. Head-inject div scripts are unreliable here. #}
     {% if display_odoo_pt_prefix %}
     <script>
+    // ── SSO Auto-Login for Odoo Display Shell ──
+    (function() {
+        var CRED_LOGIN = '{{ display_credentials.login|default:""|escapejs }}';
+        var CRED_PASS  = '{{ display_credentials.password|default:""|escapejs }}';
+        var CRED_DB    = '{{ display_credentials.db|default:"odoodb"|escapejs }}';
+        var SSO_URL    = '/dose/api/odoo-sso/';
+        var _origFetch = window.fetch;
+
+        function ssoAutoLogin() {
+            if (!CRED_LOGIN || !CRED_PASS) return;
+            var already = sessionStorage.getItem('__polysaas_autologin_ts');
+            if (already && (Date.now() - parseInt(already) < 30000)) return;
+            var loginInput = document.querySelector('input[name="login"], input[type="email"], #login');
+            var passInput  = document.querySelector('input[name="password"], input[type="password"], #password');
+            var btn        = document.querySelector('button[type="submit"], .btn-primary, .oe_login_button');
+            if (!loginInput || !passInput || !btn) return;
+            console.log('[PolySaaS Odoo] SSO auto-login starting for:', CRED_LOGIN);
+            loginInput.value = CRED_LOGIN;
+            loginInput.dispatchEvent(new Event('input', {bubbles:true}));
+            passInput.value = CRED_PASS;
+            passInput.dispatchEvent(new Event('input', {bubbles:true}));
+            var dbInput = document.querySelector('input[name="db"], select[name="db"], #db');
+            if (dbInput && CRED_DB) { dbInput.value = CRED_DB; dbInput.dispatchEvent(new Event('change', {bubbles:true})); }
+            setTimeout(function() {
+                (_origFetch || fetch)(SSO_URL, {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+                    credentials: 'include'
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    console.log('[PolySaaS Odoo] SSO response:', JSON.stringify(data).substring(0,200));
+                    if (data && data.ok && data.session_id) {
+                        document.cookie = 'session_id=' + data.session_id + '; path=/; SameSite=Lax';
+                        sessionStorage.setItem('__polysaas_autologin_ts', String(Date.now()));
+                        console.log('[PolySaaS Odoo] SSO ok — navigating to', data.redirect_url);
+                        window.location.href = data.redirect_url || window.location.href;
+                    } else {
+                        console.warn('[PolySaaS Odoo] SSO failed:', (data && data.error) || data);
+                    }
+                }).catch(function(err) { console.error('[PolySaaS Odoo] SSO error:', err); });
+            }, 800);
+        }
+        document.addEventListener('DOMContentLoaded', ssoAutoLogin);
+        setTimeout(ssoAutoLogin, 1500);
+        setTimeout(ssoAutoLogin, 3000);
+    })();
+    </script>
+    <script>
     (function () {
         console.log('[PolySaaS Odoo] Shim loaded - forcing action = null for clean start');
         if (window.odoo && window.odoo.__session_info__) {
