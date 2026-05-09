@@ -46,8 +46,10 @@ def odoo_sso_api(request):
 
     parsed = urlparse(endpoint.endpoint_url)
     odoo_base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    proxy_hostname = parsed.netloc  # e.g. polysaas-odoo2.onrender.com
-    redirect_url = f"/pt/admin/{proxy_hostname}/web"
+    # Use trigger_path (e.g. "odoo") not the hostname — the named trigger routes through
+    # display.html which provides the Odoo body-scope container and Owl mounting hooks.
+    # The hostname trigger bypasses display.html for sub-paths → blank screen.
+    redirect_url = f"/pt/admin/{endpoint.trigger_path.strip('/')}/web"
 
     # Get credentials from TenantApp.extra_config (set during subscription)
     ta = TenantApp.objects.filter(tenant=tenant, app_name='odoo').first()

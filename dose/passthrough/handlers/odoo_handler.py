@@ -459,6 +459,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 if display_body_inner
                 else "",
                 "display_odoo_pt_prefix": proxy_prefix,
+                "display_credentials": self.get_upstream_credentials(request),
                 # Odoo 18 mounts nodes on document.body — display.html hijacks appendChild.
                 "display_enable_odoo_body_scope": True,
                 "display_shell_footer": (
