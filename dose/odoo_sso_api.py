@@ -47,7 +47,7 @@ def odoo_sso_api(request):
     parsed = urlparse(endpoint.endpoint_url)
     odoo_base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
     proxy_hostname = parsed.netloc  # e.g. polysaas-odoo2.onrender.com
-    redirect_url = f"/pt/admin/{proxy_hostname}/"
+    redirect_url = f"/pt/admin/{proxy_hostname}/web"
 
     # Get credentials from TenantApp.extra_config (set during subscription)
     ta = TenantApp.objects.filter(tenant=tenant, app_name='odoo').first()
