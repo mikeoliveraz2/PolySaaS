@@ -14,9 +14,27 @@ class Instruction(TenantAwareModel):
     class DIRECTION(models.TextChoices):
         REQ = 'REQ', _('REQUEST')
         RES = 'RES', _('RESPONSE')
+    class MATCH_TYPE(models.TextChoices):
+        PATH     = 'path',      _('URL Path Contains')
+        ACTION   = 'action_id', _('Odoo Action ID (e.g. account.action_invoice)')
+        MENU     = 'menu_id',   _('Odoo Menu ID (numeric)')
+        REGEX    = 'regex',     _('Regex on full URL')
+        CONTAINS = 'contains',  _('Contains string (anywhere in URL)')
+
     id = models.BigAutoField(primary_key=True)
     eventKey = models.CharField(max_length=100, blank=True, null=True)
-    requestpath = models.CharField(max_length=200)
+    requestpath = models.CharField(
+        max_length=500,
+        help_text="Match value: path fragment, action_id, menu_id number, regex, or substring — interpreted by match_type",
+    )
+    match_type = models.CharField(
+        max_length=20, choices=MATCH_TYPE.choices, default=MATCH_TYPE.PATH,
+        help_text="How to interpret requestpath when matching incoming upstream URLs",
+    )
+    match_extra = models.JSONField(
+        default=dict, blank=True,
+        help_text='Extra conditions, e.g. {"method": "GET"} to restrict HTTP method',
+    )
     requestmethod = models.CharField(max_length=6, choices=METHODS.choices, default=METHODS.GET)
     direction = models.CharField(max_length=3, choices=DIRECTION.choices, default=DIRECTION.REQ)
     urllist = models.CharField(max_length=200, default='', null=True, blank=True, help_text="The urllist can be a local or remote URL with the full path. If specifying more than one, separate multiple URLs with a comma.")

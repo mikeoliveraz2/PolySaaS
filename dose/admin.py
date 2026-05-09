@@ -251,13 +251,31 @@ class InstructionForm(forms.ModelForm):
 class InstructionAdmin(TenantAwareModelAdmin):
     form = InstructionForm
     fieldsets = [
-        (None, {'fields': ['requestpath', 'eventKey', 'requestmethod', 'direction',
-                          'urllist', 'appusername', 'executescript', 'description', 'parameters_json', 'save_callbackdata', 'pub_date']}),   
+        ('Matching Rule', {
+            'fields': ['match_type', 'requestpath', 'match_extra'],
+            'description': (
+                '<b>match_type</b>: how requestpath is interpreted. '
+                'Examples — <i>path</i>: "/odoo/accounting", '
+                '<i>action_id</i>: "account.action_invoice", '
+                '<i>menu_id</i>: "116", '
+                '<i>regex</i>: r"/odoo/(accounting|invoic)", '
+                '<i>contains</i>: "invoice". '
+                'Use match_extra JSON <code>{"method":"GET"}</code> to restrict HTTP method.'
+            ),
+        }),
+        ('Action', {
+            'fields': ['executescript', 'save_callbackdata', 'eventKey'],
+        }),
+        ('Advanced', {
+            'classes': ['collapse'],
+            'fields': ['requestmethod', 'direction', 'urllist', 'appusername',
+                       'description', 'parameters_json', 'pub_date'],
+        }),
     ]
 
-    list_display = ('requestpath', 'requestmethod', 'pub_date', 'was_published_recently')
-    list_filter = ['pub_date']
-    search_fields = ['requestpath']
+    list_display = ('requestpath', 'match_type', 'executescript', 'save_callbackdata', 'requestmethod', 'pub_date', 'was_published_recently')
+    list_filter = ['match_type', 'save_callbackdata', 'pub_date']
+    search_fields = ['requestpath', 'description', 'eventKey']
 
     @method_decorator(never_cache)
     def add_view(self, request, form_url='', extra_context=None):

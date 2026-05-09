@@ -23,6 +23,56 @@ from django.db import connection
 logger = logging.getLogger(__name__)
 
 
+def _extract_odoo_ids(upstream_path):
+    """Extract action_id and menu_id from an Odoo URL (path, query, or fragment)."""
+    import re
+    action_id = None
+    menu_id = None
+    # Odoo 17/18: /odoo/accounting → action in path; also ?action=..., #action=...
+    combined = upstream_path  # search the full string including query/fragment
+    m = re.search(r'(?:[?&#]|^)action=([^&# ]+)', combined)
+    if m:
+        action_id = m.group(1)
+    m = re.search(r'(?:[?&#]|^)menu_id=(\d+)', combined)
+    if m:
+        menu_id = m.group(1)
+    return action_id, menu_id
+
+
+def _instruction_matches(instr, upstream_path, method):
+    """Return True if the instruction matches this request."""
+    import re
+    mt = getattr(instr, 'match_type', 'path') or 'path'
+    mv = (instr.requestpath or '').strip()
+    if not mv:
+        return False
+
+    # Optional method restriction via match_extra
+    extra = getattr(instr, 'match_extra', {}) or {}
+    if extra.get('method') and extra['method'].upper() != method.upper():
+        return False
+
+    norm = upstream_path.lower()
+
+    if mt == 'path':
+        return mv.lower() in norm
+    elif mt == 'contains':
+        return mv.lower() in norm
+    elif mt == 'action_id':
+        action_id, _ = _extract_odoo_ids(upstream_path)
+        return bool(action_id and mv.lower() in action_id.lower())
+    elif mt == 'menu_id':
+        _, menu_id = _extract_odoo_ids(upstream_path)
+        return bool(menu_id and mv == menu_id)
+    elif mt == 'regex':
+        try:
+            return bool(re.search(mv, upstream_path))
+        except re.error:
+            logger.warning("[ORCHESTRATION HOOK] Invalid regex in instruction id=%s: %s", instr.id, mv)
+            return False
+    return False
+
+
 def check_orchestration_trigger(request, upstream_path, app_name, tenant):
     """
     Check if the captured upstream_path matches any Instruction and fire it.
@@ -37,21 +87,23 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant):
         return
 
     method = request.method.upper()
-    normalized_path = upstream_path.rstrip('/').lower()
 
     # Ensure we're in the right schema
     with connection.cursor() as cur:
         cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
 
     from dose.models import Instruction
+    from django.db import models as _m
     instructions = Instruction.objects.filter(
-        requestmethod=method, direction='REQ', tenant=tenant
+        direction='REQ', is_active=True
+    ).filter(
+        _m.Q(tenant=tenant) | _m.Q(tenant__isnull=True)
+    ).order_by('priority', '-pub_date') if hasattr(Instruction, 'priority') else \
+    Instruction.objects.filter(
+        direction='REQ', tenant=tenant
     )
 
-    matched = [
-        instr for instr in instructions
-        if normalized_path == instr.requestpath.rstrip('/').lower()
-    ]
+    matched = [instr for instr in instructions if _instruction_matches(instr, upstream_path, method)]
 
     if not matched:
         return
