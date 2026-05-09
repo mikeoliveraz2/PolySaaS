@@ -93,15 +93,9 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant):
         cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
 
     from dose.models import Instruction
-    from django.db import models as _m
-    instructions = Instruction.objects.filter(
-        direction='REQ', is_active=True
-    ).filter(
-        _m.Q(tenant=tenant) | _m.Q(tenant__isnull=True)
-    ).order_by('priority', '-pub_date') if hasattr(Instruction, 'priority') else \
-    Instruction.objects.filter(
-        direction='REQ', tenant=tenant
-    )
+    # search_path is already set to the tenant schema above — no FK filter needed.
+    # Filtering by tenant FK can fail if the column type is stale (bigint vs varchar).
+    instructions = Instruction.objects.filter(direction='REQ')
 
     matched = [instr for instr in instructions if _instruction_matches(instr, upstream_path, method)]
 

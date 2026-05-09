@@ -203,21 +203,59 @@
 
 {% block content %}
     <div id="polysaas-orchestration-bar">
-        ● POLYSAAS ORCHESTRATION ACTIVE — DISPLAY SHELL (PHASE 1)<br>
-        <span style="color:#86efac;font-size:13px;">Phase 1 Shell — Use browser refresh (F5) to reload. Do not use the in-app Reload button yet.</span><br>
-        <span style="color:#86efac;font-size:13px;">Note: In-app Reload currently takes you out of Phase 1 shell. Use browser refresh (F5) to return.</span>
-        {% if orchestration_executed %}
-        <div style="margin-top:8px;padding:6px 10px;background:#166534;border-radius:4px;">
-            <span style="color:#86efac;font-size:12px;">⚡ Dynamic orchestration triggered:</span>
-            {% for result in orchestration_results %}
-            <div style="color:#fff;font-size:11px;margin-top:2px;">
-                • {{ result.instruction_path }} → {{ result.executescript|default:"page capture" }}
-                {% if result.callback_data_id %}(CallBackData #{{ result.callback_data_id }}){% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+        <span style="color:#0f0;">●</span> <strong>POLYSAAS ORCHESTRATION</strong>
+        &nbsp;|&nbsp;
+        <span id="ps-orch-path" style="color:#86efac;">detecting…</span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">menu_id: <span id="ps-orch-menu" style="color:#fde68a;">—</span></span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">action: <span id="ps-orch-action" style="color:#fde68a;">—</span></span>
+        <span id="ps-orch-event" style="display:none;margin-left:12px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
     </div>
+    <script>
+    (function() {
+        function getOdooInfo() {
+            var path = window.location.pathname;
+            var m = path.match(/\/pt\/admin\/[^/]+(\/.*)$/);
+            var odooPath = m ? m[1].replace(/\/$/, '') || '/' : path;
+            var params = new URLSearchParams(window.location.search + window.location.hash.replace(/^#/, '?'));
+            var menuId  = params.get('menu_id') || '';
+            var action  = params.get('action')  || '';
+            if (!action && window.location.hash) {
+                var hm = window.location.hash.match(/action=([^&]+)/);
+                if (hm) action = decodeURIComponent(hm[1]);
+                var mm = window.location.hash.match(/menu_id=(\d+)/);
+                if (mm) menuId = mm[1];
+            }
+            return { path: odooPath, menuId: menuId, action: action };
+        }
+        function updateBar() {
+            var info = getOdooInfo();
+            var pathEl   = document.getElementById('ps-orch-path');
+            var menuEl   = document.getElementById('ps-orch-menu');
+            var actionEl = document.getElementById('ps-orch-action');
+            if (pathEl)   pathEl.textContent   = info.path   || '—';
+            if (menuEl)   menuEl.textContent   = info.menuId || '—';
+            if (actionEl) actionEl.textContent = info.action || '—';
+        }
+        updateBar();
+        var _push = history.pushState, _replace = history.replaceState;
+        history.pushState    = function() { _push.apply(history, arguments);    updateBar(); };
+        history.replaceState = function() { _replace.apply(history, arguments); updateBar(); };
+        window.addEventListener('popstate', updateBar);
+        setInterval(updateBar, 2000);
+
+        function showOrchEvent(msg) {
+            var el = document.getElementById('ps-orch-event');
+            if (!el) return;
+            el.textContent = '⚡ ' + msg;
+            el.style.display = 'inline';
+            clearTimeout(el._t);
+            el._t = setTimeout(function() { el.style.display = 'none'; }, 12000);
+        }
+        window.__psShowOrchEvent = showOrchEvent;
+    })();
+    </script>
 
     <div id="polysaas-display-head-inject">{{ display_head_inner|safe }}</div>
 
@@ -609,6 +647,9 @@
                         if (seenIds[msg.id]) return;
                         seenIds[msg.id] = true;
                         showToast(msg.message, msg.level || 'success');
+                        if (msg.message && msg.message.indexOf('rchestration') !== -1 && window.__psShowOrchEvent) {
+                            window.__psShowOrchEvent(msg.message);
+                        }
                     });
                     if (data.count > 0) {
                         fetch('/dose/api/unread-dosemessages/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': getCsrf()}});

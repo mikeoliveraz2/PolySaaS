@@ -102,9 +102,6 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
         except ImportError:
             Parameter = None
 
-        # Improved instruction matching logic: match if instruction.requestpath is a substring of the request path
-        normalized_request_path = request.path.rstrip('/').lower()
-
         # Set search_path to tenant schema (and public) before querying Instruction
         from django.db import connection
         tenant_schema = None
@@ -122,16 +119,20 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
                 search_path = cursor.fetchone()[0]
             print(f"[DEBUG] PostgreSQL search_path (no tenant): {search_path}")
 
+        # Use the shared _instruction_matches logic (supports match_type: path/menu_id/action_id/regex/contains)
+        from dose.passthrough.orchestration_hook import _instruction_matches
+        qs = request.META.get('QUERY_STRING', '')
+        full_path = request.path + ('?' + qs if qs else '')
         instructions = Instruction.objects.filter(requestmethod=requestmethod, direction='REQ')
         print(f"[DEBUG] All instructions for method={requestmethod}, direction=REQ:")
         for instr in instructions:
-            print(f"  - Instruction id={getattr(instr, 'id', None)}, requestpath='{instr.requestpath}', normalized='{instr.requestpath.rstrip('/').lower()}'")
-        print(f"[DEBUG] Normalized request path: '{normalized_request_path}'")
+            print(f"  - Instruction id={getattr(instr, 'id', None)}, match_type={getattr(instr, 'match_type', 'path')}, requestpath='{instr.requestpath}'")
+        print(f"[DEBUG] Matching against path: '{full_path}'")
         matched_instructions = [
             instr for instr in instructions
-            if instr.requestpath.rstrip('/').lower() in normalized_request_path
+            if _instruction_matches(instr, full_path, requestmethod)
         ]
-        print(f"[DEBUG] matched_instructions for path '{normalized_request_path}' and method '{requestmethod}': {len(matched_instructions)}")
+        print(f"[DEBUG] matched_instructions for path '{full_path}' and method '{requestmethod}': {len(matched_instructions)}")
         logger.info("matched_instructions.count()= %s", len(matched_instructions))
         if len(matched_instructions) == 0:
             return self.get_response(request)
