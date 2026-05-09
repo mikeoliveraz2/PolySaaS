@@ -524,10 +524,13 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         except Exception as ps_exc:
             print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
 
-        # ── Orchestration Hook: check if captured path matches an Instruction ──
+        # ── Orchestration Hook: fire for both REQ (outgoing) and RES (response received) ──
         try:
             from dose.passthrough.orchestration_hook import check_orchestration_trigger
-            check_orchestration_trigger(request, upstream_path, app_name, tenant)
+            check_orchestration_trigger(request, upstream_path, app_name, tenant,
+                                        direction='REQ')
+            check_orchestration_trigger(request, upstream_path, app_name, tenant,
+                                        direction='RES', upstream_response=resp)
         except Exception as orch_exc:
             print(f"[ORCHESTRATION HOOK] Non-blocking error: {orch_exc}")
         # ───────────────────────────────────────────────────────────────────

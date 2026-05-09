@@ -222,30 +222,28 @@ class OdooPassthroughHandler:
             print(f"[ODOO HANDLER]   RETURN None: not GET")
             return None
 
-        # Hostname triggers (e.g. polysaas-odoo2.onrender.com): the sidebar link encodes
-        # the upstream host directly.  Redirect the browser from the proxy root to /web/login
-        # so the browser URL is /pt/admin/<host>/web/login — the shim then strips the proxy
-        # prefix and Odoo's router sees /web/login instead of /, which avoids blank/garbled page.
-        print(f"[ODOO HANDLER]   checking hostname trigger...")
+        # Determine seg and proxy_prefix.
+        # Hostname triggers (e.g. polysaas-odoo2.onrender.com) keep the hostname as-is so
+        # that URL rewrites inside the display shell still point to the right proxy path.
+        # Named triggers (e.g. "odoo") use the normalized slug.
         if "." in url_trigger_segment:
-            proxy_prefix = f"/pt/admin/{url_trigger_segment.strip('/')}"
-            if request.path_info.rstrip("/") == proxy_prefix:
-                from django.http import HttpResponseRedirect
-                print(f"[ODOO] Hostname root → redirecting browser to {proxy_prefix}/web/login")
-                return HttpResponseRedirect(f"{proxy_prefix}/web/login")
-            # All other sub-paths for hostname trigger: let forward_request_standardized handle
-            return None
+            seg = url_trigger_segment.strip("/")          # hostname kept verbatim
+        else:
+            seg = url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
 
-        seg = (
-            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
-        )
         proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
         norm = path_info.rstrip("/")
-        if norm == proxy_prefix:
+
+        if norm == proxy_prefix.rstrip("/"):
             upstream_subpath = "/"
+            if "." in url_trigger_segment:
+                # Hostname root: redirect to /web/login so the URL is explicit
+                from django.http import HttpResponseRedirect
+                print(f"[ODOO] Hostname root → redirecting browser to {proxy_prefix}/web/login")
+                return HttpResponseRedirect(f"{proxy_prefix}/web/login")
         elif path_info.startswith(proxy_prefix + "/"):
-            upstream_subpath = path_info[len(proxy_prefix) :]
+            upstream_subpath = path_info[len(proxy_prefix):]
             if not upstream_subpath.startswith("/"):
                 upstream_subpath = "/" + upstream_subpath
         else:

@@ -91,15 +91,18 @@ def _instruction_matches(instr, upstream_path, method):
     return False
 
 
-def check_orchestration_trigger(request, upstream_path, app_name, tenant):
+def check_orchestration_trigger(request, upstream_path, app_name, tenant,
+                               direction='REQ', upstream_response=None):
     """
     Check if the captured upstream_path matches any Instruction and fire it.
 
     Args:
         request: Django HttpRequest (with .user, .tenant, .body)
-        upstream_path: The path on the upstream app (e.g. /web/dataset/call_kw/account.move/create)
+        upstream_path: The path on the upstream app (e.g. /odoo/accounting?menu_id=116)
         app_name: Name of the bundled app (e.g. 'odoo')
         tenant: Tenant model instance or None
+        direction: 'REQ' (before upstream call) or 'RES' (after response received)
+        upstream_response: requests.Response object, only set when direction='RES'
     """
     if not tenant:
         return
@@ -112,8 +115,7 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant):
 
     from dose.models import Instruction
     # search_path is already set to the tenant schema above — no FK filter needed.
-    # Filtering by tenant FK can fail if the column type is stale (bigint vs varchar).
-    instructions = Instruction.objects.filter(direction='REQ')
+    instructions = Instruction.objects.filter(direction=direction)
 
     matched = [instr for instr in instructions if _instruction_matches(instr, upstream_path, method)]
 
@@ -128,21 +130,27 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant):
 
     for instruction_row in matched:
         executescript_name = getattr(instruction_row, 'executescript', None) or ''
-        atomic_result = {'status': 'success', 'path': upstream_path, 'method': method}
+        atomic_result = {
+            'status': 'success', 'path': upstream_path, 'method': method,
+            'direction': direction,
+        }
 
         if executescript_name:
             cls = ATOMIC_SERVICE_REGISTRY.get(executescript_name)
             if not cls or not hasattr(cls, 'execute_and_save'):
                 logger.warning("[ORCHESTRATION HOOK] No service class for '%s'", executescript_name)
             else:
-                print(f"[ORCHESTRATION HOOK] Executing {executescript_name} for instruction id={instruction_row.id}")
+                print(f"[ORCHESTRATION HOOK] Executing {executescript_name} for instruction id={instruction_row.id} direction={direction}")
+                # Attach upstream_response to request so atomic service can access response body
+                if upstream_response is not None:
+                    request._upstream_response = upstream_response
                 try:
                     atomic_result = cls.execute_and_save(request, instruction_row)
                 except Exception as exc:
                     logger.error("[ORCHESTRATION HOOK] %s failed: %s", executescript_name, exc)
                     atomic_result = {'status': 'error', 'error': str(exc)}
         else:
-            print(f"[ORCHESTRATION HOOK] Instruction id={instruction_row.id} matched (no executescript) — recording event")
+            print(f"[ORCHESTRATION HOOK] Instruction id={instruction_row.id} matched (no executescript) direction={direction} — recording event")
 
         # Save CallBackData
         _save_callback_data(request, instruction_row, atomic_result, tenant)
