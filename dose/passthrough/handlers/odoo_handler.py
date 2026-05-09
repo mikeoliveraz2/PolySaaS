@@ -167,41 +167,10 @@ class OdooPassthroughHandler:
         return {}
 
     def get_request_body(self, request, target_url: str):
-        """For Odoo login POSTs: replace only the csrf_token field in the raw body,
-        preserving all other fields byte-for-byte to avoid re-encoding issues."""
-        if request.method != "POST" or "/web/login" not in target_url:
-            return None
-        try:
-            import re as _re
-            from urllib.parse import urlparse as _up
-            body = request.body.decode("utf-8", errors="replace")
-            print(f"[ODOO HANDLER] Raw login body from browser: {body[:500]}")
-            # Log the db value being submitted
-            import re as _re2
-            db_match = _re2.search(r'(?:^|&)db=([^&]*)', body)
-            print(f"[ODOO HANDLER] Login form db value: {db_match.group(1) if db_match else 'NOT FOUND'}")
-
-            # Inject fresh Odoo csrf_token so the POST validates against the fresh session
-            p = _up(target_url)
-            odoo_base = f"{p.scheme}://{p.netloc}"
-            # Get the tenant session_id so csrf_token matches the session we inject
-            tenant_cookies = self.get_upstream_cookies(request) or {}
-            tenant_session = tenant_cookies.get('session_id')
-            _session_id, csrf_token = self._fetch_fresh_login_session(odoo_base, tenant_session)
-            if csrf_token:
-                # Remove existing csrf_token param (any position), then append fresh one
-                body = _re.sub(r'(?:^|&)csrf_token=[^&]*', '', body)
-                body = body.strip('&')
-                body = f"{body}&csrf_token={csrf_token}"
-                print(f"[ODOO HANDLER] Injected fresh csrf_token into login POST: {csrf_token[:16]}...")
-            else:
-                print(f"[ODOO HANDLER] No fresh csrf_token available — sending POST as-is")
-
-            print(f"[ODOO HANDLER] Final login body: {body[:200]}")
-            return body.encode("utf-8")
-        except Exception as exc:
-            print(f"[ODOO HANDLER] get_request_body failed: {exc}")
-            return None
+        """Pass login POST body through unchanged.
+        The browser csrf_token is paired with its own session; replacing it with
+        a server-fetched token from a different session causes Odoo 400."""
+        return None
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
@@ -1470,8 +1439,7 @@ function autoLoginOdoo() {
     var btn = document.querySelector('button[type="submit"], .btn-primary, .oe_login_button');
     // Only act if we see a login form — not the apps page
     if (!loginInput || !passInput || !btn) return;
-    alert('[PolySaaS Odoo] Auto-login starting for: ' + CRED_LOGIN);
-    console.log('[PolySaaS Odoo] Auto-filling login form for:', CRED_LOGIN);
+    console.log('[PolySaaS Odoo] Auto-login starting for:', CRED_LOGIN);
     // Clear any browser autocomplete and fill with tenant credentials
     loginInput.value = '';
     loginInput.value = CRED_LOGIN;
@@ -1490,7 +1458,6 @@ function autoLoginOdoo() {
     setTimeout(function() {
         console.log('[PolySaaS Odoo] Calling PolySaaS SSO endpoint...');
         var ssoUrl = '/dose/api/odoo-sso/';
-        alert('[PolySaaS Odoo] Calling SSO endpoint...');
         _fetch(ssoUrl, {
             method: 'POST',
             headers: {
@@ -1499,23 +1466,19 @@ function autoLoginOdoo() {
             },
             credentials: 'include'
         }).then(function(resp) {
-            alert('[PolySaaS Odoo] SSO response status: ' + resp.status);
             return resp.json();
         }).then(function(data) {
-            alert('[PolySaaS Odoo] SSO data: ' + JSON.stringify(data).substring(0,200));
             if (data && data.ok && data.session_id) {
                 console.log('[PolySaaS Odoo] SSO ok, setting session cookie');
                 document.cookie = 'session_id=' + data.session_id + '; path=/; SameSite=Lax';
                 sessionStorage.setItem('__polysaas_autologin_ts', Date.now().toString());
                 console.log('[PolySaaS Odoo] Cookie set, reloading');
-                window.location.reload();
+                window.location.href = data.redirect_url || window.location.href;
             } else {
                 console.warn('[PolySaaS Odoo] SSO failed:', data.error || data);
-                alert('[PolySaaS Odoo] SSO failed: ' + (data.error || JSON.stringify(data)));
             }
         }).catch(function(err) {
             console.error('[PolySaaS Odoo] SSO error:', err);
-            alert('[PolySaaS Odoo] SSO error: ' + err);
         });
     }, 600);
 }
