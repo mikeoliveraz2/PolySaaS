@@ -1,7 +1,10 @@
-import time
+import logging
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -9,9 +12,11 @@ from django.views.decorators.csrf import csrf_exempt
 def odoo_sso_api(request):
     """
     Server-side SSO for Odoo.
-    Authenticates with Odoo via JSON-RPC on behalf of the PolySaaS user,
-    returns the session_id so the browser can set the cookie and load Odoo.
+    Authenticates with Odoo via /web/session/authenticate on behalf of the
+    PolySaaS user, returns the session_id so the browser can set the cookie.
     """
+    from django.db import connection
+    from django.conf import settings
     from dose.utils import get_current_tenant
     from dose.models import PassThroughEndpoint, TenantApp
 
@@ -19,68 +24,75 @@ def odoo_sso_api(request):
     if not tenant:
         return JsonResponse({"error": "No tenant context"}, status=403)
 
-    # Find the Odoo endpoint for this tenant
-    odoo_url = None
+    # Set tenant schema context for queries
     try:
-        endpoint = PassThroughEndpoint.objects.filter(
-            tenant=tenant,
-            endpoint_url__contains="odoo",
-            is_enabled=True,
-        ).first()
-        if endpoint:
-            odoo_url = endpoint.endpoint_url.rstrip("/")
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
     except Exception:
         pass
 
-    if not odoo_url:
+    # Find the Odoo endpoint for this tenant
+    endpoint = None
+    try:
+        endpoint = PassThroughEndpoint.objects.filter(
+            is_enabled=True,
+            trigger_path__iexact='odoo',
+        ).first()
+    except Exception as e:
+        logger.warning("[ODOO SSO] Endpoint lookup failed: %s", e)
+
+    if not endpoint:
         return JsonResponse({"error": "No Odoo endpoint configured"}, status=404)
 
-    # Get tenant config for Odoo credentials
-    tenant_config = tenant.get_config_dict()
-    odoo_config = tenant_config.get("odoo_provision", {})
+    parsed = urlparse(endpoint.endpoint_url)
+    odoo_base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    proxy_hostname = parsed.netloc  # e.g. polysaas-odoo2.onrender.com
+    redirect_url = f"/pt/admin/{proxy_hostname}/"
 
-    login = odoo_config.get("user_login", "")
-    password = odoo_config.get("user_password", "")
-    db = odoo_config.get("database_name", "odoodb")
+    # Get credentials from TenantApp.extra_config (set during subscription)
+    ta = TenantApp.objects.filter(tenant=tenant, app_name='odoo').first()
+    extra = (ta.extra_config or {}) if ta else {}
+    default_pw = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+    login = extra.get("odoo_login") or "odooAdmin"
+    password = extra.get("odoo_password") or default_pw
+    db = extra.get("odoo_db") or "odoodb"
 
-    if not login or not password:
-        return JsonResponse({"error": "Odoo credentials not configured"}, status=400)
+    logger.info("[ODOO SSO] Authenticating login=%s db=%s at %s", login, db, odoo_base)
 
-    # Server-side JSON-RPC authenticate to Odoo
+    # Authenticate via Odoo JSON-RPC /web/session/authenticate
     try:
         import requests as _req
-        auth_payload = {
-            "jsonrpc": "2.0",
-            "method": "call",
-            "params": {
-                "service": "common",
-                "method": "authenticate",
-                "args": [db, login, password, {}],
-            },
-            "id": int(time.time()),
-        }
         resp = _req.post(
-            f"{odoo_url}/jsonrpc",
-            json=auth_payload,
+            f"{odoo_base}/web/session/authenticate",
+            json={
+                "jsonrpc": "2.0",
+                "method": "call",
+                "id": 1,
+                "params": {"db": db, "login": login, "password": password},
+            },
             headers={"Content-Type": "application/json"},
             timeout=30,
         )
         data = resp.json()
-        uid = data.get("result")
+        uid = (data.get("result") or {}).get("uid")
         session_id = resp.cookies.get("session_id")
 
         if uid and session_id:
+            logger.info("[ODOO SSO] Success uid=%s session=%s...", uid, session_id[:8])
             return JsonResponse({
                 "ok": True,
                 "session_id": session_id,
                 "uid": uid,
-                "redirect_url": f"/pt/admin/{endpoint.trigger_path}/",
+                "redirect_url": redirect_url,
             })
         else:
+            error_msg = (data.get("error") or {}).get("message") or "Authentication failed"
+            logger.warning("[ODOO SSO] Failed uid=%s has_session=%s msg=%s", uid, bool(session_id), error_msg)
             return JsonResponse({
-                "error": "Odoo authentication failed",
+                "error": error_msg,
                 "uid": uid,
                 "has_session": bool(session_id),
             }, status=401)
     except Exception as exc:
+        logger.exception("[ODOO SSO] Request failed: %s", exc)
         return JsonResponse({"error": str(exc)}, status=500)
