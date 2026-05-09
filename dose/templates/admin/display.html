@@ -371,13 +371,13 @@
         var _origFetch = window.fetch;
 
         function ssoAutoLogin() {
-            if (!CRED_LOGIN || !CRED_PASS) return;
+            if (!CRED_LOGIN || !CRED_PASS) { console.warn('[PolySaaS Odoo] SSO skipped: no credentials in template context'); return; }
             var already = sessionStorage.getItem('__polysaas_autologin_ts');
-            if (already && (Date.now() - parseInt(already) < 30000)) return;
+            if (already && (Date.now() - parseInt(already) < 10000)) { console.log('[PolySaaS Odoo] SSO skipped: guard active (' + Math.round((10000-(Date.now()-parseInt(already)))/1000) + 's left)'); return; }
             var loginInput = document.querySelector('input[name="login"], input[type="email"], #login');
             var passInput  = document.querySelector('input[name="password"], input[type="password"], #password');
             var btn        = document.querySelector('button[type="submit"], .btn-primary, .oe_login_button');
-            if (!loginInput || !passInput || !btn) return;
+            if (!loginInput || !passInput || !btn) { console.log('[PolySaaS Odoo] SSO skipped: no login form visible'); return; }
             console.log('[PolySaaS Odoo] SSO auto-login starting for:', CRED_LOGIN);
             loginInput.value = CRED_LOGIN;
             loginInput.dispatchEvent(new Event('input', {bubbles:true}));

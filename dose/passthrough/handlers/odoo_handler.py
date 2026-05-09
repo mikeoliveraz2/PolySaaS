@@ -593,28 +593,29 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
 
     def get_upstream_credentials(self, request):
         """Return dict with login, password, db for client-side form prepopulation.
-        Queries TenantApp from public schema via public_bundles manager."""
+        Always returns fallback credentials so CRED_LOGIN is never empty."""
+        from django.conf import settings
+        default_login = 'odooAdmin'
+        default_pass  = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+        default_db    = getattr(settings, 'ODOO_SHARED_DB', 'odoodb')
         try:
             tenant = getattr(request, 'tenant', None)
             if not tenant:
-                return {}
+                return {'login': default_login, 'password': default_pass, 'db': default_db}
             from dose.models import TenantApp
-            from django.conf import settings
             manager = getattr(TenantApp, 'public_bundles', TenantApp.objects)
             ta = manager.filter(
                 tenant=tenant, app_name='odoo',
             ).filter(status__in=['active', 'provisioning']).first()
-            if not ta:
-                return {}
-            extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
+            extra = (ta.extra_config if isinstance(ta.extra_config, dict) else {}) if ta else {}
             return {
-                'login': extra.get("odoo_login") or "odooAdmin",
-                'password': extra.get("odoo_password") or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
-                'db': extra.get("odoo_db") or getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
+                'login':    extra.get('odoo_login')    or default_login,
+                'password': extra.get('odoo_password') or default_pass,
+                'db':       extra.get('odoo_db')       or default_db,
             }
         except Exception as exc:
             logger.warning("[ODOO HANDLER] get_upstream_credentials failed: %s", exc)
-            return {}
+            return {'login': default_login, 'password': default_pass, 'db': default_db}
 
     # ------------------------------------------------------------------ #
     # HTML processing                                                      #

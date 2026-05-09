@@ -31,18 +31,23 @@ def odoo_sso_api(request):
     except Exception:
         pass
 
-    # Find the Odoo endpoint for this tenant
+    # Find the Odoo endpoint — try exact name first, fall back to URL/trigger containing 'odoo'
     endpoint = None
     try:
-        endpoint = PassThroughEndpoint.objects.filter(
-            is_enabled=True,
-            trigger_path__iexact='odoo',
-        ).first()
+        from django.db.models import Q
+        endpoint = PassThroughEndpoint.objects.filter(is_enabled=True).filter(
+            Q(trigger_path__iexact='odoo') |
+            Q(trigger_path__icontains='odoo') |
+            Q(endpoint_url__icontains='odoo')
+        ).order_by('id').first()
     except Exception as e:
         logger.warning("[ODOO SSO] Endpoint lookup failed: %s", e)
 
     if not endpoint:
         return JsonResponse({"error": "No Odoo endpoint configured"}, status=404)
+
+    logger.info("[ODOO SSO] Using endpoint trigger_path=%s endpoint_url=%s",
+                endpoint.trigger_path, endpoint.endpoint_url)
 
     parsed = urlparse(endpoint.endpoint_url)
     odoo_base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
