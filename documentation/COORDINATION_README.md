@@ -596,3 +596,30 @@ Changed strategy from client-side JSON-RPC auto-login to **server-side SSO** whe
 ### Credentials
 - Tenant T13 login: `pst13@polysaas.online` / `PolySaaS2026!`
 - DB: `odoodb`
+
+---
+
+## 2026-05-09 Evening — Odoo SSO BINGO ✅
+
+**Status**: COMPLETE  
+**Branch**: main  
+
+### Summary
+Odoo SSO is fully working. Auto-login fires, session cookie is set, browser navigates to
+`/pt/admin/<hostname>/web` and Odoo Invoicing loads without blank page.
+
+### Root Causes Fixed
+1. `display_credentials` not passed to display shell template → `CRED_LOGIN` undefined → SSO guard returned immediately
+2. `get_request_body` replaced browser csrf_token with wrong-session token → 400 on form submit
+3. `odoo_db` in `extra_config` = `tenant.schema_name` (not `odoodb`) → Odoo auth 401
+4. `window.location.reload()` re-embedded SPA in Jazzmin shell → blank page; fixed to `window.location.href = data.redirect_url`
+5. All `alert()` debug popups removed
+
+### Files Changed
+- `dose/odoo_sso_api.py`
+- `dose/passthrough/handlers/odoo_handler.py`
+- `dose/templates/admin/display.html`
+
+### Next Session First Task
+- **Mattermost SSO** (then Nextcloud SSO)
+- Note: `odoo_db` stored during subscribe is wrong (stores schema name); fix subscribe_view to store `"odoodb"`
