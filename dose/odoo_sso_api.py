@@ -1,4 +1,5 @@
 import logging
+import traceback as _tb
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
@@ -15,6 +16,15 @@ def odoo_sso_api(request):
     Authenticates with Odoo via /web/session/authenticate on behalf of the
     PolySaaS user, returns the session_id so the browser can set the cookie.
     """
+    try:
+        return _odoo_sso_api_inner(request)
+    except Exception as _exc:
+        _trace = _tb.format_exc()
+        logger.error("[ODOO SSO] Unhandled exception: %s\n%s", _exc, _trace)
+        return JsonResponse({"error": str(_exc), "traceback": _trace}, status=500)
+
+
+def _odoo_sso_api_inner(request):
     from django.db import connection
     from django.conf import settings
     from dose.utils import get_current_tenant
