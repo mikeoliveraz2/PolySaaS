@@ -259,8 +259,13 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 '<i>action_id</i>: "account.action_invoice", '
                 '<i>menu_id</i>: "116", '
                 '<i>regex</i>: r"/odoo/(accounting|invoic)", '
-                '<i>contains</i>: "invoice". '
-                'Use match_extra JSON <code>{"method":"GET"}</code> to restrict HTTP method.'
+                '<i>contains</i>: "invoice".<br>'
+                '<b>match_extra</b> adds AND conditions (all must be true): '
+                '<code>{"menu_id": "116"}</code> — also require menu_id in URL; '
+                '<code>{"action_id": "account.action_move_out_invoice_type"}</code> — also require action in URL; '
+                '<code>{"method": "GET"}</code> — restrict HTTP method. '
+                'Example for Odoo Invoicing: match_type=<i>path</i>, requestpath=<i>/odoo/accounting</i>, '
+                'match_extra=<code>{"menu_id": "116"}</code>.'
             ),
         }),
         ('Action', {

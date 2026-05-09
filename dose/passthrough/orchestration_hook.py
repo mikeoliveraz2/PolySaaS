@@ -40,23 +40,41 @@ def _extract_odoo_ids(upstream_path):
 
 
 def _instruction_matches(instr, upstream_path, method):
-    """Return True if the instruction matches this request."""
+    """Return True if the instruction matches this request.
+
+    Primary match is controlled by match_type + requestpath.
+    match_extra can add AND conditions:
+      - {"method": "POST"}  — restrict HTTP method
+      - {"menu_id": "116"}  — require menu_id in URL
+      - {"action_id": "account.action_move_out_invoice_type"} — require action in URL
+    """
     import re
     mt = getattr(instr, 'match_type', 'path') or 'path'
     mv = (instr.requestpath or '').strip()
     if not mv:
         return False
 
-    # Optional method restriction via match_extra
     extra = getattr(instr, 'match_extra', {}) or {}
+
+    # AND: optional method restriction
     if extra.get('method') and extra['method'].upper() != method.upper():
         return False
 
+    # AND: optional menu_id restriction
+    if extra.get('menu_id'):
+        _, menu_id = _extract_odoo_ids(upstream_path)
+        if not (menu_id and str(extra['menu_id']) == menu_id):
+            return False
+
+    # AND: optional action_id restriction
+    if extra.get('action_id'):
+        action_id, _ = _extract_odoo_ids(upstream_path)
+        if not (action_id and extra['action_id'].lower() in action_id.lower()):
+            return False
+
     norm = upstream_path.lower()
 
-    if mt == 'path':
-        return mv.lower() in norm
-    elif mt == 'contains':
+    if mt in ('path', 'contains'):
         return mv.lower() in norm
     elif mt == 'action_id':
         action_id, _ = _extract_odoo_ids(upstream_path)
