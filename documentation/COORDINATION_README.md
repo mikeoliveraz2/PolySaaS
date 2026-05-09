@@ -599,6 +599,67 @@ Changed strategy from client-side JSON-RPC auto-login to **server-side SSO** whe
 
 ---
 
+## 2026-05-10 (Morning — Condo)
+**Status**: IN PROGRESS — orchestration event mapping wired, awaiting first end-to-end test
+**Branch**: main
+**Commits**: `6ef8fcf`, `a8b7b69`
+
+### Summary
+Pulled last night's SSO BINGO changes. Applied migration 0047 (`match_type` + `match_extra` on `Instruction`) to all local schemas. Wired the full invoicing orchestration event mapping.
+
+### Changes Made
+
+**1. Migration 0047 applied locally**
+- Adds `match_type` (path/action_id/menu_id/regex/contains) and `match_extra` (JSON AND conditions) to `Instruction` model
+
+**2. `orchestration_hook.py` — query fix**
+- Removed `tenant=tenant` FK filter (was causing `invalid input syntax for type bigint` error)
+- Schema isolation is handled by `SET search_path TO tenant_schema, public` — no FK filter needed
+
+**3. `orchestration_hook._instruction_matches` — AND conditions via `match_extra`**
+- `{"menu_id": "116"}` — also require menu_id in URL (AND)
+- `{"action_id": "account.action_move_out_invoice_type"}` — also require action in URL (AND)
+- `{"method": "GET"}` — restrict HTTP method (AND, already existed)
+
+**4. `display.html` — green bar now live**
+- Shows current Odoo path + menu_id + action dynamically as user navigates the SPA
+- Patches `history.pushState/replaceState` + `popstate` listener + 2s poll fallback
+- `⚡` event badge appears in bar for 12s when a DoseMessage with "orchestration" fires
+
+**5. `DoseRequestController` — uses shared `_instruction_matches`**
+- Replaced old substring-only match with the full `match_type`-aware logic
+
+**6. `InstructionAdmin` — updated help text**
+- Documents `match_extra` AND conditions with examples
+
+### Next Step — Create the Instruction Record
+Go to **Admin → Dose → Instructions → Add**:
+
+| Field | Value |
+|---|---|
+| `match_type` | `path` |
+| `requestpath` | `/odoo/accounting` |
+| `match_extra` | `{"menu_id": "116"}` |
+| `requestmethod` | `GET` |
+| `direction` | `REQ` |
+| `executescript` | `OdooInvoiceNotifierService` |
+| `eventKey` | `odoo_invoicing_viewed` |
+| `description` | `Odoo Invoicing page detected — trigger Mattermost notification` |
+
+### Then Test
+1. Navigate to Odoo passthrough → click Invoicing in the sidebar
+2. Green bar should show: `path: /odoo/accounting | menu_id: 116`
+3. Server logs should show: `[ORCHESTRATION HOOK] Matched 1 instruction(s) for GET /odoo/accounting?menu_id=116...`
+4. Toast should appear: `⚡ Invoice ... detected — orchestration triggered`
+5. Green bar badge should flash
+
+### If menu_id Not in URL
+Odoo may put `menu_id` in the hash fragment (`#menu_id=116`) or query string depending on version.
+The `_extract_odoo_ids` function searches the full `upstream_path` string including `?` and `#` — should catch both.
+If it's missing, remove `match_extra` entirely and match on path only as a first test.
+
+---
+
 ## 2026-05-09 Evening — Odoo SSO BINGO ✅
 
 **Status**: COMPLETE  
