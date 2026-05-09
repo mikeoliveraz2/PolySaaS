@@ -684,3 +684,33 @@ Odoo SSO is fully working. Auto-login fires, session cookie is set, browser navi
 ### Next Session First Task
 - **Mattermost SSO** (then Nextcloud SSO)
 - Note: `odoo_db` stored during subscribe is wrong (stores schema name); fix subscribe_view to store `"odoodb"`
+
+---
+
+## BINGO — Dynamic Orchestration Pipeline (2026-05-10)
+
+**What works end-to-end:**
+1. User navigates to Odoo Customer Invoices via PT display shell
+2. Odoo SPA fires `POST /web/dataset/call_kw/account.move/web_search_read` through the proxy
+3. `forwarding.py` calls `check_orchestration_trigger` — Instruction id=1 matches (`contains: account.move/web_search_read`, direction=REQ)
+4. `OdooInvoiceNotifierService.execute_and_save` fires (detects JSON-RPC body → navigation event)
+5. `CallBackData` saved with `eventKey=odoo_invoicing_viewed` ✓
+6. `DoseMessage` created → polled by display shell every 4s → toast notification appears in banner ✓
+7. Mattermost post attempted (failing on `missing_config` — token not yet in polysaasts TenantApp)
+
+**Key fixes applied this session:**
+- `forwarding.py`: `get_current_tenant(request)` fallback when `request.tenant is None` (root cause of silent orchestration skip)
+- `middleware.py`: `MessageMiddleware` moved before `DoseRequestController`
+- `orchestration_hook.py`: debug prints + `_save_callback_data` wired correctly
+- `odoo_invoice_notifier_service.py`: handles JSON-RPC body (navigation event), checks `mmauthtoken` key, resolves channel name → internal Mattermost channel_id via API
+- `mysite/settings.py`: `MessageMiddleware` repositioned before `DoseRequestController`
+- Instruction id=1 (polysaasts schema): `requestpath=account.move/web_search_read`, `match_type=contains`, `urllist=''` (cleared stale value)
+
+**Remaining — Mattermost token:**
+- `TenantApp` for polysaasts (PolySaaS Test Sun) Mattermost app has `status=provisioning`, `extra_config={}`
+- Need to add `mmauthtoken` (or `mm_token`) + `mm_channel` to the Odoo or Mattermost TenantApp for this tenant
+- Once token is configured, banner will show `Invoices page viewed — Mattermost notified ✓`
+
+### Next Session First Task
+- Configure Mattermost token in polysaasts TenantApp (Odoo or Mattermost app extra_config)
+- Then: Mattermost SSO, Nextcloud SSO

@@ -59,9 +59,31 @@ class OdooInvoiceNotifierService(AtomicServiceBase):
                 except (json.JSONDecodeError, TypeError):
                     message_data = {}
 
-        if not message_data:
-            logger.warning('[OdooInvoiceNotifier] No message data')
-            return {'status': 'error', 'reason': 'no_message_data'}
+        if not message_data or message_data.get('jsonrpc'):
+            # Called from page-navigation or forwarded JSON-RPC API call (not an MQ payload).
+            # Post a navigation/view event so the demo flow is visible end-to-end.
+            user_str = ''
+            try:
+                u = getattr(request, 'user', None)
+                if u and getattr(u, 'is_authenticated', False):
+                    user_str = f" by **{u.get_full_name() or u.username}**"
+            except Exception:
+                pass
+            nav_text = (
+                f"📋 **Odoo Customer Invoices Viewed{user_str}**\n"
+                f"_PolySaaS Orchestration detected navigation to customer invoices list._\n"
+                f"_Detected by PolySaaS Orchestration_ 🔗"
+            )
+            config = OdooInvoiceNotifierService._load_mm_config(request)
+            post_result = OdooInvoiceNotifierService._post_to_mattermost(config, nav_text)
+            result = {
+                'status': 'sent' if post_result.get('ok') else 'failed',
+                'channel': config.get('mm_channel'),
+                'mm_result': post_result,
+                'event': 'navigation',
+            }
+            logger.info('[OdooInvoiceNotifier] Navigation event result: %s', result)
+            return result
 
         normalized = message_data.get('normalized_data', {})
         action = message_data.get('action', 'created')
@@ -119,14 +141,21 @@ class OdooInvoiceNotifierService(AtomicServiceBase):
         }
         try:
             from dose.models import TenantApp
-            tenant = getattr(request, 'tenant', None)
+            from dose.utils import get_current_tenant
+            tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
             manager = getattr(TenantApp, 'public_bundles', TenantApp.objects)
-            ta = manager.filter(
-                app_name='mattermost', status='active',
-            )
-            if tenant:
-                ta = ta.filter(tenant=tenant)
-            ta = ta.first()
+            # Try mattermost app first, then odoo app (credentials may be stored there)
+            ta = None
+            for _app_name in ('mattermost', 'odoo'):
+                qs = manager.filter(app_name=_app_name)
+                if tenant:
+                    qs = qs.filter(tenant=tenant)
+                candidate = qs.first()
+                if candidate and isinstance(candidate.extra_config, dict):
+                    cfg = candidate.extra_config
+                    if cfg.get('mm_token') or cfg.get('mattermost_token') or cfg.get('mmauthtoken'):
+                        ta = candidate
+                        break
             if ta and isinstance(ta.extra_config, dict):
                 cfg = ta.extra_config
                 if cfg.get('mm_url'):
@@ -137,8 +166,12 @@ class OdooInvoiceNotifierService(AtomicServiceBase):
                     config['mm_token'] = cfg['mm_token']
                 elif cfg.get('mattermost_token'):
                     config['mm_token'] = cfg['mattermost_token']
+                elif cfg.get('mmauthtoken'):
+                    config['mm_token'] = cfg['mmauthtoken']
                 if cfg.get('mm_channel'):
                     config['mm_channel'] = cfg['mm_channel']
+                elif cfg.get('mm_channel_id'):
+                    config['mm_channel'] = cfg['mm_channel_id']
         except Exception as exc:
             logger.warning('[OdooInvoiceNotifier] Could not load MM config: %s', exc)
         return config
@@ -153,13 +186,29 @@ class OdooInvoiceNotifierService(AtomicServiceBase):
             logger.warning('[OdooInvoiceNotifier] Missing mm_url or mm_token — skipping post')
             return {'ok': False, 'reason': 'missing_config', 'mm_url': mm_url}
 
+        headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+        # Resolve channel name → internal channel_id if not already a 26-char Mattermost ID
+        import re as _re
+        if not _re.match(r'^[a-z0-9]{26}$', channel):
+            try:
+                teams_resp = http_requests.get(f'{mm_url}/api/v4/teams', headers=headers, timeout=10)
+                if teams_resp.ok and teams_resp.json():
+                    team_id = teams_resp.json()[0]['id']
+                    ch_resp = http_requests.get(
+                        f'{mm_url}/api/v4/teams/{team_id}/channels/name/{channel}',
+                        headers=headers, timeout=10,
+                    )
+                    if ch_resp.ok:
+                        channel = ch_resp.json()['id']
+                        logger.info('[OdooInvoiceNotifier] Resolved channel → %s', channel)
+            except Exception as _ce:
+                logger.warning('[OdooInvoiceNotifier] Channel ID resolution failed: %s', _ce)
+
         try:
             resp = http_requests.post(
                 f'{mm_url}/api/v4/posts',
-                headers={
-                    'Authorization': f'Bearer {token}',
-                    'Content-Type': 'application/json',
-                },
+                headers=headers,
                 json={'channel_id': channel, 'message': text},
                 timeout=15,
             )

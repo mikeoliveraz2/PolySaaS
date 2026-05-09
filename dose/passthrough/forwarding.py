@@ -527,9 +527,12 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         # ── Orchestration Hook: fire for both REQ (outgoing) and RES (response received) ──
         try:
             from dose.passthrough.orchestration_hook import check_orchestration_trigger
-            check_orchestration_trigger(request, upstream_path, app_name, tenant,
+            from dose.utils import get_current_tenant
+            _orch_tenant = tenant or get_current_tenant(request)
+            print(f"[ORCHESTRATION HOOK] tenant={_orch_tenant}, path={upstream_path}")
+            check_orchestration_trigger(request, upstream_path, app_name, _orch_tenant,
                                         direction='REQ')
-            check_orchestration_trigger(request, upstream_path, app_name, tenant,
+            check_orchestration_trigger(request, upstream_path, app_name, _orch_tenant,
                                         direction='RES', upstream_response=resp)
         except Exception as orch_exc:
             print(f"[ORCHESTRATION HOOK] Non-blocking error: {orch_exc}")

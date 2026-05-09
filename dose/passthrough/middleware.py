@@ -293,6 +293,19 @@ def run_pt_admin_passthrough_core(request):
         print(f"[PT-CORE] Handler returned: {type(shell).__name__ if shell else 'None'}")
         if shell is not None:
             print(f"[PT-CORE] Handler display shell - returning {type(shell).__name__} (no forward)")
+            # Orchestration hook: fire for display-shell-handled requests (forwarding.py is skipped)
+            try:
+                from dose.passthrough.orchestration_hook import check_orchestration_trigger
+                from dose.utils import get_current_tenant
+                _orch_tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+                _proxy_prefix = f"/pt/admin/{trigger}"
+                _upstream_path = path[len(_proxy_prefix):] or "/"
+                if not _upstream_path.startswith("/"):
+                    _upstream_path = "/" + _upstream_path
+                check_orchestration_trigger(request, _upstream_path, trigger, _orch_tenant, direction='REQ')
+                check_orchestration_trigger(request, _upstream_path, trigger, _orch_tenant, direction='RES')
+            except Exception as _oe:
+                print(f"[PT-CORE] Orchestration hook (display shell) non-blocking error: {_oe}")
             request._passthrough_handled = True
             request._passthrough_response = shell
             return shell

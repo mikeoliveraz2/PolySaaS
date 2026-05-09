@@ -116,8 +116,10 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
     from dose.models import Instruction
     # search_path is already set to the tenant schema above — no FK filter needed.
     instructions = Instruction.objects.filter(direction=direction)
+    print(f"[ORCHESTRATION HOOK] direction={direction} found {instructions.count()} instruction(s), path={upstream_path}, method={method}")
 
     matched = [instr for instr in instructions if _instruction_matches(instr, upstream_path, method)]
+    print(f"[ORCHESTRATION HOOK] matched {len(matched)} instruction(s) for {method} {upstream_path}")
 
     if not matched:
         return
@@ -176,6 +178,7 @@ def _save_callback_data(request, instruction_row, atomic_result, tenant):
         logger.info("[ORCHESTRATION HOOK] CallBackData saved for eventKey=%s", instruction_row.eventKey)
     except Exception as exc:
         logger.error("[ORCHESTRATION HOOK] Failed to save CallBackData: %s", exc)
+        print(f"[ORCHESTRATION HOOK] _save_callback_data FAILED: {exc}")
 
 
 def _create_dose_message(request, instruction_row, atomic_result, service_name):
@@ -192,9 +195,14 @@ def _create_dose_message(request, instruction_row, atomic_result, service_name):
                 status = 'error'
 
         event_key = getattr(instruction_row, 'eventKey', '') or ''
-        msg_text = f"Orchestration: {service_name} executed ({event_key})"
-        if isinstance(atomic_result, dict) and atomic_result.get('invoice_ref'):
-            msg_text = f"Invoice {atomic_result['invoice_ref']} detected — orchestration triggered"
+        msg_text = f"Orchestration: {service_name} executed ({event_key})" if event_key else f"Orchestration: {service_name} executed"
+        if isinstance(atomic_result, dict):
+            if atomic_result.get('invoice_ref'):
+                msg_text = f"Invoice {atomic_result['invoice_ref']} detected — orchestration triggered"
+            elif atomic_result.get('event') == 'navigation':
+                ch = atomic_result.get('channel') or 'Mattermost'
+                ok = atomic_result.get('status') == 'sent'
+                msg_text = f"Invoices page viewed — {'Mattermost notified ✓' if ok else 'Mattermost notify failed'}"
 
         DoseMessage.objects.create(
             user=user,
@@ -204,3 +212,4 @@ def _create_dose_message(request, instruction_row, atomic_result, service_name):
         logger.info("[ORCHESTRATION HOOK] DoseMessage created: %s", msg_text)
     except Exception as exc:
         logger.error("[ORCHESTRATION HOOK] Failed to create DoseMessage: %s", exc)
+        print(f"[ORCHESTRATION HOOK] _create_dose_message FAILED: {exc}")

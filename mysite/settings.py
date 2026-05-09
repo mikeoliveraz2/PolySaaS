@@ -481,6 +481,7 @@ MIDDLEWARE = [
     'mysite.csrf_exemption_middleware.CSRFExemptionMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
     'mysite.middleware.user_request_tracking.UserRequestTrackingMiddleware',
     'dose.debug_middleware.DebugRequestMiddleware',
     'dose.middleware.admin_unauthorized.AdminUnauthorizedMiddleware',
@@ -495,7 +496,6 @@ MIDDLEWARE = [
     # so it can return a response before CSRF validation occurs
     'dose.passthrough.middleware.ExternalPassthroughMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
     'mysite.admin_status_banner_middleware.AdminStatusBannerMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
