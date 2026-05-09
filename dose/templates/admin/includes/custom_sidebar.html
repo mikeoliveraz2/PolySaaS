@@ -445,6 +445,71 @@
         padding-left: 12px;
     }
 
+    /* ── Passthrough logo card grid ── */
+    .pss-pt-cards {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 10px 8px 12px;
+    }
+    .pss-pt-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 6px 8px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: inherit;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        transition: background 0.2s, transform 0.2s;
+    }
+    .pss-pt-card:hover {
+        background: rgba(255,255,255,0.12);
+        transform: translateY(-2px);
+        text-decoration: none;
+        color: inherit;
+    }
+    .pss-pt-card.is-active {
+        background: rgba(77,182,255,0.15);
+        border-color: rgba(77,182,255,0.35);
+    }
+    .pss-pt-logo {
+        width: 75px;
+        height: 75px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 7px;
+        overflow: hidden;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    }
+    .pss-pt-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        padding: 6px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .pss-pt-logo--odoo { background: linear-gradient(135deg, #9c5acc 0%, #714b67 100%); }
+    .pss-pt-logo--mattermost { background: linear-gradient(135deg, #1668ca 0%, #0058cc 100%); }
+    .pss-pt-logo--nextcloud { background: linear-gradient(135deg, #0082c9 0%, #006aa8 100%); }
+    .pss-pt-logo--dolibarr { background: linear-gradient(135deg, #f47b20 0%, #d66a18 100%); }
+    .pss-pt-logo--wordpress { background: linear-gradient(135deg, #21759b 0%, #1a5c7a 100%); }
+    .pss-pt-label {
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.3;
+        color: var(--pss-sidebar-item-text);
+    }
+
     .collapsible-nav.collapsed .nav-panel-title {
         font-size: 0;
         padding: 4px 0;
@@ -594,19 +659,35 @@
             </div>
         </div>
 
-        <!-- Passthrough Services (AJAX-loaded) -->
+        <!-- Passthrough Services — logo card grid -->
         {% if passthrough_services %}
             <div class="nav-panel" data-panel-type="passthrough_services">
                 <h4 class="nav-panel-title">PASSTHROUGH SERVICES</h4>
-                <div class="nav-panel-items">
+                <div class="pss-pt-cards">
                     {% for service in passthrough_services %}
+                        {% with slug=service.title|lower %}
                         <a href="{{ service.url }}"
-                           class="nav-item{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
+                           class="pss-pt-card{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
                            {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
-                           title="{{ service.description }}">
-                            <span class="nav-icon">{{ service.icon }}</span>
-                            <span class="nav-text">{{ service.title }}</span>
+                           title="{{ service.description|default:service.title }}">
+                            <div class="pss-pt-logo pss-pt-logo--{{ slug }}">
+                                {% if 'odoo' in slug %}
+                                    <img src="{% static 'img/apps/odoo-logo.svg' %}" alt="Odoo">
+                                {% elif 'mattermost' in slug %}
+                                    <img src="{% static 'img/apps/mattermost-logo.svg' %}" alt="Mattermost">
+                                {% elif 'nextcloud' in slug %}
+                                    <img src="{% static 'img/apps/nextcloud-logo.svg' %}" alt="Nextcloud">
+                                {% elif 'dolibarr' in slug %}
+                                    <img src="{% static 'img/apps/dolibarr-logo.svg' %}" alt="Dolibarr">
+                                {% elif 'wordpress' in slug %}
+                                    <img src="{% static 'img/apps/wordpress-logo.svg' %}" alt="WordPress">
+                                {% else %}
+                                    {{ service.title|first|upper }}
+                                {% endif %}
+                            </div>
+                            <span class="pss-pt-label">{{ service.title }}</span>
                         </a>
+                        {% endwith %}
                     {% endfor %}
                 </div>
             </div>

@@ -108,6 +108,10 @@ class PassthroughHandlerBase:
     def rewrite_upstream_body(self, body, content_type, request, **context):
         return None
 
+    def get_request_body(self, request, target_url: str) -> bytes | None:
+        """Override to rewrite the outgoing request body before forwarding. Return None to use request.body as-is."""
+        return None
+
     def process_html_response(self, html_str, request, endpoint_url=None, **context):
         return html_str
 

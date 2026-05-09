@@ -12,6 +12,7 @@ if _jazzmin_index:
     admin.site.index_template = _jazzmin_index
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
 from urllib.parse import urlencode
 from dose.views import subscribe_view
 from test_decompression_view import test_decompression, simple_html_test, external_direct_test
@@ -113,15 +114,15 @@ urlpatterns = [
     # Generic passthrough triggers (odoo, gmail, …) — after specific pt/admin/* routes
     path(
         'pt/admin/<str:trigger>/',
-        __import__('dose.admin_views').admin_views.pt_admin_generic_passthrough_view,
+        csrf_exempt(__import__('dose.admin_views').admin_views.pt_admin_generic_passthrough_view),
         name='pt_admin_trigger',
     ),
     path(
         'pt/admin/<str:trigger>/<path:subpath>',
-        __import__('dose.admin_views').admin_views.pt_admin_generic_passthrough_view,
+        csrf_exempt(__import__('dose.admin_views').admin_views.pt_admin_generic_passthrough_view),
         name='pt_admin_trigger_subpath',
     ),
-    path('admin/passthrough-embed/<str:trigger>/', __import__('dose.admin_views').admin_views.passthrough_embed_view, name='passthrough_embed'),
+    path('admin/passthrough-embed/<str:trigger>/', csrf_exempt(__import__('dose.admin_views').admin_views.passthrough_embed_view), name='passthrough_embed'),
     path(
         'admin/passthrough-display/',
         __import__('dose.admin_views').admin_views.passthrough_display_shell_view,

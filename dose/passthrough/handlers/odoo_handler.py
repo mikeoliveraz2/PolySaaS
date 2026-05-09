@@ -76,6 +76,133 @@ class OdooPassthroughHandler:
         receive the post-login 3xx so it navigates to the correct proxied URL."""
         return request.method != "POST"
 
+    # Django-owned cookies that must never be forwarded to Odoo.
+    # NOTE: 'session_id' is Odoo's session cookie — do NOT include it here.
+    # 'sessionid' (no underscore) is Django's session cookie.
+    _DJANGO_COOKIE_NAMES = frozenset({
+        "sessionid", "csrftoken",
+        "messages", "django_language",
+    })
+
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        """Remove Django session/CSRF cookies so Odoo uses its own session context."""
+        filtered = {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+        removed = set(cookies) - set(filtered)
+        if removed:
+            print(f"[ODOO HANDLER] Filtered Django cookies from upstream request: {removed}")
+        return filtered
+
+    # Thread-local cache: stores (session_id, csrf_token) fetched from a fresh GET /web/login
+    _fresh_login_session: dict = {}
+
+    def _fetch_fresh_login_session(self, odoo_base_url: str, tenant_session_id: str = None) -> tuple:
+        """
+        Do a server-side GET /web/login to Odoo and return (session_id, csrf_token).
+        Uses the tenant's cached session_id so the csrf_token MATCHES the session.
+        Caches result for 5 minutes.
+        """
+        import time as _time
+        cache_key = odoo_base_url
+        cached = self._fresh_login_session.get(cache_key, {})
+        if cached and (_time.time() - cached.get("ts", 0) < 300):
+            print(f"[ODOO HANDLER] Using cached fresh login session for {odoo_base_url}")
+            return cached["session_id"], cached["csrf_token"]
+
+        try:
+            import requests as _req
+            cookies = {}
+            if tenant_session_id:
+                cookies['session_id'] = tenant_session_id
+                print(f"[ODOO HANDLER] Fetching login page with tenant session_id")
+            resp = _req.get(
+                f"{odoo_base_url}/web/login",
+                allow_redirects=True,
+                timeout=15,
+                cookies=cookies,
+            )
+            # Prefer the session we sent; if Odoo rotated it, use the new one
+            session_id = resp.cookies.get("session_id") or tenant_session_id
+            csrf_token = None
+            if resp.status_code == 200 and resp.text:
+                m = re.search(
+                    r'<input[^>]+name=["\']csrf_token["\'][^>]+value=["\']([^"\']+)["\']',
+                    resp.text,
+                    re.IGNORECASE,
+                )
+                if not m:
+                    m = re.search(
+                        r'csrf_token["\s]*:["\s]*["\']([a-f0-9]+o\d+)["\']',
+                        resp.text,
+                    )
+                if m:
+                    csrf_token = m.group(1)
+            if session_id and csrf_token:
+                self._fresh_login_session[cache_key] = {
+                    "session_id": session_id,
+                    "csrf_token": csrf_token,
+                    "ts": _time.time(),
+                }
+                print(f"[ODOO HANDLER] Fetched fresh login session: session_id=<redacted>, csrf_token={csrf_token[:16]}...")
+                return session_id, csrf_token
+            else:
+                print(f"[ODOO HANDLER] _fetch_fresh_login_session: status={resp.status_code} session_id={bool(session_id)} csrf={bool(csrf_token)}")
+        except Exception as exc:
+            print(f"[ODOO HANDLER] _fetch_fresh_login_session failed: {exc}")
+        return None, None
+
+    def override_upstream_cookies(self, request, target_url: str):
+        """Inject tenant session only if browser has no Odoo session yet.
+        Once the browser has a session (from JSON-RPC auto-login), trust it."""
+        try:
+            # If browser already has a session_id, don't override it
+            if request.COOKIES.get('session_id'):
+                print("[ODOO HANDLER] override_upstream_cookies: browser has session_id, skipping")
+                return {}
+            cookies = self.get_upstream_cookies(request)
+            if cookies.get('session_id'):
+                print(f"[ODOO HANDLER] override_upstream_cookies: injecting tenant session_id (browser had none)")
+                return cookies
+        except Exception as exc:
+            print(f"[ODOO HANDLER] override_upstream_cookies failed: {exc}")
+        return {}
+
+    def get_request_body(self, request, target_url: str):
+        """For Odoo login POSTs: replace only the csrf_token field in the raw body,
+        preserving all other fields byte-for-byte to avoid re-encoding issues."""
+        if request.method != "POST" or "/web/login" not in target_url:
+            return None
+        try:
+            import re as _re
+            from urllib.parse import urlparse as _up
+            body = request.body.decode("utf-8", errors="replace")
+            print(f"[ODOO HANDLER] Raw login body from browser: {body[:500]}")
+            # Log the db value being submitted
+            import re as _re2
+            db_match = _re2.search(r'(?:^|&)db=([^&]*)', body)
+            print(f"[ODOO HANDLER] Login form db value: {db_match.group(1) if db_match else 'NOT FOUND'}")
+
+            # Inject fresh Odoo csrf_token so the POST validates against the fresh session
+            p = _up(target_url)
+            odoo_base = f"{p.scheme}://{p.netloc}"
+            # Get the tenant session_id so csrf_token matches the session we inject
+            tenant_cookies = self.get_upstream_cookies(request) or {}
+            tenant_session = tenant_cookies.get('session_id')
+            _session_id, csrf_token = self._fetch_fresh_login_session(odoo_base, tenant_session)
+            if csrf_token:
+                # Remove existing csrf_token param (any position), then append fresh one
+                body = _re.sub(r'(?:^|&)csrf_token=[^&]*', '', body)
+                body = body.strip('&')
+                body = f"{body}&csrf_token={csrf_token}"
+                print(f"[ODOO HANDLER] Injected fresh csrf_token into login POST: {csrf_token[:16]}...")
+            else:
+                print(f"[ODOO HANDLER] No fresh csrf_token available — sending POST as-is")
+
+            print(f"[ODOO HANDLER] Final login body: {body[:200]}")
+            return body.encode("utf-8")
+        except Exception as exc:
+            print(f"[ODOO HANDLER] get_request_body failed: {exc}")
+            return None
+
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
         Every Odoo upstream call (including display-shell HTML fetch) must see proxy headers
@@ -328,7 +455,17 @@ var _f=window.fetch;
 window.fetch=function(input,init){{
     if(typeof input==='string')input=_toProxy(input);
     else if(typeof Request!=='undefined'&&input instanceof Request){{var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);}}
-    return _f.call(this,input,init);
+    return _f.call(this,input,init).then(function(r){{
+        var ct=(r.headers&&r.headers.get)?r.headers.get('content-type')||'':'';
+        if(ct.indexOf('text/html')!==-1){{
+            var u=(typeof input==='string')?input:(input&&input.url||'');
+            if(u.indexOf('/bus/')!==-1||u.indexOf('/longpolling/')!==-1||u.indexOf('/discuss/')!==-1||u.indexOf('/mail/')!==-1||u.indexOf('/web/dataset/')!==-1){{
+                console.warn('[PolySaaS] Blocked HTML for JSON:',u);
+                return new Response(JSON.stringify({{jsonrpc:'2.0',id:null,result:[]}}),{{status:200,headers:{{'Content-Type':'application/json'}}}});
+            }}
+        }}
+        return r;
+    }});
 }};
 var _x=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(){{
@@ -427,41 +564,28 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             tenant = get_current_tenant(request)
             if not tenant:
                 return {}
-            ta = TenantApp.objects.filter(
+            ta = TenantApp.public_bundles.filter(
                 tenant=tenant, app_name='odoo', status='active',
             ).first()
             if not ta:
                 return {}
             extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
 
-            # TEMP: skip 1h session cache — it may still be another Odoo user from before admin/admin.
-            # After revert to extra_config credentials, restore the cached-session block below.
-            # session_id = ta.extra_config.get("odoo_session_id")
-            # session_time = ta.extra_config.get("odoo_session_time", 0)
-            # if session_id and (time.time() - session_time < 3600):
-            #     return {"session_id": session_id}
+            # Use cached session if still fresh (30 min TTL)
+            session_id = extra.get("odoo_session_id")
+            session_time = extra.get("odoo_session_time", 0)
+            if session_id and (time.time() - session_time < 1800):
+                return {"session_id": session_id}
 
-            # Standardized app-admin credentials: odooAdmin / POLYSAAS_APP_ADMIN_PASSWORD
+            # Standardized app-admin credentials from TenantApp.extra_config
             from django.conf import settings
             login_id = extra.get("odoo_login") or "odooAdmin"
             password = extra.get("odoo_password") or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
-            db_name = extra.get("odoo_db") or "odoo"
+            db_name = extra.get("odoo_db") or getattr(settings, 'ODOO_SHARED_DB', 'odoodb')
 
-            # Resolve Odoo base URL from the PassThroughEndpoint (query from public schema)
-            odoo_url = 'http://localhost:8069'
-            try:
-                from django.db import connection
-                from dose.models import PassThroughEndpoint
-                with connection.cursor() as cursor:
-                    cursor.execute("SET search_path TO public;")
-                    ep = PassThroughEndpoint.objects.filter(
-                        trigger_path__iexact="odoo", is_enabled=True
-                    ).order_by("-id").first()
-                    if ep:
-                        p = urlparse(ep.endpoint_url)
-                        odoo_url = f"{p.scheme}://{p.netloc}"
-            except Exception:
-                pass
+            # Resolve Odoo base URL from settings (reliable) or extra_config
+            odoo_url = extra.get("odoo_url") or getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+            print(f"[ODOO HANDLER] get_upstream_cookies: tenant={tenant.slug}, login={login_id}, db={db_name}, url={odoo_url}")
 
             resp = _req.post(
                 f'{odoo_url}/web/session/authenticate',
@@ -498,23 +622,25 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         return {}
 
     def get_upstream_credentials(self, request):
-        """Return dict with login, password, db for client-side form prepopulation."""
+        """Return dict with login, password, db for client-side form prepopulation.
+        Queries TenantApp from public schema via public_bundles manager."""
         try:
             tenant = getattr(request, 'tenant', None)
             if not tenant:
                 return {}
             from dose.models import TenantApp
-            ta = TenantApp.objects.filter(
-                tenant=tenant, app_name='odoo', status='active',
-            ).first()
+            from django.conf import settings
+            manager = getattr(TenantApp, 'public_bundles', TenantApp.objects)
+            ta = manager.filter(
+                tenant=tenant, app_name='odoo',
+            ).filter(status__in=['active', 'provisioning']).first()
             if not ta:
                 return {}
             extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
-            from django.conf import settings
             return {
                 'login': extra.get("odoo_login") or "odooAdmin",
                 'password': extra.get("odoo_password") or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
-                'db': extra.get("odoo_db") or "odoo",
+                'db': extra.get("odoo_db") or getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
             }
         except Exception as exc:
             logger.warning("[ODOO HANDLER] get_upstream_credentials failed: %s", exc)
@@ -896,6 +1022,11 @@ function toProxy(s) {
 var _fetch = window.fetch;
 window.fetch = function(input, init) {
     var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+    // Pre-emptively block bus/discuss/mail requests to prevent Discuss OWL crashes
+    if (url.indexOf('/bus/') !== -1 || url.indexOf('/longpolling/') !== -1 || url.indexOf('/discuss/') !== -1 || url.indexOf('/mail/') !== -1) {
+        console.warn('[PolySaaS Odoo] Blocked outgoing request to:', url);
+        return Promise.resolve(new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}}));
+    }
     var proxied = toProxy(url);
     if (url !== proxied) {
         console.log('[PolySaaS Odoo] fetch:', url, '->', proxied);
@@ -905,7 +1036,17 @@ window.fetch = function(input, init) {
     } else if (input && input.url && proxied !== input.url) {
         input = new Request(proxied, input);
     }
-    return _fetch.call(this, input, init);
+    return _fetch.call(this, input, init).then(function(response) {
+        var ct = (response.headers && response.headers.get) ? (response.headers.get('content-type') || '') : '';
+        if (ct.indexOf('text/html') !== -1) {
+            var u = proxied || url;
+            if (u.indexOf('/web/dataset/call_kw') !== -1) {
+                console.warn('[PolySaaS Odoo] Blocked HTML response for JSON endpoint:', u);
+                return new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}});
+            }
+        }
+        return response;
+    });
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -925,25 +1066,31 @@ XMLHttpRequest.prototype.open = function(method, url) {
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. WEBSOCKET PATCHING - Critical for Odoo 18 bus
 // ═══════════════════════════════════════════════════════════════════════════
+// Block ALL WebSocket connections — Discuss/bus uses them and they crash through proxy
 var _WebSocket = window.WebSocket;
 window.WebSocket = function(url, protocols) {
-    var proxied = toProxy(url);
-    // Convert relative URL to absolute WebSocket URL
-    if (proxied.charAt(0) === '/') {
-        var wsProto = (window.location.protocol === 'https:') ? 'wss://' : 'ws://';
-        proxied = wsProto + window.location.host + proxied;
-    }
-    console.log('[PolySaaS Odoo] WebSocket:', url, '->', proxied);
-    if (protocols !== undefined) {
-        return new _WebSocket(proxied, protocols);
-    }
-    return new _WebSocket(proxied);
+    console.warn('[PolySaaS Odoo] WebSocket BLOCKED:', url);
+    // Return a fake WebSocket that does nothing
+    var fake = {
+        url: url,
+        readyState: 3, // CLOSED
+        send: function() {},
+        close: function() {},
+        addEventListener: function() {},
+        removeEventListener: function() {},
+        onopen: null, onclose: null, onmessage: null, onerror: null,
+        CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3
+    };
+    // Fire onclose asynchronously so callers don't crash
+    setTimeout(function() {
+        if (fake.onclose) fake.onclose({code: 1000, reason: 'blocked', wasClean: true});
+    }, 100);
+    return fake;
 };
-// Copy static properties
-if (_WebSocket.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WebSocket.CONNECTING;
-if (_WebSocket.OPEN !== undefined) window.WebSocket.OPEN = _WebSocket.OPEN;
-if (_WebSocket.CLOSING !== undefined) window.WebSocket.CLOSING = _WebSocket.CLOSING;
-if (_WebSocket.CLOSED !== undefined) window.WebSocket.CLOSED = _WebSocket.CLOSED;
+window.WebSocket.CONNECTING = 0;
+window.WebSocket.OPEN = 1;
+window.WebSocket.CLOSING = 2;
+window.WebSocket.CLOSED = 3;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. URL GUARD - Prevent navigation to un-proxied paths
@@ -1308,37 +1455,90 @@ if (document.body) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 13. LOGIN FORM PREPOPULATION
+// 13. AUTO-LOGIN VIA JSON-RPC (bypasses user picker)
 // ═══════════════════════════════════════════════════════════════════════════
-function prepopulateLoginForm() {
-    if (!CRED_LOGIN && !CRED_PASS) return;
-    // Odoo 18 login form uses specific input names/IDs
-    var dbSelect = document.querySelector('input[name="db"], select[name="db"], #db');
-    var loginInput = document.querySelector('input[name="login"], input[name="email"], #login, #email');
+function autoLoginOdoo() {
+    if (!CRED_LOGIN || !CRED_PASS || !CRED_DB) return;
+    // Prevent loop: if we just auto-logged in, don't do it again for 30 seconds
+    var lastAutoLogin = sessionStorage.getItem('__polysaas_autologin_ts');
+    if (lastAutoLogin && (Date.now() - parseInt(lastAutoLogin) < 30000)) {
+        console.log('[PolySaaS Odoo] Auto-login recently completed, skipping');
+        return;
+    }
+    var loginInput = document.querySelector('input[name="login"], input[type="email"], #login');
     var passInput = document.querySelector('input[name="password"], input[type="password"], #password');
+    var btn = document.querySelector('button[type="submit"], .btn-primary, .oe_login_button');
+    // Only act if we see a login form — not the apps page
+    if (!loginInput || !passInput || !btn) return;
+    alert('[PolySaaS Odoo] Auto-login starting for: ' + CRED_LOGIN);
+    console.log('[PolySaaS Odoo] Auto-filling login form for:', CRED_LOGIN);
+    // Clear any browser autocomplete and fill with tenant credentials
+    loginInput.value = '';
+    loginInput.value = CRED_LOGIN;
+    loginInput.dispatchEvent(new Event('input', { bubbles: true }));
+    loginInput.dispatchEvent(new Event('change', { bubbles: true }));
+    passInput.value = CRED_PASS;
+    passInput.dispatchEvent(new Event('input', { bubbles: true }));
+    passInput.dispatchEvent(new Event('change', { bubbles: true }));
+    // Also set db if visible
+    var dbSelect = document.querySelector('input[name="db"], select[name="db"], #db');
     if (dbSelect && CRED_DB) {
         dbSelect.value = CRED_DB;
-        console.log('[PolySaaS Odoo] Prepopulated db:', CRED_DB);
+        dbSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
+    // Auto-login via PolySaaS SSO endpoint — server-side handles Odoo auth
+    setTimeout(function() {
+        console.log('[PolySaaS Odoo] Calling PolySaaS SSO endpoint...');
+        var ssoUrl = '/dose/api/odoo-sso/';
+        alert('[PolySaaS Odoo] Calling SSO endpoint...');
+        _fetch(ssoUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'include'
+        }).then(function(resp) {
+            alert('[PolySaaS Odoo] SSO response status: ' + resp.status);
+            return resp.json();
+        }).then(function(data) {
+            alert('[PolySaaS Odoo] SSO data: ' + JSON.stringify(data).substring(0,200));
+            if (data && data.ok && data.session_id) {
+                console.log('[PolySaaS Odoo] SSO ok, setting session cookie');
+                document.cookie = 'session_id=' + data.session_id + '; path=/; SameSite=Lax';
+                sessionStorage.setItem('__polysaas_autologin_ts', Date.now().toString());
+                console.log('[PolySaaS Odoo] Cookie set, reloading');
+                window.location.reload();
+            } else {
+                console.warn('[PolySaaS Odoo] SSO failed:', data.error || data);
+                alert('[PolySaaS Odoo] SSO failed: ' + (data.error || JSON.stringify(data)));
+            }
+        }).catch(function(err) {
+            console.error('[PolySaaS Odoo] SSO error:', err);
+            alert('[PolySaaS Odoo] SSO error: ' + err);
+        });
+    }, 600);
+}
+
+function prepopulateLoginFormFallback() {
+    var loginInput = document.querySelector('input[name="login"], input[name="email"], #login, #email');
+    var passInput = document.querySelector('input[name="password"], input[type="password"], #password');
+    var dbSelect = document.querySelector('input[name="db"], select[name="db"], #db');
+    if (dbSelect && CRED_DB) dbSelect.value = CRED_DB;
     if (loginInput && CRED_LOGIN) {
         loginInput.value = CRED_LOGIN;
-        // Trigger input event so Owl validation picks up the value
-        var ev = new Event('input', { bubbles: true });
-        loginInput.dispatchEvent(ev);
-        console.log('[PolySaaS Odoo] Prepopulated login:', CRED_LOGIN);
+        loginInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
     if (passInput && CRED_PASS) {
         passInput.value = CRED_PASS;
-        var ev2 = new Event('input', { bubbles: true });
-        passInput.dispatchEvent(ev2);
-        console.log('[PolySaaS Odoo] Prepopulated password');
+        passInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
-// Try immediately and periodically (Owl renders form asynchronously)
-document.addEventListener('DOMContentLoaded', prepopulateLoginForm);
-setTimeout(prepopulateLoginForm, 500);
-setTimeout(prepopulateLoginForm, 1500);
-setTimeout(prepopulateLoginForm, 3000);
+
+// Try auto-login on DOMContentLoaded and with delays for async-rendered pages
+document.addEventListener('DOMContentLoaded', autoLoginOdoo);
+setTimeout(autoLoginOdoo, 500);
+setTimeout(autoLoginOdoo, 2000);
 
 console.log('[PolySaaS Odoo] Shim initialization complete');
 

@@ -360,6 +360,16 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             target_url = endpoint_url
             print(f"PASSTHROUGH -> USING ENDPOINT ROOT: {target_url}")
 
+        # Store on request for orchestration bar display
+        request._passthrough_upstream_path = upstream_path
+
+        # Block websocket/bus/discuss paths server-side — they crash through proxy
+        _blocked = ('/websocket', '/bus/', '/longpolling/', '/discuss/', '/mail/action')
+        if any(upstream_path.startswith(b) or upstream_path == b.rstrip('/') for b in _blocked):
+            from django.http import JsonResponse as _JR
+            print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")
+            return _JR({'jsonrpc': '2.0', 'id': None, 'result': []})
+
         print(f"SENDING REQUEST TO -> {target_url}")
 
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
@@ -389,21 +399,39 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                         upstream_cookies[k] = v
             except Exception as exc:
                 logger.warning("get_upstream_cookies failed: %s", exc)
+        if handler and hasattr(handler, "override_upstream_cookies"):
+            try:
+                overrides = handler.override_upstream_cookies(request, target_url) or {}
+                for k, v in overrides.items():
+                    upstream_cookies[k] = v
+                    print(f"[FORWARDER] override_upstream_cookies: {k}=<redacted>")
+            except Exception as exc:
+                logger.warning("override_upstream_cookies failed: %s", exc)
 
-        # Debug: for login requests, print exactly what is going to Mattermost
+        # Allow handler to rewrite the outgoing request body (e.g. strip Django csrf_token for Odoo login)
+        outbound_body = request.body
+        if handler and hasattr(handler, "get_request_body"):
+            try:
+                rewritten = handler.get_request_body(request, target_url)
+                if rewritten is not None:
+                    outbound_body = rewritten
+            except Exception as _body_exc:
+                logger.warning("get_request_body failed: %s", _body_exc)
+
+        # Debug: for login requests, print exactly what is going to upstream
         if "login" in target_url.lower():
             print("=== LOGIN FORWARD DEBUG ===")
             print(f"TARGET            : {target_url}")
             print(f"Cookie header sent: {'Cookie' in outbound_headers}")
             print(f"Cookies param     : { {k: v[:8]+'...' if v and len(v)>8 else v for k,v in upstream_cookies.items()} }")
-            print(f"Body preview      : {request.body[:200] if request.body else '(empty)'}")
+            print(f"Body preview      : {outbound_body[:200] if outbound_body else '(empty)'}")
             print("===========================")
 
         resp = requests.request(
             method=request.method,
             url=target_url,
             headers=outbound_headers,
-            data=request.body,
+            data=outbound_body,
             cookies=upstream_cookies,
             allow_redirects=_should_follow_upstream_redirects(
                 handler,
@@ -430,6 +458,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")
         preview_bytes = resp.content[:500] if resp.content else b""
         print(f"CONTENT PREVIEW: {preview_bytes.decode('utf-8', errors='ignore')}")
+        if '/odoo/apps' in target_url:
+            print(f"[ODOO APPS DEBUG] status={resp.status_code}, len={len(resp.content)}, preview={preview_bytes[:200].decode('utf-8', errors='ignore')}")
 
         try:
             from dose.passthrough.stream_debug import log_upstream_response_if_debug
@@ -493,6 +523,13 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
         except Exception as ps_exc:
             print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
+
+        # ── Orchestration Hook: check if captured path matches an Instruction ──
+        try:
+            from dose.passthrough.orchestration_hook import check_orchestration_trigger
+            check_orchestration_trigger(request, upstream_path, app_name, tenant)
+        except Exception as orch_exc:
+            print(f"[ORCHESTRATION HOOK] Non-blocking error: {orch_exc}")
         # ───────────────────────────────────────────────────────────────────
 
         # CRITICAL: Rewrite redirects to go through the proxy, NOT direct to upstream.
@@ -692,6 +729,14 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                     print(f"FORWARDER — forwarding Set-Cookie from HTML: {cookie_name}")
             except Exception as sc_exc:
                 print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
+
+        # Also set the auto-login session cookie on the browser so subsequent
+        # asset/API requests are authenticated (server-side cookies don't reach the browser otherwise)
+        if upstream_cookies.get('session_id') and 'session_id' not in response.cookies:
+            response.cookies['session_id'] = upstream_cookies['session_id']
+            response.cookies['session_id']['path'] = '/'
+            response.cookies['session_id']['samesite'] = 'Lax'
+            print(f"FORWARDER — set browser session_id cookie from auto-login")
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")

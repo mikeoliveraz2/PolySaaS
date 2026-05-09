@@ -1,27 +1,116 @@
-# atomic_services/odoo_tenant_provisioner.py
+# dose/services/odoo_tenant_provisioner.py
+"""
+Odoo Tenant Provisioner — creates a user in the shared Odoo instance for a
+new PolySaaS tenant subscription.
+
+Architecture:
+  • A single shared Odoo instance serves all tenants (multi-company model).
+  • Each new tenant gets a `res.users` record with a `res.company` in Odoo.
+  • Communication is via XML-RPC (same as OdooCustomerSyncService).
+  • Odoo URL and admin credentials come from Django settings (env vars).
+  • The provisioner also creates a PassThroughEndpoint in the tenant schema
+    so the sidebar "Odoo" link appears immediately.
+
+Settings used:
+  ODOO_SHARED_URL              — e.g. https://polysaas-odoo2.onrender.com
+  ODOO_SHARED_DB               — e.g. odoodb
+  ODOO_SHARED_ADMIN_LOGIN      — e.g. odooAdmin
+  POLYSAAS_APP_ADMIN_PASSWORD  — shared admin password (e.g. PolySaaS2026!)
+"""
 from typing import Dict, Any
-from django.db import connection
-from celery import shared_task
 import logging
-import requests
-import secrets
-import string
-from dose.services.email_service import GmailEmailService
-from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
+import xmlrpc.client
+
+from django.conf import settings
+from django.db import connection, transaction
+
+from celery import shared_task
+
 from dose.models import TenantApp, PassThroughEndpoint
+from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
 
 logger = logging.getLogger(__name__)
 
-ODOO_API_BASE = "https://odoo.polysaas.online/api/http.php"  # or internal service URL
 
-OIDC_ENDPOINTS = {
-    'auth': 'https://polysaas.online/o/authorize/',
-    'token': 'https://polysaas.online/o/token/',
-    'jwks': 'https://polysaas.online/o/jwks/',
-    'userinfo': 'https://polysaas.online/o/userinfo/',
-}
+def _get_odoo_shared_config() -> Dict[str, str]:
+    """Return connection config for the shared Odoo instance."""
+    return {
+        'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com'),
+        'db': getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
+        'admin_login': getattr(settings, 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin'),
+        'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+    }
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+
+def _odoo_authenticate(config: Dict[str, str]) -> int:
+    """Authenticate to Odoo as admin via XML-RPC. Returns uid or raises."""
+    common = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/common", allow_none=True)
+    uid = common.authenticate(config['db'], config['admin_login'], config['admin_password'], {})
+    if not uid:
+        raise RuntimeError(
+            f"Odoo XML-RPC auth failed: url={config['url']} db={config['db']} login={config['admin_login']}"
+        )
+    return uid
+
+
+def _odoo_create_user(config: Dict[str, str], uid: int, *, login: str, name: str, password: str) -> int:
+    """
+    Create a res.users record in Odoo for the new tenant admin.
+    If the user already exists (same login), returns the existing user id.
+    """
+    models = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/object", allow_none=True)
+    db = config['db']
+    admin_pw = config['admin_password']
+
+    # Check if user already exists
+    existing = models.execute_kw(
+        db, uid, admin_pw, 'res.users', 'search',
+        [[['login', '=', login]]]
+    )
+    if existing:
+        logger.info("[OdooProvisioner] User '%s' already exists (id=%d), skipping create", login, existing[0])
+        return existing[0]
+
+    # Resolve group IDs for the new user:
+    #   base.group_user          → Internal User (basic access)
+    #   account.group_account_invoice → Invoicing (Show full accounting features)
+    # We look them up by XML ID so it works across Odoo versions.
+    group_ids = []
+    for xml_id in ['base.group_user', 'account.group_account_invoice', 'account.group_account_user']:
+        try:
+            module, name_part = xml_id.split('.')
+            found = models.execute_kw(
+                db, uid, admin_pw, 'ir.model.data', 'search_read',
+                [[['module', '=', module], ['name', '=', name_part]]],
+                {'fields': ['res_id'], 'limit': 1}
+            )
+            if found:
+                group_ids.append((4, found[0]['res_id']))
+        except Exception:
+            pass
+    if not group_ids:
+        group_ids = [(4, 1)]  # Fallback: at minimum add base internal user
+
+    vals = {
+        'name': name,
+        'login': login,
+        'email': login,
+        'password': password,
+        'groups_id': group_ids,
+    }
+    new_uid = models.execute_kw(db, uid, admin_pw, 'res.users', 'create', [vals])
+    logger.info("[OdooProvisioner] Created Odoo user '%s' (id=%d)", login, new_uid)
+
+    # Set home action to Apps page (id=39) — avoids Discuss which crashes through proxy
+    try:
+        models.execute_kw(db, uid, admin_pw, 'res.users', 'write', [[new_uid], {'action_id': 39}])
+    except Exception:
+        pass
+
+    return new_uid
+
+
+@shared_task(bind=True, max_retries=5, default_retry_delay=60)
 def provision_odoo_tenant(
     self,
     tenant_schema: str,
@@ -33,159 +122,121 @@ def provision_odoo_tenant(
     tenant_app_id: int = None,
 ) -> Dict[str, Any]:
     """
-    Atomic Service: Create Odoo tenant + admin user on new subscription
-    Triggered when "Odoo ERP" is checked on subscribe form
+    Celery task: provision an Odoo user for a new PolySaaS tenant.
+
+    Steps:
+      1. Create PassThroughEndpoint in tenant schema (sidebar link)
+      2. Create res.users in shared Odoo via XML-RPC
+      3. Update TenantApp.extra_config with final credentials
+      4. Mark TenantApp as 'active'
+      5. (Optional) Send welcome email
     """
-    # 1. Use standardized app-admin password (convention: [appslug]Admin / POLYSAAS_APP_ADMIN_PASSWORD)
-    from django.conf import settings
-    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+    config = _get_odoo_shared_config()
+    odoo_url = config['url']
+    password = config['admin_password']
 
-    # Build default tenant URL (updated after successful API call)
-    odoo_url = f"https://{tenant_schema}.odoo.polysaas.online"
-
-    # 2. Create PassThroughEndpoint FIRST — ensures sidebar link appears
-    # even if external Odoo API is unreachable.
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant_schema}"')
-            odoo_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
-                trigger_path='odoo',
-                defaults={
-                    'endpoint_url': odoo_url,
-                    'description': 'Odoo ERP - tenant-specific instance',
-                    'is_enabled': True,
-                    'passthrough_type': 'scraper',
-                    'integration_mode': 'web_api',
-                    'api_endpoint': f"{odoo_url}/api",
-                    'show_in_menu': True,
-                    'menu_title': 'Odoo',
-                    'menu_icon': 'building',
-                    'menu_sort_order': 20,
-                    'starting_uri': '/web/login',
-                }
-            )
-            logger.info("PassThroughEndpoint for Odoo %s (created=%s)", tenant_schema, ep_created)
-    except Exception as e:
-        logger.warning("Failed to create PassThroughEndpoint for Odoo: %s", e)
-
-    # 3. Create Odoo tenant (multi-tenant via separate DB schema or prefix)
-    # Using Odoo's REST API + our internal provisioning endpoint
-    create_tenant_payload = {
-        "action": "create_tenant",
-        "tenant_schema": tenant_schema,        # e.g. tenant_acme
-        "company_name": company_name or tenant_name,
-        "admin_email": admin_email,
-        "admin_username": "odooAdmin",
-        "admin_password": password,
-        "plan": "professional"  # or map from PolySaaS tier
-    }
-
-    api_ok = False
-    try:
-        tenant_resp = requests.post(f"{ODOO_API_BASE}/tenants", json=create_tenant_payload, timeout=30)
-        tenant_resp.raise_for_status()
-        odoo_url = tenant_resp.json()["tenant_url"]  # e.g. https://acme.odoo.polysaas.online
-        api_ok = True
-    except Exception as e:
-        logger.warning("Odoo tenant API call failed for %s: %s", tenant_name, e)
-        # Continue — endpoint already created, provisioning can retry later
-
-    # Update endpoint URL if API call succeeded and returned a different URL
-    if api_ok:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f'SET search_path TO "{tenant_schema}"')
-                PassThroughEndpoint.objects.filter(trigger_path='odoo').update(
-                    endpoint_url=odoo_url,
-                    api_endpoint=f"{odoo_url}/api",
-                )
-                logger.info("Updated Odoo endpoint_url to %s", odoo_url)
-        except Exception as e:
-            logger.warning("Failed to update Odoo endpoint URL: %s", e)
-
-    # 3. Send welcome email via Gmail API
-    try:
-        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
-        welcome_subject = f"Welcome to PolySaaS + Odoo – Your ERP is Ready"
-        welcome_body = f"""
-        <h2>Your PolySaaS tenant is live, and your Odoo ERP is ready!</h2>
-
-        <p><strong>ERP URL:</strong> <a href="{odoo_url}">{odoo_url}</a></p>
-
-        <p><strong>Login Credentials:</strong></p>
-        <ul>
-            <li><strong>Email:</strong> {admin_email}</li>
-            <li><strong>Password:</strong> {password}</li>
-        </ul>
-
-        <p><em>⚠️ Important: Change this password immediately after first login!</em></p>
-
-        <p>You can access your ERP anytime from your PolySaaS dashboard.</p>
-
-        <p>Need help? Contact our support team.</p>
-
-        <p>Welcome to PolySaaS!<br>
-        The PolySaaS Team</p>
-        """
-
-        email_result = email_svc.send_email(
-            to_email=admin_email,
-            subject=welcome_subject,
-            body=welcome_body
-        )
-
-        if email_result.get('success'):
-            print(f"Welcome email sent to {admin_email} (Message ID: {email_result.get('message_id')})")
-        else:
-            print(f"Warning: Failed to send welcome email: {email_result.get('error')}")
-
-    except Exception as e:
-        print(f"Warning: Email service error: {str(e)}")
-        # Continue with provisioning even if email fails
-
-    # 4. Configure OAuth2/OIDC provider if credentials provided
+    # Resolve TenantApp record
     tenant_app = None
     if tenant_app_id:
         try:
             tenant_app = TenantApp.objects.get(id=tenant_app_id)
         except TenantApp.DoesNotExist:
-            pass
+            logger.warning("[OdooProvisioner] TenantApp id=%s not found", tenant_app_id)
 
-    if oauth_client_id and oauth_client_secret:
+    # ── Step 1: Create PassThroughEndpoint ────────────────────────────────
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant_schema}", public')
+        PassThroughEndpoint.objects.update_or_create(
+            trigger_path='odoo',
+            defaults={
+                'endpoint_url': odoo_url,
+                'description': f'Odoo ERP for {company_name or tenant_name}',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{odoo_url}/web",
+                'show_in_menu': True,
+                'menu_title': 'Odoo',
+                'menu_icon': 'building',
+                'menu_sort_order': 20,
+                'starting_uri': '/web',
+            }
+        )
+        logger.info("[OdooProvisioner] PassThroughEndpoint for '%s' ensured", tenant_schema)
+    except Exception as e:
+        logger.warning("[OdooProvisioner] PassThroughEndpoint creation failed: %s", e)
+
+    # ── Step 2: Create Odoo user via XML-RPC ──────────────────────────────
+    try:
+        uid = _odoo_authenticate(config)
+        odoo_user_id = _odoo_create_user(
+            config, uid,
+            login=admin_email,
+            name=company_name or tenant_name,
+            password=password,
+        )
+    except Exception as exc:
+        logger.error("[OdooProvisioner] Odoo user creation failed for %s: %s", tenant_name, exc)
+        if tenant_app:
+            mark_tenant_app_error(tenant_app, str(exc))
+        # Retry via Celery
+        raise self.retry(exc=exc)
+
+    # ── Step 3: Update TenantApp.extra_config ─────────────────────────────
+    if tenant_app:
         try:
-            # TODO: When Odoo JSON-RPC endpoint is available, create auth.oauth.provider record:
-            # models.execute_kw(db, uid, pwd, 'auth.oauth.provider', 'create', [{
-            #     'name': 'PolySaaS SSO',
-            #     'flow': 'id_token_code',
-            #     'client_id': oauth_client_id,
-            #     'client_secret': oauth_client_secret,
-            #     'auth_endpoint': OIDC_ENDPOINTS['auth'],
-            #     'token_endpoint': OIDC_ENDPOINTS['token'],
-            #     'jwks_uri': OIDC_ENDPOINTS['jwks'],
-            #     'validation_endpoint': OIDC_ENDPOINTS['userinfo'],
-            #     'scope': 'openid email profile',
-            #     'enabled': True,
-            #     'body': 'Log in with PolySaaS',
-            # }])
-            logger.info("OAuth2 credentials ready for Odoo tenant %s (client_id=%s)", tenant_name, oauth_client_id)
+            extra = tenant_app.extra_config if isinstance(tenant_app.extra_config, dict) else {}
+            extra.update({
+                'odoo_login': admin_email,
+                'odoo_password': password,
+                'odoo_db': config['db'],
+                'odoo_user_id': odoo_user_id,
+                'odoo_url': odoo_url,
+            })
+            tenant_app.extra_config = extra
+            tenant_app.save(update_fields=['extra_config'])
         except Exception as e:
-            logger.warning("Odoo OAuth2 config failed for %s: %s", tenant_name, e)
+            logger.warning("[OdooProvisioner] Failed to update TenantApp.extra_config: %s", e)
 
-    # 5. PassThroughEndpoint already created at step 2 so sidebar link appears
-    # even if external Odoo API is unreachable. URL is updated at step 4
-    # if the API call succeeds.
-
+    # ── Step 4: Mark active ───────────────────────────────────────────────
     if tenant_app:
         mark_tenant_app_active(tenant_app, app_url=odoo_url)
+
+    # ── Step 5: Welcome email (best-effort) ───────────────────────────────
+    try:
+        from dose.services.email_service import GmailEmailService
+        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+        email_svc.send_email(
+            to_email=admin_email,
+            subject="Welcome to PolySaaS + Odoo – Your ERP Access is Ready",
+            body=f"""
+            <h2>Your Odoo ERP access is ready!</h2>
+            <p><strong>URL:</strong> Access Odoo from your PolySaaS dashboard sidebar.</p>
+            <p><strong>Login:</strong> {admin_email}</p>
+            <p><strong>Password:</strong> {password}</p>
+            <p><em>⚠️ Change this password after first login.</em></p>
+            <p>Welcome to PolySaaS!<br>The PolySaaS Team</p>
+            """,
+        )
+        logger.info("[OdooProvisioner] Welcome email sent to %s", admin_email)
+    except Exception as e:
+        logger.warning("[OdooProvisioner] Welcome email failed (non-fatal): %s", e)
+
+    logger.info(
+        "[OdooProvisioner] ✅ Provisioning complete: tenant=%s login=%s odoo_uid=%d",
+        tenant_name, admin_email, odoo_user_id,
+    )
 
     return {
         "success": True,
         "odoo_url": odoo_url,
+        "odoo_user_id": odoo_user_id,
         "odoo_credentials": {
-            "email": admin_email,
+            "login": admin_email,
             "password": password,
-            "note": "Auto-generated – force change on first login"
+            "db": config['db'],
         },
         "sso": bool(oauth_client_id),
-        "message": "Odoo tenant provisioned",
+        "message": f"Odoo user '{admin_email}' provisioned in shared instance",
     }

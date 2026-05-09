@@ -1,4 +1,5 @@
 
+from django.views.decorators.csrf import csrf_exempt
 from .views import passthrough_iframe_view, passthrough_html_view
 from .views import google_profile_view, facebook_profile_view
 from .views import github_profile_view
@@ -11,6 +12,8 @@ from .passthrough_views import passthrough_service, passthrough_api, direct_serv
 from dose.subscription_views import SubscriptionApiViewSet
 from dose.views import subscribe_view, select_tenant_view
 from dose.unread_dosemessages_api import unread_dosemessages_api
+from dose.orchestration_navigate_api import orchestration_navigate_api
+from dose.odoo_sso_api import odoo_sso_api
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.contrib.auth.decorators import user_passes_test, login_required
@@ -130,6 +133,7 @@ urlpatterns = [
     # Authentication
     path('login/', login_redirect_view, name='login'),
     path('logout/', logout_view, name='logout'),
+    path('dashboard/', dashboard, name='dashboard'),
     # Dashboard and main views
     path('dashboard/', dashboard, name='dashboard'),
     path('orchestration/create-instruction/', create_instruction, name='create_instruction'),
@@ -153,17 +157,19 @@ urlpatterns = [
     # path('api/airtable/post/', airtable_post_api, name='api_airtable_post'),  # Removed - airtable not used
     path('api/airtable/tickets/', airtable_tickets_api, name='api_airtable_tickets'),
     path('admin/airtable-tickets/', airtable_tickets_view, name='admin_airtable_tickets'),
+    path('api/odoo-sso/', odoo_sso_api, name='api_odoo_sso'),
     path('api/', include(router.urls)),
     # Passthrough Infrastructure - Phase 2
-    path('admin/passthrough/<str:service>/', passthrough_service, name='passthrough_service'),
-    path('api/passthrough/<str:service>/', passthrough_api, name='passthrough_api'),
-    path('passthrough/<int:endpoint_id>/', direct_service_view, name='passthrough_scraper'),
+    path('admin/passthrough/<str:service>/', csrf_exempt(passthrough_service), name='passthrough_service'),
+    path('api/passthrough/<str:service>/', csrf_exempt(passthrough_api), name='passthrough_api'),
+    path('passthrough/<int:endpoint_id>/', csrf_exempt(direct_service_view), name='passthrough_scraper'),
     # System utilities
     path('debug/', debug_view, name='debug'),
     path('create-sample-buttons/', create_sample_dashboard_buttons, name='create_sample_buttons'),
     path('health/', health_check, name='health_check'),
     # DoseMessage unread API
     path('api/unread-dosemessages/', unread_dosemessages_api, name='api_unread_dosemessages'),
+    path('api/orchestration-navigate/', orchestration_navigate_api, name='api_orchestration_navigate'),
     # Jira Integration - keeps context within DOSE
     path('jira/home/', jira_integration.jira_home, name='jira_home'),
     path('jira/projects/', jira_integration.jira_projects, name='jira_projects'),

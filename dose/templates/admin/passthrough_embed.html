@@ -220,11 +220,66 @@ body.polysaas-passthrough-embed-page {
 
 {% block content %}
 <div class="col-12 polysaas-passthrough-embed-col polysaas-passthrough-embed-wrap">
-    <div id="polysaas-orchestration-bar">
-        ● POLYSAAS ORCHESTRATION ACTIVE — PASSTHROUGH EMBED<br>
-        <span style="color:#86efac;font-size:13px;">Handler-driven passthrough is active for this app.</span><br>
-        <span style="color:#86efac;font-size:13px;">Use browser refresh (F5) if you need to fully reload the embedded service.</span>
+    <div id="polysaas-orchestration-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+        <div>
+            ● POLYSAAS ORCHESTRATION ACTIVE — PASSTHROUGH EMBED<br>
+            <span style="color:#86efac;font-size:13px;">Action Path: <code id="pss-action-path" style="background:rgba(255,255,255,0.15);color:#86efac;padding:2px 6px;border-radius:3px;font-size:12px;">loading…</code></span>
+        </div>
+        <button id="pss-insert-instruction-btn" style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+            + Insert Orchestration Instruction
+        </button>
     </div>
+    <script>
+    (function() {
+        var el = document.getElementById('pss-action-path');
+        var currentPath = '{{ upstream_path|default:"/web" }}';
+        if (el) el.textContent = currentPath;
+
+        // Intercept pushState/replaceState to detect Odoo in-app navigation
+        var _pushState = history.pushState;
+        var _replaceState = history.replaceState;
+        function onNav() {
+            var raw = window.location.pathname + window.location.hash;
+            // Strip proxy prefix like /pt/admin/polysaas-odoo2.onrender.com
+            var p = raw.replace(/^\/pt\/admin\/[^\/]+/, '') || '/';
+            if (p !== currentPath) {
+                currentPath = p;
+                if (el) el.textContent = currentPath;
+                // Notify server of client-side navigation for orchestration
+                notifyOrchestration(p);
+            }
+        }
+        function notifyOrchestration(path) {
+            var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+            fetch('/dose/api/orchestration-navigate/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                body: JSON.stringify({path: path, method: 'GET'})
+            }).catch(function() {});
+        }
+        history.pushState = function() {
+            _pushState.apply(this, arguments);
+            onNav();
+        };
+        history.replaceState = function() {
+            _replaceState.apply(this, arguments);
+            onNav();
+        };
+        window.addEventListener('popstate', onNav);
+        // Also poll for hash changes (fallback)
+        setInterval(onNav, 1500);
+
+        // Button click (placeholder — future: opens instruction creation modal)
+        var btn = document.getElementById('pss-insert-instruction-btn');
+        if (btn) {
+            btn.addEventListener('click', function() {
+                var path = el ? el.textContent : currentPath;
+                alert('Instruction will be created for action path:\\n' + path + '\\n\\n(Feature coming soon)');
+            });
+        }
+    })();
+    </script>
     {% if embed_body %}
     {{ embed_body }}
     {% endif %}

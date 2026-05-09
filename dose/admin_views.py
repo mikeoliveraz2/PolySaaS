@@ -496,6 +496,9 @@ def passthrough_embed_view(request, trigger):
             '<div class="alert alert-warning">Could not load upstream HTML (check endpoint URL and network).</div>'
         )
 
+    # Determine the upstream path for the orchestration bar
+    upstream_path = getattr(endpoint, 'starting_uri', '') or '/web'
+
     response = render(
         request,
         "admin/passthrough_embed.html",
@@ -504,6 +507,7 @@ def passthrough_embed_view(request, trigger):
             "embed_title": embed_title,
             "embed_head": embed_head,
             "embed_body": embed_body,
+            "upstream_path": upstream_path,
         },
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"

@@ -201,6 +201,15 @@ MATTERMOST_URL = env('MATTERMOST_URL', default='http://localhost:8065')
 MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
 POLYSAAS_APP_ADMIN_PASSWORD = env('POLYSAAS_APP_ADMIN_PASSWORD', default='PolySaaS2026!')
 
+# --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
+ODOO_SHARED_URL = env('ODOO_SHARED_URL', default='https://polysaas-odoo2.onrender.com')
+ODOO_SHARED_DB = env('ODOO_SHARED_DB', default='odoodb')
+ODOO_SHARED_ADMIN_LOGIN = env('ODOO_SHARED_ADMIN_LOGIN', default='odooAdmin')
+
+# --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
+NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
+NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='ncadmin')
+
 # Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
 # If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).
 PARAMETER_FERNET_KEY = env('PARAMETER_FERNET_KEY', default='')
@@ -551,9 +560,9 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend for session-based tenancy
         'NAME': 'dosedbsaas',
         'USER': 'dosedbadmin',
-        'PASSWORD': env('DOSE_DB_PASSWORD', default=''),
+        'PASSWORD': env('DOSE_DB_PASSWORD', default='PolySaaS2026!'),
         'HOST': 'localhost',
-        'PORT': '5433',
+        'PORT': env('DB_PORT', default='5433'),
     }
 }
 

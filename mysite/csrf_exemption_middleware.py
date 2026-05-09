@@ -25,6 +25,11 @@ class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
     3. The browser communicates directly with the external service for form submission
     """
 
+    def __call__(self, request):
+        # Explicitly run process_request since DebugStackMiddleware skips it
+        self.process_request(request)
+        return self.get_response(request)
+
     def process_request(self, request):
         """
         Mark passthrough requests as CSRF-exempt before Django's CSRF middleware processes them.

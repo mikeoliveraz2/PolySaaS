@@ -1,22 +1,97 @@
-# atomic_services/nextcloud_tenant_provisioner.py
+# dose/services/nextcloud_tenant_provisioner.py
+"""
+Nextcloud Tenant Provisioner — creates a user in the shared Nextcloud instance
+for a new PolySaaS tenant subscription.
+
+Architecture:
+  • A single shared Nextcloud instance serves all tenants.
+  • Each new tenant gets a user account provisioned via Nextcloud OCS API.
+  • Nextcloud URL and admin credentials come from Django settings (env vars).
+  • The provisioner also creates a PassThroughEndpoint in the tenant schema
+    so the sidebar "NextCloud" link appears immediately.
+
+Settings used:
+  NEXTCLOUD_SHARED_URL            — e.g. http://polysaas-nextcloud:80
+  NEXTCLOUD_SHARED_ADMIN_LOGIN    — e.g. ncadmin
+  POLYSAAS_APP_ADMIN_PASSWORD     — shared admin password (e.g. PolySaaS2026!)
+"""
 from typing import Dict, Any
-from django.db import connection
-from celery import shared_task
 import logging
-import requests
-import secrets
-import string
-from dose.services.email_service import GmailEmailService
-from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
+
+import requests as http_requests
+
+from django.conf import settings
+from django.db import connection
+
+from celery import shared_task
+
 from dose.models import TenantApp, PassThroughEndpoint
+from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
 
 logger = logging.getLogger(__name__)
 
-NEXTCLOUD_API_BASE = "https://nextcloud.polysaas.online/api/http.php"  # or internal service URL
 
-OIDC_DISCOVERY = "https://polysaas.online/o/.well-known/openid-configuration"
+def _get_nextcloud_shared_config() -> Dict[str, str]:
+    """Return connection config for the shared Nextcloud instance."""
+    return {
+        'url': getattr(settings, 'NEXTCLOUD_SHARED_URL', 'https://polysaas-nextcloud.onrender.com'),
+        'admin_login': getattr(settings, 'NEXTCLOUD_SHARED_ADMIN_LOGIN', 'ncadmin'),
+        'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+    }
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=30)
+
+def _nextcloud_create_user(config: Dict[str, str], *, userid: str, display_name: str, password: str, email: str) -> Dict[str, Any]:
+    """
+    Create a user in Nextcloud via OCS Provisioning API.
+    If user already exists, returns success with a note.
+
+    Nextcloud OCS docs: https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/user_provisioning_api.html
+    """
+    url = config['url'].rstrip('/')
+    admin_login = config['admin_login']
+    admin_password = config['admin_password']
+
+    # OCS endpoint for user creation
+    ocs_url = f"{url}/ocs/v1.php/cloud/users"
+
+    payload = {
+        'userid': userid,
+        'displayName': display_name,
+        'password': password,
+        'email': email,
+    }
+
+    try:
+        resp = http_requests.post(
+            ocs_url,
+            data=payload,
+            auth=(admin_login, admin_password),
+            headers={'OCS-APIRequest': 'true'},
+            timeout=30,
+        )
+
+        # OCS API returns XML by default; check status code
+        if resp.status_code == 200:
+            # Check OCS status in response (100 = success, 102 = user exists)
+            if '<statuscode>100</statuscode>' in resp.text:
+                logger.info("[NextcloudProvisioner] Created user '%s'", userid)
+                return {'ok': True, 'status': 'created', 'userid': userid}
+            elif '<statuscode>102</statuscode>' in resp.text:
+                logger.info("[NextcloudProvisioner] User '%s' already exists", userid)
+                return {'ok': True, 'status': 'already_exists', 'userid': userid}
+            else:
+                logger.warning("[NextcloudProvisioner] OCS response: %s", resp.text[:300])
+                return {'ok': False, 'status': 'ocs_error', 'response': resp.text[:300]}
+        else:
+            logger.warning("[NextcloudProvisioner] HTTP %d: %s", resp.status_code, resp.text[:200])
+            return {'ok': False, 'status': 'http_error', 'status_code': resp.status_code}
+
+    except Exception as exc:
+        logger.error("[NextcloudProvisioner] Request failed: %s", exc)
+        return {'ok': False, 'status': 'connection_error', 'error': str(exc)}
+
+
+@shared_task(bind=True, max_retries=5, default_retry_delay=60)
 def provision_nextcloud_tenant(
     self,
     tenant_schema: str,
@@ -28,153 +103,125 @@ def provision_nextcloud_tenant(
     tenant_app_id: int = None,
 ) -> Dict[str, Any]:
     """
-    Atomic Service: Create Nextcloud tenant + admin user on new subscription
-    Triggered when "Nextcloud" is checked on subscribe form
+    Celery task: provision a Nextcloud user for a new PolySaaS tenant.
+
+    Steps:
+      1. Create PassThroughEndpoint in tenant schema (sidebar link)
+      2. Create user in shared Nextcloud via OCS API
+      3. Update TenantApp.extra_config with credentials
+      4. Mark TenantApp as 'active'
+      5. (Optional) Send welcome email
     """
-    # 1. Use standardized app-admin password (convention: [appslug]Admin / POLYSAAS_APP_ADMIN_PASSWORD)
-    from django.conf import settings
-    password = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+    config = _get_nextcloud_shared_config()
+    nextcloud_url = config['url']
+    password = config['admin_password']
 
-    # Build default tenant URL (updated after successful API call)
-    nextcloud_url = f"https://{tenant_schema}.nextcloud.polysaas.online"
-
-    # 2. Create PassThroughEndpoint FIRST — ensures sidebar link appears
-    # even if external Nextcloud API is unreachable.
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant_schema}"')
-            nc_endpoint, ep_created = PassThroughEndpoint.objects.update_or_create(
-                trigger_path='nextcloud',
-                defaults={
-                    'endpoint_url': nextcloud_url,
-                    'description': 'NextCloud File Storage - tenant-specific instance',
-                    'is_enabled': True,
-                    'passthrough_type': 'scraper',
-                    'integration_mode': 'web_api',
-                    'api_endpoint': f"{nextcloud_url}/ocs/v1.php",
-                    'show_in_menu': True,
-                    'menu_title': 'NextCloud',
-                    'menu_icon': 'cloud',
-                    'menu_sort_order': 30,
-                    'starting_uri': '/',
-                }
-            )
-            logger.info("PassThroughEndpoint for NextCloud %s (created=%s)", tenant_schema, ep_created)
-    except Exception as e:
-        logger.warning("Failed to create PassThroughEndpoint for NextCloud: %s", e)
-
-    # 3. Create Nextcloud tenant (multi-tenant via separate DB schema or prefix)
-    # Using Nextcloud's REST API + our internal provisioning endpoint
-    create_tenant_payload = {
-        "action": "create_tenant",
-        "tenant_schema": tenant_schema,        # e.g. tenant_acme
-        "company_name": company_name or tenant_name,
-        "admin_email": admin_email,
-        "admin_username": "nextcloudAdmin",
-        "admin_password": password,
-        "plan": "professional"  # or map from PolySaaS tier
-    }
-
-    api_ok = False
-    try:
-        tenant_resp = requests.post(f"{NEXTCLOUD_API_BASE}/tenants", json=create_tenant_payload, timeout=30)
-        tenant_resp.raise_for_status()
-        nextcloud_url = tenant_resp.json()["tenant_url"]  # e.g. https://acme.nextcloud.polysaas.online
-        api_ok = True
-    except Exception as e:
-        logger.warning("Nextcloud tenant API call failed for %s: %s", tenant_name, e)
-        # Continue — endpoint already created, provisioning can retry later
-
-    # Update endpoint URL if API call succeeded and returned a different URL
-    if api_ok:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f'SET search_path TO "{tenant_schema}"')
-                PassThroughEndpoint.objects.filter(trigger_path='nextcloud').update(
-                    endpoint_url=nextcloud_url,
-                    api_endpoint=f"{nextcloud_url}/ocs/v1.php",
-                )
-                logger.info("Updated NextCloud endpoint_url to %s", nextcloud_url)
-        except Exception as e:
-            logger.warning("Failed to update NextCloud endpoint URL: %s", e)
-
-    # 3. Send welcome email via Gmail API
-    try:
-        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
-        welcome_subject = f"Welcome to PolySaaS + Nextcloud – Your File Storage is Ready"
-        welcome_body = f"""
-        <h2>Your PolySaaS tenant is live, and your Nextcloud is ready!</h2>
-
-        <p><strong>File Storage URL:</strong> <a href="{nextcloud_url}">{nextcloud_url}</a></p>
-
-        <p><strong>Login Credentials:</strong></p>
-        <ul>
-            <li><strong>Email:</strong> {admin_email}</li>
-            <li><strong>Password:</strong> {password}</li>
-        </ul>
-
-        <p><em>⚠️ Important: Change this password immediately after first login!</em></p>
-
-        <p>You can access your file storage anytime from your PolySaaS dashboard.</p>
-
-        <p>Need help? Contact our support team.</p>
-
-        <p>Welcome to PolySaaS!<br>
-        The PolySaaS Team</p>
-        """
-
-        email_result = email_svc.send_email(
-            to_email=admin_email,
-            subject=welcome_subject,
-            body=welcome_body
-        )
-
-        if email_result.get('success'):
-            print(f"Welcome email sent to {admin_email} (Message ID: {email_result.get('message_id')})")
-        else:
-            print(f"Warning: Failed to send welcome email: {email_result.get('error')}")
-
-    except Exception as e:
-        print(f"Warning: Email service error: {str(e)}")
-        # Continue with provisioning even if email fails
-
-    # 4. Configure OIDC provider if credentials provided
+    # Resolve TenantApp record
     tenant_app = None
     if tenant_app_id:
         try:
             tenant_app = TenantApp.objects.get(id=tenant_app_id)
         except TenantApp.DoesNotExist:
-            pass
+            logger.warning("[NextcloudProvisioner] TenantApp id=%s not found", tenant_app_id)
 
-    if oauth_client_id and oauth_client_secret:
+    # ── Step 1: Create PassThroughEndpoint ────────────────────────────────
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant_schema}", public')
+        PassThroughEndpoint.objects.update_or_create(
+            trigger_path='nextcloud',
+            defaults={
+                'endpoint_url': nextcloud_url,
+                'description': f'NextCloud File Storage for {company_name or tenant_name}',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{nextcloud_url}/ocs/v1.php",
+                'show_in_menu': True,
+                'menu_title': 'NextCloud',
+                'menu_icon': 'cloud',
+                'menu_sort_order': 30,
+                'starting_uri': '/index.php/login',
+            }
+        )
+        logger.info("[NextcloudProvisioner] PassThroughEndpoint for '%s' ensured", tenant_schema)
+    except Exception as e:
+        logger.warning("[NextcloudProvisioner] PassThroughEndpoint creation failed: %s", e)
+
+    # ── Step 2: Create Nextcloud user via OCS API ─────────────────────────
+    # Use a short userid derived from email (before @)
+    userid = admin_email.split('@')[0] if '@' in admin_email else admin_email
+    display_name = company_name or tenant_name
+
+    result = _nextcloud_create_user(
+        config,
+        userid=userid,
+        display_name=display_name,
+        password=password,
+        email=admin_email,
+    )
+
+    if not result.get('ok'):
+        err_msg = result.get('error') or result.get('response') or 'unknown error'
+        logger.error("[NextcloudProvisioner] User creation failed for %s: %s", tenant_name, err_msg)
+        if tenant_app:
+            mark_tenant_app_error(tenant_app, err_msg)
+        raise self.retry(exc=RuntimeError(err_msg))
+
+    # ── Step 3: Update TenantApp.extra_config ─────────────────────────────
+    if tenant_app:
         try:
-            # TODO: When Nextcloud Docker container is available, configure via occ:
-            # docker_exec("occ app:enable user_oidc")
-            # docker_exec(f"occ user_oidc:provider PolySaaS "
-            #             f"--clientid='{oauth_client_id}' "
-            #             f"--clientsecret='{oauth_client_secret}' "
-            #             f"--discoveryuri='{OIDC_DISCOVERY}' "
-            #             f"--scope='openid email profile' "
-            #             f"--unique-uid=1 --check-bearer=1")
-            logger.info("OAuth2 credentials ready for Nextcloud tenant %s (client_id=%s)", tenant_name, oauth_client_id)
+            extra = tenant_app.extra_config if isinstance(tenant_app.extra_config, dict) else {}
+            extra.update({
+                'nc_login': userid,
+                'nc_password': password,
+                'nc_email': admin_email,
+                'nc_url': nextcloud_url,
+                'nc_userid': userid,
+            })
+            tenant_app.extra_config = extra
+            tenant_app.save(update_fields=['extra_config'])
         except Exception as e:
-            logger.warning("Nextcloud OIDC config failed for %s: %s", tenant_name, e)
+            logger.warning("[NextcloudProvisioner] Failed to update TenantApp.extra_config: %s", e)
 
-    # 5. PassThroughEndpoint already created at step 2 so sidebar link appears
-    # even if external Nextcloud API is unreachable. URL is updated at step 4
-    # if the API call succeeds.
-
+    # ── Step 4: Mark active ───────────────────────────────────────────────
     if tenant_app:
         mark_tenant_app_active(tenant_app, app_url=nextcloud_url)
+
+    # ── Step 5: Welcome email (best-effort) ───────────────────────────────
+    try:
+        from dose.services.email_service import GmailEmailService
+        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+        email_svc.send_email(
+            to_email=admin_email,
+            subject="Welcome to PolySaaS + NextCloud – Your File Storage is Ready",
+            body=f"""
+            <h2>Your NextCloud file storage is ready!</h2>
+            <p><strong>URL:</strong> Access NextCloud from your PolySaaS dashboard sidebar.</p>
+            <p><strong>Username:</strong> {userid}</p>
+            <p><strong>Password:</strong> {password}</p>
+            <p><em>⚠️ Change this password after first login.</em></p>
+            <p>Welcome to PolySaaS!<br>The PolySaaS Team</p>
+            """,
+        )
+        logger.info("[NextcloudProvisioner] Welcome email sent to %s", admin_email)
+    except Exception as e:
+        logger.warning("[NextcloudProvisioner] Welcome email failed (non-fatal): %s", e)
+
+    logger.info(
+        "[NextcloudProvisioner] Provisioning complete: tenant=%s userid=%s",
+        tenant_name, userid,
+    )
 
     return {
         "success": True,
         "nextcloud_url": nextcloud_url,
+        "nextcloud_userid": userid,
         "nextcloud_credentials": {
-            "email": admin_email,
+            "userid": userid,
             "password": password,
-            "note": "Auto-generated – force change on first login"
+            "email": admin_email,
         },
         "sso": bool(oauth_client_id),
-        "message": "Nextcloud tenant provisioned",
+        "message": f"Nextcloud user '{userid}' provisioned in shared instance",
     }

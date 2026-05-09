@@ -304,9 +304,34 @@
         }
     }
 
+    function detectFormName() {
+        // Try breadcrumb text first (Django admin renders model name there)
+        var crumbs = document.querySelectorAll('.breadcrumbs a, #breadcrumbs a, .breadcrumb-item a, .breadcrumb a');
+        if (crumbs.length >= 2) {
+            var last = crumbs[crumbs.length - 1].textContent.trim();
+            if (last && last.length > 1) return last;
+        }
+        // Fallback: parse from admin URL  /admin/dose/callbackdata/add/ -> "Call Back Data"
+        var m = window.location.pathname.match(/\/admin\/\w+\/(\w+)\//);
+        if (m) {
+            return m[1].replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+        }
+        // Generic fallback
+        return 'this page';
+    }
+
+    function showGreeting() {
+        if (history.length > 0) return;
+        var username = '{{ user.get_short_name|default:user.username|escapejs }}';
+        var formName = detectFormName();
+        var greeting = 'Hello ' + (username || 'there') + ', how can I help you with ' + formName + '?';
+        appendLine('assistant', greeting);
+    }
+
     function initChatUi() {
         loadHistoryFromStorage();
         renderLogFromHistory();
+        showGreeting();
         loadModeRadios();
         try {
             var mt = sessionStorage.getItem(SK_META);

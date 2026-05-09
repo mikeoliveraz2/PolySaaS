@@ -30,42 +30,41 @@
         /* ── Passthrough App Cards ── */
         .ps-app-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 14px;
-            padding: 14px 10px;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 18px;
+            padding: 16px 12px;
         }
         .ps-app-card {
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 12px 8px;
-            border-radius: 12px;
+            padding: 14px 10px;
+            border-radius: 14px;
             text-decoration: none;
             color: inherit;
-            transition: all 0.2s ease;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
+            transition: all 0.25s ease;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        .ps-app-card:nth-child(even) { background: #f1f3f5; }
         .ps-app-card:hover {
-            background: #e9ecef;
-            transform: translateY(-3px);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+            background: rgba(255,255,255,0.13);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
             text-decoration: none;
             color: inherit;
         }
         .ps-app-logo {
-            width: 52px;
-            height: 52px;
-            border-radius: 10px;
+            width: 75px;
+            height: 75px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
+            font-size: 28px;
             font-weight: 700;
             color: #fff;
-            margin-bottom: 8px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.18);
         }
         .ps-app-logo.odoo { background: linear-gradient(135deg, #9c5acc 0%, #714b67 100%); }
         .ps-app-logo.mattermost { background: linear-gradient(135deg, #1668ca 0%, #0058cc 100%); }
@@ -77,11 +76,11 @@
         .ps-app-logo.monitor { background: linear-gradient(135deg, #6c757d 0%, #545b62 100%); }
         .ps-app-logo.generic { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); }
         .ps-app-label {
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
             text-align: center;
             line-height: 1.3;
-            color: #495057;
+            color: inherit;
         }
 
         /* ── Sidebar injection ── */
@@ -91,28 +90,31 @@
             margin-bottom: 8px;
         }
         .ps-sidebar-apps .ps-app-cards {
-            gap: 8px;
-            padding: 0;
+            gap: 10px;
+            padding: 4px 2px;
             grid-template-columns: repeat(2, 1fr);
         }
         .ps-sidebar-apps .ps-app-card {
-            padding: 8px 4px;
+            padding: 10px 6px 8px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.08);
         }
         .ps-sidebar-apps .ps-app-card:hover { background: rgba(255,255,255,0.12); }
         .ps-sidebar-apps .ps-app-logo {
-            width: 40px;
-            height: 40px;
-            font-size: 16px;
-            margin-bottom: 6px;
+            width: 75px;
+            height: 75px;
+            font-size: 22px;
+            margin-bottom: 7px;
         }
         .ps-sidebar-apps .ps-app-logo-img img {
             border-radius: 8px;
         }
         .ps-sidebar-apps .ps-app-label {
-            font-size: 11px;
+            font-size: 12px;
+            font-weight: 600;
             color: #c2c7d0;
+            display: block;
+            text-align: center;
         }
         .ps-sidebar-title {
             font-size: 11px;
@@ -142,15 +144,16 @@
         .ps-app-logo-img {
             background: transparent !important;
             box-shadow: none !important;
-            padding: 0 !important;
+            padding: 4px !important;
             overflow: hidden;
         }
         .ps-app-logo-img img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            border-radius: 10px;
+            object-fit: contain;
+            border-radius: 0;
             display: block;
+            filter: drop-shadow(0 3px 6px rgba(0,0,0,0.18));
         }
     </style>
     {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
@@ -197,28 +200,46 @@
     </div>
     {% endif %}
 
-    {# ── App Admin Credentials (staff only) ── #}
+    {# ── App Admin Credentials (staff only, hidden by default) ── #}
     {% if request.user.is_staff %}
-    <div class="card mb-3 ps-creds-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="m-0"><i class="fas fa-key" aria-hidden="true"></i> App Admin Credentials</h5>
-            <span class="badge badge-secondary">dev helper</span>
-        </div>
-        <div class="card-body p-0">
-            <table class="table table-sm">
-                <thead>
-                    <tr><th>App</th><th>Username</th><th>Password</th></tr>
-                </thead>
-                <tbody>
-                    <tr><td>Odoo</td><td><code>odooAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
-                    <tr><td>Nextcloud</td><td><code>nextcloudAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
-                    <tr><td>Dolibarr</td><td><code>dolibarrAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
-                    <tr><td>Liferay</td><td><code>liferayAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
-                    <tr><td>WordPress</td><td><code>wordpressAdmin</code></td><td><span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">PolySaaS2026!</span></td></tr>
-                    <tr><td>Mattermost</td><td colspan="2"><em>SSO via PolySaaS — no separate admin password</em></td></tr>
-                </tbody>
-            </table>
-            <p class="ps-creds-note px-3 pb-2 mb-0">Override via <code>POLYSAAS_APP_ADMIN_PASSWORD</code> env var. Click password to copy.</p>
+    <div id="ps-creds-wrapper" style="display:none;">
+        <div class="card mb-3 ps-creds-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="m-0"><i class="fas fa-key" aria-hidden="true"></i> App Admin Credentials</h5>
+                <span class="badge badge-secondary">dev helper</span>
+            </div>
+            <div class="card-body p-0">
+                {% load app_creds_tags %}
+                {% get_app_credentials as app_creds %}
+                {% if app_creds %}
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>App</th><th>Username</th><th>Password</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for cred in app_creds %}
+                        <tr>
+                            <td>{{ cred.app_name|title }}</td>
+                            <td><code>{{ cred.username|default:"—" }}</code></td>
+                            <td>
+                                {% if cred.password %}
+                                <span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">{{ cred.password }}</span>
+                                {% else %}
+                                <em class="text-muted">—</em>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="p-3 text-muted">
+                    <p class="mb-1">No app credentials configured yet.</p>
+                    <p class="mb-0 small">Add them in <strong>Admin → Dose → App credentials</strong>.</p>
+                </div>
+                {% endif %}
+                <p class="ps-creds-note px-3 pb-2 mb-0">Manage via <strong>Admin → Dose → App credentials</strong>. Click password to copy. <span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Both username and password are <strong>case-sensitive</strong>.</span></p>
+            </div>
         </div>
     </div>
     {% endif %}
@@ -289,6 +310,34 @@
     wrapper.innerHTML = '<p class="ps-sidebar-title">Apps</p>' +
         '<div class="ps-app-cards">' + dashboardCards.innerHTML + '</div>';
     sidebar.insertBefore(wrapper, sidebar.firstChild);
+
+    /* ── Toggle credentials card from footer ── */
+    var footer = document.querySelector('.main-footer');
+    var credsWrapper = document.getElementById('ps-creds-wrapper');
+    if (footer && credsWrapper) {
+        /* Find the copyright text and wrap the © symbol in a hidden trigger */
+        var autoescapeDiv = footer.querySelector('.autoescape, [class*="footer"]');
+        /* Fallback: just inject a tiny trigger dot before the version text */
+        var versionDiv = footer.querySelector('.float-right');
+        if (versionDiv) {
+            var trigger = document.createElement('span');
+            trigger.className = 'ps-creds-trigger';
+            trigger.title = 'Show dev credentials';
+            trigger.innerHTML = '&middot;';
+            trigger.style.cursor = 'pointer';
+            trigger.style.opacity = '0.35';
+            trigger.style.marginRight = '6px';
+            trigger.style.fontSize = '18px';
+            trigger.style.lineHeight = '1';
+            trigger.style.verticalAlign = 'middle';
+            trigger.addEventListener('click', function() {
+                var isHidden = credsWrapper.style.display === 'none';
+                credsWrapper.style.display = isHidden ? 'block' : 'none';
+                trigger.style.opacity = isHidden ? '1' : '0.35';
+            });
+            versionDiv.insertBefore(trigger, versionDiv.firstChild);
+        }
+    }
 })();
 </script>
 {% endblock %}

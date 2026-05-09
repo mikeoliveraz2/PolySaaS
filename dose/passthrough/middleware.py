@@ -142,6 +142,9 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     )
     embed_head = mark_safe(head_content)
     
+    # Determine upstream path for orchestration bar
+    upstream_path = getattr(request, '_passthrough_upstream_path', '/web')
+
     try:
         wrapped_html = render_to_string(
             'admin/passthrough_embed.html',
@@ -150,6 +153,7 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
                 'embed_title': embed_title,
                 'embed_head': embed_head,
                 'embed_body': embed_body,
+                'upstream_path': upstream_path,
             },
             request=request,
         )

@@ -620,7 +620,6 @@ document.addEventListener('input', function(e) {
     checkFormFields();
 });
 document.addEventListener('DOMContentLoaded', function() {
-    fieldIds.forEach(function(id) { validateField(id); });
     checkFormFields();
 });
 
@@ -628,16 +627,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 var stripeLoaded = false;
 var stripe, elements, card;
-try {
-    stripe = Stripe('{{ STRIPE_PUBLISHABLE_KEY }}');
-    elements = stripe.elements();
-    stripeLoaded = true;
-    card = elements.create('card', { hidePostalCode: true });
-    card.mount('#card-element');
-    card.on('change', function(event) {
-        document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
-    });
-} catch (e) {
+var _spk = '{{ STRIPE_PUBLISHABLE_KEY }}';
+if (_spk && _spk.indexOf('pk_') === 0) {
+    try {
+        stripe = Stripe(_spk);
+        elements = stripe.elements();
+        stripeLoaded = true;
+        card = elements.create('card', { hidePostalCode: true });
+        card.mount('#card-element');
+        card.on('change', function(event) {
+            document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
+        });
+    } catch (e) {
+        console.error('Stripe init error:', e);
+        document.getElementById('stripe-load-error').style.display = 'block';
+    }
+} else {
+    document.getElementById('stripe-load-error').textContent = 'Stripe is not configured. Card payment is unavailable (STRIPE_PUBLISHABLE_KEY missing).';
     document.getElementById('stripe-load-error').style.display = 'block';
 }
 

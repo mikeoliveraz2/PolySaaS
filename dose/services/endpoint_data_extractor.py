@@ -214,9 +214,18 @@ class EndpointDataExtractorService(AtomicServiceBase):
                 adapter.close()
 
             logger.info(
-                f"[EndpointDataExtractor] No active MQ config. "
-                f"Message logged locally: topic={topic}"
+                f"[EndpointDataExtractor] No active MQ config — firing in-process for topic={topic}"
             )
+            try:
+                from dose.mq.mq_request_controller import MQRequestController
+                in_proc_result = MQRequestController.process_mq_message(
+                    message_data=message,
+                    topic=topic,
+                )
+                logger.info(f"[EndpointDataExtractor] In-process MQ result: {in_proc_result}")
+                return {"status": "in_process", "topic": topic, "result": in_proc_result}
+            except Exception as mq_exc:
+                logger.warning(f"[EndpointDataExtractor] In-process MQ dispatch failed: {mq_exc}")
             return {"status": "logged_locally", "topic": topic, "reason": "no_mq_config"}
 
         except Exception as e:

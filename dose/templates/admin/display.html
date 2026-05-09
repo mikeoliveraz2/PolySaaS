@@ -507,28 +507,80 @@
     </script>
     {% endif %}
 
-    {# Toast notification for orchestration success #}
-    {% if orchestration_executed %}
+    {# Dynamic orchestration toast — polls DoseMessage API for new notifications #}
     <script>
     (function() {
         'use strict';
-        function showToast(message, duration) {
-            var toast = document.createElement('div');
-            toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#166534;color:#fff;padding:12px 20px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;font-size:14px;font-family:system-ui,-apple-system,sans-serif;animation:slideIn 0.3s ease;';
-            toast.textContent = message;
-            var style = document.createElement('style');
-            style.textContent = '@keyframes slideIn{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}';
-            document.head.appendChild(style);
-            document.body.appendChild(toast);
-            setTimeout(function() {
-                toast.style.animation = 'slideIn 0.3s ease reverse';
-                setTimeout(function() { toast.remove(); }, 300);
-            }, duration || 5000);
+        var POLL_INTERVAL = 4000;
+        var TOAST_DURATION = 7000;
+        var seenIds = {};
+        var styleInjected = false;
+
+        var LEVEL_STYLES = {
+            success: 'background:#166534;color:#fff;',
+            info:    'background:#1565c0;color:#fff;',
+            warning: 'background:#e65100;color:#fff;',
+            error:   'background:#b71c1c;color:#fff;',
+        };
+
+        var LEVEL_ICONS = {
+            success: '\u2705',
+            info:    '\u2139\ufe0f',
+            warning: '\u26a0\ufe0f',
+            error:   '\u274c',
+        };
+
+        function injectStyle() {
+            if (styleInjected) return;
+            var s = document.createElement('style');
+            s.textContent = '@keyframes psToastIn{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}@keyframes psToastOut{from{transform:translateX(0);opacity:1;}to{transform:translateX(100%);opacity:0;}}';
+            document.head.appendChild(s);
+            styleInjected = true;
         }
-        document.addEventListener('DOMContentLoaded', function() {
-            showToast('✅ Atomic service executed successfully — dynamic integration active', 6000);
-        });
+
+        function showToast(message, level) {
+            injectStyle();
+            var icon = LEVEL_ICONS[level] || LEVEL_ICONS.info;
+            var bg = LEVEL_STYLES[level] || LEVEL_STYLES.info;
+            var el = document.createElement('div');
+            el.style.cssText = 'position:fixed;top:20px;right:20px;max-width:420px;padding:14px 22px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.3);z-index:99999;font-size:14px;line-height:1.5;font-family:system-ui,-apple-system,sans-serif;animation:psToastIn 0.3s ease;cursor:pointer;' + bg;
+            el.textContent = icon + ' ' + message;
+            el.onclick = function() { el.remove(); };
+            document.body.appendChild(el);
+            setTimeout(function() {
+                el.style.animation = 'psToastOut 0.3s ease forwards';
+                setTimeout(function() { el.remove(); }, 350);
+            }, TOAST_DURATION);
+        }
+
+        function pollMessages() {
+            fetch('/dose/api/unread-dosemessages/', {credentials: 'same-origin'})
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (!data || !data.unread_messages) return;
+                    data.unread_messages.forEach(function(msg) {
+                        if (seenIds[msg.id]) return;
+                        seenIds[msg.id] = true;
+                        showToast(msg.message, msg.level || 'success');
+                    });
+                    if (data.count > 0) {
+                        fetch('/dose/api/unread-dosemessages/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': getCsrf()}});
+                    }
+                })
+                .catch(function() {});
+        }
+
+        function getCsrf() {
+            var m = document.cookie.match(/csrftoken=([^;]+)/);
+            return m ? m[1] : '';
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() { setInterval(pollMessages, POLL_INTERVAL); pollMessages(); });
+        } else {
+            setInterval(pollMessages, POLL_INTERVAL);
+            pollMessages();
+        }
     })();
     </script>
-    {% endif %}
 {% endblock %}

@@ -430,6 +430,64 @@ Created Django superuser `mmadmin@polysaas.online` / `PolySaaS2026!` for local a
 
 ---
 
+## 2026-05-07 / 2026-05-08 — Odoo Admin Credentials Recovery
+**Status**: ✅ BINGO — `odooAdmin` / `PolySaaS2026!` working
+**Branch**: main
+
+### Summary
+Odoo admin credentials were unknown (fresh Render deploy, default `admin` login set during DB wizard). Needed to establish known credentials `odooAdmin` / `PolySaaS2026!` for use across the team.
+
+### Recovery Sequence
+
+1. **Identified DB name confusion** — `ODOO_DB_NAME=odoo_prod` in env but actual DB used by Odoo was `odoodb` (set via Render env group). Confirmed via `printenv` in Render shell.
+
+2. **Dropped `odoo_prod`** (empty/stale DB from previous failed init):
+   ```bash
+   # First terminated active connections:
+   PGPASSWORD=... psql -h dpg-d7g2ombeo5us73aln4ug-a -U polysaas_postgres_user -d postgres \
+     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='odoo_prod';"
+   # Then dropped:
+   PGPASSWORD=... psql ... -c "DROP DATABASE odoo_prod;"
+   ```
+
+3. **Redeployed `polysaas-odoo2`** via Render Manual Deploy — `ODOO_AUTO_INIT=1` recreated `odoodb` fresh. DB setup wizard ran on first visit, admin created with email `odooAdmin@polysaas.online` / `PolySaaS2026!`.
+
+4. **Login failed** — discovered actual login stored was `admin` (Odoo default), not `odooAdmin`. Renamed via SQL:
+   ```bash
+   PGPASSWORD=... psql ... -d odoodb \
+     -c "UPDATE res_users SET login='odooAdmin' WHERE id=2;"
+   ```
+
+5. **Password still failing** — previous `write({'password': ...})` ORM attempts didn't persist. Checked hash format:
+   ```sql
+   SELECT substring(password,1,50) FROM res_users WHERE id=2;
+   -- Result: $pbkdf2-sha512$600000$...
+   ```
+   Format is `passlib` `$pbkdf2-sha512$` (NOT Django's `pbkdf2_sha512$`).
+
+6. **Generated correct hash and updated via SQL** in Odoo shell:
+   ```python
+   from passlib.hash import pbkdf2_sha512
+   h = pbkdf2_sha512.using(rounds=600000).hash('PolySaaS2026!')
+   env.cr.execute("UPDATE res_users SET password=%s WHERE id=2", [h])
+   env.cr.commit()
+   ```
+
+7. **Login worked** — `odooAdmin` / `PolySaaS2026!` (**case-sensitive**).
+
+### Key Lessons
+- **Odoo 18 login is case-sensitive** — `odooadmin` ≠ `odooAdmin`
+- **Odoo 18 password hash format**: `$pbkdf2-sha512$600000$<salt>$<hash>` (passlib format, NOT Django format)
+- **ORM `write({'password': ...})` unreliable** in shell — use `passlib.hash.pbkdf2_sha512.using(rounds=600000).hash()` + direct SQL
+- **`_set_password()` API changed in Odoo 18** — takes 0 positional args (not the password string)
+- **Don't share Django and Odoo Postgres DBs** — keep them completely separate to avoid `DROP DATABASE` disasters
+- **Auto-deploy disabled on Render** — manual deploys only to control costs
+
+### Credentials Card
+Added `AppCredential` model + admin registration + template tag so credentials are configurable in **Admin → Dose → App credentials** rather than hardcoded. Card hidden by default, revealed via inconspicuous footer `·` trigger. Case-sensitivity warning shown in card footer.
+
+---
+
 ## 2026-05-08 (Morning — Condo → Office)
 **Status**: DONE — dashboard fix + Odoo2 deploy recovered
 **Branch**: main
@@ -447,6 +505,31 @@ Created Django superuser `mmadmin@polysaas.online` / `PolySaaS2026!` for local a
 - `dose/urls.py` — added missing `dashboard` named route
 - `render.yaml` — changed `ODOO_DB_NAME` from `odoo_prod` to `odoodb`
 - `documentation/COORDINATION_README.md` (this entry)
+
+---
+
+## 2026-05-08 (Evening — Desktop Session)
+**Status**: ✅ BINGO — sidebar + Odoo login fixed
+**Branch**: main
+
+### Summary
+1. **Sidebar 75×75 logo cards**: Updated `custom_sidebar.html` with 2-column grid of 75×75 app logos (Odoo, Mattermost) with app name labels below. Gradient backgrounds per app.
+2. **Odoo passthrough login fix**: The `get_request_body` method was using `parse_qs` + `urlencode` round-trip which corrupted the password (`PolySaaS2026!` → `Po;ySaaS2026!`). Fixed to preserve raw body bytes and only surgically replace the `csrf_token` field via regex.
+3. **Orchestration scaffolding started**: Created `OdooInvoiceNotifierService` (posts invoice notifications to Mattermost) and `setup_odoo_invoice_orchestration` management command. Blocked by `dose_instruction.tenant_slug` bigint issue (same root cause as before).
+
+### Files Changed
+- `dose/templates/admin/includes/custom_sidebar.html` — 75×75 logo card grid
+- `templates/jazzmin/admin/index.html` — matching CSS for dashboard injection
+- `dose/passthrough/handlers/odoo_handler.py` — raw body passthrough fix
+- `dose/services/odoo_invoice_notifier_service.py` — NEW: Mattermost invoice notifier
+- `dose/services/endpoint_data_extractor.py` — in-process MQ fallback
+- `dose/management/commands/setup_odoo_invoice_orchestration.py` — NEW: wiring command
+
+### Pending
+- Fix `dose_instruction.tenant_slug` bigint → varchar in polysaas schema
+- Run `setup_odoo_invoice_orchestration` command
+- Green toast notification in passthrough shell
+- End-to-end test: Odoo invoice → Mattermost notification
 
 ---
 

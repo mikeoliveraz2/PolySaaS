@@ -95,7 +95,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -670,6 +670,12 @@ admin.site.register(PolySnifferRun, PolySnifferRunAdmin)
 admin.site.register(RequestLog)
 admin.site.register(ErrorLog)
 admin.site.register(Mapping, MappingAdmin)
+
+class AppCredentialAdmin(admin.ModelAdmin):
+    list_display = ('app_name', 'username', 'updated_at')
+    search_fields = ('app_name', 'username', 'notes')
+
+admin.site.register(AppCredential, AppCredentialAdmin)
 
 # Add session-based tenant admin classes if models are available
 if NEW_MODELS_AVAILABLE:
