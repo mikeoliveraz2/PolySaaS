@@ -554,3 +554,45 @@ Started testing the full subscribe → provision → passthrough → demo flow.
 - `dose/templates/dose/subscribe.html` — checkbox alignment fix
 - `dose/passthrough/handlers/odoo_handler.py` — login prepopulation + icon path rewriting fix
 - `documentation/COORDINATION_README.md` (this entry)
+
+---
+
+## 2026-05-09 (Evening — Condo)
+**Status**: IN PROGRESS — SSO endpoint 404 fixed, awaiting browser test
+**Branch**: main
+**Commit**: `b2396a7`
+
+### Summary
+Changed strategy from client-side JSON-RPC auto-login to **server-side SSO** where PolySaaS authenticates with Odoo via `/web/session/authenticate` and returns the `session_id` to the browser. This avoids credential exposure in client-side JS and bypasses OWL framework button-click issues.
+
+### Problem Discovered & Fixed
+- Browser JS shim called `/dose/api/odoo-sso/` but got **404**
+- Root cause: `path('api/', include(router.urls))` in `dose/urls.py` (DRF DefaultRouter) swallows ALL `/api/*` paths. The `api/odoo-sso/` route was defined **after** the router, so it never matched.
+- **Fix**: Moved `path('api/odoo-sso/', odoo_sso_api, ...)` **before** `path('api/', include(router.urls))` in `dose/urls.py`
+
+### Files Changed
+- `dose/urls.py` — moved `api/odoo-sso/` route before DRF router to prevent 404
+- `dose/passthrough/handlers/odoo_handler.py` — added debug `alert()` calls to trace SSO flow in browser
+- `dose/odoo_sso_api.py` — NEW: server-side JSON-RPC auth endpoint (already committed in previous session)
+
+### Next Session First Task
+1. **Restart local server** if needed (`python manage.py runserver`)
+2. **Navigate to Odoo passthrough** (e.g. `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/`)
+3. **Watch for alert sequence**:
+   - `[PolySaaS Odoo] Auto-login starting for: ...`
+   - `[PolySaaS Odoo] Calling SSO endpoint...`
+   - `[PolySaaS Odoo] SSO response status: 200`
+   - `[PolySaaS Odoo] SSO data: ...`
+4. If status is 200 and data contains `session_id`, the shim sets `document.cookie` and reloads the page
+5. After reload, verify Odoo apps/dashboard loads (not blank)
+6. **Remove debug alerts** from `odoo_handler.py` once flow is confirmed working
+
+### If Still Blank After SSO
+- Check browser DevTools Network tab for the reload request — does it send `session_id` cookie?
+- Check server logs — does the reload hit `/pt/admin/.../web/` with the authenticated session?
+- The `override_upstream_cookies` logic skips injecting tenant session if browser already has one
+- Consider whether `SameSite=Lax` cookie needs `Secure` flag when running through Render HTTPS
+
+### Credentials
+- Tenant T13 login: `pst13@polysaas.online` / `PolySaaS2026!`
+- DB: `odoodb`
