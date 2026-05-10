@@ -98,6 +98,21 @@ envVarGroups:
         sync: false
       - key: AIASPEERS_API_KEY
         sync: false
+      # AI-as-Peers bot accounts (set tokens in Render dashboard)
+      - key: BOT_TOKEN_GROK
+        sync: false
+      - key: BOT_TOKEN_GEMINI
+        sync: false
+      - key: BOT_TOKEN_WINDSURF
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: WINDSURF_API_KEY
+        sync: false
+      - key: AI_PEERS_WEBHOOK_TOKEN
+        sync: false
       - key: APPSASPEERS_BASE_URL
         sync: false
       - key: APPSASPEERS_API_KEY
@@ -319,6 +334,23 @@ services:
       name: odoo2-filestore
       mountPath: /var/lib/odoo
       sizeGB: 10
+
+  # --- Mattermost AI-as-Peers Bot (WebSocket persistent connection; auto-reconnects on disconnect) ---
+  - type: worker
+    name: PolySaaS-MM-Bot
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerfilePath: Dockerfile.django
+    dockerContext: .
+    dockerCommand: python manage.py run_mattermost_bot --retry-delay 15
+    autoDeployTrigger: off
+    envVars:
+      - fromGroup: polysaas-common
+      - fromGroup: polysaas-bundled-apps
+      - key: RUN_MIGRATIONS
+        value: "0"
 
   # --- Peers Adapter (Mattermost outgoing webhook edge; phase 1 proxies to Django ai_peers_webhook) ---
   - type: web
