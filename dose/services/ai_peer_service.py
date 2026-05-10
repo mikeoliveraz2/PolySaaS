@@ -202,6 +202,49 @@ def _call_xai(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]]
         return f"[{peer_label}] Error calling xAI: {e}"
 
 
+def _call_windsurf(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]] = None) -> str:
+    peer_label = _peer_label(peer)
+    api_key = getattr(settings, 'WINDSURF_API_KEY', '')
+    if not api_key:
+        return f"[{peer_label}] Windsurf API key not configured."
+    conversation = [
+        {'role': 'system', 'content': system_prompt or (
+            f"You are {peer_label}, an AI peer collaborating in a Mattermost channel "
+            "with humans and other AI agents on the PolySaaS platform. Be concise, "
+            "helpful, and collaborative."
+        )}
+    ]
+    for m in messages:
+        role = 'assistant' if m.get('is_bot') else 'user'
+        prefix = f"@{m['username']}: " if m.get('username') else ''
+        conversation.append({'role': role, 'content': f"{prefix}{m['content']}"})
+
+    try:
+        resp = requests.post(
+            'https://api.windsurf.ai/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'model': getattr(settings, 'WINDSURF_MODEL', 'windsurf-swe-1'),
+                'messages': conversation,
+                'max_tokens': 1024,
+            },
+            timeout=60,
+        )
+        print(f"[DEBUG] Windsurf response status: {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"[DEBUG] Windsurf error body: {resp.text}")
+        resp.raise_for_status()
+        data = resp.json()
+        return data['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"[DEBUG] Windsurf error: {e}")
+        logger.error("Windsurf API error: %s", e)
+        return f"[{peer_label}] Error calling Windsurf: {e}"
+
+
 def _call_gemini(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]] = None) -> str:
     peer_label = _peer_label(peer)
     api_key = getattr(settings, 'GEMINI_API_KEY', '')
@@ -243,6 +286,7 @@ LLM_PROVIDERS = {
     'anthropic': _call_anthropic,
     'xai': _call_xai,
     'gemini': _call_gemini,
+    'windsurf': _call_windsurf,
 }
 
 

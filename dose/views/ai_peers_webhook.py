@@ -27,6 +27,10 @@ MENTION_PATTERN = re.compile(r'[#@](\w+)')
 _peers_loaded = False
 _processed_posts = set()
 
+# Channels where every message broadcasts to all active peers (no @mention needed).
+# Use Mattermost channel *names* (not IDs).
+BROADCAST_CHANNELS = {'town-square'}
+
 PEER_SPECS = [
     {
         'username': 'copilot',
@@ -76,13 +80,23 @@ PEER_SPECS = [
         'aliases': ['opeclaw'],
     },
     {
-        'username': 'gem',
-        'display_name': 'Gem (Gemini)',
-        'token_setting': 'BOT_TOKEN_GEM',
-        'provider_setting': 'AI_PEER_PROVIDER_GEM',
+        'username': 'gemini',
+        'display_name': 'Gemini',
+        'token_setting': 'BOT_TOKEN_GEMINI',
+        'provider_setting': 'AI_PEER_PROVIDER_GEMINI',
         'default_provider': 'gemini',
-        'persona': 'You are Gem, a synthesis-focused AI peer powered by Gemini.',
-        'aliases': [],
+        'persona': 'You are Gemini, a synthesis-focused AI peer powered by Google Gemini. You excel at multi-step reasoning, creative thinking, and broad knowledge synthesis.',
+        'aliases': ['gem'],
+        'fallback_token_settings': ['BOT_TOKEN_GEM'],
+    },
+    {
+        'username': 'windsurf',
+        'display_name': 'Windsurf',
+        'token_setting': 'BOT_TOKEN_WINDSURF',
+        'provider_setting': 'AI_PEER_PROVIDER_WINDSURF',
+        'default_provider': 'windsurf',
+        'persona': 'You are Windsurf, an AI peer specialising in software engineering, agentic coding workflows, and developer productivity on the PolySaaS platform.',
+        'aliases': ['ws'],
     },
 ]
 
@@ -212,8 +226,29 @@ def ai_peers_webhook(request):
         else:
             print(f"[DEBUG] Peer @{peer_name} NOT in PEER_REGISTRY. Available: {list(PEER_REGISTRY.keys())}")
 
+    # Broadcast to all active peers when no specific peer is mentioned
+    # and the channel is in the broadcast list — the core "AI as a Service" demo.
     if not mentioned_peers:
-        return JsonResponse({'status': 'no_peers_mentioned', 'available': list(PEER_REGISTRY.keys())})
+        channel_name = data.get('channel_name', '')
+        sender = data.get('user_name', '')
+        bot_usernames = {s['username'].lower() for s in PEER_SPECS}
+        bot_usernames.update(a.lower() for s in PEER_SPECS for a in s.get('aliases', []))
+        if sender.lower() in bot_usernames:
+            # Message is from one of our own bots — skip to prevent echo loops.
+            return JsonResponse({'status': 'bot_message_skipped'})
+        if channel_name in BROADCAST_CHANNELS:
+            mentioned_peers = list(PEER_REGISTRY.keys())
+            # Deduplicate (aliases point to same peer record)
+            seen_tokens = set()
+            deduped = []
+            for p in mentioned_peers:
+                token = PEER_REGISTRY[p].get('bot_token', '')
+                if token not in seen_tokens:
+                    seen_tokens.add(token)
+                    deduped.append(p)
+            mentioned_peers = deduped
+        if not mentioned_peers:
+            return JsonResponse({'status': 'no_peers_mentioned', 'available': list(PEER_REGISTRY.keys())})
 
     for peer_username in mentioned_peers:
         thread = threading.Thread(
