@@ -31,52 +31,50 @@ class MattermostPassthroughHandler:
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
-        /login  → serve our own pre-populated form (no React).
-        Root, no token → redirect to /login.
-        Root, token present → return None (forwarder serves Mattermost normally).
+        Root-only intercept:
+          - Token present → forward to Mattermost (return None).
+          - No token     → try server-side SSO; if that works set cookie + redirect
+                           to /channels/town-square; otherwise serve login bridge
+                           INLINE (no redirect to /login — that caused the loop).
+        All non-root paths return None immediately so the forwarder handles them.
         """
         if request.method != "GET":
             return None
         trigger = url_trigger_segment.strip("/")
         proxy_prefix = f"/pt/admin/{trigger}"
 
-        # Our login form — zero React involvement.
-        if request.path_info.rstrip("/") == f"{proxy_prefix}/login":
-            return self._serve_login_bridge(request, trigger, endpoint)
-
-        # Root path only beyond this point.
+        # Only intercept the exact root. Everything else (channels, api, login, …)
+        # is forwarded to Mattermost directly — no /login intercept here.
         if request.path_info.rstrip("/") != proxy_prefix:
             return None
 
-        # No token → try server-side SSO: log in on the user's behalf and set the
-        # MMAUTHTOKEN cookie before serving Mattermost. No form, no XHR, no React.
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-        if not token:
-            from django.http import HttpResponseRedirect
-            try:
-                cookies = self.get_upstream_cookies(request) or {}
-                sso_token = cookies.get('MMAUTHTOKEN')
-            except Exception as exc:
-                print(f"[MM SSO] get_upstream_cookies failed: {exc}")
-                sso_token = None
+        if token:
+            print(f"[MM] MMAUTHTOKEN present — forwarding root to Mattermost")
+            return None
 
-            if sso_token:
-                print(f"[MM SSO] Got token server-side ({sso_token[:8]}...) — setting cookie and redirecting to root")
-                resp = HttpResponseRedirect(proxy_prefix + "/")
-                resp.set_cookie(
-                    'MMAUTHTOKEN', sso_token,
-                    max_age=86400, path='/', samesite='Lax',
-                    secure=request.is_secure(), httponly=False,
-                )
-                return resp
+        # No browser token — try a quick server-side SSO first.
+        from django.http import HttpResponseRedirect
+        sso_token = None
+        try:
+            cookies = self.get_upstream_cookies(request) or {}
+            sso_token = cookies.get('MMAUTHTOKEN')
+        except Exception as exc:
+            print(f"[MM SSO] get_upstream_cookies failed: {exc}")
 
-            # SSO failed (no creds, bad creds, or upstream down) → fall back to bridge form.
-            print(f"[MM SSO] No token from server — falling back to bridge form at {proxy_prefix}/login")
-            return HttpResponseRedirect(f"{proxy_prefix}/login")
+        if sso_token:
+            print(f"[MM SSO] Server-side token obtained ({sso_token[:8]}...) — cookie + redirect")
+            resp = HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
+            resp.set_cookie(
+                'MMAUTHTOKEN', sso_token,
+                max_age=86400, path='/', samesite='Lax',
+                secure=request.is_secure(), httponly=False,
+            )
+            return resp
 
-        # Token present → let the forwarder pass the request through to Mattermost.
-        print(f"[MM] MMAUTHTOKEN cookie present — forwarding root to Mattermost")
-        return None
+        # No server token — serve the login bridge INLINE (avoids redirect loop).
+        print(f"[MM SSO] No token — serving login bridge inline at root")
+        return self._serve_login_bridge(request, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
@@ -165,7 +163,7 @@ class MattermostPassthroughHandler:
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
-                window.location.replace(base());
+                window.location.replace(base() + '/channels/town-square');
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
@@ -497,11 +495,8 @@ class MattermostPassthroughHandler:
         return {}
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
-        """Inject Authorization Bearer token for all Mattermost API calls forwarded through proxy."""
-        if '/api/v4/' not in (target_url or ''):
-            return
-        # Never inject a stale token on the login endpoint itself — Mattermost will reject
-        # the request with "Invalid or expired session" before even checking credentials.
+        """Inject Authorization Bearer token for all Mattermost requests forwarded through proxy."""
+        # Never inject on login/logout — Mattermost rejects requests with a stale session token.
         if '/api/v4/users/login' in (target_url or '') or '/api/v4/users/logout' in (target_url or ''):
             return
         # Browser-sent cookie is the freshest token (set by shim after first load)
