@@ -714,3 +714,29 @@ Odoo SSO is fully working. Auto-login fires, session cookie is set, browser navi
 ### Next Session First Task
 - Configure Mattermost token in polysaasts TenantApp (Odoo or Mattermost app extra_config)
 - Then: Mattermost SSO, Nextcloud SSO
+
+---
+
+## BINGO — Mattermost SSO ✅ (2026-05-11)
+
+**Status**: COMPLETE
+**Branch**: main
+**Commits**: `b1b99f2`, `e22766c`
+
+### What works
+- `/pt/admin/mattermost/` → server-side SSO via `odooAdmin`/`PolySaaS2026!` → MMAUTHTOKEN set → redirect to `/channels/town-square` → Mattermost loads inside display shell
+- Orchestration banner active on Mattermost pages
+- Sidebar shows both Mattermost and Odoo passthrough icons
+
+### Root Cause of Previous Loop (Fixed)
+- Old flow: root (no token) → redirect to `/pt/admin/mattermost/login` → bridge success → navigate to root → SSO fails again → redirect to `/login` → loop
+- **Fix 1**: Serve login bridge INLINE at root — no redirect to `/login` path
+- **Fix 2**: After bridge login success, navigate to `/channels/town-square` (not root) — skips root intercept entirely
+- **Fix 3**: `augment_outbound_headers` now injects Bearer token for ALL upstream paths (was only `/api/v4/`)
+- **Fix 4**: Named trigger `mattermost` now looks up real `endpoint_url` from DB (same fix as Odoo — was constructing `https://mattermost` → Docker container)
+
+### Credentials Stored
+- `polysaast4` TenantApp (mattermost): `mattermost_login_id=odooAdmin`, `mattermost_password=PolySaaS2026!`
+
+### Next Session First Task
+- Nextcloud SSO
