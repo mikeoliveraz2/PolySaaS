@@ -39,6 +39,7 @@ class CSRFExemptionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
             # Mark this request as exempt from CSRF checking
             # This must be set BEFORE the CSRF middleware processes the request
             request._dont_enforce_csrf_checks = True
+            request.csrf_processing_done = True  # Django 5.x: checked at top of process_view
             print(f"[CSRF EXEMPTION] Path {request.path_info} marked as CSRF-exempt")
 
         return None

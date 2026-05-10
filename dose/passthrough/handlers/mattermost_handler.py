@@ -48,11 +48,30 @@ class MattermostPassthroughHandler:
         if request.path_info.rstrip("/") != proxy_prefix:
             return None
 
-        # No token → send to our login form first.
+        # No token → try server-side SSO: log in on the user's behalf and set the
+        # MMAUTHTOKEN cookie before serving Mattermost. No form, no XHR, no React.
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         if not token:
             from django.http import HttpResponseRedirect
-            print(f"[MM] No MMAUTHTOKEN cookie — redirecting to {proxy_prefix}/login")
+            try:
+                cookies = self.get_upstream_cookies(request) or {}
+                sso_token = cookies.get('MMAUTHTOKEN')
+            except Exception as exc:
+                print(f"[MM SSO] get_upstream_cookies failed: {exc}")
+                sso_token = None
+
+            if sso_token:
+                print(f"[MM SSO] Got token server-side ({sso_token[:8]}...) — setting cookie and redirecting to root")
+                resp = HttpResponseRedirect(proxy_prefix + "/")
+                resp.set_cookie(
+                    'MMAUTHTOKEN', sso_token,
+                    max_age=86400, path='/', samesite='Lax',
+                    secure=request.is_secure(), httponly=False,
+                )
+                return resp
+
+            # SSO failed (no creds, bad creds, or upstream down) → fall back to bridge form.
+            print(f"[MM SSO] No token from server — falling back to bridge form at {proxy_prefix}/login")
             return HttpResponseRedirect(f"{proxy_prefix}/login")
 
         # Token present → let the forwarder pass the request through to Mattermost.
@@ -60,8 +79,9 @@ class MattermostPassthroughHandler:
         return None
 
     def _serve_login_bridge(self, request, trigger, endpoint):
-        """Serve our own clean login form with reliable XHR."""
+        """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
         from django.http import HttpResponse
+        from html import escape as h
 
         login_id = ""
         password = ""
@@ -75,67 +95,115 @@ class MattermostPassthroughHandler:
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
 
+        logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s",
+                    login_id, len(login_id or ''), bool(password))
+
+        # HTML-escape so a quote in the password can't break the value attribute.
+        lid_attr = h(login_id, quote=True)
+        pwd_attr = h(password, quote=True)
+
         html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Sign in · Mattermost</title>
+<html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>
 <style>
-body {{ font-family: system-ui, sans-serif; background: #1e325c; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin:0; }}
-.card {{ background: white; padding: 40px; border-radius: 12px; width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }}
-h2 {{ margin: 0 0 8px 0; color: #1e325c; }}
-p {{ color: #666; margin-bottom: 25px; }}
-input {{ width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box; }}
-button {{ width: 100%; padding: 14px; background: #1e74d4; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }}
-#status {{ margin-top: 15px; text-align: center; min-height: 20px; }}
-</style>
-</head>
+.mm-bridge {{ font-family: system-ui, sans-serif; padding: 40px 20px;
+              display: flex; justify-content: center; }}
+.mm-bridge .card {{ background: #fff; padding: 32px; border-radius: 10px; width: 380px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,.12); border: 1px solid #e5e7eb; }}
+.mm-bridge h2 {{ margin: 0 0 6px 0; color: #1e325c; font-size: 20px; }}
+.mm-bridge .sub {{ color: #666; font-size: 13px; margin-bottom: 18px; }}
+.mm-bridge input {{ width: 100%; padding: 11px; margin: 6px 0; border: 1px solid #ccc;
+                    border-radius: 5px; font-size: 14px; box-sizing: border-box; }}
+.mm-bridge button {{ width: 100%; padding: 12px; background: #1e74d4; color: #fff; border: 0;
+                     border-radius: 5px; font-size: 15px; font-weight: 600; cursor: pointer;
+                     margin-top: 14px; }}
+.mm-bridge button:hover {{ background: #1660b8; }}
+.mm-bridge button:disabled {{ background: #888; cursor: not-allowed; }}
+.mm-bridge #status {{ margin-top: 12px; text-align: center; font-size: 13px; min-height: 18px; color: #666; }}
+.mm-bridge #status.err {{ color: #b91c1c; }}
+</style></head>
 <body>
+<div class="mm-bridge">
 <div class="card">
   <h2>Sign in to Mattermost</h2>
-  <p>via PolySaaS Passthrough</p>
-  <input type="text" id="loginId" placeholder="Username or Email" value="{login_id}">
-  <input type="password" id="password" placeholder="Password" value="{password}">
-  <button onclick="doLogin()">Sign In</button>
+  <div class="sub">via PolySaaS Passthrough</div>
+  <input type="text" id="lid" placeholder="Email or Username" value="{lid_attr}" autocomplete="username">
+  <input type="password" id="pwd" placeholder="Password" value="{pwd_attr}" autocomplete="current-password">
+  <button id="btn" type="button">Sign In</button>
   <div id="status"></div>
 </div>
 <script>
-function doLogin() {{
-    var lid = document.getElementById('loginId').value;
-    var pwd = document.getElementById('password').value;
-    var status = document.getElementById('status');
-    status.textContent = 'Signing in...';
+(function () {{
+    function $(id) {{ return document.getElementById(id); }}
+    function setStatus(msg, err) {{
+        var s = $('status');
+        s.className = err ? 'err' : '';
+        s.textContent = msg;
+    }}
+    function base() {{
+        return window.location.pathname.replace(/\/login(\/.*)?$/, '') || '/';
+    }}
+    function doLogin() {{
+        var lid = $('lid').value.trim();
+        var pwd = $('pwd').value;
+        if (!lid || !pwd) {{ setStatus('Enter username and password.', true); return; }}
+        $('btn').disabled = true;
+        setStatus('Signing in...');
 
-    var xhr = new XMLHttpRequest();
-    var base = window.location.pathname.replace(/\/login.*$/, '');
-    xhr.open('POST', base + '/api/v4/users/login', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.withCredentials = true;
+        var url = base().replace(/\/$/, '') + '/api/v4/users/login';
+        console.log('[LoginBridge] POST', url);
 
-    xhr.onload = function() {{
-        if (xhr.status === 200) {{
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.withCredentials = true;
+        xhr.onload = function () {{
             var token = xhr.getResponseHeader('Token');
-            if (token) {{
-                try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch(e) {{}}
-                try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch(e) {{}}
-                document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400';
-                status.textContent = 'Success! Loading...';
-                window.location.replace(base || '/');
+            console.log('[LoginBridge] status=' + xhr.status + ' token=' + (token ? 'yes' : 'no') +
+                        ' body=' + (xhr.responseText || '').slice(0, 300));
+            if (xhr.status >= 200 && xhr.status < 300 && token) {{
+                try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
+                try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
+                document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
+                setStatus('Success! Loading...');
+                window.location.replace(base());
+                return;
             }}
-        }} else {{
-            status.style.color = 'red';
-            status.textContent = 'Login failed: ' + xhr.status;
+            var msg = 'Login failed (HTTP ' + xhr.status + ')';
+            try {{ var b = JSON.parse(xhr.responseText || '{{}}'); if (b.message) msg = b.message; }} catch (e) {{}}
+            $('btn').disabled = false;
+            setStatus(msg, true);
+        }};
+        xhr.onerror = function () {{
+            $('btn').disabled = false;
+            setStatus('Network error.', true);
+        }};
+        xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
+    }}
+
+    document.addEventListener('DOMContentLoaded', function () {{
+        $('btn').addEventListener('click', doLogin);
+        console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
+                    ' pwd=' + ($('pwd').value ? 'yes' : 'no'));
+        if ($('lid').value && $('pwd').value) {{
+            setTimeout(doLogin, 300);
         }}
-    }};
-
-    xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
-}}
-
-if (document.getElementById('loginId').value && document.getElementById('password').value) {{
-    setTimeout(doLogin, 400);
-}}
+    }});
+}})();
 </script>
+</div>
 </body></html>"""
 
-        return HttpResponse(html, content_type="text/html; charset=utf-8")
+        resp = HttpResponse(html, content_type="text/html; charset=utf-8")
+        resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
+
+        # Embed inside the PolySaaS admin template (sidebar + content area).
+        try:
+            from dose.passthrough.middleware import _wrap_in_admin_template
+            resp = _wrap_in_admin_template(request, resp, trigger, endpoint)
+        except Exception as exc:
+            logger.warning("[MM LoginBridge] Admin template wrap failed: %s", exc)
+
+        return resp
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         logger.info("[MattermostPassthroughHandler] Processing HTML response")
@@ -323,11 +391,24 @@ if (document.getElementById('loginId').value && document.getElementById('passwor
                     [json.dumps(extra)],
                 )
 
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        """Strip MMAUTHTOKEN on login/logout requests so a stale session can't poison auth."""
+        path = (getattr(request, 'path_info', '') or '')
+        if '/api/v4/users/login' in path or '/api/v4/users/logout' in path:
+            cookies = {k: v for k, v in (cookies or {}).items()
+                       if k.lower() not in ('mmauthtoken',)}
+        return cookies
+
     def get_upstream_cookies(self, request):
         """
         Provide session cookies for SSO/auto-login to Mattermost.
         Mattermost primarily uses MMAUTHTOKEN header/cookie.
         """
+        # Don't inject a session token into the login/logout request itself —
+        # Mattermost rejects login attempts that carry a stale session.
+        _path = (getattr(request, 'path_info', '') or '')
+        if '/api/v4/users/login' in _path or '/api/v4/users/logout' in _path:
+            return {}
         try:
             from dose.utils import get_current_tenant
             import requests as _req
@@ -419,6 +500,10 @@ if (document.getElementById('loginId').value && document.getElementById('passwor
         """Inject Authorization Bearer token for all Mattermost API calls forwarded through proxy."""
         if '/api/v4/' not in (target_url or ''):
             return
+        # Never inject a stale token on the login endpoint itself — Mattermost will reject
+        # the request with "Invalid or expired session" before even checking credentials.
+        if '/api/v4/users/login' in (target_url or '') or '/api/v4/users/logout' in (target_url or ''):
+            return
         # Browser-sent cookie is the freshest token (set by shim after first load)
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         if not token:
@@ -432,7 +517,10 @@ if (document.getElementById('loginId').value && document.getElementById('passwor
                 pass
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
-            print(f'[MM_AUTH] Injected Authorization header for {target_url}')
+            _src = 'browser-cookie' if request.COOKIES.get('MMAUTHTOKEN') else 'cached'
+            print(f'[MM_AUTH] Injected Authorization ({_src}, token={token[:8]}...) for {target_url}')
+        elif not token:
+            print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
 
     def _strip_base_tags(self, html):
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
@@ -451,12 +539,18 @@ if (document.getElementById('loginId').value && document.getElementById('passwor
         fetch/XHR/WebSocket → proxy, attribute/prototype patching (matches generated handler).
         Display shell must include network patches or API/WS stay on the admin origin → spinner.
         """
-        token = ""
-        try:
-            cookies = self.get_upstream_cookies(request) or {}
-            token = cookies.get("MMAUTHTOKEN") or ""
-        except Exception as exc:
-            logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+        # Prefer the fresh browser-sent cookie (set by our login bridge after a
+        # successful XHR login) over any cached token. Only fall back to the
+        # cached/SSO-fetched token if the browser doesn't have one yet.
+        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+        if not token:
+            try:
+                cookies = self.get_upstream_cookies(request) or {}
+                token = cookies.get("MMAUTHTOKEN") or ""
+            except Exception as exc:
+                logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+        logger.info("[MM Shim] token source=%s len=%d",
+                    'browser' if request.COOKIES.get('MMAUTHTOKEN') else 'server', len(token))
 
         login_id = ""
         password = ""
@@ -540,6 +634,37 @@ if (document.getElementById('loginId').value && document.getElementById('passwor
     }}
 
     console.log('[PolySaaS MM] Shim loaded. token:', MMAUTHTOKEN ? 'yes' : 'none');
+
+    // Intercept client-side React Router navigation to /login.
+    // Mattermost SPA pushes /login when its token check fails; without this hook
+    // the URL changes but no server GET fires, so our bridge never serves.
+    // Forcing window.location.replace produces a real GET that hits our bridge.
+    (function() {{
+        var _push = history.pushState;
+        var _repl = history.replaceState;
+        function isLoginPath(url) {{
+            try {{
+                var p = (typeof url === 'string') ? url : (url && url.pathname) || '';
+                return /\/login(\/.*)?$/.test(p);
+            }} catch (e) {{ return false; }}
+        }}
+        history.pushState = function(state, title, url) {{
+            if (isLoginPath(url)) {{
+                console.log('[PolySaaS MM] Intercept pushState(/login) -> hard redirect to bridge');
+                window.location.replace(PROXY + '/login');
+                return;
+            }}
+            return _push.apply(this, arguments);
+        }};
+        history.replaceState = function(state, title, url) {{
+            if (isLoginPath(url)) {{
+                console.log('[PolySaaS MM] Intercept replaceState(/login) -> hard redirect to bridge');
+                window.location.replace(PROXY + '/login');
+                return;
+            }}
+            return _repl.apply(this, arguments);
+        }};
+    }})();
 
     window.__webpack_public_path__ = PROXY + '/static/';
     window.basename = PROXY;

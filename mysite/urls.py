@@ -97,7 +97,7 @@ urlpatterns = [
         name='building_pen_process',
     ),
     path(
-        'pt/admin/mattermost/static/<path:path>',
+        'pt/admin/<str:trigger>/static/<path:path>',
         mattermost_static_proxy,
         name='mattermost_static_proxy',
     ),

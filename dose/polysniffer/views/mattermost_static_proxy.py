@@ -13,11 +13,6 @@ from django.utils.html import escape
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MM_ORIGIN = "http://localhost:8065"
-
-# Must match MattermostPassthroughHandler proxy_prefix + "/static/"
-WEBPACK_STATIC_PREFIX = "/pt/admin/mattermost/static/"
-
 # Main + large chunks; skip huge source maps if needed
 MAX_BODY_REWRITE_BYTES = 25 * 1024 * 1024
 
@@ -34,30 +29,14 @@ def _upstream_rel_for_mm_static(path: str) -> str:
         return f"/static/{path}"
     first, _, _rest = path.partition("/")
     fl = first.lower()
-    # Only "plugins" paths go under /static/plugins/; everything else is core /static/
-    if fl == "plugins":
+    if fl in _MM_STATIC_CORE_PREFIXES or fl == "plugins":
         return f"/static/{path}"
-    return f"/static/{path}"
+    # Unknown first segment (e.g. 'com.mattermost.nps', 'github', 'playbooks') = plugin ID.
+    # Upstream serves plugin bundles under /static/plugins/<plugin_id>/...
+    return f"/static/plugins/{path}"
 
 
-def _upstream_static_base():
-    try:
-        from dose.models import PassThroughEndpoint
-        ep = PassThroughEndpoint.objects.filter(
-            trigger_path='mattermost', is_enabled=True
-        ).first()
-        if ep and ep.endpoint_url:
-            return ep.endpoint_url.rstrip("/")
-    except Exception:
-        pass
-    try:
-        from django.conf import settings
-        return getattr(settings, "MATTERMOST_URL", DEFAULT_MM_ORIGIN).rstrip("/")
-    except Exception:
-        return DEFAULT_MM_ORIGIN
-
-
-def _rewrite_webpack_static_paths(body: bytes, *, is_css: bool) -> bytes:
+def _rewrite_webpack_static_paths(body: bytes, *, is_css: bool, webpack_prefix: str) -> bytes:
     """
     Mattermost bundles set publicPath to /static/; chunk loaders request :8000/static/...
     Replace string forms of root-relative /static/ with our proxy path inside file bodies.
@@ -69,7 +48,7 @@ def _rewrite_webpack_static_paths(body: bytes, *, is_css: bool) -> bytes:
     except UnicodeDecodeError:
         return body
 
-    p = WEBPACK_STATIC_PREFIX
+    p = webpack_prefix
     s = s.replace('"/static/', f'"{p}')
     s = s.replace("'/static/", f"'{p}")
     s = s.replace('\\"/static/', f'\\"{p}')
@@ -82,12 +61,14 @@ def _rewrite_webpack_static_paths(body: bytes, *, is_css: bool) -> bytes:
 
 
 @login_required
-def mattermost_static_proxy(request, path):
+def mattermost_static_proxy(request, path, trigger=''):
     """Proxy static files (js, css, images, manifest, etc.) to real Mattermost."""
     if ".." in path or path.startswith("/"):
         return HttpResponse("Invalid path", status=400)
 
-    base = _upstream_static_base()
+    # Upstream base is the trigger hostname from the URL — no DB lookup.
+    base = f"https://{trigger}" if trigger and '.' in trigger else "http://localhost:8065"
+    webpack_prefix = f"/pt/admin/{trigger}/static/" if trigger else "/pt/admin/mattermost/static/"
     qs = f"?{request.META['QUERY_STRING']}" if request.META.get("QUERY_STRING") else ""
     real_url = f"{base}{_upstream_rel_for_mm_static(path)}{qs}"
 
@@ -115,11 +96,11 @@ def mattermost_static_proxy(request, path):
         is_json = "json" in ct or path_l.endswith(".json")
 
         if is_js:
-            content = _rewrite_webpack_static_paths(content, is_css=False)
+            content = _rewrite_webpack_static_paths(content, is_css=False, webpack_prefix=webpack_prefix)
         elif is_css:
-            content = _rewrite_webpack_static_paths(content, is_css=True)
+            content = _rewrite_webpack_static_paths(content, is_css=True, webpack_prefix=webpack_prefix)
         elif is_json:
-            content = _rewrite_webpack_static_paths(content, is_css=False)
+            content = _rewrite_webpack_static_paths(content, is_css=False, webpack_prefix=webpack_prefix)
 
         resp = HttpResponse(
             content,
