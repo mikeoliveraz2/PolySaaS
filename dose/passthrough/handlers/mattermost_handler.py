@@ -392,8 +392,19 @@ class MattermostPassthroughHandler:
                     if isinstance(cfg, str):
                         return json.loads(cfg)
                     return cfg
-            # No fallback to other tenants - credentials are strictly tenant-scoped
-            print(f"[MM_AUTH] No mattermost TenantApp for tenant_id={tenant_id}")
+            # Fall back to any active mattermost TenantApp with credentials
+            cur.execute(
+                """SELECT extra_config FROM dose_tenantapp
+                   WHERE app_name = 'mattermost' AND status = 'active'
+                   AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
+                   LIMIT 1""",
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                cfg = row[0]
+                if isinstance(cfg, str):
+                    return json.loads(cfg)
+                return cfg
         return None
 
     def _save_tenantapp_token(self, token, request=None):
