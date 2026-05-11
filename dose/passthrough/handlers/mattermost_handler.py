@@ -628,9 +628,15 @@ class MattermostPassthroughHandler:
     def postprocess_upstream_response(self, resp, request, **kwargs):
         """Hook to handle upstream responses - clear token on 401 to break redirect loops."""
         target_url = kwargs.get('endpoint_url', '')
-        # If we get a 401 on /api/v4/users/me, the cached token is invalid
-        if resp.status_code == 401 and '/api/v4/users/me' in (target_url or ''):
-            print(f'[MM_AUTH] Got 401 on /api/v4/users/me - clearing invalid cached token')
+        # CRITICAL: Match ONLY the exact auth-check endpoint, not /users/me/patch,
+        # /users/me/preferences, /users/me/sessions etc. Those can legitimately 401
+        # for non-auth reasons (CSRF, body validation, etc.) and clearing the cached
+        # token on those triggers a cascade where the next request has no token,
+        # MM React emits logout, and the whole session falls apart.
+        import re as _re
+        _is_auth_check = bool(_re.search(r'/api/v4/users/me(\?|$)', target_url or ''))
+        if resp.status_code == 401 and _is_auth_check:
+            print(f'[MM_AUTH] Got 401 on exact /api/v4/users/me - clearing invalid cached token')
             try:
                 extra_config = self._get_tenantapp_extra_config(request)
                 if extra_config:
@@ -812,7 +818,10 @@ class MattermostPassthroughHandler:
     }} catch(e) {{}}
 
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 =======
+=======
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
     // Loop guard — prevent infinite reload-to-login cycles. If we've redirected to
     // the bridge more than 3 times in the last 10 seconds, abort further redirects
     // so the user can see the page and DevTools state instead of a flashing splash.
@@ -834,6 +843,9 @@ class MattermostPassthroughHandler:
         }}
     }}
 
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
+=======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
     // Telemetry blocklist — MM's diagnostics SDK pings pdat.matterlytics.com which
     // has no CORS headers for our origin. The SDK retries on every Redux update,
@@ -893,9 +905,13 @@ class MattermostPassthroughHandler:
                     try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
                     document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
                     setTimeout(function() {{
                         window.location.replace(PROXY + '/login?force=1');
                     }}, 500);
+=======
+                    setTimeout(pssReloadToLoginBridge, 500);
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
                     setTimeout(pssReloadToLoginBridge, 500);
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
