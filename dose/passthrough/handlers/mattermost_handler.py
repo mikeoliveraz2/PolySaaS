@@ -162,6 +162,11 @@ class MattermostPassthroughHandler:
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
+                try {{
+                    var n = parseInt(localStorage.getItem('MM_LOGIN_ATTEMPTS') || '0', 10) + 1;
+                    localStorage.setItem('MM_LOGIN_ATTEMPTS', String(n));
+                    localStorage.setItem('MM_LOGIN_TS', String(Date.now()));
+                }} catch (e) {{}}
                 setStatus('Success! Loading...');
                 window.location.replace(base() + '/channels/town-square');
                 return;
@@ -180,11 +185,30 @@ class MattermostPassthroughHandler:
 
     document.addEventListener('DOMContentLoaded', function () {{
         $('btn').addEventListener('click', doLogin);
+        var lastTs = 0;
+        try {{ lastTs = parseInt(sessionStorage.getItem('MM_LOGIN_TS') || '0', 10); }} catch (e) {{}}
+        var bouncedBack = lastTs && (Date.now() - lastTs < 60000);
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
-                    ' pwd=' + ($('pwd').value ? 'yes' : 'no'));
-        if ($('lid').value && $('pwd').value) {{
-            setTimeout(doLogin, 300);
+                    ' pwd=' + ($('pwd').value ? 'yes' : 'no') + ' bounced=' + bouncedBack);
+
+        if (bouncedBack) {{
+            // We just successfully logged in <8s ago and are back on the bridge.
+            // That means Mattermost rejected the token after redirect — auto-submitting
+            // again would just loop. Stop and surface the problem.
+            try {{ sessionStorage.removeItem('MM_LOGIN_TS'); }} catch (e) {{}}
+            try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch (e) {{}}
+            try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch (e) {{}}
+            document.cookie = 'MMAUTHTOKEN=; path=/; max-age=0';
+            setStatus('Login succeeded but Mattermost rejected the session. Open the browser Network tab and look for the first 401 response.', true);
+            return;
         }}
+
+        // Auto-submit DISABLED for debugging the post-login bounce-back.
+        // Click Sign In manually, then inspect Network tab for the first 401.
+        // To re-enable: uncomment the block below.
+        // if ($('lid').value && $('pwd').value) {{
+        //     setTimeout(doLogin, 300);
+        // }}
     }});
 }})();
 </script>
