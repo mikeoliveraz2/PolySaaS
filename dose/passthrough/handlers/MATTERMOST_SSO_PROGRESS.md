@@ -1,54 +1,64 @@
 # Mattermost SSO / Auto-Login — Progress Notes
 
-## Status: Partial — login XHR succeeds, but post-redirect SPA bounces back to `/login`.
+**Last Updated**: 2026-05-11  
+**Status**: ✅ WORKING — Server-side SSO active, auto-login functional
 
-## What works
-- **Server-side SSO** (`try_root_display_shell_response`): when no `MMAUTHTOKEN` cookie, calls `get_upstream_cookies` to log in server-side using credentials from `extra_config`, sets the cookie on the browser, and redirects to root.
-- **Login bridge fallback** (`_serve_login_bridge`): clean static HTML form embedded inside the PolySaaS admin template (via `_wrap_in_admin_template`). Pre-populates `mattermost_login_id` / `mattermost_password` from `extra_config`. Auto-submit currently **disabled** for debugging — manual click only.
-- **Bridge XHR** to `/api/v4/users/login` returns **200 with a `Token` header**. Token + cookie + `localStorage["MMAUTHTOKEN"]` + `localStorage["storage:MMAUTHTOKEN"]` all written.
-- **Shim history hook**: intercepts client-side `pushState`/`replaceState` to `/login` and forces a real GET so the bridge serves on bounce-backs (instead of the SPA's React form).
-- **Cookie hygiene on login path**:
-  - `filter_cookies_for_upstream` strips `MMAUTHTOKEN` on `/api/v4/users/login` and `/logout`.
-  - `get_upstream_cookies` early-returns `{}` on those paths.
-  - `augment_outbound_headers` skips `Authorization` injection on those paths.
-  - Result: login XHR reaches Mattermost completely clean (no stale Bearer token poisoning the request).
-- **Shim token source**: prefers fresh browser-set `MMAUTHTOKEN` cookie over the cached server token, so the bridge's freshly-issued token is what ends up in localStorage.
+---
 
-## What's broken
-After bridge XHR returns 200 + token and the page redirects to root:
-1. Mattermost HTML serves with shim injecting fresh token into localStorage.
-2. ~23 Mattermost JS chunks load.
-3. Mattermost SPA initialises, then **bounces back to `/login`**.
-4. **No 4xx responses observed** in the network tab during the bounce-back (per user report).
+## Current State (What's Actually Working)
 
-## Hypothesis
-Mattermost's React app uses **Redux + Redux Persist**. The full user/team/preferences state lives in `localStorage["persist:root"]`. Our bridge populates only `MMAUTHTOKEN`, never `persist:root`.
+### ✅ Server-Side SSO (Primary Flow)
+**Path**: User clicks Mattermost in sidebar → `/pt/admin/mattermost/` → auto-login → Town Square
 
-When the SPA loads, it:
-- Reads `persist:root` → empty / no user.
-- Decides client-side "not logged in" without making an auth API call (explains absence of 401s).
-- Routes to `/login`.
+1. `try_root_display_shell_response` detects no `MMAUTHTOKEN` cookie
+2. Calls `get_upstream_cookies()` → POST to Mattermost `/api/v4/users/login` with credentials from `TenantApp.extra_config`
+3. Receives `MMAUTHTOKEN` from upstream
+4. Sets cookie on browser, redirects to `/channels/town-square`
+5. Mattermost SPA loads with valid session — **no form displayed, straight to Town Square**
 
-## Recommended next step (not yet implemented)
-**Abandon the custom bridge.** Instead:
-1. Let Mattermost's **native** login form render unmodified.
-2. Inject a small script into the Mattermost login HTML that:
-   - Fills `#input_loginId` and `#input_password-input` with values from a server-rendered `MM_LOGIN_ID` / `MM_PASSWORD`.
-   - Clicks `#saveSetting` (or the native Sign-In button).
-3. Mattermost's own React/Redux flow handles the submit, populates `persist:root`, and routes correctly.
+**Credentials stored in** `TenantApp.extra_config`:
+- `mattermost_login_id` = `odooAdmin`
+- `mattermost_password` = `PolySaaS2026!`
 
-This removes the need for `_serve_login_bridge`, the history-hook hard-redirect, and most of the cookie hygiene workarounds.
+### ⚠️ Login Bridge (Fallback Only)
+The bridge (`_serve_login_bridge`) is served inline at root only when server-side SSO fails. Currently:
+- Auto-submit is **DISABLED** (lines 206-211 commented out)
+- Manual click required if SSO fails
+- This is a safety fallback, not the primary path
 
-## Files of interest
+### ✅ Shim Injection
+- `Authorization: Bearer <token>` header injected for all API calls
+- WebSocket uses live token from `localStorage`
+- Static assets route correctly through proxy
+
+---
+
+## Previous Issues (Fixed)
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| Login loop | Root redirect → `/login` → bridge → navigate to root → SSO fails again → loop | Serve bridge inline at root; navigate to `/channels/town-square` after success |
+| Token not injected | `augment_outbound_headers` only injected for `/api/v4/` | Now injects for ALL upstream paths |
+| Bad endpoint URL | Named trigger `mattermost` constructed `https://mattermost` instead of real URL | Lookup `endpoint_url` from DB (same fix as Odoo) |
+
+---
+
+## Next Steps / For Other AI
+
+1. **Nextcloud SSO** — apply same server-side SSO pattern
+2. **Re-enable bridge auto-submit** (optional) — uncomment lines 206-211 if you want the bridge to auto-submit when SSO fails
+3. **Remove bridge entirely** (optional) — if server-side SSO is reliable, the bridge can be deleted
+
+---
+
+## Files of Interest
 - `dose/passthrough/handlers/mattermost_handler.py`
-  - `try_root_display_shell_response` — SSO + bridge fallback
-  - `_serve_login_bridge` — current debug bridge (auto-submit disabled)
-  - `_mattermost_display_shim_html` — shim with history hook + token source preference
-  - `augment_outbound_headers`, `get_upstream_cookies`, `filter_cookies_for_upstream` — login-path cookie hygiene
-- `dose/passthrough/middleware.py` — `_wrap_in_admin_template` (used by the bridge)
-- `dose/templates/admin/passthrough_embed.html` — admin template; embed_body is rendered directly (no iframe).
+  - `try_root_display_shell_response` — SSO entry point
+  - `get_upstream_cookies` — server-side login to Mattermost API
+  - `_serve_login_bridge` — fallback form (auto-submit disabled)
+  - `_mattermost_display_shim_html` — client-side token injection
+  - `augment_outbound_headers` — Bearer token injection for API calls
 
-## Diagnostic commands
-- Server log markers: `[MM SSO]`, `[MM_AUTH]`, `[MM Shim]`, `[FORWARDER]`, `=== LOGIN FORWARD DEBUG ===`
-- Browser console markers: `[LoginBridge]`, `[PolySaaS MM]`
-- Pending verification: confirm whether the bounce-back from Mattermost SPA produces **any** 4xx response or is purely client-side routing.
+## Diagnostic Markers
+- Server logs: `[MM SSO]`, `[MM_AUTH]`, `[MM Shim]`, `[FORWARDER]`, `=== LOGIN FORWARD DEBUG ===`
+- Browser console: `[LoginBridge]`, `[PolySaaS MM]`
