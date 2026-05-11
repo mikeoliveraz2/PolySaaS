@@ -1,5 +1,4 @@
-﻿amqp==5.3.1
-mattermostdriver==7.3.2
+amqp==5.3.1
 asgiref==3.11.1
 beautifulsoup4==4.14.3
 billiard==4.2.4
