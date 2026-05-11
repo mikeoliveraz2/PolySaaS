@@ -100,11 +100,7 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     print(f"[_WRAP] _wrap_in_admin_template CALLED")
     print(f"[_WRAP]   trigger={trigger}, status={response.status_code}")
     print(f"[_WRAP]   content_type={response.get('Content-Type', 'NONE')}")
-    
-    from django.template.loader import render_to_string
-    from django.http import HttpResponse as DjangoHttpResponse
-    from django.utils.safestring import mark_safe
-    
+
     # Only wrap HTML responses
     content_type = response.get('Content-Type', '')
     if 'text/html' not in content_type:

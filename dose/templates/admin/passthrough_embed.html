@@ -206,6 +206,135 @@ body.polysaas-passthrough-embed-page {
 .polysaas-passthrough-embed-wrap details {
     display: none !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MATTERMOST CONTAINMENT
+   MM is a full-document React SPA that assumes body == viewport. We force
+   its root containers to fill the scope div instead of the browser viewport,
+   and re-apply body-level styles to the scope so the splash + chat UI render.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* When MM is the embedded app, the scope IS the MM viewport. */
+.polysaas-passthrough-scope[data-polysaas-embed-trigger*="mattermost"] {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    height: calc(100vh - 98px) !important;
+    min-height: 500px !important;
+    overflow: hidden !important;
+    background: #1e325c !important; /* MM default sidebar header color while booting */
+    /* New containing block so MM's position:fixed elements anchor here, not viewport */
+    transform: translateZ(0);
+    contain: layout style;
+}
+
+/* MM React root */
+.polysaas-passthrough-scope #root,
+.polysaas-passthrough-scope #app-content {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    background: var(--center-channel-bg, #ffffff) !important;
+    color: var(--center-channel-color, #3d3c40) !important;
+}
+
+/* MM's main app shell — must fill #root, not 100vh */
+.polysaas-passthrough-scope .app__container,
+.polysaas-passthrough-scope .app__body,
+.polysaas-passthrough-scope .channel-view,
+.polysaas-passthrough-scope .channel-view-inner,
+.polysaas-passthrough-scope .container-fluid.channel-view {
+    position: relative !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    display: flex !important;
+}
+
+/* Team sidebar (the leftmost icon column) */
+.polysaas-passthrough-scope .team-sidebar {
+    position: relative !important;
+    flex: 0 0 auto !important;
+    height: 100% !important;
+}
+
+/* Channels sidebar */
+.polysaas-passthrough-scope .sidebar--left,
+.polysaas-passthrough-scope #sidebar-left,
+.polysaas-passthrough-scope .SidebarContainer {
+    position: relative !important;
+    flex: 0 0 240px !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+}
+
+/* Right (RHS) sidebar — threads/search */
+.polysaas-passthrough-scope .sidebar--right {
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: 100% !important;
+    z-index: 5 !important;
+}
+
+/* Center channel area */
+.polysaas-passthrough-scope #channel_view,
+.polysaas-passthrough-scope .center-channel,
+.polysaas-passthrough-scope .post-list,
+.polysaas-passthrough-scope .post-list__table {
+    position: relative !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    overflow: auto !important;
+}
+
+/* MM modals, dropdowns, tooltips — keep inside the scope, not over the admin UI */
+.polysaas-passthrough-scope .modal,
+.polysaas-passthrough-scope .modal-backdrop,
+.polysaas-passthrough-scope .tooltip,
+.polysaas-passthrough-scope .popover,
+.polysaas-passthrough-scope .pp-tooltip,
+.polysaas-passthrough-scope [class*="modal--"] {
+    position: absolute !important;
+    z-index: 1000 !important;
+}
+
+/* MM uses height: 100vh / 100% on many containers — neutralize 100vh inside scope */
+.polysaas-passthrough-scope [style*="100vh"] {
+    height: 100% !important;
+    max-height: 100% !important;
+}
+
+/* MM loading splash — center inside scope, not page */
+.polysaas-passthrough-scope .loading-screen,
+.polysaas-passthrough-scope .loading__content,
+.polysaas-passthrough-scope .LoadingScreen {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Generic: any direct child of scope using fixed positioning becomes absolute */
+.polysaas-passthrough-scope[data-polysaas-embed-trigger*="mattermost"] [style*="position: fixed"],
+.polysaas-passthrough-scope[data-polysaas-embed-trigger*="mattermost"] [style*="position:fixed"] {
+    position: absolute !important;
+}
 </style>
 {% endblock %}
 

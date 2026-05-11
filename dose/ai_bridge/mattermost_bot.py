@@ -16,6 +16,7 @@ class PolySaaSAIBridgeBot:
     ADAPTER_REGISTRY = {
         'kimi': 'dose.ai_bridge.adapters.kimi_adapter.KimiAdapter',
         'claude': 'dose.ai_bridge.adapters.claude_adapter.ClaudeAdapter',
+        'grok': 'dose.ai_bridge.adapters.grok_adapter.GrokAdapter',
     }
     
     def __init__(self, tenant_id: str, mattermost_url: str, bot_token: str, 
@@ -37,7 +38,7 @@ class PolySaaSAIBridgeBot:
         
         service_name = self._detect_ai_service(text)
         if not service_name:
-            return {'text': 'Mention an AI with @kimi, @claude, or use /ai <service> <message>'}
+            return {'text': 'Mention an AI with @kimi, @claude, @grok, or use /ai <service> <message>'}
         
         clean_message = self._extract_message(text, service_name)
         session_key = (user_id, service_name)
@@ -111,6 +112,7 @@ class PolySaaSAIBridgeBot:
         aliases = {
             'kimi': ['@kimi', '@moonshot'],
             'claude': ['@claude', '@anthropic'],
+            'grok': ['@grok', '@xai', '@x_ai'],
         }
         for service, service_aliases in aliases.items():
             for alias in service_aliases:
@@ -126,7 +128,7 @@ class PolySaaSAIBridgeBot:
     
     def _format_response(self, service_name: str, response) -> dict:
         """Format AI response for Mattermost."""
-        emoji_map = {'kimi': '🌙', 'claude': '🧠'}
+        emoji_map = {'kimi': '🌙', 'claude': '🧠', 'grok': '⚡'}
         emoji = emoji_map.get(service_name, '🤖')
         time_str = f"{response.metadata.get('response_time_seconds', 0):.1f}s"
         return {

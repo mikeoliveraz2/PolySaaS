@@ -365,6 +365,7 @@ def passthrough_embed_view(request, trigger):
     content column. Static assets may still load from the bundled app host; GET/POST API traffic
     uses the passthrough prefix via the injected client shim and middleware.
     """
+    print(f"\n[EMBED-VIEW-ENTRY] passthrough_embed_view called: trigger={trigger}, path={request.path_info}")
     import logging
 
     from django.utils.html import escape
@@ -445,7 +446,10 @@ def passthrough_embed_view(request, trigger):
             debug_info['cookie_error'] = str(exc)
     debug_info['mmauthtoken'] = (upstream_cookies.get('MMAUTHTOKEN', '') or '')[:12] + '...' if upstream_cookies.get('MMAUTHTOKEN') else 'NONE'
 
+    print(f"[EMBED-DEBUG] Fetching from: {endpoint_url.rstrip('/') + '/'}")
     raw_html = fetch_upstream_index_html(request, endpoint_url, "/", handler=handler)
+    print(f"[EMBED-DEBUG] Response length: {len(raw_html) if raw_html else 0}")
+    print(f"[EMBED-DEBUG] Response starts with: {raw_html[:200] if raw_html else 'None'}")
 
     # PICOLLO PASSO: Raw mode for initial testing — set raw=1 query param to bypass all processing
     raw_mode = request.GET.get('raw', '0') == '1'

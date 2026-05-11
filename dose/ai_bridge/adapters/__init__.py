@@ -5,5 +5,6 @@ Each adapter handles web automation for a specific AI service.
 from .base import AIWebAdapter, AIResponse
 from .kimi_adapter import KimiAdapter
 from .claude_adapter import ClaudeAdapter
+from .grok_adapter import GrokAdapter
 
-__all__ = ['AIWebAdapter', 'AIResponse', 'KimiAdapter', 'ClaudeAdapter']
+__all__ = ['AIWebAdapter', 'AIResponse', 'KimiAdapter', 'ClaudeAdapter', 'GrokAdapter']
