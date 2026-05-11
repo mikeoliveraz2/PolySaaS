@@ -898,6 +898,9 @@ class MattermostPassthroughHandler:
         if (_isAuthCheck) {{
             return _prom.then(function(r) {{
                 console.log('[PolySaaS MM] users/me (auth-check) HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
+                if (r.ok && r.status === 200) {{
+                    try {{ r.clone().json().then(function(u) {{ window.__pssCachedMe = u; console.log('[PolySaaS MM] cached user for PATCH replay'); }}).catch(function(){{}}); }} catch(_e) {{}}
+                }}
                 if (r.status === 401) {{
                     console.log('[PolySaaS MM] Auth-check 401 - clearing token and redirecting to login bridge');
                     try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
