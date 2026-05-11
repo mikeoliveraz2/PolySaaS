@@ -81,24 +81,8 @@ class MattermostPassthroughHandler:
             )
             return resp
 
-        # No server token — check if OIDC flow should be used instead of bridge
-        extra = self._get_tenantapp_extra_config(request) or {}
-        uses_oidc = extra.get('mattermost_oidc_enabled') or extra.get('oidc_enabled')
-        has_password = extra.get('mattermost_password') or extra.get('mm_password') or extra.get('password')
-        
-        print(f"[MM SSO-DEBUG] extra_config keys: {list(extra.keys())}")
-        print(f"[MM SSO-DEBUG] uses_oidc={uses_oidc}, has_password={has_password}")
-        print(f"[MM SSO-DEBUG] Condition check: uses_oidc={bool(uses_oidc)} or (not has_password={not has_password} and not uses_oidc={not uses_oidc})")
-        
-        # For existing tenants without explicit flag, infer from absence of password
-        if uses_oidc or (not has_password and not uses_oidc):
-            # OIDC tenant (or new-style SSO): redirect directly to Mattermost
-            print(f"[MM SSO] OIDC/SSO tenant detected — redirecting to Mattermost login")
-            from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(f"{proxy_prefix}/login")
-        
-        # Password-based tenant: serve the login bridge
-        print(f"[MM SSO] Password-based tenant — serving login bridge inline at {current_path}")
+        # No server token — serve the login bridge INLINE (avoids redirect loop).
+        print(f"[MM SSO] No token — serving login bridge inline at root")
         return self._serve_login_bridge(request, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
@@ -473,14 +457,6 @@ class MattermostPassthroughHandler:
 
             if not extra_config:
                 print("[MM_AUTH] No extra_config for mattermost TenantApp")
-                return {}
-
-            # Check if this tenant uses OIDC/SSO (no password stored)
-            uses_oidc = extra_config.get('mattermost_oidc_enabled') or extra_config.get('oidc_enabled')
-            has_password = extra_config.get('mattermost_password') or extra_config.get('mm_password') or extra_config.get('password')
-            
-            if uses_oidc or not has_password:
-                print("[MM_AUTH] OIDC/SSO enabled or no password stored — skipping server-side password login")
                 return {}
 
             # Try cached MMAUTHTOKEN first
