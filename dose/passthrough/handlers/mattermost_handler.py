@@ -212,9 +212,7 @@ class MattermostPassthroughHandler:
             return;
         }}
 
-        // Auto-submit DISABLED for debugging the post-login bounce-back.
-        // Click Sign In manually, then inspect Network tab for the first 401.
-        // To re-enable: uncomment the block below.
+        // Auto-submit DISABLED for debugging
         // if ($('lid').value && $('pwd').value) {{
         //     setTimeout(doLogin, 300);
         // }}
