@@ -56,10 +56,40 @@ class MattermostPassthroughHandler:
             print(f"[MM HANDLER] Not root or login, returning None")
             return None
 
+        # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
+        force_login = request.GET.get('force') == '1'
+        
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-        if token:
-            print(f"[MM] MMAUTHTOKEN present — forwarding root to Mattermost")
-            return None
+        if token and not force_login:
+            print(f"[MM] MMAUTHTOKEN present — validating before redirect...")
+            # Validate the browser token before redirecting
+            import requests as _req
+            try:
+                _ep = getattr(request, '_passthrough_endpoint', None)
+                _ep_url = getattr(_ep, 'endpoint_url', None) or 'https://polysaas-mattermost.onrender.com'
+                _verify = _req.get(
+                    f'{_ep_url}/api/v4/users/me',
+                    headers={'Authorization': f'Bearer {token}'},
+                    timeout=5,
+                )
+                if _verify.status_code == 200:
+                    print(f"[MM] Browser token valid — redirecting to /channels/town-square")
+                    from django.http import HttpResponseRedirect
+                    return HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
+                else:
+                    print(f"[MM] Browser token invalid ({_verify.status_code}) — clearing and showing login bridge")
+                    # Clear the invalid token from cache
+                    try:
+                        extra_config = self._get_tenantapp_extra_config(request)
+                        if extra_config:
+                            for key in ['mmauthtoken', 'mm_session_token', 'mm_token', 'mmauthtoken_time', 'mm_session_token_time']:
+                                if key in extra_config:
+                                    del extra_config[key]
+                            self._save_tenantapp_config(request, extra_config)
+                    except Exception:
+                        pass
+            except Exception as exc:
+                print(f"[MM] Token validation failed: {exc} — showing login bridge")
 
         # No browser token — try a quick server-side SSO first.
         from django.http import HttpResponseRedirect
@@ -238,7 +268,7 @@ class MattermostPassthroughHandler:
         return resp
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        logger.info("[MattermostPassthroughHandler] Processing HTML response")
+        print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
 
         # If Mattermost served its login HTML, replace entirely with our own form.
         if '/login' in (getattr(request, 'path_info', '') or ''):
@@ -312,7 +342,10 @@ class MattermostPassthroughHandler:
         # Inject the full client shim into every proxied HTML page so the
         # auto-login watcher runs on /login regardless of navigation path.
         if '<head' in html_str.lower():
+            print(f"[MM HANDLER] Injecting shim into HTML, proxy_prefix={proxy_prefix}")
             html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
+        else:
+            print(f"[MM HANDLER] No <head> found, skipping shim injection")
 
         return html_str, None
 
@@ -423,6 +456,34 @@ class MattermostPassthroughHandler:
                     [json.dumps(extra)],
                 )
 
+    def _save_tenantapp_config(self, request, extra_config: dict):
+        """Save extra_config to TenantApp without modifying token fields."""
+        import json
+        from django.db import connection
+        tenant_id = None
+        if request is not None:
+            try:
+                from dose.utils import get_current_tenant
+                t = getattr(request, 'tenant', None) or get_current_tenant(request)
+                if t:
+                    tenant_id = t.id
+            except Exception:
+                pass
+        with connection.cursor() as cur:
+            cur.execute("SET search_path TO public,pg_catalog")
+            if tenant_id:
+                cur.execute(
+                    """UPDATE dose_tenantapp SET extra_config = %s
+                       WHERE app_name = 'mattermost' AND tenant_id = %s""",
+                    [json.dumps(extra_config), tenant_id],
+                )
+            else:
+                cur.execute(
+                    """UPDATE dose_tenantapp SET extra_config = %s
+                       WHERE app_name = 'mattermost' AND status = 'active'""",
+                    [json.dumps(extra_config)],
+                )
+
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
         """Strip MMAUTHTOKEN on login/logout requests so a stale session can't poison auth."""
         path = (getattr(request, 'path_info', '') or '')
@@ -531,26 +592,57 @@ class MattermostPassthroughHandler:
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """Inject Authorization Bearer token for all Mattermost requests forwarded through proxy."""
+        print(f'[MM_AUTH] augment_outbound_headers called for {target_url}')
         # Never inject on login/logout — Mattermost rejects requests with a stale session token.
         if '/api/v4/users/login' in (target_url or '') or '/api/v4/users/logout' in (target_url or ''):
+            print('[MM_AUTH] Skipping login/logout path')
             return
-        # Browser-sent cookie is the freshest token (set by shim after first load)
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        
+        # PRIORITY: Use server-cached token from TenantApp (verified and fresh)
+        # Browser cookie from request.COOKIES may be stale or from a different session
+        token = None
+        _src = 'none'
+        try:
+            extra_config = self._get_tenantapp_extra_config(request)
+            if extra_config:
+                token = (extra_config.get('mmauthtoken') or
+                         extra_config.get('mm_session_token') or
+                         extra_config.get('mm_token'))
+                if token:
+                    _src = 'server-cache'
+        except Exception as exc:
+            print(f'[MM_AUTH] Error getting cached token: {exc}')
+        
+        # Fallback to browser cookie only if no server token available
         if not token:
-            try:
-                extra_config = self._get_tenantapp_extra_config(request)
-                if extra_config:
-                    token = (extra_config.get('mmauthtoken') or
-                             extra_config.get('mm_session_token') or
-                             extra_config.get('mm_token'))
-            except Exception:
-                pass
+            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+            if token:
+                _src = 'browser-cookie'
+        
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
-            _src = 'browser-cookie' if request.COOKIES.get('MMAUTHTOKEN') else 'cached'
             print(f'[MM_AUTH] Injected Authorization ({_src}, token={token[:8]}...) for {target_url}')
         elif not token:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
+
+    def postprocess_upstream_response(self, resp, request, **kwargs):
+        """Hook to handle upstream responses - clear token on 401 to break redirect loops."""
+        target_url = kwargs.get('endpoint_url', '')
+        # If we get a 401 on /api/v4/users/me, the cached token is invalid
+        if resp.status_code == 401 and '/api/v4/users/me' in (target_url or ''):
+            print(f'[MM_AUTH] Got 401 on /api/v4/users/me - clearing invalid cached token')
+            try:
+                extra_config = self._get_tenantapp_extra_config(request)
+                if extra_config:
+                    # Clear all token fields
+                    for key in ['mmauthtoken', 'mm_session_token', 'mm_token', 'mmauthtoken_time', 'mm_session_token_time']:
+                        if key in extra_config:
+                            del extra_config[key]
+                    self._save_tenantapp_config(request, extra_config)
+                    print(f'[MM_AUTH] Cleared invalid token from cache')
+            except Exception as exc:
+                print(f'[MM_AUTH] Failed to clear token: {exc}')
+        return None  # Return None to let normal processing continue
 
     def _strip_base_tags(self, html):
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
@@ -569,18 +661,19 @@ class MattermostPassthroughHandler:
         fetch/XHR/WebSocket → proxy, attribute/prototype patching (matches generated handler).
         Display shell must include network patches or API/WS stay on the admin origin → spinner.
         """
-        # Prefer the fresh browser-sent cookie (set by our login bridge after a
-        # successful XHR login) over any cached token. Only fall back to the
-        # cached/SSO-fetched token if the browser doesn't have one yet.
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+        # Use the server's verified token (from get_upstream_cookies which validates it).
+        # Browser may have a stale/invalid token from a previous session - always trust server.
+        token = ""
+        try:
+            cookies = self.get_upstream_cookies(request) or {}
+            token = cookies.get("MMAUTHTOKEN") or ""
+        except Exception as exc:
+            logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+        # Fallback to browser cookie only if server has no valid token
         if not token:
-            try:
-                cookies = self.get_upstream_cookies(request) or {}
-                token = cookies.get("MMAUTHTOKEN") or ""
-            except Exception as exc:
-                logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
         logger.info("[MM Shim] token source=%s len=%d",
-                    'browser' if request.COOKIES.get('MMAUTHTOKEN') else 'server', len(token))
+                    'server' if token else 'none', len(token))
 
         login_id = ""
         password = ""
@@ -598,6 +691,7 @@ class MattermostPassthroughHandler:
         password_js = json.dumps(password)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
+        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'}")
 
         return f"""
 <script data-polysaas-mattermost-shim="1">
@@ -654,6 +748,10 @@ class MattermostPassthroughHandler:
 
     // Cookie + localStorage fallback (server-side fetch interceptor still injects MM-Auth-Token header)
     if (MMAUTHTOKEN) {{
+        // Clear any old/stale tokens first
+        try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
+        try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(_e) {{}}
+        try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
         try {{
             localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(MMAUTHTOKEN));
             localStorage.setItem('storage:MMAuthtokenExpiry', JSON.stringify(Date.now() + 108000000));
@@ -663,7 +761,7 @@ class MattermostPassthroughHandler:
         window.MMAUTHTOKEN = MMAUTHTOKEN;
     }}
 
-    console.log('[PolySaaS MM] Shim loaded. token:', MMAUTHTOKEN ? 'yes' : 'none');
+    console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
 
     // Intercept client-side React Router navigation to /login.
     // Mattermost SPA pushes /login when its token check fails; without this hook
@@ -740,6 +838,18 @@ class MattermostPassthroughHandler:
         if (_reqUrlForLog.indexOf('/users/me') !== -1) {{
             return _prom.then(function(r) {{
                 console.log('[PolySaaS MM] users/me HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
+                // If we get 401, the token is invalid - clear it and redirect to login
+                if (r.status === 401) {{
+                    console.log('[PolySaaS MM] Token invalid (401) - clearing and redirecting to login');
+                    try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
+                    try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(_e) {{}}
+                    try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
+                    document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                    // Redirect to login bridge after a short delay
+                    setTimeout(function() {{
+                        window.location.replace(PROXY + '/login?force=1');
+                    }}, 500);
+                }}
                 return r;
             }});
         }}

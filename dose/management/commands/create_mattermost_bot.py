@@ -1,0 +1,193 @@
+"""
+Management command: create_mattermost_bot
+
+Creates a Mattermost bot account via API using stored admin credentials.
+Outputs the bot token for adding to .env
+
+Usage:
+    python manage.py create_mattermost_bot grok
+    python manage.py create_mattermost_bot grok --username grok --display-name "Grok AI"
+"""
+import json
+import logging
+import requests
+from django.core.management.base import BaseCommand
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+
+class Command(BaseCommand):
+    help = 'Create a Mattermost bot account via API'
+
+    def add_arguments(self, parser):
+        parser.add_argument('bot_name', type=str, help='Bot username (e.g., grok)')
+        parser.add_argument(
+            '--username', type=str, 
+            help='Mattermost bot username (defaults to bot_name)'
+        )
+        parser.add_argument(
+            '--display-name', type=str, 
+            help='Display name for the bot (defaults to bot_name.title())'
+        )
+        parser.add_argument(
+            '--description', type=str, 
+            default='PolySaaS AI Peer',
+            help='Bot description'
+        )
+        parser.add_argument(
+            '--admin-user', type=str,
+            help='Mattermost admin username (or use MATTERMOST_ADMIN_USER env)'
+        )
+        parser.add_argument(
+            '--admin-pass', type=str,
+            help='Mattermost admin password (or use MATTERMOST_ADMIN_PASS env)'
+        )
+
+    def handle(self, *args, **options):
+        bot_name = options['bot_name']
+        username = options['username'] or bot_name
+        display_name = options['display_name'] or bot_name.title()
+        description = options['description']
+        
+        # Get Mattermost URL
+        mm_url = getattr(settings, 'MATTERMOST_URL', 'https://polysaas-mattermost.onrender.com').rstrip('/')
+        
+        # Get admin credentials
+        admin_user = options['admin_user'] or getattr(settings, 'MATTERMOST_ADMIN_USER', '')
+        admin_pass = options['admin_pass'] or getattr(settings, 'MATTERMOST_ADMIN_PASS', '')
+        
+        if not admin_user or not admin_pass:
+            self.stdout.write(self.style.ERROR(
+                'Admin credentials required. Either:\n'
+                '1. Set MATTERMOST_ADMIN_USER and MATTERMOST_ADMIN_PASS in .env\n'
+                '2. Use --admin-user and --admin-pass flags\n'
+                '3. Or login via web and get a personal access token'
+            ))
+            return
+        
+        self.stdout.write(f'Creating bot @{username} on {mm_url}...')
+        
+        # Step 1: Login as admin to get token
+        admin_token = self._login_as_admin(mm_url, admin_user, admin_pass)
+        if not admin_token:
+            self.stdout.write(self.style.ERROR(
+                f'Failed to login as admin with user: {admin_user}\n'
+                'Check credentials or create bot manually via web UI'
+            ))
+            return
+        
+        self.stdout.write(self.style.SUCCESS(f'Admin login successful'))
+        
+        # Step 2: Create bot
+        bot_data = self._create_bot(mm_url, admin_token, username, display_name, description)
+        if not bot_data:
+            self.stdout.write(self.style.ERROR('Failed to create bot'))
+            return
+        
+        bot_id = bot_data.get('user_id')
+        self.stdout.write(self.style.SUCCESS(f'Bot created with ID: {bot_id}'))
+        
+        # Step 3: Create bot token
+        token_data = self._create_bot_token(mm_url, admin_token, bot_id)
+        if not token_data:
+            self.stdout.write(self.style.ERROR('Failed to create bot token'))
+            return
+        
+        bot_token = token_data.get('token')
+        
+        # Output results
+        self.stdout.write(self.style.SUCCESS('\n' + '='*50))
+        self.stdout.write(self.style.SUCCESS(f'Bot @{username} created successfully!'))
+        self.stdout.write(self.style.SUCCESS('='*50))
+        self.stdout.write(f'\nBot ID: {bot_id}')
+        self.stdout.write(f'Bot Username: {username}')
+        self.stdout.write(f'Bot Token: {bot_token}')
+        self.stdout.write(self.style.WARNING(f'\nAdd this to your .env file:'))
+        self.stdout.write(f'BOT_TOKEN_{username.upper()}={bot_token}')
+        self.stdout.write(f'\nThen run: python manage.py run_mattermost_bot')
+    
+    def _login_as_admin(self, mm_url: str, username: str, password: str) -> str:
+        """Login to Mattermost and return auth token."""
+        try:
+            resp = requests.post(
+                f'{mm_url}/api/v4/users/login',
+                json={'login_id': username, 'password': password},
+                timeout=30
+            )
+            if resp.status_code == 200:
+                # Token is in response header
+                token = resp.headers.get('Token')
+                if token:
+                    return token
+                # Or might be in body for some versions
+                data = resp.json()
+                return data.get('token')
+            else:
+                logger.error(f'Login failed: {resp.status_code} - {resp.text}')
+                return None
+        except Exception as e:
+            logger.error(f'Login error: {e}')
+            return None
+    
+    def _create_bot(self, mm_url: str, admin_token: str, username: str, 
+                    display_name: str, description: str) -> dict:
+        """Create a new bot account."""
+        try:
+            resp = requests.post(
+                f'{mm_url}/api/v4/bots',
+                headers={'Authorization': f'Bearer {admin_token}'},
+                json={
+                    'username': username,
+                    'display_name': display_name,
+                    'description': description,
+                },
+                timeout=30
+            )
+            if resp.status_code in [200, 201]:
+                return resp.json()
+            else:
+                # Bot might already exist
+                if 'already exists' in resp.text.lower():
+                    self.stdout.write(self.style.WARNING(f'Bot @{username} already exists'))
+                    # Try to get existing bot info
+                    return self._get_existing_bot(mm_url, admin_token, username)
+                logger.error(f'Create bot failed: {resp.status_code} - {resp.text}')
+                return None
+        except Exception as e:
+            logger.error(f'Create bot error: {e}')
+            return None
+    
+    def _get_existing_bot(self, mm_url: str, admin_token: str, username: str) -> dict:
+        """Get existing bot info by username."""
+        try:
+            resp = requests.get(
+                f'{mm_url}/api/v4/users/username/{username}',
+                headers={'Authorization': f'Bearer {admin_token}'},
+                timeout=30
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return {'user_id': data.get('id')}
+            return None
+        except Exception as e:
+            logger.error(f'Get existing bot error: {e}')
+            return None
+    
+    def _create_bot_token(self, mm_url: str, admin_token: str, bot_user_id: str) -> dict:
+        """Create a personal access token for the bot."""
+        try:
+            resp = requests.post(
+                f'{mm_url}/api/v4/users/{bot_user_id}/tokens',
+                headers={'Authorization': f'Bearer {admin_token}'},
+                json={'description': 'PolySaaS AI Peer Token'},
+                timeout=30
+            )
+            if resp.status_code in [200, 201]:
+                return resp.json()
+            else:
+                logger.error(f'Create token failed: {resp.status_code} - {resp.text}')
+                return None
+        except Exception as e:
+            logger.error(f'Create token error: {e}')
+            return None

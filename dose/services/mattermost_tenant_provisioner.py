@@ -98,6 +98,7 @@ def provision_mattermost_tenant(
             team_resp.raise_for_status()
 
         # 2. Configure OIDC if credentials provided
+        oidc_enabled = False
         if oauth_client_id and oauth_client_secret:
             oidc_resp = requests.put(
                 f"{mm_url}/api/v4/config/patch",
@@ -116,6 +117,7 @@ def provision_mattermost_tenant(
             )
             if oidc_resp.status_code == 200:
                 logger.info("Configured OIDC on Mattermost for tenant %s", tenant_name)
+                oidc_enabled = True
             else:
                 logger.warning(
                     "OIDC config returned %s: %s", oidc_resp.status_code, oidc_resp.text[:200]
@@ -177,6 +179,14 @@ def provision_mattermost_tenant(
             # Non-fatal: continue even if endpoint creation fails
 
         if tenant_app:
+            # Store OIDC flag in extra_config for passthrough handler
+            extra = tenant_app.extra_config or {}
+            extra.update({
+                'mattermost_oidc_enabled': oidc_enabled,
+                'mattermost_url': mm_url,
+            })
+            tenant_app.extra_config = extra
+            tenant_app.save(update_fields=['extra_config'])
             mark_tenant_app_active(tenant_app, app_url=mm_url)
 
         return {
@@ -184,6 +194,7 @@ def provision_mattermost_tenant(
             "mattermost_url": mm_url,
             "team": tenant_schema,
             "sso": bool(oauth_client_id),
+            "oidc_enabled": oidc_enabled,
             "message": "Mattermost tenant provisioned with SSO",
         }
 
