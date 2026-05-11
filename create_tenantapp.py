@@ -27,18 +27,21 @@ with connection.cursor() as c:
     existing = c.fetchone()
     
     if existing:
-        # Update only extra_config
+        # Update
         c.execute('UPDATE dose_tenantapp SET extra_config=%s WHERE app_name=%s',
                   [json.dumps(config), 'mattermost'])
         print(f'Updated TenantApp ID {existing[0]}')
     else:
-        # Insert - use schema_name as tenant_id (dose_tenant uses schema_name as PK)
+        # Insert
         c.execute('''
             INSERT INTO dose_tenantapp 
-            (app_name, app_url, status, extra_config, provisioned_at, tenant_id, last_error)
-            VALUES (%s, %s, 'active', %s, NOW(), %s, '')
-        ''', ['mattermost', 'https://polysaas-mattermost.onrender.com', json.dumps(config), 'polysaast15'])
-        print('Created TenantApp for mattermost')
+            (app_name, app_url, is_active, status, extra_config, 
+             created_at, updated_at, provisioned_at)
+            VALUES (%s, %s, true, 'active', %s, NOW(), NOW(), NOW())
+            RETURNING id
+        ''', ['mattermost', 'https://polysaas-mattermost.onrender.com', json.dumps(config)])
+        new_id = c.fetchone()[0]
+        print(f'Created TenantApp ID {new_id}')
     
     connection.commit()
-    print('Config saved with mmauthtoken: 8egotz...')
+    print('Config saved with mmauthtoken')

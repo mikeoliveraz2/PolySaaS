@@ -844,7 +844,10 @@ class MattermostPassthroughHandler:
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 =======
+=======
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
@@ -872,6 +875,9 @@ class MattermostPassthroughHandler:
 
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
+=======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
@@ -897,7 +903,10 @@ class MattermostPassthroughHandler:
             return Promise.resolve(new Response('', {{status: 204, statusText: 'No Content (telemetry blocked)'}}));
         }}
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 =======
+=======
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
         // Stub PUT/PATCH /users/me/patch — OIDC sessions cannot mutate self.
         // Replay cached /users/me user object so MM Redux store updates correctly.
         var _stubMethod = (init && init.method) ? String(init.method).toUpperCase() : 'GET';
@@ -913,6 +922,9 @@ class MattermostPassthroughHandler:
             }} catch(_e) {{}}
             return Promise.resolve(new Response(_userJson, {{status: 200, headers: {{'Content-Type': 'application/json'}}}}));
         }}
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
+=======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
         if (typeof input === 'string') {{
             input = toProxy(input);
@@ -946,9 +958,15 @@ class MattermostPassthroughHandler:
         if (_isAuthCheck) {{
             return _prom.then(function(r) {{
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
                 console.log('[PolySaaS MM] users/me (auth-check) HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
                 if (r.ok && r.status === 200) {{
                     try {{ r.clone().json().then(function(u) {{ window.__pssCachedMe = u; console.log('[PolySaaS MM] cached user for PATCH replay'); }}).catch(function(){{}}); }} catch(_e) {{}}
+=======
+                console.log('[PolySaaS MM] users/me (auth-check) HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
+                if (r.ok && r.status === 200) {{
+                    try {{ r.clone().json().then(function(u) {{ window.__pssCachedMe = u; console.log('[PolySaaS MM] cached user for PATCH replay'); }}).catch(function(){{}}); }} catch(_e) {{}}
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
                 console.log('[PolySaaS MM] users/me (auth-check) HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
                 if (r.ok && r.status === 200) {{
@@ -964,9 +982,13 @@ class MattermostPassthroughHandler:
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
                     setTimeout(function() {{
                         window.location.replace(PROXY + '/login?force=1');
                     }}, 500);
+=======
+                    setTimeout(pssReloadToLoginBridge, 500);
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
                     setTimeout(pssReloadToLoginBridge, 500);
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
