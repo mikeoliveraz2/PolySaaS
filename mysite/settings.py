@@ -679,6 +679,12 @@ DEFAULT_FROM_EMAIL = 'Dose2 <mo.gsssol@gmail.com>'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'mm_simple': {
+            'format': '%(asctime)s %(message)s',
+            'datefmt': '%H:%M:%S',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
@@ -693,8 +699,19 @@ LOGGING = {
             'class': 'logging.FileHandler',
             'filename': './info.log',
         },
+        'mm_debug_file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': './mm_debug.log',
+            'formatter': 'mm_simple',
+        },
     },
     'loggers': {
+        'mm_debug': {
+            'handlers': ['mm_debug_file', 'console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         'django': {
             'handlers': ['console', 'file', 'info_file'],
             'level': 'INFO',

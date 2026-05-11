@@ -11,9 +11,24 @@ import json
 import logging
 import re
 import time
+import datetime as _mm_dt
+from pathlib import Path
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+# ── MM debug log ────────────────────────────────────────────────────────
+# Writes via the 'mm_debug' logger, configured in settings.py LOGGING dict
+# (handler 'mm_debug_file' -> ./mm_debug.log).
+mm_logger = logging.getLogger('mm_debug')
+
+
+def _mmlog(*parts):
+    try:
+        mm_logger.info(' '.join(str(p) for p in parts))
+    except Exception as _e:
+        print(f'[MM] _mmlog failed: {_e}')
 
 
 class MattermostPassthroughHandler:
@@ -39,6 +54,7 @@ class MattermostPassthroughHandler:
         All non-root paths return None immediately so the forwarder handles them.
         """
         print(f"[MM HANDLER] Called with path={request.path_info}, method={request.method}, trigger={url_trigger_segment}")
+        _mmlog(f"HANDLER called path={request.path_info} method={request.method} trigger={url_trigger_segment}")
         if request.method != "GET":
             print(f"[MM HANDLER] Not GET, returning None")
             return None
@@ -62,6 +78,7 @@ class MattermostPassthroughHandler:
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         if token and not force_login:
             print(f"[MM] MMAUTHTOKEN present — validating before redirect...")
+            _mmlog(f"MMAUTHTOKEN present, validating before redirect (token={token[:8]}...)")
             # Validate the browser token before redirecting
             import requests as _req
             try:
@@ -74,10 +91,12 @@ class MattermostPassthroughHandler:
                 )
                 if _verify.status_code == 200:
                     print(f"[MM] Browser token valid — redirecting to /channels/town-square")
+                    _mmlog(f"Browser token valid, redirecting to /channels/town-square (token={token[:8]}...)")
                     from django.http import HttpResponseRedirect
                     return HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
                 else:
                     print(f"[MM] Browser token invalid ({_verify.status_code}) — clearing and showing login bridge")
+                    _mmlog(f"Browser token INVALID status={_verify.status_code} (token={token[:8]}...)")
                     # Clear the invalid token from cache
                     try:
                         extra_config = self._get_tenantapp_extra_config(request)
@@ -540,6 +559,7 @@ class MattermostPassthroughHandler:
                     )
                     if _verify.status_code == 200:
                         logger.info("[MattermostPassthroughHandler] Cached token valid: %s...", token[:8])
+                        _mmlog(f"Cached token valid: {token[:8]}...")
                         return {'MMAUTHTOKEN': token}
                     print(f"[MM_AUTH] Cached token invalid ({_verify.status_code}), refreshing...")
                 except Exception as _ve:
@@ -593,9 +613,11 @@ class MattermostPassthroughHandler:
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """Inject Authorization Bearer token for all Mattermost requests forwarded through proxy."""
         print(f'[MM_AUTH] augment_outbound_headers called for {target_url}')
+        _mmlog(f"augment_outbound_headers for {target_url}")
         # Never inject on login/logout — Mattermost rejects requests with a stale session token.
         if '/api/v4/users/login' in (target_url or '') or '/api/v4/users/logout' in (target_url or ''):
             print('[MM_AUTH] Skipping login/logout path')
+            _mmlog(f"Skipping login/logout path: {target_url}")
             return
         
         # PRIORITY: Use server-cached token from TenantApp (verified and fresh)
@@ -622,8 +644,10 @@ class MattermostPassthroughHandler:
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
             print(f'[MM_AUTH] Injected Authorization ({_src}, token={token[:8]}...) for {target_url}')
+            _mmlog(f"Injected Authorization src={_src} token={token[:8]}... -> {target_url}")
         elif not token:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
+            _mmlog(f"NO TOKEN for {target_url}")
 
     def postprocess_upstream_response(self, resp, request, **kwargs):
         """Hook to handle upstream responses - clear token on 401 to break redirect loops."""
@@ -819,7 +843,10 @@ class MattermostPassthroughHandler:
 
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 =======
+=======
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
     // Loop guard — prevent infinite reload-to-login cycles. If we've redirected to
@@ -844,6 +871,9 @@ class MattermostPassthroughHandler:
     }}
 
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
+=======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
@@ -866,6 +896,24 @@ class MattermostPassthroughHandler:
         if (isTelemetryUrl(_urlForCheck)) {{
             return Promise.resolve(new Response('', {{status: 204, statusText: 'No Content (telemetry blocked)'}}));
         }}
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+=======
+        // Stub PUT/PATCH /users/me/patch — OIDC sessions cannot mutate self.
+        // Replay cached /users/me user object so MM Redux store updates correctly.
+        var _stubMethod = (init && init.method) ? String(init.method).toUpperCase() : 'GET';
+        if ((_stubMethod === 'PUT' || _stubMethod === 'PATCH') && /\/api\/v4\/users\/me\/patch(\?|$)/.test(_urlForCheck)) {{
+            console.log('[PolySaaS MM] Stubbing PATCH /users/me/patch (OIDC session limitation)');
+            var _userJson = window.__pssCachedMe ? JSON.stringify(window.__pssCachedMe) : '{{}}';
+            try {{
+                if (init && init.body && window.__pssCachedMe) {{
+                    var _patch = JSON.parse(init.body);
+                    var _merged = Object.assign({{}}, window.__pssCachedMe, _patch);
+                    _userJson = JSON.stringify(_merged);
+                }}
+            }} catch(_e) {{}}
+            return Promise.resolve(new Response(_userJson, {{status: 200, headers: {{'Content-Type': 'application/json'}}}}));
+        }}
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
         if (typeof input === 'string') {{
             input = toProxy(input);
         }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
@@ -897,9 +945,15 @@ class MattermostPassthroughHandler:
         var _isAuthCheck = /\/api\/v4\/users\/me(\?|$)/.test(_reqUrlForLog) && _method === 'GET';
         if (_isAuthCheck) {{
             return _prom.then(function(r) {{
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
                 console.log('[PolySaaS MM] users/me (auth-check) HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
                 if (r.ok && r.status === 200) {{
                     try {{ r.clone().json().then(function(u) {{ window.__pssCachedMe = u; console.log('[PolySaaS MM] cached user for PATCH replay'); }}).catch(function(){{}}); }} catch(_e) {{}}
+=======
+                console.log('[PolySaaS MM] users/me (auth-check) HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
+                if (r.ok && r.status === 200) {{
+                    try {{ r.clone().json().then(function(u) {{ window.__pssCachedMe = u; console.log('[PolySaaS MM] cached user for PATCH replay'); }}).catch(function(){{}}); }} catch(_e) {{}}
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
                 }}
                 if (r.status === 401) {{
                     console.log('[PolySaaS MM] Auth-check 401 - clearing token and redirecting to login bridge');
@@ -909,9 +963,13 @@ class MattermostPassthroughHandler:
                     document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
 <<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
+<<<<<<< D:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py
                     setTimeout(function() {{
                         window.location.replace(PROXY + '/login?force=1');
                     }}, 500);
+=======
+                    setTimeout(pssReloadToLoginBridge, 500);
+>>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py
 =======
                     setTimeout(pssReloadToLoginBridge, 500);
 >>>>>>> C:/Users/PC/.windsurf/worktrees/PolySaaS/PolySaaS-a136a386/dose/passthrough/handlers/mattermost_handler.py

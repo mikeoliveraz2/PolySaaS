@@ -1,4 +1,6 @@
-# go.ps1 - PolySaaS Launcher: Pull -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) Backup
+# go.ps1 - PolySaaS Launcher: Pull -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) pip freeze + Backup
+#
+# Implementation: scripts\go\*.ps1 (dot-sourced). Validate syntax: scripts\Parse-Ps1File.ps1 -Path scripts\go\Go-Services.ps1
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
@@ -10,7 +12,7 @@ $goDir = Join-Path $scriptDir "scripts\go"
 . (Join-Path $goDir "Go-Services.ps1")
 . (Join-Path $goDir "Go-SessionEnd.ps1")
 
-# ── Pull ───────────────────────────────────────────────────────────────
+# ── Pull first (so documentation/collaboration/README and notes are current) ─
 
 Write-Host ""
 Write-Host "── Pull ───────────────────────────────────────────────" -ForegroundColor Cyan
@@ -30,7 +32,7 @@ if ($unmergedPaths.Count -gt 0) {
 }
 Write-Host ""
 
-# ── Virtual Environment ────────────────────────────────────────────────
+# ── Virtual Environment (required for app check) ───────────────────────
 
 if (-Not (Test-Path $venvActivate)) {
     Write-Host "VENV NOT FOUND" -ForegroundColor Red
@@ -38,59 +40,79 @@ if (-Not (Test-Path $venvActivate)) {
     exit
 }
 
-# ── App load check ─────────────────────────────────────────────────────
+# ── App load check: only if this passes do we backup and commit/push ───
 
 Write-Host '── App check (runserver must load clean) ─────────────' -ForegroundColor Cyan
 Push-Location $scriptDir
 $checkOutput = & $venvPython manage.py check 2>&1
-if ($checkOutput) { $checkOutput | ForEach-Object { Write-Host $_ } }
+if ($checkOutput) {
+    $checkOutput | ForEach-Object { Write-Host $_ }
+}
 $appLoadOk = ($LASTEXITCODE -eq 0)
 Pop-Location
 if ($appLoadOk) {
     if (Test-PolySaaSGitHasUnmergedFiles -RepoRoot $scriptDir) {
-        Write-Host '  App loads OK - git sync skipped (merge conflicts unresolved)' -ForegroundColor Yellow
+        Write-Host '  App loads OK - git sync skipped because merge conflicts are unresolved; backup runs when you exit runserver' -ForegroundColor Yellow
     } else {
-        Write-Host '  App loads OK' -ForegroundColor Green
+        Write-Host '  App loads OK - will commit/push now; backup runs when you exit runserver' -ForegroundColor Green
     }
 } else {
     Write-Host "  App failed to load - skipping commit/push and backup" -ForegroundColor Yellow
+    Write-Host "  Fix errors above, run 'pip freeze > requirements.txt' when clean, then .\go again" -ForegroundColor Yellow
 }
 Write-Host ""
 
-if ($appLoadOk) { Invoke-MorningSync -ScriptRoot $scriptDir }
+if ($appLoadOk) {
+    Invoke-MorningSync -ScriptRoot $scriptDir
+}
 
-# ── Blog Archive Refresh ───────────────────────────────────────────────
+# ── Blog Archive Refresh ─────────────────────────────────────────────────
 
 $blogScript = Join-Path $scriptDir "wp_build_blog_page.py"
 if (Test-Path $blogScript) {
     Write-Host "── Blog Archive Refresh ────────────────────────────" -ForegroundColor Cyan
-    & $venvPython $blogScript 2>&1 | Out-Null
+    $blogOutput = & $venvPython $blogScript 2>&1
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "  Blog archive page refreshed" -ForegroundColor Green
+        Write-Host "  Blog archive page refreshed with latest posts" -ForegroundColor Green
     } else {
-        Write-Host '  Blog refresh skipped (non-blocking)' -ForegroundColor DarkYellow
+        Write-Host '  Blog refresh skipped (network/API error; non-blocking)' -ForegroundColor DarkYellow
     }
     Write-Host ""
 }
 
-# ── Activate venv + start services ─────────────────────────────────────
+# ── Virtual Environment (activate for services) ─────────────────────────
 
 . $venvActivate
+
 Start-GoBackgroundServices -ScriptRoot $scriptDir -PythonExe $venvPython
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
-Write-Host "DJANGO        -> http://localhost:8000" -ForegroundColor Green
-Write-Host 'MONITOR (app) -> http://localhost:5000' -ForegroundColor Green
-Write-Host "POLYSNIFFER   -> http://127.0.0.1:5002" -ForegroundColor Green
+Write-Host "DJANGO          -> http://localhost:8000" -ForegroundColor Green
+Write-Host 'MONITOR (app)   -> http://localhost:5000' -ForegroundColor Green
+Write-Host "POLYSNIFFER     -> http://127.0.0.1:5002" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-# ── Runserver ──────────────────────────────────────────────────────────
+# Hard-coded worktree path — Django runs from the active Windsurf worktree
+# regardless of where this go.ps1 is invoked from. Comment out / change when
+# the worktree is merged back to main checkout.
+$worktreeRoot = "C:\Users\PC\.windsurf\worktrees\PolySaaS\PolySaaS-a136a386"
+$worktreeManage = Join-Path $worktreeRoot "manage.py"
 
-try {
-    Push-Location $scriptDir
-    & $venvPython -u manage.py runserver 0.0.0.0:8000
-} finally {
-    Pop-Location
-    Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
+if (Test-Path $worktreeManage) {
+    Write-Host "RUNNING FROM WORKTREE: $worktreeRoot" -ForegroundColor Magenta
+    Push-Location $worktreeRoot
+    try {
+        & $venvPython -u $worktreeManage runserver 0.0.0.0:8000
+    } finally {
+        Pop-Location
+        Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
+    }
+} else {
+    Write-Host "Worktree not found at $worktreeRoot - falling back to local manage.py" -ForegroundColor Yellow
+    try {
+        & $venvPython -u manage.py runserver 0.0.0.0:8000
+    } finally {
+        Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
+    }
 }
