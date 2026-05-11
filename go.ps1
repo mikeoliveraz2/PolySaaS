@@ -1,8 +1,6 @@
-# go.ps1 - PolySaaS Launcher: Pull -> local Docker stack (Render parity) -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) pip freeze + Backup
-# Skip internal stack: $env:POLYSAAS_SKIP_INTERNAL_DOCKER = '1'
-# Faster go when Docker stack is already up: $env:POLYSAAS_SKIP_INTERNAL_DOCKER = '1' (still runs app check + services + runserver)
+# go.ps1 - PolySaaS Launcher: Pull -> App check -> (if OK) Commit/Push -> Services -> runserver -> (on exit) pip freeze + Backup
 #
-# Implementation: scripts\go\*.ps1 (dot-sourced). Validate syntax: scripts\Parse-Ps1File.ps1 -Path scripts\go\Go-RenderDocker.ps1
+# Implementation: scripts\go\*.ps1 (dot-sourced).
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
@@ -11,11 +9,10 @@ $goDir = Join-Path $scriptDir "scripts\go"
 . (Join-Path $goDir "Go-Env.ps1")
 . (Join-Path $goDir "Go-DailyBackup.ps1")
 . (Join-Path $goDir "Go-MorningSync.ps1")
-. (Join-Path $goDir "Go-RenderDocker.ps1")
 . (Join-Path $goDir "Go-Services.ps1")
 . (Join-Path $goDir "Go-SessionEnd.ps1")
 
-# ── Pull first (so documentation/collaboration/README and notes are current) ─
+# ── Pull first ─────────────────────────────────────────────────────────
 
 Write-Host ""
 Write-Host "── Pull ───────────────────────────────────────────────" -ForegroundColor Cyan
@@ -43,17 +40,6 @@ if (-Not (Test-Path $venvActivate)) {
     exit
 }
 
-# ── Local Docker stack — Postgres/MQ/ES/Grafana/MonitorLogger (before app check; Django uses 5433) ─
-
-Write-Host ""
-Write-Host '── Local Docker stack (Render parity services) ───────' -ForegroundColor Cyan
-if ($env:POLYSAAS_SKIP_INTERNAL_DOCKER -eq '1') {
-    Write-Host "  SKIPPED - POLYSAAS_SKIP_INTERNAL_DOCKER=1" -ForegroundColor DarkYellow
-    Write-Host ""
-} else {
-    Invoke-RenderDockerStack -RootDir $scriptDir
-}
-
 # ── App load check: only if this passes do we backup and commit/push ───
 
 Write-Host '── App check (runserver must load clean) ─────────────' -ForegroundColor Cyan
@@ -66,13 +52,12 @@ $appLoadOk = ($LASTEXITCODE -eq 0)
 Pop-Location
 if ($appLoadOk) {
     if (Test-PolySaaSGitHasUnmergedFiles -RepoRoot $scriptDir) {
-        Write-Host '  App loads OK - git sync skipped because merge conflicts are unresolved; backup runs when you exit runserver' -ForegroundColor Yellow
+        Write-Host '  App loads OK - git sync skipped because merge conflicts unresolved' -ForegroundColor Yellow
     } else {
         Write-Host '  App loads OK - will commit/push now; backup runs when you exit runserver' -ForegroundColor Green
     }
 } else {
     Write-Host "  App failed to load - skipping commit/push and backup" -ForegroundColor Yellow
-    Write-Host "  Fix errors above, run 'pip freeze > requirements.txt' when clean, then .\go again" -ForegroundColor Yellow
 }
 Write-Host ""
 
@@ -94,7 +79,7 @@ if (Test-Path $blogScript) {
     Write-Host ""
 }
 
-# ── Virtual Environment (activate for services) ─────────────────────────
+# ── Activate venv for services ─────────────────────────────────────────
 
 . $venvActivate
 
@@ -103,18 +88,29 @@ Start-GoBackgroundServices -ScriptRoot $scriptDir -PythonExe $venvPython
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "DJANGO          -> http://localhost:8000" -ForegroundColor Green
-Write-Host 'POSTGRES (stack)-> localhost:5433  (dosedbadmin / DOSE_DB_PASSWORD)' -ForegroundColor Green
-Write-Host 'RABBITMQ        -> amqp://localhost:5672  (mgmt http://localhost:15672)' -ForegroundColor Green
-Write-Host "ELASTICSEARCH   -> http://localhost:9200" -ForegroundColor Green
-Write-Host "GRAFANA         -> http://localhost:3000" -ForegroundColor Green
-Write-Host "MONITORLOGGER   -> http://localhost:5080" -ForegroundColor Green
 Write-Host 'MONITOR (app)   -> http://localhost:5000' -ForegroundColor Green
 Write-Host "POLYSNIFFER     -> http://127.0.0.1:5002" -ForegroundColor Green
-Write-Host "LIFERAY CE      -> http://localhost:8181" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-try {
-    & $venvPython -u manage.py runserver 0.0.0.0:8000
-} finally {
-    Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
+# ── Run Django from the active Windsurf worktree (Cascade edits live there) ─
+# When the worktree is merged back to main, set $worktreeRoot = $scriptDir.
+$worktreeRoot = "C:\Users\PC\.windsurf\worktrees\PolySaaS\PolySaaS-a136a386"
+$worktreeManage = Join-Path $worktreeRoot "manage.py"
+
+if (Test-Path $worktreeManage) {
+    Write-Host "RUNNING FROM WORKTREE: $worktreeRoot" -ForegroundColor Magenta
+    Push-Location $worktreeRoot
+    try {
+        & $venvPython -u $worktreeManage runserver 0.0.0.0:8000
+    } finally {
+        Pop-Location
+        Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
+    }
+} else {
+    Write-Host "Worktree not found - running local manage.py" -ForegroundColor Yellow
+    try {
+        & $venvPython -u manage.py runserver 0.0.0.0:8000
+    } finally {
+        Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
+    }
 }
