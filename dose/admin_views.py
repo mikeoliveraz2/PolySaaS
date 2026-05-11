@@ -555,6 +555,7 @@ def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
     this view runs if the middleware delegated (e.g. ordering quirks) or for clearer
     login_required handling when the session is not yet authenticated.
     """
+    print(f"\n[VIEW-ENTRY] pt_admin_generic_passthrough_view called: trigger={trigger}, subpath={subpath}, path={request.path_info}")
     from dose.models import UserTenantMembership
     from dose.passthrough.middleware import run_pt_admin_passthrough_core
     from dose.utils import get_current_tenant
