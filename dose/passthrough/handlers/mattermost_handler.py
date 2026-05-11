@@ -219,10 +219,13 @@ class MattermostPassthroughHandler:
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
         # Embed inside the PolySaaS admin template (sidebar + content area).
+        print(f"[MM LoginBridge] About to wrap in admin template...")
         try:
             from dose.passthrough.middleware import _wrap_in_admin_template
             resp = _wrap_in_admin_template(request, resp, trigger, endpoint)
+            print(f"[MM LoginBridge] Wrap succeeded, response length: {len(resp.content)}")
         except Exception as exc:
+            print(f"[MM LoginBridge] Wrap FAILED: {exc}")
             logger.warning("[MM LoginBridge] Admin template wrap failed: %s", exc)
 
         return resp
@@ -494,7 +497,8 @@ class MattermostPassthroughHandler:
                 extra_config.get('mm_url') or
                 extra_config.get('mattermost_url') or
                 extra_config.get('mm_origin') or
-                _ep_url
+                _ep_url or
+                'https://polysaas-mattermost.onrender.com'  # HARDCODED FALLBACK
             ).rstrip('/')
             print(f"[MM_AUTH] mm_origin: {mm_origin}")
             resp = _req.post(
