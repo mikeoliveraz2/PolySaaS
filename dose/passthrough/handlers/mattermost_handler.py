@@ -736,15 +736,17 @@ class MattermostPassthroughHandler:
     window.WebSocket = function(url, protocols) {{
         if (typeof url === 'string') {{
             try {{
+                // Route WebSocket DIRECTLY to the Mattermost server — never through the
+                // WSGI proxy (which cannot handle protocol upgrades and causes the
+                // "Mattermost unreachable" red banner).
+                var mmOrigin = new URL(B);
                 var u = new URL(url, location.href);
-                u.hostname = location.hostname;
-                u.port = location.port || '';
-                u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-                if (!u.pathname.startsWith('/pt/')) {{
-                    u.pathname = PROXY + u.pathname;
-                }}
+                u.hostname = mmOrigin.hostname;
+                u.port = mmOrigin.port || '';
+                u.protocol = 'wss:';
+                // Keep the path as-is (e.g. /api/v4/websocket) — no PROXY prefix.
                 url = u.toString();
-                console.log('[PolySaaS Mattermost] WebSocket via proxy:', url);
+                console.log('[PolySaaS Mattermost] WebSocket direct to MM server:', url);
             }} catch (e) {{ console.warn('[PolySaaS Mattermost] WebSocket rewrite:', e); }}
         }}
         if (protocols !== undefined) return new _WS(url, protocols);
