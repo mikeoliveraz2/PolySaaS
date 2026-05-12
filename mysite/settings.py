@@ -601,7 +601,13 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 #DEEPSEEK API KEY:sk-f3130e89988f405c9937cd6ccc350851
 DEEPSEEK_API_KEY = "sk-f3130e89988f405c9937cd6ccc350851"
 
-
+# --- Mattermost AI Peers Bot ---
+MATTERMOST_URL = os.environ.get("MATTERMOST_URL", "https://polysaas-mattermost.onrender.com")
+MATTERMOST_BOT_TOKEN = os.environ.get("MATTERMOST_BOT_TOKEN", "")
+MATTERMOST_ADMIN_TOKEN = os.environ.get("MATTERMOST_ADMIN_TOKEN", "")
+XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+WINDSURF_API_KEY = os.environ.get("WINDSURF_API_KEY", "")
 
 TIME_ZONE = 'Asia/Manila'
 

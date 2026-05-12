@@ -1,15 +1,21 @@
 """
-PolySaaS Mattermost Bot — WebSocket-driven AI peer dispatcher.
+PolySaaS Mattermost Bot — WebSocket-driven AI peers dispatcher.
 
-Connects to Mattermost via the mattermostdriver WebSocket API and listens
-for posted events.  Dispatches to the existing ai_peer_service.py LLM router:
+Routing rules:
+  @grok      → only Grok responds (xAI API)
+  @gemini    → only Gemini responds (Google Gemini API)
+  @windsurf  → only Windsurf responds
+  @anyone    → all active peers respond (broadcast)
+  no tag     → silence (bot does not respond)
 
-  - Message with @grok, @gemini, @windsurf → only that peer responds
-  - Message in Town Square with no @mention → all active peers respond (broadcast)
-  - Messages from bot accounts are silently ignored (no echo loops)
+Each response is posted under the AI peer's visual identity via
+override_username / override_icon_url.
 
 Run via:
     python manage.py run_mattermost_bot
+
+NOTE: mattermostdriver's init_websocket callback is SYNCHRONOUS.
+      Never wrap this bot in asyncio.run() — use threading for API calls.
 """
 import json
 import logging
@@ -17,8 +23,22 @@ import threading
 
 logger = logging.getLogger(__name__)
 
+BOT_NAMES = {'grok', 'gemini', 'windsurf'}
 
-class PolySaaSMattermostBot:
+ROUTERS = {
+    'grok': 'dose.mattermost_bot.routers.grok_router',
+    'gemini': 'dose.mattermost_bot.routers.gemini_router',
+    'windsurf': 'dose.mattermost_bot.routers.windsurf_router',
+}
+
+PEER_ICONS = {
+    'grok': 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/XAI_Logo.svg/120px-XAI_Logo.svg.png',
+    'gemini': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Google_Gemini_logo.svg/120px-Google_Gemini_logo.svg.png',
+    'windsurf': 'https://windsurf.com/favicon.ico',
+}
+
+
+class PolySaaSAIPeersBot:
     """
     Single persistent WebSocket connection to Mattermost.
     Uses mattermostdriver (sync) — do NOT wrap in asyncio.run().
@@ -50,20 +70,17 @@ class PolySaaSMattermostBot:
     # ------------------------------------------------------------------
 
     def start(self):
-        """Login, collect bot user IDs for echo-filtering, then block on WebSocket."""
+        """Login, register bot IDs for echo-filtering, then block on WebSocket."""
         self.driver.login()
         me = self.driver.users.get_user('me')
         self._bot_user_ids.add(me['id'])
         logger.info("[MM Bot] Connected as @%s (id=%s)", me.get('username'), me.get('id'))
-
-        # Also register all peer bot user IDs so we never echo their posts.
-        self._collect_bot_user_ids()
-
-        logger.info("[MM Bot] Listening for events (broadcast + @mention routing)…")
+        self._register_peer_ids()
+        logger.info("[MM Bot] Listening — @grok | @gemini | @windsurf | @anyone")
         self.driver.init_websocket(self._on_event)   # blocking
 
     # ------------------------------------------------------------------
-    # Event handling (called synchronously by mattermostdriver)
+    # Event handling (synchronous — called directly by mattermostdriver)
     # ------------------------------------------------------------------
 
     def _on_event(self, raw):
@@ -73,25 +90,17 @@ class PolySaaSMattermostBot:
                 return
             post_raw = msg.get('data', {}).get('post', '{}')
             post = json.loads(post_raw) if isinstance(post_raw, str) else post_raw
-            channel_name = msg.get('data', {}).get('channel_name', '')
-            self._dispatch(post, channel_name)
+            self._dispatch(post)
         except Exception as exc:
             logger.error("[MM Bot] Event handler error: %s", exc)
 
-    def _dispatch(self, post: dict, channel_name: str):
-        from dose.views.ai_peers_webhook import (
-            PEER_SPECS, BROADCAST_CHANNELS, MENTION_PATTERN, _ensure_peers_loaded,
-        )
-        from dose.services.ai_peer_service import handle_mention, PEER_REGISTRY
-
-        _ensure_peers_loaded()
-
+    def _dispatch(self, post: dict):
         post_id = post.get('id', '')
         user_id = post.get('user_id', '')
-        text = post.get('message', '')
+        text = post.get('message', '').strip()
         channel_id = post.get('channel_id', '')
 
-        # Deduplicate events
+        # Deduplicate
         if post_id and post_id in self._processed_posts:
             return
         if post_id:
@@ -99,66 +108,80 @@ class PolySaaSMattermostBot:
             if len(self._processed_posts) > 500:
                 self._processed_posts.clear()
 
-        # Ignore posts from our own bot accounts
+        # Echo protection — ignore posts from any bot account
         if user_id in self._bot_user_ids:
             return
-
-        # Resolve sender username for context
-        user_name = post.get('props', {}).get('override_username', '')
-        if not user_name:
+        sender = post.get('props', {}).get('override_username', '')
+        if not sender:
             try:
-                u = self.driver.users.get_user(user_id)
-                user_name = u.get('username', user_id)
+                sender = self.driver.users.get_user(user_id).get('username', '')
             except Exception:
-                user_name = user_id
-
-        # Also skip if sender username is one of our bot names
-        bot_usernames = {s['username'].lower() for s in PEER_SPECS}
-        bot_usernames.update(a.lower() for s in PEER_SPECS for a in s.get('aliases', []))
-        if user_name.lower() in bot_usernames:
+                sender = ''
+        if sender.lower() in BOT_NAMES:
             return
 
-        # --- routing logic ---
-        mentioned_peers = []
-        for m in MENTION_PATTERN.finditer(text):
-            peer_name = m.group(1).lower()
-            if peer_name in PEER_REGISTRY:
-                mentioned_peers.append(peer_name)
+        # Routing
+        lower = text.lower()
+        if '@anyone' in lower:
+            peers = list(BOT_NAMES)
+        else:
+            peers = [p for p in BOT_NAMES if f'@{p}' in lower]
 
-        if not mentioned_peers:
-            if channel_name not in BROADCAST_CHANNELS:
-                return   # not a broadcast channel and no mention — ignore
-            # Deduplicate by bot_token (aliases share same token)
-            seen_tokens: set = set()
-            for key, peer in PEER_REGISTRY.items():
-                tok = peer.get('bot_token', '')
-                if tok and tok not in seen_tokens:
-                    seen_tokens.add(tok)
-                    mentioned_peers.append(key)
+        if not peers:
+            return   # no mention — stay silent
 
-        if not mentioned_peers:
-            return
-
-        logger.info("[MM Bot] Dispatching to %s for %r (channel=%s)", mentioned_peers, text[:60], channel_name)
-        for peer_username in mentioned_peers:
+        logger.info("[MM Bot] %s → dispatching to %s", text[:60], peers)
+        for peer in peers:
             threading.Thread(
-                target=handle_mention,
-                args=(peer_username, channel_id, text, user_name, post_id),
+                target=self._call_and_post,
+                args=(peer, text, channel_id, post.get('root_id') or post_id),
                 daemon=True,
             ).start()
+
+    # ------------------------------------------------------------------
+    # Router dispatch + posting
+    # ------------------------------------------------------------------
+
+    def _call_and_post(self, peer: str, text: str, channel_id: str, root_id: str):
+        """Call the peer router in a thread, then post the response to the channel."""
+        try:
+            import importlib
+            router = importlib.import_module(ROUTERS[peer])
+            response = router.handle(text, '', channel_id)
+        except Exception as exc:
+            logger.error("[MM Bot] Router %s failed: %s", peer, exc)
+            response = f"⚠️ {peer.capitalize()} is unavailable right now."
+
+        try:
+            self.driver.posts.create_post({
+                'channel_id': channel_id,
+                'message': response,
+                'root_id': root_id,
+                'props': {
+                    'override_username': peer.capitalize(),
+                    'override_icon_url': PEER_ICONS.get(peer, ''),
+                    'from_webhook': 'true',
+                },
+            })
+            logger.info("[MM Bot] Posted %s response (%d chars)", peer, len(response))
+        except Exception as exc:
+            logger.error("[MM Bot] Failed to post %s response: %s", peer, exc)
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _collect_bot_user_ids(self):
-        """Fetch Mattermost user IDs for each configured bot so we can filter their posts."""
-        from dose.views.ai_peers_webhook import PEER_SPECS
-        for spec in PEER_SPECS:
+    def _register_peer_ids(self):
+        """Collect Mattermost user IDs for bot accounts to prevent echo loops."""
+        for name in BOT_NAMES:
             try:
-                u = self.driver.users.get_user_by_username(spec['username'])
+                u = self.driver.users.get_user_by_username(name)
                 if u and u.get('id'):
                     self._bot_user_ids.add(u['id'])
-                    logger.debug("[MM Bot] Registered bot id %s (@%s)", u['id'], spec['username'])
+                    logger.debug("[MM Bot] Registered peer id %s (@%s)", u['id'], name)
             except Exception:
                 pass   # bot account not created yet — fine
+
+
+# Keep old class name as alias for backwards compatibility
+PolySaaSMattermostBot = PolySaaSAIPeersBot
