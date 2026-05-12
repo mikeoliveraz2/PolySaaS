@@ -605,9 +605,20 @@ DEEPSEEK_API_KEY = "sk-f3130e89988f405c9937cd6ccc350851"
 MATTERMOST_URL = os.environ.get("MATTERMOST_URL", "https://polysaas-mattermost.onrender.com")
 MATTERMOST_BOT_TOKEN = os.environ.get("MATTERMOST_BOT_TOKEN", "")
 MATTERMOST_ADMIN_TOKEN = os.environ.get("MATTERMOST_ADMIN_TOKEN", "")
+
+# Per-peer Mattermost bot account tokens (each bot posts under its own identity)
+BOT_TOKEN_SUPERGROK = os.environ.get("BOT_TOKEN_SUPERGROK", "")  # @supergrok (Grok / xAI)
+BOT_TOKEN_GEM = os.environ.get("BOT_TOKEN_GEM", "")              # @gem (Gemini / Google)
+BOT_TOKEN_CC = os.environ.get("BOT_TOKEN_CC", "")                # @cc (Cursor Claude / Anthropic)
+BOT_TOKEN_WSC = os.environ.get("BOT_TOKEN_WSC", "")              # @wsc (Windsurf Claude)
+BOT_TOKEN_KIMI = os.environ.get("BOT_TOKEN_KIMI", "")            # @kimi (Moonshot Kimi)
+
+# LLM API keys
 XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")      # used by both CC and WSC
 WINDSURF_API_KEY = os.environ.get("WINDSURF_API_KEY", "")
+KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "")
 
 TIME_ZONE = 'Asia/Manila'
 
