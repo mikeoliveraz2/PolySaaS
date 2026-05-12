@@ -4,6 +4,30 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-13 (Morning — Condo) — Mattermost SSO + WebSocket BINGO ✅
+
+**Status**: ✅ COMPLETE — merged to `main`  
+**Branch**: `fix/mattermost-sso-restore` → `main`
+
+### What Was Fixed
+- Straight in, no login form, no loop, full channels view renders, no WebSocket banner
+- Root cause 1: `mattermost_handler.py` had auto-submit disabled + false-positive bounce detector from debug session
+- Root cause 2: WebSocket shim was routing `wss://` through the WSGI proxy (can't handle upgrades) — fixed to go direct to Mattermost server
+- Root cause 3: `passthrough_embed.html` had 129 lines of CSS containment rules that hid the channel view
+- Render env vars: `MM_SERVICESETTINGS_WEBSOCKETURL`, `ALLOWCORSFROM`, `CORSALLOWCREDENTIALS` added
+
+### Files Changed
+- `dose/passthrough/handlers/mattermost_handler.py` — restored + WebSocket shim fixed
+- `dose/templates/admin/passthrough_embed.html` — restored from checkpoint
+- `render.yaml` — WebSocket + CORS env vars
+- `documentation/BINGO_MATTERMOST_SSO_WEBSOCKET.md` — full BINGO doc
+
+### Next Steps
+1. Store PAT for `polysaasot` tenant in TenantApp extra_config (token: `condotest`)
+2. Nextcloud SSO
+
+---
+
 ## 2026-05-12 (Evening — Office) — SSO Debug + Branch Preservation
 
 **Status**: ⚠️ IN PROGRESS — broken main preserved, working version branched off  
