@@ -418,6 +418,10 @@ services:
         value: https://mattermost.production.polysaas.online
       - key: MM_SERVICESETTINGS_WEBSOCKETURL
         value: wss://polysaas-mattermost.onrender.com
+      - key: MM_SERVICESETTINGS_ALLOWCORSFROM
+        value: "*"
+      - key: MM_SERVICESETTINGS_CORSALLOWCREDENTIALS
+        value: "true"
 
   # --- WordPress (Apache) + MariaDB (private service) ---
   - type: pserv
