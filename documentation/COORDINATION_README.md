@@ -4,6 +4,31 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-12 (Evening — Office) — SSO Debug + Branch Preservation
+
+**Status**: ⚠️ IN PROGRESS — broken main preserved, working version branched off  
+**Branch**: `fix/mattermost-sso-restore` (use this), `checkpoint/2026-05-12-working` (frozen safe copy)
+
+### What Happened
+- `origin/main` was broken by debug changes during the day session:
+  - Auto-submit commented out in login bridge
+  - False-positive bounce detector blocked login
+  - Aggressive token clearing caused loop
+- Working version from this morning (commit `6664558`) preserved as `checkpoint/2026-05-12-working`
+- `fix/mattermost-sso-restore` branch created: `origin/main` + restored `mattermost_handler.py` from checkpoint
+
+### Pending Issues for Next Session
+1. **`polysaastmon` tenant (t20)** — Mattermost env var changes during the day may have broken provisioning; `polyt20@polysaas.online` shows no valid session
+2. **`fix/mattermost-sso-restore`** needs testing — if SSO works, merge to `main`
+3. **`main` is still broken** — do not deploy main until fix branch is verified
+
+### Next Session First Task
+1. Test `fix/mattermost-sso-restore` branch — confirm Town Square loads for `polysaast4`
+2. If working → merge to main, delete fix branch
+3. Investigate `polysaastmon` Mattermost provisioning (check env vars on Mattermost service)
+
+---
+
 ## 2026-05-11 (Morning — Office) — Mattermost SSO Verified Working ✅
 
 **Status**: ✅ COMPLETE  
