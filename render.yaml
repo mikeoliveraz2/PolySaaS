@@ -416,6 +416,8 @@ services:
           property: port
       - key: MM_SERVICESETTINGS_SITEURL
         value: https://mattermost.production.polysaas.online
+      - key: MM_SERVICESETTINGS_WEBSOCKETURL
+        value: wss://polysaas-mattermost.onrender.com
 
   # --- WordPress (Apache) + MariaDB (private service) ---
   - type: pserv
