@@ -26,6 +26,7 @@ import importlib
 import json
 import logging
 import threading
+from urllib.parse import urlparse
 
 import requests as _requests
 from django.conf import settings
@@ -148,9 +149,10 @@ class PolySaaSAIPeersBot:
         from mattermostdriver import Driver
 
         mm_url = _mm_base_url()
-        host = mm_url.replace('https://', '').replace('http://', '')
-        scheme = 'https' if mm_url.startswith('https') else 'http'
-        port = 443 if scheme == 'https' else 80
+        _parsed = urlparse(mm_url)
+        scheme = _parsed.scheme or 'https'
+        host = _parsed.hostname
+        port = _parsed.port or (443 if scheme == 'https' else 80)
 
         listen_token = (
             getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '') or
