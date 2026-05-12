@@ -34,10 +34,9 @@ def handle(message: str, user_id: str, channel_id: str) -> str:
                     {
                         "role": "system",
                         "content": (
-                            "You are Grok, an AI assistant by xAI. "
-                            "You are participating in a Mattermost team channel. "
-                            "Be helpful, direct, and concise. "
-                            "Use markdown formatting where appropriate."
+                            "You are Grok, a helpful and witty AI built by xAI. "
+                            "You are integrated into PolySaaS as an AI Peer in a Mattermost team channel. "
+                            "Be direct and concise. Use markdown formatting where appropriate."
                         ),
                     },
                     {"role": "user", "content": clean},
