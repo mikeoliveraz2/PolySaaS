@@ -199,7 +199,12 @@ def fetch_upstream_index_html(
 
     for _hop in range(15):
         try:
-            print(f"[FETCH_UPSTREAM] Hop {_hop}: GET {_current_url}")
+            print(f"\n{'>'*60}")
+            print(f"[FETCH_UPSTREAM] OUTBOUND REQUEST Hop {_hop}:")
+            print(f"  URL: {_current_url}")
+            print(f"  Headers: {dict(hop_headers)}")
+            print(f"  Cookies: {dict(upstream_cookies)}")
+            print(f"{'>'*60}")
             resp = requests.get(
                 _current_url,
                 headers=hop_headers,
@@ -207,7 +212,11 @@ def fetch_upstream_index_html(
                 allow_redirects=False,
                 timeout=60,
             )
-            print(f"[FETCH_UPSTREAM] Hop {_hop}: Status {resp.status_code}")
+            print(f"{'<'*60}")
+            print(f"[FETCH_UPSTREAM] RESPONSE:")
+            print(f"  Status: {resp.status_code}")
+            print(f"  Headers: {dict(resp.headers)}")
+            print(f"{'<'*60}")
         except Exception as e:
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
             _fail(error=str(e), url=_current_url, phase="request_exception")
@@ -272,7 +281,12 @@ def fetch_upstream_index_html(
         )
         return ""
     
-    print(f"[FETCH_UPSTREAM] Success! Got {len(resp.content)} bytes")
+    print(f"\n{'='*60}")
+    print(f"[FETCH_UPSTREAM] FINAL SUCCESS - Got {len(resp.content)} bytes")
+    print(f"[FETCH_UPSTREAM] Response preview (first 1000 chars):")
+    print(f"{'='*60}")
+    print(resp.content[:1000].decode('utf-8', errors='replace'))
+    print(f"{'='*60}")
 
     # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
     try:

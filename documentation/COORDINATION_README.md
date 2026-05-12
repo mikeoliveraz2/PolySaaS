@@ -4,6 +4,75 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-12 (Evening — Office) — SSO Debug + Branch Preservation
+
+**Status**: ⚠️ IN PROGRESS — broken main preserved, working version branched off  
+**Branch**: `fix/mattermost-sso-restore` (use this), `checkpoint/2026-05-12-working` (frozen safe copy)
+
+### What Happened
+- `origin/main` was broken by debug changes during the day session:
+  - Auto-submit commented out in login bridge
+  - False-positive bounce detector blocked login
+  - Aggressive token clearing caused loop
+- Working version from this morning (commit `6664558`) preserved as `checkpoint/2026-05-12-working`
+- `fix/mattermost-sso-restore` branch created: `origin/main` + restored `mattermost_handler.py` from checkpoint
+
+### Pending Issues for Next Session
+1. **`polysaastmon` tenant (t20)** — Mattermost env var changes during the day may have broken provisioning; `polyt20@polysaas.online` shows no valid session
+2. **`fix/mattermost-sso-restore`** needs testing — if SSO works, merge to `main`
+3. **`main` is still broken** — do not deploy main until fix branch is verified
+
+### Next Session First Task
+1. Test `fix/mattermost-sso-restore` branch — confirm Town Square loads for `polysaast4`
+2. If working → merge to main, delete fix branch
+3. Investigate `polysaastmon` Mattermost provisioning (check env vars on Mattermost service)
+
+---
+
+## 2026-05-11 (Morning — Office) — Mattermost SSO Verified Working ✅
+
+**Status**: ✅ COMPLETE  
+**Branch**: main  
+**Location**: Office  
+**Session Change**: Desktop → Laptop
+
+### Current State (What's Working NOW)
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Mattermost Server-Side SSO | ✅ WORKING | No form displayed, straight to Town Square |
+| Odoo SSO | ✅ WORKING | Auto-login, apps page loads |
+| Orchestration Pipeline | ✅ WORKING | Invoice → Mattermost notification |
+| Login Bridge (fallback) | ⚠️ DISABLED | Auto-submit commented out; not needed |
+
+### How Mattermost SSO Works (Current)
+1. User clicks Mattermost in sidebar
+2. `try_root_display_shell_response` detects no `MMAUTHTOKEN` cookie
+3. `get_upstream_cookies()` → POST to Mattermost API with credentials from `TenantApp.extra_config`
+4. Sets `MMAUTHTOKEN` cookie, redirects to `/channels/town-square`
+5. Mattermost SPA loads with valid session
+
+**Credentials** (in `polysaast4` TenantApp `extra_config`):
+- `mattermost_login_id` = `odooAdmin`
+- `mattermost_password` = `PolySaaS2026!`
+
+### Files Changed This Session
+- `dose/passthrough/handlers/MATTERMOST_SSO_PROGRESS.md` — Updated to reflect working state
+
+### Next Steps for Next AI/User
+| Priority | Task | Notes |
+|----------|------|-------|
+| 1 | Nextcloud SSO | Apply same server-side SSO pattern |
+| 2 | (Optional) Re-enable bridge auto-submit | Uncomment lines 206-211 in `mattermost_handler.py` |
+| 3 | (Optional) Remove bridge entirely | If server-side SSO stays reliable |
+
+### Committed This Session
+- ✅ Documentation updated to reflect actual working state
+
+### Pending / Not Committed
+- None
+
+---
+
 ## 2026-05-04 — The "Stupid Debug Session" (Paradigm Shift)
 
 **Status**: Debugging in progress  

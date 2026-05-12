@@ -1,6 +1,9 @@
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
+from django.http import HttpResponse as DjangoHttpResponse
+from django.template.loader import render_to_string
 from django.utils.deprecation import MiddlewareMixin
+from django.utils.safestring import mark_safe
 from dose.models import UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.handlers.registry import (
@@ -100,11 +103,7 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
     print(f"[_WRAP] _wrap_in_admin_template CALLED")
     print(f"[_WRAP]   trigger={trigger}, status={response.status_code}")
     print(f"[_WRAP]   content_type={response.get('Content-Type', 'NONE')}")
-    
-    from django.template.loader import render_to_string
-    from django.http import HttpResponse as DjangoHttpResponse
-    from django.utils.safestring import mark_safe
-    
+
     # Only wrap HTML responses
     content_type = response.get('Content-Type', '')
     if 'text/html' not in content_type:

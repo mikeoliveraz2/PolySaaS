@@ -431,6 +431,23 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                         logger.warning("Failed to store Odoo credentials for passthrough: %s", e)
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
+
+            # Mattermost is provisioned synchronously (no Celery) so the team
+            # and user exist by the time the browser loads the chat URL.
+            if app_key == 'enable_mattermost':
+                mm_kwargs = dict(kwargs)
+                mm_kwargs['admin_username'] = user_obj.username if user_obj else ''
+                mm_kwargs['admin_password'] = data.get('password') or ''
+                def _run_mm_sync(kw=mm_kwargs):
+                    try:
+                        result = provision_mattermost_tenant(**kw)
+                        if not result.get('success'):
+                            logger.warning("[MM-PROV] inline provisioning returned failure: %s", result.get('error'))
+                    except Exception as exc:
+                        logger.error("[MM-PROV] inline provisioning crashed: %s", exc, exc_info=True)
+                transaction.on_commit(_run_mm_sync)
+                continue
+
             def _safe_enqueue(task=provisioner, kw=dict(kwargs), key=app_key):
                 try:
                     task.delay(**kw)
