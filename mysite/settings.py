@@ -557,11 +557,11 @@ ASGI_APPLICATION = 'mysite.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend for session-based tenancy
-        'NAME': 'dosedbsaas',
-        'USER': 'dosedbadmin',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env('DB_NAME', default='dosedbsaas'),
+        'USER': env('DB_USER', default='dosedbadmin'),
         'PASSWORD': env('DOSE_DB_PASSWORD', default='PolySaaS2026!'),
-        'HOST': 'localhost',
+        'HOST': env('DB_HOST', default='localhost'),
         'PORT': env('DB_PORT', default='5433'),
     }
 }

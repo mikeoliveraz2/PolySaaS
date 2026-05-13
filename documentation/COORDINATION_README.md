@@ -4,6 +4,32 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-13 (Evening — Office) — Cloud SQL Connected ✅ Restore In Progress
+
+**Status**: ⚠️ IN PROGRESS — Cloud SQL live, pg_dump running, restore pending  
+**Branch**: `main`
+
+### What Was Done
+- GCP Project: `application-integration-4524`
+- Cloud SQL instance: `free-trial-first-project` (PostgreSQL 18, us-south1)
+- Connection name: `application-integration-4524:us-south1:free-trial-first-project`
+- Public IP: `8.230.100.97`, Port: `5432`
+- DB: `dosedbsaas`, User: `dosedbadmin`, Password: `PolySaaS2026!`
+- `settings.py` updated — DB connection fully env-var driven (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`)
+- Added to `.env`: `DB_HOST=8.230.100.97`, `DB_PORT=5432`
+- Authorized networks: `0.0.0.0/0` (temporary — lock down after restore)
+- `python manage.py migrate` ran clean → public schema + olient migrated OK
+- **pg_dump from local `localhost:5433` in progress via pgAdmin** (Custom format, file: `dosedbsaas_backup.dump`)
+
+### Next Steps (Morning)
+1. **Restore the dump to Cloud SQL** — pgAdmin → Cloud SQL server (`8.230.100.97:5432`) → right-click `dosedbsaas` → Restore → select `dosedbsaas_backup.dump`
+2. Test app against Cloud SQL: `python manage.py runserver`
+3. Fix Mattermost bot listener token: add `MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch` to `.env`
+4. Lock down Cloud SQL IP whitelist — replace `0.0.0.0/0` with `142.111.152.39/32`
+5. Add API keys to `.env` for CC bot: `ANTHROPIC_API_KEY=<key>`
+
+---
+
 ## 2026-05-13 (Morning — Condo, Session 2) — AI Peers Bot Build ⚠️ Needs Token Fix
 
 **Status**: ⚠️ IN PROGRESS — bot built, connects to correct URL, blocked on invalid listener token  
