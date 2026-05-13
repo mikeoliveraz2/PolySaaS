@@ -24,9 +24,18 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ### Blocker — Listener Token Expired
 - `MATTERMOST_ADMIN_TOKEN=h4wd46ha8fbc7kdanzsi1w8zye` → "Invalid or expired session"
-- **Fix at office**: Either use `condotest` PAT as `MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch` OR generate new admin PAT in Mattermost UI → Account Settings → Security → Personal Access Tokens
-- Once `.env` has a valid listener token, run: `python manage.py run_mattermost_bot`
-- Test with: post `@grok what is PolySaaS?` in Town Square
+- **Fix at office — add this line to `.env`:**
+  ```
+  MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch
+  ```
+  (This is the `condotest` PAT — already created, still valid)
+- Once added, run:
+  ```
+  git pull
+  .\venv\scripts\activate
+  python manage.py run_mattermost_bot
+  ```
+- Test with: post `@grok what is PolySaaS?` in Town Square — supergrok should reply
 
 ### Next Steps
 1. Fix listener token in .env at office
