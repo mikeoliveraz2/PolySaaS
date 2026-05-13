@@ -4,6 +4,38 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-13 (Morning — Condo, Session 2) — AI Peers Bot Build ⚠️ Needs Token Fix
+
+**Status**: ⚠️ IN PROGRESS — bot built, connects to correct URL, blocked on invalid listener token  
+**Branch**: `main`
+
+### What Was Built
+- Full 5-peer AI roster: `@grok` (supergrok/xAI), `@gemini` (gem/Google), `@cc` (Cursor Claude/Anthropic), `@wsc` (Windsurf Claude), `@kimi` (Moonshot)
+- `dose/mattermost_bot/routers/` package: `grok_router.py`, `gemini_router.py`, `cc_router.py`, `wsc_router.py`, `kimi_router.py`
+- `bot.py` rewritten: peer table, real bot token posting (each peer posts under its own MM account), `@anyone` = all active peers, echo protection, urlparse URL fix
+- `mysite/settings.py`: all bot tokens + API keys added (`BOT_TOKEN_SUPERGROK`, `BOT_TOKEN_GEM`, `BOT_TOKEN_CC`, `BOT_TOKEN_WSC`, `BOT_TOKEN_KIMI`, `XAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `KIMI_API_KEY`)
+- Shela's system prompt incorporated into grok_router.py
+
+### Keys in .env (already set)
+- `XAI_API_KEY` ✅
+- `GEMINI_API_KEY` ✅
+- `MATTERMOST_URL=https://polysaas-mattermost.onrender.com` ✅
+- `BOT_TOKEN_SUPERGROK`, `BOT_TOKEN_GEM`, `BOT_TOKEN_CC` ✅
+
+### Blocker — Listener Token Expired
+- `MATTERMOST_ADMIN_TOKEN=h4wd46ha8fbc7kdanzsi1w8zye` → "Invalid or expired session"
+- **Fix at office**: Either use `condotest` PAT as `MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch` OR generate new admin PAT in Mattermost UI → Account Settings → Security → Personal Access Tokens
+- Once `.env` has a valid listener token, run: `python manage.py run_mattermost_bot`
+- Test with: post `@grok what is PolySaaS?` in Town Square
+
+### Next Steps
+1. Fix listener token in .env at office
+2. Test bot end-to-end (grok + gemini)
+3. Add `ANTHROPIC_API_KEY` to .env for CC/WSC
+4. `polysaasot` tenant PAT still pending
+
+---
+
 ## 2026-05-13 (Morning — Condo) — Mattermost SSO + WebSocket BINGO ✅
 
 **Status**: ✅ COMPLETE — merged to `main`  
