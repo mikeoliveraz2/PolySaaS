@@ -1,0 +1,105 @@
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+import django
+django.setup()
+
+from django.db import connection
+from dose.models import Tenant, PassThroughEndpoint, TenantApp
+from django.conf import settings
+
+tenant = Tenant.objects.get(slug='polysaase2e2')
+schema = tenant.schema_name
+print(f"Provisioning PassThroughEndpoints for tenant: {tenant.name} (schema={schema})")
+
+ODOO_URL = getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+MM_URL = getattr(settings, 'MATTERMOST_URL', 'https://polysaas-mattermost.onrender.com')
+NC_URL = getattr(settings, 'NEXTCLOUD_SHARED_URL', 'https://polysaas-nextcloud.onrender.com')
+MM_TOKEN = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+
+print(f"  ODOO_URL : {ODOO_URL}")
+print(f"  MM_URL   : {MM_URL}")
+print(f"  MM_TOKEN : {'SET' if MM_TOKEN else 'EMPTY'}")
+
+with connection.cursor() as cur:
+    cur.execute(f'SET search_path TO "{schema}", public')
+
+# Odoo PassThroughEndpoint
+PassThroughEndpoint.objects.update_or_create(
+    trigger_path='odoo',
+    defaults={
+        'endpoint_url': ODOO_URL,
+        'description': f'Odoo ERP for {tenant.name}',
+        'is_enabled': True,
+        'passthrough_type': 'scraper',
+        'integration_mode': 'web_api',
+        'api_endpoint': f"{ODOO_URL}/web",
+        'show_in_menu': True,
+        'menu_title': 'Odoo',
+        'menu_icon': 'building',
+        'menu_sort_order': 20,
+        'starting_uri': '/web',
+    }
+)
+print(f"[OK] Odoo PassThroughEndpoint -> {ODOO_URL}")
+
+# Mattermost PassThroughEndpoint
+PassThroughEndpoint.objects.update_or_create(
+    trigger_path='mattermost',
+    defaults={
+        'endpoint_url': MM_URL,
+        'description': f'Mattermost Team Chat for {tenant.name}',
+        'is_enabled': True,
+        'passthrough_type': 'scraper',
+        'integration_mode': 'web_api',
+        'api_endpoint': f"{MM_URL}/api/v4",
+        'show_in_menu': True,
+        'menu_title': 'Mattermost',
+        'menu_icon': 'chat',
+        'menu_sort_order': 25,
+        'starting_uri': '/',
+    }
+)
+print(f"[OK] Mattermost PassThroughEndpoint -> {MM_URL}")
+
+# Nextcloud PassThroughEndpoint
+PassThroughEndpoint.objects.update_or_create(
+    trigger_path='nextcloud',
+    defaults={
+        'endpoint_url': NC_URL,
+        'description': f'NextCloud File Storage for {tenant.name}',
+        'is_enabled': True,
+        'passthrough_type': 'scraper',
+        'integration_mode': 'web_api',
+        'api_endpoint': f"{NC_URL}/ocs/v1.php",
+        'show_in_menu': True,
+        'menu_title': 'NextCloud',
+        'menu_icon': 'cloud',
+        'menu_sort_order': 30,
+        'starting_uri': '/index.php/login',
+    }
+)
+print(f"[OK] Nextcloud PassThroughEndpoint -> {NC_URL}")
+
+# TenantApp records (in public schema)
+with connection.cursor() as cur:
+    cur.execute('SET search_path TO public')
+
+odoo_app, _ = TenantApp.objects.get_or_create(tenant=tenant, app_name='odoo')
+odoo_app.app_url = ODOO_URL
+odoo_app.extra_config = {'odoo_url': ODOO_URL, 'odoo_db': 'odoodb', 'odoo_login': 'admin', 'odoo_password': 'PolySaaS2026!'}
+odoo_app.status = 'active'
+odoo_app.save()
+print(f"[OK] Odoo TenantApp -> {ODOO_URL}")
+
+mm_app, _ = TenantApp.objects.get_or_create(tenant=tenant, app_name='mattermost')
+mm_app.app_url = MM_URL
+mm_app.extra_config = {'mm_url': MM_URL, 'mm_token': MM_TOKEN, 'mm_channel': 'town-square'}
+mm_app.status = 'active'
+mm_app.save()
+print(f"[OK] Mattermost TenantApp -> {MM_URL}")
+
+print("\n=== Verification ===")
+with connection.cursor() as cur:
+    cur.execute(f'SET search_path TO "{schema}", public')
+for pt in PassThroughEndpoint.objects.filter(trigger_path__in=['odoo','mattermost','nextcloud']):
+    print(f"  {pt.trigger_path}: {pt.endpoint_url} enabled={pt.is_enabled}")

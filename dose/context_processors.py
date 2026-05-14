@@ -242,22 +242,22 @@ def admin_navigation(request):
         except Exception:
             _subscribed = set()
 
-        def _endpoint_visible(trigger_path):
+        def _endpoint_visible(endpoint_url):
             if getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
                 return True
-            # Normalise: last path segment, lowercase, hyphens→underscores
-            # so /dose/monitor-logger/ → monitor_logger, monitor-logger → monitor_logger
-            n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-            return n == 'gmail' or n in _subscribed
+            # Extract hostname from endpoint_url for matching
+            from urllib.parse import urlparse
+            host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+            return 'gmail' in host or any(app in host for app in _subscribed)
 
         # Use endpoints from middleware if available (already queried and filtered)
         endpoints = []
         if hasattr(request, 'passthrough_endpoints') and request.passthrough_endpoints:
             endpoints = list(request.passthrough_endpoints)
             print(f"[ADMIN_NAV] Using {len(endpoints)} endpoints from request.passthrough_endpoints (set by middleware)")
-            # Debug: print all endpoint trigger_paths to see what we have
+            # Debug: print all endpoint URLs to see what we have
             for ep in endpoints:
-                print(f"[ADMIN_NAV]   - {ep.trigger_path} (menu_title: {ep.menu_title}, show_in_menu: {ep.show_in_menu}, is_enabled: {ep.is_enabled})")
+                print(f"[ADMIN_NAV]   - {ep.endpoint_url} (menu_title: {ep.menu_title}, show_in_menu: {ep.show_in_menu}, is_enabled: {ep.is_enabled})")
 
             # Also include endpoints that might not have menu_title (like v0)
             # The middleware excludes endpoints without menu_title, but we want to show them in sidebar
@@ -275,11 +275,11 @@ def admin_navigation(request):
                         additional_endpoints = list(additional_endpoints)
 
                         # Add endpoints that aren't already in the list
-                        existing_trigger_paths = {ep.trigger_path for ep in endpoints}
+                        existing_urls = {ep.endpoint_url for ep in endpoints}
                         for ep in additional_endpoints:
-                            if ep.trigger_path not in existing_trigger_paths:
+                            if ep.endpoint_url not in existing_urls:
                                 endpoints.append(ep)
-                                print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.trigger_path}")
+                                print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.endpoint_url}")
 
                         print(f"[ADMIN_NAV] Total endpoints after adding ones without menu_title: {len(endpoints)}")
                 except Exception as e:
@@ -331,17 +331,18 @@ def admin_navigation(request):
         seen_normalized = set()
 
         for endpoint in endpoints:
-            print(f"[ADMIN_NAV] Endpoint: {endpoint.trigger_path} - {endpoint.menu_title}")
+            print(f"[ADMIN_NAV] Endpoint: {endpoint.endpoint_url} - {endpoint.menu_title}")
 
             # Filter: only show gmail + subscribed bundled apps
-            if not _endpoint_visible(endpoint.trigger_path):
-                print(f"[ADMIN_NAV] Skipping unsubscribed: {endpoint.trigger_path}")
+            if not _endpoint_visible(endpoint.endpoint_url):
+                print(f"[ADMIN_NAV] Skipping unsubscribed: {endpoint.endpoint_url}")
                 continue
 
-            # Deduplicate by normalized trigger name (last path segment, hyphens→underscores)
-            norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+            # Deduplicate by hostname
+            from urllib.parse import urlparse
+            norm = urlparse(endpoint.endpoint_url).netloc.lower().replace('-', '_')
             if norm in seen_normalized:
-                print(f"[ADMIN_NAV] Skipping duplicate (normalized '{norm}'): {endpoint.trigger_path}")
+                print(f"[ADMIN_NAV] Skipping duplicate (hostname '{norm}'): {endpoint.endpoint_url}")
                 continue
             seen_normalized.add(norm)
 
@@ -353,7 +354,7 @@ def admin_navigation(request):
             _parsed = _urlparse(endpoint.endpoint_url or '')
             _hostname = _parsed.netloc
             if not _hostname:
-                print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.trigger_path}' — endpoint_url missing or invalid: {endpoint.endpoint_url!r}")
+                print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.endpoint_url}' — endpoint_url missing or invalid")
                 continue
             url = f'/pt/admin/{_hostname}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()

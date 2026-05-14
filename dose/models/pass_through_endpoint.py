@@ -180,39 +180,17 @@ class PassThroughEndpoint(models.Model):
         from django.core.exceptions import ValidationError
         errors = {}
 
-        # Validate trigger_path format
-        # Allow:
-        #   - Simple names without slashes: 'gmail', 'meets' (middleware adds /dose/ or /admin/ prefix dynamically)
-        #   - Full paths: '/dose/gmail/', '/admin/nextcloud/' (explicit routing)
-        if self.trigger_path:
-            trigger = self.trigger_path.strip().strip('/')
-
-            # If trigger contains slashes, normalize and validate it's a proper structure
-            if '/' in trigger:
-                # Multi-part path like 'dose/gmail' or 'admin/nextcloud' - auto-prefix with /
-                if not trigger.startswith('dose/') and not trigger.startswith('admin/'):
-                    errors['trigger_path'] = "Path-based triggers must start with 'dose/' or 'admin/'. Use simple names like 'gmail' for dynamic routing."
-                # Normalize to have / prefix
-                self.trigger_path = '/' + trigger + '/'
-            else:
-                # Simple name - just store as-is, middleware will handle prefixing
-                self.trigger_path = trigger
-
-        # Validate menu fields when show_in_menu is enabled
+        # NOTE: trigger_path removed. endpoint_url hostname is the URL segment.
+        # Validate endpoint_url is present for menu items
         if self.show_in_menu:
-            if not self.trigger_path:
-                errors['trigger_path'] = "Trigger path is required when 'Show in menu' is enabled"
+            if not self.endpoint_url:
+                errors['endpoint_url'] = "Endpoint URL is required when 'Show in menu' is enabled"
 
         if errors:
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-        """Override save to run validation and formatting"""
-        # Ensure trigger_path ends with / only if it's a full path (contains slashes)
-        if self.trigger_path and '/' in self.trigger_path:
-            if not self.trigger_path.endswith('/'):
-                self.trigger_path = self.trigger_path.rstrip('/') + '/'
-
+        """Override save to run validation"""
         # Run model validation
         self.full_clean()
 
