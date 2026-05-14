@@ -28,15 +28,18 @@ import environ
 import importlib
 import json
 import os
+import sys
 from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env = environ.Env()
-#environ.Env.read_env()  # This loads .env file
-env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=True)
-SECRET_KEY = env('DJANGO_SECRET_KEY', default='')
-print("Loaded .env DJANGO_SECRET_KEY:", "SET" if SECRET_KEY else "NOT FOUND")
+env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=False)
+
+from dose.utils.secret_manager import sm
+
+SECRET_KEY = sm('DJANGO_SECRET_KEY', 'DJANGO_SECRET_KEY')
+print("Loaded DJANGO_SECRET_KEY:", "SET" if SECRET_KEY else "NOT FOUND", "(from Secret Manager)", file=sys.stderr)
 if not SECRET_KEY:
-    raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY environment variable")
+    raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY secret in GCP Secret Manager or DJANGO_SECRET_KEY env var")
 DEBUG = True
 # Passthrough: log upstream + final HTML diagnostics to console (all endpoints). See dose/passthrough/stream_debug.py
 POLYSNIFFER_PASSTHROUGH_DEBUG = env.bool("POLYSNIFFER_PASSTHROUGH_DEBUG", default=False)
@@ -197,8 +200,8 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 
 # --- AI as Peers (Mattermost bot integration) ---
-MATTERMOST_URL = env('MATTERMOST_URL', default='http://localhost:8065')
-MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
+MATTERMOST_URL = sm('mattermost-url', 'MATTERMOST_URL', 'http://localhost:8065')
+MATTERMOST_ADMIN_TOKEN = sm('mattermost-admin-token', 'MATTERMOST_ADMIN_TOKEN')
 POLYSAAS_APP_ADMIN_PASSWORD = env('POLYSAAS_APP_ADMIN_PASSWORD', default='PolySaaS2026!')
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
@@ -213,24 +216,24 @@ NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='ncad
 # Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
 # If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).
 PARAMETER_FERNET_KEY = env('PARAMETER_FERNET_KEY', default='')
-ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
-XAI_API_KEY = env('XAI_API_KEY', default='')
-GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
+ANTHROPIC_API_KEY = sm('anthropic-api-key', 'ANTHROPIC_API_KEY')
+XAI_API_KEY = sm('XAI_API_KEY', 'XAI_API_KEY')
+GEMINI_API_KEY = sm('GEMINI_API_KEY', 'GEMINI_API_KEY')
 AI_PEER_PROVIDER_COPILOT = env('AI_PEER_PROVIDER_COPILOT', default='anthropic')
 AI_PEER_PROVIDER_CURSOR = env('AI_PEER_PROVIDER_CURSOR', default='anthropic')
 AI_PEER_PROVIDER_GROK = env('AI_PEER_PROVIDER_GROK', default='xai')
 AI_PEER_PROVIDER_ROUTER = env('AI_PEER_PROVIDER_ROUTER', default='anthropic')
 AI_PEER_PROVIDER_OPENCLAW = env('AI_PEER_PROVIDER_OPENCLAW', default='anthropic')
 AI_PEER_PROVIDER_GEM = env('AI_PEER_PROVIDER_GEM', default='gemini')
-BOT_TOKEN_COPILOT = env('BOT_TOKEN_COPILOT', default='')
-BOT_TOKEN_CURSOR = env('BOT_TOKEN_CURSOR', default='')
-BOT_TOKEN_GROK = env('BOT_TOKEN_GROK', default='')
-BOT_TOKEN_ROUTER = env('BOT_TOKEN_ROUTER', default='')
-BOT_TOKEN_OPENCLAW = env('BOT_TOKEN_OPENCLAW', default='')
-BOT_TOKEN_CC = env('BOT_TOKEN_CC', default='')
-BOT_TOKEN_SUPERGROK = env('BOT_TOKEN_SUPERGROK', default='')
-BOT_TOKEN_GEM = env('BOT_TOKEN_GEM', default='')
-AI_PEERS_WEBHOOK_TOKEN = env('AI_PEERS_WEBHOOK_TOKEN', default='')
+BOT_TOKEN_COPILOT = sm('bot-token-copilot', 'BOT_TOKEN_COPILOT')
+BOT_TOKEN_CURSOR = sm('bot-token-cursor', 'BOT_TOKEN_CURSOR')
+BOT_TOKEN_GROK = sm('bot-token-grok', 'BOT_TOKEN_GROK')
+BOT_TOKEN_ROUTER = sm('bot-token-router', 'BOT_TOKEN_ROUTER')
+BOT_TOKEN_OPENCLAW = sm('bot-token-openclaw', 'BOT_TOKEN_OPENCLAW')
+BOT_TOKEN_CC = sm('bot-token-cc', 'BOT_TOKEN_CC')
+BOT_TOKEN_SUPERGROK = sm('bot-token-supergrok', 'BOT_TOKEN_SUPERGROK')
+BOT_TOKEN_GEM = sm('bot-token-gem', 'BOT_TOKEN_GEM')
+AI_PEERS_WEBHOOK_TOKEN = sm('ai-peers-webhook-token', 'AI_PEERS_WEBHOOK_TOKEN')
 # Recent posts fetched for LLM context (Option 1). Pinned posts are merged into system prompt (Option 2).
 AI_PEERS_CHANNEL_MESSAGE_LIMIT = env.int('AI_PEERS_CHANNEL_MESSAGE_LIMIT', default=75)
 
@@ -602,23 +605,18 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_KEY = "sk-f3130e89988f405c9937cd6ccc350851"
 
 # --- Mattermost AI Peers Bot ---
-MATTERMOST_URL = os.environ.get("MATTERMOST_URL", "https://polysaas-mattermost.onrender.com")
-MATTERMOST_BOT_TOKEN = os.environ.get("MATTERMOST_BOT_TOKEN", "")
-MATTERMOST_ADMIN_TOKEN = os.environ.get("MATTERMOST_ADMIN_TOKEN", "")
+MATTERMOST_BOT_TOKEN = sm('mattermost-bot-token', 'MATTERMOST_BOT_TOKEN')
 
 # Per-peer Mattermost bot account tokens (each bot posts under its own identity)
-BOT_TOKEN_SUPERGROK = os.environ.get("BOT_TOKEN_SUPERGROK", "")  # @supergrok (Grok / xAI)
-BOT_TOKEN_GEM = os.environ.get("BOT_TOKEN_GEM", "")              # @gem (Gemini / Google)
-BOT_TOKEN_CC = os.environ.get("BOT_TOKEN_CC", "")                # @cc (Cursor Claude / Anthropic)
-BOT_TOKEN_WSC = os.environ.get("BOT_TOKEN_WSC", "")              # @wsc (Windsurf Claude)
-BOT_TOKEN_KIMI = os.environ.get("BOT_TOKEN_KIMI", "")            # @kimi (Moonshot Kimi)
+BOT_TOKEN_SUPERGROK = sm('bot-token-supergrok', 'BOT_TOKEN_SUPERGROK')  # @supergrok (Grok / xAI)
+BOT_TOKEN_GEM = sm('bot-token-gem', 'BOT_TOKEN_GEM')                    # @gem (Gemini / Google)
+BOT_TOKEN_CC = sm('bot-token-cc', 'BOT_TOKEN_CC')                       # @cc (Cursor Claude / Anthropic)
+BOT_TOKEN_WSC = sm('bot-token-wsc', 'BOT_TOKEN_WSC')                    # @wsc (Windsurf Claude)
+BOT_TOKEN_KIMI = sm('bot-token-kimi', 'BOT_TOKEN_KIMI')                 # @kimi (Moonshot Kimi)
 
-# LLM API keys
-XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")      # used by both CC and WSC
-WINDSURF_API_KEY = os.environ.get("WINDSURF_API_KEY", "")
-KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "")
+# LLM API keys (deduplicated — primary assignments are above at line ~220)
+WINDSURF_API_KEY = sm('windsurf-api-key', 'WINDSURF_API_KEY')
+KIMI_API_KEY = sm('kimi-api-key', 'KIMI_API_KEY')
 
 TIME_ZONE = 'Asia/Manila'
 
