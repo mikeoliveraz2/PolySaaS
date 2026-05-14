@@ -213,25 +213,13 @@ def run_pt_admin_passthrough_core(request):
             self.headers_to_forward = ''
             self.description = f'Passthrough to {hostname}'
 
-    if "." in trigger:
-        # Hostname trigger — URL is the trigger itself, no DB needed.
-        endpoint = SimpleEndpoint(trigger)
-    else:
-        # Named trigger (e.g. "odoo") — must resolve real endpoint_url from DB.
-        endpoint = SimpleEndpoint(trigger)  # fallback
-        try:
-            from dose.models import PassThroughEndpoint
-            from django.db.models import Q
-            db_ep = PassThroughEndpoint.objects.filter(is_enabled=True).filter(
-                Q(trigger_path__iexact=trigger) | Q(trigger_path__icontains=trigger)
-            ).order_by('id').first()
-            if db_ep:
-                endpoint = db_ep
-                print(f"[PT-CORE] DB endpoint found: trigger={db_ep.trigger_path} url={db_ep.endpoint_url}")
-        except Exception as _db_exc:
-            print(f"[PT-CORE] DB endpoint lookup failed for trigger={trigger!r}: {_db_exc}")
+    # NOTE: We no longer look up endpoints in the DB by trigger_path.
+    # Sidebar links encode the hostname directly in the URL: /pt/admin/{hostname}/
+    # The hostname IS the endpoint URL — no DB lookup needed. This eliminates
+    # the old two-step lookup (trigger -> DB record -> endpoint_url) entirely.
+    endpoint = SimpleEndpoint(trigger)
 
-    print(f"[PT-CORE] endpoint from URL: {endpoint.endpoint_url}")
+    print(f"[PT-CORE] endpoint from URL hostname: {endpoint.endpoint_url}")
 
     request._passthrough_endpoint = endpoint
 
