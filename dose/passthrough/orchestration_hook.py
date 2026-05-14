@@ -114,9 +114,16 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
         cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
 
     from dose.models import Instruction
-    # search_path is already set to the tenant schema above — no FK filter needed.
-    instructions = Instruction.objects.filter(direction=direction)
-    print(f"[ORCHESTRATION HOOK] direction={direction} found {instructions.count()} instruction(s), path={upstream_path}, method={method}")
+    # Load tenant-scoped Instructions first, then public defaults (tenant=None).
+    # Tenant-scoped Instructions shadow public ones with the same requestpath.
+    tenant_instrs = list(Instruction.objects.filter(tenant=tenant, direction=direction))
+    public_instrs = list(Instruction.objects.filter(tenant=None, direction=direction))
+    # Merge: tenant shadows public for same requestpath
+    tenant_paths = {i.requestpath for i in tenant_instrs}
+    instructions = tenant_instrs + [i for i in public_instrs if i.requestpath not in tenant_paths]
+    print(f"[ORCHESTRATION HOOK] direction={direction} found {len(instructions)} instruction(s) "
+          f"({len(tenant_instrs)} tenant + {len(public_instrs)} public defaults), "
+          f"path={upstream_path}, method={method}")
 
     matched = [instr for instr in instructions if _instruction_matches(instr, upstream_path, method)]
     print(f"[ORCHESTRATION HOOK] matched {len(matched)} instruction(s) for {method} {upstream_path}")
