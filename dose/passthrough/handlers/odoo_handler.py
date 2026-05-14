@@ -321,6 +321,14 @@ class OdooPassthroughHandler:
                     )
             if raw_html and not raw_html.startswith("REDIRECT:"):
                 logger.info(f"[ODOO HANDLER] Processing HTML ({len(raw_html)} chars)")
+                # Rewrite asset paths BEFORE extracting head/body so <link>/<script>
+                # src/href point through the proxy instead of bare /web/assets/...
+                raw_html = self._rewrite_static_paths(
+                    raw_html,
+                    proxy_prefix=f"/pt/admin/{seg}",
+                    base_origin=upstream_origin,
+                )
+                raw_html = self._rewrite_web_paths_for_display_shell(raw_html, seg=seg)
                 m = re.search(
                     r"<head[^>]*>(.*?)</head>",
                     raw_html,
