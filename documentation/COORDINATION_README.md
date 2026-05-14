@@ -991,3 +991,47 @@ Odoo SSO is fully working. Auto-login fires, session cookie is set, browser navi
 - `mysite/settings.py`
 - `dose/migrations/0048_remove_passthroughendpoint_trigger_path.py`
 - `documentation/BINGO_Tenant_Provisioning_Schema_Fixes.md`
+
+---
+
+## 2026-05-15 (Morning — Condo) — Mattermost Provisioning + Login Bridge BINGO ✅
+
+**Status**: ✅ COMPLETE — Mattermost tenant provisioning works end-to-end; login bridge pre-fills both fields; redirect loop fixed
+**Branch**: `main`
+
+### What Was Fixed
+1. **Mattermost admin token bypassing `sm()`** → `_get_admin_token()` now reads from `settings.MATTERMOST_ADMIN_TOKEN` (uses `sm()` → Secret Manager or `.env`) instead of direct `os.environ.get()`
+2. **`trigger_path` references in `signals.py`** → replaced all remaining `trigger_path` with `slug` for `PassThroughEndpoint` lookups
+3. **Expired PAT on Mattermost server** → regenerated fresh Personal Access Token as System Admin (Ollie account); updated `.env` and Secret Manager; set `$env:MATTERMOST_ADMIN_TOKEN` in PowerShell session
+4. **Login bridge redirect loop** → after bridge XHR login success, redirect to `base()` (root path) instead of `/channels/town-square` directly. Root handler validates token via `augment_outbound_headers` + server-side check, then redirects to `/channels/town-square` properly.
+
+### Verified Working
+- `polysaast21` tenant subscribed → Mattermost team `polysaast21-team` created on Mattermost server
+- Mattermost user `pst21` created with password pre-filled in login bridge
+- Login bridge shows both email (`pst21@you.com`) and password pre-filled
+- "Success! Loading..." displayed after auto-login
+
+### Pending / Follow-ups
+| Priority | Task |
+|----------|------|
+| 1 | **Test redirect fix on office machine** — pull latest `main`, activate venv, run server, switch to t21, click Mattermost. Should auto-login and land on Town Square without looping. |
+| 2 | **Verify font controls + bell icons** remain visible after passthrough display (sidebar CSS fix from previous session) |
+| 3 | **Re-authenticate gcloud** on condo machine when back — `gcloud auth application-default login` (ADC expired, causing Secret Manager retries) |
+| 4 | **Fix Nextcloud provisioner 404** — verify instance URL |
+| 5 | **Fix Odoo passthrough client asset loading error** (`owl lifecycle`) |
+
+### Files Changed
+- `dose/services/mattermost_tenant_provisioner.py` (token via settings, debug logging, search_path fix)
+- `dose/signals.py` (trigger_path → slug)
+- `dose/passthrough/handlers/mattermost_handler.py` (redirect loop fix: root path instead of /channels/town-square)
+- `dose/templates/admin/includes/custom_sidebar.html` (Font Awesome icon CSS override)
+
+### Office Machine Setup
+```powershell
+cd F:\PolySaaS
+git pull origin main
+.\venv\scripts\activate
+$env:MATTERMOST_ADMIN_TOKEN = "<paste_new_token_here>"
+python manage.py runserver
+```
+Then: switch to **POLYSAAS TEST 21** → click **Mattermost** → verify auto-login → Town Square.
