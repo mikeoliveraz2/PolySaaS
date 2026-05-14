@@ -202,12 +202,12 @@ STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 # --- AI as Peers (Mattermost bot integration) ---
 MATTERMOST_URL = sm('mattermost-url', 'MATTERMOST_URL', 'http://localhost:8065')
 MATTERMOST_ADMIN_TOKEN = sm('mattermost-admin-token', 'MATTERMOST_ADMIN_TOKEN')
-POLYSAAS_APP_ADMIN_PASSWORD = env('POLYSAAS_APP_ADMIN_PASSWORD', default='PolySaaS2026!')
+POLYSAAS_APP_ADMIN_PASSWORD = sm('polysaas-app-admin-password', 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
-ODOO_SHARED_URL = env('ODOO_SHARED_URL', default='https://polysaas-odoo2.onrender.com')
-ODOO_SHARED_DB = env('ODOO_SHARED_DB', default='odoodb')
-ODOO_SHARED_ADMIN_LOGIN = env('ODOO_SHARED_ADMIN_LOGIN', default='odooAdmin')
+ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoodb')
+ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
