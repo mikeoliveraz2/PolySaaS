@@ -318,7 +318,7 @@ class InstructionAdmin(TenantAwareModelAdmin):
 
 class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     list_display = ('get_menu_title', 'provider', 'endpoint_url', 'show_in_menu', 'is_enabled', 'debug_button', 'created_at')
-    search_fields = ('provider', 'endpoint_url', 'description', 'menu_title', 'slug', 'trigger_path')
+    search_fields = ('provider', 'endpoint_url', 'description', 'menu_title', 'slug')
     list_filter = ('provider', 'show_in_menu', 'is_enabled', 'integration_mode')
     change_form_template = 'admin/dose/passthroughendpoint/change_form.html'
 
@@ -403,8 +403,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             print(f"[AUTO-FIX] Error checking/adding columns: {e}")
 
         # Filter to only show endpoints the tenant has subscribed to.
-        # Use only('id', 'trigger_path') — these two columns have always existed,
-        # so this evaluation never triggers a missing-column error.
+        # Use only('id', 'endpoint_url') — these columns have always existed.
         try:
             from dose.models import TenantApp
             from dose.utils import get_current_tenant
@@ -420,14 +419,17 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
                 ).values_list('app_name', flat=True)
             ) if _tenant else set()
 
-            def _visible(trigger_path):
-                # Normalise: last path segment, lowercase, hyphens→underscores
-                n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-                return n == 'gmail' or n in _subscribed
+            def _visible(endpoint_url):
+                # Extract hostname from endpoint_url for matching
+                from urllib.parse import urlparse
+                host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+                return 'gmail' in host or any(
+                    app in host for app in _subscribed
+                )
 
             visible_ids = [
-                ep.id for ep in qs.only('id', 'trigger_path')
-                if _visible(ep.trigger_path)
+                ep.id for ep in qs.only('id', 'endpoint_url')
+                if _visible(ep.endpoint_url)
             ]
             qs = qs.filter(id__in=visible_ids)
         except Exception as e:
@@ -457,10 +459,10 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
 
     fieldsets = [
         ('Endpoint Configuration', {
-            'fields': ('provider', 'endpoint_url', 'trigger_path', 'slug', 'is_enabled'),
+            'fields': ('provider', 'endpoint_url', 'slug', 'is_enabled'),
             'description': (
-                '<strong>Trigger path:</strong> URL segment for passthrough only '
-                '(<code>/pt/admin/&lt;trigger&gt;/…</code>). '
+                '<strong>Endpoint URL:</strong> hostname becomes the passthrough path '
+                '(<code>/pt/admin/&lt;hostname&gt;/…</code>). '
                 '<strong>Slug:</strong> optional separate id for non-passthrough use (menus, internal links); '
                 'leave blank if you do not need it.'
             ),

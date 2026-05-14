@@ -417,14 +417,29 @@ def passthrough_embed_view(request, trigger):
     embed_body = ""
     debug_info = {}  # collect debug info for the banner
 
-    # PICOLLO PASSO: Direct URL passthrough — no DB lookup needed
-    # trigger is the hostname from the URL path: /pt/admin/polysaas-odoo2.onrender.com/
-    # Strip /pt/admin/ prefix, prepend https://
+    # trigger is either a hostname (polysaas-odoo2.onrender.com) or a short name (odoo).
+    # When it's a hostname, construct URL directly. When it's a short name, look up
+    # the real endpoint_url from the tenant's PassThroughEndpoint record.
     target_host = trigger.strip('/')
-    endpoint_url = f"https://{target_host}"
+    if '.' in target_host:
+        endpoint_url = f"https://{target_host}"
+    else:
+        # Short trigger — lookup from DB
+        endpoint_url = f"https://{target_host}"  # fallback
+        try:
+            from dose.models import PassThroughEndpoint
+            ep = PassThroughEndpoint.objects.filter(
+                trigger_path__iexact=target_host, is_enabled=True
+            ).order_by('-id').first()
+            if ep and ep.endpoint_url:
+                endpoint_url = ep.endpoint_url
+                target_host = ep.endpoint_url.replace('https://','').replace('http://','').split('/')[0]
+        except Exception as _ep_exc:
+            print(f"[EMBED-DEBUG] PassThroughEndpoint lookup failed: {_ep_exc}")
 
     debug_info['endpoint_url'] = endpoint_url
     debug_info['fetch_url'] = endpoint_url.rstrip('/') + '/'
+    print(f"[EMBED-DEBUG] Resolved endpoint_url: {endpoint_url}")
 
     # Create a minimal endpoint-like object for handler compatibility
     class SimpleEndpoint:

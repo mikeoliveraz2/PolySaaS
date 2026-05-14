@@ -39,28 +39,20 @@ def direct_service_view(request, endpoint_id):
         from django.http import HttpResponseBadRequest
         return HttpResponseBadRequest("Endpoint URL is required")
 
-    if not endpoint.trigger_path:
-        from django.http import HttpResponseBadRequest
-        return HttpResponseBadRequest("Trigger path is required. Please configure the trigger path in the PassThrough Endpoint admin.")
-
-    # Build the proper passthrough URL based on trigger_path
-    # The middleware will handle requests to this path
-    trigger = endpoint.trigger_path.strip('/')
-
-    # If trigger_path contains slashes, use it as-is
-    # Otherwise, default to /dose/{trigger}/ for regular users or /admin/{trigger}/ for admin
-    if '/' in trigger:
-        passthrough_url = f'/{trigger}/'
-    else:
-        # Simple name - default to /dose/{trigger}/ (middleware handles both /dose/ and /admin/)
-        passthrough_url = f'/dose/{trigger}/'
+    # NOTE: trigger_path removed from model. URL built from endpoint_url hostname.
+    # Build the proper passthrough URL: /pt/admin/{hostname}/
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url).netloc
+        passthrough_url = f'/pt/admin/{host}/'
+    except:
+        passthrough_url = '/pt/admin/'
 
     # Debug logging
     logger.info(f"[DIRECT_SERVICE] Endpoint ID: {endpoint_id}, redirecting to: {passthrough_url}")
     print(f"[DIRECT_SERVICE] Endpoint ID: {endpoint_id}", flush=True)
-    print(f"[DIRECT_SERVICE] Trigger path: {endpoint.trigger_path}", flush=True)
+    print(f"[DIRECT_SERVICE] Endpoint URL: {endpoint.endpoint_url}", flush=True)
     print(f"[DIRECT_SERVICE] Redirecting to: {passthrough_url}", flush=True)
-    print(f"[DIRECT_SERVICE] Middleware will handle passthrough to: {endpoint.endpoint_url}", flush=True)
 
     # Redirect to the middleware passthrough route
     return redirect(passthrough_url)

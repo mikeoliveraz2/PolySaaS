@@ -29,7 +29,7 @@ class PassThroughEndpoint(models.Model):
     is_enabled = models.BooleanField(default=True, help_text="Enable or disable passthrough for this endpoint")
     bypass_middleware = models.BooleanField(
         default=False,
-        help_text="If True, this trigger_path will NOT be processed by passthrough middleware (use for dedicated views like Gmail that handle their own routing)"
+        help_text="If True, this endpoint will NOT be processed by passthrough middleware (use for dedicated views like Gmail that handle their own routing)"
     )
     starting_uri = models.CharField(
         max_length=500,
@@ -47,14 +47,14 @@ class PassThroughEndpoint(models.Model):
     endpoint_url = models.CharField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online or http://service-name:80 for internal Docker)")
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
-    trigger_path = models.CharField(max_length=200, blank=True, default="", help_text="One word, no slashes please", verbose_name="Trigger Word")
+    # NOTE: trigger_path removed. endpoint_url hostname is now the URL segment.
+    # No DB lookup needed — /pt/admin/{hostname}/ forwards directly.
     slug = models.CharField(
         max_length=100,
         blank=True,
         default="",
         help_text=(
             "Optional identifier for non–passthrough features (menus, links, other Django code). "
-            "Distinct from trigger_path, which is the URL segment for /pt/admin/<trigger>/ only. "
             "Leave blank if unused."
         ),
     )
@@ -155,11 +155,6 @@ class PassThroughEndpoint(models.Model):
         elif self.description:
             return self.description
         else:
-            # Extract a reasonable title from trigger_path or URL
-            if self.trigger_path:
-                path_parts = self.trigger_path.strip('/').split('/')
-                if len(path_parts) >= 2:
-                    return path_parts[-1].replace('-', ' ').replace('_', ' ').title()
             # Fallback to domain from URL
             try:
                 from urllib.parse import urlparse
@@ -170,47 +165,32 @@ class PassThroughEndpoint(models.Model):
                 return "External Service"
 
     def get_menu_url(self):
-        """Get the URL to use for the menu item"""
-        return self.trigger_path or "/"
+        """Get the URL to use for the menu item — derived from endpoint_url hostname"""
+        if not self.endpoint_url:
+            return "/"
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(self.endpoint_url).netloc
+            return f"/pt/admin/{host}/" if host else "/"
+        except:
+            return "/"
 
     def clean(self):
         """Validate the model fields"""
         from django.core.exceptions import ValidationError
         errors = {}
 
-        # Validate trigger_path format
-        # Allow:
-        #   - Simple names without slashes: 'gmail', 'meets' (middleware adds /dose/ or /admin/ prefix dynamically)
-        #   - Full paths: '/dose/gmail/', '/admin/nextcloud/' (explicit routing)
-        if self.trigger_path:
-            trigger = self.trigger_path.strip().strip('/')
-
-            # If trigger contains slashes, normalize and validate it's a proper structure
-            if '/' in trigger:
-                # Multi-part path like 'dose/gmail' or 'admin/nextcloud' - auto-prefix with /
-                if not trigger.startswith('dose/') and not trigger.startswith('admin/'):
-                    errors['trigger_path'] = "Path-based triggers must start with 'dose/' or 'admin/'. Use simple names like 'gmail' for dynamic routing."
-                # Normalize to have / prefix
-                self.trigger_path = '/' + trigger + '/'
-            else:
-                # Simple name - just store as-is, middleware will handle prefixing
-                self.trigger_path = trigger
-
-        # Validate menu fields when show_in_menu is enabled
+        # NOTE: trigger_path removed. endpoint_url hostname is the URL segment.
+        # Validate endpoint_url is present for menu items
         if self.show_in_menu:
-            if not self.trigger_path:
-                errors['trigger_path'] = "Trigger path is required when 'Show in menu' is enabled"
+            if not self.endpoint_url:
+                errors['endpoint_url'] = "Endpoint URL is required when 'Show in menu' is enabled"
 
         if errors:
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-        """Override save to run validation and formatting"""
-        # Ensure trigger_path ends with / only if it's a full path (contains slashes)
-        if self.trigger_path and '/' in self.trigger_path:
-            if not self.trigger_path.endswith('/'):
-                self.trigger_path = self.trigger_path.rstrip('/') + '/'
-
+        """Override save to run validation"""
         # Run model validation
         self.full_clean()
 

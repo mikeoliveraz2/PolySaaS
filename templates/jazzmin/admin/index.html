@@ -170,8 +170,10 @@
             <div class="ps-app-cards" id="ps-dashboard-apps">
                 {% for ep in request.passthrough_endpoints %}
                     {% if ep.show_in_menu and ep.menu_title %}
+                        {# APPROVED BY USER: link goes directly to /pt/admin/{hostname}/ — no trigger_path, no embed view #}
                         {% with app_slug=ep.trigger_path|default:''|lower|cut:'/'|cut:'pt'|cut:'admin'|cut:'_' %}
-                        <a href="/admin/passthrough-embed/{{ app_slug }}/" class="ps-app-card"
+                        {% with hostname=ep.endpoint_url|default:''|cut:'https://'|cut:'http://'|cut:'/' %}
+                        <a href="/pt/admin/{{ hostname }}/" class="ps-app-card"
                            title="{{ ep.description|default:ep.menu_title }}">
                             <div class="ps-app-logo {% if app_slug in 'odoo,mattermost,nextcloud,dolibarr,wordpress,liferay' %}ps-app-logo-img{% else %}{{ app_slug|default:'generic' }}{% endif %}">
                                 {% if app_slug == 'odoo' %}
@@ -192,7 +194,8 @@
                             </div>
                             <span class="ps-app-label">{{ ep.menu_title }}</span>
                         </a>
-                        {% endwith %}
+                        {% endwith %}{# hostname #}
+                        {% endwith %}{# app_slug #}
                     {% endif %}
                 {% endfor %}
             </div>

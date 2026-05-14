@@ -1,7 +1,7 @@
 """
 Base class for endpoint-specific passthrough handlers (Shela / Michael pattern).
 
-- **trigger_path** on PassThroughEndpoint defines the /pt/admin/<trigger>/ URL segment only.
+- **endpoint_url** hostname becomes the /pt/admin/<hostname>/ URL segment.
 - **slug** is optional and separate; use it for non-passthrough identifiers when set.
 
 Handlers that need shared helpers can subclass PassthroughHandlerBase. The legacy
@@ -22,17 +22,26 @@ logger = logging.getLogger(__name__)
 
 
 def proxy_prefix_for_trigger_endpoint(endpoint: PassThroughEndpoint) -> str:
-    """Build /pt/admin/<segment>/ from trigger_path (not slug)."""
-    raw = (endpoint.trigger_path or "").strip("/").lower().split("/")[-1].replace("-", "_")
-    return f"/pt/admin/{raw}"
+    """Build /pt/admin/<segment>/ from endpoint_url hostname."""
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url or "").netloc
+        return f"/pt/admin/{host}/" if host else "/pt/admin/"
+    except:
+        return "/pt/admin/"
 
 
 def endpoint_log_label(endpoint: PassThroughEndpoint) -> str:
-    """Prefer slug for logs when set; otherwise trigger_path."""
+    """Prefer slug for logs when set; otherwise endpoint_url hostname."""
     s = (getattr(endpoint, "slug", None) or "").strip()
     if s:
         return s
-    return (endpoint.trigger_path or "").strip() or "endpoint"
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url or "").netloc
+        return host or "endpoint"
+    except:
+        return "endpoint"
 
 
 class PassthroughHandlerBase:

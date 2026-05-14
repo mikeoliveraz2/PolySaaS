@@ -661,33 +661,35 @@ def _build_landing_page_context(request):
     except Exception:
         _subscribed = set()
 
-    def _endpoint_visible(trigger_path):
-        n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-        return n == 'gmail' or n in _subscribed
+    def _endpoint_visible(endpoint_url):
+        from urllib.parse import urlparse
+        host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+        return 'gmail' in host or any(app in host for app in _subscribed)
 
     passthrough_endpoints = [
         ep for ep in PassThroughEndpoint.objects.filter(
             is_enabled=True,
             show_in_menu=True,
         ).order_by('menu_sort_order', 'id')
-        if _endpoint_visible(ep.trigger_path)
+        if _endpoint_visible(ep.endpoint_url)
     ]
 
     passthrough_services = []
     external_services = []
-    seen_normalized = set()
+    seen_hostnames = set()
     for endpoint in passthrough_endpoints:
-        norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-        if norm in seen_normalized:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url).netloc.lower()
+        if host in seen_hostnames:
             continue
-        seen_normalized.add(norm)
+        seen_hostnames.add(host)
 
-        title = endpoint.menu_title or norm.replace('_', ' ').title()
+        title = endpoint.menu_title or host.split('.')[0].replace('-', ' ').title()
         passthrough_services.append({
             'id': f"pt_{endpoint.id}",
             'title': title,
-            'trigger': norm,
-            'url': f'/pt/dose/{norm}/',
+            'trigger': host,
+            'url': f'/pt/admin/{host}/',
             'icon': endpoint.menu_icon or '🔗',
             'description': endpoint.description or f"Access {title}"
         })
@@ -756,23 +758,17 @@ def _build_landing_page_context(request):
 
 
 def _resolve_landing_passthrough_endpoint(trigger):
+    """NOTE: trigger is now a hostname (e.g. polysaas-odoo2.onrender.com).
+    Lookup by endpoint_url hostname match."""
     from dose.models import PassThroughEndpoint
+    from urllib.parse import urlparse
 
-    endpoint = PassThroughEndpoint.objects.filter(
-        trigger_path__iexact=trigger,
-        is_enabled=True,
-    ).order_by('-id').first()
-    if endpoint is None and '_' in trigger:
-        endpoint = PassThroughEndpoint.objects.filter(
-            trigger_path__iexact=trigger.replace('_', ''),
-            is_enabled=True,
-        ).order_by('-id').first()
-    if endpoint is None:
-        for candidate in PassThroughEndpoint.objects.filter(is_enabled=True).order_by('-id'):
-            norm = candidate.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-            if norm == trigger:
-                return candidate
-    return endpoint
+    trigger_lower = trigger.lower().replace('-', '_')
+    for candidate in PassThroughEndpoint.objects.filter(is_enabled=True).order_by('-id'):
+        host = urlparse(candidate.endpoint_url or '').netloc.lower().replace('-', '_')
+        if host == trigger_lower or trigger_lower in host:
+            return candidate
+    return None
 
 
 def _retarget_passthrough_prefixes_for_dose(html, trigger):
