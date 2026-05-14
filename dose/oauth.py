@@ -86,7 +86,7 @@ if OAuth2Validator is not None:
 def get_redirect_uri(app_name, tenant_schema):
     """Return the expected OAuth2 redirect URI for a given app type."""
     base_urls = {
-        'mattermost': 'https://mm.polysaas.online',
+        'mattermost': 'https://polysaas-mattermost.onrender.com',
         'odoo': 'https://odoo.polysaas.online',
         'nextcloud': 'https://nextcloud.polysaas.online',
         'liferay': 'https://liferay.polysaas.online',

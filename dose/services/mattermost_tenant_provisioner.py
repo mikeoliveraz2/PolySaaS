@@ -36,7 +36,7 @@ def _get_mattermost_base_url() -> str:
         or str(getattr(settings, "MATTERMOST_URL", "") or "").strip()
     ).rstrip("/")
     if not url:
-        return "https://mm.polysaas.online"
+        return "https://polysaas-mattermost.onrender.com"
     return url
 
 
@@ -174,13 +174,14 @@ def _configure_oidc(mm_url: str, headers: dict, client_id: str, client_secret: s
 def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, result: dict) -> None:
     try:
         from django.db import connection
+        from urllib.parse import urlparse
         from dose.models import PassThroughEndpoint
+        hostname = urlparse(mm_url).netloc
         with connection.cursor() as cursor:
             cursor.execute(f'SET search_path TO "{tenant_schema}"')
             _, created = PassThroughEndpoint.objects.update_or_create(
-                trigger_path='mattermost',
+                endpoint_url=mm_url,
                 defaults={
-                    'endpoint_url': mm_url,
                     'description': 'Mattermost Team Chat - tenant-specific team',
                     'is_enabled': True,
                     'passthrough_type': 'scraper',

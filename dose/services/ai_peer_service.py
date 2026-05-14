@@ -22,7 +22,7 @@ PEER_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 
 def _mm_url():
-    return getattr(settings, 'MATTERMOST_URL', 'https://mm.polysaas.online').rstrip('/')
+    return getattr(settings, 'MATTERMOST_URL', 'https://polysaas-mattermost.onrender.com').rstrip('/')
 
 
 def _mm_headers(token: str) -> dict:
