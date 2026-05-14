@@ -417,7 +417,7 @@
         }
         var P = '{{ display_odoo_pt_prefix|escapejs }}';
         console.log('[PolySaaS Odoo DEBUG] Shim started - P =', P);
-        console.log('[PolySaaS Odoo DEBUG] Initial fetch path being used:', 'check network for first /pt/admin/odoo/ request');
+        console.log('[PolySaaS Odoo DEBUG] Initial fetch path being used: check network for first', P + '/ request');
         function fix(u) {
             console.log('[PolySaaS Odoo DEBUG] fix() called with url:', u);
             if (typeof u !== 'string' || !u) return u;
