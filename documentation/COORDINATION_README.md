@@ -4,6 +4,59 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-14 (Morning — Condo) — Cloud SQL Live ✅ + Secrets Uploaded to GCP ✅
+
+**Status**: ✅ COMPLETE — Cloud SQL migrated, superuser created, all 37 secrets in Secret Manager  
+**Branch**: `main`
+
+### What Was Done
+- Fixed `dosedbadmin` password in GCP Console (was set wrong at office — now `PolySaaS2026!`)
+- Fixed condo `.env`: `DOSE_DB_PASSWORD=PolySaaS2026!`, `DB_HOST=8.230.100.97`, `DB_PORT=5432`
+- Ran `python manage.py migrate` → **107 migrations applied clean to Cloud SQL** (public schema)
+- Created Django superuser: `dosedbadmin@polysaas.online` on Cloud SQL (0 tenants — fresh start)
+- Installed Google Cloud CLI to `F:\gcloud\Google\Cloud SDK\`
+- Installed `google-cloud-secret-manager` into venv
+- Created `upload_env_to_secret_manager.py` one-time utility script
+- Authenticated via `gcloud auth application-default login`
+- **Uploaded all 37 `.env` secrets to GCP Secret Manager** (`project=application-integration-4524`)
+
+### Secrets Now in Secret Manager (all 37)
+Key secrets include: `django-secret-key`, `dose-db-password`, `db-host`, `db-port`,
+`stripe-*` keys, `xai-api-key`, `gemini-api-key`, `anthropic-api-key`,
+`mattermost-admin-token`, `bot-token-supergrok`, `bot-token-gem`, `bot-token-cc`,
+`ai-peers-webhook-token`, `mattermost-url`, `redis-url`, all Stripe price IDs.
+
+### Next Steps (Office)
+1. **Hook Django into Secret Manager** — replace `.env` reads with Secret Manager calls
+   - Pattern: `secretmanager.SecretManagerServiceClient().access_secret_version(name=...)`
+   - Or use `django-environ` + a startup loader that pulls from SM into `os.environ`
+2. **Install Google Cloud CLI on office desktop** (`F:\gcloud` or `C:\gcloud`)
+   - Run `gcloud auth application-default login`
+   - Run `python upload_env_to_secret_manager.py --dry-run` to verify (then skip — already uploaded)
+3. **Lock down Cloud SQL IP whitelist** — GCP Console → Cloud SQL → Authorized Networks
+   - Replace `0.0.0.0/0` with office IP `/32` + condo IP `142.111.152.39/32`
+4. **Install and test Cloud Pub/Sub**
+   - `pip install google-cloud-pubsub`
+   - Create topic + subscription in GCP Console
+   - Write a small test publisher/subscriber
+5. **Fix Mattermost bot listener token** — add to `.env`:
+   ```
+   MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch
+   ```
+   Then: `python manage.py run_mattermost_bot`
+
+### Cloud SQL Reference
+| Item | Value |
+|------|-------|
+| Project | `application-integration-4524` |
+| Instance | `free-trial-first-project` |
+| Public IP | `8.230.100.97:5432` |
+| DB | `dosedbsaas` |
+| User | `dosedbadmin` |
+| Password | `PolySaaS2026!` |
+
+---
+
 ## 2026-05-13 (Evening — Office) — Cloud SQL Connected ✅ Restore In Progress
 
 **Status**: ⚠️ IN PROGRESS — Cloud SQL live, pg_dump running, restore pending  
