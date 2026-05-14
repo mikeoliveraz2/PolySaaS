@@ -49,7 +49,7 @@ class Command(BaseCommand):
                 'direction': 'REQ',
                 'eventKey': 'polysaas.odoo.invoice.created',
                 'executescript': 'EndpointDataExtractorService',
-                'description': 'Detect Odoo invoice create via passthrough → extract & publish to GCP Pub/Sub odoo-invoices',
+                'description': 'Detect Odoo invoice create via passthrough -> extract & publish to GCP Pub/Sub odoo-invoices',
                 'save_callbackdata': True,
             },
         ]
@@ -78,8 +78,8 @@ class Command(BaseCommand):
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(
                 '\nDone. Global default Instructions are now active in public schema.\n'
-                '  Flow: Odoo invoice save → PolySniffer → EndpointDataExtractorService\n'
-                '        → GCP Pub/Sub topic: odoo-invoices\n'
+                '  Flow: Odoo invoice save -> PolySniffer -> EndpointDataExtractorService\n'
+                '        -> GCP Pub/Sub topic: odoo-invoices\n'
                 '\n'
                 '  All tenants inherit this by default.\n'
                 '  Tenants can override by creating a tenant-scoped Instruction\n'
