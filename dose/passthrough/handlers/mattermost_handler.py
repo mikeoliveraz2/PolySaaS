@@ -38,22 +38,14 @@ class MattermostPassthroughHandler:
                            INLINE (no redirect to /login — that caused the loop).
         All non-root paths return None immediately so the forwarder handles them.
         """
-        print(f"[MM HANDLER] Called with path={request.path_info}, method={request.method}, trigger={url_trigger_segment}")
         if request.method != "GET":
-            print(f"[MM HANDLER] Not GET, returning None")
             return None
         trigger = url_trigger_segment.strip("/")
         proxy_prefix = f"/pt/admin/{trigger}"
-        print(f"[MM HANDLER] trigger={trigger}, proxy_prefix={proxy_prefix}")
 
-        # Intercept root OR /login path for SSO. Everything else (channels, api, …)
-        # is forwarded to Mattermost directly.
-        current_path = request.path_info.rstrip("/")
-        is_root = current_path == proxy_prefix
-        is_login = current_path == f"{proxy_prefix}/login"
-        print(f"[MM HANDLER] current_path={current_path}, is_root={is_root}, is_login={is_login}")
-        if not (is_root or is_login):
-            print(f"[MM HANDLER] Not root or login, returning None")
+        # Only intercept the exact root. Everything else (channels, api, login, …)
+        # is forwarded to Mattermost directly — no /login intercept here.
+        if request.path_info.rstrip("/") != proxy_prefix:
             return None
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
@@ -102,7 +94,6 @@ class MattermostPassthroughHandler:
 
         if sso_token:
             print(f"[MM SSO] Server-side token obtained ({sso_token[:8]}...) — cookie + redirect")
-            # Redirect to town-square regardless of whether we came from root or /login
             resp = HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
             resp.set_cookie(
                 'MMAUTHTOKEN', sso_token,
@@ -201,11 +192,6 @@ class MattermostPassthroughHandler:
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
-                try {{
-                    var n = parseInt(localStorage.getItem('MM_LOGIN_ATTEMPTS') || '0', 10) + 1;
-                    localStorage.setItem('MM_LOGIN_ATTEMPTS', String(n));
-                    localStorage.setItem('MM_LOGIN_TS', String(Date.now()));
-                }} catch (e) {{}}
                 setStatus('Success! Loading...');
                 window.location.replace(base() + '/channels/town-square');
                 return;
@@ -224,28 +210,11 @@ class MattermostPassthroughHandler:
 
     document.addEventListener('DOMContentLoaded', function () {{
         $('btn').addEventListener('click', doLogin);
-        var lastTs = 0;
-        try {{ lastTs = parseInt(sessionStorage.getItem('MM_LOGIN_TS') || '0', 10); }} catch (e) {{}}
-        var bouncedBack = lastTs && (Date.now() - lastTs < 60000);
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
-                    ' pwd=' + ($('pwd').value ? 'yes' : 'no') + ' bounced=' + bouncedBack);
-
-        if (bouncedBack) {{
-            // We just successfully logged in <8s ago and are back on the bridge.
-            // That means Mattermost rejected the token after redirect — auto-submitting
-            // again would just loop. Stop and surface the problem.
-            try {{ sessionStorage.removeItem('MM_LOGIN_TS'); }} catch (e) {{}}
-            try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch (e) {{}}
-            try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch (e) {{}}
-            document.cookie = 'MMAUTHTOKEN=; path=/; max-age=0';
-            setStatus('Login succeeded but Mattermost rejected the session. Open the browser Network tab and look for the first 401 response.', true);
-            return;
+                    ' pwd=' + ($('pwd').value ? 'yes' : 'no'));
+        if ($('lid').value && $('pwd').value) {{
+            setTimeout(doLogin, 300);
         }}
-
-        // Auto-submit DISABLED for debugging
-        // if ($('lid').value && $('pwd').value) {{
-        //     setTimeout(doLogin, 300);
-        // }}
     }});
 }})();
 </script>
@@ -256,13 +225,10 @@ class MattermostPassthroughHandler:
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
         # Embed inside the PolySaaS admin template (sidebar + content area).
-        print(f"[MM LoginBridge] About to wrap in admin template...")
         try:
             from dose.passthrough.middleware import _wrap_in_admin_template
             resp = _wrap_in_admin_template(request, resp, trigger, endpoint)
-            print(f"[MM LoginBridge] Wrap succeeded, response length: {len(resp.content)}")
         except Exception as exc:
-            print(f"[MM LoginBridge] Wrap FAILED: {exc}")
             logger.warning("[MM LoginBridge] Admin template wrap failed: %s", exc)
 
         return resp
@@ -565,8 +531,7 @@ class MattermostPassthroughHandler:
                 extra_config.get('mm_url') or
                 extra_config.get('mattermost_url') or
                 extra_config.get('mm_origin') or
-                _ep_url or
-                'https://polysaas-mattermost.onrender.com'  # HARDCODED FALLBACK
+                _ep_url
             ).rstrip('/')
             print(f"[MM_AUTH] mm_origin: {mm_origin}")
             resp = _req.post(
@@ -881,15 +846,17 @@ class MattermostPassthroughHandler:
     window.WebSocket = function(url, protocols) {{
         if (typeof url === 'string') {{
             try {{
+                // Route WebSocket DIRECTLY to the Mattermost server — never through the
+                // WSGI proxy (which cannot handle protocol upgrades and causes the
+                // "Mattermost unreachable" red banner).
+                var mmOrigin = new URL(B);
                 var u = new URL(url, location.href);
-                u.hostname = location.hostname;
-                u.port = location.port || '';
-                u.protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-                if (!u.pathname.startsWith('/pt/')) {{
-                    u.pathname = PROXY + u.pathname;
-                }}
+                u.hostname = mmOrigin.hostname;
+                u.port = mmOrigin.port || '';
+                u.protocol = 'wss:';
+                // Keep the path as-is (e.g. /api/v4/websocket) — no PROXY prefix.
                 url = u.toString();
-                console.log('[PolySaaS Mattermost] WebSocket via proxy:', url);
+                console.log('[PolySaaS Mattermost] WebSocket direct to MM server:', url);
             }} catch (e) {{ console.warn('[PolySaaS Mattermost] WebSocket rewrite:', e); }}
         }}
         if (protocols !== undefined) return new _WS(url, protocols);

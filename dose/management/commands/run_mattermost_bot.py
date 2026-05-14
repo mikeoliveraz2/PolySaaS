@@ -41,12 +41,14 @@ class Command(BaseCommand):
         max_retries = options['max_retries']
         attempt = 0
 
-        self.stdout.write(self.style.SUCCESS('🤖 Starting PolySaaS Mattermost Bot…'))
+        self.stdout.write(self.style.SUCCESS(
+            '🤖 Starting PolySaaS AI Peers Bot (@grok | @gemini | @windsurf | @anyone)…'
+        ))
 
         while True:
             try:
-                from dose.mattermost_bot.bot import PolySaaSMattermostBot
-                bot = PolySaaSMattermostBot()
+                from dose.mattermost_bot.bot import PolySaaSAIPeersBot
+                bot = PolySaaSAIPeersBot()
                 bot.start()   # blocks on WebSocket until disconnect
             except KeyboardInterrupt:
                 self.stdout.write(self.style.WARNING('\n⛔ Bot stopped by user.'))

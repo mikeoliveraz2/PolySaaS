@@ -557,11 +557,11 @@ ASGI_APPLICATION = 'mysite.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend for session-based tenancy
-        'NAME': 'dosedbsaas',
-        'USER': 'dosedbadmin',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env('DB_NAME', default='dosedbsaas'),
+        'USER': env('DB_USER', default='dosedbadmin'),
         'PASSWORD': env('DOSE_DB_PASSWORD', default='PolySaaS2026!'),
-        'HOST': 'localhost',
+        'HOST': env('DB_HOST', default='localhost'),
         'PORT': env('DB_PORT', default='5433'),
     }
 }
@@ -601,7 +601,24 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 #DEEPSEEK API KEY:sk-f3130e89988f405c9937cd6ccc350851
 DEEPSEEK_API_KEY = "sk-f3130e89988f405c9937cd6ccc350851"
 
+# --- Mattermost AI Peers Bot ---
+MATTERMOST_URL = os.environ.get("MATTERMOST_URL", "https://polysaas-mattermost.onrender.com")
+MATTERMOST_BOT_TOKEN = os.environ.get("MATTERMOST_BOT_TOKEN", "")
+MATTERMOST_ADMIN_TOKEN = os.environ.get("MATTERMOST_ADMIN_TOKEN", "")
 
+# Per-peer Mattermost bot account tokens (each bot posts under its own identity)
+BOT_TOKEN_SUPERGROK = os.environ.get("BOT_TOKEN_SUPERGROK", "")  # @supergrok (Grok / xAI)
+BOT_TOKEN_GEM = os.environ.get("BOT_TOKEN_GEM", "")              # @gem (Gemini / Google)
+BOT_TOKEN_CC = os.environ.get("BOT_TOKEN_CC", "")                # @cc (Cursor Claude / Anthropic)
+BOT_TOKEN_WSC = os.environ.get("BOT_TOKEN_WSC", "")              # @wsc (Windsurf Claude)
+BOT_TOKEN_KIMI = os.environ.get("BOT_TOKEN_KIMI", "")            # @kimi (Moonshot Kimi)
+
+# LLM API keys
+XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")      # used by both CC and WSC
+WINDSURF_API_KEY = os.environ.get("WINDSURF_API_KEY", "")
+KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "")
 
 TIME_ZONE = 'Asia/Manila'
 
@@ -679,6 +696,12 @@ DEFAULT_FROM_EMAIL = 'Dose2 <mo.gsssol@gmail.com>'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'mm_simple': {
+            'format': '%(asctime)s %(message)s',
+            'datefmt': '%H:%M:%S',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
@@ -693,8 +716,19 @@ LOGGING = {
             'class': 'logging.FileHandler',
             'filename': './info.log',
         },
+        'mm_debug_file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': './mm_debug.log',
+            'formatter': 'mm_simple',
+        },
     },
     'loggers': {
+        'mm_debug': {
+            'handlers': ['mm_debug_file', 'console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         'django': {
             'handlers': ['console', 'file', 'info_file'],
             'level': 'INFO',

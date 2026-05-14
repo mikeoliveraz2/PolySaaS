@@ -4,6 +4,175 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-14 (Morning — Condo) — Cloud SQL Live ✅ + Secrets Uploaded to GCP ✅
+
+**Status**: ✅ COMPLETE — Cloud SQL migrated, superuser created, all 37 secrets in Secret Manager  
+**Branch**: `main`
+
+### What Was Done
+- Fixed `dosedbadmin` password in GCP Console (was set wrong at office — now `PolySaaS2026!`)
+- Fixed condo `.env`: `DOSE_DB_PASSWORD=PolySaaS2026!`, `DB_HOST=8.230.100.97`, `DB_PORT=5432`
+- Ran `python manage.py migrate` → **107 migrations applied clean to Cloud SQL** (public schema)
+- Created Django superuser: `dosedbadmin@polysaas.online` on Cloud SQL (0 tenants — fresh start)
+- Installed Google Cloud CLI to `F:\gcloud\Google\Cloud SDK\`
+- Installed `google-cloud-secret-manager` into venv
+- Created `upload_env_to_secret_manager.py` one-time utility script
+- Authenticated via `gcloud auth application-default login`
+- **Uploaded all 37 `.env` secrets to GCP Secret Manager** (`project=application-integration-4524`)
+
+### Secrets Now in Secret Manager (all 37)
+Key secrets include: `django-secret-key`, `dose-db-password`, `db-host`, `db-port`,
+`stripe-*` keys, `xai-api-key`, `gemini-api-key`, `anthropic-api-key`,
+`mattermost-admin-token`, `bot-token-supergrok`, `bot-token-gem`, `bot-token-cc`,
+`ai-peers-webhook-token`, `mattermost-url`, `redis-url`, all Stripe price IDs.
+
+### Next Steps (Office)
+1. **Hook Django into Secret Manager** — replace `.env` reads with Secret Manager calls
+   - Pattern: `secretmanager.SecretManagerServiceClient().access_secret_version(name=...)`
+   - Or use `django-environ` + a startup loader that pulls from SM into `os.environ`
+2. **Install Google Cloud CLI on office desktop** (`F:\gcloud` or `C:\gcloud`)
+   - Run `gcloud auth application-default login`
+   - Run `python upload_env_to_secret_manager.py --dry-run` to verify (then skip — already uploaded)
+3. **Lock down Cloud SQL IP whitelist** — GCP Console → Cloud SQL → Authorized Networks
+   - Replace `0.0.0.0/0` with office IP `/32` + condo IP `142.111.152.39/32`
+4. **Install and test Cloud Pub/Sub**
+   - `pip install google-cloud-pubsub`
+   - Create topic + subscription in GCP Console
+   - Write a small test publisher/subscriber
+5. **Fix Mattermost bot listener token** — add to `.env`:
+   ```
+   MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch
+   ```
+   Then: `python manage.py run_mattermost_bot`
+
+### Cloud SQL Reference
+| Item | Value |
+|------|-------|
+| Project | `application-integration-4524` |
+| Instance | `free-trial-first-project` |
+| Public IP | `8.230.100.97:5432` |
+| DB | `dosedbsaas` |
+| User | `dosedbadmin` |
+| Password | `PolySaaS2026!` |
+
+---
+
+## 2026-05-13 (Evening — Office) — Cloud SQL Connected ✅ Restore In Progress
+
+**Status**: ⚠️ IN PROGRESS — Cloud SQL live, pg_dump running, restore pending  
+**Branch**: `main`
+
+### What Was Done
+- GCP Project: `application-integration-4524`
+- Cloud SQL instance: `free-trial-first-project` (PostgreSQL 18, us-south1)
+- Connection name: `application-integration-4524:us-south1:free-trial-first-project`
+- Public IP: `8.230.100.97`, Port: `5432`
+- DB: `dosedbsaas`, User: `dosedbadmin`, Password: `PolySaaS2026!`
+- `settings.py` updated — DB connection fully env-var driven (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`)
+- Added to `.env`: `DB_HOST=8.230.100.97`, `DB_PORT=5432`
+- Authorized networks: `0.0.0.0/0` (temporary — lock down after restore)
+- `python manage.py migrate` ran clean → public schema + olient migrated OK
+- **pg_dump from local `localhost:5433` in progress via pgAdmin** (Custom format, file: `dosedbsaas_backup.dump`)
+
+### Next Steps (Morning)
+1. **Restore the dump to Cloud SQL** — pgAdmin → Cloud SQL server (`8.230.100.97:5432`) → right-click `dosedbsaas` → Restore → select `dosedbsaas_backup.dump`
+2. Test app against Cloud SQL: `python manage.py runserver`
+3. Fix Mattermost bot listener token: add `MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch` to `.env`
+4. Lock down Cloud SQL IP whitelist — replace `0.0.0.0/0` with `142.111.152.39/32`
+5. Add API keys to `.env` for CC bot: `ANTHROPIC_API_KEY=<key>`
+
+---
+
+## 2026-05-13 (Morning — Condo, Session 2) — AI Peers Bot Build ⚠️ Needs Token Fix
+
+**Status**: ⚠️ IN PROGRESS — bot built, connects to correct URL, blocked on invalid listener token  
+**Branch**: `main`
+
+### What Was Built
+- Full 5-peer AI roster: `@grok` (supergrok/xAI), `@gemini` (gem/Google), `@cc` (Cursor Claude/Anthropic), `@wsc` (Windsurf Claude), `@kimi` (Moonshot)
+- `dose/mattermost_bot/routers/` package: `grok_router.py`, `gemini_router.py`, `cc_router.py`, `wsc_router.py`, `kimi_router.py`
+- `bot.py` rewritten: peer table, real bot token posting (each peer posts under its own MM account), `@anyone` = all active peers, echo protection, urlparse URL fix
+- `mysite/settings.py`: all bot tokens + API keys added (`BOT_TOKEN_SUPERGROK`, `BOT_TOKEN_GEM`, `BOT_TOKEN_CC`, `BOT_TOKEN_WSC`, `BOT_TOKEN_KIMI`, `XAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `KIMI_API_KEY`)
+- Shela's system prompt incorporated into grok_router.py
+
+### Keys in .env (already set)
+- `XAI_API_KEY` ✅
+- `GEMINI_API_KEY` ✅
+- `MATTERMOST_URL=https://polysaas-mattermost.onrender.com` ✅
+- `BOT_TOKEN_SUPERGROK`, `BOT_TOKEN_GEM`, `BOT_TOKEN_CC` ✅
+
+### Blocker — Listener Token Expired
+- `MATTERMOST_ADMIN_TOKEN=h4wd46ha8fbc7kdanzsi1w8zye` → "Invalid or expired session"
+- **Fix at office — add this line to `.env`:**
+  ```
+  MATTERMOST_BOT_TOKEN=tfbzbw69pjg33cedaegg99hqch
+  ```
+  (This is the `condotest` PAT — already created, still valid)
+- Once added, run:
+  ```
+  git pull
+  .\venv\scripts\activate
+  python manage.py run_mattermost_bot
+  ```
+- Test with: post `@grok what is PolySaaS?` in Town Square — supergrok should reply
+
+### Next Steps
+1. Fix listener token in .env at office
+2. Test bot end-to-end (grok + gemini)
+3. Add `ANTHROPIC_API_KEY` to .env for CC/WSC
+4. `polysaasot` tenant PAT still pending
+
+---
+
+## 2026-05-13 (Morning — Condo) — Mattermost SSO + WebSocket BINGO ✅
+
+**Status**: ✅ COMPLETE — merged to `main`  
+**Branch**: `fix/mattermost-sso-restore` → `main`
+
+### What Was Fixed
+- Straight in, no login form, no loop, full channels view renders, no WebSocket banner
+- Root cause 1: `mattermost_handler.py` had auto-submit disabled + false-positive bounce detector from debug session
+- Root cause 2: WebSocket shim was routing `wss://` through the WSGI proxy (can't handle upgrades) — fixed to go direct to Mattermost server
+- Root cause 3: `passthrough_embed.html` had 129 lines of CSS containment rules that hid the channel view
+- Render env vars: `MM_SERVICESETTINGS_WEBSOCKETURL`, `ALLOWCORSFROM`, `CORSALLOWCREDENTIALS` added
+
+### Files Changed
+- `dose/passthrough/handlers/mattermost_handler.py` — restored + WebSocket shim fixed
+- `dose/templates/admin/passthrough_embed.html` — restored from checkpoint
+- `render.yaml` — WebSocket + CORS env vars
+- `documentation/BINGO_MATTERMOST_SSO_WEBSOCKET.md` — full BINGO doc
+
+### Next Steps
+1. Store PAT for `polysaasot` tenant in TenantApp extra_config (token: `condotest`)
+2. Nextcloud SSO
+
+---
+
+## 2026-05-12 (Evening — Office) — SSO Debug + Branch Preservation
+
+**Status**: ⚠️ IN PROGRESS — broken main preserved, working version branched off  
+**Branch**: `fix/mattermost-sso-restore` (use this), `checkpoint/2026-05-12-working` (frozen safe copy)
+
+### What Happened
+- `origin/main` was broken by debug changes during the day session:
+  - Auto-submit commented out in login bridge
+  - False-positive bounce detector blocked login
+  - Aggressive token clearing caused loop
+- Working version from this morning (commit `6664558`) preserved as `checkpoint/2026-05-12-working`
+- `fix/mattermost-sso-restore` branch created: `origin/main` + restored `mattermost_handler.py` from checkpoint
+
+### Pending Issues for Next Session
+1. **`polysaastmon` tenant (t20)** — Mattermost env var changes during the day may have broken provisioning; `polyt20@polysaas.online` shows no valid session
+2. **`fix/mattermost-sso-restore`** needs testing — if SSO works, merge to `main`
+3. **`main` is still broken** — do not deploy main until fix branch is verified
+
+### Next Session First Task
+1. Test `fix/mattermost-sso-restore` branch — confirm Town Square loads for `polysaast4`
+2. If working → merge to main, delete fix branch
+3. Investigate `polysaastmon` Mattermost provisioning (check env vars on Mattermost service)
+
+---
+
 ## 2026-05-11 (Morning — Office) — Mattermost SSO Verified Working ✅
 
 **Status**: ✅ COMPLETE  
