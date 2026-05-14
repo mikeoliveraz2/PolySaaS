@@ -1,0 +1,110 @@
+#!/usr/bin/env python
+"""
+Refresh Mattermost token for polysaast15 tenant.
+1. Clear invalid tokens from both schemas
+2. Login to Mattermost API to get fresh token
+3. Save new token to both schemas
+"""
+import os, django, json, requests
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+django.setup()
+
+from django.db import connection
+
+MM_URL = 'https://polysaas-mattermost.onrender.com'
+LOGIN_ID = 'polysaast15'
+PASSWORD = 'PolySaaS2026!'
+
+print("Step 1: Clearing invalid tokens from both schemas...")
+
+# Clear from public schema
+with connection.cursor() as c:
+    c.execute('SET search_path TO "public"')
+    c.execute("SELECT id, extra_config FROM dose_tenantapp WHERE app_name = 'mattermost' AND tenant_id = 'polysaast15'")
+    row = c.fetchone()
+    if row:
+        tid, cfg = row
+        cfg = json.loads(cfg) if isinstance(cfg, str) else (cfg or {})
+        # Remove token fields
+        for key in ['mmauthtoken', 'mm_session_token', 'mm_token', 'mmauthtoken_time', 'mm_session_token_time']:
+            cfg.pop(key, None)
+        c.execute("UPDATE dose_tenantapp SET extra_config = %s WHERE id = %s", [json.dumps(cfg), tid])
+        print(f"  Cleared tokens from public schema TenantApp ID {tid}")
+    connection.commit()
+
+# Clear from tenant schema  
+with connection.cursor() as c:
+    c.execute('SET search_path TO "polysaast15"')
+    c.execute("SELECT id, extra_config FROM dose_tenantapp WHERE app_name = 'mattermost'")
+    row = c.fetchone()
+    if row:
+        tid, cfg = row
+        cfg = json.loads(cfg) if isinstance(cfg, str) else (cfg or {})
+        for key in ['mmauthtoken', 'mm_session_token', 'mm_token', 'mmauthtoken_time', 'mm_session_token_time']:
+            cfg.pop(key, None)
+        c.execute("UPDATE dose_tenantapp SET extra_config = %s WHERE id = %s", [json.dumps(cfg), tid])
+        print(f"  Cleared tokens from polysaast15 schema TenantApp ID {tid}")
+    connection.commit()
+
+print("\nStep 2: Getting fresh token from Mattermost API...")
+
+try:
+    resp = requests.post(
+        f'{MM_URL}/api/v4/users/login',
+        json={'login_id': LOGIN_ID, 'password': PASSWORD},
+        timeout=10
+    )
+    print(f"  Login response status: {resp.status_code}")
+    
+    if resp.status_code == 200:
+        new_token = resp.headers.get('Token')
+        if new_token:
+            print(f"  Got new token: {new_token[:15]}...")
+        else:
+            print("  ERROR: No Token header in response!")
+            print(f"  Response body: {resp.text[:200]}")
+            exit(1)
+    else:
+        print(f"  ERROR: Login failed: {resp.text[:200]}")
+        exit(1)
+        
+except Exception as exc:
+    print(f"  ERROR: Login request failed: {exc}")
+    exit(1)
+
+print("\nStep 3: Saving new token to both schemas...")
+
+# Save to public schema
+with connection.cursor() as c:
+    c.execute('SET search_path TO "public"')
+    c.execute("SELECT id, extra_config FROM dose_tenantapp WHERE app_name = 'mattermost' AND tenant_id = 'polysaast15'")
+    row = c.fetchone()
+    if row:
+        tid, cfg = row
+        cfg = json.loads(cfg) if isinstance(cfg, str) else (cfg or {})
+        cfg['mmauthtoken'] = new_token
+        cfg['mmauthtoken_time'] = __import__('time').time()
+        cfg['mm_session_token'] = new_token
+        cfg['mm_session_token_time'] = __import__('time').time()
+        c.execute("UPDATE dose_tenantapp SET extra_config = %s WHERE id = %s", [json.dumps(cfg), tid])
+        print(f"  Saved to public schema TenantApp ID {tid}")
+    connection.commit()
+
+# Save to tenant schema
+with connection.cursor() as c:
+    c.execute('SET search_path TO "polysaast15"')
+    c.execute("SELECT id, extra_config FROM dose_tenantapp WHERE app_name = 'mattermost'")
+    row = c.fetchone()
+    if row:
+        tid, cfg = row
+        cfg = json.loads(cfg) if isinstance(cfg, str) else (cfg or {})
+        cfg['mmauthtoken'] = new_token
+        cfg['mmauthtoken_time'] = __import__('time').time()
+        cfg['mm_session_token'] = new_token
+        cfg['mm_session_token_time'] = __import__('time').time()
+        c.execute("UPDATE dose_tenantapp SET extra_config = %s WHERE id = %s", [json.dumps(cfg), tid])
+        print(f"  Saved to polysaast15 schema TenantApp ID {tid}")
+    connection.commit()
+
+print("\n✅ SUCCESS! New token saved to both schemas.")
+print("Refresh the page and test Mattermost - should work now!")
