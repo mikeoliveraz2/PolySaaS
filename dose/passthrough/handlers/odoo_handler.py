@@ -33,8 +33,9 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
     """
     u = upstream_subpath or ""
     # /web exact = Odoo app home after login redirect — must go through display shell, not be bypassed.
+    # /web/login = login form — must go through display shell for SSO credential injection.
     # /web/ subdpaths (assets, datasets, actions, binary, session) are API/asset calls → bypass.
-    if u.startswith("/web/"):
+    if u.startswith("/web/") and u != "/web/login":
         return True
     if u == "/website" or u.startswith("/website/"):
         return True
