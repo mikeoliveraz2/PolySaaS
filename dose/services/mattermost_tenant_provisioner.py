@@ -41,13 +41,9 @@ def _get_mattermost_base_url() -> str:
 
 
 def _get_admin_token() -> str:
-    """Retrieve Mattermost admin personal access token from env or settings."""
-    import os
-    token = os.environ.get(MATTERMOST_ADMIN_TOKEN_ENV, '')
-    if not token:
-        from django.conf import settings
-        token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
-    return token
+    """Retrieve Mattermost admin personal access token from settings (uses sm() → Secret Manager or .env)."""
+    from django.conf import settings
+    return getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
 
 
 def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: str, result: dict) -> Optional[str]:
@@ -178,23 +174,25 @@ def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, result: dict) 
         from dose.models import PassThroughEndpoint
         hostname = urlparse(mm_url).netloc
         with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant_schema}"')
-            _, created = PassThroughEndpoint.objects.update_or_create(
-                endpoint_url=mm_url,
-                defaults={
-                    'description': 'Mattermost Team Chat - tenant-specific team',
-                    'is_enabled': True,
-                    'passthrough_type': 'scraper',
-                    'integration_mode': 'web_api',
-                    'api_endpoint': f"{mm_url}/api/v4",
-                    'show_in_menu': True,
-                    'menu_title': 'Mattermost',
-                    'menu_icon': 'chat',
-                    'menu_sort_order': 25,
-                    'starting_uri': '/',
-                },
-            )
-            result['passthrough_endpoint_created' if created else 'passthrough_endpoint_updated'] = True
+            cursor.execute(f'SET search_path TO "{tenant_schema}", public')
+        _, created = PassThroughEndpoint.objects.update_or_create(
+            slug='mattermost',
+            defaults={
+                'name': 'Mattermost',
+                'endpoint_url': mm_url,
+                'description': 'Mattermost Team Chat - tenant-specific team',
+                'is_enabled': True,
+                'passthrough_type': 'scraper',
+                'integration_mode': 'web_api',
+                'api_endpoint': f"{mm_url}/api/v4",
+                'show_in_menu': True,
+                'menu_title': 'Mattermost',
+                'menu_icon': 'chat',
+                'menu_sort_order': 25,
+                'starting_uri': '/',
+            },
+        )
+        result['passthrough_endpoint_created' if created else 'passthrough_endpoint_updated'] = True
     except Exception as e:
         logger.warning("[MM-PROV] PassThroughEndpoint upsert failed: %s", e)
         result['passthrough_endpoint_error'] = str(e)
