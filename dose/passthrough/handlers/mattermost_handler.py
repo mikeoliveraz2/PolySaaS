@@ -111,24 +111,33 @@ class MattermostPassthroughHandler:
         from django.http import HttpResponse
         from html import escape as h
 
+        user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
         login_id = ""
         password = ""
         try:
             extra = self._get_tenantapp_extra_config(request) or {}
-            login_id = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                        extra.get('mattermost_username') or extra.get('login_id') or
-                        getattr(getattr(request, 'user', None), 'email', '') or '')
-            password = (extra.get('mattermost_password') or extra.get('mm_password') or
-                        extra.get('password') or '')
+            stored_login = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                           extra.get('mattermost_username') or extra.get('login_id') or '')
+            stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
+                          extra.get('password') or '')
+            # Only use stored credentials if they look like they belong to this user
+            if stored_login and stored_login.lower() in [user_email.lower(), user_email.split('@')[0].lower()]:
+                login_id = stored_login
+                password = stored_pass
+            else:
+                login_id = user_email
+                password = stored_pass  # May still work even if username is different
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
+            login_id = user_email
 
-        logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s",
-                    login_id, len(login_id or ''), bool(password))
+        logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s user_email=%r",
+                    login_id, len(login_id or ''), bool(password), user_email)
 
         # HTML-escape so a quote in the password can't break the value attribute.
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
+        user_email_js = json.dumps(user_email)
 
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>
@@ -210,9 +219,14 @@ class MattermostPassthroughHandler:
 
     document.addEventListener('DOMContentLoaded', function () {{
         $('btn').addEventListener('click', doLogin);
+        var userEmail = {user_email_js};
+        var lid = $('lid').value.trim().toLowerCase();
+        var emailMatch = lid === userEmail.toLowerCase() ||
+                         lid === userEmail.split('@')[0].toLowerCase();
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
-                    ' pwd=' + ($('pwd').value ? 'yes' : 'no'));
-        if ($('lid').value && $('pwd').value) {{
+                    ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
+                    ' emailMatch=' + emailMatch);
+        if ($('lid').value && $('pwd').value && emailMatch) {{
             setTimeout(doLogin, 300);
         }}
     }});
