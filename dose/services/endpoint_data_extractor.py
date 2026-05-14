@@ -178,13 +178,35 @@ class EndpointDataExtractorService(AtomicServiceBase):
             logger.warning(f"[EndpointDataExtractor] Mapping engine error, falling back: {e}")
             return None, None, None, None, None
 
+    # Maps internal topic names → GCP Pub/Sub topic IDs
+    _GCP_TOPIC_MAP = {
+        'polysaas.odoo.invoice.created': 'odoo-invoices',
+        'polysaas.odoo.partner.created': 'polysaas-orchestration',
+        'polysaas.odoo.partner.updated': 'polysaas-orchestration',
+        'polysaas.mattermost.post.created': 'mattermost-events',
+        'polysaas.mattermost.user.created': 'mattermost-events',
+    }
+
     @staticmethod
     def _publish_to_pubsub(topic, message):
         """
-        Publish a message to the configured MQ provider (Pub/Sub or RabbitMQ).
-        Tries Pub/Sub first, falls back to RabbitMQ, then to local logging.
+        Publish a message to the configured MQ provider.
+        Tries GCP Pub/Sub (ADC) first, then MQConfig DB records, then in-process.
         """
         try:
+            # --- GCP Pub/Sub via ADC (primary path) ---
+            gcp_topic_id = EndpointDataExtractorService._GCP_TOPIC_MAP.get(topic)
+            if gcp_topic_id:
+                try:
+                    from dose.utils.pubsub import publish as gcp_publish
+                    msg_id = gcp_publish(gcp_topic_id, message, attributes={'source_topic': topic})
+                    if msg_id:
+                        logger.info(f"[EndpointDataExtractor] Published to GCP Pub/Sub {gcp_topic_id}: msg_id={msg_id}")
+                        return {"status": "published", "provider": "gcp_pubsub", "topic": gcp_topic_id, "message_id": msg_id}
+                    logger.warning(f"[EndpointDataExtractor] GCP Pub/Sub publish returned None for {gcp_topic_id}")
+                except Exception as gcp_exc:
+                    logger.warning(f"[EndpointDataExtractor] GCP Pub/Sub failed for {gcp_topic_id}: {gcp_exc}")
+
             from dose.models.mq_config import MQConfig
 
             # Try Google Pub/Sub first
