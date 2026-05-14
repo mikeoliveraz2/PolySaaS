@@ -218,6 +218,7 @@ def _store_credentials(tenant_app_id: int, mm_url: str, token: str, mm_user_id: 
             cfg['mm_user_id'] = mm_user_id
         if username:
             cfg['mm_login_id'] = username
+            cfg['mattermost_login_id'] = username
             cfg['mattermost_username'] = username
         if password:
             cfg['mm_password'] = password

@@ -116,7 +116,7 @@ class MattermostPassthroughHandler:
         try:
             extra = self._get_tenantapp_extra_config(request) or {}
             login_id = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                        extra.get('login_id') or
+                        extra.get('mattermost_username') or extra.get('login_id') or
                         getattr(getattr(request, 'user', None), 'email', '') or '')
             password = (extra.get('mattermost_password') or extra.get('mm_password') or
                         extra.get('password') or '')
@@ -514,6 +514,7 @@ class MattermostPassthroughHandler:
 
             login_id = (extra_config.get('mattermost_login_id') or 
                         extra_config.get('mm_login_id') or
+                        extra_config.get('mattermost_username') or
                         request.user.email)
             print(f"[MM_AUTH] login_id: {login_id}")
 
@@ -636,10 +637,11 @@ class MattermostPassthroughHandler:
         password = ""
         try:
             extra = self._get_tenantapp_extra_config(request) or {}
-            login_id = (extra.get('mattermost_login_id') or
-                        extra.get('login_id') or
+            login_id = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                        extra.get('mattermost_username') or extra.get('login_id') or
                         getattr(getattr(request, 'user', None), 'email', '') or '')
-            password = (extra.get('mattermost_password') or extra.get('password') or '')
+            password = (extra.get('mattermost_password') or extra.get('mm_password') or
+                        extra.get('password') or '')
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
 
