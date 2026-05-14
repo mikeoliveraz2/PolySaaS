@@ -46,11 +46,11 @@ def apply_incoming_path_rewrites(request) -> None:
             if fn(request, endpoint):
                 logger.debug(
                     "incoming_path_rewrite: %s handler rewrote to %s",
-                    endpoint.trigger_path,
+                    endpoint.slug,
                     request.path_info,
                 )
                 return
         except Exception:
             logger.exception(
-                "incoming_path_rewrite failed for endpoint %s", endpoint.trigger_path
+                "incoming_path_rewrite failed for endpoint %s", endpoint.slug
             )

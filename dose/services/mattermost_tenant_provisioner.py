@@ -292,10 +292,12 @@ def provision_mattermost_tenant(
     }
 
     try:
+        _ensure_passthrough_endpoint(tenant_schema, mm_url, result)
+
         team_id = _create_team(mm_url, headers, tenant_schema, display_name, result)
         if not team_id:
             result['success'] = False
-            result['error'] = 'Team creation failed'
+            result['error'] = 'Team creation failed (endpoint still created)'
             return result
 
         user_id = _create_user(mm_url, headers, admin_email, username, admin_password, result)
@@ -307,8 +309,6 @@ def provision_mattermost_tenant(
         oidc_enabled = False
         if oauth_client_id and oauth_client_secret:
             oidc_enabled = _configure_oidc(mm_url, headers, oauth_client_id, oauth_client_secret, result)
-
-        _ensure_passthrough_endpoint(tenant_schema, mm_url, result)
 
         _store_credentials(
             tenant_app_id, mm_url, token, user_id or '',

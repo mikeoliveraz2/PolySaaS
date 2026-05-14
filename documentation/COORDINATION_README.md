@@ -953,3 +953,41 @@ Odoo SSO is fully working. Auto-login fires, session cookie is set, browser navi
 
 ### Next Session First Task
 - Nextcloud SSO
+
+---
+
+## 2026-05-15 (Early Morning — Condo) — Tenant Provisioning + Schema Migration BINGO ✅
+
+**Status**: ✅ COMPLETE — tenant schema migrations synchronous, passthrough sidebar immediate, Secret Manager fail-fast
+**Branch**: `main`
+
+### What Was Fixed
+1. **Tenant schema empty at provision time** → `_register_provisioning_synchronous` now runs Django's original `MigrateCommand` on the tenant schema after DB commit and before any provisioner
+2. **Secret Manager startup hang** → added `timeout=3.0` + `retry=None` + marks client unavailable on auth failure; falls back to `.env` immediately
+3. **`trigger_path` → `slug` field removal incomplete** → created migration `0048_remove_passthroughendpoint_trigger_path.py`; updated Odoo/Nextcloud provisioners and passthrough registry/path-rewrite to use `slug`
+4. **Mattermost provisioning sidebar gap** → moved `_ensure_passthrough_endpoint` before early-exit on team failure so sidebar entry always created
+5. **Custom migrate command recursion** → invoke Django's original `MigrateCommand` class directly instead of `call_command('migrate')`
+
+### Verified Working
+- `polysaast14` tenant created with subscription → Odoo and NextCloud passthrough icons appear immediately in sidebar
+- Server starts within seconds (no Secret Manager hang)
+
+### Pending / Follow-ups
+| Priority | Task |
+|----------|------|
+| 1 | **Fix Mattermost provisioner silent failure** — endpoint not created at all; provisioner appears to hang/crash before `_ensure_passthrough_endpoint` runs |
+| 2 | Fix Odoo passthrough client asset loading error (`owl lifecycle`) |
+| 3 | Fix Nextcloud provisioner 404 — verify instance URL |
+| 4 | Update `MATTERMOST_ADMIN_TOKEN` in `.env` (expired, causes 401) |
+
+### Files Changed
+- `dose/subscription_views.py`
+- `dose/utils/secret_manager.py`
+- `dose/services/odoo_tenant_provisioner.py`
+- `dose/services/nextcloud_tenant_provisioner.py`
+- `dose/services/mattermost_tenant_provisioner.py`
+- `dose/passthrough/handlers/registry.py`
+- `dose/passthrough/incoming_path_rewrite.py`
+- `mysite/settings.py`
+- `dose/migrations/0048_remove_passthroughendpoint_trigger_path.py`
+- `documentation/BINGO_Tenant_Provisioning_Schema_Fixes.md`

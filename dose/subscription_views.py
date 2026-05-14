@@ -352,15 +352,18 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     selected_apps=selected_apps,
                 )
 
-                if not test_bypass:
-                    self._register_provisioning_on_commit(data, tenant_slug, user_obj)
-
         except Exception:
             if not test_bypass:
                 _compensate_stripe(stripe_subscription_id, stripe_customer_id)
             raise
 
-        # ── Phase 4: (Demo flow: do NOT auto-login so user sees prefilled login page)
+        # ── Phase 4: Provision synchronously AFTER transaction commits
+        # so the tenant schema exists, but BEFORE the response returns
+        # so the user sees sidebar entries immediately.
+        if tenant_slug:
+            self._register_provisioning_synchronous(data, tenant_slug, user_obj)
+
+        # ── Phase 5: (Demo flow: do NOT auto-login so user sees prefilled login page)
         # Credentials are passed via sessionStorage by the subscribe page JS.
         # if user_obj:
         #     login(request, user_obj)
@@ -381,17 +384,37 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         )
 
     # ------------------------------------------------------------------
-    # Celery provisioning — enqueued only after a successful DB commit
+    # Synchronous provisioning — runs after DB commit so schema exists,
+    # but before response returns so sidebar entries are visible immediately.
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _register_provisioning_on_commit(data, tenant_slug, user_obj):
-        """Register Celery tasks via on_commit so workers never see rolled-back data."""
+    def _register_provisioning_synchronous(data, tenant_slug, user_obj):
+        """Run provisioners inline after transaction commit."""
+        from dose.management.schema_utils import set_search_path_for_migrations
+
         tenant = Tenant.objects.get(slug=tenant_slug)
         tenant_pk = tenant.pk
         admin_email = user_obj.email if user_obj else data.get('email')
         base = dict(tenant_schema=tenant.schema_name, tenant_name=tenant.name,
                     admin_email=admin_email, company_name=tenant.name)
+
+        # ── Migrate new tenant schema so tables exist for provisioners ──
+        try:
+            print(f"\n{'='*60}")
+            print(f"[MIGRATE] Running migrations for schema={tenant.schema_name}")
+            set_search_path_for_migrations(tenant.schema_name)
+            # Use Django's original migrate command directly (bypass custom multi-schema override)
+            from django.core.management.commands.migrate import Command as MigrateCommand
+            from io import StringIO
+            out = StringIO()
+            cmd = MigrateCommand(stdout=out, stderr=out, no_color=True)
+            cmd.handle(verbosity=0, run_syncdb=True)
+            print(f"[MIGRATE] Done for schema={tenant.schema_name}")
+            print(f"{'='*60}\n")
+        except Exception as e:
+            print(f"[MIGRATE-ERROR] {e}")
+            logger.warning("Tenant schema migration failed for %s: %s", tenant.schema_name, e)
 
         provisioners = [
             ('enable_odoo', provision_odoo_tenant),
@@ -432,26 +455,23 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
 
-            # Mattermost is provisioned synchronously (no Celery) so the team
-            # and user exist by the time the browser loads the chat URL.
+            # All provisioning is synchronous for the demo so sidebar entries
+            # appear immediately after subscription.
             if app_key == 'enable_mattermost':
-                mm_kwargs = dict(kwargs)
-                mm_kwargs['admin_username'] = user_obj.username if user_obj else ''
-                mm_kwargs['admin_password'] = data.get('password') or ''
-                def _run_mm_sync(kw=mm_kwargs):
-                    try:
-                        result = provision_mattermost_tenant(**kw)
-                        if not result.get('success'):
-                            logger.warning("[MM-PROV] inline provisioning returned failure: %s", result.get('error'))
-                    except Exception as exc:
-                        logger.error("[MM-PROV] inline provisioning crashed: %s", exc, exc_info=True)
-                transaction.on_commit(_run_mm_sync)
-                continue
+                kwargs['admin_username'] = user_obj.username if user_obj else ''
+                kwargs['admin_password'] = data.get('password') or ''
 
-            def _safe_enqueue(task=provisioner, kw=dict(kwargs), key=app_key):
-                try:
-                    task.delay(**kw)
-                except Exception as exc:
-                    logger.error("Celery enqueue for %s failed (broker down?): %s", key, exc)
-
-            transaction.on_commit(_safe_enqueue)
+            print(f"\n{'='*60}")
+            print(f"[PROVISION-START] {app_key} for tenant_schema={kwargs['tenant_schema']}")
+            print(f"{'='*60}")
+            try:
+                result = provisioner(**kwargs)
+                print(f"[PROVISION-DONE] {app_key}: success={result.get('success')} error={result.get('error')}")
+                if not result.get('success'):
+                    logger.warning("[PROVISION] %s returned failure: %s", app_key, result.get('error'))
+            except Exception as exc:
+                print(f"[PROVISION-CRASH] {app_key}: {exc}")
+                logger.error("[PROVISION] %s crashed: %s", app_key, exc, exc_info=True)
+            import time
+            time.sleep(5)
+            print(f"{'='*60}\n")

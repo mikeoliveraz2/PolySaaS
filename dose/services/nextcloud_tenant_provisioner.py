@@ -129,7 +129,7 @@ def provision_nextcloud_tenant(
         with connection.cursor() as cursor:
             cursor.execute(f'SET search_path TO "{tenant_schema}", public')
         PassThroughEndpoint.objects.update_or_create(
-            trigger_path='nextcloud',
+            slug='nextcloud',
             defaults={
                 'endpoint_url': nextcloud_url,
                 'description': f'NextCloud File Storage for {company_name or tenant_name}',

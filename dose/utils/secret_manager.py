@@ -22,14 +22,12 @@ def _get_client():
         return None
     try:
         from google.cloud import secretmanager
+        from google.auth.exceptions import DefaultCredentialsError
         _client = secretmanager.SecretManagerServiceClient()
         return _client
-    except ImportError:
-        logger.debug("google-cloud-secret-manager not installed")
+    except (ImportError, DefaultCredentialsError, Exception) as e:
+        logger.debug("Secret Manager client unavailable: %s", e)
         _client_unavailable = True
-        return None
-    except Exception as e:
-        logger.debug(f"Failed to create Secret Manager client: {e}")
         return None
 
 
@@ -50,12 +48,18 @@ def get_secret(secret_id: str, env_fallback: Optional[str] = None,
     if client:
         try:
             name = f"projects/{project}/secrets/{secret_id}/versions/latest"
-            response = client.access_secret_version(request={"name": name})
+            response = client.access_secret_version(
+                request={"name": name},
+                timeout=3.0,
+                retry=None,
+            )
             value = response.payload.data.decode("UTF-8").strip()
             _secret_cache[cache_key] = value
             return value
         except Exception as e:
-            logger.debug(f"Secret Manager lookup failed for '{secret_id}': {e}")
+            logger.debug("Secret Manager lookup failed for '%s': %s", secret_id, e)
+            global _client_unavailable
+            _client_unavailable = True
 
     if env_fallback:
         value = os.environ.get(env_fallback, '').strip()

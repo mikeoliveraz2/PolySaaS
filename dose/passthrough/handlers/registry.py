@@ -149,7 +149,7 @@ def get_handler_for_endpoint(endpoint, request=None):
     """
     Returns the correct handler instance based on trigger_path
     """
-    trigger_path = endpoint.trigger_path or ""
+    trigger_path = endpoint.slug or ""
     for spec in iter_bundled_handler_specs():
         try:
             if spec["matches"](trigger_path):

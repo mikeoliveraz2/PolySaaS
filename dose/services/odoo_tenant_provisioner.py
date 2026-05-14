@@ -148,7 +148,7 @@ def provision_odoo_tenant(
         with connection.cursor() as cursor:
             cursor.execute(f'SET search_path TO "{tenant_schema}", public')
         PassThroughEndpoint.objects.update_or_create(
-            trigger_path='odoo',
+            slug='odoo',
             defaults={
                 'endpoint_url': odoo_url,
                 'description': f'Odoo ERP for {company_name or tenant_name}',

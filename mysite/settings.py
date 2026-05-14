@@ -201,7 +201,7 @@ STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 
 # --- AI as Peers (Mattermost bot integration) ---
 MATTERMOST_URL = sm('mattermost-url', 'MATTERMOST_URL', 'http://localhost:8065')
-MATTERMOST_ADMIN_TOKEN = sm('mattermost-admin-token', 'MATTERMOST_ADMIN_TOKEN')
+MATTERMOST_ADMIN_TOKEN = sm('MATTERMOST_ADMIN_TOKEN', 'MATTERMOST_ADMIN_TOKEN') or sm('mattermost-admin-token', 'MATTERMOST_ADMIN_TOKEN')
 POLYSAAS_APP_ADMIN_PASSWORD = sm('polysaas-app-admin-password', 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
