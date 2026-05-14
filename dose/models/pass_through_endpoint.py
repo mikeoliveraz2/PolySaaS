@@ -29,7 +29,7 @@ class PassThroughEndpoint(models.Model):
     is_enabled = models.BooleanField(default=True, help_text="Enable or disable passthrough for this endpoint")
     bypass_middleware = models.BooleanField(
         default=False,
-        help_text="If True, this trigger_path will NOT be processed by passthrough middleware (use for dedicated views like Gmail that handle their own routing)"
+        help_text="If True, this endpoint will NOT be processed by passthrough middleware (use for dedicated views like Gmail that handle their own routing)"
     )
     starting_uri = models.CharField(
         max_length=500,
@@ -47,14 +47,14 @@ class PassThroughEndpoint(models.Model):
     endpoint_url = models.CharField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online or http://service-name:80 for internal Docker)")
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
-    trigger_path = models.CharField(max_length=200, blank=True, default="", help_text="One word, no slashes please", verbose_name="Trigger Word")
+    # NOTE: trigger_path removed. endpoint_url hostname is now the URL segment.
+    # No DB lookup needed — /pt/admin/{hostname}/ forwards directly.
     slug = models.CharField(
         max_length=100,
         blank=True,
         default="",
         help_text=(
             "Optional identifier for non–passthrough features (menus, links, other Django code). "
-            "Distinct from trigger_path, which is the URL segment for /pt/admin/<trigger>/ only. "
             "Leave blank if unused."
         ),
     )
@@ -155,11 +155,6 @@ class PassThroughEndpoint(models.Model):
         elif self.description:
             return self.description
         else:
-            # Extract a reasonable title from trigger_path or URL
-            if self.trigger_path:
-                path_parts = self.trigger_path.strip('/').split('/')
-                if len(path_parts) >= 2:
-                    return path_parts[-1].replace('-', ' ').replace('_', ' ').title()
             # Fallback to domain from URL
             try:
                 from urllib.parse import urlparse
@@ -170,8 +165,15 @@ class PassThroughEndpoint(models.Model):
                 return "External Service"
 
     def get_menu_url(self):
-        """Get the URL to use for the menu item"""
-        return self.trigger_path or "/"
+        """Get the URL to use for the menu item — derived from endpoint_url hostname"""
+        if not self.endpoint_url:
+            return "/"
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(self.endpoint_url).netloc
+            return f"/pt/admin/{host}/" if host else "/"
+        except:
+            return "/"
 
     def clean(self):
         """Validate the model fields"""
