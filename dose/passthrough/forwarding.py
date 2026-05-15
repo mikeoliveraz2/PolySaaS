@@ -664,10 +664,15 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                 "Cache-Control",
                 "ETag",
                 "Last-Modified",
-                "Content-Disposition",
-                "Content-Language",
-                "X-Requested-With",
+                "X-Frame-Options",
+                "X-Content-Type-Options",
+                "X-XSS-Protection",
+                "Referrer-Policy",
+                "Content-Security-Policy",
+                "Strict-Transport-Security",
                 "Token",       # Mattermost login response — SPA reads this to get the session token
+                "X-Version-Id",   # Mattermost SPA version check
+                "X-Request-Id",   # Mattermost request tracking
             )
             if body_rewritten:
                 _copy_headers = tuple(h for h in _copy_headers if h != "ETag")

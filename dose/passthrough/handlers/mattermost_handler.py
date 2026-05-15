@@ -53,6 +53,46 @@ class MattermostPassthroughHandler:
             team_name = "polysaasdevteam"
         return team_name
 
+    _cors_patched = False  # class-level flag: only patch once per process
+
+    def _ensure_cors_allowed(self, request, mm_origin, token):
+        """Patch Mattermost's AllowCorsFrom once per process so WebSocket connections succeed."""
+        if MattermostPassthroughHandler._cors_patched:
+            return
+        try:
+            import requests as _req
+            polysaas_origin = f"https://{request.get_host()}"
+            # Get current config
+            cfg_resp = _req.get(
+                f'{mm_origin}/api/v4/config',
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=10,
+            )
+            if cfg_resp.status_code != 200:
+                print(f"[MM CORS] Cannot fetch config: {cfg_resp.status_code}")
+                return
+            cfg = cfg_resp.json()
+            current = cfg.get('ServiceSettings', {}).get('AllowCorsFrom', '') or ''
+            if polysaas_origin in current:
+                print(f"[MM CORS] Already allowed: {current}")
+                MattermostPassthroughHandler._cors_patched = True
+                return
+            new_val = f"{current},{polysaas_origin}" if current else polysaas_origin
+            patch = {'ServiceSettings': {'AllowCorsFrom': new_val}}
+            patch_resp = _req.put(
+                f'{mm_origin}/api/v4/config/patch',
+                json=patch,
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=10,
+            )
+            if patch_resp.status_code == 200:
+                print(f"[MM CORS] Patched AllowCorsFrom -> {new_val}")
+                MattermostPassthroughHandler._cors_patched = True
+            else:
+                print(f"[MM CORS] Patch failed: {patch_resp.status_code} {patch_resp.text[:200]}")
+        except Exception as exc:
+            print(f"[MM CORS] Error: {exc}")
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         Root-only intercept:
@@ -574,6 +614,14 @@ class MattermostPassthroughHandler:
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
             print(f'[MM_AUTH] Injected Authorization ({_src}, token={token[:8]}...) for {target_url}')
+            # Fire CORS patch once per process on first authenticated API call
+            if '/api/v4/' in (target_url or '') and not MattermostPassthroughHandler._cors_patched:
+                try:
+                    _ep = getattr(request, '_passthrough_endpoint', None)
+                    _ep_url = getattr(_ep, 'endpoint_url', None) or ''
+                    self._ensure_cors_allowed(request, _ep_url.rstrip('/'), token)
+                except Exception as exc:
+                    print(f'[MM CORS] Fire-and-forget error: {exc}')
         elif not token:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
 
@@ -902,25 +950,50 @@ class MattermostPassthroughHandler:
         }}
     }};
 
+    // WEBSOCKET HARDENING: After 5 rapid failures (< 2s each), return a silent stub
+    // to stop reconnect spam. Retries after 30s.
+    var _wsFailCount = 0;
+    var _wsFailTime = 0;
+    var _wsStubActive = false;
+    function _wsCheckFail() {{
+        var now = Date.now();
+        if (now - _wsFailTime > 2000) _wsFailCount = 0;
+        _wsFailCount++;
+        _wsFailTime = now;
+        if (_wsFailCount >= 5) {{
+            console.error('[PolySaaS MM] WebSocket loop breaker: 5 rapid failures, entering silent mode for 30s');
+            _wsStubActive = true;
+            setTimeout(function() {{ _wsStubActive = false; _wsFailCount = 0; console.log('[PolySaaS MM] WebSocket retry resumed'); }}, 30000);
+        }}
+    }}
+    function _wsSilentStub(url) {{
+        console.warn('[PolySaaS MM] WebSocket silent stub for:', url);
+        var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} };
+        setTimeout(function() {{ if (stub.onopen) stub.onopen(); }}, 0);
+        return stub;
+    }}
+
     var _WS = WebSocket;
     window.WebSocket = function(url, protocols) {{
+        if (_wsStubActive) return _wsSilentStub(url);
         if (typeof url === 'string') {{
             try {{
-                // Route WebSocket DIRECTLY to the Mattermost server — never through the
-                // WSGI proxy (which cannot handle protocol upgrades and causes the
-                // "Mattermost unreachable" red banner).
                 var mmOrigin = new URL(B);
                 var u = new URL(url, location.href);
                 u.hostname = mmOrigin.hostname;
                 u.port = mmOrigin.port || '';
                 u.protocol = 'wss:';
-                // Keep the path as-is (e.g. /api/v4/websocket) — no PROXY prefix.
                 url = u.toString();
                 console.log('[PolySaaS Mattermost] WebSocket direct to MM server:', url);
             }} catch (e) {{ console.warn('[PolySaaS Mattermost] WebSocket rewrite:', e); }}
         }}
-        if (protocols !== undefined) return new _WS(url, protocols);
-        return new _WS(url);
+        var ws = (protocols !== undefined) ? new _WS(url, protocols) : new _WS(url);
+        var origOnError = ws.onerror;
+        ws.onerror = function(ev) {{
+            _wsCheckFail();
+            if (origOnError) origOnError.call(ws, ev);
+        }};
+        return ws;
     }};
     if (_WS.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WS.CONNECTING;
     if (_WS.OPEN !== undefined) window.WebSocket.OPEN = _WS.OPEN;
