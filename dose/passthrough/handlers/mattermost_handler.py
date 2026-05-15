@@ -587,26 +587,23 @@ class MattermostPassthroughHandler:
             print('[MM_AUTH] Skipping login/logout path')
             return
         
-        # PRIORITY: Use server-cached token from TenantApp (verified and fresh)
-        # Browser cookie from request.COOKIES may be stale or from a different session
-        token = None
-        _src = 'none'
-        try:
-            extra_config = self._get_tenantapp_extra_config(request)
-            if extra_config:
-                token = (extra_config.get('mmauthtoken') or
-                         extra_config.get('mm_session_token') or
-                         extra_config.get('mm_token'))
-                if token:
-                    _src = 'server-cache'
-        except Exception as exc:
-            print(f'[MM_AUTH] Error getting cached token: {exc}')
+        # PRIORITY: Browser cookie first — always fresh after successful login bridge.
+        # Server cache may hold stale provisioning tokens or expired session tokens.
+        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        _src = 'browser-cookie' if token else 'none'
         
-        # Fallback to browser cookie only if no server token available
+        # Fallback to server cache if browser has no token (first visit)
         if not token:
-            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-            if token:
-                _src = 'browser-cookie'
+            try:
+                extra_config = self._get_tenantapp_extra_config(request)
+                if extra_config:
+                    token = (extra_config.get('mmauthtoken') or
+                             extra_config.get('mm_session_token') or
+                             extra_config.get('mm_token'))
+                    if token:
+                        _src = 'server-cache'
+            except Exception as exc:
+                print(f'[MM_AUTH] Error getting cached token: {exc}')
         
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
@@ -650,19 +647,19 @@ class MattermostPassthroughHandler:
         fetch/XHR/WebSocket → proxy, attribute/prototype patching (matches generated handler).
         Display shell must include network patches or API/WS stay on the admin origin → spinner.
         """
-        # Use the server's verified token (from get_upstream_cookies which validates it).
-        # Browser may have a stale/invalid token from a previous session - always trust server.
-        token = ""
-        try:
-            cookies = self.get_upstream_cookies(request) or {}
-            token = cookies.get("MMAUTHTOKEN") or ""
-        except Exception as exc:
-            logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
-        # Fallback to browser cookie only if server has no valid token
-        if not token:
-            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
-        logger.info("[MM Shim] token source=%s len=%d",
-                    'server' if token else 'none', len(token))
+        # Prefer browser cookie first — it's always fresh after login bridge succeeds.
+        # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
+        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+        if token:
+            logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
+        else:
+            # Fallback to server-side token if browser has none
+            try:
+                cookies = self.get_upstream_cookies(request) or {}
+                token = cookies.get("MMAUTHTOKEN") or ""
+                logger.info("[MM Shim] token from server, len=%d", len(token))
+            except Exception as exc:
+                logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
 
         login_id = ""
         password = ""
