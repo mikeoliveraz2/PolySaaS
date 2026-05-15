@@ -361,7 +361,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         # so the tenant schema exists, but BEFORE the response returns
         # so the user sees sidebar entries immediately.
         if tenant_slug:
-            self._register_provisioning_synchronous(data, tenant_slug, user_obj)
+            self._register_provisioning_synchronous(request, data, tenant_slug, user_obj)
 
         # ── Phase 5: (Demo flow: do NOT auto-login so user sees prefilled login page)
         # Credentials are passed via sessionStorage by the subscribe page JS.
@@ -389,8 +389,9 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _register_provisioning_synchronous(data, tenant_slug, user_obj):
-        """Run provisioners inline after transaction commit."""
+    def _register_provisioning_synchronous(request, data, tenant_slug, user_obj):
+        """Run provisioners inline after transaction commit; emit Django messages for user feedback."""
+        from django.contrib import messages
         from dose.management.schema_utils import set_search_path_for_migrations
 
         tenant = Tenant.objects.get(slug=tenant_slug)
@@ -461,17 +462,25 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 kwargs['admin_username'] = user_obj.username if user_obj else ''
                 kwargs['admin_password'] = data.get('password') or ''
 
+            app_display = app_key.replace('enable_', '').title()
+            messages.info(request, f"Provisioning {app_display}...")
             print(f"\n{'='*60}")
             print(f"[PROVISION-START] {app_key} for tenant_schema={kwargs['tenant_schema']}")
             print(f"{'='*60}")
+            result = None
             try:
                 result = provisioner(**kwargs)
                 print(f"[PROVISION-DONE] {app_key}: success={result.get('success')} error={result.get('error')}")
-                if not result.get('success'):
-                    logger.warning("[PROVISION] %s returned failure: %s", app_key, result.get('error'))
+                if result.get('success'):
+                    messages.success(request, f"{app_display} is ready!")
+                else:
+                    err = result.get('error', 'Unknown error')
+                    logger.warning("[PROVISION] %s returned failure: %s", app_key, err)
+                    messages.error(request, f"{app_display} provisioning failed: {err}")
             except Exception as exc:
                 print(f"[PROVISION-CRASH] {app_key}: {exc}")
                 logger.error("[PROVISION] %s crashed: %s", app_key, exc, exc_info=True)
+                messages.error(request, f"{app_display} provisioning crashed: {exc}")
             import time
             time.sleep(5)
             print(f"{'='*60}\n")
