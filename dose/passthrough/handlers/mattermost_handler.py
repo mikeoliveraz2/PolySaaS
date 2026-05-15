@@ -134,6 +134,16 @@ class MattermostPassthroughHandler:
         logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s user_email=%r",
                     login_id, len(login_id or ''), bool(password), user_email)
 
+        # Get team name for redirect after login
+        team_name = extra.get('mm_team_name', '') or extra.get('team_name', '') if 'extra' in dir() else ''
+        if not team_name:
+            try:
+                extra2 = self._get_tenantapp_extra_config(request) or {}
+                team_name = extra2.get('mm_team_name', '') or extra2.get('team_name', '')
+            except Exception:
+                pass
+        team_name_js = json.dumps(team_name)
+        
         # HTML-escape so a quote in the password can't break the value attribute.
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
@@ -170,6 +180,7 @@ class MattermostPassthroughHandler:
 </div>
 <script>
 (function () {{
+    var teamName = {team_name_js};
     function $(id) {{ return document.getElementById(id); }}
     function setStatus(msg, err) {{
         var s = $('status');
@@ -203,7 +214,9 @@ class MattermostPassthroughHandler:
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
-                window.location.replace(base() + '/channels/town-square');
+                var redirectPath = teamName ? '/' + teamName + '/channels/town-square' : '/channels/town-square';
+                console.log('[LoginBridge] redirecting to', redirectPath, 'teamName=', teamName);
+                window.location.replace(base() + redirectPath);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';

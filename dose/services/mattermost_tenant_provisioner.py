@@ -270,6 +270,7 @@ def _store_credentials(tenant_app_id: int, mm_url: str, token: str, mm_user_id: 
             cfg['mattermost_password'] = password
         if team_id:
             cfg['mm_team_id'] = team_id
+            cfg['mm_team_name'] = result.get('team_name', '')
         ta.extra_config = cfg
         ta.save(update_fields=['extra_config'])
         mark_tenant_app_active(ta, app_url=mm_url)
