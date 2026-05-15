@@ -182,21 +182,22 @@ class MattermostPassthroughHandler:
     function doLogin() {{
         var lid = $('lid').value.trim();
         var pwd = $('pwd').value;
+        console.log('[LoginBridge] doLogin called lid=' + lid + ' pwd_len=' + pwd.length);
         if (!lid || !pwd) {{ setStatus('Enter username and password.', true); return; }}
         $('btn').disabled = true;
         setStatus('Signing in...');
 
         var url = base().replace(/\/$/, '') + '/api/v4/users/login';
-        console.log('[LoginBridge] POST', url);
+        console.log('[LoginBridge] POST ' + url);
 
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.withCredentials = true;
         xhr.onload = function () {{
+            console.log('[LoginBridge] onload status=' + xhr.status);
             var token = xhr.getResponseHeader('Token');
-            console.log('[LoginBridge] status=' + xhr.status + ' token=' + (token ? 'yes' : 'no') +
-                        ' body=' + (xhr.responseText || '').slice(0, 300));
+            console.log('[LoginBridge] token=' + (token ? 'present' : 'MISSING'));
             if (xhr.status >= 200 && xhr.status < 300 && token) {{
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
@@ -207,26 +208,42 @@ class MattermostPassthroughHandler:
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
             try {{ var b = JSON.parse(xhr.responseText || '{{}}'); if (b.message) msg = b.message; }} catch (e) {{}}
+            console.log('[LoginBridge] fail msg=' + msg);
             $('btn').disabled = false;
             setStatus(msg, true);
         }};
         xhr.onerror = function () {{
+            console.log('[LoginBridge] onerror — network failure');
             $('btn').disabled = false;
-            setStatus('Network error.', true);
+            setStatus('Network error — check console.', true);
         }};
-        xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
+        xhr.onabort = function () {{
+            console.log('[LoginBridge] onabort');
+            $('btn').disabled = false;
+            setStatus('Request aborted.', true);
+        }};
+        xhr.ontimeout = function () {{
+            console.log('[LoginBridge] ontimeout');
+            $('btn').disabled = false;
+            setStatus('Request timed out.', true);
+        }};
+        try {{
+            xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
+            console.log('[LoginBridge] xhr.send() called');
+        }} catch (e) {{
+            console.log('[LoginBridge] xhr.send() threw: ' + e);
+            $('btn').disabled = false;
+            setStatus('Send error: ' + e.message, true);
+        }}
     }}
 
     document.addEventListener('DOMContentLoaded', function () {{
         $('btn').addEventListener('click', doLogin);
-        var userEmail = {user_email_js};
-        var lid = $('lid').value.trim().toLowerCase();
-        var emailMatch = lid === userEmail.toLowerCase() ||
-                         lid === userEmail.split('@')[0].toLowerCase();
+        var hasCreds = $('lid').value && $('pwd').value;
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
                     ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
-                    ' emailMatch=' + emailMatch);
-        if ($('lid').value && $('pwd').value && emailMatch) {{
+                    ' auto=' + hasCreds);
+        if (hasCreds) {{
             setTimeout(doLogin, 300);
         }}
     }});
