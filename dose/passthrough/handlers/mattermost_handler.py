@@ -263,9 +263,20 @@ class MattermostPassthroughHandler:
     document.addEventListener('DOMContentLoaded', function () {{
         $('btn').addEventListener('click', doLogin);
         var hasCreds = $('lid').value && $('pwd').value;
+        var existingToken = '';
+        try {{ existingToken = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+        if (!existingToken) {{
+            var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+            if (m) existingToken = m[1];
+        }}
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
                     ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
-                    ' auto=' + hasCreds);
+                    ' auto=' + hasCreds + ' hasToken=' + (existingToken ? 'yes' : 'no'));
+        if (existingToken) {{
+            console.log('[LoginBridge] Token already exists — redirecting to channels, skipping login');
+            window.location.replace(base() + '/' + teamName + '/channels/town-square');
+            return;
+        }}
         if (hasCreds) {{
             setTimeout(doLogin, 300);
         }}
