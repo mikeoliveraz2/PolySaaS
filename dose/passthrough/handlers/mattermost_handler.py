@@ -589,8 +589,12 @@ class MattermostPassthroughHandler:
         
         # PRIORITY: Browser cookie first — always fresh after successful login bridge.
         # Server cache may hold stale provisioning tokens or expired session tokens.
+        all_cookies = dict(request.COOKIES)
+        print(f'[MM_AUTH] Incoming cookies: {list(all_cookies.keys())}')
+        print(f'[MM_AUTH] MMAUTHTOKEN cookie: {"PRESENT" if all_cookies.get("MMAUTHTOKEN") else "MISSING"}')
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         _src = 'browser-cookie' if token else 'none'
+        print(f'[MM_AUTH] Selected token source: {_src}')
         
         # Fallback to server cache if browser has no token (first visit)
         if not token:
@@ -602,6 +606,7 @@ class MattermostPassthroughHandler:
                              extra_config.get('mm_token'))
                     if token:
                         _src = 'server-cache'
+                        print(f'[MM_AUTH] Using server cache token')
             except Exception as exc:
                 print(f'[MM_AUTH] Error getting cached token: {exc}')
         
