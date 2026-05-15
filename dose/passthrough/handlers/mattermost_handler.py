@@ -135,11 +135,27 @@ class MattermostPassthroughHandler:
                     login_id, len(login_id or ''), bool(password), user_email)
 
         # Get team name for redirect after login
-        team_name = extra.get('mm_team_name', '') or extra.get('team_name', '') if 'extra' in dir() else ''
+        team_name = ''
+        if 'extra' in dir():
+            team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
         if not team_name:
             try:
                 extra2 = self._get_tenantapp_extra_config(request) or {}
                 team_name = extra2.get('mm_team_name', '') or extra2.get('team_name', '')
+            except Exception:
+                pass
+        # Fallback: derive from tenant schema (same logic as provisioner)
+        if not team_name:
+            try:
+                import re
+                t = getattr(request, 'tenant', None)
+                if t:
+                    schema = t.schema_name[:15].lower()
+                    team_name = re.sub(r'[^a-z]', '', schema)
+                    if len(team_name) < 2:
+                        team_name = "team"
+                    if len(team_name) > 15:
+                        team_name = team_name[:15]
             except Exception:
                 pass
         team_name_js = json.dumps(team_name)
