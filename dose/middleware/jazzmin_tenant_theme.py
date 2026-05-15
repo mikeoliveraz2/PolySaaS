@@ -2,6 +2,31 @@ from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 from dose.middleware.debug import DebugStackMiddleware   # ‚Üê ADD THIS
 
+
+def _endpoint_to_app_name(endpoint):
+    """Map a PassThroughEndpoint to its corresponding TenantApp.app_name."""
+    title = (endpoint.menu_title or '').lower()
+    url = (endpoint.endpoint_url or '').lower()
+    # Direct title mappings
+    if 'mattermost' in title or 'mattermost' in url:
+        return 'mattermost'
+    if 'odoo' in title or 'odoo' in url:
+        return 'odoo'
+    if 'nextcloud' in title or 'nextcloud' in url:
+        return 'nextcloud'
+    if 'dolibarr' in title or 'dolibarr' in url:
+        return 'dolibarr'
+    if 'wordpress' in title or 'wordpress' in url:
+        return 'wordpress'
+    if 'liferay' in title or 'liferay' in url:
+        return 'liferay'
+    if 'monitor' in title or 'logger' in url:
+        return 'monitor_logger'
+    if 'polysysmon' in title or 'polysysmon' in url:
+        return 'polysysmon'
+    return None
+
+
 class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ‚Üê FIRST!
 
     """
@@ -35,6 +60,7 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ‚Ü
             passthrough_endpoints = []
             try:
                 from dose.models.pass_through_endpoint import PassThroughEndpoint
+                from dose.models import TenantApp
                 from django.db import connection
 
                 # Set search_path to current tenant schema
@@ -42,9 +68,35 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ‚Ü
                     cursor.execute(f'SET search_path TO "{current_schema}",public;')
 
                     # Get all PassThroughEndpoint records for this schema that should show in menu
-                    passthrough_endpoints = PassThroughEndpoint.objects.filter(
+                    all_endpoints = PassThroughEndpoint.objects.filter(
                         show_in_menu=True
                     ).exclude(menu_title__isnull=True).exclude(menu_title__exact='')
+
+                    # Filter to only those whose TenantApp is provisioned (status='active')
+                    passthrough_endpoints = []
+                    for ep in all_endpoints:
+                        app_name = _endpoint_to_app_name(ep)
+                        if app_name:
+                            # Look up TenantApp in public schema
+                            with connection.cursor() as c2:
+                                c2.execute('SET search_path TO public')
+                            try:
+                                ta = TenantApp.objects.filter(
+                                    tenant__schema_name=current_schema,
+                                    app_name=app_name
+                                ).first()
+                                if ta and ta.status == 'active':
+                                    passthrough_endpoints.append(ep)
+                                    print(f"[JAZZMIN DEBUG] + {ep.menu_title}: TenantApp is ACTIVE")
+                                elif ta:
+                                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: TenantApp status={ta.status} (skipping)")
+                                else:
+                                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: No TenantApp found (skipping)")
+                            except Exception as e:
+                                print(f"[JAZZMIN DEBUG] ? {ep.menu_title}: lookup error: {e}")
+                        else:
+                            # Unknown mapping ‚Äî show anyway for backward compat
+                            passthrough_endpoints.append(ep)
 
                     # Convert to list while still in correct schema
                     passthrough_endpoints = list(passthrough_endpoints)
