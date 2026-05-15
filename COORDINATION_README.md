@@ -152,13 +152,39 @@ ta.save(update_fields=['extra_config'])
 
 ---
 
-## Pending (Not Done This Session)
+## This Session (Morning Fixes)
 
-1. **Callback data timestamps** — You mentioned adding datetime stamps to callback data records. The `CallBackData` model has `pub_date` with `datetime.datetime.now` (not timezone-aware, evaluated at import time). Should be changed to `django.utils.timezone.now` with `auto_now_add=True`.
+### 6. Token Stripping Fix
+**File:** `dose/services/mattermost_tenant_provisioner.py`
 
-2. **Mattermost header as `<div>`** — You wanted the Mattermost header transformed to a `<div>` by the handler so it shows above the body, without hiding elements. This is NOT yet implemented. The current handler serves the full Mattermost page as-is (which is correct per your "no hiding" requirement).
+Added `.strip()` to `_get_admin_token()` to remove trailing newlines from GCP Secret Manager tokens.
 
-3. **Provisioning on subscribe** — The provisioning code IS in place (`_register_provisioning_on_commit` calls `provision_mattermost_tenant`), but it fails silently when `MATTERMOST_ADMIN_TOKEN` is missing. Consider adding a visible error/warning in the admin UI when provisioning failed.
+### 7. Username & Password Validation
+**File:** `dose/services/mattermost_tenant_provisioner.py`
+
+- Added `re` import and username sanitization to ensure Mattermost constraints (starts with letter, only a-z0-9._-)
+- Replaced weak `_secrets.token_urlsafe(16)` password generation with `_generate_strong_password()` that includes uppercase, lowercase, number, and symbol
+
+### 8. Sidebar Links Hidden Until Active
+**File:** `dose/middleware/jazzmin_tenant_theme.py`
+
+Modified `JazzminTenantThemeMiddleware` to check `TenantApp.status` before adding passthrough links to the sidebar. Links only appear when `status='active'`. Added `_endpoint_to_app_name()` helper to map endpoints to TenantApp app_names.
+
+### 9. Provisioning Green-Bar Messages
+**File:** `dose/subscription_views.py`
+
+Modified `_register_provisioning_synchronous` to:
+- Accept `request` parameter
+- Emit `messages.info()` when provisioning starts
+- Emit `messages.success()` when provisioning completes
+- Emit `messages.error()` when provisioning fails
+
+---
+
+## Pending (Not Done)
+
+1. **Callback data timestamps** — `CallBackData.pub_date` needs `django.utils.timezone.now` with `auto_now_add=True`.
+2. **Mattermost header as `<div>`** — NOT implemented; handler serves full page.
 
 ---
 
@@ -166,4 +192,4 @@ ta.save(update_fields=['extra_config'])
 
 - **Worktree:** `C:\Users\PC\.windsurf\worktrees\PolySaaS\PolySaaS-a136a386`
 - **Branch:** `cascade/debugging-mattermost-sso-a136a3` (merged to `main`)
-- **Commits pushed:** 4 commits with fixes
+- **Commits pushed:** 8+ commits with fixes
