@@ -158,6 +158,9 @@ class MattermostPassthroughHandler:
                         team_name = team_name[:15]
             except Exception:
                 pass
+        # Ultimate fallback: PolySaaS Dev Team
+        if not team_name:
+            team_name = "polysaasdevteam"
         team_name_js = json.dumps(team_name)
         
         # HTML-escape so a quote in the password can't break the value attribute.
