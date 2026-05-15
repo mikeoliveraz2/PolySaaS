@@ -48,8 +48,37 @@ def _get_admin_token() -> str:
     return token.strip() if token else ''
 
 
+def _verify_token(mm_url: str, headers: dict) -> bool:
+    """Quick sanity check that the admin token is valid."""
+    try:
+        resp = requests.get(f"{mm_url}/api/v4/users/me", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            user = resp.json()
+            logger.info("[MM-PROV] Token OK — admin user %s (roles=%s)", user.get('username'), user.get('roles', '')[:100])
+            return True
+        logger.error("[MM-PROV] Token verification failed: HTTP %s — %s", resp.status_code, resp.text[:200])
+        return False
+    except Exception as exc:
+        logger.error("[MM-PROV] Token verification exception: %s", exc)
+        return False
+
+
 def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: str, result: dict) -> Optional[str]:
-    name = tenant_schema[:64].lower()
+    # First verify token works
+    if not _verify_token(mm_url, headers):
+        result['team_error'] = "Admin token verification failed — check MATTERMOST_ADMIN_TOKEN"
+        return None
+
+    # Mattermost team names: 1-15 chars, lowercase a-z only (no numbers, no underscores)
+    raw_name = tenant_schema[:15].lower()
+    name = re.sub(r'[^a-z]', '', raw_name)
+    if len(name) < 2:
+        name = "team"
+    if len(name) > 15:
+        name = name[:15]
+
+    logger.info("[MM-PROV] Creating team with name=%r display_name=%r", name, display_name)
+
     resp = requests.post(
         f"{mm_url}/api/v4/teams",
         headers=headers,
@@ -71,8 +100,9 @@ def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: s
             result['team_existed'] = True
             logger.info("[MM-PROV] Team %s already exists (id=%s)", name, team['id'])
             return team['id']
-    logger.error("[MM-PROV] Team creation failed: %s %s", resp.status_code, resp.text[:300])
-    result['team_error'] = resp.text[:300]
+    # Log FULL response for debugging
+    logger.error("[MM-PROV] Team creation failed: HTTP %s body=%s", resp.status_code, resp.text)
+    result['team_error'] = f"HTTP {resp.status_code}: {resp.text[:500]}"
     return None
 
 
@@ -322,7 +352,8 @@ def provision_mattermost_tenant(
         team_id = _create_team(mm_url, headers, tenant_schema, display_name, result)
         if not team_id:
             result['success'] = False
-            result['error'] = 'Team creation failed (endpoint still created)'
+            detail = result.get('team_error', 'unknown')
+            result['error'] = f'Team creation failed: {detail}'
             return result
 
         user_id = _create_user(mm_url, headers, admin_email, username, admin_password, result)
