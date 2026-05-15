@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+"""Login to Mattermost with username/password and create a fresh admin token."""
+import os, sys, getpass, requests
+
+MM_URL = 'https://polysaas-mattermost.onrender.com'
+
+print(f"Mattermost URL: {MM_URL}")
+print()
+
+# Step 1: Login
+username = input("Mattermost admin username: ").strip()
+password = getpass.getpass("Mattermost admin password: ")
+
+r = requests.post(
+    f"{MM_URL}/api/v4/users/login",
+    json={"login_id": username, "password": password},
+    timeout=10
+)
+
+if r.status_code != 200:
+    print(f"Login failed: HTTP {r.status_code}")
+    print(r.text[:300])
+    sys.exit(1)
+
+user = r.json()
+session_token = r.headers.get('Token')
+print(f"Logged in as: {user.get('username')}")
+print(f"User ID: {user.get('id')}")
+print(f"Is System Admin: {'system_admin' in user.get('roles', '')}")
+print()
+
+if not session_token:
+    print("No session token returned!")
+    sys.exit(1)
+
+# Step 2: List existing tokens
+print("Existing tokens:")
+r = requests.get(
+    f"{MM_URL}/api/v4/users/{user['id']}/tokens",
+    headers={"Authorization": f"Bearer {session_token}"},
+    timeout=10
+)
+if r.status_code == 200:
+    for t in r.json():
+        print(f"  - {t.get('description', 'no desc')} (id={t.get('id')[:8]}...)")
+else:
+    print(f"  Could not list: {r.status_code} {r.text[:200]}")
+print()
+
+# Step 3: Create new token
+print("Creating new token...")
+r = requests.post(
+    f"{MM_URL}/api/v4/users/{user['id']}/tokens",
+    headers={"Authorization": f"Bearer {session_token}"},
+    json={"description": "Provisioning token created by fix script"},
+    timeout=10
+)
+
+if r.status_code == 200:
+    token_data = r.json()
+    new_token = token_data.get('token')
+    print(f"SUCCESS! New token: {new_token[:15]}...")
+    print(f"Token ID: {token_data.get('id')}")
+    print()
+    print("="*60)
+    print("ADD THIS TO RENDER ENV VARS AND .env:")
+    print(f"MATTERMOST_ADMIN_TOKEN={new_token}")
+    print("="*60)
+else:
+    print(f"Failed to create token: HTTP {r.status_code}")
+    print(r.text[:300])
