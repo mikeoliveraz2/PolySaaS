@@ -29,12 +29,36 @@ class MattermostPassthroughHandler:
         m = _re.match(r'^/pt/admin/([^/]+)/static/', path_info)
         return bool(m and 'mattermost' in m.group(1).lower())
 
+    def _get_team_name(self, request):
+        """Derive Mattermost team name for redirects."""
+        team_name = ''
+        try:
+            extra = self._get_tenantapp_extra_config(request) or {}
+            team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
+        except Exception:
+            pass
+        if not team_name:
+            try:
+                t = getattr(request, 'tenant', None)
+                if t:
+                    schema = t.schema_name[:15].lower()
+                    team_name = re.sub(r'[^a-z]', '', schema)
+                    if len(team_name) < 2:
+                        team_name = "team"
+                    if len(team_name) > 15:
+                        team_name = team_name[:15]
+            except Exception:
+                pass
+        if not team_name:
+            team_name = "polysaasdevteam"
+        return team_name
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         Root-only intercept:
           - Token present → forward to Mattermost (return None).
           - No token     → try server-side SSO; if that works set cookie + redirect
-                           to /channels/town-square; otherwise serve login bridge
+                           to /{team}/channels/town-square; otherwise serve login bridge
                            INLINE (no redirect to /login — that caused the loop).
         All non-root paths return None immediately so the forwarder handles them.
         """
@@ -48,12 +72,16 @@ class MattermostPassthroughHandler:
         if request.path_info.rstrip("/") != proxy_prefix:
             return None
 
+        team_name = self._get_team_name(request)
+        team_redirect = f"{proxy_prefix}/{team_name}/channels/town-square"
+        print(f"[MM ROOT] team_name={team_name} redirect_target={team_redirect}")
+
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
         
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         if token and not force_login:
-            print(f"[MM] MMAUTHTOKEN present — validating before redirect...")
+            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — validating before redirect...")
             # Validate the browser token before redirecting
             import requests as _req
             try:
@@ -65,11 +93,17 @@ class MattermostPassthroughHandler:
                     timeout=5,
                 )
                 if _verify.status_code == 200:
-                    print(f"[MM] Browser token valid — redirecting to /channels/town-square")
+                    print(f"[MM ROOT] Browser token valid — redirecting to {team_redirect}")
                     from django.http import HttpResponseRedirect
-                    return HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
+                    resp = HttpResponseRedirect(team_redirect)
+                    resp.set_cookie(
+                        'MMAUTHTOKEN', token,
+                        max_age=86400, path='/', samesite='Lax',
+                        secure=request.is_secure(), httponly=False,
+                    )
+                    return resp
                 else:
-                    print(f"[MM] Browser token invalid ({_verify.status_code}) — clearing and showing login bridge")
+                    print(f"[MM ROOT] Browser token invalid ({_verify.status_code}) — clearing and showing login bridge")
                     # Clear the invalid token from cache
                     try:
                         extra_config = self._get_tenantapp_extra_config(request)
@@ -81,7 +115,7 @@ class MattermostPassthroughHandler:
                     except Exception:
                         pass
             except Exception as exc:
-                print(f"[MM] Token validation failed: {exc} — showing login bridge")
+                print(f"[MM ROOT] Token validation failed: {exc} — showing login bridge")
 
         # No browser token — try a quick server-side SSO first.
         from django.http import HttpResponseRedirect
@@ -90,11 +124,11 @@ class MattermostPassthroughHandler:
             cookies = self.get_upstream_cookies(request) or {}
             sso_token = cookies.get('MMAUTHTOKEN')
         except Exception as exc:
-            print(f"[MM SSO] get_upstream_cookies failed: {exc}")
+            print(f"[MM ROOT] get_upstream_cookies failed: {exc}")
 
         if sso_token:
-            print(f"[MM SSO] Server-side token obtained ({sso_token[:8]}...) — cookie + redirect")
-            resp = HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
+            print(f"[MM ROOT] Server-side token obtained ({sso_token[:8]}...) — cookie + redirect")
+            resp = HttpResponseRedirect(team_redirect)
             resp.set_cookie(
                 'MMAUTHTOKEN', sso_token,
                 max_age=86400, path='/', samesite='Lax',
@@ -103,7 +137,7 @@ class MattermostPassthroughHandler:
             return resp
 
         # No server token — serve the login bridge INLINE (avoids redirect loop).
-        print(f"[MM SSO] No token — serving login bridge inline at root")
+        print(f"[MM ROOT] No token — serving login bridge inline at root")
         return self._serve_login_bridge(request, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
@@ -516,13 +550,23 @@ class MattermostPassthroughHandler:
     def get_upstream_cookies(self, request):
         """
         Provide session cookies for SSO/auto-login to Mattermost.
-        Mattermost primarily uses MMAUTHTOKEN header/cookie.
+        CRITICAL: If browser already has MMAUTHTOKEN, return it immediately.
+        Server-side validation can create new sessions that invalidate the browser's session.
         """
         # Don't inject a session token into the login/logout request itself —
         # Mattermost rejects login attempts that carry a stale session.
         _path = (getattr(request, 'path_info', '') or '')
         if '/api/v4/users/login' in _path or '/api/v4/users/logout' in _path:
             return {}
+
+        # BROWSER COOKIE SHORTCUT: Trust the browser's token. Don't validate server-side.
+        # Server-side validation creates NEW sessions, which can push the browser's
+        # session past the per-user limit and revoke it, causing infinite login loops.
+        browser_token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        if browser_token:
+            print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
+            return {'MMAUTHTOKEN': browser_token}
+
         try:
             from dose.utils import get_current_tenant
             import requests as _req
@@ -624,6 +668,8 @@ class MattermostPassthroughHandler:
         all_cookies = dict(request.COOKIES)
         print(f'[MM_AUTH] Incoming cookies: {list(all_cookies.keys())}')
         print(f'[MM_AUTH] MMAUTHTOKEN cookie: {"PRESENT" if all_cookies.get("MMAUTHTOKEN") else "MISSING"}')
+        print(f'[MM_AUTH] mmauthtoken cookie: {"PRESENT" if all_cookies.get("mmauthtoken") else "MISSING"}')
+        print(f'[MM_AUTH] Cookie values present: {[k for k,v in all_cookies.items() if v]}')
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         _src = 'browser-cookie' if token else 'none'
         print(f'[MM_AUTH] Selected token source: {_src}')
