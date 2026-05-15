@@ -14,6 +14,7 @@ All steps are non-fatal except team creation — returns detailed result dict.
 """
 from typing import Dict, Any, Optional
 import logging
+import re
 import secrets as _secrets
 
 import requests
@@ -43,7 +44,8 @@ def _get_mattermost_base_url() -> str:
 def _get_admin_token() -> str:
     """Retrieve Mattermost admin personal access token from settings (uses sm() → Secret Manager or .env)."""
     from django.conf import settings
-    return getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+    token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+    return token.strip() if token else ''
 
 
 def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: str, result: dict) -> Optional[str]:
@@ -74,9 +76,23 @@ def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: s
     return None
 
 
+def _generate_strong_password() -> str:
+    """Generate a password meeting Mattermost default requirements (8+ chars, upper, lower, number, symbol)."""
+    import string, random
+    chars = [
+        random.choice(string.ascii_lowercase),
+        random.choice(string.ascii_uppercase),
+        random.choice(string.digits),
+        random.choice("!@#$%^&*"),
+    ]
+    chars += random.choices(string.ascii_letters + string.digits + "!@#$%^&*", k=12)
+    random.shuffle(chars)
+    return ''.join(chars)
+
+
 def _create_user(mm_url: str, headers: dict, admin_email: str, username: str, password: str, result: dict) -> Optional[str]:
     if not password:
-        password = _secrets.token_urlsafe(16)
+        password = _generate_strong_password()
         result['generated_password'] = True
     resp = requests.post(
         f"{mm_url}/api/v4/users",
@@ -280,7 +296,18 @@ def provision_mattermost_tenant(
     headers = {"Authorization": f"Bearer {admin_token}"}
     mm_url = _get_mattermost_base_url()
     display_name = company_name or tenant_name
-    username = (admin_username or admin_email.split('@')[0]).lower()[:64]
+    # Mattermost usernames must start with a letter, contain only lowercase a-z, 0-9, ., -, _
+    raw_username = (admin_username or admin_email.split('@')[0]).lower()[:64]
+    # Ensure it starts with a letter
+    username = re.sub(r'^[^a-z]+', '', raw_username)
+    # Remove invalid characters
+    username = re.sub(r'[^a-z0-9._-]', '', username)
+    if not username:
+        username = 'user'
+    # Ensure at least 3 chars for Mattermost
+    if len(username) < 3:
+        username = username + '001'
+    username = username[:64]
 
     result: Dict[str, Any] = {
         'tenant_schema': tenant_schema,
