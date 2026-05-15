@@ -612,8 +612,17 @@ class MattermostPassthroughHandler:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
 
     def postprocess_upstream_response(self, resp, request, **kwargs):
-        """Hook to handle upstream responses - clear token on 401 to break redirect loops."""
+        """Hook to handle upstream responses - log all API calls and clear token on 401."""
         target_url = kwargs.get('endpoint_url', '')
+        
+        # Log ALL Mattermost API responses for debugging
+        if '/api/v4/' in (target_url or ''):
+            print(f'[MM_RESP] {target_url} -> HTTP {resp.status_code}')
+            # Log auth-related response headers
+            token_header = resp.headers.get('Token')
+            if token_header:
+                print(f'[MM_RESP] Token header present: {token_header[:10]}...')
+        
         # If we get a 401 on /api/v4/users/me, the cached token is invalid
         if resp.status_code == 401 and '/api/v4/users/me' in (target_url or ''):
             print(f'[MM_AUTH] Got 401 on /api/v4/users/me - clearing invalid cached token')
