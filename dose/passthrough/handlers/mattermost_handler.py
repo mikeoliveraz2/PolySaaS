@@ -440,50 +440,37 @@ class MattermostPassthroughHandler:
             return None
 
     def _get_tenantapp_extra_config(self, request=None):
-        """Query TenantApp extra_config from public schema using raw SQL to avoid schema issues.
-        Filters by current tenant first; falls back to any active mattermost TenantApp."""
-        import json
-        from django.db import connection
-        tenant_id = None
-        if request is not None:
-            try:
-                from dose.utils import get_current_tenant
-                t = getattr(request, 'tenant', None) or get_current_tenant(request)
-                if t:
-                    tenant_id = t.id
-            except Exception:
-                pass
-        with connection.cursor() as cur:
-            cur.execute("SET search_path TO public,pg_catalog")
-            # Try tenant-specific record first (any status with non-empty config)
-            if tenant_id:
-                cur.execute(
-                    """SELECT extra_config FROM dose_tenantapp
-                       WHERE app_name = 'mattermost' AND tenant_id = %s
-                       AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
-                       LIMIT 1""",
-                    [tenant_id],
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    cfg = row[0]
-                    if isinstance(cfg, str):
-                        return json.loads(cfg)
-                    return cfg
-            # Fall back to any active mattermost TenantApp with credentials
-            cur.execute(
-                """SELECT extra_config FROM dose_tenantapp
-                   WHERE app_name = 'mattermost' AND status = 'active'
-                   AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
-                   LIMIT 1""",
-            )
-            row = cur.fetchone()
-            if row and row[0]:
-                cfg = row[0]
-                if isinstance(cfg, str):
-                    return json.loads(cfg)
-                return cfg
-        return None
+        """Return extra_config dict for this tenant's Mattermost TenantApp.
+        Uses ORM with PublicTenantAppBundleManager (search_path=public) — the records
+        are global (public schema), not per-tenant-schema copies."""
+        try:
+            from dose.models import TenantApp
+            tenant = None
+            if request is not None:
+                try:
+                    from dose.utils import get_current_tenant
+                    tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+                except Exception:
+                    pass
+            # Tenant-specific first
+            if tenant:
+                ta = TenantApp.public_bundles.filter(
+                    app_name='mattermost', tenant=tenant
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[MM LoginBridge] extra_config found via tenant={tenant} keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            # Fallback: any active mattermost app with credentials
+            ta = TenantApp.public_bundles.filter(
+                app_name='mattermost', status='active'
+            ).exclude(extra_config={}).first()
+            if ta and ta.extra_config:
+                print(f"[MM LoginBridge] extra_config found via active fallback keys={list(ta.extra_config.keys())}")
+                return ta.extra_config
+            print(f"[MM LoginBridge] extra_config NOT found (tenant={tenant})")
+        except Exception as exc:
+            print(f"[MM LoginBridge] _get_tenantapp_extra_config error: {exc}")
+        return {}
 
     def _save_tenantapp_token(self, token, request=None):
         """Save refreshed token to public schema TenantApp using raw SQL."""
