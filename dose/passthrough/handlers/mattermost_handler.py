@@ -151,13 +151,10 @@ class MattermostPassthroughHandler:
                            extra.get('mattermost_username') or extra.get('login_id') or '')
             stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
                           extra.get('password') or '')
-            # Only use stored credentials if they look like they belong to this user
-            if stored_login and stored_login.lower() in [user_email.lower(), user_email.split('@')[0].lower()]:
-                login_id = stored_login
-                password = stored_pass
-            else:
-                login_id = user_email
-                password = stored_pass  # May still work even if username is different
+            # Use stored credentials directly — they were provisioned for this tenant.
+            # Fall back to email only if nothing is stored.
+            login_id = stored_login or user_email
+            password = stored_pass
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
             login_id = user_email
@@ -265,8 +262,9 @@ class MattermostPassthroughHandler:
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
                 var redirectPath = teamName ? '/' + teamName + '/channels/town-square' : '/channels/town-square';
-                console.log('[LoginBridge] redirecting to', redirectPath, 'teamName=', teamName);
-                window.location.replace(base() + redirectPath);
+                var baseUrl = base().replace(/\/$/, '');
+                console.log('[LoginBridge] redirecting to', baseUrl + redirectPath, 'teamName=', teamName);
+                window.location.replace(baseUrl + redirectPath);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
@@ -314,7 +312,7 @@ class MattermostPassthroughHandler:
                     ' auto=' + hasCreds + ' hasToken=' + (existingToken ? 'yes' : 'no'));
         if (existingToken) {{
             console.log('[LoginBridge] Token already exists — redirecting to channels, skipping login');
-            window.location.replace(base() + '/' + teamName + '/channels/town-square');
+            window.location.replace(base().replace(/\/$/, '') + '/' + teamName + '/channels/town-square');
             return;
         }}
         if (hasCreds) {{
