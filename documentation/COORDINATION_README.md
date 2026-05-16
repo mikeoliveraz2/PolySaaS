@@ -663,6 +663,48 @@ Odoo admin credentials were unknown (fresh Render deploy, default `admin` login 
    PGPASSWORD=... psql ... -c "DROP DATABASE odoo_prod;"
    ```
 
+---
+
+## 2026-05-16 (Morning — Condo → Office) — Mattermost Login Loop Debug (INCOMPLETE)
+
+**Status**: ⚠️ IN PROGRESS — spinner still not ending, issue not resolved  
+**Branch**: main  
+**Location**: Condo → Office (handoff)
+
+### Summary
+Debugging Mattermost login loop and persistent spinner issue. The login bridge is working (credentials auto-filled, login succeeds), but after redirect to Town Square, the spinner never ends and the user gets stuck in a loop.
+
+### What Was Attempted
+1. **Removed upstream validation** from fetch/XHR interceptors — CORS blocks cross-origin requests to Mattermost server from localhost:8000
+2. **Fixed login bridge** to only treat non-empty tokens (length > 10) as valid — prevents empty strings from triggering auto-redirect
+3. **Verified middleware** correctly intercepts `/?extra=expired` redirects and redirects to login bridge
+4. **Confirmed static assets** loading correctly (no 404s after previous fixes)
+
+### Current State
+- Login bridge loads with credentials auto-filled
+- Login succeeds (token obtained)
+- Redirect to Town Square happens
+- **Spinner never ends** — Mattermost client stuck in loading state
+- Token appears to be empty in localStorage (`localStorage.setItem("MMAUTHTOKEN") = ""`)
+
+### Root Cause Suspected
+The token is being set to an empty string after login, which causes the Mattermost client to fail authentication and get stuck in a spinner loop. The login bridge's `_bridge_login` endpoint may not be setting the cookie correctly, or the shim's token injection is not working.
+
+### Files Changed
+- `dose/passthrough/handlers/mattermost_handler.py` — removed upstream validation (lines 1078-1092, 1101-1110), fixed login bridge token validation (line 354)
+
+### Next Steps (Office)
+1. **Debug `_bridge_login` endpoint** — verify it's setting the MMAUTHTOKEN cookie correctly
+2. **Check browser DevTools** — verify MMAUTHTOKEN cookie is present after login
+3. **Add more logging** to shim's `_getToken()` function to see where empty token comes from
+4. **Consider server-side token injection** — if client-side shim can't reliably read the cookie
+
+### Session Notes
+- Upstream validation approach failed due to CORS — Mattermost server doesn't allow cross-origin requests with credentials from localhost:8000
+- Reverted to simple 401 handling: clear token and redirect to login bridge
+- Login bridge now only auto-redirects if token is non-empty and has reasonable length (> 10 chars)
+---
+
 3. **Redeployed `polysaas-odoo2`** via Render Manual Deploy — `ODOO_AUTO_INIT=1` recreated `odoodb` fresh. DB setup wizard ran on first visit, admin created with email `odooAdmin@polysaas.online` / `PolySaaS2026!`.
 
 4. **Login failed** — discovered actual login stored was `admin` (Odoo default), not `odooAdmin`. Renamed via SQL:

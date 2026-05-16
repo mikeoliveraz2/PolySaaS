@@ -490,6 +490,7 @@ MIDDLEWARE = [
     'dose.middleware.admin_unauthorized.AdminUnauthorizedMiddleware',
     'mysite.admin_tenant_session_middleware.AdminTenantSessionMiddleware',
     'mysite.tenant_context_middleware.TenantContextMiddleware',
+    'dose.polysniffer.middleware.PolySnifferMiddleware',
     'mysite.session_tenant_middleware.SessionTenantMiddleware',
     'dose.doserequestcontroller.DoseRequestController',
     'dose.middleware.jazzmin_tenant_theme.JazzminTenantThemeMiddleware',

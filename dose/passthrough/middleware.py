@@ -322,6 +322,23 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         """
         print(f"\n[PT-MW-ENTRY] __call__ - path={request.path_info}, method={request.method}")
         
+        # Intercept Mattermost expired session redirects (extra=expired)
+        # Mattermost navigates to /?redirect_to=...&extra=expired when its session expires
+        # We need to redirect this to the passthrough login bridge instead of /dose/
+        if request.path_info == '/' and request.GET.get('extra') == 'expired':
+            redirect_to = request.GET.get('redirect_to', '')
+            print(f"[PT-MW] Intercepted Mattermost expired session redirect: redirect_to={redirect_to}")
+            # Extract the passthrough path from redirect_to and redirect to its login bridge
+            if redirect_to.startswith('/pt/admin/'):
+                # Redirect to the login bridge for this passthrough
+                parts = redirect_to.strip('/').split('/')
+                if len(parts) >= 3:
+                    passthrough_root = f"/{parts[0]}/{parts[1]}/{parts[2]}"
+                    login_bridge = f"{passthrough_root}/login?force=1"
+                    print(f"[PT-MW] Redirecting to passthrough login bridge: {login_bridge}")
+                    from django.http import HttpResponseRedirect
+                    return HttpResponseRedirect(login_bridge)
+        
         if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
             print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
             return self.get_response(request)
@@ -333,7 +350,20 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
             print(f"[PT-MW] /pt/ hit | user={user} auth={is_auth}")
             if not is_auth:
                 print("[PT-MW] BAIL: not authenticated")
-                return self.get_response(request)
+                # Allow bridge login endpoint through so unauthenticated users can
+                # POST their token after the bridge form.
+                if request.path_info.rstrip('/').endswith('/_bridge_login') and request.method == 'POST':
+                    print("[PT-MW] ALLOW: _bridge_login POST for unauthenticated user")
+                elif request.path_info.startswith('/pt/admin/'):
+                    # For passthrough admin paths, redirect to the login bridge inside
+                    # the passthrough instead of falling through to Django's URL routing
+                    # (which leaks to /dose/).
+                    login_bridge = request.path_info.rstrip('/') + '/login?force=1'
+                    print(f"[PT-MW] Redirecting to passthrough login bridge: {login_bridge}")
+                    from django.http import HttpResponseRedirect
+                    return HttpResponseRedirect(login_bridge)
+                else:
+                    return self.get_response(request)
 
             tenant = get_current_tenant(request)
             print(f"[PT-MW] tenant={tenant}")
@@ -360,7 +390,16 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         -> Perfect place for PASSTHROUGH-IN
         """
         print(f"[PT-MW-ENTRY] process_response - path={request.path_info}, status={response.status_code}")
-        
+
+        # Guard: prevent passthrough requests from being redirected to /dose/ (Django login)
+        # If this happens, redirect back to the original passthrough path so the handler
+        # can serve the login bridge instead.
+        location = response.get('Location', '')
+        if request.path_info.startswith('/pt/admin/') and '/dose/' in location:
+            print(f"[PT-MW] GUARD: blocked redirect to /dose/ — redirecting back to {request.path_info}")
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(request.path_info)
+
         if getattr(request, '_passthrough_handled', False):
             print("\n" + "="*120)
             print("PASSTHROUGH-IN <- RESPONSE RECEIVED (FIRST ON RETURN)")

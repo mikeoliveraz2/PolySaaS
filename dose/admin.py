@@ -624,12 +624,28 @@ class DoseMessageAdmin(TenantAwareModelAdmin):
     list_filter = ('level', 'is_read', 'created_at')
     search_fields = ('message',)
 
-class PolySnifferRunAdmin(TenantAwareModelAdmin):
-    list_display = ('id', 'tenant', 'run_timestamp', 'status', 'packets_captured')
-    list_filter = ('status', 'run_timestamp', 'tenant')
-    search_fields = ('notes', 'raw_data_summary')
-    readonly_fields = ('run_timestamp',)
-    ordering = ('-run_timestamp',)
+# TrafficLog admin — shows actual passthrough capture data (PolySnifferRun is deprecated/empty)
+from dose.polysniffer.models import TrafficLog
+
+# Unregister the default TrafficLog admin (registered in dose.polysniffer.admin)
+# and re-register with TenantAwareModelAdmin so it appears in tenant-scoped admin
+try:
+    admin.site.unregister(TrafficLog)
+except admin.sites.NotRegistered:
+    pass
+
+class TrafficLogAdmin(TenantAwareModelAdmin):
+    list_display = ('method', 'path', 'client_path', 'capture_source', 'status_code',
+                    'endpoint_name', 'user', 'captured_at', 'duration_ms')
+    list_filter = ('method', 'status_code', 'capture_source', 'endpoint_name', 'captured_at')
+    search_fields = ('url', 'path', 'endpoint_name', 'user__username')
+    readonly_fields = (
+        'method', 'url', 'path', 'client_path', 'capture_source',
+        'headers', 'cookies', 'query_params', 'body',
+        'status_code', 'response_headers', 'response_body', 'response_size',
+        'endpoint_name', 'user', 'captured_at', 'duration_ms', 'har_data'
+    )
+    ordering = ('-captured_at',)
 
 from .models import RequestLog, ErrorLog
 from .models import Mapping, InstructionMapping
@@ -691,7 +707,7 @@ admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)
 admin.site.register(DoseMessage, DoseMessageAdmin)
-admin.site.register(PolySnifferRun, PolySnifferRunAdmin)
+admin.site.register(TrafficLog, TrafficLogAdmin)
 admin.site.register(RequestLog)
 admin.site.register(ErrorLog)
 admin.site.register(Mapping, MappingAdmin)

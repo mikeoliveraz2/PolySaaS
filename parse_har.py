@@ -1,0 +1,74 @@
+import json, sys
+
+data = json.loads(sys.stdin.read())
+entries = data.get('log', {}).get('entries', [])
+
+print(f"Total entries: {len(entries)}\n")
+
+# Filter to Mattermost requests (not analytics)
+mm_entries = []
+for e in entries:
+    url = e.get('request', {}).get('url', '')
+    if 'polysaas-mattermost.onrender.com' in url and 'pdat.matterlytics' not in url:
+        mm_entries.append(e)
+
+print(f"Mattermost entries: {len(mm_entries)}\n")
+print("=" * 80)
+
+for e in mm_entries:
+    req = e['request']
+    resp = e['response']
+    url = req['url']
+    method = req['method']
+    status = resp['status']
+    
+    # Extract key headers
+    auth = ''
+    cookie = ''
+    for h in req.get('headers', []):
+        if h['name'].lower() == 'authorization':
+            auth = h['value']
+        if h['name'].lower() == 'cookie':
+            cookie = h['value']
+    
+    loc = ''
+    set_cookie = ''
+    for h in resp.get('headers', []):
+        if h['name'].lower() == 'location':
+            loc = h['value']
+        if h['name'].lower() == 'set-cookie':
+            set_cookie = h['value']
+    
+    print(f"\n{method} {url}")
+    print(f"  Status: {status}")
+    if auth:
+        print(f"  Authorization: {auth[:60]}...")
+    if cookie:
+        # Look for MMAUTHTOKEN
+        for part in cookie.split(';'):
+            if 'MMAUTHTOKEN' in part:
+                print(f"  Cookie: {part.strip()}")
+    if loc:
+        print(f"  -> Redirect: {loc}")
+    if set_cookie and 'MMAUTHTOKEN' in set_cookie:
+        print(f"  <- Set-Cookie: {set_cookie[:80]}...")
+    
+    # For login POST, show response Token header
+    if method == 'POST' and '/users/login' in url:
+        token = ''
+        for h in resp.get('headers', []):
+            if h['name'].lower() == 'token':
+                token = h['value']
+        if token:
+            print(f"  <- Token: {token[:20]}...")
+        else:
+            print(f"  <- No Token header in response")
+    
+    # Show body preview for login
+    if method == 'POST' and '/users/login' in url:
+        body = req.get('postData', {}).get('text', '')
+        if body:
+            print(f"  Body: {body[:100]}")
+
+print("\n" + "=" * 80)
+print(f"\nSummary: Found {len(mm_entries)} Mattermost requests")

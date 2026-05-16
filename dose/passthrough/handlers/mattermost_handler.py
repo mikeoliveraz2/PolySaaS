@@ -1,6 +1,5 @@
-# Auto-generated PassthroughHandler for Mattermost
 # Generated from PolySniffer analysis of http://localhost:8065
-# 
+#
 # This handler provides:
 # - SSO via get_upstream_cookies()
 # - URL rewriting for static assets and API calls
@@ -14,6 +13,9 @@ import time
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# MODULE LOAD MARKER — if this doesn't appear in terminal, old code is cached
+print("[MM-HANDLER-LOAD] mattermost_handler.py loaded — v2026-05-16-fix-dose-leak")
 
 
 class MattermostPassthroughHandler:
@@ -102,10 +104,16 @@ class MattermostPassthroughHandler:
                            INLINE (no redirect to /login — that caused the loop).
         All non-root paths return None immediately so the forwarder handles them.
         """
-        if request.method != "GET":
-            return None
         trigger = url_trigger_segment.strip("/")
         proxy_prefix = f"/pt/admin/{trigger}"
+
+        # Server-side bridge login handler: JS POSTs the token here and we
+        # set the cookie server-side (avoids client-side cookie being dropped).
+        if request.path_info.rstrip("/") == f"{proxy_prefix}/_bridge_login" and request.method == "POST":
+            return self._handle_bridge_login(request, trigger, proxy_prefix)
+
+        if request.method != "GET":
+            return None
 
         # Only intercept the exact root. Everything else (channels, api, login, …)
         # is forwarded to Mattermost directly — no /login intercept here.
@@ -131,11 +139,22 @@ class MattermostPassthroughHandler:
                 max_age=86400, path='/', samesite='Lax',
                 secure=request.is_secure(), httponly=False,
             )
+            resp['X-PolySaaS-Redirect'] = 'town-square-token-present'
             return resp
 
-        # No browser token — serve the login bridge INLINE (avoids redirect loop).
-        print(f"[MM ROOT] No browser token — serving login bridge inline at root")
-        return self._serve_login_bridge(request, trigger, endpoint)
+        if force_login:
+            # Force login requested — serve bridge inline.
+            print(f"[MM ROOT] force=1 — serving login bridge inline at root")
+            return self._serve_login_bridge(request, trigger, endpoint)
+
+        # No token — send to login bridge so they can authenticate.
+        # Never send unauthenticated users to Town Square (spinner loop).
+        login_bridge = f"{proxy_prefix}/login?force=1"
+        print(f"[MM ROOT] No token — redirecting to login bridge {login_bridge}")
+        from django.http import HttpResponseRedirect
+        resp = HttpResponseRedirect(login_bridge)
+        resp['X-PolySaaS-Redirect'] = 'login-bridge-no-token'
+        return resp
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
@@ -260,13 +279,33 @@ class MattermostPassthroughHandler:
             var token = xhr.getResponseHeader('Token');
             console.log('[LoginBridge] token=' + (token ? 'present' : 'MISSING'));
             if (xhr.status >= 200 && xhr.status < 300 && token) {{
+                // Keep token where Mattermost client app expects it
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
-                document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
-                setStatus('Success! Loading...');
-                var redirectPath = teamName ? '/' + teamName + '/channels/town-square' : '/channels/town-square';
-                console.log('[LoginBridge] redirecting to', redirectPath, 'teamName=', teamName);
-                window.location.replace(base() + redirectPath);
+                // Server-side bridge: POST token to _bridge_login so cookie is set reliably
+                var bridgeUrl = base().replace(/\/$/, '') + '/_bridge_login';
+                console.log('[LoginBridge] POSTing token to server bridge:', bridgeUrl);
+                var bridgeXhr = new XMLHttpRequest();
+                bridgeXhr.open('POST', bridgeUrl, true);
+                bridgeXhr.setRequestHeader('Content-Type', 'application/json');
+                bridgeXhr.withCredentials = true;
+                bridgeXhr.onload = function() {{
+                    console.log('[LoginBridge] server bridge status=' + bridgeXhr.status);
+                    if (bridgeXhr.status >= 200 && bridgeXhr.status < 400) {{
+                        // Server set cookie + redirect; follow its redirect
+                        setStatus('Success! Loading...');
+                        var redirectPath = teamName ? '/' + teamName + '/channels/town-square' : '/channels/town-square';
+                        console.log('[LoginBridge] following server redirect to', redirectPath);
+                        window.location.replace(base() + redirectPath);
+                    }} else {{
+                        setStatus('Bridge error: ' + bridgeXhr.status, true);
+                    }}
+                }};
+                bridgeXhr.onerror = function() {{
+                    console.log('[LoginBridge] server bridge onerror');
+                    setStatus('Bridge network error', true);
+                }};
+                bridgeXhr.send(JSON.stringify({{token: token}}));
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
@@ -312,9 +351,20 @@ class MattermostPassthroughHandler:
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
                     ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
                     ' auto=' + hasCreds + ' hasToken=' + (existingToken ? 'yes' : 'no'));
-        if (existingToken) {{
-            console.log('[LoginBridge] Token already exists — redirecting to channels, skipping login');
-            window.location.replace(base() + '/' + teamName + '/channels/town-square');
+        if (existingToken && existingToken.length > 10) {{
+            console.log('[LoginBridge] Valid token already exists — server-bridging then redirecting');
+            var bridgeUrl = base().replace(/\/$/, '') + '/_bridge_login';
+            var bridgeXhr2 = new XMLHttpRequest();
+            bridgeXhr2.open('POST', bridgeUrl, true);
+            bridgeXhr2.setRequestHeader('Content-Type', 'application/json');
+            bridgeXhr2.withCredentials = true;
+            bridgeXhr2.onload = function() {{
+                window.location.replace(base() + '/' + teamName + '/channels/town-square');
+            }};
+            bridgeXhr2.onerror = function() {{
+                window.location.replace(base() + '/' + teamName + '/channels/town-square');
+            }};
+            bridgeXhr2.send(JSON.stringify({{token: existingToken}}));
             return;
         }}
         if (hasCreds) {{
@@ -328,6 +378,71 @@ class MattermostPassthroughHandler:
 
         resp = HttpResponse(html, content_type="text/html; charset=utf-8")
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
+    def _handle_bridge_login(self, request, trigger, proxy_prefix):
+        """
+        Server-side bridge login success handler.
+        The client POSTs the Mattermost token here; we set the cookie
+        server-side (so it can't be dropped by browser security) and
+        return a redirect to town-square.
+        """
+        import json
+        from django.http import JsonResponse, HttpResponseRedirect
+
+        try:
+            body = json.loads(request.body.decode('utf-8', errors='ignore'))
+        except Exception:
+            body = {}
+
+        token = body.get('token') or request.POST.get('token')
+        if not token:
+            return JsonResponse({'success': False, 'error': 'Missing token'}, status=400)
+
+        team_name = self._get_team_name(request)
+        redirect_path = f"{proxy_prefix}/{team_name}/channels/town-square"
+
+        print(f"[MM BRIDGE] Server-side cookie set — team={team_name} redirect={redirect_path}")
+
+        from django.http import HttpResponse
+        resp = HttpResponse(f"""
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Signing in...</title></head>
+<body>
+<script>
+(function() {{
+    var token = {json.dumps(token)};
+    var redirect = {json.dumps(redirect_path)};
+    console.log('[Mattermost Bridge] Login successful. Setting token and redirecting to', redirect);
+    try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch(e) {{}}
+    try {{ localStorage.setItem('mm_auth_token', token); }} catch(e) {{}}
+    try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch(e) {{}}
+    try {{ localStorage.setItem('storage:MMAuthtokenExpiry', JSON.stringify(Date.now() + 108000000)); }} catch(e) {{}}
+    try {{ sessionStorage.setItem('MMAUTHTOKEN', token); }} catch(e) {{}}
+    document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=7776000; SameSite=Lax';
+    document.cookie = 'mmauthtoken=' + token + '; path=/; max-age=7776000; SameSite=Lax';
+    setTimeout(function() {{
+        window.location.replace(redirect);
+    }}, 800);
+}})();
+</script>
+<noscript><meta http-equiv="refresh" content="0;url={redirect_path}"></noscript>
+<p style="text-align:center;margin-top:40px;font-family:sans-serif;">Signing in...</p>
+</body></html>
+""", content_type="text/html; charset=utf-8")
+        resp.set_cookie(
+            'MMAUTHTOKEN', token,
+            path='/', samesite='Lax', httponly=False,
+            max_age=60*60*24*90,
+            secure=request.is_secure(),
+        )
+        # Also set lowercase variant for compatibility
+        resp.set_cookie(
+            'mmauthtoken', token,
+            path='/', samesite='Lax', httponly=False,
+            max_age=60*60*24*90,
+            secure=request.is_secure(),
+        )
         return resp
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
@@ -371,35 +486,14 @@ class MattermostPassthroughHandler:
             flags=re.IGNORECASE,
         )
 
-        # Rewrite file paths with extensions (capture query param as part of group 3, not separate)
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
+        # CRITICAL FIX: Rewrite static asset URLs to point DIRECTLY to upstream origin.
+        # This bypasses the Django proxy for JS/CSS bundles, eliminating 7-15s waits.
+        # Only rewrite RELATIVE /static/ paths — leave absolute URLs alone.
         html_str = re.sub(
             r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
-        )
-
-        # Rewrite absolute upstream-origin URLs (e.g. https://polysaas-mattermost.onrender.com/static/...)
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Rewrite window.basename so React Router uses proxy prefix as its base
-        html_str = re.sub(
-            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
-            lambda m: m.group(1) + f"'{proxy_prefix}'",
-            html_str,
         )
 
         # Inject the full client shim into every proxied HTML page so the
@@ -718,24 +812,57 @@ class MattermostPassthroughHandler:
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
+    // PolySaaS Mattermost v6 - Force Token + Early Run
+    console.log('[PolySaaS MM v6] Aggressive token restore');
+    var _mmCookieMatch = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+    if (_mmCookieMatch) {{
+        try {{ localStorage.setItem('MMAUTHTOKEN', _mmCookieMatch[1]); }} catch(e) {{}}
+        try {{ localStorage.setItem('mm_auth_token', _mmCookieMatch[1]); }} catch(e) {{}}
+        console.log('[PolySaaS MM] Token forced into localStorage');
+    }}
     var B = {base_js};
     var PROXY = {proxy_js};
     var O = window.location.origin;
-    var MMAUTHTOKEN = {token_js};
+    var _serverToken = {token_js};
+    var _lsToken = '';
+    try {{ _lsToken = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+    var MMAUTHTOKEN = _serverToken || _lsToken || '';
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
 
     // Spy on localStorage reads to diagnose what key Mattermost uses for the auth token
+    // Intercept localStorage reads so Mattermost always sees the token even if
+    // it was cleared or never stored.  Also read dynamically from cookie at request time.
+    function _getTokenFromCookie() {{
+        var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+        return m ? m[1] : '';
+    }}
+    function _getToken() {{
+        if (MMAUTHTOKEN) return MMAUTHTOKEN;
+        var t = _getTokenFromCookie();
+        if (t) return t;
+        try {{ t = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+        return t;
+    }}
     var _lsGet = Storage.prototype.getItem;
+    var _lsSet = Storage.prototype.setItem;
     Storage.prototype.getItem = function(key) {{
         var val = _lsGet.call(this, key);
+        // Inject token when Mattermost reads auth keys and value is missing
+        if ((key === 'MMAUTHTOKEN' || key === 'mm_auth_token' || key === 'storage:MMAUTHTOKEN') && !val) {{
+            var t = _getTokenFromCookie();
+            if (t) {{
+                val = t;
+                try {{ _lsSet.call(this, key, val); }} catch(e) {{}}
+                console.log('[PolySaaS MM] Injected token into localStorage.getItem("' + key + '")');
+            }}
+        }}
         if (key && (key.indexOf('MMAUTHTOKEN') !== -1 || key.indexOf('MMAuth') !== -1 ||
                     key.indexOf('persist:') !== -1 || key.indexOf('credentials') !== -1)) {{
             console.log('[PolySaaS MM] localStorage.getItem("' + key + '") =>', val ? val.slice(0, 60) : 'null');
         }}
         return val;
     }};
-    var _lsSet = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {{
         if (key && (key.indexOf('MMAUTHTOKEN') !== -1 || key.indexOf('MMAuth') !== -1 ||
                     key.indexOf('persist:') !== -1 || key.indexOf('credentials') !== -1)) {{
@@ -816,8 +943,61 @@ class MattermostPassthroughHandler:
         }};
     }})();
 
-    window.__webpack_public_path__ = PROXY + '/static/';
+    // Also intercept direct window.location assignments — Mattermost sometimes
+    // uses location.href = '/login' which bypasses pushState hooks.
+    (function(){{
+        var _locReplace = window.location.replace;
+        window.location.replace = function(url) {{
+            if (typeof url === 'string') {{
+                // Catch login redirects
+                if (/\/login(\/|$|\?)/.test(url)) {{
+                    console.log('[PolySaaS MM] Intercept location.replace(/login)');
+                    _locReplace.call(window.location, PROXY + '/login?force=1');
+                    return;
+                }}
+                // Catch expired session redirects
+                if (/extra=expired/.test(url)) {{
+                    console.log('[PolySaaS MM] Intercept location.replace with extra=expired -> redirect to login bridge');
+                    _locReplace.call(window.location, PROXY + '/login?force=1');
+                    return;
+                }}
+            }}
+            return _locReplace.call(window.location, url);
+        }};
+        var _locAssign = window.location.assign;
+        window.location.assign = function(url) {{
+            if (typeof url === 'string') {{
+                // Catch login redirects
+                if (/\/login(\/|$|\?)/.test(url)) {{
+                    console.log('[PolySaaS MM] Intercept location.assign(/login)');
+                    _locAssign.call(window.location, PROXY + '/login?force=1');
+                    return;
+                }}
+                // Catch expired session redirects
+                if (/extra=expired/.test(url)) {{
+                    console.log('[PolySaaS MM] Intercept location.assign with extra=expired -> redirect to login bridge');
+                    _locAssign.call(window.location, PROXY + '/login?force=1');
+                    return;
+                }}
+            }}
+            return _locAssign.call(window.location, url);
+        }};
+        // Polling fallback DISABLED — interferes with normal Mattermost auth redirects
+        // The pushState/location.assign/replace interceptors are sufficient
+    }})();
+
+    window.__webpack_public_path__ = B + '/static/';
     window.basename = PROXY;
+
+    // Periodic token reinjection — keeps localStorage in sync with cookie
+    setInterval(function() {{
+        var t = _getTokenFromCookie();
+        if (t) {{
+            try {{ localStorage.setItem('MMAUTHTOKEN', t); }} catch(e) {{}}
+            try {{ localStorage.setItem('mm_auth_token', t); }} catch(e) {{}}
+            try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(t)); }} catch(e) {{}}
+        }}
+    }}, 3000);
 
     // Strip PolySaaS proxy paths from redirect_to — Mattermost history.push(redirect_to)
     // would navigate within the SPA and fail to match any route, falling back to /login.
@@ -880,16 +1060,17 @@ class MattermostPassthroughHandler:
             var u = toProxy(input.url);
             if (u !== input.url) input = new Request(u, input);
         }}
-        if (MMAUTHTOKEN) {{
+        var _token = _getToken();
+        if (_token) {{
             var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
             if (reqUrl.indexOf('/api/v4/') !== -1) {{
                 init = Object.assign({{}}, init || {{}});
                 if (!init.headers) {{
-                    init.headers = {{'Authorization': 'Bearer ' + MMAUTHTOKEN}};
+                    init.headers = {{'Authorization': 'Bearer ' + _token}};
                 }} else if (typeof init.headers.has === 'function') {{
-                    init.headers.set('Authorization', 'Bearer ' + MMAUTHTOKEN);
+                    init.headers.set('Authorization', 'Bearer ' + _token);
                 }} else {{
-                    init.headers = Object.assign({{}}, init.headers, {{'Authorization': 'Bearer ' + MMAUTHTOKEN}});
+                    init.headers = Object.assign({{}}, init.headers, {{'Authorization': 'Bearer ' + _token}});
                 }}
                 console.log('[PolySaaS MM] Auth injected for', reqUrl.slice(0, 60));
             }}
@@ -901,22 +1082,9 @@ class MattermostPassthroughHandler:
             return _prom.then(function(r) {{
                 console.log('[PolySaaS MM] users/me HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
                 if (r.status === 401) {{
-                    // Validate token one more time before declaring it invalid.
-                    // The 401 might be a transient error or stale server-side cache.
-                    console.log('[PolySaaS MM] Got 401 on users/me — double-checking token validity...');
-                    _f.call(window, PROXY + '/api/v4/users/me', {{headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}}}).then(function(r2) {{
-                        if (r2.status === 200) {{
-                            console.log('[PolySaaS MM] Token is actually VALID — ignoring transient 401');
-                        }} else {{
-                            console.log('[PolySaaS MM] Token confirmed invalid — clearing and redirecting');
-                            _mmClearToken();
-                            _mmRedirectToLogin();
-                        }}
-                    }}).catch(function() {{
-                        console.log('[PolySaaS MM] Token validation check failed — clearing and redirecting');
-                        _mmClearToken();
-                        _mmRedirectToLogin();
-                    }});
+                    console.log('[PolySaaS MM] Got 401 on users/me — clearing token and redirecting to login');
+                    _mmClearToken();
+                    _mmRedirectToLogin();
                 }}
                 return r;
             }});
@@ -935,17 +1103,18 @@ class MattermostPassthroughHandler:
             this.addEventListener('load', function() {{
                 console.log('[PolySaaS MM] XHR users/me status:', _self.status);
                 if (_self.status === 401) {{
-                    console.log('[PolySaaS MM] XHR 401 on users/me — clearing and redirecting');
+                    console.log('[PolySaaS MM] XHR Got 401 on users/me — clearing token and redirecting to login');
                     _mmClearToken();
                     _mmRedirectToLogin();
                 }}
             }});
         }}
-        if (MMAUTHTOKEN && proxied.indexOf('/api/v4/') !== -1) {{
+        var _xhrToken = _getToken();
+        if (_xhrToken && proxied.indexOf('/api/v4/') !== -1) {{
             try {{
-                this.setRequestHeader('Authorization', 'Bearer ' + MMAUTHTOKEN);
+                this.setRequestHeader('Authorization', 'Bearer ' + _xhrToken);
                 if (proxied.indexOf('/users/me') !== -1)
-                    console.log('[PolySaaS MM] XHR Auth injected for users/me, token starts:', MMAUTHTOKEN.slice(0, 8));
+                    console.log('[PolySaaS MM] XHR Auth injected for users/me, token starts:', _xhrToken.slice(0, 8));
             }} catch(e) {{}}
         }}
     }};
@@ -968,7 +1137,7 @@ class MattermostPassthroughHandler:
     }}
     function _wsSilentStub(url) {{
         console.warn('[PolySaaS MM] WebSocket silent stub for:', url);
-        var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} };
+        var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} }};
         setTimeout(function() {{ if (stub.onopen) stub.onopen(); }}, 0);
         return stub;
     }}
@@ -1042,6 +1211,16 @@ class MattermostPassthroughHandler:
         return _origAppend.call(this, node);
     }};
     console.log('[PolySaaS Mattermost] Full shim loaded, proxy=', PROXY);
+
+    // Fallback: if still on /login or spinner visible after 1.2s, force redirect to Town Square
+    setTimeout(function() {{
+        var onLogin = location.pathname.indexOf('/login') !== -1;
+        var hasSpinner = !!document.querySelector('.spinner, .loading-spinner, .initial-loading-screen, .app__body .loading');
+        if (onLogin || hasSpinner) {{
+            console.log('[PolySaaS MM] Spinner/login still present after 1.2s — forcing Town Square redirect');
+            window.location.replace(PROXY);
+        }}
+    }}, 1200);
 }})();
 </script>
 """

@@ -12,6 +12,122 @@ logger = logging.getLogger(__name__)
 
 _SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE", "HTTP_ACCEPT_ENCODING"})
 
+# Connection-pooled sessions per upstream origin — dramatically reduces TLS handshake
+# overhead when the SPA makes many sequential API/static requests.
+_SESSIONS = {}
+
+def _get_session_for_origin(origin):
+    """Return a cached requests.Session for the given origin."""
+    if origin not in _SESSIONS:
+        sess = requests.Session()
+        sess.headers.update({"Accept-Encoding": "identity"})
+        _SESSIONS[origin] = sess
+    return _SESSIONS[origin]
+
+
+def _inject_polysniffer_capture(html_content: str, app_name: str = "unknown") -> str:
+    """
+    Inject PolySniffer browser-side capture script into HTML responses.
+    This captures native browser fetch/XHR calls and POSTs them to
+    /admin/polysniffer/capture/ so they can be compared with passthrough logs.
+    """
+    if not html_content or "</body>" not in html_content.lower():
+        return html_content
+
+    import json
+    app_name_json = json.dumps(app_name)
+
+    script = (
+        '<script data-polysniffer="capture">\n'
+        '(function() {\n'
+        '    if (window.__PS_CAPTURE__) return;\n'
+        '    window.__PS_CAPTURE__ = true;\n'
+        '    \n'
+        '    const CAPTURE_URL = window.location.origin + "/admin/polysniffer/capture/";\n'
+        '    const APP_NAME = ' + app_name_json + ';\n'
+        '    \n'
+        '    function send(data) {\n'
+        '        try {\n'
+        '            navigator.sendBeacon(CAPTURE_URL, JSON.stringify(data));\n'
+        '        } catch(e) {\n'
+        '            fetch(CAPTURE_URL, {\n'
+        '                method: "POST",\n'
+        '                body: JSON.stringify(data),\n'
+        '                headers: {"Content-Type": "application/json"},\n'
+        '                keepalive: true\n'
+        '            }).catch(function(){});\n'
+        '        }\n'
+        '    }\n'
+        '    \n'
+        '    const origFetch = window.fetch;\n'
+        '    window.fetch = function(...args) {\n'
+        '        const url = typeof args[0] === "string" ? args[0] : (args[0] && args[0].url) || "";\n'
+        '        const opts = args[1] || {};\n'
+        '        const start = performance.now();\n'
+        '        return origFetch.apply(this, args).then(function(resp) {\n'
+        '            const clone = resp.clone();\n'
+        '            clone.text().then(function(body) {\n'
+        '                send({\n'
+        '                    capture_source: "browser_injected",\n'
+        '                    endpoint_name: APP_NAME + "_browser_native",\n'
+        '                    method: opts.method || "GET",\n'
+        '                    url: url,\n'
+        '                    status: resp.status,\n'
+        '                    headers: Object.fromEntries(new Headers(opts.headers || {}).entries()),\n'
+        '                    response_headers: Object.fromEntries(new Headers(resp.headers || {}).entries()),\n'
+        '                    body: body ? body.substring(0, 50000) : "",\n'
+        '                    duration_ms: Math.round(performance.now() - start)\n'
+        '                });\n'
+        '            }).catch(function(){});\n'
+        '            return resp;\n'
+        '        });\n'
+        '    };\n'
+        '    \n'
+        '    const origXHROpen = XMLHttpRequest.prototype.open;\n'
+        '    const origXHRSend = XMLHttpRequest.prototype.send;\n'
+        '    const origXHRSetHeader = XMLHttpRequest.prototype.setRequestHeader;\n'
+        '    \n'
+        '    XMLHttpRequest.prototype.open = function(method, url, ...rest) {\n'
+        '        this._ps_method = method;\n'
+        '        this._ps_url = url;\n'
+        '        this._ps_headers = {};\n'
+        '        return origXHROpen.apply(this, [method, url, ...rest]);\n'
+        '    };\n'
+        '    \n'
+        '    XMLHttpRequest.prototype.setRequestHeader = function(name, value) {\n'
+        '        if (!this._ps_headers) this._ps_headers = {};\n'
+        '        this._ps_headers[name] = value;\n'
+        '        return origXHRSetHeader.apply(this, arguments);\n'
+        '    };\n'
+        '    \n'
+        '    XMLHttpRequest.prototype.send = function(body) {\n'
+        '        const xhr = this;\n'
+        '        const start = performance.now();\n'
+        '        xhr.addEventListener("loadend", function() {\n'
+        '            send({\n'
+        '                capture_source: "browser_injected",\n'
+        '                endpoint_name: APP_NAME + "_browser_native",\n'
+        '                method: xhr._ps_method || "GET",\n'
+        '                url: xhr._ps_url || "",\n'
+        '                status: xhr.status,\n'
+        '                headers: xhr._ps_headers || {},\n'
+        '                body: xhr.responseText ? xhr.responseText.substring(0, 50000) : "",\n'
+        '                duration_ms: Math.round(performance.now() - start)\n'
+        '            });\n'
+        '        });\n'
+        '        return origXHRSend.apply(this, arguments);\n'
+        '    };\n'
+        '    \n'
+        '    console.log("%c[PolySniffer] Browser capture active for " + APP_NAME, "color:#0f0");\n'
+        '})();\n'
+        '</script>'
+    )
+
+    body_idx = html_content.lower().rfind("</body>")
+    if body_idx != -1:
+        return html_content[:body_idx] + script + html_content[body_idx:]
+    return html_content + script
+
 
 def _should_follow_upstream_redirects(handler, request, *, target_url, upstream_path):
     """Shared default is no internal redirect following for proxied requests."""
@@ -205,7 +321,8 @@ def fetch_upstream_index_html(
             print(f"  Headers: {dict(hop_headers)}")
             print(f"  Cookies: {dict(upstream_cookies)}")
             print(f"{'>'*60}")
-            resp = requests.get(
+            sess = _get_session_for_origin(_origin)
+            resp = sess.get(
                 _current_url,
                 headers=hop_headers,
                 cookies=upstream_cookies,
@@ -441,7 +558,10 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print(f"Body preview      : {outbound_body[:200] if outbound_body else '(empty)'}")
             print("===========================")
 
-        resp = requests.request(
+        from urllib.parse import urlparse as _up
+        _origin = f"{_up(target_url).scheme}://{_up(target_url).netloc}"
+        sess = _get_session_for_origin(_origin)
+        resp = sess.request(
             method=request.method,
             url=target_url,
             headers=outbound_headers,
@@ -707,6 +827,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                 except Exception as sc_exc:
                     print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
             response["X-Frame-Options"] = "ALLOWALL"
+            if upstream_path.startswith('/static/') or upstream_path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2')):
+                response["Cache-Control"] = "public, max-age=3600"
             print("FORWARDER SUCCESS — BINARY/TEXT PASSTHROUGH (non-HTML)")
             print("=" * 120 + "\n")
             return response
@@ -728,10 +850,16 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         else:
             print("NO HANDLER — RETURNING HTML AS-IS")
 
+        # Inject PolySniffer browser capture only when explicitly requested
+        # (?polysniffer=1) to avoid cluttering the network tab.
+        if request.GET.get('polysniffer') == '1':
+            content = _inject_polysniffer_capture(content, app_name or "unknown")
+
         response = HttpResponse(content.encode("utf-8"), status=resp.status_code)
         response["Content-Type"] = resp.headers.get("Content-Type", "text/html; charset=utf-8")
         response["Content-Encoding"] = "identity"
         response["X-Frame-Options"] = "ALLOWALL"
+        response["Cache-Control"] = "public, max-age=600"
         for csp_hdr in ("Content-Security-Policy", "Content-Security-Policy-Report-Only"):
             try:
                 del response[csp_hdr]
