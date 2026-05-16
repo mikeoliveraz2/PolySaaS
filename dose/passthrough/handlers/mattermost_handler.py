@@ -147,13 +147,15 @@ class MattermostPassthroughHandler:
         password = ""
         try:
             extra = self._get_tenantapp_extra_config(request) or {}
-            stored_login = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                           extra.get('mattermost_username') or extra.get('login_id') or '')
+            stored_login = (extra.get('mattermost_username') or
+                           extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                           extra.get('username') or extra.get('login_id') or '')
             stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
                           extra.get('password') or '')
             # Use stored credentials directly — they were provisioned for this tenant.
-            # Fall back to email only if nothing is stored.
-            login_id = stored_login or user_email
+            # Fall back to Django username, then email if nothing stored.
+            django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
+            login_id = stored_login or django_username or user_email
             password = stored_pass
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
