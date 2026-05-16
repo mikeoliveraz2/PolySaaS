@@ -35,6 +35,7 @@ except Exception:
 
 from dose.models import Subscription, Tenant, UserProfile, UserTenantMembership
 from dose.serializers import SubscriptionSerializer
+from dose.passthrough.credential_container import PassthroughCredentialContainer
 from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
@@ -473,6 +474,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 print(f"[PROVISION-DONE] {app_key}: success={result.get('success')} error={result.get('error')}")
                 if result.get('success'):
                     messages.success(request, f"{app_display} is ready!")
+                    # Store credentials in encrypted session for persistent re-authentication
+                    _store_passthrough_credentials_in_session(
+                        request, app_key, tapp, result, 
+                        user_obj, admin_email, kwargs
+                    )
                 else:
                     err = result.get('error', 'Unknown error')
                     logger.warning("[PROVISION] %s returned failure: %s", app_key, err)
@@ -484,3 +490,88 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             import time
             time.sleep(5)
             print(f"{'='*60}\n")
+
+    @staticmethod
+    def _store_passthrough_credentials_in_session(request, app_key, tapp, result, user_obj, admin_email, kwargs):
+        """
+        Store provisioned credentials in encrypted session for persistent re-authentication.
+        
+        Called after successful provisioning to populate the credential container
+        with username, password, email, and API tokens.
+        """
+        if not tapp or not request:
+            return
+        
+        try:
+            app_name = app_key.replace('enable_', '')  # 'enable_mattermost' -> 'mattermost'
+            
+            # Extract credentials based on app type
+            if app_name == 'mattermost':
+                # Credentials were passed to provisioner and stored in extra_config
+                extra = tapp.extra_config or {}
+                username = extra.get('mm_login_id') or extra.get('mm_username') or extra.get('mattermost_login_id')
+                password = kwargs.get('admin_password', '')
+                email = admin_email
+                token = extra.get('mm_token') or extra.get('mmauthtoken') or ''
+                
+                if username and password:
+                    PassthroughCredentialContainer.store(
+                        request,
+                        app_name='mattermost',
+                        credentials={
+                            'username': username,
+                            'password': password,
+                            'email': email,
+                            'api_tokens': {
+                                'mattermost_token': token,
+                            }
+                        },
+                        ttl_hours=24
+                    )
+                    logger.info("[CRED] Stored Mattermost credentials in session for %s", email)
+                    
+            elif app_name == 'nextcloud':
+                # Similar pattern for Nextcloud
+                extra = tapp.extra_config or {}
+                username = extra.get('nextcloud_login') or email.split('@')[0]
+                password = kwargs.get('admin_password', '')
+                token = extra.get('nextcloud_token') or ''
+                
+                if username and password:
+                    PassthroughCredentialContainer.store(
+                        request,
+                        app_name='nextcloud',
+                        credentials={
+                            'username': username,
+                            'password': password,
+                            'email': email,
+                            'api_tokens': {
+                                'nextcloud_token': token,
+                            }
+                        },
+                        ttl_hours=24
+                    )
+                    logger.info("[CRED] Stored Nextcloud credentials in session for %s", email)
+                    
+            elif app_name == 'odoo':
+                # Odoo credentials
+                extra = tapp.extra_config or {}
+                username = extra.get('odoo_login') or email
+                password = extra.get('odoo_password') or kwargs.get('admin_password', '')
+                
+                if username and password:
+                    PassthroughCredentialContainer.store(
+                        request,
+                        app_name='odoo',
+                        credentials={
+                            'username': username,
+                            'password': password,
+                            'email': email,
+                            'api_tokens': {}
+                        },
+                        ttl_hours=24
+                    )
+                    logger.info("[CRED] Stored Odoo credentials in session for %s", email)
+                    
+        except Exception as exc:
+            logger.warning("[CRED] Failed to store %s credentials in session: %s", app_key, exc)

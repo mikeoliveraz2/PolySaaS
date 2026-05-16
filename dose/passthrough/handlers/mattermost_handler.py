@@ -11,11 +11,15 @@ import logging
 import re
 import time
 from urllib.parse import urlparse
+from typing import Optional
+
+import requests
+from dose.passthrough.strategies import TokenRefreshStrategyFactory
 
 logger = logging.getLogger(__name__)
 
 # MODULE LOAD MARKER — if this doesn't appear in terminal, old code is cached
-print("[MM-HANDLER-LOAD] mattermost_handler.py loaded — v2026-05-16-fix-dose-leak")
+print("[MM-HANDLER-LOAD] mattermost_handler.py loaded — v2026-05-17-phase3-strategy-factory")
 
 
 class MattermostPassthroughHandler:
@@ -115,9 +119,14 @@ class MattermostPassthroughHandler:
         if request.method != "GET":
             return None
 
-        # Only intercept the exact root. Everything else (channels, api, login, …)
-        # is forwarded to Mattermost directly — no /login intercept here.
-        if request.path_info.rstrip("/") != proxy_prefix:
+        # Intercept both root AND /login?force=1 (login bridge redirect target)
+        is_root = request.path_info.rstrip("/") == proxy_prefix
+        is_login_force = (
+            request.path_info.rstrip("/") == f"{proxy_prefix}/login" and 
+            request.GET.get('force') == '1'
+        )
+        
+        if not (is_root or is_login_force):
             return None
 
         team_name = self._get_team_name(request)
@@ -128,6 +137,11 @@ class MattermostPassthroughHandler:
         force_login = request.GET.get('force') == '1'
         
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        
+        # Strip JSON quotes if present (cookie may contain "" which is JSON-encoded empty string)
+        if token and token.strip() == '""':
+            token = ''
+        
         if token and not force_login:
             # TRUST the browser cookie — don't validate server-side.
             # Server-side validation creates new sessions that invalidate the browser token.
@@ -142,47 +156,49 @@ class MattermostPassthroughHandler:
             resp['X-PolySaaS-Redirect'] = 'town-square-token-present'
             return resp
 
-        if force_login:
-            # Force login requested — serve bridge inline.
-            print(f"[MM ROOT] force=1 — serving login bridge inline at root")
-            return self._serve_login_bridge(request, trigger, endpoint)
-
-        # No token — send to login bridge so they can authenticate.
-        # Never send unauthenticated users to Town Square (spinner loop).
-        login_bridge = f"{proxy_prefix}/login?force=1"
-        print(f"[MM ROOT] No token — redirecting to login bridge {login_bridge}")
-        from django.http import HttpResponseRedirect
-        resp = HttpResponseRedirect(login_bridge)
-        resp['X-PolySaaS-Redirect'] = 'login-bridge-no-token'
-        return resp
+        # No token OR force=1 — serve login bridge INLINE (no redirect)
+        print(f"[MM ROOT] No token or force=1 — serving login bridge inline at {request.path_info}")
+        return self._serve_login_bridge(request, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
         from django.http import HttpResponse
         from html import escape as h
+        from dose.passthrough.credential_container import PassthroughCredentialContainer
 
         user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
         login_id = ""
         password = ""
+        allow_auto_submit = False
         try:
-            extra = self._get_tenantapp_extra_config(request) or {}
-            stored_login = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                           extra.get('mattermost_username') or extra.get('login_id') or '')
-            stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
-                          extra.get('password') or '')
-            # Only use stored credentials if they look like they belong to this user
-            if stored_login and stored_login.lower() in [user_email.lower(), user_email.split('@')[0].lower()]:
-                login_id = stored_login
-                password = stored_pass
-            else:
-                login_id = user_email
-                password = stored_pass  # May still work even if username is different
+            # First priority: encrypted credentials from session (if available)
+            session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+            if session_creds:
+                login_id = session_creds.get('username', '')
+                password = session_creds.get('password', '')
+                allow_auto_submit = bool(login_id and password)
+                logger.info("[MM LoginBridge] Using credentials from encrypted session")
+            
+            # Fallback: credentials from database extra_config
+            if not login_id or not password:
+                extra = self._get_tenantapp_extra_config(request) or {}
+                print(f"[MM LoginBridge] extra keys={list(extra.keys())}")
+                # Mattermost-specific credentials are the only safe source for auto-submit.
+                mm_login = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                            extra.get('mattermost_username') or extra.get('mm_username') or '')
+                mm_pass = (extra.get('mattermost_password') or extra.get('mm_password') or '')
+                # Generic keys can still prefill for convenience, but must never auto-submit.
+                fallback_login = extra.get('username') or extra.get('login_id') or ''
+                fallback_pass = extra.get('password') or ''
+                django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
+                login_id = mm_login or fallback_login or django_username or user_email
+                password = mm_pass or fallback_pass
+                allow_auto_submit = bool(mm_login and mm_pass)
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
             login_id = user_email
 
-        logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s user_email=%r",
-                    login_id, len(login_id or ''), bool(password), user_email)
+        print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
         # Get team name for redirect after login
         team_name = ''
@@ -217,6 +233,7 @@ class MattermostPassthroughHandler:
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
         user_email_js = json.dumps(user_email)
+        allow_auto_submit_js = "true" if allow_auto_submit else "false"
 
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>
@@ -250,6 +267,7 @@ class MattermostPassthroughHandler:
 <script>
 (function () {{
     var teamName = {team_name_js};
+    var allowAutoSubmit = {allow_auto_submit_js};
     function $(id) {{ return document.getElementById(id); }}
     function setStatus(msg, err) {{
         var s = $('status');
@@ -277,7 +295,8 @@ class MattermostPassthroughHandler:
         xhr.onload = function () {{
             console.log('[LoginBridge] onload status=' + xhr.status);
             var token = xhr.getResponseHeader('Token');
-            console.log('[LoginBridge] token=' + (token ? 'present' : 'MISSING'));
+            console.log('[LoginBridge] token from header=' + (token ? token.substring(0, 30) + '...' : 'MISSING'));
+            console.log('[LoginBridge] ALL response headers: ' + xhr.getAllResponseHeaders());
             if (xhr.status >= 200 && xhr.status < 300 && token) {{
                 // Keep token where Mattermost client app expects it
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
@@ -285,6 +304,7 @@ class MattermostPassthroughHandler:
                 // Server-side bridge: POST token to _bridge_login so cookie is set reliably
                 var bridgeUrl = base().replace(/\/$/, '') + '/_bridge_login';
                 console.log('[LoginBridge] POSTing token to server bridge:', bridgeUrl);
+                console.log('[LoginBridge] Token being sent: ' + (token ? token.substring(0, 30) + '...' : 'MISSING'));
                 var bridgeXhr = new XMLHttpRequest();
                 bridgeXhr.open('POST', bridgeUrl, true);
                 bridgeXhr.setRequestHeader('Content-Type', 'application/json');
@@ -350,7 +370,8 @@ class MattermostPassthroughHandler:
         }}
         console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
                     ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
-                    ' auto=' + hasCreds + ' hasToken=' + (existingToken ? 'yes' : 'no'));
+                    ' auto=' + hasCreds + ' allowAuto=' + (allowAutoSubmit ? 'yes' : 'no') +
+                    ' hasToken=' + (existingToken ? 'yes' : 'no'));
         if (existingToken && existingToken.length > 10) {{
             console.log('[LoginBridge] Valid token already exists — server-bridging then redirecting');
             var bridgeUrl = base().replace(/\/$/, '') + '/_bridge_login';
@@ -367,7 +388,9 @@ class MattermostPassthroughHandler:
             bridgeXhr2.send(JSON.stringify({{token: existingToken}}));
             return;
         }}
+        // Auto-submit if credentials are pre-filled (from passthrough config)
         if (hasCreds) {{
+            console.log('[LoginBridge] Auto-submitting with pre-filled credentials');
             setTimeout(doLogin, 300);
         }}
     }});
@@ -402,6 +425,7 @@ class MattermostPassthroughHandler:
         team_name = self._get_team_name(request)
         redirect_path = f"{proxy_prefix}/{team_name}/channels/town-square"
 
+        print(f"[MM BRIDGE] TOKEN RECEIVED: len={len(token)} preview={token[:50] if token else 'EMPTY'}")
         print(f"[MM BRIDGE] Server-side cookie set — team={team_name} redirect={redirect_path}")
 
         from django.http import HttpResponse
@@ -500,7 +524,7 @@ class MattermostPassthroughHandler:
         # auto-login watcher runs on /login regardless of navigation path.
         if '<head' in html_str.lower():
             print(f"[MM HANDLER] Injecting shim into HTML, proxy_prefix={proxy_prefix}")
-            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
+            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix, endpoint_url=endpoint_url)
         else:
             print(f"[MM HANDLER] No <head> found, skipping shim injection")
 
@@ -534,50 +558,37 @@ class MattermostPassthroughHandler:
             return None
 
     def _get_tenantapp_extra_config(self, request=None):
-        """Query TenantApp extra_config from public schema using raw SQL to avoid schema issues.
-        Filters by current tenant first; falls back to any active mattermost TenantApp."""
-        import json
-        from django.db import connection
-        tenant_id = None
-        if request is not None:
-            try:
-                from dose.utils import get_current_tenant
-                t = getattr(request, 'tenant', None) or get_current_tenant(request)
-                if t:
-                    tenant_id = t.id
-            except Exception:
-                pass
-        with connection.cursor() as cur:
-            cur.execute("SET search_path TO public,pg_catalog")
-            # Try tenant-specific record first (any status with non-empty config)
-            if tenant_id:
-                cur.execute(
-                    """SELECT extra_config FROM dose_tenantapp
-                       WHERE app_name = 'mattermost' AND tenant_id = %s
-                       AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
-                       LIMIT 1""",
-                    [tenant_id],
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    cfg = row[0]
-                    if isinstance(cfg, str):
-                        return json.loads(cfg)
-                    return cfg
-            # Fall back to any active mattermost TenantApp with credentials
-            cur.execute(
-                """SELECT extra_config FROM dose_tenantapp
-                   WHERE app_name = 'mattermost' AND status = 'active'
-                   AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
-                   LIMIT 1""",
-            )
-            row = cur.fetchone()
-            if row and row[0]:
-                cfg = row[0]
-                if isinstance(cfg, str):
-                    return json.loads(cfg)
-                return cfg
-        return None
+        """Return extra_config dict for this tenant's Mattermost TenantApp.
+        Uses ORM with PublicTenantAppBundleManager (search_path=public) — the records
+        are global (public schema), not per-tenant-schema copies."""
+        try:
+            from dose.models import TenantApp
+            tenant = None
+            if request is not None:
+                try:
+                    from dose.utils import get_current_tenant
+                    tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+                except Exception:
+                    pass
+            # Tenant-specific first
+            if tenant:
+                ta = TenantApp.public_bundles.filter(
+                    app_name='mattermost', tenant=tenant
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[MM LoginBridge] extra_config found via tenant={tenant} keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            # Fallback: any active mattermost app with credentials
+            ta = TenantApp.public_bundles.filter(
+                app_name='mattermost', status='active'
+            ).exclude(extra_config={}).first()
+            if ta and ta.extra_config:
+                print(f"[MM LoginBridge] extra_config found via active fallback keys={list(ta.extra_config.keys())}")
+                return ta.extra_config
+            print(f"[MM LoginBridge] extra_config NOT found (tenant={tenant})")
+        except Exception as exc:
+            print(f"[MM LoginBridge] _get_tenantapp_extra_config error: {exc}")
+        return {}
 
     def _save_tenantapp_token(self, token, request=None):
         """Save refreshed token to public schema TenantApp using raw SQL."""
@@ -680,30 +691,16 @@ class MattermostPassthroughHandler:
             print('[MM_AUTH] Skipping login/logout path')
             return
         
-        # PRIORITY: Browser cookie first — always fresh after successful login bridge.
-        # Server cache may hold stale provisioning tokens or expired session tokens.
+        # BROWSER COOKIE ONLY — server-cached provisioning tokens (PATs) can be revoked
+        # when Mattermost's DB resets, causing 401 loops. Only a live browser session token
+        # is guaranteed fresh. If no cookie exists, send unauthenticated → login bridge handles.
         all_cookies = dict(request.COOKIES)
         print(f'[MM_AUTH] Incoming cookies: {list(all_cookies.keys())}')
         print(f'[MM_AUTH] MMAUTHTOKEN cookie: {"PRESENT" if all_cookies.get("MMAUTHTOKEN") else "MISSING"}')
         print(f'[MM_AUTH] mmauthtoken cookie: {"PRESENT" if all_cookies.get("mmauthtoken") else "MISSING"}')
-        print(f'[MM_AUTH] Cookie values present: {[k for k,v in all_cookies.items() if v]}')
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         _src = 'browser-cookie' if token else 'none'
         print(f'[MM_AUTH] Selected token source: {_src}')
-        
-        # Fallback to server cache if browser has no token (first visit)
-        if not token:
-            try:
-                extra_config = self._get_tenantapp_extra_config(request)
-                if extra_config:
-                    token = (extra_config.get('mmauthtoken') or
-                             extra_config.get('mm_session_token') or
-                             extra_config.get('mm_token'))
-                    if token:
-                        _src = 'server-cache'
-                        print(f'[MM_AUTH] Using server cache token')
-            except Exception as exc:
-                print(f'[MM_AUTH] Error getting cached token: {exc}')
         
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
@@ -719,9 +716,66 @@ class MattermostPassthroughHandler:
         elif not token:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
 
+    def _regenerate_mattermost_token(self, request, username: str, password: str, mm_url: str = None) -> Optional[str]:
+        """
+        Regenerate a Mattermost session token using username and password.
+        
+        Delegates to TokenRefreshStrategyFactory for the actual token refresh logic.
+        This method maintains backward compatibility while using the new strategy pattern.
+        
+        Called when current token is invalid (401) to attempt automatic re-authentication
+        without forcing the user back to the login bridge.
+        
+        Args:
+            request: Django request object
+            username: Mattermost login ID or username
+            password: User's Mattermost password
+            mm_url: Mattermost base URL (e.g., https://mm.example.com). If not provided, tries to infer from request.
+            
+        Returns:
+            str: New session token if successful, None otherwise
+        """
+        print(f"[MM_REGEN] CALLED: username={username!r} password_len={len(password) if password else 0} mm_url={mm_url}")
+        try:
+            # Get Mattermost URL from parameter or infer from request context
+            if not mm_url:
+                try:
+                    _ep = getattr(request, '_passthrough_endpoint', None)
+                    mm_url = getattr(_ep, 'endpoint_url', None) if _ep else None
+                except:
+                    pass
+            
+            if not mm_url:
+                logger.warning("[MM_REGEN] No Mattermost URL provided or available in request")
+                print("[MM_REGEN] No Mattermost URL provided or available in request")
+                return None
+            
+            print(f"[MM_REGEN] Attempting token refresh: mm_url={mm_url} username={username}")
+            
+            # Use TokenRefreshStrategyFactory to get the Mattermost strategy
+            # and delegate the token refresh to it
+            strategy = TokenRefreshStrategyFactory.get_strategy('mattermost')
+            print(f"[MM_REGEN] Got strategy: {type(strategy).__name__}")
+            token = strategy.refresh(request, mm_url, username, password)
+            
+            print(f"[MM_REGEN] Strategy returned token: len={len(token) if token else 0} preview={token[:30] if token else 'NONE'}")
+            if token:
+                logger.info("[MM_REGEN] Token regenerated for user %s via strategy", username)
+                print(f"[MM_REGEN] Token regenerated successfully for {username}")
+                return token
+            else:
+                logger.warning("[MM_REGEN] Token refresh failed via strategy for user %s", username)
+                print(f"[MM_REGEN] Token refresh failed for {username}")
+                return None
+                
+        except Exception as exc:
+            logger.warning("[MM_REGEN] Token regeneration failed: %s", exc)
+            return None
+
     def postprocess_upstream_response(self, resp, request, **kwargs):
-        """Hook to handle upstream responses - log all API calls and clear token on 401."""
-        target_url = kwargs.get('endpoint_url', '')
+        """Hook to handle upstream responses - attempt token refresh on 401 using encrypted session."""
+        target_url = kwargs.get('target_url', '')
+        endpoint_url = kwargs.get('endpoint_url', '')  # Base Mattermost URL
         
         # Log ALL Mattermost API responses for debugging
         if '/api/v4/' in (target_url or ''):
@@ -731,10 +785,43 @@ class MattermostPassthroughHandler:
             if token_header:
                 print(f'[MM_RESP] Token header present: {token_header[:10]}...')
         
-        # If we get a 401 on ANY API call (not just /users/me), the token is invalid.
-        # Clear BOTH server cache AND browser cookie to force re-auth via login bridge.
+        # If we get a 401 on ANY API call (not just /users/me), the token might be invalid.
+        # Try to regenerate it using encrypted session credentials before clearing.
         if resp.status_code == 401 and '/api/v4/' in (target_url or ''):
-            print(f'[MM_AUTH] Got 401 on {target_url} - clearing token EVERYWHERE')
+            print(f'[MM_AUTH] Got 401 on {target_url} - attempting token refresh from session')
+            
+            # Try to regenerate token using password from encrypted session
+            try:
+                from dose.passthrough.credential_container import PassthroughCredentialContainer
+                session_creds = PassthroughCredentialContainer.retrieve(request, 'mattermost')
+                
+                if session_creds and session_creds.get('password'):
+                    username = session_creds.get('username', '')
+                    password = session_creds.get('password', '')
+                    
+                    print(f'[MM_AUTH] Attempting to regenerate token for {username}')
+                    new_token = self._regenerate_mattermost_token(request, username, password, mm_url=endpoint_url)
+                    
+                    if new_token:
+                        print(f'[MM_AUTH] Token regenerated successfully - setting cookie')
+                        # Create response with new token in cookie
+                        from django.http import HttpResponse
+                        # Return empty 200 OK response - client will retry with new cookie
+                        regen_resp = HttpResponse('', status=200)
+                        regen_resp['X-PolySaaS-Token-Refreshed'] = 'true'
+                        regen_resp['Set-Cookie'] = f'MMAUTHTOKEN={new_token}; path=/; SameSite=Lax'
+                        return regen_resp
+                    else:
+                        print(f'[MM_AUTH] Token regeneration failed - falling back to clear+reauth')
+                else:
+                    print(f'[MM_AUTH] No password in session - cannot regenerate token')
+                    
+            except Exception as exc:
+                print(f'[MM_AUTH] Token regeneration attempt failed: {exc}')
+                logger.warning("[MM_AUTH] Regeneration exception: %s", exc)
+            
+            # Fallback: If regeneration not available or failed, clear token and force re-auth
+            print(f'[MM_AUTH] Clearing token EVERYWHERE (regeneration failed)')
             try:
                 # Clear server cache
                 extra_config = self._get_tenantapp_extra_config(request)
@@ -746,7 +833,7 @@ class MattermostPassthroughHandler:
                     print(f'[MM_AUTH] Cleared invalid token from server cache')
             except Exception as exc:
                 print(f'[MM_AUTH] Failed to clear server cache: {exc}')
-            # We can't clear browser cookies from server-side, but the shim does this client-side.
+            
             # Return a response that clears the cookie so the browser knows to re-auth.
             if '/users/me' in (target_url or ''):
                 from django.http import HttpResponse
@@ -757,6 +844,7 @@ class MattermostPassthroughHandler:
                 clear_resp['Set-Cookie'] = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
                 print(f'[MM_AUTH] Injected Set-Cookie to clear MMAUTHTOKEN on 401 response')
                 return clear_resp
+                
         return None  # Return None to let normal processing continue
 
     def _strip_base_tags(self, html):
@@ -769,7 +857,7 @@ class MattermostPassthroughHandler:
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
     def _mattermost_display_shim_html(
-        self, request, proxy_prefix: str, base_origin: str
+        self, request, proxy_prefix: str, base_origin: str, endpoint_url=None
     ) -> str:
         """
         Full client shim for Mattermost in PolySaaS: MMAUTHTOKEN, webpack public path,
@@ -779,26 +867,66 @@ class MattermostPassthroughHandler:
         # Prefer browser cookie first — it's always fresh after login bridge succeeds.
         # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+        print(f"[MM SHIM] Reading token from request.COOKIES: MMAUTHTOKEN={request.COOKIES.get('MMAUTHTOKEN')!r} mmauthtoken={request.COOKIES.get('mmauthtoken')!r}")
         if token:
             logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
+            print(f"[MM SHIM] Token from browser cookie: len={len(token)} preview={token[:30] if token else 'EMPTY'}")
         else:
             # Fallback to server-side token if browser has none
             try:
                 cookies = self.get_upstream_cookies(request) or {}
                 token = cookies.get("MMAUTHTOKEN") or ""
                 logger.info("[MM Shim] token from server, len=%d", len(token))
+                print(f"[MM SHIM] Token from server cache: len={len(token)} preview={token[:30] if token else 'EMPTY'}")
             except Exception as exc:
                 logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+                print(f"[MM SHIM] Token lookup exception: {exc}")
 
         login_id = ""
         password = ""
         try:
-            extra = self._get_tenantapp_extra_config(request) or {}
-            login_id = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                        extra.get('mattermost_username') or extra.get('login_id') or
-                        getattr(getattr(request, 'user', None), 'email', '') or '')
-            password = (extra.get('mattermost_password') or extra.get('mm_password') or
-                        extra.get('password') or '')
+            # First priority: encrypted credentials from session
+            from dose.passthrough.credential_container import PassthroughCredentialContainer
+            session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+            print(f"[MM SHIM] PassthroughCredentialContainer.retrieve returned: {session_creds}")
+            if session_creds:
+                login_id = session_creds.get('username', '')
+                password = session_creds.get('password', '')
+                logger.info("[MM Shim] Using credentials from encrypted session")
+                print(f"[MM SHIM] Got credentials from session: login_id={login_id!r} password_len={len(password) if password else 0}")
+                
+                # NEW: If no token in cookie but we have credentials, try to regenerate token immediately
+                # This eliminates the spinner/manual-login on first page load after provisioning
+                if not token and login_id and password:
+                    try:
+                        mm_url = endpoint_url or self._get_tenantapp_extra_config(request).get('app_url') or \
+                                 self._get_tenantapp_extra_config(request).get('url')
+                        if not mm_url:
+                            # Fallback: derive from proxy_prefix
+                            mm_url = f"https://{proxy_prefix.split('/')[-1]}"
+                        print(f"[MM SHIM] Conditions met: token_empty={not token} login_id={login_id!r} password_len={len(password)}")
+                        print(f"[MM SHIM] No browser token, attempting regeneration from session credentials (url={mm_url}) (endpoint_url={endpoint_url})")
+                        regen_token = self._regenerate_mattermost_token(request, login_id, password, mm_url=mm_url)
+                        if regen_token:
+                            token = regen_token
+                            print(f"[MM SHIM] Token regenerated successfully, len={len(token)}")
+                        else:
+                            print(f"[MM SHIM] Token regeneration failed, will require manual login")
+                    except Exception as exc:
+                        print(f"[MM SHIM] Token regeneration exception: {exc}")
+                else:
+                    print(f"[MM SHIM] Regen conditions NOT met: token={bool(token)} login_id={bool(login_id)} password={bool(password)}")
+            else:
+                print(f"[MM SHIM] NO SESSION CREDS found from PassthroughCredentialContainer")
+            
+            # Fallback: database extra_config
+            if not login_id or not password:
+                extra = self._get_tenantapp_extra_config(request) or {}
+                login_id = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                            extra.get('mattermost_username') or extra.get('mm_username') or '')
+                password = (extra.get('mattermost_password') or extra.get('mm_password') or
+                            '')
+                print(f"[MM SHIM] Fallback to database extra_config: login_id={login_id!r} password_len={len(password) if password else 0}")
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
 
@@ -807,7 +935,20 @@ class MattermostPassthroughHandler:
         password_js = json.dumps(password)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
-        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'}")
+        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'} endpoint_url={endpoint_url}")
+        
+        # PAUSE FOR DEBUG CAPTURE
+        import time
+        print("\n" * 3)
+        print("╔" + "="*78 + "╗")
+        print("║" + " "*78 + "║")
+        print("║" + "[MM SHIM TOKEN DEBUG] --- CRITICAL INFO BELOW ---".center(78) + "║")
+        print("║" + f"Token length: {len(token)} chars".center(78) + "║")
+        print("║" + f"Token preview: {token[:30] if token else 'NONE'}".center(78) + "║")
+        print("║" + f"Endpoint: {endpoint_url}".center(78) + "║")
+        print("║" + " "*78 + "║")
+        print("╚" + "="*78 + "╝")
+        print("\n" * 3)
 
         return f"""
 <script data-polysaas-mattermost-shim="1">
@@ -908,6 +1049,9 @@ class MattermostPassthroughHandler:
         }} catch(_e) {{}}
         document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; max-age=108000';
         window.MMAUTHTOKEN = MMAUTHTOKEN;
+        console.log('[PolySaaS MM] Token set in localStorage, reloading page for app to initialize with token');
+        window.location.reload();
+        return;
     }}
 
     console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
@@ -1225,10 +1369,10 @@ class MattermostPassthroughHandler:
 </script>
 """
 
-    def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
+    def _inject_client_shim(self, html, base_origin, request, proxy_prefix, endpoint_url=None):
         """Inject full Mattermost shim first in <head>."""
         shim = self._mattermost_display_shim_html(
-            request, proxy_prefix, base_origin
+            request, proxy_prefix, base_origin, endpoint_url=endpoint_url
         )
 
         if re.search(r"<head\b", html, re.IGNORECASE):

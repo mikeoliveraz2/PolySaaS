@@ -1,0 +1,36 @@
+#!/usr/bin/env python
+"""Quick test: verify Mattermost admin token works."""
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+mm_url = os.getenv('MATTERMOST_URL', 'https://polysaas-mattermost.onrender.com').rstrip('/')
+admin_token = os.getenv('MATTERMOST_ADMIN_TOKEN', '').strip()
+
+print(f"Mattermost URL: {mm_url}")
+print(f"Admin token: {admin_token[:8]}...{admin_token[-8:] if len(admin_token) > 16 else ''}")
+print()
+
+if not admin_token:
+    print("❌ ERROR: MATTERMOST_ADMIN_TOKEN is empty!")
+    exit(1)
+
+try:
+    resp = requests.get(
+        f"{mm_url}/api/v4/users/me",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        timeout=10
+    )
+    if resp.status_code == 200:
+        user = resp.json()
+        print(f"✅ Token is VALID!")
+        print(f"   Admin user: {user.get('username')} (id: {user.get('id')})")
+        print(f"   Email: {user.get('email')}")
+        print(f"   Roles: {user.get('roles')}")
+    else:
+        print(f"❌ Token INVALID — HTTP {resp.status_code}")
+        print(f"   Response: {resp.text[:300]}")
+except Exception as exc:
+    print(f"❌ Error: {exc}")

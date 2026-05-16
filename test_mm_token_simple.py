@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+"""Test Mattermost admin token against the actual server."""
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+mm_url = os.getenv('MATTERMOST_URL', '').strip() or 'https://polysaas-mattermost.onrender.com'
+admin_token = os.getenv('MATTERMOST_ADMIN_TOKEN', '').strip()
+
+print(f"Testing Mattermost connection...")
+print(f"URL: {mm_url}")
+print(f"Token: {admin_token[:8]}...{admin_token[-8:] if len(admin_token) > 16 else '(empty)'}")
+print()
+
+if not admin_token:
+    print("❌ ERROR: MATTERMOST_ADMIN_TOKEN is empty in .env")
+    exit(1)
+
+try:
+    # Step 1: Test basic connectivity
+    print("Step 1: Testing basic connectivity...")
+    resp = requests.get(f"{mm_url}/api/v4/system/ping", timeout=5)
+    print(f"  Ping response: HTTP {resp.status_code}")
+    if resp.status_code != 200:
+        print(f"  ⚠️  Mattermost may not be responding properly")
+    
+    # Step 2: Test admin token
+    print("\nStep 2: Testing admin token...")
+    resp = requests.get(
+        f"{mm_url}/api/v4/users/me",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        timeout=5
+    )
+    
+    print(f"  Token verification: HTTP {resp.status_code}")
+    if resp.status_code == 200:
+        user = resp.json()
+        print(f"  ✅ Token is VALID!")
+        print(f"     Admin user: {user.get('username')} (id: {user.get('id')})")
+        print(f"     Email: {user.get('email')}")
+        print(f"     Roles: {user.get('roles')}")
+    else:
+        print(f"  ❌ Token INVALID")
+        print(f"     Response: {resp.text[:500]}")
+        
+except requests.exceptions.Timeout:
+    print(f"  ❌ TIMEOUT: Mattermost not responding. Is it running on Render?")
+except requests.exceptions.ConnectionError as e:
+    print(f"  ❌ CONNECTION ERROR: {e}")
+except Exception as e:
+    print(f"  ❌ ERROR: {e}")
