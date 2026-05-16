@@ -147,6 +147,7 @@ class MattermostPassthroughHandler:
         password = ""
         try:
             extra = self._get_tenantapp_extra_config(request) or {}
+            print(f"[MM LoginBridge] extra keys={list(extra.keys())}")
             stored_login = (extra.get('mattermost_username') or
                            extra.get('mattermost_login_id') or extra.get('mm_login_id') or
                            extra.get('username') or extra.get('login_id') or '')
@@ -161,8 +162,7 @@ class MattermostPassthroughHandler:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
             login_id = user_email
 
-        logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s user_email=%r",
-                    login_id, len(login_id or ''), bool(password), user_email)
+        print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
         # Get team name for redirect after login
         team_name = ''
