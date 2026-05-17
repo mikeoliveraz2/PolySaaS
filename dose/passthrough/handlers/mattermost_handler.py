@@ -235,6 +235,11 @@ class MattermostPassthroughHandler:
         user_email_js = json.dumps(user_email)
         allow_auto_submit_js = "true" if allow_auto_submit else "false"
 
+        # Build URLs directly to avoid path.replace() issues with/without trailing slashes
+        proxy_prefix = f"/pt/admin/{trigger}"
+        login_url = f"{proxy_prefix}/api/v4/users/login"
+        channels_url = f"{proxy_prefix}/channels/town-square"
+
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>
 <style>
