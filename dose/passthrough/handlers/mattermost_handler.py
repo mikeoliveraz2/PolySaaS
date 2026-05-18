@@ -396,7 +396,7 @@ class MattermostPassthroughHandler:
         // Auto-submit if credentials are pre-filled (from passthrough config)
         if (hasCreds) {{
             console.log('[LoginBridge] Auto-submitting with pre-filled credentials');
-            setTimeout(doLogin, 300);
+            setTimeout(doLogin, 33);
         }}
     }});
 }})();
@@ -477,7 +477,7 @@ class MattermostPassthroughHandler:
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
 
-        # If Mattermost served its login HTML, replace entirely with our own form.
+        # Always handle login form injection first (needed for iframe authentication too)
         if '/login' in (getattr(request, 'path_info', '') or ''):
             _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
             if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
@@ -489,6 +489,52 @@ class MattermostPassthroughHandler:
             bridge = self._serve_login_bridge(request, _trigger, _endpoint_stub)
             if bridge is not None:
                 return bridge
+
+        # For iframe mode (?raw=1), skip shim injection but still rewrite URLs
+        is_raw_iframe = request.GET.get('raw') == '1'
+        
+        if not is_raw_iframe and not endpoint_url:
+            return html_str, None
+        
+        if is_raw_iframe:
+            # In iframe mode: rewrite static assets to absolute upstream URLs (for CORS)
+            # and form actions to proxy prefix, but skip complex shim injection
+            if not endpoint_url:
+                return html_str, None
+                
+            origin = endpoint_url.rstrip("/")
+            parsed = urlparse(origin)
+            base_origin = f"{parsed.scheme}://{parsed.netloc}"
+            
+            # Derive proxy_prefix from the request path
+            _path_parts = request.path_info.strip('/').split('/')
+            if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+                proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+            else:
+                proxy_prefix = "/pt/admin/mattermost"
+            
+            html_str = self._strip_base_tags(html_str)
+            html_str = self._strip_meta_redirects(html_str)
+            html_str = self._strip_csp(html_str)
+            
+            # Rewrite form actions for proxy (POST/GET through middleware)
+            html_str = re.sub(
+                r'(action=)(["\'])(/[^"\']*)',
+                lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+                html_str,
+                flags=re.IGNORECASE,
+            )
+            
+            # Rewrite static assets to absolute upstream URLs (so iframe can load CSS/JS directly)
+            html_str = re.sub(
+                r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
+                lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
+                html_str,
+                flags=re.IGNORECASE,
+            )
+            
+            print(f"[MM HANDLER] raw=1 iframe mode - form actions rewritten to {proxy_prefix}, assets rewritten to {base_origin}, skipping shim")
+            return html_str, None
 
         if not endpoint_url:
             return html_str, None

@@ -475,7 +475,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 if result.get('success'):
                     messages.success(request, f"{app_display} is ready!")
                     # Store credentials in encrypted session for persistent re-authentication
-                    _store_passthrough_credentials_in_session(
+                    SubscriptionApiViewSet._store_passthrough_credentials_in_session(
                         request, app_key, tapp, result, 
                         user_obj, admin_email, kwargs
                     )
