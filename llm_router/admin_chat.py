@@ -8,6 +8,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
@@ -151,3 +152,78 @@ def admin_llm_router_chat_api(request):
         "meta": response_meta,
     }
     return JsonResponse(payload)
+@login_required
+@require_POST
+def tenant_llm_router_chat_api(request):
+    """
+    Tenant-accessible JSON API for LLM chat (no staff required).
+    Body: ``message``, ``history``.
+    Always returns JSON, even on error.
+    """
+    try:
+        # Parse request body
+        try:
+            body = json.loads(request.body.decode() or "{}")
+        except json.JSONDecodeError as e:
+            log.warning("Invalid JSON in tenant chat request: %s", e)
+            return JsonResponse({"error": "invalid_json", "detail": str(e)[:200]}, status=400)
+
+        message = (body.get("message") or "").strip()
+        if not message:
+            return JsonResponse({"error": "message_required"}, status=400)
+        if len(message) > _MAX_MESSAGE:
+            return JsonResponse({"error": "message_too_long"}, status=400)
+
+        history = _normalize_history(body.get("history"))
+        messages = list(history)
+        messages.append({"role": "user", "content": message})
+
+        # Build system prompt
+        try:
+            system = build_staff_admin_system_prompt(request, ml_studio_instruction_appendix="")
+        except Exception as e:
+            log.warning("Failed to build system prompt: %s", e)
+            system = "You are a helpful assistant for PolySaaS users. Answer questions about workspace features and how-tos."
+
+        # Route and complete
+        try:
+            plan = route(prompt=message, user_tier="standard")
+        except Exception as e:
+            log.warning("LLM routing failed: %s", e)
+            plan = None
+
+        if not plan:
+            return JsonResponse(
+                {"error": "routing_failed", "detail": "Could not determine LLM provider"},
+                status=502,
+            )
+
+        try:
+            reply = complete_chat(
+                plan,
+                messages=messages,
+                system_prompt=system,
+                max_tokens=2048,
+            )
+        except Exception as exc:
+            log.exception("LLM complete_chat failed in tenant API")
+            return JsonResponse(
+                {"error": "upstream_error", "detail": str(exc)[:500]},
+                status=502,
+            )
+
+        payload = {
+            "reply": reply,
+            "provider": plan.provider,
+            "model": plan.model,
+            "task_bucket": plan.task_bucket,
+        }
+        return JsonResponse(payload)
+
+    except Exception as outer_exc:
+        # Catch-all for any unforeseen errors
+        log.exception("Unexpected error in tenant_llm_router_chat_api")
+        return JsonResponse(
+            {"error": "internal_error", "detail": str(outer_exc)[:500]},
+            status=500,
+        )

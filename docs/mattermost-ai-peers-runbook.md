@@ -62,6 +62,8 @@ Bot tokens:
 - `BOT_TOKEN_ROUTER`
 - `BOT_TOKEN_OPENCLAW`
 - `BOT_TOKEN_GEM`
+- `BOT_TOKEN_GEMINI`
+- `BOT_TOKEN_WINDSURF`
 
 Compatibility tokens still supported:
 - `BOT_TOKEN_CC`
@@ -110,7 +112,13 @@ The current command provisions these bot identities:
 - `@openclaw`
 
 ### 3. Configure the Mattermost outgoing webhook
-Point the webhook to:
+Use the helper command:
+
+```bash
+python manage.py create_ai_peers_outgoing_webhook --team <your-team> --channel-name town-square
+```
+
+It will point the webhook to:
 
 ```text
 /dose/webhook/ai-peers/

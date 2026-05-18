@@ -66,6 +66,53 @@ if ($appLoadOk) {
     Invoke-MorningSync -ScriptRoot $scriptDir
 }
 
+# ── AI Peers Enable (non-blocking) ─────────────────────────────────────
+
+$enableAiPeers = ($env:GO_ENABLE_AI_PEERS -ne '0')
+if ($enableAiPeers) {
+    Write-Host "── AI Peers Enable ───────────────────────────────" -ForegroundColor Cyan
+
+    if (-not $env:MATTERMOST_URL -or -not $env:MATTERMOST_ADMIN_TOKEN) {
+        Write-Host "  Skipped: MATTERMOST_URL or MATTERMOST_ADMIN_TOKEN not set" -ForegroundColor DarkYellow
+    } else {
+        $mmTeam = if ($env:MATTERMOST_TEAM) { $env:MATTERMOST_TEAM } else { 'PolySaaS Online LLC' }
+        $callbackBase = if ($env:AIASPEERS_BASE_URL) { $env:AIASPEERS_BASE_URL } elseif ($env:POLYSAAS_CORE_BASE_URL) { $env:POLYSAAS_CORE_BASE_URL } else { '' }
+
+        Push-Location $scriptDir
+        try {
+            Write-Host "  Ensuring bots are members of configured tenant teams..." -ForegroundColor Gray
+            & $venvPython manage.py add_bots_to_all_tenants 2>&1 | ForEach-Object { Write-Host "    $_" }
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  Bot team membership sync complete" -ForegroundColor Green
+            } else {
+                Write-Host "  Bot team membership sync had warnings/errors (non-blocking)" -ForegroundColor DarkYellow
+            }
+
+            $webhookArgs = @(
+                'manage.py',
+                'create_ai_peers_outgoing_webhook',
+                '--team', $mmTeam,
+                '--channel-name', 'town-square'
+            )
+            if ($callbackBase) {
+                $webhookArgs += @('--callback-url', $callbackBase)
+            }
+
+            Write-Host "  Ensuring outgoing webhook for team '$mmTeam'..." -ForegroundColor Gray
+            & $venvPython @webhookArgs 2>&1 | ForEach-Object { Write-Host "    $_" }
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  Outgoing webhook ready" -ForegroundColor Green
+            } else {
+                Write-Host "  Outgoing webhook setup had warnings/errors (non-blocking)" -ForegroundColor DarkYellow
+            }
+        } finally {
+            Pop-Location
+        }
+    }
+
+    Write-Host ""
+}
+
 # ── Blog Archive Refresh ─────────────────────────────────────────────────
 
 $blogScript = Join-Path $scriptDir "wp_build_blog_page.py"

@@ -126,7 +126,21 @@
     var dock = document.getElementById('pssAdminAiChatDock');
     if (!dock) return;
 
-    var apiUrl = '{% url "admin_llm_router_chat_api" %}';
+    var adminApiUrl = '{% url "admin_llm_router_chat_api" %}';
+    var tenantApiUrl = '{% url "tenant_llm_router_chat_api" %}';
+    var apiUrl = adminApiUrl;
+
+    // In passthrough/embed flows (Mattermost, Odoo, etc.), use tenant API.
+    // The admin API is staff-only and can 403 in embedded runtime contexts.
+    try {
+        var p = String(window.location.pathname || '');
+        var q = String(window.location.search || '');
+        if (p.indexOf('/pt/admin/') === 0 || q.indexOf('_raw=1') !== -1) {
+            apiUrl = tenantApiUrl;
+        }
+    } catch (e) {
+        apiUrl = tenantApiUrl;
+    }
     var logEl = document.getElementById('pssAdminAiChatDockLog');
     var input = document.getElementById('pssAdminAiChatDockInput');
     var sendBtn = document.getElementById('pssAdminAiChatDockSend');

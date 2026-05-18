@@ -52,7 +52,11 @@ from dose.polysniffer.views import (
 from dose.passthrough.handlers.registry import native_passthrough_path_regex
 from mysite.health import health_live, health_ready
 from mysite.help_views import help_index, help_llm_router
-from llm_router.admin_chat import admin_llm_router_chat_api, polysaas_ai_chat_page
+from llm_router.admin_chat import (
+    admin_llm_router_chat_api,
+    polysaas_ai_chat_page,
+    tenant_llm_router_chat_api,
+)
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -75,6 +79,11 @@ urlpatterns = [
         'admin/llm-router/chat-api/',
         admin_llm_router_chat_api,
         name='admin_llm_router_chat_api',
+    ),
+    path(
+        'tenant/llm-router/chat-api/',
+        tenant_llm_router_chat_api,
+        name='tenant_llm_router_chat_api',
     ),
     path(
         'admin/polysaas-ai/',

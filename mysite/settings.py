@@ -233,6 +233,8 @@ BOT_TOKEN_OPENCLAW = sm('bot-token-openclaw', 'BOT_TOKEN_OPENCLAW')
 BOT_TOKEN_CC = sm('bot-token-cc', 'BOT_TOKEN_CC')
 BOT_TOKEN_SUPERGROK = sm('bot-token-supergrok', 'BOT_TOKEN_SUPERGROK')
 BOT_TOKEN_GEM = sm('bot-token-gem', 'BOT_TOKEN_GEM')
+BOT_TOKEN_GEMINI = sm('bot-token-gemini', 'BOT_TOKEN_GEMINI') or BOT_TOKEN_GEM
+BOT_TOKEN_WINDSURF = sm('bot-token-windsurf', 'BOT_TOKEN_WINDSURF')
 AI_PEERS_WEBHOOK_TOKEN = sm('ai-peers-webhook-token', 'AI_PEERS_WEBHOOK_TOKEN')
 # Recent posts fetched for LLM context (Option 1). Pinned posts are merged into system prompt (Option 2).
 AI_PEERS_CHANNEL_MESSAGE_LIMIT = env.int('AI_PEERS_CHANNEL_MESSAGE_LIMIT', default=75)

@@ -35,6 +35,18 @@ BOT_DEFINITIONS = [
         'provider': 'xai',
     },
     {
+        'username': 'gemini',
+        'display_name': 'Gemini',
+        'description': 'AI peer powered by Google Gemini for synthesis, reasoning, and collaborative review in Mattermost channels.',
+        'provider': 'gemini',
+    },
+    {
+        'username': 'windsurf',
+        'display_name': 'Windsurf',
+        'description': 'AI peer for software engineering, agentic coding workflows, and developer productivity in Mattermost channels.',
+        'provider': 'windsurf',
+    },
+    {
         'username': 'router',
         'display_name': 'Router',
         'description': 'AI orchestration peer for routing work to the best human or AI collaborator in Mattermost channels.',
@@ -106,7 +118,7 @@ class Command(BaseCommand):
             '  1. Set the required provider API keys in your .env\n'
             '  2. Create an outgoing webhook in Mattermost pointing to:\n'
             f'     <your-polysaas-url>/dose/webhook/ai-peers/\n'
-            '  3. Create trigger words for: #copilot, #cursor, #grok, #router, #openclaw\n'
+            '  3. Create trigger words for: #supergrok, #grok, #gemini, #windsurf, #gem, #ws\n'
             '  4. Copy the webhook token into AI_PEERS_WEBHOOK_TOKEN in .env\n'
         )
 
