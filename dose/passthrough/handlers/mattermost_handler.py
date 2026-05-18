@@ -280,7 +280,7 @@ class MattermostPassthroughHandler:
         s.textContent = msg;
     }}
     function base() {{
-        return window.location.pathname.replace(/\/login(\/.*)?$/, '') || '/';
+        return window.location.pathname.replace(/\\/login(\\/.*)?$/, '') || '/';
     }}
     function doLogin() {{
         var lid = $('lid').value.trim();
@@ -290,7 +290,7 @@ class MattermostPassthroughHandler:
         $('btn').disabled = true;
         setStatus('Signing in...');
 
-        var url = base().replace(/\/$/, '') + '/api/v4/users/login';
+        var url = base().replace(/\\/$/, '') + '/api/v4/users/login';
         console.log('[LoginBridge] POST ' + url);
 
         var xhr = new XMLHttpRequest();
@@ -307,7 +307,7 @@ class MattermostPassthroughHandler:
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 // Server-side bridge: POST token to _bridge_login so cookie is set reliably
-                var bridgeUrl = base().replace(/\/$/, '') + '/_bridge_login';
+                var bridgeUrl = base().replace(/\\/$/, '') + '/_bridge_login';
                 console.log('[LoginBridge] POSTing token to server bridge:', bridgeUrl);
                 console.log('[LoginBridge] Token being sent: ' + (token ? token.substring(0, 30) + '...' : 'MISSING'));
                 var bridgeXhr = new XMLHttpRequest();
@@ -379,7 +379,7 @@ class MattermostPassthroughHandler:
                     ' hasToken=' + (existingToken ? 'yes' : 'no'));
         if (existingToken && existingToken.length > 10) {{
             console.log('[LoginBridge] Valid token already exists — server-bridging then redirecting');
-            var bridgeUrl = base().replace(/\/$/, '') + '/_bridge_login';
+            var bridgeUrl = base().replace(/\\/$/, '') + '/_bridge_login';
             var bridgeXhr2 = new XMLHttpRequest();
             bridgeXhr2.open('POST', bridgeUrl, true);
             bridgeXhr2.setRequestHeader('Content-Type', 'application/json');
@@ -1071,7 +1071,7 @@ class MattermostPassthroughHandler:
         function isLoginPath(url) {{
             try {{
                 var p = (typeof url === 'string') ? url : (url && url.pathname) || '';
-                return /\/login(\/.*)?$/.test(p);
+                return /\\/login(\\/.*)?$/.test(p);
             }} catch (e) {{ return false; }}
         }}
         history.pushState = function(state, title, url) {{
@@ -1099,7 +1099,7 @@ class MattermostPassthroughHandler:
         window.location.replace = function(url) {{
             if (typeof url === 'string') {{
                 // Catch login redirects
-                if (/\/login(\/|$|\?)/.test(url)) {{
+                if (/\\/login(\\/|$|\\?)/.test(url)) {{
                     console.log('[PolySaaS MM] Intercept location.replace(/login)');
                     _locReplace.call(window.location, PROXY + '/login?force=1');
                     return;
@@ -1117,7 +1117,7 @@ class MattermostPassthroughHandler:
         window.location.assign = function(url) {{
             if (typeof url === 'string') {{
                 // Catch login redirects
-                if (/\/login(\/|$|\?)/.test(url)) {{
+                if (/\\/login(\\/|$|\\?)/.test(url)) {{
                     console.log('[PolySaaS MM] Intercept location.assign(/login)');
                     _locAssign.call(window.location, PROXY + '/login?force=1');
                     return;
