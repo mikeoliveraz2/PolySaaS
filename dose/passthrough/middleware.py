@@ -298,33 +298,9 @@ def run_pt_admin_passthrough_core(request):
         """
         response = HttpResponse(error_html, status=503)
         print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
-    elif _is_initial_page_load(request) and request.GET.get('raw') != '1':
-        # Mattermost: serve via iframe instead of wrapping to avoid DOM/scope conflicts
-        if 'mattermost' in trigger.lower():
-            print("[PT-CORE] Mattermost initial page load - serving via iframe")
-            from django.template.loader import render_to_string
-            from django.http import HttpResponse as DjangoHttpResponse
-            
-            # Build iframe URL: append ?raw=1 to get the unwrapped Mattermost HTML
-            iframe_path = request.path_info
-            if '?' in iframe_path:
-                iframe_url = f"{iframe_path}&raw=1"
-            else:
-                iframe_url = f"{iframe_path}?raw=1"
-            
-            iframe_html = render_to_string(
-                'admin/passthrough_mattermost_iframe.html',
-                {'mattermost_iframe_url': iframe_url},
-                request=request,
-            )
-            
-            response = DjangoHttpResponse(iframe_html, status=200)
-            response['Content-Type'] = 'text/html; charset=utf-8'
-            response['X-Frame-Options'] = 'ALLOWALL'
-            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        else:
-            print("[PT-CORE] Initial page load - wrapping in admin template")
-            response = _wrap_in_admin_template(request, response, trigger, endpoint)
+    elif _is_initial_page_load(request):
+        print("[PT-CORE] Initial page load - wrapping in admin template")
+        response = _wrap_in_admin_template(request, response, trigger, endpoint)
     else:
         print("[PT-CORE] API/asset or raw=1 - raw response")
 
