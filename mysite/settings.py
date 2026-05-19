@@ -561,8 +561,8 @@ DATABASES = {
         'NAME': 'dosedbsaas',
         'USER': 'dosedbadmin',
         'PASSWORD': env('DOSE_DB_PASSWORD', default='PolySaaS2026!'),
-        'HOST': 'localhost',
-        'PORT': env('DB_PORT', default='5433'),
+        'HOST': env('DB_HOST', default='localhost'),
+        'PORT': env('DB_PORT', default='5432'),
     }
 }
 
