@@ -44,10 +44,9 @@ class MattermostPassthroughHandler:
         except Exception:
             pass
         
-        # If no explicit config found, use hardcoded fallback.
-        # Skip schema-derived names as they don't reliably map to real teams.
+        # Default to shared demo team (set during provisioning)
         if not team_name:
-            team_name = "polysaas-dev-team"
+            team_name = "polysaasdevteam"
         return team_name
 
     _cors_patched = False  # class-level flag: only patch once per process

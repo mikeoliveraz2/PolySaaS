@@ -69,27 +69,24 @@ def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: s
         result['team_error'] = "Admin token verification failed — check MATTERMOST_ADMIN_TOKEN"
         return None
 
-    # Mattermost team names: 1-15 chars, lowercase a-z only (no numbers, no underscores)
-    raw_name = tenant_schema[:15].lower()
-    name = re.sub(r'[^a-z]', '', raw_name)
-    if len(name) < 2:
-        name = "team"
-    if len(name) > 15:
-        name = name[:15]
+    # For demo: use fixed team name PolySaaS-Dev_Team instead of deriving from tenant
+    # This allows multiple demo tenants to share the same Mattermost team
+    name = "polysaasdevteam"  # Mattermost team name (1-15 chars, lowercase a-z only)
+    demo_display = "PolySaaS-Dev_Team"  # Display name for the shared demo team
 
-    logger.info("[MM-PROV] Creating team with name=%r display_name=%r", name, display_name)
+    logger.info("[MM-PROV] Using shared demo team name=%r display_name=%r for tenant=%s", name, demo_display, tenant_schema)
 
     resp = requests.post(
         f"{mm_url}/api/v4/teams",
         headers=headers,
-        json={"name": name, "display_name": display_name, "type": "I"},
+        json={"name": name, "display_name": demo_display, "type": "I"},
         timeout=30,
     )
     if resp.status_code == 201:
         team = resp.json()
         result['team_id'] = team['id']
         result['team_name'] = team['name']
-        logger.info("[MM-PROV] Created team %s (id=%s)", name, team['id'])
+        logger.info("[MM-PROV] Created shared demo team %s (id=%s)", name, team['id'])
         return team['id']
     if resp.status_code == 400 and 'already exists' in resp.text.lower():
         existing = requests.get(f"{mm_url}/api/v4/teams/name/{name}", headers=headers, timeout=15)
