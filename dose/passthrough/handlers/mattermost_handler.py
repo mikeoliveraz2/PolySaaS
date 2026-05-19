@@ -1076,9 +1076,7 @@ class MattermostPassthroughHandler:
         }} catch(_e) {{}}
         document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; max-age=108000';
         window.MMAUTHTOKEN = MMAUTHTOKEN;
-        console.log('[PolySaaS MM] Token set in localStorage, reloading page for app to initialize with token');
-        window.location.reload();
-        return;
+        console.log('[PolySaaS MM] Token set in localStorage, ready for app init');
     }}
 
     console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
