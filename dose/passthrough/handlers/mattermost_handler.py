@@ -134,18 +134,10 @@ class MattermostPassthroughHandler:
             token = ''
         
         if token and not force_login:
-            # TRUST the browser cookie — don't validate server-side.
-            # Server-side validation creates new sessions that invalidate the browser token.
-            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — redirecting without validation")
-            from django.http import HttpResponseRedirect
-            resp = HttpResponseRedirect(team_redirect)
-            resp.set_cookie(
-                'MMAUTHTOKEN', token,
-                max_age=86400, path='/', samesite='Lax',
-                secure=request.is_secure(), httponly=False,
-            )
-            resp['X-PolySaaS-Redirect'] = 'town-square-token-present'
-            return resp
+            # Token exists - let Mattermost handle the request (it will choose the default team)
+            # This avoids "Team Not Found" errors if the user isn't in the hardcoded team
+            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — forwarding to Mattermost root")
+            return None  # Pass through to normal forwarding
 
         # No token OR force=1 — serve login bridge INLINE (no redirect)
         print(f"[MM ROOT] No token or force=1 — serving login bridge inline at {request.path_info}")
