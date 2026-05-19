@@ -56,7 +56,7 @@ class MattermostPassthroughHandler:
             except Exception:
                 pass
         if not team_name:
-            team_name = "PolySaaS-Dev-Team"
+            team_name = "polysaas-dev-team"
         return team_name
 
     _cors_patched = False  # class-level flag: only patch once per process
