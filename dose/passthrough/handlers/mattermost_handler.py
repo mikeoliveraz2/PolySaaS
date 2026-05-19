@@ -515,14 +515,36 @@ class MattermostPassthroughHandler:
             flags=re.IGNORECASE,
         )
 
-        # CRITICAL FIX: Rewrite static asset URLs to point DIRECTLY to upstream origin.
-        # This bypasses the Django proxy for JS/CSS bundles, eliminating 7-15s waits.
-        # Only rewrite RELATIVE /static/ paths — leave absolute URLs alone.
+        # Rewrite file paths with extensions (capture query param as part of group 3, not separate)
+        # Route through proxy_prefix to ensure proper authentication and response transformation
         html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
+            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
+        )
+
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Rewrite absolute upstream-origin URLs (e.g. https://polysaas-mattermost.onrender.com/static/...)
+        _abs_static = re.escape(base_origin) + r'/static/'
+        html_str = re.sub(
+            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static/{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Rewrite window.basename so React Router uses proxy prefix as its base
+        html_str = re.sub(
+            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
+            lambda m: m.group(1) + f"'{proxy_prefix}'",
+            html_str,
         )
 
         # Inject the full client shim into every proxied HTML page so the
