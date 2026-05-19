@@ -43,18 +43,9 @@ class MattermostPassthroughHandler:
             team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
         except Exception:
             pass
-        if not team_name:
-            try:
-                t = getattr(request, 'tenant', None)
-                if t:
-                    schema = t.schema_name[:15].lower()
-                    team_name = re.sub(r'[^a-z]', '', schema)
-                    if len(team_name) < 2:
-                        team_name = "team"
-                    if len(team_name) > 15:
-                        team_name = team_name[:15]
-            except Exception:
-                pass
+        
+        # If no explicit config found, use hardcoded fallback.
+        # Skip schema-derived names as they don't reliably map to real teams.
         if not team_name:
             team_name = "polysaas-dev-team"
         return team_name
