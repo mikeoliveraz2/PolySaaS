@@ -66,11 +66,11 @@ if ($appLoadOk) {
     Invoke-MorningSync -ScriptRoot $scriptDir
 }
 
-# ── AI Peers Enable (non-blocking) ─────────────────────────────────────
+# AI Peers Enable (non-blocking)
 
 $enableAiPeers = ($env:GO_ENABLE_AI_PEERS -ne '0')
 if ($enableAiPeers) {
-    Write-Host "── AI Peers Enable ───────────────────────────────" -ForegroundColor Cyan
+    Write-Host "-- AI Peers Enable --------------------------------" -ForegroundColor Cyan
 
     if (-not $env:MATTERMOST_URL -or -not $env:MATTERMOST_ADMIN_TOKEN) {
         Write-Host "  Skipped: MATTERMOST_URL or MATTERMOST_ADMIN_TOKEN not set" -ForegroundColor DarkYellow
