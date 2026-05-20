@@ -41,6 +41,12 @@ def _get_mattermost_base_url() -> str:
     return url
 
 
+def _get_default_app_password() -> str:
+    from django.conf import settings
+
+    return getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!') or 'PolySaaS2026!'
+
+
 def _get_admin_token() -> str:
     """Retrieve Mattermost admin personal access token from settings (uses sm() → Secret Manager or .env)."""
     from django.conf import settings
@@ -121,6 +127,7 @@ def _create_user(mm_url: str, headers: dict, admin_email: str, username: str, pa
     if not password:
         password = _generate_strong_password()
         result['generated_password'] = True
+    result['mm_effective_password'] = password
     resp = requests.post(
         f"{mm_url}/api/v4/users",
         headers=headers,
@@ -242,7 +249,8 @@ def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, result: dict) 
 
 
 def _store_credentials(tenant_app_id: int, mm_url: str, token: str, mm_user_id: str,
-                       username: str, password: str, team_id: str, oidc_enabled: bool) -> None:
+                       username: str, password: str, team_id: str, team_name: str,
+                       oidc_enabled: bool) -> None:
     if not tenant_app_id:
         return
     try:
@@ -267,7 +275,8 @@ def _store_credentials(tenant_app_id: int, mm_url: str, token: str, mm_user_id: 
             cfg['mattermost_password'] = password
         if team_id:
             cfg['mm_team_id'] = team_id
-            cfg['mm_team_name'] = result.get('team_name', '')
+        if team_name:
+            cfg['mm_team_name'] = team_name
         ta.extra_config = cfg
         ta.save(update_fields=['extra_config'])
         mark_tenant_app_active(ta, app_url=mm_url)
@@ -343,6 +352,7 @@ def provision_mattermost_tenant(
         'admin_email': admin_email,
         'mm_url': mm_url,
     }
+    effective_password = admin_password or _get_default_app_password()
 
     try:
         _ensure_passthrough_endpoint(tenant_schema, mm_url, result)
@@ -354,7 +364,7 @@ def provision_mattermost_tenant(
             result['error'] = f'Team creation failed: {detail}'
             return result
 
-        user_id = _create_user(mm_url, headers, admin_email, username, admin_password, result)
+        user_id = _create_user(mm_url, headers, admin_email, username, effective_password, result)
         token = ''
         if user_id:
             _add_user_to_team(mm_url, headers, team_id, user_id, result)
@@ -366,7 +376,8 @@ def provision_mattermost_tenant(
 
         _store_credentials(
             tenant_app_id, mm_url, token, user_id or '',
-            username, admin_password, team_id, oidc_enabled,
+            username, result.get('mm_effective_password') or effective_password,
+            team_id, result.get('team_name', ''), oidc_enabled,
         )
 
         _send_welcome_email(admin_email, mm_url, display_name)

@@ -15,6 +15,26 @@ from dose.utils import get_current_tenant
 logger = logging.getLogger(__name__)
 
 
+def _is_passthrough_asset_request(path: str) -> bool:
+    """Static passthrough assets must not be rewritten to the login bridge."""
+    if not path.startswith('/pt/admin/'):
+        return False
+
+    last_segment = path.rsplit('/', 1)[-1].lower()
+    if '/static/' in path:
+        return True
+    if last_segment in ('manifest.json', 'manifest.js', 'asset-manifest.json', 'favicon.ico'):
+        return True
+    if '.' not in last_segment:
+        return False
+
+    ext = last_segment.rsplit('.', 1)[-1]
+    return ext in {
+        'js', 'css', 'map', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
+        'webp', 'woff', 'woff2', 'ttf', 'eot', 'json',
+    }
+
+
 def _is_initial_page_load(request):
     """
     Detect if this is an initial page load (browser navigation) vs API/asset request.
@@ -156,7 +176,7 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
             request=request,
         )
         
-        wrapped_response = DjangoHttpResponse(wrapped_html, status=response.status_code)
+        wrapped_response = DjangoHttpResponse(wrapped_html.encode('utf-8'), status=response.status_code)
         wrapped_response['Content-Type'] = 'text/html; charset=utf-8'
         wrapped_response['X-Frame-Options'] = 'ALLOWALL'
         wrapped_response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
@@ -296,8 +316,10 @@ def run_pt_admin_passthrough_core(request):
             <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
         </div>
         """
-        response = HttpResponse(error_html, status=503)
+        response = HttpResponse(error_html.encode('utf-8'), status=503, content_type='text/html; charset=utf-8')
         print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
+    elif getattr(response, "_passthrough_skip_admin_wrap", False):
+        print("[PT-CORE] Handler returned direct response - skipping admin template wrap")
     elif _is_initial_page_load(request):
         print("[PT-CORE] Initial page load - wrapping in admin template")
         response = _wrap_in_admin_template(request, response, trigger, endpoint)
@@ -354,6 +376,9 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
                 # POST their token after the bridge form.
                 if request.path_info.rstrip('/').endswith('/_bridge_login') and request.method == 'POST':
                     print("[PT-MW] ALLOW: _bridge_login POST for unauthenticated user")
+                elif _is_passthrough_asset_request(request.path_info):
+                    print(f"[PT-MW] ALLOW: passthrough asset request without Django auth: {request.path_info}")
+                    return self.get_response(request)
                 elif request.path_info.startswith('/pt/admin/'):
                     # For passthrough admin paths, redirect to the login bridge inside
                     # the passthrough instead of falling through to Django's URL routing

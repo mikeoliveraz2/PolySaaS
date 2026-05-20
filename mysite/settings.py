@@ -36,11 +36,17 @@ env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=False)
 
 from dose.utils.secret_manager import sm
 
-SECRET_KEY = sm('DJANGO_SECRET_KEY', 'DJANGO_SECRET_KEY')
-print("Loaded DJANGO_SECRET_KEY:", "SET" if SECRET_KEY else "NOT FOUND", "(from Secret Manager)", file=sys.stderr)
+# Prefer env var for local development, fall back to GCP Secret Manager
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY') or sm('DJANGO_SECRET_KEY', 'DJANGO_SECRET_KEY')
+source = "env var" if os.environ.get('DJANGO_SECRET_KEY') else "Secret Manager"
+print(f"Loaded DJANGO_SECRET_KEY: {'SET' if SECRET_KEY else 'NOT FOUND'} (from {source})", file=sys.stderr)
 if not SECRET_KEY:
     raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY secret in GCP Secret Manager or DJANGO_SECRET_KEY env var")
 DEBUG = True
+
+# Ensure all HTTP responses use UTF-8 encoding (prevents UnicodeEncodeError on Windows with cp1252)
+DEFAULT_CHARSET = 'utf-8'
+
 # Passthrough: log upstream + final HTML diagnostics to console (all endpoints). See dose/passthrough/stream_debug.py
 POLYSNIFFER_PASSTHROUGH_DEBUG = env.bool("POLYSNIFFER_PASSTHROUGH_DEBUG", default=False)
 # When True, append AdminIndexDiagMiddleware (logs one line per /admin/ index hit).

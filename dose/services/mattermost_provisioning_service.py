@@ -87,6 +87,7 @@ class MattermostProvisioningService(AtomicServiceBase):
                 mm_password = (
                     getattr(user, '_plaintext_password', None)
                     or (request.POST.get('password') if request and hasattr(request, 'POST') else None)
+                    or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
                     or ''
                 )
                 MattermostProvisioningService._store_credentials(

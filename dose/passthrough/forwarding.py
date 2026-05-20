@@ -840,6 +840,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             processed = handler.process_html_response(content, request, endpoint_url=endpoint_url)
             if isinstance(processed, HttpResponse):
                 print("HANDLER RETURNED HttpResponse — RETURNING DIRECTLY")
+                setattr(processed, "_passthrough_skip_admin_wrap", True)
                 return processed
             if isinstance(processed, tuple):
                 content = processed[0] if processed[0] else content
@@ -917,4 +918,4 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         </div>
         """
 
-        return HttpResponse(error_html, status=502)
+        return HttpResponse(error_html.encode('utf-8'), status=502, content_type='text/html; charset=utf-8')

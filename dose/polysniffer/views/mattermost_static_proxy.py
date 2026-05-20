@@ -7,7 +7,6 @@
 import logging
 
 import requests
-from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.utils.html import escape
 
@@ -60,7 +59,6 @@ def _rewrite_webpack_static_paths(body: bytes, *, is_css: bool, webpack_prefix: 
     return s.encode("utf-8")
 
 
-@login_required
 def mattermost_static_proxy(request, path, trigger=''):
     """Proxy static files (js, css, images, manifest, etc.) to real Mattermost."""
     if ".." in path or path.startswith("/"):
