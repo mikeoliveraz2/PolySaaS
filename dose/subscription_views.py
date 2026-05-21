@@ -510,7 +510,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 # Credentials were passed to provisioner and stored in extra_config
                 extra = tapp.extra_config or {}
                 username = extra.get('mm_login_id') or extra.get('mm_username') or extra.get('mattermost_login_id')
-                password = kwargs.get('admin_password', '')
+                password = (
+                    extra.get('mm_password')
+                    or extra.get('mattermost_password')
+                    or kwargs.get('admin_password', '')
+                )
                 email = admin_email
                 token = extra.get('mm_token') or extra.get('mmauthtoken') or ''
                 

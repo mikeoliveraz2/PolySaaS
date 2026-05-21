@@ -1,12 +1,25 @@
 # Mattermost v6 Integration - Work Coordination
 
-**Last Updated**: 2026-05-17 (session end before office work)  
+**Last Updated**: 2026-05-21 (Mattermost passthrough parity pass)  
 **Branch**: main  
-**Status**: WIP - Token flow working, API failure blocking completion
+**Status**: WIP - Mattermost passthrough still diverges from direct browser behavior after login/session bootstrap
 
 ---
 
 ## Current Session Summary
+
+### Current WIP Snapshot (2026-05-21)
+1. Mattermost-only changes remain confined to `dose/passthrough/handlers/mattermost_handler.py`, `dose/subscription_views.py`, and `dose/services/mattermost_provisioning_service.py`.
+2. The current handler no longer rewrites browser `/api/v4/...` requests directly to the upstream origin; browser-visible API traffic now stays on `/pt/admin/{host}/...` and relies on passthrough stripping on the way out.
+3. `config/client` no longer rewrites `SiteURL` to the Django host. `WebsocketURL` is still kept on the upstream Mattermost origin.
+4. The custom login bridge still exists only to simplify the login page, but its success path now resumes `redirect_to` or the passthrough root instead of forcing a team route.
+5. Extra logging was added for fetch/XHR/auth injection and WebSocket open/error so the next HAR comparison can target the first observable browser mismatch rather than guess at navigation behavior.
+
+### What Remains
+1. Compare the first failing proxied post-login request sequence against the direct HAR and remove the next handler/shim delta that changes browser-visible input/output.
+2. Confirm whether the remaining red banner is caused by WebSocket failure, pre-WebSocket auth drift, or `/error` recovery drift.
+3. Keep endpoint-specific behavior inside the Mattermost handler/shim only. Shared passthrough components are read for context but must not receive Mattermost-specific logic.
+4. Once proxied login/session/bootstrap matches direct HAR, trim any temporary diagnostic logging that is no longer needed.
 
 ### Completed ✅
 1. **Empty token issue - FIXED**

@@ -20,6 +20,7 @@ import json
 import logging
 
 import requests as http_requests
+from django.conf import settings
 
 from dose.services.atomic_service_base import AtomicServiceBase
 
