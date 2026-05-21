@@ -325,11 +325,55 @@ def live_capture(request, endpoint_id):
         <div class="stats">
             Captured: <span id="count">0</span> &nbsp;|&nbsp;
             Last update: <span id="last-update">-</span> &nbsp;|&nbsp;
-            Target: <span>{endpoint.endpoint_url}</span>
+            Target: <span>{endpoint.endpoint_url}</span> &nbsp;|&nbsp;
+            Browser Capture: <span id="browser-capture-status" style="color: #4caf50;">Active</span> &nbsp;|&nbsp;
+            Capture ID: <span id="capture-id" style="color: #2196f3; font-family: monospace;">-</span>
         </div>
         <div class="captures" id="captures"></div>
         <div id="done-toast" role="status">PolySniffer stopped. Extension is idle — passthrough tabs behave normally.</div>
 
+        <!-- Browser-side network capture injector -->
+        <script src="/static/polysniffer/capture_inject.js"></script>
+        
+        <!-- Update capture ID display -->
+        <script>
+            // Display capture ID from PolySniffer
+            setTimeout(function() {{
+                if (window.PolySniffer) {{
+                    const captureId = window.PolySniffer.getCaptureId();
+                    document.getElementById('capture-id').textContent = captureId;
+                    console.log('[PolySniffer UI] Capture ID:', captureId);
+                    
+                    // Update stats every 5 seconds
+                    setInterval(function() {{
+                        const stats = window.PolySniffer.getStats();
+                        const statusEl = document.getElementById('browser-capture-status');
+                        if (stats.isCapturing) {{
+                            statusEl.textContent = `Active (${{stats.total}} entries)`;
+                            statusEl.style.color = '#4caf50';
+                        }} else {{
+                            statusEl.textContent = 'Stopped';
+                            statusEl.style.color = '#f44336';
+                        }}
+                    }}, 5000);
+                }}
+            }}, 500);
+            
+            // Add browser capture controls
+            function toggleBrowserCapture() {{
+                if (window.PolySniffer) {{
+                    const stats = window.PolySniffer.getStats();
+                    if (stats.isCapturing) {{
+                        window.PolySniffer.stop();
+                        console.log('[PolySniffer UI] Browser capture stopped');
+                    }} else {{
+                        window.PolySniffer.start();
+                        console.log('[PolySniffer UI] Browser capture started');
+                    }}
+                }}
+            }}
+        </script>
+        
         <script src="/static/polysniffer/live_capture.js"></script>
     </body>
     </html>

@@ -90,46 +90,8 @@ class MattermostPassthroughHandler:
         """
         if request.method != "GET":
             return None
-        trigger = url_trigger_segment.strip("/")
-        proxy_prefix = f"/pt/admin/{trigger}"
-        team_name = self._get_team_name(request)
-        team_redirect = f"{proxy_prefix}/{team_name}/channels/town-square"
-
-        # Only intercept the exact root. Everything else (channels, api, login, …)
-        # is forwarded to Mattermost directly — no /login intercept here.
-        if request.path_info.rstrip("/") != proxy_prefix:
-            return None
-
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-        if token and token.strip() == '""':
-            token = ''
-
-        if token:
-            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — forwarding to Mattermost root")
-            return None
-
-        # No browser token — try a quick server-side SSO first.
-        from django.http import HttpResponseRedirect
-        sso_token = None
-        try:
-            cookies = self.get_upstream_cookies(request) or {}
-            sso_token = cookies.get('MMAUTHTOKEN')
-        except Exception as exc:
-            print(f"[MM SSO] get_upstream_cookies failed: {exc}")
-
-        if sso_token:
-            print(f"[MM SSO] Server-side token obtained ({sso_token[:8]}...) — cookie + redirect")
-            resp = HttpResponseRedirect(team_redirect)
-            resp.set_cookie(
-                'MMAUTHTOKEN', sso_token,
-                max_age=86400, path='/', samesite='Lax',
-                secure=request.is_secure(), httponly=False,
-            )
-            return resp
-
-        # No server token — serve the login bridge INLINE (avoids redirect loop).
-        print(f"[MM SSO] No token — serving login bridge inline at root")
-        return self._serve_login_bridge(request, trigger, endpoint)
+        print('[MM ROOT] Preserving native upstream root/login document')
+        return None
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
@@ -270,13 +232,6 @@ class MattermostPassthroughHandler:
         resp = HttpResponse(html, content_type="text/html; charset=utf-8")
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
-        # Embed inside the PolySaaS admin template (sidebar + content area).
-        try:
-            from dose.passthrough.middleware import _wrap_in_admin_template
-            resp = _wrap_in_admin_template(request, resp, trigger, endpoint)
-        except Exception as exc:
-            logger.warning("[MM LoginBridge] Admin template wrap failed: %s", exc)
-
         return resp
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
@@ -290,109 +245,17 @@ class MattermostPassthroughHandler:
             ('id="loginId"'.lower() in lowered_html and 'id="loginPassword"'.lower() in lowered_html)
         )
 
-        # Mattermost may return its login HTML for a protected channel route without
-        # changing the request path to /login. Detect the document itself, not just the path.
+        # Preserve native Mattermost login HTML rather than substituting a custom bridge.
         if is_login_document:
-            _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
-            if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
-                _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
-            else:
-                _proxy_prefix = "/pt/admin/mattermost"
-            _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
-            _endpoint_stub = type('E', (), {'endpoint_url': f"https://{_trigger}", 'trigger_path': _trigger})()
-            bridge = self._serve_login_bridge(request, _trigger, _endpoint_stub)
-            if bridge is not None:
-                return bridge
-
-        if not endpoint_url:
+            logger.info('[MattermostPassthroughHandler] Preserving native login document')
             return html_str, None
 
-        origin = endpoint_url.rstrip("/")
-        parsed = urlparse(origin)
-        base_origin = f"{parsed.scheme}://{parsed.netloc}"
-        # Derive proxy_prefix from the request path — never hardcode.
-        _path_parts = request.path_info.strip('/').split('/')
-        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
-            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
-        else:
-            proxy_prefix = "/pt/admin/mattermost"
-
-        html_str = self._strip_base_tags(html_str)
-        html_str = self._strip_meta_redirects(html_str)
-        html_str = self._strip_csp(html_str)
-
-        # Rewrite form action attributes so native form POSTs go through the proxy prefix.
-        html_str = re.sub(
-            r'(action=)(["\'])(/[^"\']*)',
-            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Rewrite file paths with extensions (capture query param as part of group 3, not separate)
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Rewrite absolute upstream-origin URLs (e.g. https://polysaas-mattermost.onrender.com/static/...)
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Rewrite window.basename so React Router uses proxy prefix as its base
-        html_str = re.sub(
-            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
-            lambda m: m.group(1) + f"'{proxy_prefix}'",
-            html_str,
-        )
-
-        # Inject the full client shim into every proxied HTML page so the
-        # auto-login watcher runs on /login regardless of navigation path.
-        if '<head' in html_str.lower():
-            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
-
+        logger.info('[MattermostPassthroughHandler] Preserving native non-login HTML document')
         return html_str, None
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
-        """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
-        if not upstream_path or '/api/v4/config/client' not in upstream_path:
-            return None
-        if 'json' not in (content_type or '').lower():
-            return None
-        try:
-            import json as _json
-            data = _json.loads(body)
-            scheme = 'https' if request.is_secure() else 'http'
-            origin = f"{scheme}://{request.get_host()}"
-            # Rewrite to origin-only — no proxy prefix. Mattermost's Client4 will call
-            # http://localhost:8000/api/v4/... and the shim's toProxy() converts those
-            # transparently to /pt/admin/mattermost/api/v4/... Mattermost never sees /pt/admin/.
-            if 'SiteURL' in data:
-                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {origin}")
-                data['SiteURL'] = origin
-            if 'WebsocketURL' in data:
-                ws_scheme = 'wss' if request.is_secure() else 'ws'
-                ws_origin = f"{ws_scheme}://{request.get_host()}"
-                data['WebsocketURL'] = ws_origin
-                print(f"[MM] Rewriting WebsocketURL -> {ws_origin}")
-            return _json.dumps(data).encode('utf-8')
-        except Exception as exc:
-            print(f"[MM] rewrite_upstream_body failed: {exc}")
-            return None
+        """Preserve native Mattermost JSON bodies for HAR parity."""
+        return None
 
     def _get_tenantapp_extra_config(self, request=None):
         """Query TenantApp extra_config from public schema using raw SQL to avoid schema issues.
@@ -609,6 +472,35 @@ class MattermostPassthroughHandler:
             print(f'[MM_AUTH] Injected Authorization ({_src}, token={token[:8]}...) for {target_url}')
         elif not token:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
+
+    def postprocess_upstream_response(
+        self,
+        resp,
+        request,
+        *,
+        endpoint_url,
+        target_url,
+        upstream_path,
+        outbound_headers,
+        upstream_cookies,
+    ):
+        """Normalize known non-fatal Mattermost plugin responses for the SPA."""
+        normalized_path = (upstream_path or '').split('?', 1)[0]
+        if normalized_path == '/plugins/github/api/v1/connected' and resp.status_code == 501:
+            body_text = ''
+            try:
+                body_text = (resp.content or b'').decode('utf-8', errors='ignore')
+            except Exception:
+                body_text = ''
+            if 'this plugin is not configured' in body_text.lower():
+                print('[MM RESP] Normalizing unconfigured GitHub plugin probe to disconnected=false')
+                replacement = b'{"connected":false}'
+                resp.status_code = 200
+                resp.reason = 'OK'
+                resp._content = replacement
+                resp.headers['Content-Type'] = 'application/json'
+                resp.headers['Content-Length'] = str(len(replacement))
+        return resp
 
     def _strip_base_tags(self, html):
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)

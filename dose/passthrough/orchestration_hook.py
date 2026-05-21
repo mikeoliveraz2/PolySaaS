@@ -18,9 +18,38 @@ still publishes to MQ topics. This hook is the "signal" that triggers it.
 import json
 import logging
 
-from django.db import connection
+from django.db import connection, DataError, ProgrammingError
 
 logger = logging.getLogger(__name__)
+
+
+def _load_instructions_for_direction(tenant, direction):
+    """Load tenant and public instructions, falling back to public-only if the tenant schema is stale."""
+    from dose.models import Instruction
+
+    with connection.cursor() as cur:
+        cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
+
+    try:
+        tenant_instrs = list(Instruction.objects.filter(tenant=tenant, direction=direction))
+        public_instrs = list(Instruction.objects.filter(tenant=None, direction=direction))
+        return tenant_instrs, public_instrs
+    except (DataError, ProgrammingError) as exc:
+        logger.warning(
+            "[ORCHESTRATION HOOK] Tenant instruction lookup failed in schema %s; retrying with public defaults only: %s",
+            tenant.schema_name,
+            exc,
+        )
+        print(
+            f"[ORCHESTRATION HOOK] Tenant instruction lookup failed in schema {tenant.schema_name}; "
+            "retrying with public defaults only"
+        )
+        with connection.cursor() as cur:
+            cur.execute('SET search_path TO public')
+        public_instrs = list(Instruction.objects.filter(tenant=None, direction=direction))
+        with connection.cursor() as cur:
+            cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
+        return [], public_instrs
 
 
 def _extract_odoo_ids(upstream_path):
@@ -109,15 +138,9 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
 
     method = request.method.upper()
 
-    # Ensure we're in the right schema
-    with connection.cursor() as cur:
-        cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
-
-    from dose.models import Instruction
     # Load tenant-scoped Instructions first, then public defaults (tenant=None).
     # Tenant-scoped Instructions shadow public ones with the same requestpath.
-    tenant_instrs = list(Instruction.objects.filter(tenant=tenant, direction=direction))
-    public_instrs = list(Instruction.objects.filter(tenant=None, direction=direction))
+    tenant_instrs, public_instrs = _load_instructions_for_direction(tenant, direction)
     # Merge: tenant shadows public for same requestpath
     tenant_paths = {i.requestpath for i in tenant_instrs}
     instructions = tenant_instrs + [i for i in public_instrs if i.requestpath not in tenant_paths]

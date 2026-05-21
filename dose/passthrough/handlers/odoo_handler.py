@@ -218,10 +218,13 @@ class OdooPassthroughHandler:
         print(f"[ODOO HANDLER]   method={request.method}, path_info={request.path_info}")
         print(f"[ODOO HANDLER]   url_trigger_segment={url_trigger_segment}")
         print(f"[ODOO HANDLER]   endpoint={endpoint}")
-        
+
         if request.method != "GET":
             print(f"[ODOO HANDLER]   RETURN None: not GET")
             return None
+
+        print("[ODOO HANDLER]   Preserving native upstream HTML document")
+        return None
 
         # Determine seg and proxy_prefix.
         # Hostname triggers (e.g. polysaas-odoo2.onrender.com) keep the hostname as-is so
@@ -631,33 +634,12 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[ODOO HANDLER] Processing HTML for {endpoint_url}")
 
-        if not endpoint_url:
-            print("[ODOO HANDLER] No endpoint_url - returning raw HTML")
+        path_info = getattr(request, 'path_info', '') or ''
+        if path_info.endswith('/web/login'):
+            print('[ODOO HANDLER] Preserving native login document')
             return html_str, None
 
-        parsed      = urlparse(endpoint_url.rstrip('/'))
-        base_origin = f"{parsed.scheme}://{parsed.netloc}"
-        hostname    = parsed.netloc  # e.g., polysaas-odoo2.onrender.com
-        proxy_prefix = f'/pt/admin/{hostname}'
-        print(f"[ODOO HANDLER] proxy_prefix={proxy_prefix}, base_origin={base_origin}")
-
-        session_id = (self.get_upstream_cookies(request) or {}).get('session_id') or ''
-
-        html_str = self._strip_base_tags(html_str)
-        html_str = self._strip_meta_redirects(html_str)
-        html_str = self._strip_csp(html_str)
-        # Rewrite initial HTML asset paths BEFORE the JS shim runs.
-        # <link> and <script> tags are fetched by the browser before JS executes, so we must
-        # rewrite them server-side to route through our proxy.
-        html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix, base_origin=base_origin)
-        # Debug: Check if forms still have unproxied actions
-        unproxied_forms = re.findall(r'<form[^>]*action=["\'](?!/pt/)(/[^"\']+)["\']', html_str, flags=re.IGNORECASE)
-        if unproxied_forms:
-            print(f"[ODOO HANDLER] WARNING: Unproxied form actions found: {unproxied_forms}")
-        creds = self.get_upstream_credentials(request)
-        html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id, proxy_prefix=proxy_prefix, credentials=creds)
-
-        print(f"[ODOO HANDLER] HTML processing complete")
+        print('[ODOO HANDLER] Preserving native non-login document')
         return html_str, None
 
     def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo', base_origin=''):
@@ -1529,70 +1511,7 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         return html.replace('<head>', '<head>' + patch)
 
     def rewrite_upstream_body(self, body, ct, request, endpoint_url=None, upstream_path=None):
-        """
-        Server-side body rewriting for Odoo.
-        Intercepts JavaScript bundles to redirect Owl's mount target.
-        """
-        # Derive proxy prefix from endpoint_url
-        proxy_prefix = '/pt/admin/odoo'  # fallback
-        if endpoint_url:
-            from urllib.parse import urlparse
-            parsed = urlparse(endpoint_url.rstrip('/'))
-            proxy_prefix = f'/pt/admin/{parsed.netloc}'
-        
-        if 'javascript' in ct or 'css' in ct:
-            try:
-                text = body.decode('utf-8', errors='ignore')
-                print(f"[ODOO REWRITE] Processing {ct} with proxy_prefix={proxy_prefix}")
-                # Owl's mount target replacement.
-                # Odoo 17 style: app.mount(document.body)       → matches .mount(document.body
-                # Odoo 18 style: mount(WebClient, document.body) → matches ,document.body,
-                # Both are replaced so the Owl root lands in our scope div, not in body.
-                SCOPE = '.polysaas-passthrough-scope'
-                SCOPE_JS = f'(document.querySelector("{SCOPE}")||document.body)'
-                # Odoo 17 / Owl method call pattern
-                patched = text.replace(
-                    '.mount(document.body', f'.mount({SCOPE_JS}'
-                )
-                # Odoo 18 / standalone mount(Component, document.body, config) pattern
-                patched = patched.replace(
-                    ',document.body,', f',{SCOPE_JS},'
-                )
-
-                def _proxy_css_url(m):
-                    quote = m.group(1) or ''
-                    path  = m.group(2)
-                    close = m.group(3) or ''
-                    if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
-                        new_path = proxy_prefix + path
-                        print(f"[ODOO REWRITE] CSS/JS url(): {path} -> {new_path}")
-                        return f'url({quote}{new_path}{close})'
-                    return f'url({quote}{path}{close})'
-
-                patched = re.sub(
-                    r'url\(([\"\"]?)(/(?:web|odoo|bus|websocket)/[^)\"\']*)([\"\']?)\)',
-                    _proxy_css_url, patched,
-                )
-
-                # === FIX WEBSOCKET 404 - Force Odoo to use proxied WebSocket path ===
-                # Use word-boundary regex so we only replace /websocket as a standalone
-                # path component, not inside /bus/websocket_worker_bundle.
-                if '/websocket' in patched:
-                    patched = re.sub(
-                        r'(?<!/odoo)/websocket(?!_)',
-                        proxy_prefix + '/websocket',
-                        patched,
-                    )
-
-                if patched != text:
-                    logger.info(
-                        "[ODOO HANDLER] Patched Owl mount(document.body) and paths in JS"
-                    )
-                    return patched.encode('utf-8', errors='ignore')
-            except Exception as exc:
-                logger.warning("[ODOO HANDLER] JS mount patch failed: %s", exc)
-            return None
-
+        """Preserve native Odoo non-HTML bodies for HAR parity."""
         return None
 
     def postprocess_upstream_response(

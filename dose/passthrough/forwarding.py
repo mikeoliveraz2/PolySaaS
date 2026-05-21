@@ -4,6 +4,7 @@ import traceback
 import requests
 import json
 import time
+from http.cookies import SimpleCookie
 from django.http import HttpResponse
 from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
@@ -11,6 +12,16 @@ from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 logger = logging.getLogger(__name__)
 
 _SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE", "HTTP_ACCEPT_ENCODING"})
+_HOP_BY_HOP_RESPONSE_HEADERS = frozenset({
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+})
 
 # Connection-pooled sessions per upstream origin — dramatically reduces TLS handshake
 # overhead when the SPA makes many sequential API/static requests.
@@ -173,6 +184,45 @@ def _postprocess_upstream_response(
         except Exception as exc:
             logger.warning("postprocess_upstream_response failed: %s", exc, exc_info=True)
     return resp
+
+
+def _copy_upstream_response_headers(response, resp, *, exclude=None):
+    """Copy upstream headers as-is except hop-by-hop headers and explicit exclusions."""
+    excluded = {h.lower() for h in (exclude or ())}
+    for header_name, header_value in resp.headers.items():
+        header_key = header_name.lower()
+        if header_key in _HOP_BY_HOP_RESPONSE_HEADERS or header_key in excluded:
+            continue
+        response[header_name] = header_value
+
+
+def _apply_cookie_morsel(response, cookie_name, morsel):
+    response.cookies[cookie_name] = morsel.value
+    for attr in ("path", "domain", "max-age", "expires", "samesite"):
+        attr_value = morsel.get(attr)
+        if attr_value:
+            response.cookies[cookie_name][attr] = attr_value
+    if morsel.get("secure"):
+        response.cookies[cookie_name]["secure"] = True
+    if morsel.get("httponly"):
+        response.cookies[cookie_name]["httponly"] = True
+
+
+def _forward_upstream_set_cookie_headers(response, resp, *, forward_enabled=True, log_label="FORWARDER"):
+    for raw_name, raw_val in resp.raw.headers.items():
+        if raw_name.lower() != "set-cookie":
+            continue
+        if not forward_enabled:
+            print(f"{log_label} — handler suppressed Set-Cookie")
+            continue
+        try:
+            sc = SimpleCookie()
+            sc.load(raw_val)
+            for cookie_name, morsel in sc.items():
+                _apply_cookie_morsel(response, cookie_name, morsel)
+                print(f"{log_label} — forwarding Set-Cookie: {cookie_name}=<redacted>")
+        except Exception as sc_exc:
+            print(f"{log_label} — Set-Cookie parse error: {sc_exc}")
 
 
 def _should_forward_set_cookie_headers(handler, request, *, upstream_content_type, upstream_path, response_kind):
@@ -733,17 +783,14 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             # Forward Set-Cookie headers from the upstream redirect response.
             # Critical for login flows: Nextcloud/Odoo set the session cookie on the
             # 302 login response — without this the browser never gets authenticated.
-            from http.cookies import SimpleCookie as _SC
             for _rh_name, _rh_val in resp.raw.headers.items():
                 if _rh_name.lower() != "set-cookie":
                     continue
                 try:
-                    _sc = _SC()
+                    _sc = SimpleCookie()
                     _sc.load(_rh_val)
                     for _cn, _cm in _sc.items():
-                        redirect_response.cookies[_cn] = _cm.value
-                        redirect_response.cookies[_cn]["path"] = _cm.get("path") or "/"
-                        redirect_response.cookies[_cn]["samesite"] = "Lax"
+                        _apply_cookie_morsel(redirect_response, _cn, _cm)
                         print(f"FORWARDER — forwarding Set-Cookie on redirect: {_cn}")
                 except Exception as _ce:
                     print(f"FORWARDER — Set-Cookie parse error on redirect: {_ce}")
@@ -777,28 +824,10 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                     logger.warning("rewrite_upstream_body failed: %s", rw_exc, exc_info=True)
 
             response = HttpResponse(body, status=resp.status_code)
-            upstream_ct = resp.headers.get("Content-Type")
-            if upstream_ct:
-                response["Content-Type"] = upstream_ct
-            _copy_headers = (
-                "Cache-Control",
-                "ETag",
-                "Last-Modified",
-                "X-Frame-Options",
-                "X-Content-Type-Options",
-                "X-XSS-Protection",
-                "Referrer-Policy",
-                "Content-Security-Policy",
-                "Strict-Transport-Security",
-                "Token",       # Mattermost login response — SPA reads this to get the session token
-                "X-Version-Id",   # Mattermost SPA version check
-                "X-Request-Id",   # Mattermost request tracking
-            )
+            exclude_headers = {"content-length"}
             if body_rewritten:
-                _copy_headers = tuple(h for h in _copy_headers if h != "ETag")
-            for hk in _copy_headers:
-                if hk in resp.headers:
-                    response[hk] = resp.headers[hk]
+                exclude_headers.add("etag")
+            _copy_upstream_response_headers(response, resp, exclude=exclude_headers)
 
             # Handlers own any endpoint-specific Set-Cookie policy.
             _forward_set_cookie = _should_forward_set_cookie_headers(
@@ -808,27 +837,13 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                 upstream_path=upstream_path,
                 response_kind="non-html",
             )
-            from http.cookies import SimpleCookie
-            for raw_name, raw_val in resp.raw.headers.items():
-                if raw_name.lower() != "set-cookie":
-                    continue
-                if not _forward_set_cookie:
-                    print(f"FORWARDER — handler suppressed Set-Cookie ({upstream_ct})")
-                    continue
-                try:
-                    sc = SimpleCookie()
-                    sc.load(raw_val)
-                    for cookie_name, morsel in sc.items():
-                        response.cookies[cookie_name] = morsel.value
-                        response.cookies[cookie_name]["path"] = morsel.get("path") or "/"
-                        response.cookies[cookie_name]["samesite"] = "Lax"
-                        # intentionally omit httponly and domain
-                        print(f"FORWARDER — forwarding Set-Cookie: {cookie_name}=<redacted>")
-                except Exception as sc_exc:
-                    print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
-            response["X-Frame-Options"] = "ALLOWALL"
-            if upstream_path.startswith('/static/') or upstream_path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2')):
-                response["Cache-Control"] = "public, max-age=3600"
+            upstream_ct = resp.headers.get("Content-Type")
+            _forward_upstream_set_cookie_headers(
+                response,
+                resp,
+                forward_enabled=_forward_set_cookie,
+                log_label=f"FORWARDER ({upstream_ct})",
+            )
             print("FORWARDER SUCCESS — BINARY/TEXT PASSTHROUGH (non-HTML)")
             print("=" * 120 + "\n")
             return response
@@ -857,32 +872,12 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             content = _inject_polysniffer_capture(content, app_name or "unknown")
 
         response = HttpResponse(content.encode("utf-8"), status=resp.status_code)
-        response["Content-Type"] = resp.headers.get("Content-Type", "text/html; charset=utf-8")
-        response["Content-Encoding"] = "identity"
-        response["X-Frame-Options"] = "ALLOWALL"
-        response["Cache-Control"] = "public, max-age=600"
-        for csp_hdr in ("Content-Security-Policy", "Content-Security-Policy-Report-Only"):
-            try:
-                del response[csp_hdr]
-            except KeyError:
-                pass
-
+        _copy_upstream_response_headers(response, resp, exclude={"content-length", "etag", "content-encoding"})
+        if "Content-Type" not in response:
+            response["Content-Type"] = resp.headers.get("Content-Type", "text/html; charset=utf-8")
         # Forward Set-Cookie headers from HTML responses too (critical for Nextcloud login)
         # The session cookie must match the requesttoken embedded in the HTML
-        from http.cookies import SimpleCookie
-        for raw_name, raw_val in resp.raw.headers.items():
-            if raw_name.lower() != "set-cookie":
-                continue
-            try:
-                sc = SimpleCookie()
-                sc.load(raw_val)
-                for cookie_name, morsel in sc.items():
-                    response.cookies[cookie_name] = morsel.value
-                    response.cookies[cookie_name]["path"] = morsel.get("path") or "/"
-                    response.cookies[cookie_name]["samesite"] = "Lax"
-                    print(f"FORWARDER — forwarding Set-Cookie from HTML: {cookie_name}")
-            except Exception as sc_exc:
-                print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
+        _forward_upstream_set_cookie_headers(response, resp, log_label="FORWARDER (HTML)")
 
         # Also set the auto-login session cookie on the browser so subsequent
         # asset/API requests are authenticated (server-side cookies don't reach the browser otherwise)
