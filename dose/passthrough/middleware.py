@@ -15,6 +15,14 @@ from dose.utils import get_current_tenant
 logger = logging.getLogger(__name__)
 
 
+def _should_wrap_initial_html(request) -> bool:
+    """Direct /pt/admin passthrough should preserve upstream HTML for HAR parity."""
+    path = getattr(request, 'path_info', '') or ''
+    if path.startswith('/pt/admin/'):
+        return False
+    return _is_initial_page_load(request)
+
+
 def _is_passthrough_asset_request(path: str) -> bool:
     """Static passthrough assets must not be rewritten to the login bridge."""
     if not path.startswith('/pt/admin/'):
@@ -320,11 +328,11 @@ def run_pt_admin_passthrough_core(request):
         print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
     elif getattr(response, "_passthrough_skip_admin_wrap", False):
         print("[PT-CORE] Handler returned direct response - skipping admin template wrap")
-    elif _is_initial_page_load(request):
+    elif _should_wrap_initial_html(request):
         print("[PT-CORE] Initial page load - wrapping in admin template")
         response = _wrap_in_admin_template(request, response, trigger, endpoint)
     else:
-        print("[PT-CORE] API/asset or raw=1 - raw response")
+        print("[PT-CORE] Preserving raw upstream response")
 
     request._passthrough_handled = True
     request._passthrough_response = response

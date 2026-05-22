@@ -19,7 +19,7 @@ from .views.dashboard import (
     log_capture_to_services, get_captures, apply_latest_capture,
     silent_capture, sync_v0_cookies
 )
-from .views.api import list_endpoints, csrf_token
+from .views.api import list_endpoints, csrf_token, capture_endpoint
 from .views_ai import ai_analyze_endpoint, ai_generate_handler
 
 app_name = 'polysniffer'
@@ -28,6 +28,7 @@ urlpatterns = [
     # Chrome Extension API endpoints
     path('api/endpoints/', list_endpoints, name='api_endpoints'),
     path('api/csrf-token/', csrf_token, name='api_csrf_token'),
+    path('api/capture/', capture_endpoint, name='api_capture'),
 
     # AI analysis and handler generation
     path('ai-analyze/<int:endpoint_id>/', ai_analyze_endpoint, name='ai_analyze'),

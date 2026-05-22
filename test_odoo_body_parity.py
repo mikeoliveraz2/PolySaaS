@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+"""Regression test: Odoo JS/CSS bodies should not be rewritten by the handler."""
+
+import os
+import sys
+
+import django
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+django.setup()
+
+from django.test import RequestFactory
+
+from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
+
+
+def main():
+    handler = OdooPassthroughHandler()
+    factory = RequestFactory()
+    request = factory.get('/pt/admin/polysaas-odoo2.onrender.com/web/assets/debug/web.assets_web.js')
+
+    payload = b'app.mount(document.body);url(/web/image/logo.png);var ws="/websocket";'
+
+    processed = handler.rewrite_upstream_body(
+        payload,
+        'application/javascript',
+        request,
+        endpoint_url='https://polysaas-odoo2.onrender.com',
+        upstream_path='/web/assets/debug/web.assets_web.js',
+    )
+
+    assert processed is None, processed
+    print('PASS: Odoo JS/CSS bodies are preserved')
+
+
+if __name__ == '__main__':
+    main()

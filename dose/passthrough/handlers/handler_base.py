@@ -117,6 +117,17 @@ class PassthroughHandlerBase:
     def rewrite_upstream_body(self, body, content_type, request, **context):
         return None
 
+    def needs_readable_response_body(self, request, target_url: str) -> bool:
+        """Return True if this handler needs the response body to be readable (uncompressed).
+        
+        When True, the forwarder will set Accept-Encoding: identity to prevent
+        upstream from sending compressed responses. Override in subclasses that
+        need to read/rewrite response bodies.
+        
+        Default is False to preserve browser's Accept-Encoding for HAR parity.
+        """
+        return False
+
     def get_request_body(self, request, target_url: str) -> bytes | None:
         """Override to rewrite the outgoing request body before forwarding. Return None to use request.body as-is."""
         return None

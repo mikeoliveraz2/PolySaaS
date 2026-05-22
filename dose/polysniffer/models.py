@@ -172,3 +172,135 @@ class TrafficLog(models.Model):
         }
         return status_texts.get(self.status_code, "Unknown")
 
+
+class TrafficEntry(models.Model):
+    """
+    Store individual browser-captured network entries (fetch, XHR, WebSocket, navigation).
+    
+    This model captures client-side network activity from browser extensions or 
+    JavaScript instrumentation, storing detailed request/response data for analysis
+    and comparison with server-side logs.
+    """
+    
+    # Entry type choices
+    ENTRY_TYPE_FETCH = 'fetch'
+    ENTRY_TYPE_XHR = 'xhr'
+    ENTRY_TYPE_WEBSOCKET = 'websocket'
+    ENTRY_TYPE_NAVIGATION = 'navigation'
+    ENTRY_TYPE_OTHER = 'other'
+    
+    ENTRY_TYPE_CHOICES = [
+        (ENTRY_TYPE_FETCH, 'Fetch API'),
+        (ENTRY_TYPE_XHR, 'XMLHttpRequest'),
+        (ENTRY_TYPE_WEBSOCKET, 'WebSocket'),
+        (ENTRY_TYPE_NAVIGATION, 'Navigation'),
+        (ENTRY_TYPE_OTHER, 'Other'),
+    ]
+    
+    # Core identification
+    tenant = models.ForeignKey(
+        'dose.Tenant',
+        on_delete=models.CASCADE,
+        related_name='traffic_entries',
+        help_text="Tenant that owns this traffic entry"
+    )
+    capture = models.ForeignKey(
+        TrafficCapture,
+        on_delete=models.CASCADE,
+        related_name='entries',
+        help_text="The capture session this entry belongs to"
+    )
+    timestamp = models.DateTimeField(
+        default=timezone.now,
+        db_index=True,
+        help_text="When this network entry was captured"
+    )
+    
+    # Entry classification
+    entry_type = models.CharField(
+        max_length=20,
+        choices=ENTRY_TYPE_CHOICES,
+        db_index=True,
+        help_text="Type of network request (fetch, xhr, websocket, navigation)"
+    )
+    
+    # Request details
+    url = models.URLField(
+        max_length=1000,
+        help_text="Full URL of the request"
+    )
+    method = models.CharField(
+        max_length=10,
+        default='GET',
+        help_text="HTTP method (GET, POST, PUT, DELETE, etc.)"
+    )
+    
+    # Response details
+    status_code = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="HTTP status code (200, 404, 500, etc.)"
+    )
+    duration_ms = models.FloatField(
+        default=0,
+        help_text="Request duration in milliseconds"
+    )
+    
+    # Headers (stored as JSON for flexibility)
+    request_headers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Request headers as key-value pairs"
+    )
+    response_headers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Response headers as key-value pairs"
+    )
+    
+    # Body content
+    request_body = models.TextField(
+        blank=True,
+        default='',
+        help_text="Request body content (may be truncated for large payloads)"
+    )
+    response_body_preview = models.TextField(
+        blank=True,
+        default='',
+        help_text="Preview of response body (truncated to avoid storage bloat)"
+    )
+    
+    # Raw data preservation
+    raw_entry = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Complete original entry data as captured from browser"
+    )
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Traffic Entry"
+        verbose_name_plural = "Traffic Entries"
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['tenant', '-timestamp']),
+            models.Index(fields=['capture', '-timestamp']),
+            models.Index(fields=['entry_type', '-timestamp']),
+            models.Index(fields=['tenant', 'capture', '-timestamp']),
+            models.Index(fields=['url']),
+        ]
+    
+    def __str__(self):
+        status = f"{self.status_code}" if self.status_code else "N/A"
+        return f"[{self.entry_type}] {self.method} {self.url[:50]} - {status} @ {self.timestamp}"
+    
+    def get_entry_type_display_icon(self):
+        """Return an icon/emoji for the entry type"""
+        icons = {
+            self.ENTRY_TYPE_FETCH: '🔄',
+            self.ENTRY_TYPE_XHR: '📡',
+            self.ENTRY_TYPE_WEBSOCKET: '🔌',
+            self.ENTRY_TYPE_NAVIGATION: '🧭',
+        }
+        return icons.get(self.entry_type, '📊')
+

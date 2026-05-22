@@ -420,9 +420,12 @@
   <label for="ps-light-theme">Light Theme:</label>
   <select id="ps-light-theme"></select>
   <label style="margin-bottom:12px;">Last Saved Theme: <strong id="ps-last-saved">—</strong></label>
-  <div class="ps-use-light">
-    <input type="checkbox" id="ps-use-light-cb">
-    <label for="ps-use-light-cb" style="margin:0;color:#334155;">Use light theme for display</label>
+  <div class="ps-use-light" style="margin-bottom:14px;">
+    <button type="button" id="ps-theme-toggle-btn" class="btn btn-outline-secondary btn-sm" style="width:100%;padding:0.5em;font-weight:bold;"
+        onclick="event.stopPropagation(); toggleThemeDisplayMode();">
+      <i class="fas fa-adjust"></i> <span id="ps-theme-toggle-text">Change to Dark Mode</span>
+    </button>
+    <input type="hidden" id="ps-use-light-cb" value="light">
   </div>
   <label for="ps-dark-theme">Dark Theme:</label>
   <select id="ps-dark-theme"></select>
@@ -430,9 +433,10 @@
 </div>
 <script>
 (function() {
-  var PS_THEMES = ["flatly","cerulean","cosmo","cyborg","darkly","journal","litera","lumen","lux",
-                   "minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab",
-                   "superhero","united","yeti"];
+  var PS_LIGHT_THEMES = ["flatly","cerulean","cosmo","journal","litera","lumen","lux",
+                         "minty","pulse","sandstone","simplex","sketchy","spacelab",
+                         "united","yeti"];
+  var PS_DARK_THEMES = ["cyborg","darkly","slate","solar","superhero"];
   function buildSelect(el, themes, current) {
     el.innerHTML = '';
     themes.forEach(function(t) {
@@ -448,20 +452,47 @@
     fetch('/admin/select-theme/api/', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
       .then(function(r) { return r.json(); })
       .then(function(d) {
-        buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, d.light_theme);
-        buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, d.dark_theme);
+        buildSelect(document.getElementById('ps-light-theme'), PS_LIGHT_THEMES, d.light_theme);
+        buildSelect(document.getElementById('ps-dark-theme'),  PS_DARK_THEMES, d.dark_theme);
         document.getElementById('ps-last-saved').textContent = d.light_theme || '—';
-        document.getElementById('ps-use-light-cb').checked = d.use_light_mode !== false;
+        var isLight = d.use_light_mode !== false;
+        document.getElementById('ps-use-light-cb').value = isLight ? 'light' : 'dark';
+        document.getElementById('ps-theme-toggle-text').textContent = isLight ? 'Change to Dark Mode' : 'Change to Light Mode';
       })
       .catch(function() {
-        buildSelect(document.getElementById('ps-light-theme'), PS_THEMES, 'flatly');
-        buildSelect(document.getElementById('ps-dark-theme'),  PS_THEMES, 'darkly');
+        buildSelect(document.getElementById('ps-light-theme'), PS_LIGHT_THEMES, 'flatly');
+        buildSelect(document.getElementById('ps-dark-theme'),  PS_DARK_THEMES, 'darkly');
+        document.getElementById('ps-use-light-cb').value = 'light';
+        document.getElementById('ps-theme-toggle-text').textContent = 'Change to Dark Mode';
       });
   }
   function closeThemeModal() {
     document.getElementById('ps-theme-modal').style.display = 'none';
     document.getElementById('ps-theme-modal-overlay').style.display = 'none';
   }
+  window.toggleThemeDisplayMode = function() {
+    console.log('[MODAL TOGGLE] Button clicked');
+    var csrf = (document.cookie.split(';').map(function(c){return c.trim();})
+                .filter(function(c){return c.startsWith('csrftoken=');})[0] || '=').split('=')[1];
+    console.log('[MODAL TOGGLE] CSRF:', csrf ? 'found' : 'missing');
+    console.log('[MODAL TOGGLE] Fetching /dose/toggle-theme/');
+    fetch('/dose/toggle-theme/', {
+      method: 'GET',
+      headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf}
+    })
+    .then(function(r) {
+      console.log('[MODAL TOGGLE] Response status:', r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      console.log('[MODAL TOGGLE] Success, theme:', data.theme, 'mode:', data.mode);
+      window.location.reload();
+    })
+    .catch(function(err) {
+      console.error('[MODAL TOGGLE] Failed:', err);
+      alert('Failed to toggle theme: ' + err.message);
+    });
+  };
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
       a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
@@ -471,14 +502,13 @@
     document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
       var light = document.getElementById('ps-light-theme').value;
       var dark  = document.getElementById('ps-dark-theme').value;
-      var useLightMode = document.getElementById('ps-use-light-cb').checked;
       var csrf = (document.cookie.split(';').map(function(c){return c.trim();})
                   .filter(function(c){return c.startsWith('csrftoken=');})[0] || '=').split('=')[1];
+      // Save ONLY theme preferences - NOT display_mode (that's session/cookie based)
       fetch('/admin/select-theme/', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf},
-      body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
-           + '&display_mode=' + (useLightMode ? 'light' : 'dark')
+        body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
       })
       .then(function(r) { return r.json(); })
       .then(function() { closeThemeModal(); window.location.reload(); })
