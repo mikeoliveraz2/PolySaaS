@@ -339,17 +339,17 @@ class MattermostPassthroughHandler:
             print(f"[MM CORS] Error: {exc}")
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
-    """
-    Root-only intercept:
-      - Token present → forward to Mattermost (return None).
-      - No token     → try server-side SSO; if that works set cookie + redirect
-               to /channels/town-square; otherwise serve login bridge
-               INLINE (no redirect to /login — that caused the loop).
-    All non-root paths return None immediately so the forwarder handles them.
-    """
-    if request.method != "GET":
-        return None
-    print('[MM ROOT] Preserving native upstream root/login document')
+        """
+        Root-only intercept:
+          - Token present → forward to Mattermost (return None).
+          - No token     → try server-side SSO; if that works set cookie + redirect
+                   to /channels/town-square; otherwise serve login bridge
+                   INLINE (no redirect to /login — that caused the loop).
+        All non-root paths return None immediately so the forwarder handles them.
+        """
+        if request.method != "GET":
+            return None
+        print('[MM ROOT] Preserving native upstream root/login document')
         return None
 
     def _serve_login_bridge(self, request, trigger, endpoint):
@@ -512,8 +512,68 @@ class MattermostPassthroughHandler:
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
         return resp
+    def process_html_response(self, response_content, request, endpoint=None, endpoint_url=None):
+        """Full rewrite + remove restrictive CSP header"""
+        if isinstance(response_content, bytes):
+            try:
+                html = response_content.decode('utf-8')
+            except Exception as e:
+                print(f"[MM REWRITE] Decode failed: {e}")
+                return str(response_content)
+        else:
+            html = str(response_content)
 
-    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
+        upstream = "https://polysaas-mattermost.onrender.com"
+        print(f"[MM REWRITE] === START REWRITE ===")
+        print(f"[MM REWRITE] Input type: {type(response_content)}")
+        print(f"[MM REWRITE] Upstream: {upstream}")
+        print(f"[MM REWRITE] Original size: {len(html)} chars")
+
+        import re
+
+        count = 0
+        patterns = [
+            r'/(static/[^"\']+)',
+            r'src=["\']/(static/[^"\']+?)["\']',
+            r'href=["\']/(static/[^"\']+?)["\']',
+            r'url\(["\']?/(static/[^"\')]+?)["\']?\)',
+            r'src=["\']/(main\.[^"\']+\.js)["\']',
+            r'src=["\']/(remote_entry\.[^"\']+\.js)["\']',
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            if matches:
+                count += len(matches)
+            html = re.sub(pattern, f'{upstream}/\\1', html, flags=re.IGNORECASE)
+
+        # Safety replacements
+        html = html.replace('"/static/', f'"{upstream}/static/')
+        html = html.replace("'/static/", f"'{upstream}/static/")
+        html = html.replace('"/manifest.json', f'"{upstream}/manifest.json')
+        html = html.replace("'/manifest.json", f"'{upstream}/manifest.json")
+
+        # Strong permissive meta CSP
+        csp_meta = (
+            '<meta http-equiv="Content-Security-Policy" '
+            'content="default-src * \'unsafe-inline\' \'unsafe-eval\' data: blob:; '
+            'script-src * \'unsafe-inline\' \'unsafe-eval\'; '
+            'style-src * \'unsafe-inline\'; '
+            'img-src * data: blob:; '
+            'connect-src *; '
+            'frame-src *; frame-ancestors *;">\n'
+        )
+        if '<head>' in html:
+            html = html.replace('<head>', '<head>' + csp_meta, 1)
+        else:
+            html = csp_meta + html
+
+        print(f"[MM REWRITE] Paths rewritten: {count}")
+        print(f"[MM REWRITE] Final size: {len(html)} chars")
+        print(f"[MM REWRITE] === END REWRITE ===")
+
+        return html
+    def process_html_response_old(self, html_str, request, endpoint_url=None, *args, **kwargs):
         logger.info("[MattermostPassthroughHandler] Processing HTML response")
 
         path_info = getattr(request, 'path_info', '') or ''
