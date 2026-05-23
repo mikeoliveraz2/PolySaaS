@@ -343,8 +343,8 @@ class MattermostPassthroughHandler:
         Root-only intercept:
           - Token present → forward to Mattermost (return None).
           - No token     → try server-side SSO; if that works set cookie + redirect
-                   to /channels/town-square; otherwise serve login bridge
-                   INLINE (no redirect to /login — that caused the loop).
+                           to /channels/town-square; otherwise serve login bridge
+                           INLINE (no redirect to /login — that caused the loop).
         All non-root paths return None immediately so the forwarder handles them.
         """
         if request.method != "GET":
@@ -512,68 +512,144 @@ class MattermostPassthroughHandler:
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
 
         return resp
-    def process_html_response(self, response_content, request, endpoint=None, endpoint_url=None):
-        """Full rewrite + remove restrictive CSP header"""
-        if isinstance(response_content, bytes):
-            try:
-                html = response_content.decode('utf-8')
-            except Exception as e:
-                print(f"[MM REWRITE] Decode failed: {e}")
-                return str(response_content)
-        else:
-            html = str(response_content)
 
-        upstream = "https://polysaas-mattermost.onrender.com"
-        print(f"[MM REWRITE] === START REWRITE ===")
-        print(f"[MM REWRITE] Input type: {type(response_content)}")
-        print(f"[MM REWRITE] Upstream: {upstream}")
-        print(f"[MM REWRITE] Original size: {len(html)} chars")
-
+    def _rewrite_static_asset_urls(self, html: str, proxy_prefix: str) -> str:
+        """Aggressive rewrite of /static/ asset URLs to proxy path in HTML.
+        
+        This ensures static assets like CSS, JS, images load through the proxy
+        instead of requesting from the root /static/ path which would 404.
+        
+        Patterns caught:
+        - Any path starting with /static/
+        - Explicit /static/css/ patterns
+        - .css files with higher priority
+        - All other static asset extensions
+        """
         import re
-
-        count = 0
-        patterns = [
-            r'/(static/[^"\']+)',
-            r'src=["\']/(static/[^"\']+?)["\']',
-            r'href=["\']/(static/[^"\']+?)["\']',
-            r'url\(["\']?/(static/[^"\')]+?)["\']?\)',
-            r'src=["\']/(main\.[^"\']+\.js)["\']',
-            r'src=["\']/(remote_entry\.[^"\']+\.js)["\']',
-        ]
-
-        for pattern in patterns:
-            matches = re.findall(pattern, html, re.IGNORECASE)
-            if matches:
-                count += len(matches)
-            html = re.sub(pattern, f'{upstream}/\\1', html, flags=re.IGNORECASE)
-
-        # Safety replacements
-        html = html.replace('"/static/', f'"{upstream}/static/')
-        html = html.replace("'/static/", f"'{upstream}/static/")
-        html = html.replace('"/manifest.json', f'"{upstream}/manifest.json')
-        html = html.replace("'/manifest.json", f"'{upstream}/manifest.json")
-
-        # Strong permissive meta CSP
-        csp_meta = (
-            '<meta http-equiv="Content-Security-Policy" '
-            'content="default-src * \'unsafe-inline\' \'unsafe-eval\' data: blob:; '
-            'script-src * \'unsafe-inline\' \'unsafe-eval\'; '
-            'style-src * \'unsafe-inline\'; '
-            'img-src * data: blob:; '
-            'connect-src *; '
-            'frame-src *; frame-ancestors *;">\n'
-        )
-        if '<head>' in html:
-            html = html.replace('<head>', '<head>' + csp_meta, 1)
-        else:
-            html = csp_meta + html
-
-        print(f"[MM REWRITE] Paths rewritten: {count}")
-        print(f"[MM REWRITE] Final size: {len(html)} chars")
-        print(f"[MM REWRITE] === END REWRITE ===")
-
+        if not html or not proxy_prefix:
+            return html
+        
+        # Ensure proxy_prefix doesn't end with /
+        proxy_prefix = proxy_prefix.rstrip('/')
+        
+        # Track rewrites for debugging
+        rewrite_count = [0]  # Use list to allow modification in nested function
+        
+        def log_rewrite(original, rewritten):
+            """Log every rewritten URL for debugging."""
+            rewrite_count[0] += 1
+            logger.debug(f"[STATIC_REWRITE] #{rewrite_count[0]}: {original} -> {rewritten}")
+            print(f"[STATIC_REWRITE] #{rewrite_count[0]}: {original} -> {rewritten}")
+        
+        # Pattern 1: href="/static/..." and src="/static/..." (most common)
+        pattern1 = r'((?:href|src)=["\'])/static(/[^"\']*?)(["\'])'
+        def replacer1(m):
+            attr = m.group(1)
+            path = m.group(2)
+            quote = m.group(3)
+            original = f'/static{path}'
+            # Don't double-rewrite if already has proxy prefix
+            if path.startswith(proxy_prefix):
+                return m.group(0)
+            rewritten = f'{attr}{proxy_prefix}/static{path}{quote}'
+            log_rewrite(original, f'{proxy_prefix}/static{path}')
+            return rewritten
+        
+        html = re.sub(pattern1, replacer1, html, flags=re.IGNORECASE)
+        
+        # Pattern 2: data-src="/static/..." (for lazy-loaded images)
+        pattern2 = r'(data-src=["\'])/static(/[^"\']*?)(["\'])'
+        def replacer2(m):
+            attr = m.group(1)
+            path = m.group(2)
+            quote = m.group(3)
+            original = f'/static{path}'
+            if path.startswith(proxy_prefix):
+                return m.group(0)
+            rewritten = f'{attr}{proxy_prefix}/static{path}{quote}'
+            log_rewrite(original, f'{proxy_prefix}/static{path}')
+            return rewritten
+        
+        html = re.sub(pattern2, replacer2, html, flags=re.IGNORECASE)
+        
+        # Pattern 3: Explicit /static/css/ paths (higher priority for CSS files)
+        pattern3 = r'((?:href|src)=["\'])/static/css(/[^"\']*?\.css)(["\'])'
+        def replacer3(m):
+            attr = m.group(1)
+            path = m.group(2)
+            quote = m.group(3)
+            original = f'/static/css{path}'
+            if path.startswith(proxy_prefix):
+                return m.group(0)
+            rewritten = f'{attr}{proxy_prefix}/static/css{path}{quote}'
+            log_rewrite(original, f'{proxy_prefix}/static/css{path}')
+            return rewritten
+        
+        html = re.sub(pattern3, replacer3, html, flags=re.IGNORECASE)
+        
+        # Pattern 4: Catch any remaining /static/ paths in common attributes
+        # This catches action, formaction, poster, etc.
+        pattern4 = r'((?:action|formaction|poster|data)=["\'])/static(/[^"\']*?)(["\'])'
+        def replacer4(m):
+            attr = m.group(1)
+            path = m.group(2)
+            quote = m.group(3)
+            original = f'/static{path}'
+            if path.startswith(proxy_prefix):
+                return m.group(0)
+            rewritten = f'{attr}{proxy_prefix}/static{path}{quote}'
+            log_rewrite(original, f'{proxy_prefix}/static{path}')
+            return rewritten
+        
+        html = re.sub(pattern4, replacer4, html, flags=re.IGNORECASE)
+        
+        # Pattern 5: Catch /static/ paths in style tags and inline CSS (url(/static/...))
+        pattern5 = r'url\(["\']?/static(/[^)"\']*?)["\']?\)'
+        def replacer5(m):
+            path = m.group(1)
+            original = f'url("/static{path}")'
+            if path.startswith(proxy_prefix):
+                return m.group(0)
+            rewritten = f'url("{proxy_prefix}/static{path}")'
+            log_rewrite(original, f'url("{proxy_prefix}/static{path}")')
+            return rewritten
+        
+        html = re.sub(pattern5, replacer5, html, flags=re.IGNORECASE)
+        
+        # Pattern 6: Catch webpack/jsonp callbacks that reference /static/ paths
+        # These are often in script tags like: __webpack_public_path__ = "/static/";
+        pattern6 = r'(__webpack_public_path__\s*=\s*["\'])/static(["\'])'
+        def replacer6(m):
+            prefix = m.group(1)
+            quote = m.group(2)
+            original = f'{prefix}/static{quote}'
+            rewritten = f'{prefix}{proxy_prefix}/static{quote}'
+            log_rewrite(original, f'{prefix}{proxy_prefix}/static{quote}')
+            return rewritten
+        
+        html = re.sub(pattern6, replacer6, html, flags=re.IGNORECASE)
+        
+        # Pattern 7: Catch import statements that reference /static/
+        pattern7 = r'(import\s+.*?\s+from\s+["\'])/static(/[^"\']*?)(["\'])'
+        def replacer7(m):
+            prefix = m.group(1)
+            path = m.group(2)
+            quote = m.group(3)
+            original = f'{prefix}/static{path}{quote}'
+            if path.startswith(proxy_prefix):
+                return m.group(0)
+            rewritten = f'{prefix}{proxy_prefix}/static{path}{quote}'
+            log_rewrite(original, f'{prefix}{proxy_prefix}/static{path}{quote}')
+            return rewritten
+        
+        html = re.sub(pattern7, replacer7, html, flags=re.IGNORECASE)
+        
+        logger.info(f"[STATIC_REWRITE] Total rewrites: {rewrite_count[0]} for proxy_prefix={proxy_prefix}")
+        print(f"[STATIC_REWRITE] Total rewrites: {rewrite_count[0]} for proxy_prefix={proxy_prefix}")
+        
         return html
-    def process_html_response_old(self, html_str, request, endpoint_url=None, *args, **kwargs):
+
+    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         logger.info("[MattermostPassthroughHandler] Processing HTML response")
 
         path_info = getattr(request, 'path_info', '') or ''
@@ -584,12 +660,20 @@ class MattermostPassthroughHandler:
             ('id="loginId"'.lower() in lowered_html and 'id="loginPassword"'.lower() in lowered_html)
         )
 
+        # Get proxy prefix for static asset rewriting
+        proxy_prefix = self._proxy_prefix_from_request(request)
+        
+        # Rewrite static asset URLs to use proxy path (prevents 404s)
+        # This is done for both login and non-login documents
+        if proxy_prefix and html_str:
+            html_str = self._rewrite_static_asset_urls(html_str, proxy_prefix)
+
         # Preserve native Mattermost login HTML rather than substituting a custom bridge.
         if is_login_document:
-            logger.info('[MattermostPassthroughHandler] Preserving native login document')
+            logger.info('[MattermostPassthroughHandler] Preserving native login document (with static rewrites)')
             return html_str, None
 
-        logger.info('[MattermostPassthroughHandler] Preserving native non-login HTML document')
+        logger.info('[MattermostPassthroughHandler] Preserving native non-login HTML document (with static rewrites)')
         return html_str, None
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
@@ -1019,11 +1103,22 @@ class MattermostPassthroughHandler:
         if (typeof s !== 'string') return s;
         if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
         if (s.startsWith(B)) return s;
-        if (s.startsWith(PROXY + '/static/')) return B + s.slice(PROXY.length);
+        if (s.startsWith(PROXY + '/static/')) {{
+            console.log('[PolySaaS MM] toAssetUrl: already proxied', s.slice(0, 80));
+            return B + s.slice(PROXY.length);
+        }}
         if (s.startsWith(O + '/')) s = s.slice(O.length);
         else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
-        if (s.startsWith('static/')) return B + '/' + s;
-        if (s.startsWith('/static/')) return B + s;
+        if (s.startsWith('static/')) {{
+            var result = B + '/' + s;
+            console.log('[PolySaaS MM] toAssetUrl: relative static ->', result.slice(0, 80));
+            return result;
+        }}
+        if (s.startsWith('/static/')) {{
+            var result = B + s;
+            console.log('[PolySaaS MM] toAssetUrl: /static/ ->', result.slice(0, 80));
+            return result;
+        }}
         return s;
     }}
 
@@ -1182,7 +1277,9 @@ class MattermostPassthroughHandler:
         return;
     }}
 
+    // Force clean base for dynamic requests
     window.__webpack_public_path__ = B + '/static/';
+    console.log('[PolySaaS MM] Public path set to:', window.__webpack_public_path__);
     window.basename = PROXY;
 
     // Strip PolySaaS proxy paths from redirect_to — Mattermost history.push(redirect_to)
@@ -1253,35 +1350,50 @@ class MattermostPassthroughHandler:
         }}
     }};
 
+    // === FINAL STRONG WEBSOCKET REWRITE ===
     var _WS = WebSocket;
     window.WebSocket = function(url, protocols) {{
+        console.log('[PolySaaS MM] WS init:', url);
+
         if (typeof url === 'string') {{
             try {{
-                var wsUrl = url;
-                if (wsUrl.indexOf('ws://') !== 0 && wsUrl.indexOf('wss://') !== 0) {{
-                    wsUrl = wsUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+                let wsUrl = url;
+                if (!wsUrl.match(/^wss?:\/\//i)) {{
+                    wsUrl = wsUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
                 }}
-                var u = new URL(wsUrl, B);
-                var upstream = new URL(B);
+
+                const u = new URL(wsUrl, B);
+                const upstream = new URL(B);
+
                 u.hostname = upstream.hostname;
-                u.port = upstream.port;
+                u.port = upstream.port || (upstream.protocol === 'https:' ? '443' : '80');
                 u.protocol = upstream.protocol === 'https:' ? 'wss:' : 'ws:';
-                if (MMAUTHTOKEN && !u.searchParams.get('access_token')) {{
+
+                // Aggressively strip proxy prefix
+                let cleanPath = u.pathname;
+                if (cleanPath.startsWith(PROXY)) {{
+                    cleanPath = cleanPath.substring(PROXY.length);
+                }}
+                if (!cleanPath.startsWith('/')) cleanPath = '/' + cleanPath;
+                u.pathname = cleanPath;
+
+                if (MMAUTHTOKEN && !u.searchParams.has('access_token')) {{
                     u.searchParams.set('access_token', MMAUTHTOKEN);
                 }}
+
                 url = u.toString();
-                console.log('[PolySaaS Mattermost] WebSocket direct:', url);
-            }} catch (e) {{ console.warn('[PolySaaS Mattermost] WebSocket rewrite:', e); }}
+                console.log('[PolySaaS MM] WS →', url);
+            }} catch (e) {{
+                console.error('[PolySaaS MM] WS rewrite failed:', e);
+            }}
         }}
-        var ws = protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
-        try {{
-            ws.addEventListener('open', function() {{
-                console.log('[PolySaaS Mattermost] WebSocket OPEN');
-            }});
-            ws.addEventListener('error', function(event) {{
-                console.error('[PolySaaS Mattermost] WebSocket ERROR', event);
-            }});
-        }} catch (_wse) {{}}
+
+        const ws = protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
+
+        ws.addEventListener('open', () => console.log('[PolySaaS MM] WS OPEN SUCCESS'));
+        ws.addEventListener('error', (e) => console.error('[PolySaaS MM] WS ERROR', e));
+        ws.addEventListener('close', (e) => console.warn('[PolySaaS MM] WS CLOSED code=', e.code));
+
         return ws;
     }};
     if (_WS.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WS.CONNECTING;
