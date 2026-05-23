@@ -25,9 +25,7 @@ class MattermostPassthroughHandler:
 
     def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
         """Static bundle URLs are served by mattermost_static_proxy in URLconf, not PT core."""
-        import re as _re
-        m = _re.match(r'^/pt/admin/([^/]+)/static/', path_info)
-        return bool(m and 'mattermost' in m.group(1).lower())
+        return path_info.startswith("/pt/admin/mattermost/static/")
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
         """Follow document GET redirects inside the handler so Mattermost auth hops do not escape the passthrough path."""
