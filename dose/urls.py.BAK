@@ -56,10 +56,18 @@ from .viewsets import (
 from dose.views import connect_social_after_subscribe
 from dose.views.callbackdata import callbackdata_view, callback_log_viewer
 from dose.theme_views import toggle_theme
-from dose.admin_views import set_theme, select_theme, test_post
+#from dose.admin_views import set_theme, select_theme
 from dose.views.upgrade import upgrade_view
 from dose.views.ai_peers_webhook import ai_peers_webhook
-from djstripe.views import ProcessWebhookView
+
+# Handle optional djstripe import
+try:
+    try:
+        from djstripe.views import ProcessWebhookView
+    except ImportError:
+        ProcessWebhookView = None
+except ImportError:
+    ProcessWebhookView = None
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -109,7 +117,6 @@ router.register(r'errorlogs', ErrorLogViewSet)
 router.register(r'passthroughendpoints', PassThroughEndpointViewSet)
 
 urlpatterns = [
-    path('test/', test_post, name='test_post'),
     path('google-profile/', google_profile_view, name='google_profile'),
     path('facebook-profile/', facebook_profile_view, name='facebook_profile'),
     path('github-profile/', github_profile_view, name='github_profile'),
@@ -149,7 +156,7 @@ urlpatterns = [
     path('tenantsettings/', tenant_settings, name='tenantsettings'),
     path('tenant/users/', tenant_users, name='tenant_users'),
     # API endpoints
-    path('admin/select-theme/', select_theme, name='select_theme'),
+    #path('admin/select-theme/', select_theme, name='select_theme'),
     path('api/user-tenants/', get_user_tenants_api, name='api_user_tenants'),
     path('api/update-tenant/', update_tenant_api, name='api_update_tenant'),
     path('api/track-click/', track_navigation_click, name='api_track_click'),

@@ -1,0 +1,19 @@
+# dose/passthrough/__init__.py
+# Make registry available at package level
+from .handlers.registry import (
+    register_handler,
+    get_handler,
+    get_native_passthrough_prefixes,
+    native_passthrough_path_regex,
+    get_handler_for_endpoint,
+    pt_admin_core_delegated_to_urlconf,
+)
+
+__all__ = [
+    'register_handler',
+    'get_handler',
+    'get_native_passthrough_prefixes',
+    'native_passthrough_path_regex',
+    'get_handler_for_endpoint',
+    'pt_admin_core_delegated_to_urlconf',
+]

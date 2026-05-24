@@ -1,0 +1,77 @@
+# Passthrough Architecture Documentation
+
+**Last Updated:** May 23, 2026
+
+## Overview
+
+We have simplified the passthrough system to use **one single registry** instead of duplicated files and folders.
+
+### Final Structure
+
+dose/
+├── passthrough/
+│   ├── registry.py                 ← SINGLE SOURCE OF TRUTH
+│   ├── middleware.py
+│   ├── forwarding.py
+│   └── handlers/                   ← (optional, for future complex handlers)
+│
+mysite/
+├── urls.py
+├── csrf_exemption_middleware.py
+└── wsgi.py
+text---
+
+## Key Changes Made
+
+1. **Single Registry** (`dose/passthrough/registry.py`)
+   - Contains all handler registration, lookup, CSRF exemption logic
+   - No more `handlers/registry.py` duplication
+
+2. **Updated Imports Everywhere**
+   - Changed from `dose.passthrough.handlers.registry` → `dose.passthrough.registry`
+
+3. **Clean `admin_views.py`**
+   - Removed old middleware function imports
+   - Uses clean `get_handler()` + `forward_request_standardized()`
+
+4. **Fixed Missing URL**
+   - Added `admin_polysaas_ai` route to fix template error in admin dashboard
+
+---
+
+## How to Add a New Passthrough App
+
+Example for Mattermost:
+
+```python
+# In dose/passthrough/registry.py (or in an app's ready() method)
+from dose.passthrough.registry import register_handler
+from .handlers.mattermost import MattermostHandler
+
+register_handler("polysaas-mattermost.onrender.com", MattermostHandler)
+
+Current Status
+
+ Server starts without import errors
+ Passthrough views are working (/pt/admin/...)
+ CSRF exemption working for /pt/ paths
+ Admin dashboard loads (no more NoReverseMatch)
+ Handler-specific logic (Mattermost, Odoo, etc.) needs to be moved into proper handler classes
+
+
+Next Steps (When You Return)
+
+Create proper handler classes in dose/passthrough/handlers/
+Register them in registry.py
+Test Mattermost embed/full passthrough
+Clean up any remaining handlers.registry imports
+
+
+Safe travels home!
+Let me know when you're back and we can continue cleaning the handler system and testing the Mattermost integration.
+Have a good evening! 🚀
+text---
+
+**Save this file**, then do the commit I gave you earlier.
+
+You’re all set for today. See you when you’re back!
