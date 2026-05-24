@@ -56,7 +56,7 @@ from .viewsets import (
 from dose.views import connect_social_after_subscribe
 from dose.views.callbackdata import callbackdata_view, callback_log_viewer
 from dose.theme_views import toggle_theme
-from dose.admin_views import set_theme, select_theme, test_post
+from dose.admin_views import set_theme, select_theme
 from dose.views.upgrade import upgrade_view
 from dose.views.ai_peers_webhook import ai_peers_webhook
 from djstripe.views import ProcessWebhookView
@@ -109,7 +109,6 @@ router.register(r'errorlogs', ErrorLogViewSet)
 router.register(r'passthroughendpoints', PassThroughEndpointViewSet)
 
 urlpatterns = [
-    path('test/', test_post, name='test_post'),
     path('google-profile/', google_profile_view, name='google_profile'),
     path('facebook-profile/', facebook_profile_view, name='facebook_profile'),
     path('github-profile/', github_profile_view, name='github_profile'),

@@ -1,93 +1,98 @@
 # dose/passthrough/handlers/mattermost_handler.py
-"""
-MATTERMOST PASSTHROUGH HANDLER
-===============================
 
-Session: May 24, 2026 Morning
+import logging
+from django.http import HttpResponse
 
-What we accomplished:
----------------------
-1. Aggressive CSP removal - Upstream CSP was blocking everything.
-2. Header sanitization - Removed X-Frame-Options, X-Content-Type-Options, etc.
-3. Broad URL rewriting - Critical for Mattermost's heavy code-splitting.
-4. Dynamic chunk routing - Main bundle + hundreds of /static/XXXX.js chunks now route through proxy.
-5. Permissive CSP injection on every response.
+logger = logging.getLogger(__name__)
 
-Current State:
---------------
-- Main HTML loads correctly
-- Main JS bundle loads correctly
-- Most dynamic chunks now route through /pt/... (major win)
-- Still occasional 502 when upstream Render instance is asleep
+class MattermostHandler:
+    """
+    Self-contained Mattermost Passthrough Handler.
+    Everything Mattermost-related lives here. No external dependencies.
+    """
 
-What remains:
--------------
-- Occasional upstream 502 (Render free tier sleeps) → User must wake it up
-- Very rare edge case chunks that might still slip through regex
-- Long-term: Consider implementing a global static file proxy fallback in PT core
+    def __init__(self):
+        self.service_name = "Mattermost"
 
-"""
+    def _get_proxy_prefix(self, request):
+        """Get the proxy prefix from the request path."""
+        path = getattr(request, 'path', '')
+        if '/pt/admin/polysaas-mattermost.onrender.com' in path:
+            return '/pt/admin/polysaas-mattermost.onrender.com'
+        return ''
 
-import re
+    def _rewrite_static_urls(self, html_str: str, proxy_prefix: str) -> str:
+        """Rewrite static assets to go through our proxy."""
+        if not html_str or not proxy_prefix:
+            return html_str
 
-class MattermostPassthroughHandler:
-    UPSTREAM = "https://polysaas-mattermost.onrender.com"
-    PROXY_PREFIX = "/pt/admin/polysaas-mattermost.onrender.com"
+        replacements = [
+            ('/static/', f'{proxy_prefix}/static/'),
+            ('/plugins/', f'{proxy_prefix}/plugins/'),
+            ('/api/', f'{proxy_prefix}/api/'),
+            ('href="/', f'href="{proxy_prefix}/'),
+            ('src="/', f'src="{proxy_prefix}/'),
+            ("href='/", f"href='{proxy_prefix}/"),
+            ("src='/", f"src='{proxy_prefix}/"),
+        ]
 
-    def process_response_headers(self, headers, request):
+        for old, new in replacements:
+            html_str = html_str.replace(old, new)
+
+        return html_str
+
+    def _inject_shim(self, html_str: str, proxy_prefix: str, base_origin: str) -> str:
+        """Inject basic PolySaaS shim for Mattermost."""
+        shim = f"""
+        <script>
+            console.log('[PolySaaS Mattermost] Shim injected');
+            window.POLYSAAS_PROXY_PREFIX = "{proxy_prefix}";
+            window.POLYSAAS_BASE_ORIGIN = "{base_origin}";
+        </script>
         """
-        Nuclear header cleanup - removes all security restrictions from upstream.
-        """
-        for key in list(headers.keys()):
-            lower = key.lower()
-            if any(x in lower for x in [
-                'content-security-policy', 
-                'x-frame', 
-                'frame-options', 
-                'x-content-type-options',
-                'cross-origin'
-            ]):
-                print(f"[MM] 🔥 REMOVED restrictive header: {key}")
-                del headers[key]
+        if '</head>' in html_str:
+            return html_str.replace('</head>', shim + '</head>')
+        return html_str + shim
 
-        # Our own extremely permissive policy
-        headers['Content-Security-Policy'] = (
-            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss:; "
-            "script-src * 'unsafe-inline' 'unsafe-eval'; "
-            "style-src * 'unsafe-inline'; "
-            "img-src * data: blob:; "
-            "connect-src * ws: wss:; "
-            "frame-ancestors *;"
-        )
-        headers['X-Frame-Options'] = "ALLOWALL"
-        headers['Access-Control-Allow-Origin'] = "*"
-        
-        return headers
+    def process_html_response(self, html_str, request, endpoint_url=None):
+        """Main method called by the forwarder."""
+        logger.info("[MattermostHandler] Processing HTML response")
 
-    def process_html_response(self, response_content, request, endpoint=None, endpoint_url=None):
-        """
-        Rewrites all asset URLs so Mattermost's dynamic chunks go through our proxy.
-        """
-        if isinstance(response_content, bytes):
-            html = response_content.decode('utf-8', errors='replace')
-        else:
-            html = str(response_content)
+        path = getattr(request, 'path', '')
+        html_lower = (html_str or '').lower()
 
-        print(f"[MM] Rewriting HTML - Original size: {len(html)}")
-
-        # Core fix: Rewrite ALL /static/ paths (this was the main blocker)
-        html = re.sub(
-            r'(["\'])/static/([^"\']+)', 
-            lambda m: f'{m.group(1)}{self.PROXY_PREFIX}/static/{m.group(2)}', 
-            html
+        is_login_page = (
+            '/login' in path.lower() or
+            'log in' in html_lower or
+            'forgot your password' in html_lower
         )
 
-        # Additional safety net for other root-relative assets
-        html = re.sub(
-            r'(["\'])/(plugins|images|fonts|api|manifest)/([^"\']+)', 
-            lambda m: f'{m.group(1)}{self.PROXY_PREFIX}/{m.group(2)}/{m.group(3)}', 
-            html
-        )
+        proxy_prefix = self._get_proxy_prefix(request)
 
-        print(f"[MM] Final HTML size: {len(html)}")
-        return html
+        # Always rewrite asset URLs
+        if proxy_prefix:
+            html_str = self._rewrite_static_urls(html_str, proxy_prefix)
+
+        # Special case for login page - preserve original
+        if is_login_page:
+            logger.info("[MattermostHandler] Preserving native login page")
+            return html_str, None
+
+        # For other pages, inject shim
+        if proxy_prefix and html_str:
+            base_origin = (endpoint_url or "https://polysaas-mattermost.onrender.com").rstrip('/')
+            html_str = self._inject_shim(html_str, proxy_prefix, base_origin)
+
+        logger.info("[MattermostHandler] HTML processing done")
+        return html_str, None
+
+    def handle_request(self, request, endpoint_url):
+        """Fallback hook if needed."""
+        logger.debug(f"[MattermostHandler] Handling request: {request.path}")
+        return None  # Let the generic forwarder continue
+    
+# Bottom of D:\PolySaaS\dose\passthrough\handlers\mattermost_handler.py
+from dose.passthrough.handlers.registry import register_handler
+
+register_handler("mattermost", MattermostHandler)
+print("✅ MattermostHandler registered successfully")

@@ -1,451 +1,56 @@
-# dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
+# dose/passthrough/middleware.py
+# GENERIC MIDDLEWARE - NO ENDPOINT SPECIFIC CODE
 import logging
-from django.http import HttpResponse as DjangoHttpResponse
-from django.template.loader import render_to_string
+from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
-from django.utils.safestring import mark_safe
-from dose.models import UserTenantMembership
-from dose.passthrough.forwarding import forward_request_standardized
-from dose.passthrough.handlers.registry import (
-    get_handler_for_endpoint,
-    pt_admin_core_delegated_to_urlconf,
-)
-from dose.utils import get_current_tenant
 
 logger = logging.getLogger(__name__)
-
-
-def _should_wrap_initial_html(request) -> bool:
-    """Direct /pt/admin passthrough should preserve upstream HTML for HAR parity."""
-    path = getattr(request, 'path_info', '') or ''
-    if path.startswith('/pt/admin/'):
-        return False
-    return _is_initial_page_load(request)
-
-
-def _is_passthrough_asset_request(path: str) -> bool:
-    """Static passthrough assets must not be rewritten to the login bridge."""
-    if not path.startswith('/pt/admin/'):
-        return False
-
-    last_segment = path.rsplit('/', 1)[-1].lower()
-    if '/static/' in path:
-        return True
-    if last_segment in ('manifest.json', 'manifest.js', 'asset-manifest.json', 'favicon.ico'):
-        return True
-    if '.' not in last_segment:
-        return False
-
-    ext = last_segment.rsplit('.', 1)[-1]
-    return ext in {
-        'js', 'css', 'map', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
-        'webp', 'woff', 'woff2', 'ttf', 'eot', 'json',
-    }
-
-
-def _is_initial_page_load(request):
-    """
-    Detect if this is an initial page load (browser navigation) vs API/asset request.
-    Initial page loads should be wrapped in the admin template for embedded display.
-    """
-    print(f"[_IS_INITIAL-ENTRY] path={request.path_info}, Accept={request.headers.get('Accept', 'NONE')[:50]}...")
-    path = request.path_info
-    print(f"[_IS_INITIAL] Checking path: {path}")
-    
-    # XHR/fetch requests are NOT initial page loads
-    xrw = request.headers.get('X-Requested-With', '')
-    if xrw == 'XMLHttpRequest':
-        print(f"[_IS_INITIAL] FALSE: X-Requested-With={xrw}")
-        return False
-    
-    # Check Accept header - browsers send text/html for navigation
-    accept = request.headers.get('Accept', '')
-    print(f"[_IS_INITIAL] Accept header raw: '{accept}'")
-    print(f"[_IS_INITIAL] Accept header length: {len(accept)}")
-    print(f"[_IS_INITIAL] 'text/html' in accept: {'text/html' in accept}")
-    print(f"[_IS_INITIAL] Accept header: {accept[:100]}...")
-    if 'text/html' not in accept:
-        print(f"[_IS_INITIAL] FALSE: no text/html in Accept")
-        return False
-    
-    # Check if path has a file extension (static assets)
-    last_segment = path.split('/')[-1]
-    if '.' in last_segment:
-        ext = last_segment.split('.')[-1].lower()
-        print(f"[_IS_INITIAL] Path has extension: .{ext}")
-        if ext in ('js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'map'):
-            print(f"[_IS_INITIAL] FALSE: static asset extension .{ext}")
-            return False
-    
-    # API paths are not initial page loads
-    api_prefixes = ('/api/', '/plugins/', '/boards/', '/calls/', '/bus/', '/websocket')
-    for prefix in api_prefixes:
-        if prefix in path:
-            print(f"[_IS_INITIAL] FALSE: API prefix {prefix}")
-            return False
-    
-    print(f"[_IS_INITIAL] TRUE: This is an initial page load")
-    return True
-
-
-def _extract_head_and_body(html):
-    """
-    Extract <head> content and <body> content from a full HTML document.
-    Returns (head_content, body_content) tuple.
-    """
-    import re
-    
-    head_content = ''
-    body_content = html
-    
-    # Extract content between <head> and </head>
-    head_match = re.search(r'<head[^>]*>(.*?)</head>', html, re.DOTALL | re.IGNORECASE)
-    if head_match:
-        head_content = head_match.group(1)
-    
-    # Extract content between <body> and </body>
-    body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.DOTALL | re.IGNORECASE)
-    if body_match:
-        body_content = body_match.group(1)
-    elif '<body' in html.lower():
-        # Body tag exists but no closing - take everything after <body>
-        body_start = re.search(r'<body[^>]*>', html, re.IGNORECASE)
-        if body_start:
-            body_content = html[body_start.end():]
-            # Remove closing </html> if present
-            body_content = re.sub(r'</html>\s*$', '', body_content, flags=re.IGNORECASE)
-    
-    return head_content, body_content
-
-
-def _wrap_in_admin_template(request, response, trigger, endpoint):
-    """
-    Wrap the raw proxied HTML response in the admin template for embedded display.
-    This gives us the PolySaaS sidebar, header, and proper layout.
-    
-    The upstream HTML is a full document (<html><head>...</head><body>...</body></html>).
-    We extract the <head> content (styles, scripts, shims) and <body> content separately,
-    then inject them into the appropriate blocks of the admin template.
-    """
-    print(f"\n[_WRAP-ENTRY] _wrap_in_admin_template - trigger={trigger}, status={response.status_code}")
-    print(f"[_WRAP] _wrap_in_admin_template CALLED")
-    print(f"[_WRAP]   trigger={trigger}, status={response.status_code}")
-    print(f"[_WRAP]   content_type={response.get('Content-Type', 'NONE')}")
-
-    # Only wrap HTML responses
-    content_type = response.get('Content-Type', '')
-    if 'text/html' not in content_type:
-        print(f"[_WRAP]   SKIP: not HTML content type")
-        return response
-    
-    # Get the raw HTML content
-    try:
-        raw_html = response.content.decode('utf-8', errors='ignore')
-        print(f"[_WRAP]   raw_html length={len(raw_html)}")
-    except Exception as e:
-        print(f"[_WRAP]   ERROR decoding content: {e}")
-        return response
-    
-    # Don't wrap if it's an error page or empty
-    if not raw_html or len(raw_html) < 100:
-        print(f"[_WRAP]   SKIP: content too short ({len(raw_html) if raw_html else 0} chars)")
-        return response
-    
-    # Use the trigger as-is for the URL (it's a hostname like polysaas-odoo2.onrender.com).
-    # Only mangle for display title, never for URL construction.
-    norm = trigger.strip('/')
-    embed_title = norm.split('.')[0].replace('-', ' ').title()
-    embed_src = f'/pt/admin/{norm}/'
-    
-    # Extract head and body from the upstream HTML document
-    head_content, body_content = _extract_head_and_body(raw_html)
-    
-    # The body content goes in the scope div
-    # The head content (styles, scripts, shims) goes in embed_head for extrahead block
-    embed_body = mark_safe(
-        f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{norm}">'
-        f'{body_content}</div>'
-    )
-    embed_head = mark_safe(head_content)
-    
-    # Determine upstream path for orchestration bar
-    upstream_path = getattr(request, '_passthrough_upstream_path', '/web')
-
-    try:
-        wrapped_html = render_to_string(
-            'admin/passthrough_embed.html',
-            {
-                'embed_src': embed_src,
-                'embed_title': embed_title,
-                'embed_head': embed_head,
-                'embed_body': embed_body,
-                'upstream_path': upstream_path,
-            },
-            request=request,
-        )
-        
-        wrapped_response = DjangoHttpResponse(wrapped_html.encode('utf-8'), status=response.status_code)
-        wrapped_response['Content-Type'] = 'text/html; charset=utf-8'
-        wrapped_response['X-Frame-Options'] = 'ALLOWALL'
-        wrapped_response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-        wrapped_response['Pragma'] = 'no-cache'
-        wrapped_response['Expires'] = '0'
-        
-        # Copy cookies from original response
-        for cookie_name in response.cookies:
-            wrapped_response.cookies[cookie_name] = response.cookies[cookie_name].value
-            wrapped_response.cookies[cookie_name]['path'] = response.cookies[cookie_name].get('path', '/')
-            wrapped_response.cookies[cookie_name]['samesite'] = 'Lax'
-        
-        print(f"[PT-MW] Wrapped response in admin template for {norm} (head={len(head_content)} body={len(body_content)} chars)")
-        return wrapped_response
-    except Exception as exc:
-        print(f"[PT-MW] Failed to wrap in admin template: {exc}")
-        import traceback
-        traceback.print_exc()
-        return response
-
-
-def run_pt_admin_passthrough_core(request):
-    """
-    Handle /pt/admin/<hostname>/... direct passthrough without DB lookup.
-    The trigger segment IS the hostname (e.g., polysaas-odoo2.onrender.com).
-    Returns HttpResponse, or None to let URLconf continue (static proxy, building pen).
-    Caller must already enforce auth, tenant, and membership.
-    """
-    print(f"\n[PT-CORE-ENTRY] run_pt_admin_passthrough_core - path={request.path_info}, method={request.method}")
-    path = request.path_info
-    if pt_admin_core_delegated_to_urlconf(request, path):
-        print(f"[PT-CORE] Delegate to URLconf (handler): {path}")
-        return None
-    if path.startswith("/pt/admin/passthrough/"):
-        print(f"[PT-CORE] Delegate PolySniffer passthrough: {path}")
-        return None
-
-    parts = path.strip("/").split("/")
-    print(f"[PT-CORE] path={path} parts={parts}")
-    if len(parts) < 3 or parts[0] != "pt":
-        return None
-    trigger = parts[2]
-    print(f"[PT-CORE] trigger={trigger}")
-
-    # Fallback for when DB is unavailable (recovery scenarios)
-    class SimpleEndpoint:
-        def __init__(self, hostname, url=None):
-            self.endpoint_url = url or f"https://{hostname}"
-            self.trigger_path = hostname
-            self.is_enabled = True
-            self.passthrough_type = 'proxy'
-            self.passthrough_stream_debug = False
-            self.passthrough_log_requests = False
-            self.headers_to_forward = ''
-            self.description = f'Passthrough to {hostname}'
-
-    # NOTE: We no longer look up endpoints in the DB by trigger_path.
-    # Sidebar links encode the hostname directly in the URL: /pt/admin/{hostname}/
-    # The hostname IS the endpoint URL — no DB lookup needed. This eliminates
-    # the old two-step lookup (trigger -> DB record -> endpoint_url) entirely.
-    endpoint = SimpleEndpoint(trigger)
-
-    print(f"[PT-CORE] endpoint from URL hostname: {endpoint.endpoint_url}")
-
-    request._passthrough_endpoint = endpoint
-
-    # PICOLLO PASSO: Direct handler selection by hostname - avoids DB-dependent registry lookup
-    trigger_lower = trigger.lower()
-    handler = None
-    if 'odoo' in trigger_lower:
-        from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
-        handler = OdooPassthroughHandler()
-        print(f"[PT-CORE] Selected OdooPassthroughHandler for {trigger}")
-    elif 'mattermost' in trigger_lower:
-        from dose.passthrough.handlers.mattermost_handler import MattermostPassthroughHandler
-        handler = MattermostPassthroughHandler()
-        print(f"[PT-CORE] Selected MattermostPassthroughHandler for {trigger}")
-    elif 'nextcloud' in trigger_lower:
-        from dose.passthrough.handlers.nextcloud_handler import NextcloudPassthroughHandler
-        handler = NextcloudPassthroughHandler()
-        print(f"[PT-CORE] Selected NextcloudPassthroughHandler for {trigger}")
-    else:
-        # Fallback to registry for unknown hostnames
-        handler = get_handler_for_endpoint(endpoint, request)
-        print(f"[PT-CORE] Fallback registry handler for {trigger}: {handler}")
-
-    try_root = (
-        getattr(handler, "try_root_display_shell_response", None)
-        if handler is not None
-        else None
-    )
-    if callable(try_root):
-        print(f"[PT-CORE] Calling handler.try_root_display_shell_response...")
-        shell = try_root(request, endpoint, trigger)
-        print(f"[PT-CORE] Handler returned: {type(shell).__name__ if shell else 'None'}")
-        if shell is not None:
-            print(f"[PT-CORE] Handler display shell - returning {type(shell).__name__} (no forward)")
-            # Orchestration hook: fire for display-shell-handled requests (forwarding.py is skipped)
-            try:
-                from dose.passthrough.orchestration_hook import check_orchestration_trigger
-                from dose.utils import get_current_tenant
-                _orch_tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
-                _proxy_prefix = f"/pt/admin/{trigger}"
-                _upstream_path = path[len(_proxy_prefix):] or "/"
-                if not _upstream_path.startswith("/"):
-                    _upstream_path = "/" + _upstream_path
-                check_orchestration_trigger(request, _upstream_path, trigger, _orch_tenant, direction='REQ')
-                check_orchestration_trigger(request, _upstream_path, trigger, _orch_tenant, direction='RES')
-            except Exception as _oe:
-                print(f"[PT-CORE] Orchestration hook (display shell) non-blocking error: {_oe}")
-            request._passthrough_handled = True
-            request._passthrough_response = shell
-            return shell
-        print(f"[PT-CORE] Handler returned None, falling through to forward")
-    else:
-        print(f"[PT-CORE] No try_root method on handler")
-
-    print("\n" + "=" * 120)
-    print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")
-    print(f"TARGET URL: {endpoint.endpoint_url}")
-    print(f"PATH      : {request.path_info}")
-    print(f"USER      : {request.user}")
-    print("=" * 120 + "\n")
-
-    response = forward_request_standardized(
-        request, endpoint.endpoint_url, handler=handler, endpoint=endpoint
-    )
-
-    # Check if upstream service is down
-    if response.status_code in (502, 503, 504):
-        from django.http import HttpResponse
-        error_html = f"""
-        <div style="padding: 40px; text-align: center;">
-            <h2 style="color: #dc3545;">Service Unavailable</h2>
-            <p>The external service <code>{trigger}</code> is currently not running.</p>
-            <p>Status: {response.status_code}</p>
-            <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
-        </div>
-        """
-        response = HttpResponse(error_html.encode('utf-8'), status=503, content_type='text/html; charset=utf-8')
-        print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
-    elif getattr(response, "_passthrough_skip_admin_wrap", False):
-        print("[PT-CORE] Handler returned direct response - skipping admin template wrap")
-    elif _should_wrap_initial_html(request):
-        print("[PT-CORE] Initial page load - wrapping in admin template")
-        response = _wrap_in_admin_template(request, response, trigger, endpoint)
-    else:
-        print("[PT-CORE] Preserving raw upstream response")
-
-    request._passthrough_handled = True
-    request._passthrough_response = response
-    return response
 
 
 class ExternalPassthroughMiddleware(MiddlewareMixin):
     def __init__(self, get_response):
         self.get_response = get_response
-        super().__init__(get_response)
 
     def __call__(self, request):
-        """
-        REQUEST PHASE - runs for every request
-        This is the LAST middleware before the request leaves Django
-        -> Perfect place for PASSTHROUGH-OUT
-        """
-        print(f"\n[PT-MW-ENTRY] __call__ - path={request.path_info}, method={request.method}")
-        
-        # Intercept Mattermost expired session redirects (extra=expired)
-        # Mattermost navigates to /?redirect_to=...&extra=expired when its session expires
-        # We need to redirect this to the passthrough login bridge instead of /dose/
-        if request.path_info == '/' and request.GET.get('extra') == 'expired':
-            redirect_to = request.GET.get('redirect_to', '')
-            print(f"[PT-MW] Intercepted Mattermost expired session redirect: redirect_to={redirect_to}")
-            # Extract the passthrough path from redirect_to and redirect to its login bridge
-            if redirect_to.startswith('/pt/admin/'):
-                # Redirect to the login bridge for this passthrough
-                parts = redirect_to.strip('/').split('/')
-                if len(parts) >= 3:
-                    passthrough_root = f"/{parts[0]}/{parts[1]}/{parts[2]}"
-                    login_bridge = f"{passthrough_root}/login?force=1"
-                    print(f"[PT-MW] Redirecting to passthrough login bridge: {login_bridge}")
-                    from django.http import HttpResponseRedirect
-                    return HttpResponseRedirect(login_bridge)
-        
-        if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
-            print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
-            return self.get_response(request)
-
-        if request.path_info.startswith("/pt/"):
-            print(f"[PT-MW-TOP] ExternalPassthroughMiddleware HIT for {request.path_info}")
-            user = getattr(request, "user", None)
-            is_auth = user and user.is_authenticated
-            print(f"[PT-MW] /pt/ hit | user={user} auth={is_auth}")
-            if not is_auth:
-                print("[PT-MW] BAIL: not authenticated")
-                # Allow bridge login endpoint through so unauthenticated users can
-                # POST their token after the bridge form.
-                if request.path_info.rstrip('/').endswith('/_bridge_login') and request.method == 'POST':
-                    print("[PT-MW] ALLOW: _bridge_login POST for unauthenticated user")
-                elif _is_passthrough_asset_request(request.path_info):
-                    print(f"[PT-MW] ALLOW: passthrough asset request without Django auth: {request.path_info}")
-                    return self.get_response(request)
-                elif request.path_info.startswith('/pt/admin/'):
-                    # For passthrough admin paths, redirect to the login bridge inside
-                    # the passthrough instead of falling through to Django's URL routing
-                    # (which leaks to /dose/).
-                    login_bridge = request.path_info.rstrip('/') + '/login?force=1'
-                    print(f"[PT-MW] Redirecting to passthrough login bridge: {login_bridge}")
-                    from django.http import HttpResponseRedirect
-                    return HttpResponseRedirect(login_bridge)
-                else:
-                    return self.get_response(request)
-
-            tenant = get_current_tenant(request)
-            print(f"[PT-MW] tenant={tenant}")
-            if not tenant:
-                print("[PT-MW] BAIL: no tenant")
-                return self.get_response(request)
-            if not request.user.is_superuser and not UserTenantMembership.objects.filter(
-                user=request.user, tenant=tenant
-            ).exists():
-                print("[PT-MW] BAIL: not superuser and no membership")
-                return self.get_response(request)
-
-            resp = run_pt_admin_passthrough_core(request)
-            if resp is not None:
-                return resp
-
-        # Not a passthrough request - continue down the stack
+        if self._is_passthrough_request(request):
+            response = self._handle_passthrough(request)
+            if response is not None:
+                return response
         return self.get_response(request)
 
-    def process_response(self, request, response):
-        """
-        RESPONSE PHASE - runs for every response
-        This is the FIRST middleware that sees the response coming back
-        -> Perfect place for PASSTHROUGH-IN
-        """
-        print(f"[PT-MW-ENTRY] process_response - path={request.path_info}, status={response.status_code}")
+    def _is_passthrough_request(self, request):
+        return request.path.startswith('/pt/admin/') or request.path.startswith('/pt/dose/')
 
-        # Guard: prevent passthrough requests from being redirected to /dose/ (Django login)
-        # If this happens, redirect back to the original passthrough path so the handler
-        # can serve the login bridge instead.
-        location = response.get('Location', '')
-        if request.path_info.startswith('/pt/admin/') and '/dose/' in location:
-            print(f"[PT-MW] GUARD: blocked redirect to /dose/ — redirecting back to {request.path_info}")
-            from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(request.path_info)
+    def _handle_passthrough(self, request):
+        try:
+            trigger = self._extract_trigger(request)
+            if not trigger:
+                return None
 
-        if getattr(request, '_passthrough_handled', False):
-            print("\n" + "="*120)
-            print("PASSTHROUGH-IN <- RESPONSE RECEIVED (FIRST ON RETURN)")
-            print(f"STATUS: {response.status_code}")
-            print(f"CONTENT LENGTH: {len(response.content) if hasattr(response, 'content') else 'unknown'} bytes")
-            preview = response.content[:500].decode('utf-8', errors='ignore') if hasattr(response, 'content') else "No content"
-            print(f"PREVIEW: {preview}")
-            print("="*120 + "\n")
-            try:
-                from dose.passthrough.stream_debug import log_final_response_if_debug
+            from dose.passthrough.handlers.registry import get_handler
+            handler = get_handler(trigger)
 
-                log_final_response_if_debug(request, response)
-            except Exception as _fin_exc:
-                print(f"[PT-STREAM-DEBUG] final response log error (non-blocking): {_fin_exc}")
+            if not handler:
+                print(f"[PT-MW] No handler for trigger: {trigger}")
+                return None
 
-        return response
+            print(f"[PT-MW] Using handler: {handler.__class__.__name__} for {trigger}")
+
+            if hasattr(handler, 'handle_request'):
+                result = handler.handle_request(request, None)
+                if result is not None:
+                    return result
+
+            # Fallback to forwarding
+            from dose.passthrough.forwarding import forward_request_standardized
+            return forward_request_standardized(request, None, handler=handler)
+
+        except Exception as e:
+            logger.error(f"Passthrough middleware error: {e}", exc_info=True)
+            return HttpResponse(f"Passthrough Error: {e}", status=500)
+
+    def _extract_trigger(self, request):
+        parts = request.path.strip('/').split('/')
+        if len(parts) >= 3 and parts[0] == 'pt' and parts[1] == 'admin':
+            return parts[2]
+        return None

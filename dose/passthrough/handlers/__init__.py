@@ -10,7 +10,7 @@ from .handler_base import (
     endpoint_log_label,
     proxy_prefix_for_trigger_endpoint,
 )
-from .registry import get_handler_for_endpoint
+from dose.passthrough.registry import get_handler_for_endpoint
 
 class BasePassthroughHandler:
     """Default handler — rewrites asset URLs using endpoint_url if provided"""
