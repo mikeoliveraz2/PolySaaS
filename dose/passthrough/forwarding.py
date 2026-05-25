@@ -421,9 +421,6 @@ def fetch_upstream_index_html(
     #     print(f"POLY SNIFFER — Initial HTML capture failed: {ps_exc}")
     # ───────────────────────────────────────────────────────────────────
 
-    return resp.text
-
-
 def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None, trigger=None):
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
