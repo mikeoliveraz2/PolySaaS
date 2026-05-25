@@ -460,26 +460,52 @@ class MattermostPassthroughHandler:
                 try:
                     from dose.utils import get_current_tenant
                     tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
-                except Exception:
-                    pass
-            # Tenant-specific first
+                except Exception as _te:
+                    print(f"[MM LoginBridge] tenant lookup error: {_te}")
+            # Tenant-specific first (public schema)
             if tenant:
+                try:
+                    ta = TenantApp.public_bundles.filter(
+                        app_name='mattermost', tenant=tenant
+                    ).exclude(extra_config={}).first()
+                    if ta and ta.extra_config:
+                        print(f"[MM LoginBridge] extra_config found via public tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        return ta.extra_config
+                except Exception as _q1:
+                    print(f"[MM LoginBridge] public tenant query error: {_q1}")
+                # Fallback: tenant schema
+                try:
+                    ta = TenantApp.objects.filter(
+                        app_name='mattermost', tenant=tenant
+                    ).exclude(extra_config={}).first()
+                    if ta and ta.extra_config:
+                        print(f"[MM LoginBridge] extra_config found via tenant schema tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        return ta.extra_config
+                except Exception as _q2:
+                    print(f"[MM LoginBridge] tenant schema query error: {_q2}")
+            # Fallback: any active mattermost app with credentials (public schema)
+            try:
                 ta = TenantApp.public_bundles.filter(
-                    app_name='mattermost', tenant=tenant
+                    app_name='mattermost', status='active'
                 ).exclude(extra_config={}).first()
                 if ta and ta.extra_config:
-                    print(f"[MM LoginBridge] extra_config found via tenant={tenant} keys={list(ta.extra_config.keys())}")
+                    print(f"[MM LoginBridge] extra_config found via public active fallback keys={list(ta.extra_config.keys())}")
                     return ta.extra_config
-            # Fallback: any active mattermost app with credentials
-            ta = TenantApp.public_bundles.filter(
-                app_name='mattermost', status='active'
-            ).exclude(extra_config={}).first()
-            if ta and ta.extra_config:
-                print(f"[MM LoginBridge] extra_config found via active fallback keys={list(ta.extra_config.keys())}")
-                return ta.extra_config
+            except Exception as _q3:
+                print(f"[MM LoginBridge] public active fallback error: {_q3}")
+            # Fallback: any active mattermost app (tenant schema)
+            try:
+                ta = TenantApp.objects.filter(
+                    app_name='mattermost', status='active'
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[MM LoginBridge] extra_config found via tenant active fallback keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            except Exception as _q4:
+                print(f"[MM LoginBridge] tenant active fallback error: {_q4}")
             print(f"[MM LoginBridge] extra_config NOT found (tenant={tenant})")
         except Exception as exc:
-            print(f"[MM LoginBridge] _get_tenantapp_extra_config error: {exc}")
+            print(f"[MM LoginBridge] _get_tenantapp_extra_config outer error: {exc}")
         return {}
 
     def _save_tenantapp_token(self, token, request=None):
