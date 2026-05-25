@@ -475,9 +475,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         if trigger and handler and hasattr(handler, 'try_root_display_shell_response'):
             shell = handler.try_root_display_shell_response(request, endpoint, trigger)
             if shell is not None:
-                print(f"[FORWARDER] Handler display shell returned for root — wrapping if initial page load")
-                if _is_initial_page_load(request):
-                    shell = _wrap_in_admin_template(request, shell, trigger, endpoint)
+                print(f"[FORWARDER] Handler display shell returned for root — returning directly")
                 return shell
 
         print(f"SENDING REQUEST TO -> {target_url}")
@@ -845,10 +843,6 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")
-
-        # Wrap HTML responses in admin template for initial page loads
-        if trigger and _is_initial_page_load(request):
-            response = _wrap_in_admin_template(request, response, trigger, endpoint)
 
         return response
 

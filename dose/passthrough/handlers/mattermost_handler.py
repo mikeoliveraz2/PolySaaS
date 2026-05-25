@@ -135,7 +135,9 @@ class MattermostPassthroughHandler:
 
         # No browser token — serve the login bridge INLINE (avoids redirect loop).
         print(f"[MM ROOT] No browser token — serving login bridge inline at root")
-        return self._serve_login_bridge(request, trigger, endpoint)
+        bridge = self._serve_login_bridge(request, trigger, endpoint)
+        from dose.passthrough.forwarding import _wrap_in_admin_template
+        return _wrap_in_admin_template(request, bridge, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
@@ -410,7 +412,15 @@ class MattermostPassthroughHandler:
         else:
             print(f"[MM HANDLER] No <head> found, skipping shim injection")
 
-        return html_str, None
+        # Wrap in admin template for embedded dashboard display
+        from django.http import HttpResponse
+        response = HttpResponse(html_str.encode('utf-8'), status=200)
+        response['Content-Type'] = 'text/html; charset=utf-8'
+        response['X-Frame-Options'] = 'ALLOWALL'
+        from dose.passthrough.forwarding import _wrap_in_admin_template
+        _endpoint_stub = type('E', (), {'endpoint_url': endpoint_url})()
+        wrapped = _wrap_in_admin_template(request, response, _trigger, _endpoint_stub)
+        return wrapped
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
         """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
@@ -955,7 +965,7 @@ class MattermostPassthroughHandler:
     }}
     function _wsSilentStub(url) {{
         console.warn('[PolySaaS MM] WebSocket silent stub for:', url);
-        var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} };
+        var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} }};
         setTimeout(function() {{ if (stub.onopen) stub.onopen(); }}, 0);
         return stub;
     }}
