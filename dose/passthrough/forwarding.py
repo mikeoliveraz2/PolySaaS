@@ -608,8 +608,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             # TrafficLog.objects.create(...)
             # print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
             pass
-        # except Exception as ps_exc:
-        #     print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
+        except Exception as ps_exc:
+            print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
 
         # ── Orchestration Hook: fire for both REQ (outgoing) and RES (response received) ──
         try:
