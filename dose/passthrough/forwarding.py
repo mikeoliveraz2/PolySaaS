@@ -376,42 +376,47 @@ def fetch_upstream_index_html(
     print(f"{'='*60}")
 
     # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
-    # try:
-    #     from dose.polysniffer.models import TrafficLog
-    #     from django.contrib.auth.models import AnonymousUser
-    #     from django.db import connection
-    #
-    #     capture_user = request.user if (request.user and not isinstance(request.user, AnonymousUser)) else None
-    #
-    #     app_name = "unknown"
-    #     if handler:
-    #         app_name = handler.__class__.__name__.lower().replace("passthroughhandler", "")
-    #
-    #     tenant = getattr(request, "tenant", None)
-    #     if tenant:
-    #         with connection.cursor() as cur:
-    #             cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
-    #
-    #     ensure_trafficlog_capture_columns(request)
-    #     TrafficLog.objects.create(
-    #         method="GET",
-    #         url=target_url,
-    #         path=clean,
-    #         headers=_outbound_headers_from_request(request),
-    #         cookies=upstream_cookies,
-    #         query_params=dict(request.GET),
-    #         body="",
-    #         status_code=resp.status_code,
-    #         response_headers=dict(resp.headers),
-    #         response_body=resp.content.decode("utf-8", errors="ignore"),
-    #         response_size=len(resp.content),
-    #         endpoint_name=app_name,
-    #         user=capture_user,
-    #         duration_ms=0,
-    #         capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
-    #         client_path=getattr(request, "path_info", "") or "",
-    #     )
-    #     print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+    try:
+        from dose.polysniffer.models import TrafficLog
+        from django.contrib.auth.models import AnonymousUser
+        from django.db import connection
+        
+        capture_user = request.user if (request.user and not isinstance(request.user, AnonymousUser)) else None
+        
+        app_name = "unknown"
+        if handler:
+            app_name = handler.__class__.__name__.lower().replace("passthroughhandler", "")
+
+        # Ensure we are in the TENANT schema
+        tenant = getattr(request, "tenant", None)
+        if tenant:
+            with connection.cursor() as cur:
+                cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
+
+        # try:
+        #     ensure_trafficlog_capture_columns(request)
+        # except Exception as _patch_exc:
+        #     print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
+        #
+        # TrafficLog.objects.create(
+        #     method="GET",
+        #     url=target_url,
+        #     path=clean,
+        #     headers=_outbound_headers_from_request(request),
+        #     cookies=upstream_cookies,
+        #     query_params=dict(request.GET),
+        #     body="",
+        #     status_code=resp.status_code,
+        #     response_headers=dict(resp.headers),
+        #     response_body=resp.content.decode("utf-8", errors="ignore"),
+        #     response_size=len(resp.content),
+        #     endpoint_name=app_name,
+        #     user=capture_user,
+        #     duration_ms=0,
+        #     capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
+        #     client_path=getattr(request, "path_info", "") or "",
+        # )
+        # print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
     # except Exception as ps_exc:
     #     print(f"POLY SNIFFER — Initial HTML capture failed: {ps_exc}")
     # ───────────────────────────────────────────────────────────────────
@@ -608,8 +613,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             # TrafficLog.objects.create(...)
             # print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
             pass
-        except Exception as ps_exc:
-            print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
+        # except Exception as ps_exc:
+        #     print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
 
         # ── Orchestration Hook: fire for both REQ (outgoing) and RES (response received) ──
         try:
