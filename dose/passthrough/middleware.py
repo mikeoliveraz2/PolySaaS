@@ -3,7 +3,7 @@ import logging
 from django.utils.deprecation import MiddlewareMixin
 from dose.models import UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
-from dose.passthrough.handlers.registry import (
+from dose.passthrough.registry import (
     get_handler_for_endpoint,
     pt_admin_core_delegated_to_urlconf,
 )

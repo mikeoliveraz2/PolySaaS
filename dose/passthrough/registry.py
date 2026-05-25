@@ -12,7 +12,7 @@ def register_handler(trigger: str, handler_class):
     """Register a handler class by trigger name"""
     key = trigger.lower().strip()
     _HANDLER_REGISTRY[key] = handler_class
-    logger.info(f"✅ Handler registered: '{key}' → {handler_class.__name__}")
+    logger.info(f"[OK] Handler registered: '{key}' -> {handler_class.__name__}")
 
 
 def get_handler(trigger: str) -> Optional[object]:

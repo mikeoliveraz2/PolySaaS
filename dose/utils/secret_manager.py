@@ -44,6 +44,14 @@ def get_secret(secret_id: str, env_fallback: Optional[str] = None,
     if cache_key in _secret_cache:
         return _secret_cache[cache_key]
 
+    # 1. Check environment variable first if env_fallback is provided
+    if env_fallback:
+        value = os.environ.get(env_fallback, '').strip()
+        if value:
+            _secret_cache[cache_key] = value
+            return value
+
+    # 2. Fall back to Secret Manager
     client = _get_client()
     if client:
         try:
@@ -60,12 +68,6 @@ def get_secret(secret_id: str, env_fallback: Optional[str] = None,
             logger.debug("Secret Manager lookup failed for '%s': %s", secret_id, e)
             global _client_unavailable
             _client_unavailable = True
-
-    if env_fallback:
-        value = os.environ.get(env_fallback, '').strip()
-        if value:
-            _secret_cache[cache_key] = value
-            return value
 
     return default
 
