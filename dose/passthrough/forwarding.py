@@ -5,6 +5,8 @@ import requests
 import json
 import time
 from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
 from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 
@@ -141,6 +143,91 @@ def _origins_equivalent_for_upstream_fetch(origin_a: str, origin_b: str) -> bool
         return _key(origin_a) == _key(origin_b)
     except Exception:
         return origin_a == origin_b
+
+
+def _is_initial_page_load(request):
+    """Detect browser navigation vs API/asset request."""
+    xrw = request.headers.get('X-Requested-With', '')
+    if xrw == 'XMLHttpRequest':
+        return False
+    accept = request.headers.get('Accept', '')
+    if 'text/html' not in accept:
+        return False
+    last_segment = request.path_info.split('/')[-1]
+    if '.' in last_segment:
+        ext = last_segment.split('.')[-1].lower()
+        if ext in ('js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'map'):
+            return False
+    api_prefixes = ('/api/', '/plugins/', '/boards/', '/calls/', '/bus/', '/websocket')
+    for prefix in api_prefixes:
+        if prefix in request.path_info:
+            return False
+    return True
+
+
+def _extract_head_and_body(html):
+    """Extract <head> and <body> content from full HTML document."""
+    import re
+    head_content = ''
+    body_content = html
+    head_match = re.search(r'<head[^>]*>(.*?)</head>', html, re.DOTALL | re.IGNORECASE)
+    if head_match:
+        head_content = head_match.group(1)
+    body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.DOTALL | re.IGNORECASE)
+    if body_match:
+        body_content = body_match.group(1)
+    elif '<body' in html.lower():
+        body_start = re.search(r'<body[^>]*>', html, re.IGNORECASE)
+        if body_start:
+            body_content = html[body_start.end():]
+            body_content = re.sub(r'</html>\s*$', '', body_content, flags=re.IGNORECASE)
+    return head_content, body_content
+
+
+def _wrap_in_admin_template(request, response, trigger, endpoint):
+    """Wrap raw proxied HTML in admin template for embedded display."""
+    content_type = response.get('Content-Type', '')
+    if 'text/html' not in content_type:
+        return response
+    try:
+        raw_html = response.content.decode('utf-8', errors='ignore')
+    except Exception:
+        return response
+    if not raw_html or len(raw_html) < 100:
+        return response
+    norm = trigger.strip('/')
+    embed_title = norm.split('.')[0].replace('-', ' ').title()
+    embed_src = f'/pt/admin/{norm}/'
+    head_content, body_content = _extract_head_and_body(raw_html)
+    embed_body = mark_safe(
+        f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{norm}">'
+        f'{body_content}</div>'
+    )
+    embed_head = mark_safe(head_content)
+    upstream_path = getattr(request, '_passthrough_upstream_path', '/web')
+    try:
+        wrapped_html = render_to_string(
+            'admin/passthrough_embed.html',
+            {
+                'embed_src': embed_src,
+                'embed_title': embed_title,
+                'embed_head': embed_head,
+                'embed_body': embed_body,
+                'upstream_path': upstream_path,
+            },
+            request=request,
+        )
+        wrapped_response = HttpResponse(wrapped_html, status=response.status_code)
+        wrapped_response['Content-Type'] = 'text/html; charset=utf-8'
+        wrapped_response['X-Frame-Options'] = 'ALLOWALL'
+        wrapped_response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        for cookie_name in response.cookies:
+            wrapped_response.cookies[cookie_name] = response.cookies[cookie_name].value
+            wrapped_response.cookies[cookie_name]['path'] = response.cookies[cookie_name].get('path', '/')
+            wrapped_response.cookies[cookie_name]['samesite'] = 'Lax'
+        return wrapped_response
+    except Exception:
+        return response
 
 
 def fetch_upstream_index_html(
@@ -337,7 +424,7 @@ def fetch_upstream_index_html(
     return resp.text
 
 
-def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None):
+def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None, trigger=None):
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
     print("FORWARDER (forward_request_standardized) CALLED")
@@ -383,6 +470,15 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             from django.http import JsonResponse as _JR
             print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")
             return _JR({'jsonrpc': '2.0', 'id': None, 'result': []})
+
+        # Allow handler to intercept root/display requests before upstream fetch
+        if trigger and handler and hasattr(handler, 'try_root_display_shell_response'):
+            shell = handler.try_root_display_shell_response(request, endpoint, trigger)
+            if shell is not None:
+                print(f"[FORWARDER] Handler display shell returned for root — wrapping if initial page load")
+                if _is_initial_page_load(request):
+                    shell = _wrap_in_admin_template(request, shell, trigger, endpoint)
+                return shell
 
         print(f"SENDING REQUEST TO -> {target_url}")
 
@@ -749,6 +845,10 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")
+
+        # Wrap HTML responses in admin template for initial page loads
+        if trigger and _is_initial_page_load(request):
+            response = _wrap_in_admin_template(request, response, trigger, endpoint)
 
         return response
 
