@@ -798,6 +798,15 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         var newPassword = document.getElementById('password') ? document.getElementById('password').value : '';
         try {
             sessionStorage.setItem('polysaas_new_user_creds', JSON.stringify({ u: newUsername, p: newPassword }));
+            // Store Mattermost credentials to restore after login (without team name)
+            if (data.mm_username && data.mm_password) {
+                sessionStorage.setItem('polysaas_mm_creds', JSON.stringify({
+                    username: data.mm_username,
+                    password: data.mm_password,
+                    email: data.mm_email || newUsername,
+                    mattermost_token: data.mm_token || ''
+                }));
+            }
         } catch(e) {}
         var loginUrl = '/accounts/login/?next=/admin/';
         showSubscribeFeedback(

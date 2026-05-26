@@ -111,6 +111,14 @@ def _subscription_response_payload(subscription, selected_apps, *, tenant_name='
     body.update(_subscriber_facing_messages(
         selected_apps, tenant_name=tenant_name, stripe_trial_started=stripe_trial_started,
     ))
+    # Add Mattermost credentials to response for sessionStorage preservation across login (without team name)
+    if subscription.tenant and 'enable_mattermost' in selected_apps:
+        from dose.tenant_extra import get_tenant_extra_config
+        extra = get_tenant_extra_config(subscription.tenant) or {}
+        body['mm_username'] = extra.get('mm_login_id') or extra.get('mm_username') or ''
+        body['mm_password'] = extra.get('mm_password') or extra.get('mattermost_password') or ''
+        body['mm_email'] = subscription.admin_email or ''
+        body['mm_token'] = extra.get('mm_token') or extra.get('mmauthtoken') or ''
     return body
 
 
@@ -517,6 +525,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )
                 email = admin_email
                 token = extra.get('mm_token') or extra.get('mmauthtoken') or ''
+                team_name = extra.get('mm_team_name') or extra.get('team_name') or ''
                 
                 if username and password:
                     PassthroughCredentialContainer.store(
@@ -526,6 +535,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                             'username': username,
                             'password': password,
                             'email': email,
+                            'mm_team_name': team_name,
                             'api_tokens': {
                                 'mattermost_token': token,
                             }

@@ -113,7 +113,8 @@ class MattermostPassthroughHandler:
             return None
 
         team_name = self._get_team_name(request)
-        team_redirect = f"{proxy_prefix}/{team_name}/channels/town-square"
+        # Let Mattermost handle team selection - don't specify team in redirect
+        team_redirect = f"{proxy_prefix}/channels/town-square"
         print(f"[MM ROOT] team_name={team_name} redirect_target={team_redirect}")
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
@@ -183,17 +184,30 @@ class MattermostPassthroughHandler:
 
         print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
-        # Get team name for redirect after login
+        # Get team name for redirect after login - prioritize stored credentials
         team_name = ''
-        if 'extra' in dir():
-            team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
+        try:
+            from dose.utils import PassthroughCredentialContainer
+            creds = PassthroughCredentialContainer.retrieve(request)
+            print(f"[MM LOGIN BRIDGE] Retrieved creds: {creds}")
+            if creds and creds.get('mm_team_name'):
+                team_name = creds['mm_team_name']
+                print(f"[MM LOGIN BRIDGE] Using team_name from creds: {team_name}")
+        except Exception as e:
+            print(f"[MM LOGIN BRIDGE] Error retrieving creds: {e}")
+        
+        # Fallback to extra config
         if not team_name:
-            try:
-                extra2 = self._get_tenantapp_extra_config(request) or {}
-                team_name = extra2.get('mm_team_name', '') or extra2.get('team_name', '')
-            except Exception:
-                pass
-        # Fallback: derive from tenant schema (same logic as provisioner)
+            if 'extra' in dir():
+                team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
+            if not team_name:
+                try:
+                    extra2 = self._get_tenantapp_extra_config(request) or {}
+                    team_name = extra2.get('mm_team_name', '') or extra2.get('team_name', '')
+                except Exception:
+                    pass
+        
+        # Ultimate fallback: derive from tenant schema
         if not team_name:
             try:
                 import re
@@ -207,9 +221,6 @@ class MattermostPassthroughHandler:
                         team_name = team_name[:15]
             except Exception:
                 pass
-        # Ultimate fallback: PolySaaS Dev Team
-        if not team_name:
-            team_name = "polysaasdevteam"
         team_name_js = json.dumps(team_name)
         
         # HTML-escape so a quote in the password can't break the value attribute.
@@ -282,11 +293,12 @@ class MattermostPassthroughHandler:
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
-                var redirectPath = teamName ? '/' + teamName + '/channels/town-square' : '/channels/town-square';
+                // Let Mattermost handle team selection - don't specify team in redirect
+                var redirectPath = '/channels/town-square';
                 var baseUrl = base().replace(/\/$/, '');
                 // Pass token via URL param to ensure server-side shim injection
                 var redirectUrl = baseUrl + redirectPath + '?mm_token=' + encodeURIComponent(token);
-                console.log('[LoginBridge] redirecting to', redirectUrl, 'teamName=', teamName);
+                console.log('[LoginBridge] redirecting to', redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }}
@@ -335,7 +347,8 @@ class MattermostPassthroughHandler:
                     ' auto=' + hasCreds + ' hasToken=' + (existingToken ? 'yes' : 'no'));
         if (existingToken) {{
             console.log('[LoginBridge] Token already exists — redirecting to channels, skipping login');
-            window.location.replace(base().replace(/\/$/, '') + '/' + teamName + '/channels/town-square');
+            // Let Mattermost handle team selection - don't specify team in redirect
+            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
             return;
         }}
         if (hasCreds) {{

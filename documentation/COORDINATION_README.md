@@ -4,6 +4,43 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-27 (Morning — Condo) — Mattermost Auto-Login After Subscribe Debug ✅
+
+**Status**: ✅ COMPLETE — team specification removed from redirects, credentials preserved across login
+**Branch**: main
+
+### Summary
+Debugged Mattermost auto-login failure after subscription. The issue was that team names were being explicitly specified in redirects when they shouldn't be - direct login works without team specification, so auto-login should mimic that behavior. Also fixed credential loss during Django login redirect by preserving Mattermost credentials in sessionStorage and restoring them after login.
+
+### Key Fixes
+1. **Root handler team specification removed** — `mattermost_handler.py` line 117 changed from `/{team}/channels/town-square` to `/channels/town-square`. Let Mattermost handle team selection naturally after authentication.
+2. **Credential preservation across login** — Mattermost credentials (username, password, token) stored in sessionStorage during subscribe, restored via API after Django login. Django creates new session on login, so credentials stored in old session were lost.
+3. **Subscription response payload** — Added Mattermost credentials to `_subscription_response_payload` so frontend can store them in sessionStorage.
+4. **Login template auto-submit** — Added debug logging to trace auto-login flow and credential restoration.
+5. **API endpoint for credential restoration** — Added `restore_mm_credentials` endpoint to restore credentials to Django session after login (without team name - team determined by Mattermost post-auth).
+
+### Files Changed
+- `dose/passthrough/handlers/mattermost_handler.py` — removed team from root redirect (line 117)
+- `dose/templates/dose/subscribe.html` — store Mattermost credentials in sessionStorage (without team name)
+- `dose/subscription_views.py` — add Mattermost credentials to response payload
+- `dose/templates/account/login.html` — add credential restoration API call + debug logging
+- `dose/views/main.py` — add `restore_mm_credentials` API endpoint
+- `dose/views/__init__.py` — export `restore_mm_credentials`
+- `dose/urls.py` — add route for `restore_mm_credentials`
+
+### Verification
+- User confirmed credentials are correct (otherwise would redirect to login page)
+- Action path no longer includes team specification
+- Normal login works fine
+- Auto-login after subscribe now preserves credentials without specifying team
+
+### Follow-ups
+- Restart Mattermost server to enable plugin uploads
+- Deploy plugin to Mattermost server
+- Test UI with plugin diagnostics after deployment
+
+---
+
 ## 2026-05-14 (Morning — Condo) — Cloud SQL Live ✅ + Secrets Uploaded to GCP ✅
 
 **Status**: ✅ COMPLETE — Cloud SQL migrated, superuser created, all 37 secrets in Secret Manager  

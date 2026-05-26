@@ -407,6 +407,40 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 import json
 from dose.utils import get_current_tenant
+
+@login_required
+@csrf_exempt
+def restore_mm_credentials(request):
+    """API endpoint to restore Mattermost credentials to Django session after login (without team name)"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST method required'})
+    try:
+        data = json.loads(request.body)
+        username = data.get('username', '')
+        password = data.get('password', '')
+        email = data.get('email', '')
+        mattermost_token = data.get('mattermost_token', '')
+        
+        if username and password:
+            from dose.utils import PassthroughCredentialContainer
+            PassthroughCredentialContainer.store(
+                request,
+                app_name='mattermost',
+                credentials={
+                    'username': username,
+                    'password': password,
+                    'email': email,
+                    'api_tokens': {
+                        'mattermost_token': mattermost_token,
+                    }
+                },
+                ttl_hours=24
+            )
+            return JsonResponse({'success': True})
+        return JsonResponse({'success': False, 'error': 'Missing credentials'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
 @login_required
 @csrf_exempt
 def update_tenant_api(request):
@@ -938,7 +972,14 @@ def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[LOGIN] Attempting login for username={username}")
+        # Force search_path to public for authentication since users are created in public schema
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute('SET search_path TO public;')
         user = authenticate(request, username=username, password=password)
+        logger.warning(f"[LOGIN] authenticate returned: {user} (type={type(user)})")
         if user is not None:
             login(request, user)
             logger = logging.getLogger(__name__)
