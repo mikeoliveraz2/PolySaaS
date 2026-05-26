@@ -47,6 +47,12 @@ def debug_tenant_session(request):
     return render(request, 'dose/debug_tenant.html', {'user': user, 'session_keys': session_keys})
 
 def index(request):
+    # Handle redirect_to parameter for passthrough paths
+    redirect_to = request.GET.get('redirect_to', '')
+    if redirect_to and redirect_to.startswith('/pt/admin/'):
+        print(f"[INDEX] Redirecting to passthrough path: {redirect_to}")
+        return redirect(redirect_to)
+    
     if not request.user.is_authenticated:
         login_url = f"/accounts/login/?next={request.path}"
         return redirect(login_url)
