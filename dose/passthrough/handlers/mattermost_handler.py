@@ -143,23 +143,40 @@ class MattermostPassthroughHandler:
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
         from django.http import HttpResponse
         from html import escape as h
+        from dose.passthrough.credential_container import PassthroughCredentialContainer
 
         user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
         login_id = ""
         password = ""
+        allow_auto_submit = False
         try:
-            extra = self._get_tenantapp_extra_config(request) or {}
-            print(f"[MM LoginBridge] extra keys={list(extra.keys())}")
-            stored_login = (extra.get('mattermost_username') or
-                           extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                           extra.get('username') or extra.get('login_id') or '')
-            stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
-                          extra.get('password') or '')
-            # Use stored credentials directly — they were provisioned for this tenant.
-            # Fall back to Django username, then email if nothing stored.
-            django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
-            login_id = stored_login or django_username or user_email
-            password = stored_pass
+            # First try to get credentials from encrypted session storage
+            session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+            if session_creds:
+                candidate_login = session_creds.get('username', '')
+                candidate_password = session_creds.get('password', '')
+                if self._credential_matches_active_user(request, candidate_login):
+                    login_id = candidate_login
+                    password = candidate_password
+                    allow_auto_submit = bool(login_id and password)
+                    logger.info("[MM LoginBridge] Using active-user credentials from encrypted session")
+                else:
+                    logger.info("[MM LoginBridge] Ignoring session credentials that do not match the active user")
+
+            # Fallback to extra_config if session credentials not available
+            if not login_id or not password:
+                extra = self._get_tenantapp_extra_config(request) or {}
+                print(f"[MM LoginBridge] extra keys={list(extra.keys())}")
+                stored_login = (extra.get('mattermost_username') or
+                               extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                               extra.get('username') or extra.get('login_id') or '')
+                stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
+                              extra.get('password') or '')
+                # Use stored credentials directly — they were provisioned for this tenant.
+                # Fall back to Django username, then email if nothing stored.
+                django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
+                login_id = stored_login or django_username or user_email
+                password = stored_pass
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
             login_id = user_email
@@ -267,8 +284,10 @@ class MattermostPassthroughHandler:
                 setStatus('Success! Loading...');
                 var redirectPath = teamName ? '/' + teamName + '/channels/town-square' : '/channels/town-square';
                 var baseUrl = base().replace(/\/$/, '');
-                console.log('[LoginBridge] redirecting to', baseUrl + redirectPath, 'teamName=', teamName);
-                window.location.replace(baseUrl + redirectPath);
+                // Pass token via URL param to ensure server-side shim injection
+                var redirectUrl = baseUrl + redirectPath + '?mm_token=' + encodeURIComponent(token);
+                console.log('[LoginBridge] redirecting to', redirectUrl, 'teamName=', teamName);
+                window.location.replace(redirectUrl);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
@@ -332,17 +351,32 @@ class MattermostPassthroughHandler:
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return resp
 
+    def _credential_matches_active_user(self, request, login_id: str) -> bool:
+        """Allow auto-login only when stored credentials map to the active Django user."""
+        normalized = (login_id or '').strip().lower()
+        if not normalized:
+            return False
+        user = getattr(request, 'user', None)
+        candidates = {
+            (getattr(user, 'username', '') or '').strip().lower(),
+            (getattr(user, 'email', '') or '').strip().lower(),
+        }
+        candidates.discard('')
+        return normalized in candidates
+
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
 
+        # Derive trigger from path for use throughout the function
+        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
+        _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
+
         # If Mattermost served its login HTML, replace entirely with our own form.
         if '/login' in (getattr(request, 'path_info', '') or ''):
-            _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
             if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
                 _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
             else:
                 _proxy_prefix = "/pt/admin/mattermost"
-            _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
             _endpoint_stub = type('E', (), {'endpoint_url': f"https://{_trigger}"})()
             bridge = self._serve_login_bridge(request, _trigger, _endpoint_stub)
             if bridge is not None:
@@ -705,19 +739,24 @@ class MattermostPassthroughHandler:
         fetch/XHR/WebSocket → proxy, attribute/prototype patching (matches generated handler).
         Display shell must include network patches or API/WS stay on the admin origin → spinner.
         """
-        # Prefer browser cookie first — it's always fresh after login bridge succeeds.
-        # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+        # Prefer URL parameter (from login bridge redirect) first
+        token = request.GET.get('mm_token') or ""
         if token:
-            logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
+            logger.info("[MM Shim] token from URL param, len=%d", len(token))
         else:
-            # Fallback to server-side token if browser has none
-            try:
-                cookies = self.get_upstream_cookies(request) or {}
-                token = cookies.get("MMAUTHTOKEN") or ""
-                logger.info("[MM Shim] token from server, len=%d", len(token))
-            except Exception as exc:
-                logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+            # Fallback to browser cookie — it's always fresh after login bridge succeeds.
+            # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
+            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+            if token:
+                logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
+            else:
+                # Fallback to server-side token if browser has none
+                try:
+                    cookies = self.get_upstream_cookies(request) or {}
+                    token = cookies.get("MMAUTHTOKEN") or ""
+                    logger.info("[MM Shim] token from server, len=%d", len(token))
+                except Exception as exc:
+                    logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
 
         login_id = ""
         password = ""
@@ -808,6 +847,53 @@ class MattermostPassthroughHandler:
 
     console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
 
+    // Plugin diagnostic helpers (if plugin is deployed)
+    function checkPluginDiagnostics() {{
+        var diagUrl = PROXY + '/plugins/com.polysaas.passthrough/api/v1/diagnostics';
+        console.log('[PolySaaS MM] Checking plugin diagnostics:', diagUrl);
+        fetch(diagUrl, {{
+            headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}
+        }}).then(function(r) {{
+            if (r.ok) {{
+                return r.json();
+            }}
+            console.log('[PolySaaS MM] Plugin diagnostics not available (plugin may not be deployed)');
+            return null;
+        }}).then(function(data) {{
+            if (data) {{
+                console.log('[PolySaaS MM] Plugin diagnostics:', data);
+            }}
+        }}).catch(function(e) {{
+            console.log('[PolySaaS MM] Plugin diagnostics error:', e);
+        }});
+    }}
+    
+    function checkPluginAuth() {{
+        var authUrl = PROXY + '/plugins/com.polysaas.passthrough/api/v1/auth-check';
+        console.log('[PolySaaS MM] Checking plugin auth:', authUrl);
+        fetch(authUrl, {{
+            headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}
+        }}).then(function(r) {{
+            if (r.ok) {{
+                return r.json();
+            }}
+            console.log('[PolySaaS MM] Plugin auth check failed:', r.status);
+            return null;
+        }}).then(function(data) {{
+            if (data) {{
+                console.log('[PolySaaS MM] Plugin auth check:', data);
+            }}
+        }}).catch(function(e) {{
+            console.log('[PolySaaS MM] Plugin auth check error:', e);
+        }});
+    }}
+    
+    // Run plugin diagnostics after a short delay
+    setTimeout(function() {{
+        checkPluginDiagnostics();
+        checkPluginAuth();
+    }}, 2000);
+
     // Intercept client-side React Router navigation to /login.
     // Mattermost SPA pushes /login when its token check fails; without this hook
     // the URL changes but no server GET fires, so our bridge never serves.
@@ -897,15 +983,32 @@ class MattermostPassthroughHandler:
     var _f = window.fetch;
     window.fetch = function(input, init) {{
         var original = input;
+        var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        
+        // Block external analytics requests that cause CORS errors and hang the UI
+        if (reqUrl.indexOf('matterlytics.com') !== -1 || 
+            reqUrl.indexOf('rudderstack.com') !== -1 ||
+            reqUrl.indexOf('segment.io') !== -1) {{
+            console.log('[PolySaaS MM] Blocked external analytics request:', reqUrl);
+            return Promise.resolve(new Response(null, {{status: 204, statusText: 'No Content'}}));
+        }}
+        
         if (typeof input === 'string') {{
             input = toProxy(input);
         }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
             var u = toProxy(input.url);
             if (u !== input.url) input = new Request(u, input);
         }}
+        
+        // Block logout requests to prevent token invalidation (check both original and proxied URL)
+        var proxiedUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        if (reqUrl.indexOf('/users/logout') !== -1 || proxiedUrl.indexOf('/users/logout') !== -1) {{
+            console.log('[PolySaaS MM] Blocked logout request to preserve session:', reqUrl, '->', proxiedUrl);
+            return Promise.resolve(new Response(null, {{status: 200, statusText: 'OK'}}));
+        }}
         if (MMAUTHTOKEN) {{
             var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-            if (reqUrl.indexOf('/api/v4/') !== -1) {{
+            if (reqUrl.indexOf('/api/v4/') !== -1 || reqUrl.indexOf('/plugins/') !== -1) {{
                 init = Object.assign({{}}, init || {{}});
                 if (!init.headers) {{
                     init.headers = {{'Authorization': 'Bearer ' + MMAUTHTOKEN}};
@@ -920,6 +1023,33 @@ class MattermostPassthroughHandler:
         if (original !== input) console.log('[PolySaaS MM] fetch:', original, '->', input);
         var _reqUrlForLog = typeof input === 'string' ? input : (input && input.url ? input.url : '');
         var _prom = _f.call(this, input, init);
+        
+        // Retry logic for plugin config 401 errors
+        if (_reqUrlForLog.indexOf('/plugins/') !== -1) {{
+            var _retryCount = 0;
+            var _maxRetries = 3;
+            var _retryDelay = 1000;
+            
+            function _retryWithBackoff(originalInput, originalInit) {{
+                return new Promise(function(resolve, reject) {{
+                    setTimeout(function() {{
+                        console.log('[PolySaaS MM] Retrying plugin request, attempt', _retryCount + 1, ':', _reqUrlForLog.slice(0, 60));
+                        _f.call(window, originalInput, originalInit).then(resolve).catch(reject);
+                    }}, _retryDelay);
+                }});
+            }}
+            
+            return _prom.catch(function(err) {{
+                if (_retryCount < _maxRetries && err.status === 401) {{
+                    _retryCount++;
+                    _retryDelay = _retryDelay * 2; // Exponential backoff
+                    console.log('[PolySaaS MM] Plugin request 401, retrying with backoff:', _retryDelay, 'ms');
+                    return _retryWithBackoff(input, init);
+                }}
+                throw err;
+            }});
+        }}
+        
         if (_reqUrlForLog.indexOf('/users/me') !== -1) {{
             return _prom.then(function(r) {{
                 console.log('[PolySaaS MM] users/me HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
@@ -948,7 +1078,22 @@ class MattermostPassthroughHandler:
     }};
 
     var _xo = XMLHttpRequest.prototype.open;
+    var _xs = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(method, url) {{
+        // Block external analytics requests that cause CORS errors and hang the UI
+        if (url.indexOf('matterlytics.com') !== -1 || 
+            url.indexOf('rudderstack.com') !== -1 ||
+            url.indexOf('segment.io') !== -1) {{
+            console.log('[PolySaaS MM] Blocked external analytics XHR:', url);
+            this._blocked = true;
+            return;
+        }}
+        // Block logout requests to prevent token invalidation
+        if (url.indexOf('/users/logout') !== -1) {{
+            console.log('[PolySaaS MM] Blocked logout XHR to preserve session:', url);
+            this._blocked = true;
+            return;
+        }}
         var proxied = toProxy(url);
         if (url !== proxied) console.log('[PolySaaS MM] XHR:', method, url, '->', proxied);
         var rest = Array.prototype.slice.call(arguments, 2);
@@ -964,20 +1109,30 @@ class MattermostPassthroughHandler:
                 }}
             }});
         }}
-        if (MMAUTHTOKEN && proxied.indexOf('/api/v4/') !== -1) {{
+        if (MMAUTHTOKEN && (proxied.indexOf('/api/v4/') !== -1 || proxied.indexOf('/plugins/') !== -1)) {{
             try {{
                 this.setRequestHeader('Authorization', 'Bearer ' + MMAUTHTOKEN);
                 if (proxied.indexOf('/users/me') !== -1)
                     console.log('[PolySaaS MM] XHR Auth injected for users/me, token starts:', MMAUTHTOKEN.slice(0, 8));
+                if (proxied.indexOf('/plugins/') !== -1)
+                    console.log('[PolySaaS MM] XHR Auth injected for plugin endpoint:', proxied);
             }} catch(e) {{}}
         }}
     }};
+    XMLHttpRequest.prototype.send = function() {{
+        if (this._blocked) {{
+            console.log('[PolySaaS MM] XHR send blocked (analytics)');
+            return;
+        }}
+        _xs.apply(this, arguments);
+    }};
 
-    // WEBSOCKET HARDENING: After 5 rapid failures (< 2s each), return a silent stub
-    // to stop reconnect spam. Retries after 30s.
+    // WEBSOCKET HARDENING: Exponential backoff reconnection with loop breaker
     var _wsFailCount = 0;
     var _wsFailTime = 0;
     var _wsStubActive = false;
+    var _wsBackoffMs = 1000; // Start with 1s backoff
+    var _wsMaxBackoffMs = 30000; // Max 30s backoff
     function _wsCheckFail() {{
         var now = Date.now();
         if (now - _wsFailTime > 2000) _wsFailCount = 0;
@@ -986,6 +1141,7 @@ class MattermostPassthroughHandler:
         if (_wsFailCount >= 5) {{
             console.error('[PolySaaS MM] WebSocket loop breaker: 5 rapid failures, entering silent mode for 30s');
             _wsStubActive = true;
+            _wsBackoffMs = 1000; // Reset backoff
             setTimeout(function() {{ _wsStubActive = false; _wsFailCount = 0; console.log('[PolySaaS MM] WebSocket retry resumed'); }}, 30000);
         }}
     }}
@@ -994,6 +1150,32 @@ class MattermostPassthroughHandler:
         var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} }};
         setTimeout(function() {{ if (stub.onopen) stub.onopen(); }}, 0);
         return stub;
+    }}
+    function _wsScheduleReconnect(originalUrl, originalProtocols) {{
+        if (_wsStubActive) return;
+        console.log('[PolySaaS MM] Scheduling WebSocket reconnect in', _wsBackoffMs, 'ms');
+        setTimeout(function() {{
+            console.log('[PolySaaS MM] Attempting WebSocket reconnect...');
+            var ws = (originalProtocols !== undefined) ? new _WS(originalUrl, originalProtocols) : new _WS(originalUrl);
+            // Apply same error handling to reconnected socket
+            var origOnError = ws.onerror;
+            ws.onerror = function(ev) {{
+                _wsCheckFail();
+                if (origOnError) origOnError.call(ws, ev);
+            }};
+            // On successful connection, reset backoff
+            ws.onopen = function() {{
+                console.log('[PolySaaS MM] WebSocket reconnected successfully');
+                _wsBackoffMs = 1000;
+                _wsFailCount = 0;
+            }};
+            // On close, schedule another reconnect with exponential backoff
+            ws.onclose = function() {{
+                console.log('[PolySaaS MM] WebSocket closed, scheduling reconnect with backoff');
+                _wsBackoffMs = Math.min(_wsBackoffMs * 2, _wsMaxBackoffMs);
+                _wsScheduleReconnect(originalUrl, originalProtocols);
+            }};
+        }}, _wsBackoffMs);
     }}
 
     var _WS = WebSocket;
@@ -1006,6 +1188,11 @@ class MattermostPassthroughHandler:
                 u.hostname = mmOrigin.hostname;
                 u.port = mmOrigin.port || '';
                 u.protocol = 'wss:';
+                // Add auth token to WebSocket URL query parameters
+                var token = localStorage.getItem('MMAUTHTOKEN');
+                if (token && !u.searchParams.has('token')) {{
+                    u.searchParams.set('token', token);
+                }}
                 url = u.toString();
                 console.log('[PolySaaS Mattermost] WebSocket direct to MM server:', url);
             }} catch (e) {{ console.warn('[PolySaaS Mattermost] WebSocket rewrite:', e); }}

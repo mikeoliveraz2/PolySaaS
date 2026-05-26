@@ -217,6 +217,137 @@ def _configure_oidc(mm_url: str, headers: dict, client_id: str, client_secret: s
     return False
 
 
+def _ensure_system_admin_user(mm_url: str, headers: dict, result: dict) -> Optional[str]:
+    """Create or ensure a system admin user (mmadmin) exists and has system admin role."""
+    admin_username = 'mmadmin'
+    admin_password = 'PolySaaS2026!'
+    admin_email = f'{admin_username}@polysaas.local'
+    
+    # Check if user already exists
+    try:
+        resp = requests.get(f"{mm_url}/api/v4/users/username/{admin_username}", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            user = resp.json()
+            logger.info("[MM-PROV] System admin user already exists: %s", admin_username)
+            # Ensure user has system admin role
+            _promote_to_system_admin(mm_url, headers, user['id'], result)
+            return user['id']
+    except Exception as e:
+        logger.warning("[MM-PROV] Error checking for system admin user: %s", e)
+    
+    # Create the system admin user
+    try:
+        resp = requests.post(
+            f"{mm_url}/api/v4/users",
+            headers=headers,
+            json={
+                'email': admin_email,
+                'username': admin_username,
+                'password': admin_password,
+                'first_name': 'PolySaaS',
+                'last_name': 'Admin'
+            },
+            timeout=30,
+        )
+        if resp.status_code == 201:
+            user = resp.json()
+            logger.info("[MM-PROV] Created system admin user: %s (id=%s)", admin_username, user['id'])
+            result['system_admin_user_created'] = True
+            # Promote to system admin
+            _promote_to_system_admin(mm_url, headers, user['id'], result)
+            return user['id']
+        else:
+            logger.error("[MM-PROV] Failed to create system admin user: %s - %s", resp.status_code, resp.text[:200])
+            result['system_admin_error'] = resp.text[:200]
+            return None
+    except Exception as e:
+        logger.error("[MM-PROV] Exception creating system admin user: %s", e)
+        result['system_admin_error'] = str(e)
+        return None
+
+
+def _promote_to_system_admin(mm_url: str, headers: dict, user_id: str, result: dict) -> bool:
+    """Promote a user to system admin role."""
+    try:
+        # Get current user roles
+        resp = requests.get(f"{mm_url}/api/v4/users/{user_id}", headers=headers, timeout=10)
+        if resp.status_code != 200:
+            logger.error("[MM-PROV] Failed to get user for promotion: %s", resp.text[:200])
+            return False
+        
+        user = resp.json()
+        current_roles = user.get('roles', '')
+        
+        # Add system_admin role if not present
+        if 'system_admin' not in current_roles:
+            new_roles = current_roles + ' system_admin' if current_roles else 'system_admin'
+            patch_resp = requests.put(
+                f"{mm_url}/api/v4/users/{user_id}/roles",
+                headers=headers,
+                json={'roles': new_roles},
+                timeout=30,
+            )
+            if patch_resp.status_code == 200:
+                logger.info("[MM-PROV] Promoted user %s to system admin", user_id)
+                result['system_admin_promoted'] = True
+                return True
+            else:
+                logger.error("[MM-PROV] Failed to promote user to system admin: %s", patch_resp.text[:200])
+                result['system_admin_promote_error'] = patch_resp.text[:200]
+                return False
+        else:
+            logger.info("[MM-PROV] User %s already has system admin role", user_id)
+            return True
+    except Exception as e:
+        logger.error("[MM-PROV] Exception promoting user to system admin: %s", e)
+        result['system_admin_promote_error'] = str(e)
+        return False
+
+
+def _ensure_dev_team(mm_url: str, headers: dict, result: dict) -> Optional[str]:
+    """Create or ensure 'PolySaaS Dev Team' exists."""
+    team_name = 'PolySaaS Dev Team'
+    team_display_name = 'PolySaaS Dev Team'
+    
+    # Check if team already exists
+    try:
+        resp = requests.get(f"{mm_url}/api/v4/teams/name/{team_name.replace(' ', '-')}", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            team = resp.json()
+            logger.info("[MM-PROV] Dev team already exists: %s", team_name)
+            result['dev_team_id'] = team['id']
+            return team['id']
+    except Exception as e:
+        logger.warning("[MM-PROV] Error checking for dev team: %s", e)
+    
+    # Create the dev team
+    try:
+        resp = requests.post(
+            f"{mm_url}/api/v4/teams",
+            headers=headers,
+            json={
+                'name': team_name.replace(' ', '-'),
+                'display_name': team_display_name,
+                'type': 'O'  # Open team
+            },
+            timeout=30,
+        )
+        if resp.status_code == 201:
+            team = resp.json()
+            logger.info("[MM-PROV] Created dev team: %s (id=%s)", team_name, team['id'])
+            result['dev_team_created'] = True
+            result['dev_team_id'] = team['id']
+            return team['id']
+        else:
+            logger.error("[MM-PROV] Failed to create dev team: %s - %s", resp.status_code, resp.text[:200])
+            result['dev_team_error'] = resp.text[:200]
+            return None
+    except Exception as e:
+        logger.error("[MM-PROV] Exception creating dev team: %s", e)
+        result['dev_team_error'] = str(e)
+        return None
+
+
 def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, result: dict) -> None:
     try:
         from django.db import connection
@@ -363,6 +494,17 @@ def provision_mattermost_tenant(
             detail = result.get('team_error', 'unknown')
             result['error'] = f'Team creation failed: {detail}'
             return result
+
+        # Ensure system admin user (mmadmin) exists and has system admin role
+        system_admin_id = _ensure_system_admin_user(mm_url, headers, result)
+        
+        # Ensure PolySaaS Dev Team exists
+        dev_team_id = _ensure_dev_team(mm_url, headers, result)
+        
+        # Add system admin to dev team if both exist
+        if system_admin_id and dev_team_id:
+            _add_user_to_team(mm_url, headers, dev_team_id, system_admin_id, result)
+            logger.info("[MM-PROV] Added system admin to dev team")
 
         user_id = _create_user(mm_url, headers, admin_email, username, effective_password, result)
         token = ''
