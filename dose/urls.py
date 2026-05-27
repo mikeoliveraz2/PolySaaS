@@ -11,7 +11,7 @@ except ImportError:
         from django.shortcuts import redirect
         return redirect('/admin/')
 
-from dose.views import subscribe_view, connect_social_after_subscribe, restore_mm_credentials
+from dose.views import subscribe_view, connect_social_after_subscribe, restore_mm_credentials, login_view
 from dose.subscription_views import SubscriptionApiViewSet
 
 router = DefaultRouter()
@@ -21,6 +21,7 @@ urlpatterns = [
     path('', RedirectView.as_view(url='/admin/'), name='dose-home'),
     path('subscribe/', subscribe_view, name='subscribe'),
     path('connect-social-after-subscribe/', connect_social_after_subscribe, name='connect_social_after_subscribe'),
+    path('login/', login_view, name='login'),
     path('api/restore-mm-credentials/', restore_mm_credentials, name='restore_mm_credentials'),
     path('', include(router.urls)),
 ]

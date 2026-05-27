@@ -48,7 +48,7 @@ def debug_tenant_session(request):
 
 def index(request):
     if not request.user.is_authenticated:
-        login_url = f"/accounts/login/?next={request.path}"
+        login_url = f"/dose/login/?next={request.path}"
         return redirect(login_url)
     context, response = _build_landing_page_context(request)
     if response is not None:
