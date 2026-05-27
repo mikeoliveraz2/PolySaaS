@@ -4,6 +4,43 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-27 (Evening — Office) — Login After Subscribe Fix ✅
+
+**Status**: ✅ COMPLETE — subscribe flow now redirects to custom login view that sets search_path TO public
+**Branch**: main
+
+### Problem
+After subscribing, new users were redirected to `/accounts/login/` (allauth) with pre-filled credentials. Submitting the form gave "invalid username or password" error. Same credentials worked on "normal login" (custom `/dose/login/` view).
+
+### Root Cause
+Allauth's login view does not explicitly set `search_path TO public` before calling `authenticate()`. In the multi-tenant setup, the database connection may be in a tenant schema context when allauth tries to authenticate, causing the user lookup to fail (users are created in the public schema).
+
+The custom `login_view` in `main.py` explicitly sets `search_path TO public` before `authenticate()`, which is why "normal login" worked.
+
+### Fix
+1. **Added `/dose/login/` route** to `dose/urls.py` — maps to custom `login_view` that sets `search_path TO public`
+2. **Changed subscribe redirect** from `/accounts/login/` to `/dose/login/` in `subscribe.html`
+3. **Updated `dose/login.html`** with auto-submit logic and Mattermost credential restoration (matching `account/login.html` functionality)
+4. **Updated `index()` redirect** to use `/dose/login/` instead of `/accounts/login/` for consistency
+
+### Files Changed
+- `dose/urls.py` — added `path('login/', login_view, name='login')`
+- `dose/templates/dose/subscribe.html` — changed redirect URL to `/dose/login/?next=/admin/`
+- `dose/templates/dose/login.html` — added auto-submit + Mattermost credential restoration + debug logging
+- `dose/views/main.py` — changed `index()` redirect to `/dose/login/`
+
+### Verification
+- All Python files pass syntax check
+- `/dose/login/` explicitly sets `search_path TO public` before `authenticate()`
+- Auto-submit and credential restoration logic mirrors `account/login.html`
+
+### Follow-ups
+- Test subscribe → auto-login → Mattermost flow end-to-end
+- Restart Mattermost server to enable plugin uploads
+- Deploy plugin to Mattermost server
+
+---
+
 ## 2026-05-27 (Evening — Office) — Mattermost Team Name Cleanup ✅
 
 **Status**: ✅ COMPLETE — all team name references removed from login flow
