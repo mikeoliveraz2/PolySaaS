@@ -1,6 +1,8 @@
 # dose/urls.py
 from django.urls import path, include
 from django.views.generic import RedirectView
+
+app_name = 'dose'
 from rest_framework.routers import DefaultRouter
 
 # Safe import
