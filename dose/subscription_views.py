@@ -525,7 +525,6 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )
                 email = admin_email
                 token = extra.get('mm_token') or extra.get('mmauthtoken') or ''
-                team_name = extra.get('mm_team_name') or extra.get('team_name') or ''
                 
                 if username and password:
                     PassthroughCredentialContainer.store(
@@ -535,7 +534,6 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                             'username': username,
                             'password': password,
                             'email': email,
-                            'mm_team_name': team_name,
                             'api_tokens': {
                                 'mattermost_token': token,
                             }

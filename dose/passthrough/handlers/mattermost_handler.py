@@ -29,30 +29,6 @@ class MattermostPassthroughHandler:
         m = _re.match(r'^/pt/admin/([^/]+)/static/', path_info)
         return bool(m and 'mattermost' in m.group(1).lower())
 
-    def _get_team_name(self, request):
-        """Derive Mattermost team name for redirects."""
-        team_name = ''
-        try:
-            extra = self._get_tenantapp_extra_config(request) or {}
-            team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
-        except Exception:
-            pass
-        if not team_name:
-            try:
-                t = getattr(request, 'tenant', None)
-                if t:
-                    schema = t.schema_name[:15].lower()
-                    team_name = re.sub(r'[^a-z]', '', schema)
-                    if len(team_name) < 2:
-                        team_name = "team"
-                    if len(team_name) > 15:
-                        team_name = team_name[:15]
-            except Exception:
-                pass
-        if not team_name:
-            team_name = "polysaasdevteam"
-        return team_name
-
     _cors_patched = False  # class-level flag: only patch once per process
 
     def _ensure_cors_allowed(self, request, mm_origin, token):
@@ -112,10 +88,9 @@ class MattermostPassthroughHandler:
         if request.path_info.rstrip("/") != proxy_prefix:
             return None
 
-        team_name = self._get_team_name(request)
         # Let Mattermost handle team selection - don't specify team in redirect
         team_redirect = f"{proxy_prefix}/channels/town-square"
-        print(f"[MM ROOT] team_name={team_name} redirect_target={team_redirect}")
+        print(f"[MM ROOT] redirect_target={team_redirect}")
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
@@ -184,45 +159,6 @@ class MattermostPassthroughHandler:
 
         print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
-        # Get team name for redirect after login - prioritize stored credentials
-        team_name = ''
-        try:
-            from dose.utils import PassthroughCredentialContainer
-            creds = PassthroughCredentialContainer.retrieve(request)
-            print(f"[MM LOGIN BRIDGE] Retrieved creds: {creds}")
-            if creds and creds.get('mm_team_name'):
-                team_name = creds['mm_team_name']
-                print(f"[MM LOGIN BRIDGE] Using team_name from creds: {team_name}")
-        except Exception as e:
-            print(f"[MM LOGIN BRIDGE] Error retrieving creds: {e}")
-        
-        # Fallback to extra config
-        if not team_name:
-            if 'extra' in dir():
-                team_name = extra.get('mm_team_name', '') or extra.get('team_name', '')
-            if not team_name:
-                try:
-                    extra2 = self._get_tenantapp_extra_config(request) or {}
-                    team_name = extra2.get('mm_team_name', '') or extra2.get('team_name', '')
-                except Exception:
-                    pass
-        
-        # Ultimate fallback: derive from tenant schema
-        if not team_name:
-            try:
-                import re
-                t = getattr(request, 'tenant', None)
-                if t:
-                    schema = t.schema_name[:15].lower()
-                    team_name = re.sub(r'[^a-z]', '', schema)
-                    if len(team_name) < 2:
-                        team_name = "team"
-                    if len(team_name) > 15:
-                        team_name = team_name[:15]
-            except Exception:
-                pass
-        team_name_js = json.dumps(team_name)
-        
         # HTML-escape so a quote in the password can't break the value attribute.
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
@@ -259,7 +195,6 @@ class MattermostPassthroughHandler:
 </div>
 <script>
 (function () {{
-    var teamName = {team_name_js};
     function $(id) {{ return document.getElementById(id); }}
     function setStatus(msg, err) {{
         var s = $('status');
