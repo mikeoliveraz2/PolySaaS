@@ -4,6 +4,36 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-27 (Evening — Office) — Mattermost Team Name Cleanup ✅
+
+**Status**: ✅ COMPLETE — all team name references removed from login flow
+**Branch**: main
+
+### Summary
+Continued cleanup from morning session. Removed all remaining team name retrieval and specification code from Mattermost passthrough handler. The login flow now never specifies a team — Mattermost handles team selection naturally after successful authentication, exactly like direct login.
+
+### Key Fixes
+1. **Removed `_get_team_name` method** — deleted entire method from `mattermost_handler.py` (dead code, no longer called anywhere)
+2. **Removed team name retrieval from login bridge** — login bridge no longer fetches `mm_team_name` from credentials or extra config
+3. **Removed `teamName` JavaScript variable** — login bridge template no longer injects team name into JS
+4. **Removed `mm_team_name` from credential storage** — `subscription_views.py` no longer stores team name in `PassthroughCredentialContainer`
+
+### Files Changed
+- `dose/passthrough/handlers/mattermost_handler.py` — removed `_get_team_name` method, team retrieval from login bridge, `teamName` JS variable
+- `dose/subscription_views.py` — removed `mm_team_name` from credential storage
+
+### Verification
+- Syntax check passes on all modified files
+- No remaining references to `_get_team_name` or `team_name_js` in handler
+- Team name is never specified during login; Mattermost determines it post-auth
+
+### Follow-ups
+- Test subscribe → auto-login → Mattermost flow end-to-end
+- Restart Mattermost server to enable plugin uploads
+- Deploy plugin to Mattermost server
+
+---
+
 ## 2026-05-27 (Morning — Condo) — Mattermost Auto-Login After Subscribe Debug ✅
 
 **Status**: ✅ COMPLETE — team specification removed from redirects, credentials preserved across login
