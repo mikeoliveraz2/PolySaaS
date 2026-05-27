@@ -101,18 +101,8 @@
             }
             var banner = document.getElementById('ps-new-user-banner');
             if (banner) {
-                banner.textContent = '✅ Your new account "' + (creds.u || '') + '" has been pre-filled. Logging in automatically...';
+                banner.textContent = '✅ Your new account "' + (creds.u || '') + '" has been pre-filled. Please review and click Sign in.';
                 banner.style.display = 'block';
-            }
-            // Auto-submit the form when credentials are pre-filled from subscribe flow
-            var form = document.querySelector('form');
-            console.log('[AUTO-LOGIN] Form found:', !!form, 'Has username:', !!creds.u, 'Has password:', !!creds.p);
-            if (form && creds.u && creds.p) {
-                console.log('[AUTO-LOGIN] Scheduling auto-submit in 500ms...');
-                setTimeout(function() {
-                    console.log('[AUTO-LOGIN] Submitting form...');
-                    form.submit();
-                }, 500);
             }
         } catch(e) {
             console.error('[AUTO-LOGIN] Error:', e);
