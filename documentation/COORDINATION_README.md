@@ -4,6 +4,34 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-27 (Evening — Office) — Final Wrap-Up ✅
+
+**Status**: ✅ COMPLETE — all changes committed and pushed
+**Branch**: main
+**Commits**: `b3ce40c` (team cleanup), `76403ef` (login fix), `4642a17` (remove auto-submit)
+
+### Today's Complete Session Summary
+1. **Morning (Condo)**: Removed team specification from Mattermost redirects, preserved credentials across login via sessionStorage + API
+2. **Evening (Office)**: 
+   - Removed all `mm_team_name` references from handler and credential storage
+   - Fixed login after subscribe by redirecting to `/dose/login/` (sets `search_path TO public`)
+   - Removed auto-submit from Django login forms (user reviews credentials before clicking)
+   - Verified Mattermost passthrough bridge still auto-submits correctly
+
+### Current State
+- Subscribe → `/dose/login/` with pre-filled credentials (user clicks submit manually)
+- After Django login → credentials restored to session via API
+- Click Mattermost → passthrough bridge auto-submits → redirects to `/channels/town-square`
+- Team is NEVER specified during login; Mattermost handles team selection post-auth
+
+### Next Session (Office)
+1. Test subscribe → login → Mattermost flow end-to-end
+2. Address Mattermost spinner issue if still present
+3. Restart Mattermost server for plugin uploads
+4. Deploy plugin to Mattermost server
+
+---
+
 ## 2026-05-27 (Evening — Office) — Login After Subscribe Fix ✅
 
 **Status**: ✅ COMPLETE — subscribe flow now redirects to custom login view that sets search_path TO public
