@@ -113,8 +113,14 @@ def _subscription_response_payload(subscription, selected_apps, *, tenant_name='
     ))
     # Add Mattermost credentials to response for sessionStorage preservation across login (without team name)
     if subscription.tenant and 'enable_mattermost' in selected_apps:
-        from dose.tenant_extra import get_tenant_extra_config
-        extra = get_tenant_extra_config(subscription.tenant) or {}
+        try:
+            from dose.models import TenantApp
+            tapp = TenantApp.objects.filter(
+                tenant=subscription.tenant, app_name='mattermost'
+            ).first()
+            extra = (tapp.extra_config or {}) if tapp else {}
+        except Exception:
+            extra = {}
         body['mm_username'] = extra.get('mm_login_id') or extra.get('mm_username') or ''
         body['mm_password'] = extra.get('mm_password') or extra.get('mattermost_password') or ''
         body['mm_email'] = subscription.admin_email or ''
