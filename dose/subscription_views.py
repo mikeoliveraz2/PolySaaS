@@ -106,7 +106,7 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
     }
 
 
-def _subscription_response_payload(subscription, selected_apps, *, tenant_name='', stripe_trial_started=True):
+def _subscription_response_payload(subscription, selected_apps, *, tenant_name='', stripe_trial_started=True, user_obj=None):
     body = dict(SubscriptionSerializer(subscription).data)
     body.update(_subscriber_facing_messages(
         selected_apps, tenant_name=tenant_name, stripe_trial_started=stripe_trial_started,
@@ -123,7 +123,7 @@ def _subscription_response_payload(subscription, selected_apps, *, tenant_name='
             extra = {}
         body['mm_username'] = extra.get('mm_login_id') or extra.get('mm_username') or ''
         body['mm_password'] = extra.get('mm_password') or extra.get('mattermost_password') or ''
-        body['mm_email'] = subscription.admin_email or ''
+        body['mm_email'] = (user_obj.email if user_obj else '') or ''
         body['mm_token'] = extra.get('mm_token') or extra.get('mmauthtoken') or ''
     return body
 
@@ -394,6 +394,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 sub, selected_apps,
                 tenant_name=tenant_name or '',
                 stripe_trial_started=not test_bypass,
+                user_obj=user_obj,
             ),
             status=status.HTTP_201_CREATED,
         )
