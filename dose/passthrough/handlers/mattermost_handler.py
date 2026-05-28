@@ -101,10 +101,24 @@ class MattermostPassthroughHandler:
         if endpoint_url and not force_login:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
-                print(f"[MM ROOT] Plugin auth success — redirecting with fresh token")
-                from django.http import HttpResponseRedirect
-                resp = HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
+                print(f"[MM ROOT] Plugin auth success — clearing localStorage, redirecting with fresh token")
+                from django.http import HttpResponse
+                redirect_html = f"""<!DOCTYPE html>
+<html><head><title>PolySaaS &rarr; Mattermost</title></head>
+<body>
+<script>
+  localStorage.removeItem('storage:MMAUTHTOKEN');
+  localStorage.removeItem('MMAUTHTOKEN');
+  localStorage.removeItem('mmauthtoken');
+  document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
+  document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
+  window.location.href = '{proxy_prefix}/channels/town-square';
+</script>
+<p>Redirecting to Mattermost...</p>
+</body></html>"""
+                resp = HttpResponse(redirect_html, content_type="text/html; charset=utf-8")
                 resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
+                resp.set_cookie('mmauthtoken', plugin_token, max_age=86400, path='/', samesite='Lax')
                 return resp
             else:
                 print(f"[MM ROOT] Plugin auth failed — falling back to existing token or bridge")
