@@ -453,6 +453,41 @@ try {{
         print(f"[MM PLUGIN] ====== RETURNING NONE ======")
         return None
 
+    def _get_login_credentials(self, request):
+        """Get Mattermost login credentials from session or extra_config.
+        Returns (login_id, password) tuple."""
+        from dose.passthrough.credential_container import PassthroughCredentialContainer
+        
+        user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
+        login_id = ""
+        password = ""
+        
+        # First try to get credentials from encrypted session storage
+        session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+        if session_creds:
+            candidate_login = session_creds.get('username', '')
+            candidate_password = session_creds.get('password', '')
+            if self._credential_matches_active_user(request, candidate_login):
+                login_id = candidate_login
+                password = candidate_password
+                print(f"[MM LoginPreFill] Using session credentials for {login_id!r}")
+        
+        # Fallback to extra_config if session credentials not available
+        if not login_id or not password:
+            extra = self._get_tenantapp_extra_config(request) or {}
+            stored_login = (extra.get('mattermost_username') or
+                           extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                           extra.get('username') or extra.get('login_id') or '')
+            stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
+                          extra.get('password') or '')
+            django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
+            login_id = stored_login or django_username or user_email
+            password = stored_pass
+            if login_id and password:
+                print(f"[MM LoginPreFill] Using extra_config credentials for {login_id!r}")
+        
+        return login_id, password
+
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
 
@@ -460,16 +495,38 @@ try {{
         _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
 
-        # If Mattermost served its login HTML, replace entirely with our own form.
+        # If Mattermost served its login HTML, inject credential pre-fill instead of replacing.
         if '/login' in (getattr(request, 'path_info', '') or ''):
             if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
                 _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
             else:
                 _proxy_prefix = "/pt/admin/mattermost"
-            _endpoint_stub = type('E', (), {'endpoint_url': f"https://{_trigger}"})()
-            bridge = self._serve_login_bridge(request, _trigger, _endpoint_stub)
-            if bridge is not None:
-                return bridge
+            # Get credentials and inject pre-fill script into Mattermost's login form
+            login_id, password = self._get_login_credentials(request)
+            if login_id and password:
+                print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}")
+                prefill_script = f"""<script>
+(function() {{
+    function fill() {{
+        var li = document.querySelector('input[name="loginId"], input[id="loginId"], input[placeholder*="Email"], input[type="text"]');
+        var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
+        if (li) {{ li.value = {json.dumps(login_id)}; li.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        if (pw) {{ pw.value = {json.dumps(password)}; pw.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        console.log('[PolySaaS] Pre-filled login form');
+    }}
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', fill);
+    }} else {{
+        fill();
+    }}
+}})();
+</script></head>"""
+                # Inject before </head> or append to <body> if no head
+                if '</head>' in html_str:
+                    html_str = html_str.replace('</head>', prefill_script)
+                else:
+                    html_str = html_str + prefill_script
+                return html_str, None
 
         if not endpoint_url:
             return html_str, None
