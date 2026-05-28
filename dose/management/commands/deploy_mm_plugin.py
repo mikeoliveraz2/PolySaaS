@@ -12,7 +12,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from django.conf import settings
         
-        mm_url = getattr(settings, 'MATTERMOST_SHARED_URL', 'https://polysaas-mattermost.onrender.com')
+        mm_url = getattr(settings, 'MATTERMOST_SHARED_URL', 'https://mattermost.production.polysaas.online')
         plugin_path = os.path.join(settings.BASE_DIR, 'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.zip')
         
         self.stdout.write(f'Working with Mattermost: {mm_url}')
