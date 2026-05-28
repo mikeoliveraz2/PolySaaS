@@ -4,6 +4,34 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-05-29 (Morning — Condo) — Mattermost IDB Auth Fix ✅
+
+**Status**: ✅ COMPLETE — committed and pushed  
+**Branch**: main
+
+### Summary
+Fixed the Mattermost passthrough spinner/login loop. Root cause was that Mattermost uses **IndexedDB (localforage)** for redux-persist hydration, not localStorage. The shim was only writing to localStorage, which Mattermost never reads for auth bootstrapping.
+
+### Fix
+- Added `_writeTokenToIDB(token)` to the client-side shim — writes `persist:storage` into `localforage/keyvaluepairs` IDB with `entities.general.credentials` containing the token
+- Added `_blockLoginAndRetry()` — on first `/login` intercept with valid token: writes IDB + does one page reload (sessionStorage-guarded to prevent loop)
+- On reload, Mattermost finds token in IDB → hydrates Redux → `users/me` 200 → authenticated ✓
+
+### Files Changed
+- `dose/passthrough/handlers/mattermost_handler.py` (shim JS: IDB write, reload-once logic)
+
+### Current State
+- Mattermost passthrough works end-to-end: login bridge auto-submits → IDB written → one reload → Mattermost loads fully authenticated
+- MMAUTHTOKEN cookie + localStorage also set as belt-and-suspenders
+- `users/me` returns 200, plugin auth-check returns `valid: true`
+
+### Next Session
+- Monitor for token expiry / re-auth flow (stale token → IDB cleared → bridge re-runs)
+- Pre-existing SQL bug: `invalid input syntax for type bigint: "polysaast97"` in orchestration hook — needs separate fix
+- WebSocket is unproxied (direct to upstream) — acceptable for now
+
+---
+
 ## 2026-05-27 (Evening — Office) — Final Wrap-Up ✅
 
 **Status**: ✅ COMPLETE — all changes committed and pushed

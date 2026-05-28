@@ -1,0 +1,78 @@
+# BINGO: Mattermost Passthrough — IndexedDB Auth Fix
+
+**Date**: 2026-05-29  
+**Status**: ✅ COMPLETE  
+**Branch**: main
+
+---
+
+## Summary
+
+Fixed the Mattermost passthrough login loop. After successful credential auto-submission, the Mattermost SPA was immediately redirecting back to `/login` because it could not find the auth token. Root cause: **Mattermost uses IndexedDB (via localforage) for redux-persist state hydration, not localStorage**. The shim was only writing to localStorage — which Mattermost never reads for bootstrapping its Redux store.
+
+---
+
+## Root Cause
+
+- Mattermost's SPA hydrates its Redux store from `localforage` (IndexedDB), specifically the `localforage/keyvaluepairs` object store under the key `persist:storage`
+- The value is a JSON string with shape `{"entities": "{\"general\":{\"credentials\":{\"url\":\"...\",\"token\":\"...\"}}}", "_persist": "..."}`
+- Our shim was writing only to `localStorage` (`MMAUTHTOKEN`, `storage:MMAUTHTOKEN`) — keys Mattermost does NOT read for auth hydration
+- Without a token in IDB, Mattermost bootstrapped with no user → React Router navigated to `/login`
+
+**Confirmed via localStorage spy**: `_localforage_sys/_localforage_observable_sys` entry with `"key":"persist:storage"` showed Mattermost using IDB. No `persist:*` keys ever appeared in localStorage reads.
+
+---
+
+## Fix
+
+### `_writeTokenToIDB(token)` function (in `_mattermost_display_shim_html`)
+
+Added a function that opens the `localforage` IndexedDB, reads the existing `persist:storage` key, merges in `entities.general.credentials = {url, token}`, and writes it back. This runs:
+1. At shim init time (async — may race with Mattermost's first IDB read)
+2. On first `/login` redirect block (synchronous trigger + reload)
+
+### `_blockLoginAndRetry()` — one-time IDB reload
+
+When Mattermost tries to navigate to `/login` while we have a valid token in localStorage:
+1. First block: write token to IDB → reload page after 400ms (guarded by `sessionStorage._polysaas_mm_idb_reload` to prevent loop)
+2. Subsequent blocks: log only (IDB already has token, shouldn't happen again)
+
+### Flow after fix
+
+1. **First visit**: shim sets localStorage + IDB (async). Mattermost loads → reads IDB (may be empty) → tries `/login` → blocked → IDB written + reload
+2. **Reloaded page**: IDB has `persist:storage` with token → Mattermost hydrates → `users/me` returns **200** → authenticated ✓
+3. **Subsequent same-session visits**: sessionStorage guard prevents redundant reload; IDB already populated
+
+---
+
+## Files Changed
+
+- `dose/passthrough/handlers/mattermost_handler.py`
+  - Added `_writeTokenToIDB(token)` function to write token into `localforage` IDB
+  - Added `_blockLoginAndRetry()` with sessionStorage-guarded IDB-write-and-reload
+  - Replaced all four `/login` intercept handlers to call `_blockLoginAndRetry()` instead of just silently blocking
+  - Removed verbose localStorage spy (5-second full dump) — kept native `_lsGet/Set/Del` refs for fetch/XHR interceptors
+  - Added `persist:` and `__` key cleanup in localStorage (belt-and-suspenders)
+
+---
+
+## Verified Working
+
+Console output confirmed:
+```
+[PolySaaS MM IDB] persist:storage written with token len=26
+[PolySaaS MM] Blocked /login redirect #1 — token is valid
+[PolySaaS MM] Writing IDB and reloading to force re-hydration (once)
+[PolySaaS MM] users/me HTTP status: 200 OK
+[PolySaaS MM] Plugin auth check: {email: 'pst97@you.com', valid: true}
+```
+
+Server confirmed all API calls returning 200 with MMAUTHTOKEN cookie present.
+
+---
+
+## Follow-ups
+
+- The one-time reload on first visit is a minor UX cost — acceptable for now. Future: pre-write IDB server-side via an injected `<script>` with the token before any Mattermost JS runs (requires synchronous IDB API polyfill or a different approach).
+- `[ORCHESTRATION HOOK] Tenant instruction lookup failed: invalid input syntax for type bigint: "polysaast97"` — pre-existing SQL bug, separate ticket needed.
+- WebSocket goes directly to `wss://polysaas-mattermost.onrender.com` — currently unproxied, acceptable for now.

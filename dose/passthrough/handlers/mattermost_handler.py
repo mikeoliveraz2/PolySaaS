@@ -89,10 +89,7 @@ class MattermostPassthroughHandler:
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
         
-        # Debug: log all cookies to see what's present
-        print(f"[MM ROOT] All cookies: {dict(request.COOKIES)}")
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-        print(f"[MM ROOT] token found: {bool(token)}, force_login: {force_login}")
 
         # If user already has a token cookie, let the forwarder try it first.
         # Generating a new token on every root hit causes Mattermost to re-initialize
@@ -867,25 +864,9 @@ try {{
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
 
-    // Spy on localStorage reads to diagnose what key Mattermost uses for the auth token
     var _lsGet = Storage.prototype.getItem;
-    Storage.prototype.getItem = function(key) {{
-        var val = _lsGet.call(this, key);
-        if (key && (key.indexOf('MMAUTHTOKEN') !== -1 || key.indexOf('MMAuth') !== -1 ||
-                    key.indexOf('persist:') !== -1 || key.indexOf('credentials') !== -1)) {{
-            console.log('[PolySaaS MM] localStorage.getItem("' + key + '") =>', val ? val.slice(0, 60) : 'null');
-        }}
-        return val;
-    }};
     var _lsSet = Storage.prototype.setItem;
-    Storage.prototype.setItem = function(key, value) {{
-        if (key && (key.indexOf('MMAUTHTOKEN') !== -1 || key.indexOf('MMAuth') !== -1 ||
-                    key.indexOf('persist:') !== -1 || key.indexOf('credentials') !== -1)) {{
-            var display = typeof value === 'string' ? value.slice(0, 60) : value;
-            console.log('[PolySaaS MM] localStorage.setItem("' + key + '") =', display);
-        }}
-        return _lsSet.call(this, key, value);
-    }};
+    var _lsDel = Storage.prototype.removeItem;
 
     var PS_PREFIXES = ['/static/admin/', '/static/img/', '/static/vendor/', '/static/jazzmin/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
     function isPolySaaSPath(s) {{
@@ -929,9 +910,66 @@ try {{
         return PROXY + s;
     }}
 
+    // Write token into IndexedDB (localforage) so Mattermost's redux-persist hydration finds it.
+    // Mattermost does NOT use localStorage for persist — it uses localforage (IndexedDB).
+    // We write persist:storage with a minimal credentials slice before Mattermost reads it.
+    function _writeTokenToIDB(token) {{
+        try {{
+            var _dbReq = indexedDB.open('localforage');
+            _dbReq.onsuccess = function(e) {{
+                var _db = e.target.result;
+                var _stores = _db.objectStoreNames;
+                var _storeName = _stores.contains('keyvaluepairs') ? 'keyvaluepairs' : (_stores.length ? _stores[0] : null);
+                if (!_storeName) {{ console.log('[PolySaaS MM IDB] No object store found'); return; }}
+                try {{
+                    var _tx = _db.transaction([_storeName], 'readwrite');
+                    var _store = _tx.objectStore(_storeName);
+                    // Read existing persist:storage to merge, not overwrite
+                    var _getReq = _store.get('persist:storage');
+                    _getReq.onsuccess = function(ge) {{
+                        var _existing = {{}};
+                        try {{ _existing = JSON.parse(ge.target.result || '{{}}') || {{}}; }} catch(_pe) {{}}
+                        // Deep-set entities.general.credentials.token
+                        _existing.entities = _existing.entities || '{{}}';
+                        var _entities = {{}};
+                        try {{ _entities = JSON.parse(_existing.entities) || {{}}; }} catch(_ee) {{}}
+                        _entities.general = _entities.general || {{}};
+                        var _general = {{}};
+                        try {{ _general = typeof _entities.general === 'string' ? JSON.parse(_entities.general) : _entities.general; }} catch(_ge) {{}}
+                        _general.credentials = {{ url: window.location.origin, token: token }};
+                        _entities.general = _general;
+                        _existing.entities = JSON.stringify(_entities);
+                        var _putReq = _store.put(JSON.stringify(_existing), 'persist:storage');
+                        _putReq.onsuccess = function() {{
+                            console.log('[PolySaaS MM IDB] persist:storage written with token len=' + token.length);
+                        }};
+                        _putReq.onerror = function(pe) {{
+                            console.log('[PolySaaS MM IDB] put error:', pe.target.error);
+                        }};
+                    }};
+                    _getReq.onerror = function(ge) {{
+                        console.log('[PolySaaS MM IDB] get error:', ge.target.error);
+                    }};
+                }} catch(_txe) {{ console.log('[PolySaaS MM IDB] tx error:', _txe); }}
+            }};
+            _dbReq.onerror = function(e) {{
+                console.log('[PolySaaS MM IDB] open error:', e.target.error);
+            }};
+            _dbReq.onupgradeneeded = function(e) {{
+                var _db2 = e.target.result;
+                if (!_db2.objectStoreNames.contains('keyvaluepairs')) {{
+                    _db2.createObjectStore('keyvaluepairs');
+                    console.log('[PolySaaS MM IDB] Created keyvaluepairs store');
+                }}
+            }};
+        }} catch(_idbe) {{ console.log('[PolySaaS MM IDB] error:', _idbe); }}
+    }}
+
     // Cookie + localStorage fallback (server-side fetch interceptor still injects MM-Auth-Token header)
     if (MMAUTHTOKEN) {{
-        // Clear any old/stale tokens first
+        // Write into IndexedDB so Mattermost's localforage/redux-persist hydration finds the token
+        _writeTokenToIDB(MMAUTHTOKEN);
+        // Also set localStorage keys as secondary fallback
         try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
         try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(_e) {{}}
         try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
@@ -942,6 +980,7 @@ try {{
         }} catch(_e) {{}}
         document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; max-age=108000';
         window.MMAUTHTOKEN = MMAUTHTOKEN;
+        console.log('[PolySaaS MM] Token set in localStorage + cookie + IDB, len=' + MMAUTHTOKEN.length);
     }}
 
     console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
@@ -1007,8 +1046,42 @@ try {{
                 return /\/login([/?]|$)/.test(p);
             }} catch (e) {{ return false; }}
         }}
+        function _hasValidToken() {{
+            var t = '';
+            try {{ t = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+            return !!t;
+        }}
+        var _loginBlockCount = 0;
+        var _idbReloadKey = '_polysaas_mm_idb_reload';
+        function _blockLoginAndRetry() {{
+            _loginBlockCount++;
+            console.log('[PolySaaS MM] Blocked /login redirect #' + _loginBlockCount + ' — token is valid');
+            // On first block: write IDB token and reload so Mattermost re-hydrates from IDB.
+            // Guard with sessionStorage to prevent reload loop (only reload once per session).
+            if (_loginBlockCount === 1) {{
+                var _alreadyReloaded = false;
+                try {{ _alreadyReloaded = !!sessionStorage.getItem(_idbReloadKey); }} catch(_e) {{}}
+                if (!_alreadyReloaded) {{
+                    var _tok = '';
+                    try {{ _tok = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(_e) {{}}
+                    if (_tok) {{
+                        console.log('[PolySaaS MM] Writing IDB and reloading to force re-hydration (once)');
+                        try {{ sessionStorage.setItem(_idbReloadKey, '1'); }} catch(_e) {{}}
+                        _writeTokenToIDB(_tok);
+                        // Small delay to let IDB write complete before reload
+                        setTimeout(function() {{ window.location.reload(); }}, 400);
+                    }}
+                }} else {{
+                    console.log('[PolySaaS MM] IDB reload already attempted — not reloading again');
+                }}
+            }}
+        }}
         history.pushState = function(state, title, url) {{
             if (isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
                 console.log('[PolySaaS MM] Intercept pushState(/login) -> hard redirect to bridge');
                 window.location.replace(PROXY + '/login');
                 return;
@@ -1017,6 +1090,10 @@ try {{
         }};
         history.replaceState = function(state, title, url) {{
             if (isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
                 console.log('[PolySaaS MM] Intercept replaceState(/login) -> hard redirect to bridge');
                 window.location.replace(PROXY + '/login');
                 return;
@@ -1028,6 +1105,10 @@ try {{
         var _locAssign = window.location.assign;
         window.location.assign = function(url) {{
             if (typeof url === 'string' && isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
                 console.log('[PolySaaS MM] Intercept location.assign(/login) -> bridge');
                 _locAssign.call(window.location, PROXY + '/login');
                 return;
@@ -1037,6 +1118,10 @@ try {{
         var _locReplace = window.location.replace;
         window.location.replace = function(url) {{
             if (typeof url === 'string' && isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
                 console.log('[PolySaaS MM] Intercept location.replace(/login) -> bridge');
                 _locReplace.call(window.location, PROXY + '/login');
                 return;
