@@ -101,7 +101,7 @@ class MattermostPassthroughHandler:
         if endpoint_url and not force_login:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
-                print(f"[MM ROOT] Plugin auth success — clearing localStorage, redirecting with fresh token")
+                print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
                 from django.http import HttpResponse
                 redirect_html = f"""<!DOCTYPE html>
 <html><head><title>PolySaaS &rarr; Mattermost</title></head>
@@ -121,7 +121,7 @@ class MattermostPassthroughHandler:
                 resp.set_cookie('mmauthtoken', plugin_token, max_age=86400, path='/', samesite='Lax')
                 return resp
             else:
-                print(f"[MM ROOT] Plugin auth failed — falling back to existing token or bridge")
+                print(f"[MM ROOT] ====== PLUGIN AUTH FAILED ======")
 
         # Plugin auth failed or not available — let forwarder try existing cookie.
         # The shim has loop-breaker logic if the cookie turns out to be stale.
@@ -409,7 +409,7 @@ try {{
                 headers={'Content-Type': 'application/json'},
                 timeout=10,
             )
-            print(f"[MM PLUGIN] Response {resp.status_code}")
+            print(f"[MM PLUGIN] ====== RESPONSE {resp.status_code} ======")
             if resp.status_code == 200:
                 data = resp.json()
                 token = data.get('token')
@@ -421,7 +421,8 @@ try {{
             else:
                 print(f"[MM PLUGIN] Auth failed: {resp.status_code} {resp.text[:200]}")
         except Exception as exc:
-            print(f"[MM PLUGIN] Exception: {exc}")
+            print(f"[MM PLUGIN] ====== EXCEPTION: {exc} ======")
+        print(f"[MM PLUGIN] ====== RETURNING NONE ======")
         return None
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
