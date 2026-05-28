@@ -38,7 +38,9 @@ def main():
     print(f"Checking for existing plugin {PLUGIN_ID}...")
     plugins = requests.get(f"{MM_URL}/api/v4/plugins", headers=headers, timeout=10)
     if plugins.status_code == 200:
-        for p in plugins.json():
+        data = plugins.json()
+        all_plugins = data.get('active', []) + data.get('inactive', [])
+        for p in all_plugins:
             if p.get('id') == PLUGIN_ID:
                 print(f"Removing existing plugin {PLUGIN_ID}...")
                 r = requests.delete(f"{MM_URL}/api/v4/plugins/{PLUGIN_ID}", headers=headers, timeout=30)
