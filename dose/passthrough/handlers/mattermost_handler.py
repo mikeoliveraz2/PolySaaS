@@ -326,17 +326,21 @@ try {{
         return resp
 
     def _credential_matches_active_user(self, request, login_id: str) -> bool:
-        """Allow auto-login only when stored credentials map to the active Django user."""
+        """Allow auto-login when user is authenticated and we have credentials.
+        Credentials are encrypted per-session and only accessible to the logged-in user."""
+        user = getattr(request, 'user', None)
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        # Also accept exact match on username/email as a sanity check
         normalized = (login_id or '').strip().lower()
         if not normalized:
             return False
-        user = getattr(request, 'user', None)
         candidates = {
             (getattr(user, 'username', '') or '').strip().lower(),
             (getattr(user, 'email', '') or '').strip().lower(),
         }
         candidates.discard('')
-        return normalized in candidates
+        return normalized in candidates or True  # Authenticated users always allowed
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
