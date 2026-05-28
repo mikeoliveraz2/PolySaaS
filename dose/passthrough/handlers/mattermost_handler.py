@@ -507,15 +507,16 @@ try {{
         else:
             print(f"[MM HANDLER] No <head> found, skipping shim injection")
 
-        # Wrap in admin template for embedded dashboard display
+        # NEVER wrap Mattermost HTML in the Django admin template.
+        # The Mattermost SPA must run as the top-level page. Wrapping it
+        # breaks the React app, PWA, service worker, and causes the spinner.
+        # The login bridge is served separately by _serve_login_bridge.
+        print(f"[MM HANDLER] Returning raw Mattermost HTML (no admin template wrap)")
         from django.http import HttpResponse
         response = HttpResponse(html_str.encode('utf-8'), status=200)
         response['Content-Type'] = 'text/html; charset=utf-8'
         response['X-Frame-Options'] = 'ALLOWALL'
-        from dose.passthrough.forwarding import _wrap_in_admin_template
-        _endpoint_stub = type('E', (), {'endpoint_url': endpoint_url})()
-        wrapped = _wrap_in_admin_template(request, response, _trigger, _endpoint_stub)
-        return wrapped
+        return response
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
         """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
