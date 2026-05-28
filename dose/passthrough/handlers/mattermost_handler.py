@@ -265,6 +265,27 @@ try {{
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
+                // Write token to IndexedDB so Mattermost Redux hydrates correctly
+                var mmUrl = 'https://polysaas-mattermost.onrender.com';
+                try {{
+                    var req = indexedDB.open('localforage', 2);
+                    req.onsuccess = function(e) {{
+                        var db = e.target.result;
+                        var tx = db.transaction('keyvaluepairs', 'readwrite');
+                        var store = tx.objectStore('keyvaluepairs');
+                        var getReq = store.get('persist:storage');
+                        getReq.onsuccess = function() {{
+                            var data = {{}};
+                            try {{ data = JSON.parse(getReq.result || '{{}}'); }} catch(_) {{}}
+                            data.entities = data.entities || {{}};
+                            data.entities.general = data.entities.general || {{}};
+                            data.entities.general.credentials = {{ url: mmUrl, token: token }};
+                            store.put(JSON.stringify(data), 'persist:storage');
+                            dbg('IDB persist:storage written');
+                        }};
+                        tx.oncomplete = function() {{ db.close(); }};
+                    }};
+                }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
                 var baseUrl = base().replace(/\/$/, '');
                 var redirectUrl = baseUrl + '/channels/town-square';
                 dbg('token stored, redirecting to ' + redirectUrl);
