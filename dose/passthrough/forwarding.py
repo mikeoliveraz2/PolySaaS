@@ -832,6 +832,15 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             response.cookies['session_id']['samesite'] = 'Lax'
             print(f"FORWARDER — set browser session_id cookie from auto-login")
 
+        # Wrap HTML responses in admin template for embedded display (generic, all endpoints)
+        # Skip API calls, static assets, and non-HTML responses
+        upstream_path = getattr(request, '_passthrough_upstream_path', '')
+        is_page_load = not any(upstream_path.endswith(ext) for ext in ['.js', '.css', '.png', '.jpg', '.json', '.woff', '.woff2'])
+        is_page_load = is_page_load and '/api/' not in upstream_path and '/static/' not in upstream_path
+        if is_page_load and resp.status_code == 200:
+            print(f"[FORWARDER] Wrapping passthrough HTML in admin template")
+            response = _wrap_in_admin_template(request, response, trigger or 'passthrough', endpoint)
+
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")
 
