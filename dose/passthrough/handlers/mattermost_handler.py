@@ -93,27 +93,29 @@ class MattermostPassthroughHandler:
         print(f"[MM ROOT] All cookies: {dict(request.COOKIES)}")
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         print(f"[MM ROOT] token found: {bool(token)}, force_login: {force_login}")
-        if token and not force_login:
-            # TRUST the browser cookie — don't validate server-side.
-            # Server-side validation creates new sessions that invalidate the browser token.
-            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — letting forwarder handle root")
-            # Return None so the forwarder fetches Mattermost's / with the token.
-            # Mattermost will handle team selection and redirect appropriately.
-            return None
 
-        # No browser token — try plugin auth endpoint first, then fall back to bridge.
+        # ALWAYS try plugin auth first — it gives a fresh guaranteed-valid token.
+        # A stale browser cookie may look present but be rejected by Mattermost,
+        # causing a /login redirect → spinner loop. Plugin auth bypasses this.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
         if endpoint_url and not force_login:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
-                print(f"[MM ROOT] Plugin auth success — redirecting with token")
+                print(f"[MM ROOT] Plugin auth success — redirecting with fresh token")
                 from django.http import HttpResponseRedirect
                 resp = HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
                 resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
                 return resp
+            else:
+                print(f"[MM ROOT] Plugin auth failed — falling back to existing token or bridge")
 
-        # Plugin not available or auth failed — serve the login bridge INLINE.
-        print(f"[MM ROOT] No browser token — serving login bridge inline at root")
+        # Plugin auth failed or not available — trust existing browser cookie as fallback.
+        if token and not force_login:
+            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — letting forwarder handle root")
+            return None
+
+        # No valid token at all — serve the login bridge INLINE.
+        print(f"[MM ROOT] No valid token — serving login bridge inline at root")
         bridge = self._serve_login_bridge(request, trigger, endpoint)
         from dose.passthrough.forwarding import _wrap_in_admin_template
         return _wrap_in_admin_template(request, bridge, trigger, endpoint)
