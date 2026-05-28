@@ -265,8 +265,8 @@ try {{
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
                 var baseUrl = base().replace(/\/$/, '');
-                var redirectUrl = baseUrl + '/';
-                dbg('token stored, reloading root ' + redirectUrl);
+                var redirectUrl = baseUrl + '/channels/town-square';
+                dbg('token stored, redirecting to ' + redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }}
@@ -318,8 +318,8 @@ try {{
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
-            dbg('Token already exists — redirecting to root, skipping login');
-            window.location.replace(base().replace(/\/$/, '') + '/');
+            dbg('Token already exists — redirecting to town-square, skipping login');
+            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
             return;
         }}
         if (forceLogin && existingToken) {{
