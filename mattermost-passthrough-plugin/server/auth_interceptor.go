@@ -76,6 +76,7 @@ func isPublicEndpoint(path string) bool {
 		"/api/v1/diagnostics",
 		"/api/v1/auth-check",
 		"/api/v1/websocket-diag",
+		"/api/v1/polysaas-auth",
 	}
 
 	for _, pp := range publicPaths {

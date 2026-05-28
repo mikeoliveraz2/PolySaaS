@@ -1,42 +1,39 @@
 # PolySaaS Mattermost Passthrough Plugin
 
-This plugin provides authentication handling and diagnostic endpoints for the PolySaaS Mattermost passthrough integration.
+This plugin provides server-side authentication for the PolySaaS Mattermost passthrough integration, eliminating the login bridge page and creating seamless single-click access.
 
 ## Purpose
 
-The plugin addresses issues with the current client-side shim approach:
-- WebSocket connection instability (closes and reconnects)
-- 401 Unauthorized errors on plugin configuration endpoints
-- CORS errors blocking external analytics requests
+The plugin replaces the client-side login bridge with a secure server-to-server authentication flow:
+- PolySaaS calls the plugin directly with a shared secret
+- Plugin creates a Mattermost session token
+- Token is set as a browser cookie
+- User lands directly in Mattermost with no login page
 
-By moving authentication handling to the server-side plugin, we can:
-- Intercept and validate authentication at the Mattermost server level
-- Provide diagnostic endpoints to debug auth issues
-- Potentially handle WebSocket authentication more reliably
+## Configuration
+
+In Mattermost System Console → Plugins → Plugin Management → PolySaaS Passthrough Plugin:
+
+- **PolySaaS Shared Secret**: A strong random string shared between PolySaaS Django and this plugin. Set the same value in Django's `MATTERMOST_PASSTHROUGH_SECRET` setting.
 
 ## API Endpoints
 
+### `POST /api/v1/polysaas-auth` (Public — validated by shared secret)
+Server-to-server authentication endpoint called by PolySaaS:
+- **Body**: `{"email": "...", "username": "...", "secret": "..."}`
+- **Response**: `{"token": "...", "user_id": "...", "username": "..."}`
+- Finds or creates the Mattermost user by email
+- Creates a session token
+- Returns the token for PolySaaS to set as a browser cookie
+
 ### `/api/v1/diagnostics`
-Returns diagnostic information about the current session:
-- `user_id`: Current user ID
-- `session_id`: Session ID from request headers
-- `auth_token`: Masked authentication token
-- `has_session`: Whether a session is present
-- `has_token`: Whether an auth token is present
+Returns diagnostic information about the current session.
 
 ### `/api/v1/auth-check`
-Validates the current authentication state:
-- `valid`: Boolean indicating if auth is valid
-- `user_id`: User ID
-- `username`: Username
-- `email`: User email
+Validates the current authentication state.
 
 ### `/api/v1/websocket-diag`
-Provides WebSocket connection diagnostics:
-- `user_id`: Current user ID
-- `websocket_enabled`: Whether WebSocket is enabled
-- `plugin_active`: Whether the plugin is active
-- `message`: Status message
+Provides WebSocket connection diagnostics.
 
 ## Building
 
@@ -65,31 +62,31 @@ go build -o dist/plugin-darwin-amd64
 ## Deployment
 
 1. Build the plugin for your Mattermost server's platform
-2. Copy the plugin directory to the Mattermost server's plugins directory
-3. Enable the plugin in Mattermost System Console > Plugins > Plugin Management
-4. Restart Mattermost server
+2. Upload the plugin `.tar.gz` via Mattermost System Console > Plugins > Plugin Management > Upload Plugin
+3. Enable the plugin
+4. Set the **PolySaaS Shared Secret** in plugin settings
+5. Restart Mattermost server if needed
 
-## Usage
+## PolySaaS Integration
 
-Once deployed, the plugin endpoints can be called from the PolySaaS passthrough shim for diagnostics:
+The PolySaaS handler (`dose/passthrough/handlers/mattermost_handler.py`) calls this endpoint when a user clicks Mattermost in the admin panel:
 
-```javascript
-// Example: Check diagnostics
-fetch('/plugins/com.polysaas.passthrough/api/v1/diagnostics')
-  .then(r => r.json())
-  .then(data => console.log('Diagnostics:', data));
-
-// Example: Validate auth
-fetch('/plugins/com.polysaas.passthrough/api/v1/auth-check')
-  .then(r => r.json())
-  .then(data => console.log('Auth check:', data));
+```python
+# If no browser token exists, try plugin auth
+plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
+if plugin_token:
+    # Set cookie and redirect directly to town-square
+    response.set_cookie('MMAUTHTOKEN', plugin_token, ...)
+    return HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
 ```
+
+If the plugin is not installed or auth fails, it falls back to the login bridge page.
 
 ## Current Status
 
 - [x] Basic plugin structure
 - [x] Diagnostic endpoints
-- [ ] Authentication interception logic
-- [ ] WebSocket authentication handling
+- [x] `/api/v1/polysaas-auth` endpoint for seamless auth
+- [x] Shared secret configuration
 - [ ] Deployment to Mattermost server
-- [ ] Integration with PolySaaS shim
+- [ ] Integration with PolySaaS shim tested end-to-end

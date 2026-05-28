@@ -101,7 +101,18 @@ class MattermostPassthroughHandler:
             # Mattermost will handle team selection and redirect appropriately.
             return None
 
-        # No browser token — serve the login bridge INLINE (avoids redirect loop).
+        # No browser token — try plugin auth endpoint first, then fall back to bridge.
+        endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
+        if endpoint_url and not force_login:
+            plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
+            if plugin_token:
+                print(f"[MM ROOT] Plugin auth success — redirecting with token")
+                from django.http import HttpResponseRedirect
+                resp = HttpResponseRedirect(f"{proxy_prefix}/channels/town-square")
+                resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
+                return resp
+
+        # Plugin not available or auth failed — serve the login bridge INLINE.
         print(f"[MM ROOT] No browser token — serving login bridge inline at root")
         bridge = self._serve_login_bridge(request, trigger, endpoint)
         from dose.passthrough.forwarding import _wrap_in_admin_template
@@ -341,6 +352,60 @@ try {{
         }
         candidates.discard('')
         return normalized in candidates or True  # Authenticated users always allowed
+
+    def _get_plugin_auth_token(self, request, endpoint_url, trigger):
+        """Call the Mattermost plugin's /polysaas-auth endpoint to get a session token.
+        Returns the token string or None if plugin is not available or auth fails."""
+        try:
+            from django.conf import settings
+            secret = getattr(settings, 'MATTERMOST_PASSTHROUGH_SECRET', '')
+            if not secret:
+                print(f"[MM PLUGIN] MATTERMOST_PASSTHROUGH_SECRET not configured")
+                return None
+
+            user = getattr(request, 'user', None)
+            if not user or not getattr(user, 'is_authenticated', False):
+                print(f"[MM PLUGIN] User not authenticated")
+                return None
+
+            mm_origin = endpoint_url.rstrip('/')
+            plugin_url = f"{mm_origin}/plugins/com.polysaas.passthrough/api/v1/polysaas-auth"
+            username = getattr(user, 'username', '') or getattr(user, 'email', '').split('@')[0]
+            email = getattr(user, 'email', '') or ''
+
+            if not username or not email:
+                print(f"[MM PLUGIN] Missing username/email")
+                return None
+
+            import requests as _req
+            import json as _json
+
+            payload = {
+                'email': email,
+                'username': username,
+                'secret': secret,
+            }
+            print(f"[MM PLUGIN] Calling {plugin_url} for user={email}")
+            resp = _req.post(
+                plugin_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10,
+            )
+            print(f"[MM PLUGIN] Response {resp.status_code}")
+            if resp.status_code == 200:
+                data = resp.json()
+                token = data.get('token')
+                if token:
+                    print(f"[MM PLUGIN] Token received len={len(token)}")
+                    return token
+                else:
+                    print(f"[MM PLUGIN] No token in response")
+            else:
+                print(f"[MM PLUGIN] Auth failed: {resp.status_code} {resp.text[:200]}")
+        except Exception as exc:
+            print(f"[MM PLUGIN] Exception: {exc}")
+        return None
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
