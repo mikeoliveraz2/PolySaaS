@@ -144,21 +144,31 @@ class MattermostPassthroughHandler:
         try:
             # First try to get credentials from encrypted session storage
             session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+            print(f"[MM LoginBridge] Session creds retrieved: {bool(session_creds)}")
             if session_creds:
+                print(f"[MM LoginBridge] Session creds keys: {list(session_creds.keys())}")
                 candidate_login = session_creds.get('username', '')
                 candidate_password = session_creds.get('password', '')
-                if self._credential_matches_active_user(request, candidate_login):
+                print(f"[MM LoginBridge] Candidate login: {candidate_login!r}, password present: {bool(candidate_password)}")
+                cred_match = self._credential_matches_active_user(request, candidate_login)
+                print(f"[MM LoginBridge] Credential match result: {cred_match}")
+                if cred_match:
                     login_id = candidate_login
                     password = candidate_password
                     allow_auto_submit = bool(login_id and password)
-                    logger.info("[MM LoginBridge] Using active-user credentials from encrypted session")
+                    print(f"[MM LoginBridge] Using session credentials, auto_submit={allow_auto_submit}")
                 else:
-                    logger.info("[MM LoginBridge] Ignoring session credentials that do not match the active user")
+                    print(f"[MM LoginBridge] Ignoring session credentials - don't match active user")
 
             # Fallback to extra_config if session credentials not available
+            print(f"[MM LoginBridge] After session check: login_id={login_id!r}, has_password={bool(password)}")
             if not login_id or not password:
                 extra = self._get_tenantapp_extra_config(request) or {}
-                print(f"[MM LoginBridge] extra keys={list(extra.keys())}")
+                print(f"[MM LoginBridge] Fallback to extra_config, keys={list(extra.keys())}")
+                # Debug: show what credential keys we found
+                for k in ['mm_login_id', 'mattermost_login_id', 'mattermost_username', 'mm_password', 'mattermost_password']:
+                    if extra.get(k):
+                        print(f"[MM LoginBridge] Found {k} in extra_config")
                 stored_login = (extra.get('mattermost_username') or
                                extra.get('mattermost_login_id') or extra.get('mm_login_id') or
                                extra.get('username') or extra.get('login_id') or '')
@@ -355,7 +365,7 @@ try {{
         user = getattr(request, 'user', None)
         if not user or not getattr(user, 'is_authenticated', False):
             return False
-        # Also accept exact match on username/email as a sanity check
+        # Require exact match on username/email to prevent cross-user credential use
         normalized = (login_id or '').strip().lower()
         if not normalized:
             return False
@@ -364,7 +374,7 @@ try {{
             (getattr(user, 'email', '') or '').strip().lower(),
         }
         candidates.discard('')
-        return normalized in candidates or True  # Authenticated users always allowed
+        return normalized in candidates
 
     def _get_plugin_auth_token(self, request, endpoint_url, trigger):
         """Call the Mattermost plugin's /polysaas-auth endpoint to get a session token.
