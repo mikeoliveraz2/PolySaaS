@@ -109,17 +109,11 @@ class MattermostPassthroughHandler:
             else:
                 print(f"[MM ROOT] Plugin auth failed — falling back to existing token or bridge")
 
-        # Plugin auth failed or not available — do NOT trust existing cookie.
-        # A stale cookie forwarded to Mattermost causes /login redirect → spinner loop.
-        # Clear it and serve the login bridge for fresh auth.
+        # Plugin auth failed or not available — let forwarder try existing cookie.
+        # The shim has loop-breaker logic if the cookie turns out to be stale.
         if token and not force_login:
-            print(f"[MM ROOT] Plugin auth failed — clearing stale token, serving bridge")
-            bridge = self._serve_login_bridge(request, trigger, endpoint)
-            from django.http import HttpResponse
-            resp = HttpResponse(bridge, content_type="text/html; charset=utf-8")
-            resp.delete_cookie('MMAUTHTOKEN', path='/')
-            resp.delete_cookie('mmauthtoken', path='/')
-            return resp
+            print(f"[MM ROOT] Plugin auth unavailable — letting forwarder try existing token")
+            return None
 
         # No valid token at all — serve the login bridge INLINE.
         print(f"[MM ROOT] No valid token — serving login bridge inline at root")
