@@ -74,6 +74,8 @@ envVarGroups:
         sync: false
       - key: MATTERMOST_ADMIN_TOKEN
         sync: false
+      - key: MATTERMOST_PASSTHROUGH_SECRET
+        sync: false
       - key: DOLIBARR_BASE_URL
         sync: false
       - key: DOLIBARR_API_KEY
