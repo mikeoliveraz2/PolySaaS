@@ -94,11 +94,16 @@ class MattermostPassthroughHandler:
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         print(f"[MM ROOT] token found: {bool(token)}, force_login: {force_login}")
 
-        # ALWAYS try plugin auth first — it gives a fresh guaranteed-valid token.
-        # A stale browser cookie may look present but be rejected by Mattermost,
-        # causing a /login redirect → spinner loop. Plugin auth bypasses this.
+        # If user already has a token cookie, let the forwarder try it first.
+        # Generating a new token on every root hit causes Mattermost to re-initialize
+        # which can trigger its internal logout → redirect loop.
+        if token and not force_login:
+            print(f"[MM ROOT] Existing token cookie present — letting forwarder try it")
+            return None
+
+        # No cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
-        if endpoint_url and not force_login:
+        if endpoint_url:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
                 print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
@@ -122,12 +127,6 @@ class MattermostPassthroughHandler:
                 return resp
             else:
                 print(f"[MM ROOT] ====== PLUGIN AUTH FAILED ======")
-
-        # Plugin auth failed or not available — let forwarder try existing cookie.
-        # The shim has loop-breaker logic if the cookie turns out to be stale.
-        if token and not force_login:
-            print(f"[MM ROOT] Plugin auth unavailable — letting forwarder try existing token")
-            return None
 
         # No valid token at all — serve the login bridge INLINE.
         print(f"[MM ROOT] No valid token — serving login bridge inline at root")
@@ -468,26 +467,28 @@ try {{
             flags=re.IGNORECASE,
         )
 
-        # Rewrite file paths with extensions (capture query param as part of group 3, not separate)
+        # Load static files DIRECTLY from Mattermost origin to avoid Django dev
+        # server concurrency limits (ERR_CONNECTION_REFUSED on many chunks).
+        # Only API calls and form POSTs go through the proxy.
         html_str = re.sub(
             r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
 
         html_str = re.sub(
             r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
 
-        # Rewrite absolute upstream-origin URLs (e.g. https://polysaas-mattermost.onrender.com/static/...)
+        # Keep absolute upstream-origin static URLs as-is (already direct)
         _abs_static = re.escape(base_origin) + r'/static/'
         html_str = re.sub(
             r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}/static/{m.group(3)}{m.group(2)}',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
@@ -507,16 +508,10 @@ try {{
         else:
             print(f"[MM HANDLER] No <head> found, skipping shim injection")
 
-        # NEVER wrap Mattermost HTML in the Django admin template.
-        # The Mattermost SPA must run as the top-level page. Wrapping it
-        # breaks the React app, PWA, service worker, and causes the spinner.
-        # The login bridge is served separately by _serve_login_bridge.
-        print(f"[MM HANDLER] Returning raw Mattermost HTML (no admin template wrap)")
-        from django.http import HttpResponse
-        response = HttpResponse(html_str.encode('utf-8'), status=200)
-        response['Content-Type'] = 'text/html; charset=utf-8'
-        response['X-Frame-Options'] = 'ALLOWALL'
-        return response
+        # Return modified HTML; forward_request_standardized will wrap it in
+        # the admin template (passthrough lives inside the admin template div).
+        print(f"[MM HANDLER] Returning modified HTML for admin template wrap")
+        return html_str
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
         """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
@@ -892,7 +887,7 @@ try {{
         return _lsSet.call(this, key, value);
     }};
 
-    var PS_PREFIXES = ['/static/admin/', '/static/img/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+    var PS_PREFIXES = ['/static/admin/', '/static/img/', '/static/vendor/', '/static/jazzmin/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
     function isPolySaaSPath(s) {{
         for (var i = 0; i < PS_PREFIXES.length; i++) {{
             if (s.startsWith(PS_PREFIXES[i])) return true;
@@ -903,15 +898,34 @@ try {{
     function toProxy(s) {{
         if (typeof s !== 'string') return s;
         if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
-        if (s.startsWith(B)) {{
+
+        // External URL → strip origin first
+        if (s.startsWith(O + '/')) {{
+            s = s.slice(O.length);
+        }} else if (s.startsWith(B)) {{
             var tail = s.slice(B.length);
             if (!tail.startsWith('/')) tail = '/' + tail;
+            if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(tail)) {{
+                return B + tail;
+            }}
             return PROXY + tail;
+        }} else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
+            return s;
         }}
-        if (s.startsWith(O + '/')) s = s.slice(O.length);
-        else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
+
+        // Relative path → strip proxy prefix if present
+        if (s.startsWith(PROXY + '/')) {{
+            s = s.slice(PROXY.length);
+        }} else if (s === PROXY) {{
+            s = '/';
+        }}
+
         if (s.charAt(0) !== '/') return s;
         if (isPolySaaSPath(s)) return s;
+        // Static files load directly from Mattermost; API calls proxy through Django
+        if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(s)) {{
+            return B + s;
+        }}
         return PROXY + s;
     }}
 
@@ -989,7 +1003,8 @@ try {{
         function isLoginPath(url) {{
             try {{
                 var p = (typeof url === 'string') ? url : (url && url.pathname) || '';
-                return /\/login(\/.*)?$/.test(p);
+                // Match /login, /login/..., /login?... (query params matter — Mattermost pushes /login?redirect_to=...)
+                return /\/login([/?]|$)/.test(p);
             }} catch (e) {{ return false; }}
         }}
         history.pushState = function(state, title, url) {{
@@ -1008,9 +1023,29 @@ try {{
             }}
             return _repl.apply(this, arguments);
         }};
+
+        // Also catch hard location changes (Mattermost sometimes uses window.location directly)
+        var _locAssign = window.location.assign;
+        window.location.assign = function(url) {{
+            if (typeof url === 'string' && isLoginPath(url)) {{
+                console.log('[PolySaaS MM] Intercept location.assign(/login) -> bridge');
+                _locAssign.call(window.location, PROXY + '/login');
+                return;
+            }}
+            return _locAssign.apply(this, arguments);
+        }};
+        var _locReplace = window.location.replace;
+        window.location.replace = function(url) {{
+            if (typeof url === 'string' && isLoginPath(url)) {{
+                console.log('[PolySaaS MM] Intercept location.replace(/login) -> bridge');
+                _locReplace.call(window.location, PROXY + '/login');
+                return;
+            }}
+            return _locReplace.apply(this, arguments);
+        }};
     }})();
 
-    window.__webpack_public_path__ = PROXY + '/static/';
+    window.__webpack_public_path__ = B + '/static/';
     window.basename = PROXY;
     // Protect basename from being overwritten by upstream scripts
     setInterval(function() {{
@@ -1020,15 +1055,15 @@ try {{
         }}
     }}, 500);
 
-    // Strip PolySaaS proxy paths from redirect_to — Mattermost history.push(redirect_to)
-    // would navigate within the SPA and fail to match any route, falling back to /login.
+    // Strip redirect_to from root URL — the root handler redirects anyway, and
+    // leaving it causes Mattermost's login component to redirect to it, creating loops.
     try {{
         var _rurl = new URL(window.location.href);
         var _rt = _rurl.searchParams.get('redirect_to');
-        if (_rt && (_rt.startsWith('/pt/') || _rt.indexOf('://') !== -1)) {{
+        if (_rt) {{
             _rurl.searchParams.delete('redirect_to');
             window.history.replaceState({{}}, '', _rurl.toString());
-            console.log('[PolySaaS MM] Stripped invalid redirect_to:', _rt);
+            console.log('[PolySaaS MM] Stripped redirect_to to prevent loop:', _rt);
         }}
     }} catch(e) {{}}
 
@@ -1277,6 +1312,12 @@ try {{
             try {{
                 var mmOrigin = new URL(B);
                 var u = new URL(url, location.href);
+                // Strip proxy prefix from path if present (e.g. /pt/admin/mm/api/v4/... -> /api/v4/...)
+                if (u.pathname.startsWith(PROXY + '/')) {{
+                    u.pathname = u.pathname.slice(PROXY.length);
+                }} else if (u.pathname === PROXY) {{
+                    u.pathname = '/';
+                }}
                 u.hostname = mmOrigin.hostname;
                 u.port = mmOrigin.port || '';
                 u.protocol = 'wss:';

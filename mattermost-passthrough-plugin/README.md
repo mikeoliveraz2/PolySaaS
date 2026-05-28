@@ -88,5 +88,5 @@ If the plugin is not installed or auth fails, it falls back to the login bridge 
 - [x] Diagnostic endpoints
 - [x] `/api/v1/polysaas-auth` endpoint for seamless auth
 - [x] Shared secret configuration
-- [ ] Deployment to Mattermost server
+- [x] Deployment to Mattermost server (v1.1.0 running on Render)
 - [ ] Integration with PolySaaS shim tested end-to-end
