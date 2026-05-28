@@ -7,7 +7,7 @@ import os
 import sys
 import requests
 
-MM_URL = os.environ.get('MATTERMOST_SHARED_URL', 'https://mattermost.production.polysaas.online').rstrip('/')
+MM_URL = os.environ.get('MATTERMOST_SHARED_URL', 'https://polysaas-mattermost.onrender.com').rstrip('/')
 TOKEN = os.environ.get('MATTERMOST_ADMIN_TOKEN', '')
 PLUGIN_ZIP = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.zip')
