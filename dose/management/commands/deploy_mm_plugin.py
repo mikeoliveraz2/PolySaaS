@@ -13,7 +13,7 @@ class Command(BaseCommand):
         from django.conf import settings
         
         mm_url = getattr(settings, 'MATTERMOST_SHARED_URL', 'https://polysaas-mattermost.onrender.com')
-        plugin_path = 'f:\\PolySaaS\\mattermost-passthrough-plugin\\polysaas-passthrough-plugin.zip'
+        plugin_path = os.path.join(settings.BASE_DIR, 'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.zip')
         
         # mmadmin credentials
         admin_username = 'mmadmin'
