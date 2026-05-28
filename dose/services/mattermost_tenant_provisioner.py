@@ -75,33 +75,43 @@ def _create_team(mm_url: str, headers: dict, tenant_schema: str, display_name: s
         result['team_error'] = "Admin token verification failed — check MATTERMOST_ADMIN_TOKEN"
         return None
 
-    # For demo: use fixed team name PolySaaS-Dev_Team instead of deriving from tenant
-    # This allows multiple demo tenants to share the same Mattermost team
-    name = "polysaasdevteam"  # Mattermost team name (1-15 chars, lowercase a-z only)
-    demo_display = "PolySaaS-Dev_Team"  # Display name for the shared demo team
+    # Use company name for team name, convert to Mattermost URL-friendly format
+    # Mattermost team names: lowercase, spaces to hyphens, max 64 chars, only a-z 0-9 - _
+    raw_team_name = display_name.lower()
+    # Replace spaces with hyphens
+    team_name = re.sub(r'\s+', '-', raw_team_name)
+    # Remove invalid characters (keep only a-z, 0-9, -, _)
+    team_name = re.sub(r'[^a-z0-9\-_]', '', team_name)
+    # Ensure it starts with a letter
+    team_name = re.sub(r'^[^a-z]+', '', team_name)
+    # Limit to 64 chars
+    team_name = team_name[:64]
+    # Ensure at least 2 chars
+    if len(team_name) < 2:
+        team_name = "team"
 
-    logger.info("[MM-PROV] Using shared demo team name=%r display_name=%r for tenant=%s", name, demo_display, tenant_schema)
+    logger.info("[MM-PROV] Creating team from company name=%r display_name=%r for tenant=%s", team_name, display_name, tenant_schema)
 
     resp = requests.post(
         f"{mm_url}/api/v4/teams",
         headers=headers,
-        json={"name": name, "display_name": demo_display, "type": "I"},
+        json={"name": team_name, "display_name": display_name, "type": "O"},
         timeout=30,
     )
     if resp.status_code == 201:
         team = resp.json()
         result['team_id'] = team['id']
         result['team_name'] = team['name']
-        logger.info("[MM-PROV] Created shared demo team %s (id=%s)", name, team['id'])
+        logger.info("[MM-PROV] Created team %s (id=%s)", team_name, team['id'])
         return team['id']
     if resp.status_code == 400 and 'already exists' in resp.text.lower():
-        existing = requests.get(f"{mm_url}/api/v4/teams/name/{name}", headers=headers, timeout=15)
+        existing = requests.get(f"{mm_url}/api/v4/teams/name/{team_name}", headers=headers, timeout=15)
         if existing.status_code == 200:
             team = existing.json()
             result['team_id'] = team['id']
             result['team_name'] = team['name']
             result['team_existed'] = True
-            logger.info("[MM-PROV] Team %s already exists (id=%s)", name, team['id'])
+            logger.info("[MM-PROV] Team %s already exists (id=%s)", team_name, team['id'])
             return team['id']
     # Log FULL response for debugging
     logger.error("[MM-PROV] Team creation failed: HTTP %s body=%s", resp.status_code, resp.text)
@@ -305,17 +315,18 @@ def _promote_to_system_admin(mm_url: str, headers: dict, user_id: str, result: d
 
 
 def _ensure_dev_team(mm_url: str, headers: dict, result: dict) -> Optional[str]:
-    """Create or ensure 'PolySaaS Dev Team' exists."""
-    team_name = 'PolySaaS Dev Team'
-    team_display_name = 'PolySaaS Dev Team'
+    """Create or ensure 'polysaas-dev-team' exists (shared team for all subscribers)."""
+    team_name = 'polysaas-dev-team'  # Mattermost team name (lowercase, hyphens)
+    team_display_name = 'PolySaaS Dev Team'  # Display name
     
     # Check if team already exists
     try:
-        resp = requests.get(f"{mm_url}/api/v4/teams/name/{team_name.replace(' ', '-')}", headers=headers, timeout=10)
+        resp = requests.get(f"{mm_url}/api/v4/teams/name/{team_name}", headers=headers, timeout=10)
         if resp.status_code == 200:
             team = resp.json()
             logger.info("[MM-PROV] Dev team already exists: %s", team_name)
             result['dev_team_id'] = team['id']
+            result['team_name'] = team_name
             return team['id']
     except Exception as e:
         logger.warning("[MM-PROV] Error checking for dev team: %s", e)
@@ -326,7 +337,7 @@ def _ensure_dev_team(mm_url: str, headers: dict, result: dict) -> Optional[str]:
             f"{mm_url}/api/v4/teams",
             headers=headers,
             json={
-                'name': team_name.replace(' ', '-'),
+                'name': team_name,
                 'display_name': team_display_name,
                 'type': 'O'  # Open team
             },
@@ -337,6 +348,7 @@ def _ensure_dev_team(mm_url: str, headers: dict, result: dict) -> Optional[str]:
             logger.info("[MM-PROV] Created dev team: %s (id=%s)", team_name, team['id'])
             result['dev_team_created'] = True
             result['dev_team_id'] = team['id']
+            result['team_name'] = team_name
             return team['id']
         else:
             logger.error("[MM-PROV] Failed to create dev team: %s - %s", resp.status_code, resp.text[:200])
@@ -488,6 +500,7 @@ def provision_mattermost_tenant(
     try:
         _ensure_passthrough_endpoint(tenant_schema, mm_url, result)
 
+        # Create team from company name
         team_id = _create_team(mm_url, headers, tenant_schema, display_name, result)
         if not team_id:
             result['success'] = False
@@ -498,13 +511,10 @@ def provision_mattermost_tenant(
         # Ensure system admin user (mmadmin) exists and has system admin role
         system_admin_id = _ensure_system_admin_user(mm_url, headers, result)
         
-        # Ensure PolySaaS Dev Team exists
-        dev_team_id = _ensure_dev_team(mm_url, headers, result)
-        
-        # Add system admin to dev team if both exist
-        if system_admin_id and dev_team_id:
-            _add_user_to_team(mm_url, headers, dev_team_id, system_admin_id, result)
-            logger.info("[MM-PROV] Added system admin to dev team")
+        # Add system admin to tenant team if both exist
+        if system_admin_id and team_id:
+            _add_user_to_team(mm_url, headers, team_id, system_admin_id, result)
+            logger.info("[MM-PROV] Added system admin to tenant team")
 
         user_id = _create_user(mm_url, headers, admin_email, username, effective_password, result)
         token = ''

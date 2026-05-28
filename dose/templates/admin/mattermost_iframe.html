@@ -1,0 +1,27 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<style>
+    .mattermost-iframe-wrapper {
+        padding: 0;
+        margin: 0;
+        height: calc(100vh - 110px);
+        overflow: hidden;
+        background: #fff;
+    }
+    .mattermost-iframe-wrapper iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        display: block;
+    }
+</style>
+
+<div class="mattermost-iframe-wrapper">
+    <iframe 
+        src="{{ passthrough_url }}" 
+        title="Mattermost"
+        allowfullscreen>
+    </iframe>
+</div>
+{% endblock %}

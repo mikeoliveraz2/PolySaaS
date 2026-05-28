@@ -1,0 +1,147 @@
+# Mattermost Passthrough Flow Documentation
+
+**Date**: May 24, 2026  
+**Status**: Hybrid Login + Direct Iframe (Demo Mode)
+
+## Overview
+
+We use a **hybrid approach** for the demo:
+- **Passthrough** only for initial login/authentication
+- **Direct iframe** after successful login (simpler & more stable for video/demo)
+
+---
+
+## Full Request Flow Trace
+
+### 1. User Click (Admin Sidebar)
+```html
+<!-- jazzmin/admin/navigation.html or similar -->
+<a href="/pt/admin/polysaas-mattermost.onrender.com/" class="nav-link">
+    Mattermost
+</a>
+2. Middleware Stack (Request)
+
+SessionTenantMiddleware → Loads tenant from session (polysaast60)
+DoseRequestController → Main request handler
+ExternalPassthroughMiddleware → Detects /pt/ prefix
+Parses: pt/admin/polysaas-mattermost.onrender.com
+Looks up PassThroughEndpoint record
+Selects MattermostPassthroughHandler
+
+
+3. Passthrough Core
+
+Calls forward_request_standardized() to upstream
+Applies MattermostPassthroughHandler.process_response_headers()
+Applies MattermostPassthroughHandler.process_html_response() (URL rewriting)
+
+4. Response Path
+
+Modified HTML returned to browser
+Browser loads rewritten static assets through proxy (during login)
+
+
+Current Implementation Strategy (Demo)
+Phase 1 (Login): Passthrough
+Phase 2 (After Login): Direct <iframe>
+This avoids fighting with complex dynamic chunk loading after authentication.
+
+Next: Step 2 - Admin View + Template
+text---
+
+### **2. Admin View & Template (Direct Iframe after Login)**
+
+**Create / Update these files:**
+
+#### `dose/admin_views.py` (add this view)
+
+```python
+# dose/admin_views.py
+from django.shortcuts import render
+from django.contrib.admin.views.decorators import staff_member_required
+
+@staff_member_required
+def mattermost_dashboard(request):
+    """Mattermost dashboard with smart login/iframe switching"""
+    context = {
+        'title': 'Mattermost',
+        'upstream_url': 'https://polysaas-mattermost.onrender.com',
+        'proxy_url': '/pt/admin/polysaas-mattermost.onrender.com/',
+    }
+    return render(request, 'admin/mattermost_dashboard.html', context)
+Template: templates/admin/mattermost_dashboard.html
+HTML{% extends "admin/base.html" %}
+{% block content %}
+<div class="mattermost-container" style="height: calc(100vh - 120px);">
+    <iframe 
+        id="mattermost-iframe"
+        src="{{ proxy_url }}"
+        style="width: 100%; height: 100%; border: none;"
+        frameborder="0"
+        allowfullscreen>
+    </iframe>
+</div>
+
+<script>
+    // Optional: Switch to direct iframe after login (detect by URL change)
+    const iframe = document.getElementById('mattermost-iframe');
+    
+    iframe.onload = function() {
+        try {
+            if (iframe.contentWindow.location.href.includes('/login')) {
+                console.log("Still on login page - using proxy");
+            } else {
+                console.log("Logged in - switching to direct iframe for better performance");
+                // iframe.src = "{{ upstream_url }}";  // Uncomment when ready
+            }
+        } catch(e) {
+            console.log("Cross-origin - still using proxy");
+        }
+    };
+</script>
+{% endblock %}
+
+3. Updated Handler (Login-Focused)
+Final mattermost_handler.py:
+Python# dose/passthrough/handlers/mattermost_handler.py
+"""
+MATTERMOST PASSTHROUGH - LOGIN ONLY (Demo Mode)
+===============================================
+
+Current Strategy (May 24, 2026):
+- Passthrough used ONLY for login flow
+- After login, we switch to direct iframe in the admin template
+- This is acceptable for demo/video purposes
+- Full transparent passthrough will be implemented later
+"""
+
+import re
+
+class MattermostPassthroughHandler:
+    UPSTREAM = "https://polysaas-mattermost.onrender.com"
+    PROXY_PREFIX = "/pt/admin/polysaas-mattermost.onrender.com"
+
+    def process_response_headers(self, headers, request):
+        """Minimal cleanup focused on allowing login"""
+        for key in list(headers.keys()):
+            if any(x in key.lower() for x in ['content-security-policy', 'x-frame-options', 'frame-options']):
+                print(f"[MM Login] Removed: {key}")
+                del headers[key]
+
+        headers['X-Frame-Options'] = "ALLOWALL"
+        headers['Content-Security-Policy'] = "frame-ancestors *; default-src * 'unsafe-inline' 'unsafe-eval';"
+        return headers
+
+    def process_html_response(self, response_content, request, endpoint=None, endpoint_url=None):
+        if isinstance(response_content, bytes):
+            html = response_content.decode('utf-8', errors='replace')
+        else:
+            html = str(response_content)
+
+        # Only basic rewriting needed for login page
+        html = re.sub(r'(["\'])/static/', 
+                     lambda m: f'{m.group(1)}{self.PROXY_PREFIX}/static/', html)
+
+        print(f"[MM Login] Processed HTML for login flow")
+        return html
+

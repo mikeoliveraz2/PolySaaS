@@ -9,7 +9,7 @@ from rest_framework.routers import DefaultRouter
 try:
     from dose.admin_views import pt_admin_generic_passthrough_view
 except ImportError:
-    def pt_admin_generic_passthrough_view(request, endpoint):
+    def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
         from django.shortcuts import redirect
         return redirect('/admin/')
 

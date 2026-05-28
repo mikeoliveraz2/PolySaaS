@@ -666,10 +666,9 @@
                 <div class="pss-pt-cards">
                     {% for service in passthrough_services %}
                         {% with slug=service.title|lower %}
-                        {% with embed_url="/admin/passthrough-embed/"|add:service.trigger|add:"/" %}
-                        <a href="{{ embed_url }}"
-                           class="pss-pt-card{% if request.path_info|path_starts_with:embed_url %} is-active{% endif %}"
-                           {% if request.path_info|path_starts_with:embed_url %}aria-current="page"{% endif %}
+                        <a href="{{ service.url }}"
+                           class="pss-pt-card{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
+                           {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            title="{{ service.description|default:service.title }}">
                             <div class="pss-pt-logo pss-pt-logo--{{ slug }}">
                                 {% if 'odoo' in slug %}
@@ -688,7 +687,6 @@
                             </div>
                             <span class="pss-pt-label">{{ service.title }}</span>
                         </a>
-                        {% endwith %}
                         {% endwith %}
                     {% endfor %}
                 </div>

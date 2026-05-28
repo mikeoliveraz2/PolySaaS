@@ -1,11 +1,175 @@
-# dose/admin_views.py
-from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
+from django.http import (
+    JsonResponse,
+    HttpResponse,
+    HttpResponseNotFound,
+    HttpResponseForbidden,
+)
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect
+import re
+import logging
 
-def pt_admin_generic_passthrough_view(request, endpoint):
-    external_url = f"https://{endpoint}" if not endpoint.startswith(('http')) else endpoint
+logger = logging.getLogger(__name__)
+
+print("[DEBUG] admin_views.py module loaded")
+
+
+# =============================================
+# THEME FUNCTIONS
+# =============================================
+@csrf_exempt
+def set_theme(request):
+    print("[DEBUG] --- set_theme ENTRY ---")
+    if not request.user.is_authenticated:
+        return JsonResponse({"status": "error", "message": "User not authenticated"}, status=400)
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "Invalid method"}, status=400)
+
+    from dose.utils import get_current_tenant
+    from dose.models import UserProfile, Tenant
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        tenant_id = request.session.get('tenant_id')
+        if tenant_id:
+            tenant = Tenant.objects.filter(id=tenant_id).first()
+
+    if not tenant:
+        return JsonResponse({"status": "error", "message": "No tenant found"}, status=400)
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
+
+    light_theme = request.POST.get("light_theme")
+    dark_theme = request.POST.get("dark_theme")
+    display_mode = request.POST.get("display_mode")
+
+    if not any([light_theme, dark_theme, display_mode]):
+        try:
+            import json
+            data = json.loads(request.body.decode('utf-8'))
+            light_theme = data.get("light_theme")
+            dark_theme = data.get("dark_theme")
+            display_mode = data.get("display_mode")
+        except:
+            pass
+
+    updated = []
+    if light_theme:
+        profile.light_theme = light_theme
+        updated.append("light_theme")
+    if dark_theme:
+        profile.dark_theme = dark_theme
+        updated.append("dark_theme")
+    if display_mode in ("light", "dark"):
+        profile.last_selected_theme = profile.light_theme if display_mode == "light" else profile.dark_theme
+        updated.append("display_mode")
+
+    profile.save()
+
+    return JsonResponse({
+        "status": "ok",
+        "updated_fields": updated,
+        "light_theme": profile.light_theme,
+        "dark_theme": profile.dark_theme,
+    })
+
+
+LIGHT_THEMES = sorted(["flatly","cerulean","cosmo","journal","litera","lumen","lux","minty","pulse","sandstone","simplex","sketchy","spacelab","united","yeti"])
+DARK_THEMES = sorted(["cyborg","darkly","slate","solar","superhero"])
+
+
+@login_required
+def select_theme_api(request):
+    from dose.utils import get_current_tenant
+    from dose.models import UserProfile
+
+    tenant = get_current_tenant(request)
+    profile = None
+    if tenant:
+        profile, _ = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
+
+    return JsonResponse({
+        'light_theme': profile.light_theme if profile else 'flatly',
+        'dark_theme': profile.dark_theme if profile else 'darkly',
+        'use_light_mode': request.session.get('display_mode', 'light') == 'light',
+    })
+
+
+@login_required
+def select_theme(request):
+    from dose.utils import get_current_tenant
+    from dose.models import UserProfile
+    from django.contrib import messages
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        messages.error(request, "No tenant selected.")
+        return redirect("/dose/")
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
+
+    if request.method == "POST":
+        profile.light_theme = request.POST.get("light_theme", profile.light_theme)
+        profile.dark_theme = request.POST.get("dark_theme", profile.dark_theme)
+        profile.use_system_pref = request.POST.get("use_system_pref") == "on"
+        profile.save()
+
+        request.session['light_theme'] = profile.light_theme
+        request.session['dark_theme'] = profile.dark_theme
+        return JsonResponse({'status': 'success'})
 
     context = {
-        'service_name': endpoint,
-        'external_url': external_url,
+        "light_themes": LIGHT_THEMES,
+        "dark_themes": DARK_THEMES,
+        "light_theme": profile.light_theme,
+        "dark_theme": profile.dark_theme,
+        "use_system_pref": getattr(profile, 'use_system_pref', False),
+        "display_mode": request.session.get('display_mode', 'light'),
     }
-    return render(request, 'admin/passthrough_wrapper.html', context)
+    return render(request, "admin/select_theme.html", context)
+
+
+# =============================================
+# PASSTHROUGH VIEWS
+# =============================================
+@csrf_exempt
+@never_cache
+@login_required
+def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
+    """Main clean passthrough view"""
+    print(f"[PASSTHROUGH VIEW] endpoint={endpoint}, subpath={subpath}, path={request.path}")
+
+    from dose.utils import get_current_tenant
+    from dose.models import UserTenantMembership
+    from dose.passthrough.registry import get_handler
+    from dose.passthrough.forwarding import forward_request_standardized
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden("No tenant context.")
+
+    u = request.user
+    if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
+        return HttpResponseForbidden("Access denied to this tenant.")
+
+    handler = get_handler(endpoint)
+
+    if handler and hasattr(handler, 'handle_request'):
+        print(f"[VIEW] Using handler: {handler.__class__.__name__}")
+        response = handler.handle_request(request, subpath)
+        if response is not None:
+            return response
+
+    # Construct the upstream endpoint URL from the endpoint parameter
+    endpoint_url = f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint
+    print(f"[VIEW] Using generic forwarder for {endpoint} -> {endpoint_url}")
+    return forward_request_standardized(request, endpoint_url, handler=handler, endpoint=endpoint, trigger=endpoint)
+
+
+@never_cache
+@login_required
+def passthrough_embed_view(request, endpoint):
+    print(f"[EMBED VIEW] endpoint={endpoint}")
+    return HttpResponse(f"Embed view for {endpoint} - not fully implemented yet")

@@ -72,10 +72,8 @@ class MattermostPassthroughHandler:
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         Root-only intercept:
-          - Token present → forward to Mattermost (return None).
-          - No token     → try server-side SSO; if that works set cookie + redirect
-                           to /{team}/channels/town-square; otherwise serve login bridge
-                           INLINE (no redirect to /login — that caused the loop).
+          - Token present → return None (let forwarder fetch Mattermost / with token).
+          - No token     → serve login bridge INLINE (no redirect to /login).
         All non-root paths return None immediately so the forwarder handles them.
         """
         if request.method != "GET":
@@ -88,26 +86,20 @@ class MattermostPassthroughHandler:
         if request.path_info.rstrip("/") != proxy_prefix:
             return None
 
-        # Let Mattermost handle team selection - don't specify team in redirect
-        team_redirect = f"{proxy_prefix}/channels/town-square"
-        print(f"[MM ROOT] redirect_target={team_redirect}")
-
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
         
+        # Debug: log all cookies to see what's present
+        print(f"[MM ROOT] All cookies: {dict(request.COOKIES)}")
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        print(f"[MM ROOT] token found: {bool(token)}, force_login: {force_login}")
         if token and not force_login:
             # TRUST the browser cookie — don't validate server-side.
             # Server-side validation creates new sessions that invalidate the browser token.
-            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — redirecting without validation")
-            from django.http import HttpResponseRedirect
-            resp = HttpResponseRedirect(team_redirect)
-            resp.set_cookie(
-                'MMAUTHTOKEN', token,
-                max_age=86400, path='/', samesite='Lax',
-                secure=request.is_secure(), httponly=False,
-            )
-            return resp
+            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — letting forwarder handle root")
+            # Return None so the forwarder fetches Mattermost's / with the token.
+            # Mattermost will handle team selection and redirect appropriately.
+            return None
 
         # No browser token — serve the login bridge INLINE (avoids redirect loop).
         print(f"[MM ROOT] No browser token — serving login bridge inline at root")
@@ -153,6 +145,7 @@ class MattermostPassthroughHandler:
                 django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
                 login_id = stored_login or django_username or user_email
                 password = stored_pass
+                allow_auto_submit = bool(login_id and password)
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
             login_id = user_email
@@ -190,12 +183,21 @@ class MattermostPassthroughHandler:
   <div class="sub">via PolySaaS Passthrough</div>
   <input type="text" id="lid" placeholder="Email or Username" value="{lid_attr}" autocomplete="username">
   <input type="password" id="pwd" placeholder="Password" value="{pwd_attr}" autocomplete="current-password">
-  <button id="btn" type="button">Sign In</button>
+  <button id="btn" type="button" onclick="window._mmDoLogin()">Sign In</button>
   <div id="status"></div>
+  <div id="debug" style="margin-top:10px;padding:8px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;font-size:11px;color:#333;max-height:120px;overflow:auto;"></div>
 </div>
 <script>
 (function () {{
+try {{
+    var _allowAutoSubmit = {'true' if allow_auto_submit else 'false'};
     function $(id) {{ return document.getElementById(id); }}
+    function dbg(msg) {{
+        console.log('[LoginBridge] ' + msg);
+        var d = $('debug');
+        if (d) {{ d.innerHTML += '<div style=\"margin:1px 0;\">' + new Date().toLocaleTimeString() + ' — ' + msg + '</div>'; d.scrollTop = d.scrollHeight; }}
+    }}
+    dbg('IIFE entered');
     function setStatus(msg, err) {{
         var s = $('status');
         s.className = err ? 'err' : '';
@@ -207,89 +209,113 @@ class MattermostPassthroughHandler:
     function doLogin() {{
         var lid = $('lid').value.trim();
         var pwd = $('pwd').value;
-        console.log('[LoginBridge] doLogin called lid=' + lid + ' pwd_len=' + pwd.length);
+        dbg('doLogin called lid=' + lid + ' pwd_len=' + pwd.length);
         if (!lid || !pwd) {{ setStatus('Enter username and password.', true); return; }}
         $('btn').disabled = true;
         setStatus('Signing in...');
 
         var url = base().replace(/\/$/, '') + '/api/v4/users/login';
-        console.log('[LoginBridge] POST ' + url);
+        dbg('POST ' + url);
 
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.withCredentials = true;
         xhr.onload = function () {{
-            console.log('[LoginBridge] onload status=' + xhr.status);
+            dbg('onload status=' + xhr.status);
             var token = xhr.getResponseHeader('Token');
-            console.log('[LoginBridge] token=' + (token ? 'present' : 'MISSING'));
+            dbg('token=' + (token ? 'present' : 'MISSING'));
             if (xhr.status >= 200 && xhr.status < 300 && token) {{
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
-                // Let Mattermost handle team selection - don't specify team in redirect
-                var redirectPath = '/channels/town-square';
                 var baseUrl = base().replace(/\/$/, '');
-                // Pass token via URL param to ensure server-side shim injection
-                var redirectUrl = baseUrl + redirectPath + '?mm_token=' + encodeURIComponent(token);
-                console.log('[LoginBridge] redirecting to', redirectUrl);
+                var redirectUrl = baseUrl + '/';
+                dbg('token stored, reloading root ' + redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
             try {{ var b = JSON.parse(xhr.responseText || '{{}}'); if (b.message) msg = b.message; }} catch (e) {{}}
-            console.log('[LoginBridge] fail msg=' + msg);
+            dbg('fail msg=' + msg);
             $('btn').disabled = false;
             setStatus(msg, true);
         }};
         xhr.onerror = function () {{
-            console.log('[LoginBridge] onerror — network failure');
+            dbg('onerror — network failure');
             $('btn').disabled = false;
             setStatus('Network error — check console.', true);
         }};
         xhr.onabort = function () {{
-            console.log('[LoginBridge] onabort');
+            dbg('onabort');
             $('btn').disabled = false;
             setStatus('Request aborted.', true);
         }};
         xhr.ontimeout = function () {{
-            console.log('[LoginBridge] ontimeout');
+            dbg('ontimeout');
             $('btn').disabled = false;
             setStatus('Request timed out.', true);
         }};
         try {{
             xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
-            console.log('[LoginBridge] xhr.send() called');
+            dbg('xhr.send() called');
         }} catch (e) {{
-            console.log('[LoginBridge] xhr.send() threw: ' + e);
+            dbg('xhr.send() threw: ' + e);
             $('btn').disabled = false;
             setStatus('Send error: ' + e.message, true);
         }}
     }}
 
-    document.addEventListener('DOMContentLoaded', function () {{
+    function initBridge() {{
         $('btn').addEventListener('click', doLogin);
-        var hasCreds = $('lid').value && $('pwd').value;
+        var hasCreds = !!($('lid').value && $('pwd').value);
         var existingToken = '';
         try {{ existingToken = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
         if (!existingToken) {{
             var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
             if (m) existingToken = m[1];
         }}
-        console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
+        var forceLogin = window.location.search.indexOf('force=1') !== -1;
+        dbg('loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
                     ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
-                    ' auto=' + hasCreds + ' hasToken=' + (existingToken ? 'yes' : 'no'));
-        if (existingToken) {{
-            console.log('[LoginBridge] Token already exists — redirecting to channels, skipping login');
-            // Let Mattermost handle team selection - don't specify team in redirect
-            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
+                    ' hasCreds=' + hasCreds +
+                    ' allowAuto=' + _allowAutoSubmit +
+                    ' hasToken=' + (existingToken ? 'yes' : 'no') +
+                    ' force=' + forceLogin);
+        if (existingToken && !forceLogin) {{
+            dbg('Token already exists — redirecting to root, skipping login');
+            window.location.replace(base().replace(/\/$/, '') + '/');
             return;
         }}
-        if (hasCreds) {{
-            setTimeout(doLogin, 300);
+        if (forceLogin && existingToken) {{
+            dbg('force=1 detected — clearing stale token and re-authenticating');
+            try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
+            try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(e) {{}}
+            try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(e) {{}}
+            document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+            existingToken = '';
         }}
-    }});
+        if (_allowAutoSubmit && hasCreds) {{
+            dbg('auto-submit in 300ms');
+            setTimeout(doLogin, 300);
+        }} else {{
+            dbg('auto-submit skipped: allow=' + _allowAutoSubmit + ' hasCreds=' + hasCreds);
+        }}
+    }}
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', initBridge);
+    }} else {{
+        initBridge();
+    }}
+    window._mmDoLogin = doLogin;
+}} catch (e) {{
+    var errMsg = '[LoginBridge FATAL] ' + (e && e.message ? e.message : String(e));
+    console.error(errMsg, e);
+    var dbgPanel = document.getElementById('debug');
+    if (dbgPanel) dbgPanel.innerHTML = '<div style="color:#b91c1c;font-weight:bold;">' + errMsg + '</div>';
+    else alert(errMsg);
+}}
 }})();
 </script>
 </div>
@@ -641,7 +667,18 @@ class MattermostPassthroughHandler:
             token_header = resp.headers.get('Token')
             if token_header:
                 print(f'[MM_RESP] Token header present: {token_header[:10]}...')
-        
+
+        # Store fresh login token in server cache so subsequent page loads can use it
+        # even if browser cookies/localStorage fail.
+        if resp.status_code == 200 and '/api/v4/users/login' in (target_url or ''):
+            token_header = resp.headers.get('Token')
+            if token_header:
+                try:
+                    self._save_tenantapp_token(token_header, request)
+                    print(f'[MM_AUTH] Stored fresh login token in server cache (len={len(token_header)})')
+                except Exception as exc:
+                    print(f'[MM_AUTH] Failed to store login token in server cache: {exc}')
+
         # If we get a 401 on ANY API call (not just /users/me), the token is invalid.
         # Clear BOTH server cache AND browser cookie to force re-auth via login bridge.
         if resp.status_code == 401 and '/api/v4/' in (target_url or ''):
@@ -731,7 +768,19 @@ class MattermostPassthroughHandler:
     var B = {base_js};
     var PROXY = {proxy_js};
     var O = window.location.origin;
-    var MMAUTHTOKEN = {token_js};
+    var _serverToken = {token_js};
+    var MMAUTHTOKEN = '';
+    // Prefer localStorage (fresh after login bridge) over server cache
+    try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+    if (!MMAUTHTOKEN) {{
+        try {{
+            var stored = localStorage.getItem('storage:MMAUTHTOKEN');
+            if (stored) {{ MMAUTHTOKEN = JSON.parse(stored); }}
+        }} catch(e) {{}}
+    }}
+    if (!MMAUTHTOKEN && _serverToken) {{
+        MMAUTHTOKEN = _serverToken;
+    }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
 
@@ -875,6 +924,13 @@ class MattermostPassthroughHandler:
 
     window.__webpack_public_path__ = PROXY + '/static/';
     window.basename = PROXY;
+    // Protect basename from being overwritten by upstream scripts
+    setInterval(function() {{
+        if (window.basename !== PROXY) {{
+            console.log('[PolySaaS MM] Resetting basename from', window.basename, 'to', PROXY);
+            window.basename = PROXY;
+        }}
+    }}, 500);
 
     // Strip PolySaaS proxy paths from redirect_to — Mattermost history.push(redirect_to)
     // would navigate within the SPA and fail to match any route, falling back to /login.

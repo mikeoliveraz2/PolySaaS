@@ -9,6 +9,6 @@ class CSRFExemptionMiddleware(MiddlewareMixin):
         path = request.path_info or request.path
         if path.startswith('/pt/'):
             # Bypass CSRF for all passthrough paths
-            setattr(request, '_csrf_exempt', True)
+            request.csrf_processing_done = True
             print(f"[CSRF] Exempted: {path}")
         return None
