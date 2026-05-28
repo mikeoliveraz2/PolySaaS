@@ -15,10 +15,6 @@ class Command(BaseCommand):
         mm_url = getattr(settings, 'MATTERMOST_SHARED_URL', 'https://polysaas-mattermost.onrender.com')
         plugin_path = os.path.join(settings.BASE_DIR, 'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.zip')
         
-        # mmadmin credentials
-        admin_username = 'mmadmin'
-        admin_password = 'PolySaaS2026!'
-        
         self.stdout.write(f'Working with Mattermost: {mm_url}')
         self.stdout.write(f'Plugin path: {plugin_path}')
         
@@ -27,27 +23,26 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'Plugin file not found: {plugin_path}'))
             return
         
-        # Login as mmadmin to get token
-        self.stdout.write(f'Logging in as {admin_username}...')
+        # Use admin token directly (from env or settings)
+        token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+        if not token:
+            self.stdout.write(self.style.ERROR('MATTERMOST_ADMIN_TOKEN not configured in settings'))
+            self.stdout.write(self.style.WARNING('Add MATTERMOST_ADMIN_TOKEN to your environment or settings.py'))
+            return
+        
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # Verify token works by hitting /api/v4/users/me
+        self.stdout.write('Verifying admin token...')
         try:
-            login_resp = requests.post(
-                f"{mm_url}/api/v4/users/login",
-                json={'login_id': admin_username, 'password': admin_password},
-                timeout=30,
-            )
-            if login_resp.status_code != 200:
-                self.stdout.write(self.style.ERROR(f'Login failed: {login_resp.status_code} - {login_resp.text[:200]}'))
+            me_resp = requests.get(f"{mm_url}/api/v4/users/me", headers=headers, timeout=10)
+            if me_resp.status_code != 200:
+                self.stdout.write(self.style.ERROR(f'Token invalid: {me_resp.status_code} - {me_resp.text[:200]}'))
                 return
-            
-            token = login_resp.headers.get('Token')
-            if not token:
-                self.stdout.write(self.style.ERROR('No token in login response'))
-                return
-            
-            headers = {"Authorization": f"Bearer {token}"}
-            self.stdout.write(self.style.SUCCESS('Login successful'))
+            me = me_resp.json()
+            self.stdout.write(self.style.SUCCESS(f"Token valid (user: {me.get('username')})"))
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f'Login exception: {e}'))
+            self.stdout.write(self.style.ERROR(f'Token verification failed: {e}'))
             return
         
         # Upload plugin
