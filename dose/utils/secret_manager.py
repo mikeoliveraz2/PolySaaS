@@ -22,10 +22,9 @@ def _get_client():
         return None
     try:
         from google.cloud import secretmanager
-        from google.auth.exceptions import DefaultCredentialsError
         _client = secretmanager.SecretManagerServiceClient()
         return _client
-    except (ImportError, DefaultCredentialsError, Exception) as e:
+    except Exception as e:
         logger.debug("Secret Manager client unavailable: %s", e)
         _client_unavailable = True
         return None
