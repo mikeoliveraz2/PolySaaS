@@ -91,12 +91,13 @@ class MattermostPassthroughHandler:
         
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
 
-        # If user already has a token cookie, let the forwarder try it first.
-        # Generating a new token on every root hit causes Mattermost to re-initialize
-        # which can trigger its internal logout → redirect loop.
+        # If user already has a token cookie, redirect to town-square.
+        # Letting forwarder fetch / causes Mattermost to redirect to a default
+        # team that may not exist for this user, causing "Team Not Found" error.
         if token and not force_login:
-            print(f"[MM ROOT] Existing token cookie present — letting forwarder try it")
-            return None
+            print(f"[MM ROOT] Existing token cookie present — redirecting to town-square")
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(f'{proxy_prefix}/channels/town-square')
 
         # No cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
