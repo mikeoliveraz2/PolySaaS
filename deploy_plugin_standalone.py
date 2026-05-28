@@ -9,8 +9,8 @@ import requests
 
 MM_URL = os.environ.get('MATTERMOST_SHARED_URL', 'https://polysaas-mattermost.onrender.com').rstrip('/')
 TOKEN = os.environ.get('MATTERMOST_ADMIN_TOKEN', '')
-PLUGIN_ZIP = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.zip')
+PLUGIN_ARCHIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.tar.gz')
 PLUGIN_ID = 'com.polysaas.passthrough'
 
 
@@ -20,8 +20,8 @@ def main():
         print("Set it: export MATTERMOST_ADMIN_TOKEN=your_token_here")
         sys.exit(1)
 
-    if not os.path.exists(PLUGIN_ZIP):
-        print(f"ERROR: Plugin zip not found: {PLUGIN_ZIP}")
+    if not os.path.exists(PLUGIN_ARCHIVE):
+        print(f"ERROR: Plugin archive not found: {PLUGIN_ARCHIVE}")
         sys.exit(1)
 
     headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -48,12 +48,12 @@ def main():
                 break
 
     # Upload
-    print(f"Uploading {PLUGIN_ZIP}...")
-    with open(PLUGIN_ZIP, 'rb') as f:
+    print(f"Uploading {PLUGIN_ARCHIVE}...")
+    with open(PLUGIN_ARCHIVE, 'rb') as f:
         upload = requests.post(
             f"{MM_URL}/api/v4/plugins",
             headers=headers,
-            files={'plugin': ('polysaas-passthrough-plugin.zip', f, 'application/zip')},
+            files={'plugin': ('polysaas-passthrough-plugin.tar.gz', f, 'application/gzip')},
             timeout=60,
         )
     print(f"  Upload: {upload.status_code}")

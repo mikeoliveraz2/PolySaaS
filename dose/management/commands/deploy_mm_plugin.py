@@ -13,7 +13,7 @@ class Command(BaseCommand):
         from django.conf import settings
         
         mm_url = getattr(settings, 'MATTERMOST_SHARED_URL', 'https://polysaas-mattermost.onrender.com')
-        plugin_path = os.path.join(settings.BASE_DIR, 'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.zip')
+        plugin_path = os.path.join(settings.BASE_DIR, 'mattermost-passthrough-plugin', 'polysaas-passthrough-plugin.tar.gz')
         
         self.stdout.write(f'Working with Mattermost: {mm_url}')
         self.stdout.write(f'Plugin path: {plugin_path}')
@@ -52,7 +52,7 @@ class Command(BaseCommand):
                 upload_resp = requests.post(
                     f"{mm_url}/api/v4/plugins",
                     headers=headers,
-                    files={'plugin': ('polysaas-passthrough-plugin.zip', f, 'application/zip')},
+                    files={'plugin': ('polysaas-passthrough-plugin.tar.gz', f, 'application/gzip')},
                     timeout=60,
                 )
             
@@ -124,7 +124,7 @@ class Command(BaseCommand):
                 upload_resp = requests.post(
                     f"{mm_url}/api/v4/plugins",
                     headers=headers,
-                    files={'plugin': ('polysaas-passthrough-plugin.zip', f, 'application/zip')},
+                    files={'plugin': ('polysaas-passthrough-plugin.tar.gz', f, 'application/gzip')},
                     timeout=60,
                 )
             
