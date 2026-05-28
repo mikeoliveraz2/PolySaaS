@@ -91,13 +91,12 @@ class MattermostPassthroughHandler:
         
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
 
-        # If user already has a token cookie, redirect to town-square.
-        # Letting forwarder fetch / causes Mattermost to redirect to a default
-        # team that may not exist for this user, causing "Team Not Found" error.
+        # If user already has a token cookie, let Mattermost handle the redirect.
+        # Don't force a redirect — let forwarder fetch / and Mattermost will
+        # redirect to the appropriate team/channel based on user's membership.
         if token and not force_login:
-            print(f"[MM ROOT] Existing token cookie present — redirecting to town-square")
-            from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(f'{proxy_prefix}/channels/town-square')
+            print(f"[MM ROOT] Existing token cookie present — letting Mattermost handle redirect")
+            return None
 
         # No cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
@@ -115,7 +114,7 @@ class MattermostPassthroughHandler:
   localStorage.removeItem('mmauthtoken');
   document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
   document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
-  window.location.href = '{proxy_prefix}/channels/town-square';
+  window.location.href = '{proxy_prefix}/';
 </script>
 <p>Redirecting to Mattermost...</p>
 </body></html>"""
@@ -454,13 +453,17 @@ try {{
         return None
 
     def _get_login_credentials(self, request):
-        """Get Mattermost login credentials from session or extra_config.
-        Returns (login_id, password) tuple."""
+        """Get Mattermost login credentials and team name from session or extra_config.
+        Returns (login_id, password, team_name) tuple."""
         from dose.passthrough.credential_container import PassthroughCredentialContainer
         
         user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
         login_id = ""
         password = ""
+        team_name = ""
+        
+        extra = self._get_tenantapp_extra_config(request) or {}
+        team_name = extra.get('mm_team_name') or extra.get('team_name') or 'polysaas-dev-team'
         
         # First try to get credentials from encrypted session storage
         session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
@@ -474,7 +477,6 @@ try {{
         
         # Fallback to extra_config if session credentials not available
         if not login_id or not password:
-            extra = self._get_tenantapp_extra_config(request) or {}
             stored_login = (extra.get('mattermost_username') or
                            extra.get('mattermost_login_id') or extra.get('mm_login_id') or
                            extra.get('username') or extra.get('login_id') or '')
@@ -486,7 +488,7 @@ try {{
             if login_id and password:
                 print(f"[MM LoginPreFill] Using extra_config credentials for {login_id!r}")
         
-        return login_id, password
+        return login_id, password, team_name
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
@@ -502,9 +504,9 @@ try {{
             else:
                 _proxy_prefix = "/pt/admin/mattermost"
             # Get credentials and inject pre-fill script into Mattermost's login form
-            login_id, password = self._get_login_credentials(request)
+            login_id, password, team_name = self._get_login_credentials(request)
             if login_id and password:
-                print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}")
+                print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}, team={team_name!r}")
                 prefill_script = f"""<script>
 (function() {{
     function fill() {{
@@ -512,7 +514,7 @@ try {{
         var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
         if (li) {{ li.value = {json.dumps(login_id)}; li.dispatchEvent(new Event('input', {{bubbles: true}})); }}
         if (pw) {{ pw.value = {json.dumps(password)}; pw.dispatchEvent(new Event('input', {{bubbles: true}})); }}
-        console.log('[PolySaaS] Pre-filled login form');
+        console.log('[PolySaaS] Pre-filled login form for team={team_name}');
     }}
     if (document.readyState === 'loading') {{
         document.addEventListener('DOMContentLoaded', fill);
