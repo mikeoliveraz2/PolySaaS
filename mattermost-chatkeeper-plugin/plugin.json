@@ -1,0 +1,101 @@
+{
+  "id": "com.polysaas.chatkeeper",
+  "name": "ChatKeeper",
+  "description": "Conversation history backup, analytics, and export for Mattermost",
+  "version": "1.0.0",
+  "min_server_version": "9.0.0",
+  "server": {
+    "executables": {
+      "linux-amd64": "server/dist/plugin-linux-amd64",
+      "linux-arm64": "server/dist/plugin-linux-arm64",
+      "darwin-amd64": "server/dist/plugin-darwin-amd64",
+      "darwin-arm64": "server/dist/plugin-darwin-arm64",
+      "windows-amd64": "server/dist/plugin-windows-amd64.exe"
+    }
+  },
+  "webapp": {
+    "bundle_path": "webapp/dist/main.js"
+  },
+  "settings_schema": {
+    "header": "ChatKeeper Configuration",
+    "settings": [
+      {
+        "key": "CloudStorageProvider",
+        "display_name": "Cloud Storage Provider",
+        "type": "dropdown",
+        "help_text": "Select cloud provider for conversation backups",
+        "default": "s3",
+        "options": [
+          {"display_name": "AWS S3", "value": "s3"},
+          {"display_name": "Google Cloud Storage", "value": "gcs"},
+          {"display_name": "Azure Blob", "value": "azure"}
+        ]
+      },
+      {
+        "key": "S3Bucket",
+        "display_name": "S3 Bucket Name",
+        "type": "text",
+        "help_text": "S3 bucket for conversation backups (e.g., my-chat-backups)"
+      },
+      {
+        "key": "S3Region",
+        "display_name": "S3 Region",
+        "type": "text",
+        "help_text": "AWS region (e.g., us-east-1)",
+        "default": "us-east-1"
+      },
+      {
+        "key": "S3AccessKey",
+        "display_name": "S3 Access Key ID",
+        "type": "text",
+        "help_text": "AWS access key for S3 uploads"
+      },
+      {
+        "key": "S3SecretKey",
+        "display_name": "S3 Secret Access Key",
+        "type": "text",
+        "help_text": "AWS secret key for S3 uploads"
+      },
+      {
+        "key": "BackupSchedule",
+        "display_name": "Backup Schedule",
+        "type": "dropdown",
+        "help_text": "How often to run automatic backups",
+        "default": "daily",
+        "options": [
+          {"display_name": "Hourly", "value": "hourly"},
+          {"display_name": "Daily", "value": "daily"},
+          {"display_name": "Weekly", "value": "weekly"},
+          {"display_name": "Monthly", "value": "monthly"},
+          {"display_name": "Disabled", "value": "disabled"}
+        ]
+      },
+      {
+        "key": "EnableAnalytics",
+        "display_name": "Enable Analytics",
+        "type": "bool",
+        "help_text": "Collect and display conversation analytics",
+        "default": true
+      },
+      {
+        "key": "EncryptionKey",
+        "display_name": "Encryption Key",
+        "type": "text",
+        "help_text": "AES-256 encryption key for cloud backups (32+ chars recommended)"
+      },
+      {
+        "key": "EnableSentimentAnalysis",
+        "display_name": "Enable Sentiment Analysis",
+        "type": "bool",
+        "help_text": "Analyze message sentiment using AI (requires OpenAI API key)",
+        "default": false
+      },
+      {
+        "key": "OpenAIAPIKey",
+        "display_name": "OpenAI API Key",
+        "type": "text",
+        "help_text": "API key for sentiment analysis (optional)"
+      }
+    ]
+  }
+}
