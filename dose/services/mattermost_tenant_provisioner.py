@@ -538,6 +538,19 @@ def provision_mattermost_tenant(
         result['oidc_enabled'] = oidc_enabled
         result['message'] = 'Mattermost tenant provisioned'
         logger.info("[MM-PROV] Success for %s (team=%s user=%s)", tenant_schema, team_id, user_id)
+
+        # ── Step 8: Setup AI Agents in Town Square ───────────────────────────────
+        try:
+            from dose.services.mattermost_multi_agent_bot import MattermostMultiAgentBot
+            bot = MattermostMultiAgentBot(mm_url, team_name=result.get('team_name', 'polysaas-dev-team'))
+            bot.say_hello_all()
+            result['ai_agents_setup'] = True
+            logger.info("[MM-PROV] AI agents initialized in Town Square")
+        except Exception as agent_exc:
+            logger.warning("[MM-PROV] AI agent setup failed (non-fatal): %s", agent_exc)
+            result['ai_agents_setup'] = False
+            result['ai_agents_error'] = str(agent_exc)
+
         return result
 
     except Exception as exc:
