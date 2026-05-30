@@ -240,6 +240,36 @@ def provision_odoo_tenant(
             tenant_name, admin_email, odoo_user_id,
         )
 
+        # Return actual result based on whether user was created
+        if user_created:
+            return {
+                "success": True,
+                "odoo_url": odoo_url,
+                "odoo_user_id": odoo_user_id,
+                "odoo_credentials": {
+                    "login": admin_email,
+                    "password": password,
+                    "db": config.get('db', ''),
+                },
+                "sso": bool(oauth_client_id),
+                "message": f"Odoo user '{admin_email}' provisioned in shared instance",
+            }
+        else:
+            # User creation failed - report failure
+            return {
+                "success": False,
+                "error": "Odoo user creation failed",
+                "odoo_url": odoo_url,
+                "odoo_user_id": 0,
+                "odoo_credentials": {
+                    "login": admin_email,
+                    "password": password,
+                    "db": config.get('db', ''),
+                },
+                "sso": bool(oauth_client_id),
+                "message": f"Failed to create Odoo user for '{admin_email}'",
+            }
+
     except Exception as exc:
         # Outer catch-all - report actual failure
         logger.error("[OdooProvisioner] Provisioning failed for %s: %s", tenant_schema, exc, exc_info=True)
@@ -258,34 +288,4 @@ def provision_odoo_tenant(
             "odoo_url": getattr(settings, 'ODOO_SHARED_URL', ''),
             "odoo_user_id": 0,
             "message": f"Odoo provisioning failed: {exc}",
-        }
-
-    # Return actual result based on whether user was created
-    if user_created:
-        return {
-            "success": True,
-            "odoo_url": odoo_url,
-            "odoo_user_id": odoo_user_id,
-            "odoo_credentials": {
-                "login": admin_email,
-                "password": password,
-                "db": config.get('db', ''),
-            },
-            "sso": bool(oauth_client_id),
-            "message": f"Odoo user '{admin_email}' provisioned in shared instance",
-        }
-    else:
-        # User creation failed - report failure
-        return {
-            "success": False,
-            "error": "Odoo user creation failed",
-            "odoo_url": odoo_url,
-            "odoo_user_id": 0,
-            "odoo_credentials": {
-                "login": admin_email,
-                "password": password,
-                "db": config.get('db', ''),
-            },
-            "sso": bool(oauth_client_id),
-            "message": f"Failed to create Odoo user for '{admin_email}'",
         }
