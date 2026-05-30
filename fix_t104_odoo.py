@@ -1,0 +1,31 @@
+import os
+import django
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'dose.settings')
+django.setup()
+
+from dose.models import TenantApp, Tenant
+
+# Get the tenant
+t = Tenant.objects.get(slug='polysaast104')
+print(f"Tenant: {t.name} (slug={t.slug}, schema={t.schema_name})")
+
+# Check if Odoo TenantApp exists
+ta = TenantApp.objects.filter(tenant=t, app_name='odoo').first()
+if ta:
+    print(f"Odoo TenantApp already exists: {ta.status}")
+else:
+    print("Creating Odoo TenantApp...")
+    ta = TenantApp.objects.create(
+        tenant=t,
+        app_name='odoo',
+        status='active',
+        extra_config={
+            'odoo_login': 'pst104@you.com',
+            'odoo_password': 'PolySaaS2026!',  # Default password
+            'odoo_db': 'odoodb',
+            'odoo_url': 'https://polysaas-odoo2.onrender.com',
+        }
+    )
+    print(f"Created Odoo TenantApp: {ta.id}, status={ta.status}")
+    print("Extra config keys:", list(ta.extra_config.keys()))
