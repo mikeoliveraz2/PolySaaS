@@ -62,15 +62,14 @@ body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     margin: 0 0 20px 0;
 }
 /* The scope div fills the available viewport height. */
-.polysaas-passthrough-scope {
+div.polysaas-passthrough-scope {
     position: relative !important;
     width: 100% !important;
     height: calc(100vh - 170px) !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
-    contain: layout paint !important;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -93,15 +92,30 @@ body.polysaas-passthrough-embed-page {
     height: auto !important;
 }
 
-/* The scope is a positioned container that Odoo elements are relative to */
-.polysaas-passthrough-scope {
+/* The scope div is Odoo's viewport — fills available content area */
+div.polysaas-passthrough-scope {
     position: relative !important;
     display: block !important;
     width: 100% !important;
-    height: calc(100vh - 98px) !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
     min-height: 400px !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     background: #f0f0f0 !important;
+    contain: none !important;
+}
+/* When scope class is on body (shim), Odoo fills the content column below the navbar */
+body.polysaas-passthrough-scope #wrapwrap,
+body.polysaas-passthrough-scope .o_web_client {
+    position: fixed !important;
+    top: var(--pss-header-h, 64px) !important;
+    left: 280px !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: calc(100vw - 280px) !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    z-index: 10 !important;
 }
 
 /* Odoo's root containers fill the scope */

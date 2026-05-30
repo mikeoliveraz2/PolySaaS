@@ -451,6 +451,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             if not data.get(app_key):
                 continue
             kwargs = dict(base)
+            tapp = None
             try:
                 cid, csecret, tapp = register_oauth2_app_for_tenant(
                     tenant_pk, app_key.replace('enable_', ''), user_obj,

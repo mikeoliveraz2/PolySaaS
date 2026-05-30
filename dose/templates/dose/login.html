@@ -24,7 +24,16 @@
 
         <div class="form-group">
             <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
+            <div style="position:relative;">
+                <input type="password" id="password" name="password" required style="padding-right:2.5rem; width:100%; box-sizing:border-box;">
+                <button type="button" id="toggle-password" tabindex="-1" aria-label="Toggle password visibility"
+                    style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0.25rem;color:#555;font-size:1.1rem;line-height:1;">
+                    <span id="eye-icon">&#128065;</span>
+                </button>
+            </div>
+        </div>
+        <div id="creds-reminder" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:0.6rem 0.9rem;margin-bottom:0.75rem;font-size:0.88rem;color:#5d4037;">
+            &#128274; Your credentials have been pre-filled. Please save them before continuing.
         </div>
 
         <button type="submit" class="btn">Login</button>
@@ -69,10 +78,24 @@
                 usernameField.value = parsed.u;
                 passwordField.value = parsed.p;
                 console.log('[AUTO-LOGIN] Pre-filled username and password fields. Please review and click Login.');
+                var reminder = document.getElementById('creds-reminder');
+                if (reminder) reminder.style.display = 'block';
             }
         }
     } catch (e) {
         console.error('[AUTO-LOGIN] Error:', e);
+    }
+
+    // Toggle password visibility
+    var toggleBtn = document.getElementById('toggle-password');
+    var pwField = document.getElementById('password');
+    var eyeIcon = document.getElementById('eye-icon');
+    if (toggleBtn && pwField) {
+        toggleBtn.addEventListener('click', function() {
+            var isHidden = pwField.type === 'password';
+            pwField.type = isHidden ? 'text' : 'password';
+            eyeIcon.innerHTML = isHidden ? '&#128064;' : '&#128065;';
+        });
     }
 
     // After successful login, restore Mattermost credentials from sessionStorage (without team name)
