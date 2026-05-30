@@ -490,10 +490,13 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 if result.get('success'):
                     messages.success(request, f"{app_display} is ready!")
                     # Store credentials in encrypted session for persistent re-authentication
-                    SubscriptionApiViewSet._store_passthrough_credentials_in_session(
-                        request, app_key, tapp, result, 
-                        user_obj, admin_email, kwargs
-                    )
+                    try:
+                        SubscriptionApiViewSet._store_passthrough_credentials_in_session(
+                            request, app_key, tapp, result, 
+                            user_obj, admin_email, kwargs
+                        )
+                    except Exception as cred_err:
+                        logger.warning("[PROVISION] Failed to store credentials for %s: %s", app_key, cred_err)
                 else:
                     err = result.get('error', 'Unknown error')
                     logger.warning("[PROVISION] %s returned failure: %s", app_key, err)
