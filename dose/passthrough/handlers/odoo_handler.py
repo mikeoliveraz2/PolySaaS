@@ -651,11 +651,32 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             logger.warning("[ODOO HANDLER] get_upstream_credentials failed: %s", exc)
             return {'login': default_login, 'password': default_pass, 'db': default_db}
 
-    # ------------------------------------------------------------------ #
-    # HTML processing                                                      #
-    # ------------------------------------------------------------------ #
+    def _upstream_subpath(self, request, seg=None):
+        """Odoo path after /pt/admin/<seg>, without query string."""
+        from urllib.parse import urlparse
+        path_info = getattr(request, 'path_info', '') or ''
+        if seg and seg in path_info:
+            sub = path_info.split(seg, 1)[-1]
+        else:
+            sub = path_info
+        parsed = urlparse(sub)
+        return parsed.path or '/'
 
-    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
+    def _is_odoo_shell_path(self, upstream_path: str) -> bool:
+        """Paths where Odoo serves login/home SPA — not database manager."""
+        p = (upstream_path or '/').rstrip('/') or '/'
+        if p in ('/web', '/web/login', '/web/signup'):
+            return True
+        return p.startswith('/web/login/') or p.startswith('/web/signup/')
+
+    def _is_web_login_html(self, html_str: str) -> bool:
+        if not html_str:
+            return False
+        return (
+            'oe_login_form' in html_str
+            or 'o_login_auth' in html_str
+            or '/web/login' in html_str
+        )
         print(f"[ODOO HANDLER] Processing HTML for {endpoint_url}")
 
         if not html_str:
