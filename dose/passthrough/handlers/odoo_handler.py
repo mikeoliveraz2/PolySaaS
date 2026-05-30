@@ -603,8 +603,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         return {}
 
     def get_upstream_credentials(self, request):
-        """Return dict with login, password, db for client-side form prepopulation.
-        Always returns fallback credentials so CRED_LOGIN is never empty."""
+        """Return dict with login, password, db for client-side form prepopulation."""
         from django.conf import settings
         default_login = getattr(settings, 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin')
         default_pass  = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
@@ -613,16 +612,40 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             tenant = getattr(request, 'tenant', None)
             if not tenant:
                 return {'login': default_login, 'password': default_pass, 'db': default_db}
+
+            login = password = db = None
+
+            # Session credentials (stored at subscribe time)
+            try:
+                from dose.passthrough.credential_container import PassthroughCredentialContainer
+                session_creds = PassthroughCredentialContainer.retrieve(request, app_name='odoo') or {}
+                login = session_creds.get('username') or session_creds.get('login')
+                password = session_creds.get('password')
+                db = session_creds.get('db')
+            except Exception:
+                pass
+
             from dose.models import TenantApp
             manager = getattr(TenantApp, 'public_bundles', TenantApp.objects)
             ta = manager.filter(
                 tenant=tenant, app_name='odoo',
             ).filter(status__in=['active', 'provisioning']).first()
             extra = (ta.extra_config if isinstance(ta.extra_config, dict) else {}) if ta else {}
+            if not login:
+                login = extra.get('odoo_login')
+            if not password:
+                password = extra.get('odoo_password')
+            if not db:
+                db = extra.get('odoo_db')
+
+            user = getattr(request, 'user', None)
+            if not login and user and getattr(user, 'is_authenticated', False) and user.email:
+                login = user.email
+
             return {
-                'login':    extra.get('odoo_login')    or default_login,
-                'password': extra.get('odoo_password') or default_pass,
-                'db':       extra.get('odoo_db')       or default_db,
+                'login':    login or default_login,
+                'password': password or default_pass,
+                'db':       db or default_db,
             }
         except Exception as exc:
             logger.warning("[ODOO HANDLER] get_upstream_credentials failed: %s", exc)
