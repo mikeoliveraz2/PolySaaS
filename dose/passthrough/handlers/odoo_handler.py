@@ -677,13 +677,13 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             or 'o_login_auth' in html_str
             or '/web/login' in html_str
         )
+
+    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[ODOO HANDLER] Processing HTML for {endpoint_url}")
 
         if not html_str:
             return html_str, None
 
-        # Derive proxy_prefix and seg from the request path.
-        # e.g. /pt/admin/polysaas-odoo2.onrender.com/web/login -> seg = polysaas-odoo2.onrender.com
         path_info = getattr(request, 'path_info', '') or ''
         seg = None
         proxy_prefix = None
@@ -699,11 +699,15 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             print('[ODOO HANDLER] process_html_response: cannot derive proxy_prefix, returning as-is')
             return html_str, None
 
-        upstream_path_for_check = request.path_info.split(seg)[-1] if seg else request.path_info
-        is_login_page = upstream_path_for_check.rstrip('/') in ('/web/login', '/web/signup', '/web')
+        upstream_path = self._upstream_subpath(request, seg)
+        is_shell_path = self._is_odoo_shell_path(upstream_path)
 
-        # Database selector = login failed or user not provisioned in Odoo
-        if not is_login_page and self._is_database_selector_page(html_str):
+        # Database selector = user not provisioned. Never treat login/home paths or login HTML as selector.
+        if (
+            not is_shell_path
+            and not self._is_web_login_html(html_str)
+            and self._is_database_selector_page(html_str)
+        ):
             print('[ODOO HANDLER] Detected database selector page - user not provisioned or login failed')
             error_html = self._render_provisioning_error_page(request)
             from django.http import HttpResponse as _HttpResponse
@@ -711,14 +715,10 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             r['Content-Type'] = 'text/html; charset=utf-8'
             return r
 
-        # Detect Odoo database manager page — redirect to /web/login through the proxy.
-        # IMPORTANT: skip this check when we are already on /web/login or /web/signup —
-        # those pages contain a link to the DB manager in their HTML, which causes a
-        # false-positive redirect loop back to /web/login from /web/login.
-        if not is_login_page:
+        if not is_shell_path:
             db_manager_strict = (
-                "Odoo's Databases",           # exact <title> of the DB manager page
-                'class="o_database_manager"', # body-level class on the manager page
+                "Odoo's Databases",
+                'class="o_database_manager"',
             )
             if any(s in html_str for s in db_manager_strict):
                 from django.http import HttpResponseRedirect
@@ -726,7 +726,6 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 print(f"[ODOO HANDLER] Database manager page detected — redirecting to {login_url}")
                 return HttpResponseRedirect(login_url)
 
-        # Rewrite bare relative paths in src/href attributes (e.g. /web/binary/company_logo).
         upstream_origin = ''
         if endpoint_url:
             try:
@@ -736,7 +735,6 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 pass
         html_str = self._rewrite_static_paths(html_str, proxy_prefix=proxy_prefix, base_origin=upstream_origin)
 
-        # Inject the client-side shim (fetch/XHR proxy + auto-login) into the <head>.
         if '<head>' in html_str or '<head ' in html_str.lower():
             credentials = self.get_upstream_credentials(request)
             session_id = request.COOKIES.get('session_id', '')
@@ -750,14 +748,8 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
 
         print(f'[ODOO HANDLER] process_html_response: rewrote HTML (seg={seg})')
 
-        # ── IFRAME SHELL PATTERN ────────────────────────────────────────────
-        # Browser navigation (no __pss_raw flag) → return PolySaaS admin shell
-        #   with an <iframe> whose src is the same URL + ?__pss_raw=1.
-        # Iframe request (__pss_raw=1) → return the shimmed Odoo HTML directly
-        #   so it renders inside the iframe with full DOM isolation.
         is_raw = request.GET.get('__pss_raw') == '1'
         if is_raw:
-            # Serve raw shimmed Odoo page directly into the iframe
             from django.http import HttpResponse as _HttpResponse
             r = _HttpResponse(html_str.encode('utf-8'), status=200)
             r['Content-Type'] = 'text/html; charset=utf-8'
@@ -765,8 +757,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             print('[ODOO HANDLER] Serving raw iframe content (__pss_raw=1)')
             return r
 
-        # Build the iframe src — same path + __pss_raw=1
-        from urllib.parse import urlencode, urljoin
+        from urllib.parse import urlencode
         current_path = request.path_info
         existing_qs = request.GET.copy()
         existing_qs['__pss_raw'] = '1'
@@ -791,20 +782,17 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         return r
 
     def _is_database_selector_page(self, html_str: str) -> bool:
-        """Detect if Odoo is showing the database selector/manage databases page."""
-        if not html_str:
+        """Detect Odoo database manager/selector — not the normal /web/login form."""
+        if not html_str or self._is_web_login_html(html_str):
             return False
-        # Odoo database selector indicators
-        indicators = [
+        strict_markers = (
+            "Odoo's Databases",
+            'class="o_database_manager"',
             'Manage Databases',
-            'Powered by Odoo',
-            'database/selector',
+            '/web/database/selector',
             '/web/database/manager',
-            'name="login"',
-        ]
-        # Check for multiple indicators to reduce false positives
-        matches = sum(1 for indicator in indicators if indicator in html_str)
-        return matches >= 2 and 'database' in html_str.lower()
+        )
+        return any(m in html_str for m in strict_markers)
 
     def _render_provisioning_error_page(self, request) -> str:
         """Render an error page when Odoo user provisioning failed."""
