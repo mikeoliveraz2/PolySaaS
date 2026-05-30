@@ -209,7 +209,11 @@ def provision_odoo_tenant(
             if user_created:
                 mark_tenant_app_active(tenant_app, app_url=odoo_url)
             else:
-                mark_tenant_app_error(tenant_app, error_message=f"Odoo user creation failed for {admin_email}")
+                # Only mark error if we have a valid tenant_app
+                try:
+                    mark_tenant_app_error(tenant_app, error_message=f"Odoo user creation failed for {admin_email}")
+                except Exception as mark_err:
+                    logger.warning("[OdooProvisioner] Failed to mark tenant_app error: %s", mark_err)
 
         # ── Step 5: Welcome email (best-effort) ───────────────────────────────
         try:
