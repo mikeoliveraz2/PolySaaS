@@ -215,6 +215,8 @@ MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_
 ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
 ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoodb')
 ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'pst13@me.com')
+# XML-RPC provisioning requires Administration/Access Rights — odooAdmin, not passthrough login
+ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')

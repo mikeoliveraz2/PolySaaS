@@ -37,7 +37,7 @@ def _get_odoo_shared_config() -> Dict[str, str]:
     return {
         'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com'),
         'db': getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
-        'admin_login': getattr(settings, 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin'),
+        'admin_login': getattr(settings, 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin'),
         'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
     }
 
@@ -120,24 +120,25 @@ def provision_odoo_tenant(
     oauth_client_id: str = '',
     oauth_client_secret: str = '',
     tenant_app_id: int = None,
+    admin_password: str = '',
 ) -> Dict[str, Any]:
     """
     Celery task: provision an Odoo user for a new PolySaaS tenant.
     
-    For demo purposes: always returns success=True regardless of actual outcome.
-    This ensures the subscription UI shows only green bars.
+    Reports ACTUAL success/failure - not demo mode.
+    Only returns success=True if Odoo user was actually created.
 
     Steps:
       1. Create PassThroughEndpoint in tenant schema (sidebar link)
       2. Create res.users in shared Odoo via XML-RPC
       3. Update TenantApp.extra_config with final credentials
-      4. Mark TenantApp as 'active'
+      4. Mark TenantApp as 'active' (only on success)
       5. (Optional) Send welcome email
     """
     try:
         config = _get_odoo_shared_config()
         odoo_url = config['url']
-        password = config['admin_password']
+        password = (admin_password or '').strip() or config['admin_password']
 
         # Resolve TenantApp record
         tenant_app = None
@@ -173,6 +174,7 @@ def provision_odoo_tenant(
 
         # ── Step 2: Create Odoo user via XML-RPC ──────────────────────────────
         odoo_user_id = None
+        user_created = False
         try:
             uid = _odoo_authenticate(config)
             odoo_user_id = _odoo_create_user(
@@ -181,9 +183,11 @@ def provision_odoo_tenant(
                 name=company_name or tenant_name,
                 password=password,
             )
+            user_created = odoo_user_id is not None and odoo_user_id > 0
         except Exception as exc:
-            logger.warning("[OdooProvisioner] Odoo user creation failed for %s: %s (DEMO: returning success anyway)", tenant_name, exc)
-            odoo_user_id = 0  # Fallback ID for demo
+            logger.error("[OdooProvisioner] Odoo user creation failed for %s: %s", tenant_name, exc)
+            odoo_user_id = 0
+            user_created = False
 
         # ── Step 3: Update TenantApp.extra_config ─────────────────────────────
         if tenant_app:
@@ -201,51 +205,94 @@ def provision_odoo_tenant(
             except Exception as e:
                 logger.warning("[OdooProvisioner] Failed to update TenantApp.extra_config: %s", e)
 
-        # ── Step 4: Mark active ───────────────────────────────────────────────
+        # ── Step 4: Mark active (only if user actually created) ────────────────
         if tenant_app:
-            mark_tenant_app_active(tenant_app, app_url=odoo_url)
+            if user_created:
+                mark_tenant_app_active(tenant_app, app_url=odoo_url)
+            else:
+                # Only mark error if we have a valid tenant_app
+                try:
+                    mark_tenant_app_error(tenant_app, f"Odoo user creation failed for {admin_email}")
+                except Exception as mark_err:
+                    logger.warning("[OdooProvisioner] Failed to mark tenant_app error: %s", mark_err)
 
-        # ── Step 5: Welcome email (best-effort) ───────────────────────────────
-        try:
-            from dose.services.email_service import GmailEmailService
-            email_svc = GmailEmailService(credentials_file='gmail_creds.json')
-            email_svc.send_email(
-                to_email=admin_email,
-                subject="Welcome to PolySaaS + Odoo – Your ERP Access is Ready",
-                body=f"""
-                <h2>Your Odoo ERP access is ready!</h2>
-                <p><strong>URL:</strong> Access Odoo from your PolySaaS dashboard sidebar.</p>
-                <p><strong>Login:</strong> {admin_email}</p>
-                <p><strong>Password:</strong> {password}</p>
-                <p><em>⚠️ Change this password after first login.</em></p>
-                <p>Welcome to PolySaaS!<br>The PolySaaS Team</p>
-                """,
+        # ── Step 5: Welcome email (best-effort, success only) ─────────────────
+        if user_created:
+            try:
+                from dose.services.email_service import GmailEmailService
+                email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+                email_svc.send_email(
+                    to_email=admin_email,
+                    subject="Welcome to PolySaaS + Odoo – Your ERP Access is Ready",
+                    body=f"""
+                    <h2>Your Odoo ERP access is ready!</h2>
+                    <p><strong>URL:</strong> Access Odoo from your PolySaaS dashboard sidebar.</p>
+                    <p><strong>Login:</strong> {admin_email}</p>
+                    <p><strong>Password:</strong> {password}</p>
+                    <p><em>⚠️ Change this password after first login.</em></p>
+                    <p>Welcome to PolySaaS!<br>The PolySaaS Team</p>
+                    """,
+                )
+                logger.info("[OdooProvisioner] Welcome email sent to %s", admin_email)
+            except Exception as e:
+                logger.warning("[OdooProvisioner] Welcome email failed (non-fatal): %s", e)
+
+        if user_created:
+            logger.info(
+                "[OdooProvisioner] Provisioning complete: tenant=%s login=%s odoo_uid=%s",
+                tenant_name, admin_email, odoo_user_id,
             )
-            logger.info("[OdooProvisioner] Welcome email sent to %s", admin_email)
-        except Exception as e:
-            logger.warning("[OdooProvisioner] Welcome email failed (non-fatal): %s", e)
+        else:
+            logger.warning(
+                "[OdooProvisioner] Provisioning failed: tenant=%s login=%s (no Odoo user created)",
+                tenant_name, admin_email,
+            )
 
-        logger.info(
-            "[OdooProvisioner] ✅ Provisioning complete: tenant=%s login=%s odoo_uid=%s",
-            tenant_name, admin_email, odoo_user_id,
-        )
+        # Return actual result based on whether user was created
+        if user_created:
+            return {
+                "success": True,
+                "odoo_url": odoo_url,
+                "odoo_user_id": odoo_user_id,
+                "odoo_credentials": {
+                    "login": admin_email,
+                    "password": password,
+                    "db": config.get('db', ''),
+                },
+                "sso": bool(oauth_client_id),
+                "message": f"Odoo user '{admin_email}' provisioned in shared instance",
+            }
+        else:
+            # User creation failed - report failure
+            return {
+                "success": False,
+                "error": "Odoo user creation failed",
+                "odoo_url": odoo_url,
+                "odoo_user_id": 0,
+                "odoo_credentials": {
+                    "login": admin_email,
+                    "password": password,
+                    "db": config.get('db', ''),
+                },
+                "sso": bool(oauth_client_id),
+                "message": f"Failed to create Odoo user for '{admin_email}'",
+            }
 
     except Exception as exc:
-        # Outer catch-all for demo mode
-        logger.warning("[OdooProvisioner] Provisioning encountered error but returning success for demo: %s", exc)
-        odoo_url = config.get('url', '') if 'config' in locals() else getattr(settings, 'ODOO_SHARED_URL', '')
-        password = config.get('admin_password', '') if 'config' in locals() else getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', '')
-        odoo_user_id = 0
-
-    return {
-        "success": True,
-        "odoo_url": odoo_url,
-        "odoo_user_id": odoo_user_id,
-        "odoo_credentials": {
-            "login": admin_email,
-            "password": password,
-            "db": config.get('db', '') if 'config' in locals() else getattr(settings, 'ODOO_SHARED_DB', ''),
-        },
-        "sso": bool(oauth_client_id),
-        "message": f"Odoo user '{admin_email}' provisioned in shared instance",
-    }
+        # Outer catch-all - report actual failure
+        logger.error("[OdooProvisioner] Provisioning failed for %s: %s", tenant_schema, exc, exc_info=True)
+        if tenant_app_id:
+            try:
+                ta = TenantApp.objects.filter(id=tenant_app_id).first()
+                if ta:
+                    mark_tenant_app_error(ta, str(exc))
+            except Exception:
+                pass
+        
+        return {
+            "success": False,
+            "error": str(exc),
+            "odoo_url": getattr(settings, 'ODOO_SHARED_URL', ''),
+            "odoo_user_id": 0,
+            "message": f"Odoo provisioning failed: {exc}",
+        }

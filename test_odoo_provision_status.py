@@ -1,0 +1,203 @@
+#!/usr/bin/env python
+"""
+Diagnostic script: Check actual Odoo provisioning status for tenants.
+GETs the real status from database - does NOT provision anything.
+
+Usage:
+    python test_odoo_provision_status.py t100 t101
+    python test_odoo_provision_status.py --all  # Check all tenants with Odoo apps
+"""
+import os
+import sys
+import django
+
+# Setup Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+django.setup()
+
+import xmlrpc.client
+from django.db import connection
+from django.conf import settings
+from dose.models import Tenant, TenantApp, PassThroughEndpoint
+
+
+def get_odoo_shared_config():
+    """Get Odoo connection config."""
+    return {
+        'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com'),
+        'db': getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
+        'admin_login': getattr(settings, 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin'),
+        'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+    }
+
+
+def check_odoo_user_exists(config, login):
+    """Check if user actually exists in Odoo via XML-RPC GET."""
+    try:
+        common = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/common", allow_none=True)
+        uid = common.authenticate(config['db'], config['admin_login'], config['admin_password'], {})
+        if not uid:
+            return None, "Admin auth failed"
+        
+        models = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/object", allow_none=True)
+        users = models.execute_kw(
+            config['db'], uid, config['admin_password'],
+            'res.users', 'search_read',
+            [[['login', '=', login]]],
+            {'fields': ['id', 'name', 'login', 'active', 'company_id'], 'limit': 1}
+        )
+        
+        if users:
+            return users[0], None
+        return None, f"User '{login}' not found in Odoo"
+        
+    except Exception as e:
+        return None, f"XML-RPC error: {e}"
+
+
+def check_tenant_odoo_status(tenant_schema, tenant=None):
+    """Check actual Odoo provisioning status for a tenant."""
+    print(f"\n{'='*60}")
+    print(f"Checking Odoo status for: {tenant_schema}")
+    print(f"{'='*60}")
+    
+    # 1. Get tenant from database if not provided
+    if tenant is None:
+        try:
+            tenant = Tenant.objects.get(schema_name=tenant_schema)
+        except Tenant.DoesNotExist:
+            print(f"✗ Tenant '{tenant_schema}' NOT FOUND in database")
+            return False
+    
+    tenant_id = getattr(tenant, 'id', 'N/A')
+    print(f"✓ Tenant found: {tenant.name} (id={tenant_id})")
+    
+    # 2. Check TenantApp record
+    try:
+        # Use the tenant from the object, not the schema lookup
+        ta = TenantApp.objects.filter(tenant=tenant, app_name='odoo').first()
+        if not ta:
+            raise TenantApp.DoesNotExist(f"No Odoo TenantApp for tenant {tenant_schema}")
+        print(f"✓ TenantApp found: id={ta.id}, status={ta.status}")
+        
+        # 3. Check extra_config
+        extra = ta.extra_config or {}
+        odoo_user_id = extra.get('odoo_user_id')
+        odoo_login = extra.get('odoo_login')
+        odoo_url = extra.get('odoo_url')
+        
+        print(f"  extra_config.odoo_user_id: {odoo_user_id}")
+        print(f"  extra_config.odoo_login: {odoo_login}")
+        print(f"  extra_config.odoo_url: {odoo_url}")
+        
+        if odoo_user_id == 0 or odoo_user_id is None:
+            print(f"⚠ WARNING: odoo_user_id is {odoo_user_id} - user was NOT actually created!")
+        
+        # 4. Check PassThroughEndpoint
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{tenant_schema}", public')
+            
+            pte = PassThroughEndpoint.objects.filter(slug='odoo').first()
+            if pte:
+                print(f"✓ PassThroughEndpoint found: {pte.endpoint_url}")
+            else:
+                print(f"✗ PassThroughEndpoint NOT found in {tenant_schema} schema")
+        except Exception as e:
+            print(f"✗ Error checking PassThroughEndpoint: {e}")
+        
+        # 5. ACTUALLY check Odoo via XML-RPC GET
+        if odoo_login:
+            config = get_odoo_shared_config()
+            odoo_user, error = check_odoo_user_exists(config, odoo_login)
+            
+            if odoo_user:
+                print(f"✓ VERIFIED: User exists in Odoo:")
+                print(f"    Odoo User ID: {odoo_user['id']}")
+                print(f"    Name: {odoo_user['name']}")
+                print(f"    Active: {odoo_user['active']}")
+                print(f"    Company: {odoo_user.get('company_id')}")
+                
+                # Cross-check ID matches
+                if odoo_user_id and odoo_user['id'] != odoo_user_id:
+                    print(f"⚠ MISMATCH: extra_config has {odoo_user_id}, Odoo has {odoo_user['id']}")
+            else:
+                print(f"✗ VERIFICATION FAILED: {error}")
+                print(f"    → TenantApp says status={ta.status}, but user doesn't exist in Odoo!")
+                return False
+        else:
+            print(f"✗ No odoo_login in extra_config - cannot verify")
+            return False
+            
+    except TenantApp.DoesNotExist:
+        print(f"✗ TenantApp for 'odoo' NOT FOUND")
+        return False
+    
+    print(f"\n✅ {tenant_schema}: FULLY PROVISIONED AND VERIFIED")
+    return True
+
+
+def check_all_tenants():
+    """Check all tenants that have Odoo apps."""
+    print("\n" + "="*60)
+    print("Checking ALL tenants with Odoo apps")
+    print("="*60)
+    
+    apps = TenantApp.objects.filter(app_name='odoo').select_related('tenant')
+    print(f"Found {apps.count()} Odoo TenantApps\n")
+    
+    results = []
+    for ta in apps:
+        tenant = ta.tenant
+        if not tenant:
+            print(f"⚠ Orphaned TenantApp (id={ta.id}) - no tenant associated")
+            results.append((f"orphaned-{ta.id}", False))
+            continue
+            
+        schema = tenant.schema_name
+        status = check_tenant_odoo_status(schema, tenant=tenant)
+        results.append((schema, status))
+    
+    # Summary
+    print(f"\n{'='*60}")
+    print("SUMMARY")
+    print(f"{'='*60}")
+    ok = sum(1 for _, s in results if s)
+    fail = len(results) - ok
+    print(f"Verified OK: {ok}")
+    print(f"Failed: {fail}")
+    
+    for schema, status in results:
+        icon = "✅" if status else "❌"
+        print(f"  {icon} {schema}")
+    
+    return results
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python test_odoo_provision_status.py <tenant_schema> [tenant_schema2...]")
+        print("       python test_odoo_provision_status.py --all")
+        sys.exit(1)
+    
+    if sys.argv[1] == '--all':
+        check_all_tenants()
+    else:
+        schemas = sys.argv[1:]
+        results = []
+        for schema in schemas:
+            status = check_tenant_odoo_status(schema)
+            results.append((schema, status))
+        
+        # Summary
+        print(f"\n{'='*60}")
+        print("SUMMARY")
+        print(f"{'='*60}")
+        for schema, status in results:
+            icon = "✅" if status else "❌"
+            print(f"  {icon} {schema}: {'VERIFIED' if status else 'FAILED'}")
+
+
+if __name__ == '__main__':
+    main()

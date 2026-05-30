@@ -460,11 +460,12 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 # Store user credentials for passthrough prepopulation
                 if app_key == 'enable_odoo' and user_obj:
                     try:
+                        from django.conf import settings as django_settings
                         extra = tapp.extra_config or {}
                         extra.update({
                             'odoo_login': user_obj.email,
                             'odoo_password': data.get('password'),  # Raw password from signup form
-                            'odoo_db': tenant.schema_name,
+                            'odoo_db': getattr(django_settings, 'ODOO_SHARED_DB', 'odoodb'),
                         })
                         tapp.extra_config = extra
                         tapp.save(update_fields=['extra_config'])
@@ -473,10 +474,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
 
-            # All provisioning is synchronous for the demo so sidebar entries
-            # appear immediately after subscription.
-            if app_key == 'enable_mattermost':
-                kwargs['admin_username'] = user_obj.username if user_obj else ''
+            # Pass signup password to provisioners that create app user accounts
+            if app_key in ('enable_mattermost', 'enable_odoo'):
+                if app_key == 'enable_mattermost':
+                    kwargs['admin_username'] = user_obj.username if user_obj else ''
                 kwargs['admin_password'] = data.get('password') or ''
 
             app_display = app_key.replace('enable_', '').title()
@@ -491,10 +492,13 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 if result.get('success'):
                     messages.success(request, f"{app_display} is ready!")
                     # Store credentials in encrypted session for persistent re-authentication
-                    SubscriptionApiViewSet._store_passthrough_credentials_in_session(
-                        request, app_key, tapp, result, 
-                        user_obj, admin_email, kwargs
-                    )
+                    try:
+                        SubscriptionApiViewSet._store_passthrough_credentials_in_session(
+                            request, app_key, tapp, result, 
+                            user_obj, admin_email, kwargs
+                        )
+                    except Exception as cred_err:
+                        logger.warning("[PROVISION] Failed to store credentials for %s: %s", app_key, cred_err)
                 else:
                     err = result.get('error', 'Unknown error')
                     logger.warning("[PROVISION] %s returned failure: %s", app_key, err)

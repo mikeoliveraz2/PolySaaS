@@ -8,10 +8,11 @@ from dose.models import PassThroughEndpoint, Tenant
 print("Searching ALL schemas for PassThroughEndpoint with bad odoo URL...")
 
 # Check all tenant schemas
+
 for tenant in Tenant.objects.all():
     with connection.cursor() as cur:
         cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
-    pts = PassThroughEndpoint.objects.filter(trigger_path='odoo')
+    pts = PassThroughEndpoint.objects.filter(endpoint_url__icontains='odoo')
     for pt in pts:
         if 'odoo2' not in pt.endpoint_url:
             print(f"  BAD in {tenant.schema_name}: {pt.endpoint_url}")
@@ -21,7 +22,7 @@ for tenant in Tenant.objects.all():
 # Check public
 with connection.cursor() as cur:
     cur.execute('SET search_path TO public')
-pts = PassThroughEndpoint.objects.filter(trigger_path='odoo')
+pts = PassThroughEndpoint.objects.filter(endpoint_url__icontains='odoo')
 for pt in pts:
     if 'odoo2' not in pt.endpoint_url:
         print(f"  BAD in public: {pt.endpoint_url}")

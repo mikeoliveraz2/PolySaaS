@@ -40,3 +40,6 @@ def toggle_theme(request):
     return JsonResponse({'dark_mode': profile.dark_mode})
 
 
+
+
+

@@ -655,12 +655,22 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             print('[ODOO HANDLER] process_html_response: cannot derive proxy_prefix, returning as-is')
             return html_str, None
 
+        upstream_path_for_check = request.path_info.split(seg)[-1] if seg else request.path_info
+        is_login_page = upstream_path_for_check.rstrip('/') in ('/web/login', '/web/signup', '/web')
+
+        # Database selector = login failed or user not provisioned in Odoo
+        if not is_login_page and self._is_database_selector_page(html_str):
+            print('[ODOO HANDLER] Detected database selector page - user not provisioned or login failed')
+            error_html = self._render_provisioning_error_page(request)
+            from django.http import HttpResponse as _HttpResponse
+            r = _HttpResponse(error_html.encode('utf-8'), status=200)
+            r['Content-Type'] = 'text/html; charset=utf-8'
+            return r
+
         # Detect Odoo database manager page — redirect to /web/login through the proxy.
         # IMPORTANT: skip this check when we are already on /web/login or /web/signup —
         # those pages contain a link to the DB manager in their HTML, which causes a
         # false-positive redirect loop back to /web/login from /web/login.
-        upstream_path_for_check = request.path_info.split(seg)[-1] if seg else request.path_info
-        is_login_page = upstream_path_for_check.rstrip('/') in ('/web/login', '/web/signup', '/web')
         if not is_login_page:
             db_manager_strict = (
                 "Odoo's Databases",           # exact <title> of the DB manager page
@@ -735,6 +745,75 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
         r['Content-Type'] = 'text/html; charset=utf-8'
         print(f'[ODOO HANDLER] Serving iframe shell for {current_path}')
         return r
+
+    def _is_database_selector_page(self, html_str: str) -> bool:
+        """Detect if Odoo is showing the database selector/manage databases page."""
+        if not html_str:
+            return False
+        # Odoo database selector indicators
+        indicators = [
+            'Manage Databases',
+            'Powered by Odoo',
+            'database/selector',
+            '/web/database/manager',
+            'name="login"',
+        ]
+        # Check for multiple indicators to reduce false positives
+        matches = sum(1 for indicator in indicators if indicator in html_str)
+        return matches >= 2 and 'database' in html_str.lower()
+
+    def _render_provisioning_error_page(self, request) -> str:
+        """Render an error page when Odoo user provisioning failed."""
+        from dose.utils import get_current_tenant
+        tenant = get_current_tenant(request)
+        tenant_name = tenant.name if tenant else 'Your tenant'
+        
+        return f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>Odoo Access Error - PolySaaS</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+               background: #f5f5f5; margin: 0; padding: 40px 20px; }}
+        .container {{ max-width: 600px; margin: 0 auto; background: white; 
+                      padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        h1 {{ color: #e74c3c; margin-bottom: 20px; }}
+        .error-icon {{ font-size: 48px; text-align: center; margin-bottom: 20px; }}
+        .message {{ color: #333; line-height: 1.6; margin-bottom: 20px; }}
+        .actions {{ margin-top: 30px; }}
+        .btn {{ display: inline-block; padding: 12px 24px; background: #3498db; 
+               color: white; text-decoration: none; border-radius: 4px; margin-right: 10px; }}
+        .btn:hover {{ background: #2980b9; }}
+        .details {{ background: #f8f9fa; padding: 15px; border-radius: 4px; 
+                    margin-top: 20px; font-size: 14px; color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-icon">⚠️</div>
+        <h1>Odoo Access Not Ready</h1>
+        <p class="message">
+            <strong>{tenant_name}</strong> does not have an active Odoo user account yet.
+        </p>
+        <p class="message">
+            This usually happens when:
+            <ul>
+                <li>Odoo user provisioning is still in progress</li>
+                <li>User creation failed during signup</li>
+                <li>The Odoo server is temporarily unavailable</li>
+            </ul>
+        </p>
+        <div class="actions">
+            <a href="/admin/" class="btn">Go to Admin Dashboard</a>
+            <a href="javascript:location.reload()" class="btn">Retry Access</a>
+        </div>
+        <div class="details">
+            <strong>Need help?</strong> Check the TenantApps status in your PolySaaS admin panel. 
+            If Odoo shows "error" status, the provisioning failed and you may need to contact support.
+        </div>
+    </div>
+</body>
+</html>'''
 
     def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo', base_origin=''):
         """

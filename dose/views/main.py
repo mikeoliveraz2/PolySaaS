@@ -1,3 +1,32 @@
+# --- RESTORED ENDPOINTS FOR ADMIN UI ---
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+
+@method_decorator(csrf_exempt, name='dispatch')
+class DisplaySettingsView(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # Return default or user-specific display settings
+        return JsonResponse({
+            'theme': 'light',
+            'sidebar_collapsed': False,
+        })
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UnreadDoseMessagesView(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # Return a stub unread message count
+        return JsonResponse({
+            'unread_count': 0
+        })
 # Page after successful subscribe: connect to Google or skip
 def connect_social_after_subscribe(request):
     return render(request, 'dose/connect_social_after_subscribe.html')
@@ -86,7 +115,86 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         import json as pyjson
         print("SubscriptionViewSet.create called")
         print(f"Request content_type: {request.content_type}")
-        # ...existing code...
+        # --- Existing subscription creation logic ---
+        response = super().create(request, *args, **kwargs)
+        # At this point, the subscription and tenant should be created and active
+        try:
+            # Get the tenant and user info from the request or serializer
+            data = request.data
+            tenant_slug = data.get('tenant_slug') or data.get('slug')
+            admin_email = data.get('admin_email') or data.get('email') or request.user.email
+            company_name = data.get('company_name') or tenant_slug
+            from dose.models import Tenant, TenantApp
+            tenant = None
+            if tenant_slug:
+                tenant = Tenant.objects.filter(slug=tenant_slug).first()
+            if not tenant:
+                logger.warning("[OdooProvisioner] Tenant not found for slug: %s", tenant_slug)
+            else:
+                # Create or get the Odoo TenantApp
+                tenant_app, _ = TenantApp.objects.get_or_create(
+                    tenant=tenant,
+                    app_name='odoo',
+                    defaults={
+                        'status': 'provisioning',
+                        'extra_config': {},
+                    }
+                )
+                # --- Synchronous Odoo provisioning ---
+                from dose.services.odoo_tenant_provisioner import _get_odoo_shared_config, _odoo_authenticate, _odoo_create_user
+                from dose.models import PassThroughEndpoint
+                from dose.services.oauth2_registration import mark_tenant_app_active
+                config = _get_odoo_shared_config()
+                odoo_url = config['url']
+                password = config['admin_password']
+                # Step 1: Create PassThroughEndpoint
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
+                PassThroughEndpoint.objects.update_or_create(
+                    slug='odoo',
+                    defaults={
+                        'endpoint_url': odoo_url,
+                        'description': f'Odoo ERP for {company_name or tenant_slug}',
+                        'is_enabled': True,
+                        'passthrough_type': 'scraper',
+                        'integration_mode': 'web_api',
+                        'api_endpoint': f"{odoo_url}/web",
+                        'show_in_menu': True,
+                        'menu_title': 'Odoo',
+                        'menu_icon': 'building',
+                        'menu_sort_order': 20,
+                        'starting_uri': '/web',
+                    }
+                )
+                # Step 2: Create Odoo user
+                try:
+                    uid = _odoo_authenticate(config)
+                    odoo_user_id = _odoo_create_user(
+                        config, uid,
+                        login=admin_email,
+                        name=company_name or tenant_slug,
+                        password=password,
+                    )
+                    # Step 3: Update TenantApp
+                    extra = tenant_app.extra_config if isinstance(tenant_app.extra_config, dict) else {}
+                    extra.update({
+                        'odoo_login': admin_email,
+                        'odoo_password': password,
+                        'odoo_db': config['db'],
+                        'odoo_user_id': odoo_user_id,
+                        'odoo_url': odoo_url,
+                    })
+                    tenant_app.extra_config = extra
+                    tenant_app.status = 'active'
+                    tenant_app.save(update_fields=['extra_config', 'status'])
+                    mark_tenant_app_active(tenant_app, app_url=odoo_url)
+                    logger.info(f"[OdooProvisioner] Odoo provisioned for tenant {tenant_slug} ({admin_email})")
+                except Exception as e:
+                    logger.error(f"[OdooProvisioner] Odoo provisioning failed for tenant {tenant_slug}: {e}")
+        except Exception as e:
+            logger.error(f"[OdooProvisioner] Error in post-subscribe Odoo provisioning: {e}")
+        return response
 # Custom swagger view moved from views.py
 from django.shortcuts import render
 def custom_swagger_view(request):

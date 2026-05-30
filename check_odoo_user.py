@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+"""Simple script to check if an Odoo user exists via XML-RPC."""
+import os
+import sys
+
+# Setup Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import django
+django.setup()
+
+import xmlrpc.client
+from django.conf import settings
+
+
+def check_odoo_user(login_email):
+    """Check if user exists in Odoo via XML-RPC."""
+    config = {
+        'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com'),
+        'db': getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
+        'admin_login': getattr(settings, 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin'),
+        'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+    }
+    
+    print(f"Connecting to Odoo at {config['url']}...")
+    print(f"Checking for user: {login_email}")
+    
+    try:
+        # Authenticate as admin
+        common = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/common", allow_none=True)
+        uid = common.authenticate(config['db'], config['admin_login'], config['admin_password'], {})
+        
+        if not uid:
+            print("❌ Admin authentication FAILED")
+            return False
+        
+        print(f"✓ Admin authenticated (uid={uid})")
+        
+        # Search for user
+        models = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/object", allow_none=True)
+        users = models.execute_kw(
+            config['db'], uid, config['admin_password'],
+            'res.users', 'search_read',
+            [[['login', '=', login_email]]],
+            {'fields': ['id', 'name', 'login', 'active', 'company_id'], 'limit': 1}
+        )
+        
+        if users:
+            u = users[0]
+            print(f"✓ USER FOUND in Odoo:")
+            print(f"  ID: {u['id']}")
+            print(f"  Name: {u['name']}")
+            print(f"  Login: {u['login']}")
+            print(f"  Active: {u['active']}")
+            return True
+        else:
+            print(f"❌ User '{login_email}' NOT FOUND in Odoo")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print("Usage: python check_odoo_user.py <user_email>")
+        print("Example: python check_odoo_user.py admin@example.com")
+        sys.exit(1)
+    
+    email = sys.argv[1]
+    exists = check_odoo_user(email)
+    sys.exit(0 if exists else 1)
