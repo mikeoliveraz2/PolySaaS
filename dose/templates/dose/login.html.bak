@@ -1,0 +1,160 @@
+{% extends 'dose/dosebase.html' %}
+{% load static %}
+
+{% block title %}Login - Dose Multi-Tenant System{% endblock %}
+
+{% block header_title %}Login{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 0 auto;">
+    <h2>Login to Dose</h2>
+
+    {% if error %}
+    <div class="alert alert-error">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password:</label>
+<<<<<<< HEAD
+            <div style="position:relative;">
+                <input type="password" id="password" name="password" required style="padding-right:2.5rem; width:100%; box-sizing:border-box;">
+                <button type="button" id="toggle-password" tabindex="-1" aria-label="Toggle password visibility"
+                    style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0.25rem;color:#555;font-size:1.1rem;line-height:1;">
+                    <span id="eye-icon">&#128065;</span>
+                </button>
+            </div>
+        </div>
+        <div id="creds-reminder" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:0.6rem 0.9rem;margin-bottom:0.75rem;font-size:0.88rem;color:#5d4037;">
+            &#128274; Your credentials have been pre-filled. Please save them before continuing.
+=======
+            <div class="password-wrapper" style="position: relative;">
+                <input type="password" id="password" name="password" required style="padding-right: 40px;">
+                <button type="button" id="toggle-password" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 5px;" title="Show/Hide Password">
+                    <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <svg id="eye-off-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                </button>
+            </div>
+            <small style="color: #666; display: block; margin-top: 5px;">
+                💡 <strong>Remember your password!</strong> Store it safely - you'll need it to access Odoo, Mattermost, and other bundled apps.
+            </small>
+>>>>>>> 7d296d2daea8611bb967867059f2363420ae6ec3
+        </div>
+
+        <button type="submit" class="btn">Login</button>
+    </form>
+    <div style="margin-top: 1rem; text-align: center;">
+        <a href="{% url 'dose:subscribe' %}" style="color: #2980b9; text-decoration: underline; font-weight: bold;">Sign Up</a>
+    </div>
+
+    <hr style="margin: 2rem 0;">
+
+    <!-- PATCHED: Add Google OAuth2 login button -->
+    <div style="text-align:center; margin:2rem 0;">
+    <a href="/accounts/google/login/" class="subscription-btn" style="background:#4285F4; color:#fff; display:inline-block; width:auto; padding:0.75em 2em; font-size:1em; font-weight:600; border-radius:4px; text-decoration:none;">
+            <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" style="height:1em; vertical-align:middle; margin-right:0.5em;"> Login with Google
+        </a>
+    </div>
+    <div class="alert alert-info">
+        <h4>Demo Credentials:</h4>
+        <p><strong>User:</strong> demouser / demo123</p>
+        <p><strong>Admin:</strong> admin / admin123</p>
+    </div>
+</div>
+
+<script>
+(function() {
+    // Prefill credentials from sessionStorage if set by subscribe flow
+    try {
+        var raw = sessionStorage.getItem('polysaas_new_user_creds');
+        console.log('[AUTO-LOGIN] Checking for sessionStorage credentials...');
+        console.log('[AUTO-LOGIN] sessionStorage raw:', raw);
+        if (!raw) {
+            console.log('[AUTO-LOGIN] No credentials found in sessionStorage');
+            return;
+        }
+        var parsed = JSON.parse(raw);
+        console.log('[AUTO-LOGIN] Parsed creds:', parsed);
+        sessionStorage.removeItem('polysaas_new_user_creds');
+        if (parsed.u && parsed.p) {
+            var usernameField = document.getElementById('username');
+            var passwordField = document.getElementById('password');
+            if (usernameField && passwordField) {
+                usernameField.value = parsed.u;
+                passwordField.value = parsed.p;
+                console.log('[AUTO-LOGIN] Pre-filled username and password fields. Please review and click Login.');
+                var reminder = document.getElementById('creds-reminder');
+                if (reminder) reminder.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        console.error('[AUTO-LOGIN] Error:', e);
+    }
+
+    // Toggle password visibility
+<<<<<<< HEAD
+    var toggleBtn = document.getElementById('toggle-password');
+    var pwField = document.getElementById('password');
+    var eyeIcon = document.getElementById('eye-icon');
+    if (toggleBtn && pwField) {
+        toggleBtn.addEventListener('click', function() {
+            var isHidden = pwField.type === 'password';
+            pwField.type = isHidden ? 'text' : 'password';
+            eyeIcon.innerHTML = isHidden ? '&#128064;' : '&#128065;';
+        });
+    }
+=======
+    document.getElementById('toggle-password').addEventListener('click', function() {
+        var passwordField = document.getElementById('password');
+        var eyeIcon = document.getElementById('eye-icon');
+        var eyeOffIcon = document.getElementById('eye-off-icon');
+        
+        if (passwordField.type === 'password') {
+            passwordField.type = 'text';
+            eyeIcon.style.display = 'none';
+            eyeOffIcon.style.display = 'block';
+        } else {
+            passwordField.type = 'password';
+            eyeIcon.style.display = 'block';
+            eyeOffIcon.style.display = 'none';
+        }
+    });
+>>>>>>> 7d296d2daea8611bb967867059f2363420ae6ec3
+
+    // After successful login, restore Mattermost credentials from sessionStorage (without team name)
+    if (sessionStorage.getItem('polysaas_mm_creds')) {
+        var mmCreds = JSON.parse(sessionStorage.getItem('polysaas_mm_creds'));
+        sessionStorage.removeItem('polysaas_mm_creds');
+        console.log('[AUTO-LOGIN] Restoring Mattermost credentials to session:', mmCreds);
+        // Call API to restore Mattermost credentials to Django session
+        fetch('/dose/api/restore-mm-credentials/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify(mmCreds),
+            credentials: 'same-origin'
+        }).then(function(resp) {
+            console.log('[AUTO-LOGIN] Restore credentials response:', resp.status);
+        }).catch(function(e) {
+            console.error('[AUTO-LOGIN] Failed to restore Mattermost credentials:', e);
+        });
+    }
+})();
+</script>
+{% endblock %}
