@@ -469,8 +469,15 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             except Exception as adj_exc:
                 logger.warning("adjust_upstream_target_url failed: %s", adj_exc, exc_info=True)
 
-        # WebSocket upgrade cannot pass through Django WSGI; Odoo uses HTTP longpolling/bus instead.
+        # WebSocket upgrade cannot pass through Django WSGI.
+        # Odoo needs /bus/ and /longpolling/ through the proxy; Mattermost uses direct WS to upstream.
         _blocked = ('/websocket',)
+        if handler and hasattr(handler, 'extra_blocked_upstream_prefixes'):
+            try:
+                extra = handler.extra_blocked_upstream_prefixes(request, upstream_path) or ()
+                _blocked = tuple(_blocked) + tuple(extra)
+            except Exception as _eb_exc:
+                logger.warning("extra_blocked_upstream_prefixes failed: %s", _eb_exc)
         if any(upstream_path.startswith(b) or upstream_path == b.rstrip('/') for b in _blocked):
             from django.http import JsonResponse as _JR
             print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")

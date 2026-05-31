@@ -78,6 +78,31 @@ class MattermostPassthroughHandler:
         except Exception as exc:
             print(f"[MM CORS] Error: {exc}")
 
+    def _validate_mm_token(self, endpoint_url, token, timeout=8):
+        """Quick upstream check — stale MMAUTHTOKEN cookies must not skip the login bridge."""
+        base = (endpoint_url or '').rstrip('/')
+        if not base or not token:
+            return False
+        try:
+            import requests as _req
+            resp = _req.get(
+                f'{base}/api/v4/users/me',
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=timeout,
+            )
+            ok = resp.status_code == 200
+            print(f'[MM ROOT] Token validation /users/me -> HTTP {resp.status_code} ({ok})')
+            return ok
+        except Exception as exc:
+            print(f'[MM ROOT] Token validation error: {exc}')
+            return False
+
+    def _clear_mm_auth_cookies(self, response):
+        """Expire Mattermost auth cookies on a Django response."""
+        for name in ('MMAUTHTOKEN', 'mmauthtoken'):
+            response.set_cookie(name, '', max_age=0, path='/', samesite='Lax')
+        return response
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         Root-only intercept:
@@ -97,18 +122,20 @@ class MattermostPassthroughHandler:
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
-
+        
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-
-        # Cookie already set — let forwarder fetch Mattermost. Re-running plugin auth here
-        # returns the 557B redirect page forever and Mattermost never loads (see server logs).
-        if token and not force_login:
-            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — letting forwarder handle root")
-            return None
-
-        # No cookie — get a fresh token via plugin, then redirect back to root once.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
-        if endpoint_url and not force_login:
+
+        # Stale cookies skip the login bridge and leave the SPA on a spinner (no proxied API calls).
+        if token and not force_login and endpoint_url:
+            if self._validate_mm_token(endpoint_url, token):
+                print(f"[MM ROOT] Valid MMAUTHTOKEN — forwarding root to Mattermost")
+                return None
+            print(f"[MM ROOT] Stale MMAUTHTOKEN — clearing cookie and serving login bridge")
+            token = None
+
+        # No valid cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
+        if endpoint_url:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
                 print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
@@ -136,8 +163,9 @@ class MattermostPassthroughHandler:
         # No valid token at all — serve the login bridge INLINE.
         print(f"[MM ROOT] No valid token — serving login bridge inline at root")
         bridge = self._serve_login_bridge(request, trigger, endpoint)
+        self._clear_mm_auth_cookies(bridge)
         from dose.passthrough.forwarding import _wrap_in_admin_template
-        return _wrap_in_admin_template(request, bridge, trigger, endpoint)
+        return _wrap_in_admin_template(request, bridge, trigger, endpoint, handler=self)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
@@ -194,14 +222,6 @@ class MattermostPassthroughHandler:
 
         print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
-        team_name = ""
-        try:
-            extra_team = self._get_tenantapp_extra_config(request) or {}
-            team_name = extra_team.get('mm_team_name') or extra_team.get('team_name') or ''
-        except Exception:
-            pass
-        team_name_js = json.dumps(team_name)
-
         # HTML-escape so a quote in the password can't break the value attribute.
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
@@ -256,11 +276,6 @@ try {{
     function base() {{
         return window.location.pathname.replace(/\/login(\/.*)?$/, '') || '/';
     }}
-    var MM_TEAM = {team_name_js};
-    function teamLandingUrl(baseUrl) {{
-        var b = (baseUrl || base()).replace(/\/$/, '');
-        return MM_TEAM ? (b + '/' + MM_TEAM + '/channels/town-square') : (b + '/');
-    }}
     function doLogin() {{
         var lid = $('lid').value.trim();
         var pwd = $('pwd').value;
@@ -306,7 +321,8 @@ try {{
                         tx.oncomplete = function() {{ db.close(); }};
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
-                var redirectUrl = teamLandingUrl(base());
+                var baseUrl = base().replace(/\/$/, '');
+                var redirectUrl = baseUrl + '/channels/town-square';
                 dbg('token stored, redirecting to ' + redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
@@ -359,8 +375,31 @@ try {{
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
-            dbg('Token already exists — redirecting to team channel, skipping login');
-            window.location.replace(teamLandingUrl(base()));
+            dbg('Token cookie present — validating via /users/me before skip');
+            var validateUrl = base().replace(/\/$/, '') + '/api/v4/users/me';
+            fetch(validateUrl, {{
+                credentials: 'same-origin',
+                headers: {{'Authorization': 'Bearer ' + existingToken}}
+            }}).then(function(r) {{
+                if (r.ok) {{
+                    dbg('Token valid — loading Mattermost at root');
+                    window.location.replace(base().replace(/\/$/, '') + '/');
+                    return;
+                }}
+                dbg('Token invalid (HTTP ' + r.status + ') — clearing and re-authenticating');
+                try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
+                try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(e) {{}}
+                try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(e) {{}}
+                document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+                if (_allowAutoSubmit && hasCreds) {{
+                    setTimeout(doLogin, 300);
+                }}
+            }}).catch(function(err) {{
+                dbg('Token validation failed: ' + err + ' — continuing login');
+                if (_allowAutoSubmit && hasCreds) {{
+                    setTimeout(doLogin, 300);
+                }}
+            }});
             return;
         }}
         if (forceLogin && existingToken) {{
@@ -512,74 +551,34 @@ try {{
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
-        force_login = request.GET.get('force') == '1'
 
         # Derive trigger from path for use throughout the function
         _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
 
         # If Mattermost served its login HTML, inject credential pre-fill instead of replacing.
-        path_info = getattr(request, 'path_info', '') or ''
-        html_lower = html_str.lower()
-        is_login_page = (
-            '/login' in path_info
-            or 'name="loginid"' in html_lower
-            or "name='loginid'" in html_lower
-            or 'session has expired' in html_lower
-            or 'id="loginid"' in html_lower
-        )
-        if is_login_page:
+        if '/login' in (getattr(request, 'path_info', '') or ''):
             if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
                 _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
             else:
                 _proxy_prefix = "/pt/admin/mattermost"
-            # Stale MMAUTHTOKEN: Mattermost rejected the cookie and served login HTML.
-            stale_token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-            if stale_token and not force_login:
-                print(f"[MM LoginPreFill] Stale token on login page — clearing cookies and retrying root")
-                retry_script = f"""<script>
-(function() {{
-  try {{
-    localStorage.removeItem('storage:MMAUTHTOKEN');
-    localStorage.removeItem('MMAUTHTOKEN');
-    localStorage.removeItem('mmauthtoken');
-  }} catch(e) {{}}
-  document.cookie = 'MMAUTHTOKEN=; path=/; max-age=0; SameSite=Lax';
-  document.cookie = 'mmauthtoken=; path=/; max-age=0; SameSite=Lax';
-  window.location.replace('{_proxy_prefix}/');
-}})();
-</script></head>"""
-                if '</head>' in html_str:
-                    html_str = html_str.replace('</head>', retry_script)
-                else:
-                    html_str = html_str + retry_script
-                return html_str, None
             # Get credentials and inject pre-fill script into Mattermost's login form
             login_id, password, team_name = self._get_login_credentials(request)
             if login_id and password:
                 print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}, team={team_name!r}")
                 prefill_script = f"""<script>
 (function() {{
-    var attempts = 0;
     function fill() {{
         var li = document.querySelector('input[name="loginId"], input[id="loginId"], input[placeholder*="Email"], input[type="text"]');
         var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
-        if (!li || !pw) return false;
-        li.value = {json.dumps(login_id)};
-        li.dispatchEvent(new Event('input', {{bubbles: true}}));
-        pw.value = {json.dumps(password)};
-        pw.dispatchEvent(new Event('input', {{bubbles: true}}));
+        if (li) {{ li.value = {json.dumps(login_id)}; li.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        if (pw) {{ pw.value = {json.dumps(password)}; pw.dispatchEvent(new Event('input', {{bubbles: true}})); }}
         console.log('[PolySaaS] Pre-filled login form for team={team_name}');
-        return true;
-    }}
-    function tryFill() {{
-        if (fill()) return;
-        if (++attempts < 60) setTimeout(tryFill, 100);
     }}
     if (document.readyState === 'loading') {{
-        document.addEventListener('DOMContentLoaded', tryFill);
+        document.addEventListener('DOMContentLoaded', fill);
     }} else {{
-        tryFill();
+        fill();
     }}
 }})();
 </script></head>"""
@@ -606,19 +605,6 @@ try {{
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
-        # Defer Mattermost bundles so the passthrough shim always runs first.
-        html_str = re.sub(
-            r'(<script)(\s+[^>]*src=["\'][^"\']*main\.[^"\']+\.js["\'][^>]*)>',
-            r'\1 defer\2>',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(<script)(\s+[^>]*src=["\'][^"\']*remote_entry\.js[^"\']*["\'][^>]*)>',
-            r'\1 defer\2>',
-            html_str,
-            flags=re.IGNORECASE,
-        )
 
         # Rewrite form action attributes so native form POSTs go through the proxy prefix.
         html_str = re.sub(
@@ -632,14 +618,14 @@ try {{
         # server concurrency limits (ERR_CONNECTION_REFUSED on many chunks).
         # Only API calls and form POSTs go through the proxy.
         html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
+            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)\2',
             lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
         )
 
         html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
+            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)\2',
             lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE,
@@ -648,8 +634,23 @@ try {{
         # Keep absolute upstream-origin static URLs as-is (already direct)
         _abs_static = re.escape(base_origin) + r'/static/'
         html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
+            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)\2',
             lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Defer MM bootstrap bundles so shim patches run first and #root exists in DOM.
+        _origin_q = re.escape(base_origin)
+        html_str = re.sub(
+            rf'(<script\s+src="{_origin_q}/static/main\.[^"]+\.js")>',
+            r'\1 defer>',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        html_str = re.sub(
+            rf'(<script\s+src="{_origin_q}/static/remote_entry\.js[^"]*")>',
+            r'\1 defer>',
             html_str,
             flags=re.IGNORECASE,
         )
@@ -675,7 +676,7 @@ try {{
         return html_str
 
     def adjust_upstream_target_url(self, target_url, upstream_path=None):
-        """Mattermost 10+ returns 501 on /api/v4/config/client without format=old."""
+        """Mattermost 10+ requires format=old on /api/v4/config/client."""
         url = target_url or ''
         if '/api/v4/config/client' not in url or 'format=' in url:
             return target_url
@@ -843,8 +844,11 @@ try {{
         return mm
 
     def should_set_browser_session_cookie(self, request, upstream_cookies):
-        """Mattermost auth uses MMAUTHTOKEN only — never persist Odoo session_id."""
         return False
+
+    def extra_blocked_upstream_prefixes(self, request, upstream_path):
+        """Bingo-era forwarder blocked these for Mattermost; Odoo must keep /bus/ open."""
+        return ('/discuss/', '/mail/action')
 
     def get_upstream_cookies(self, request):
         """
@@ -1012,15 +1016,12 @@ try {{
                         getattr(getattr(request, 'user', None), 'email', '') or '')
             password = (extra.get('mattermost_password') or extra.get('mm_password') or
                         extra.get('password') or '')
-            team_name = extra.get('mm_team_name') or extra.get('team_name') or ''
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
-            team_name = ''
 
         token_js = json.dumps(token)
         login_id_js = json.dumps(login_id)
         password_js = json.dumps(password)
-        team_name_js = json.dumps(team_name)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
         print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'}")
@@ -1046,12 +1047,6 @@ try {{
     }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
-    var MM_TEAM = {team_name_js};
-
-    function teamChannelUrl() {{
-        if (!MM_TEAM) return PROXY + '/';
-        return PROXY + '/' + MM_TEAM + '/channels/town-square';
-    }}
 
     var _lsGet = Storage.prototype.getItem;
     var _lsSet = Storage.prototype.setItem;
@@ -1100,7 +1095,7 @@ try {{
         if (isPolySaaSPath(s)) return s;
         // Static files load directly from Mattermost; API calls proxy through Django
         if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(s)) {{
-            return ensureMmConfigClientFormat(B + s);
+            return B + s;
         }}
         return ensureMmConfigClientFormat(PROXY + s);
     }}
@@ -1665,29 +1660,6 @@ try {{
         return _origAppend.call(this, node);
     }};
     console.log('[PolySaaS Mattermost] Full shim loaded, proxy=', PROXY);
-
-    // Warm config/client through the proxy before Mattermost bundles boot.
-    if (MMAUTHTOKEN) {{
-        var _cfgUrl = ensureMmConfigClientFormat(PROXY + '/api/v4/config/client');
-        fetch(_cfgUrl, {{
-            credentials: 'same-origin',
-            headers: {{ 'Authorization': 'Bearer ' + MMAUTHTOKEN }}
-        }}).then(function(r) {{
-            console.log('[PolySaaS MM] bootstrap config/client status=', r.status);
-        }}).catch(function(e) {{
-            console.warn('[PolySaaS MM] bootstrap config/client failed:', e);
-        }});
-        if (MM_TEAM) {{
-            var _p = window.location.pathname;
-            var _teamPath = '/' + MM_TEAM + '/channels/town-square';
-            if (_p === PROXY || _p === PROXY + '/' || _p.indexOf('/landing') !== -1) {{
-                if (_p.indexOf(_teamPath) === -1) {{
-                    console.log('[PolySaaS MM] Redirect root/landing -> team channel', teamChannelUrl());
-                    window.location.replace(teamChannelUrl());
-                }}
-            }}
-        }}
-    }}
 }})();
 </script>
 """

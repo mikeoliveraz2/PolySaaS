@@ -97,13 +97,19 @@ class MattermostPassthroughHandler:
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
-
+        
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
 
-        # ALWAYS try plugin auth first — stale browser cookie may be rejected by Mattermost,
-        # causing native /login HTML with empty fields. Plugin auth bypasses that path.
+        # If user already has a token cookie, let Mattermost handle the redirect.
+        # Don't force a redirect — let forwarder fetch / and Mattermost will
+        # redirect to the appropriate team/channel based on user's membership.
+        if token and not force_login:
+            print(f"[MM ROOT] Existing token cookie present — letting Mattermost handle redirect")
+            return None
+
+        # No cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
-        if endpoint_url and not force_login:
+        if endpoint_url:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
                 print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
@@ -127,11 +133,6 @@ class MattermostPassthroughHandler:
                 return resp
             else:
                 print(f"[MM ROOT] ====== PLUGIN AUTH FAILED ======")
-
-        # Plugin unavailable or failed — trust existing browser cookie as fallback.
-        if token and not force_login:
-            print(f"[MM ROOT] Existing token cookie present — letting Mattermost handle redirect")
-            return None
 
         # No valid token at all — serve the login bridge INLINE.
         print(f"[MM ROOT] No valid token — serving login bridge inline at root")
@@ -506,16 +507,7 @@ try {{
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
 
         # If Mattermost served its login HTML, inject credential pre-fill instead of replacing.
-        path_info = getattr(request, 'path_info', '') or ''
-        html_lower = html_str.lower()
-        is_login_page = (
-            '/login' in path_info
-            or 'name="loginid"' in html_lower
-            or "name='loginid'" in html_lower
-            or 'session has expired' in html_lower
-            or 'id="loginid"' in html_lower
-        )
-        if is_login_page:
+        if '/login' in (getattr(request, 'path_info', '') or ''):
             if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
                 _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
             else:
@@ -526,26 +518,17 @@ try {{
                 print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}, team={team_name!r}")
                 prefill_script = f"""<script>
 (function() {{
-    var attempts = 0;
     function fill() {{
         var li = document.querySelector('input[name="loginId"], input[id="loginId"], input[placeholder*="Email"], input[type="text"]');
         var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
-        if (!li || !pw) return false;
-        li.value = {json.dumps(login_id)};
-        li.dispatchEvent(new Event('input', {{bubbles: true}}));
-        pw.value = {json.dumps(password)};
-        pw.dispatchEvent(new Event('input', {{bubbles: true}}));
+        if (li) {{ li.value = {json.dumps(login_id)}; li.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        if (pw) {{ pw.value = {json.dumps(password)}; pw.dispatchEvent(new Event('input', {{bubbles: true}})); }}
         console.log('[PolySaaS] Pre-filled login form for team={team_name}');
-        return true;
-    }}
-    function tryFill() {{
-        if (fill()) return;
-        if (++attempts < 60) setTimeout(tryFill, 100);
     }}
     if (document.readyState === 'loading') {{
-        document.addEventListener('DOMContentLoaded', tryFill);
+        document.addEventListener('DOMContentLoaded', fill);
     }} else {{
-        tryFill();
+        fill();
     }}
 }})();
 </script></head>"""
@@ -626,6 +609,14 @@ try {{
         # the admin template (passthrough lives inside the admin template div).
         print(f"[MM HANDLER] Returning modified HTML for admin template wrap")
         return html_str
+
+    def adjust_upstream_target_url(self, target_url, upstream_path=None):
+        """Mattermost 10+ requires format=old on /api/v4/config/client."""
+        url = target_url or ''
+        if '/api/v4/config/client' not in url or 'format=' in url:
+            return target_url
+        sep = '&' if '?' in url else '?'
+        return url + sep + 'format=old'
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
         """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
@@ -776,12 +767,23 @@ try {{
                 )
 
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
-        """Strip MMAUTHTOKEN on login/logout requests so a stale session can't poison auth."""
+        """Only send Mattermost session cookies upstream — never Odoo/Django cookies."""
         path = (getattr(request, 'path_info', '') or '')
         if '/api/v4/users/login' in path or '/api/v4/users/logout' in path:
-            cookies = {k: v for k, v in (cookies or {}).items()
-                       if k.lower() not in ('mmauthtoken',)}
-        return cookies
+            return {}
+        mm = {}
+        for key in ('MMAUTHTOKEN', 'mmauthtoken'):
+            val = (cookies or {}).get(key)
+            if val:
+                mm[key] = val
+        return mm
+
+    def should_set_browser_session_cookie(self, request, upstream_cookies):
+        return False
+
+    def extra_blocked_upstream_prefixes(self, request, upstream_path):
+        """Bingo-era forwarder blocked these for Mattermost; Odoo must keep /bus/ open."""
+        return ('/discuss/', '/mail/action')
 
     def get_upstream_cookies(self, request):
         """
@@ -993,6 +995,12 @@ try {{
         return false;
     }}
 
+    function ensureMmConfigClientFormat(u) {{
+        if (typeof u !== 'string' || u.indexOf('/api/v4/config/client') === -1) return u;
+        if (/[?&]format=/.test(u)) return u;
+        return u + (u.indexOf('?') >= 0 ? '&format=old' : '?format=old');
+    }}
+
     function toProxy(s) {{
         if (typeof s !== 'string') return s;
         if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
@@ -1006,7 +1014,7 @@ try {{
             if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(tail)) {{
                 return B + tail;
             }}
-            return PROXY + tail;
+            return ensureMmConfigClientFormat(PROXY + tail);
         }} else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
             return s;
         }}
@@ -1024,7 +1032,7 @@ try {{
         if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(s)) {{
             return B + s;
         }}
-        return PROXY + s;
+        return ensureMmConfigClientFormat(PROXY + s);
     }}
 
     // Write token into IndexedDB (localforage) so Mattermost's redux-persist hydration finds it.

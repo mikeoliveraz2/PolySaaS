@@ -291,10 +291,10 @@ body.polysaas-passthrough-embed-page {
         }
 
         function getCsrfToken() {
-            var el = document.querySelector('[name=csrfmiddlewaretoken]');
-            if (el && el.value) return el.value;
             var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-            return m ? decodeURIComponent(m[1]) : '';
+            if (m) return decodeURIComponent(m[1]);
+            var el = document.querySelector('[name=csrfmiddlewaretoken]');
+            return el && el.value ? el.value : '';
         }
 
         function notifyOrchestration(fullPath) {
@@ -310,11 +310,15 @@ body.polysaas-passthrough-embed-page {
                     'X-CSRFToken': getCsrfToken()
                 },
                 body: JSON.stringify({path: fullPath, method: 'GET'})
-            }).then(function(r) { return r.json(); }).then(function(data) {
-                if (!data) {
-                    setStatus('no response', false);
-                    return;
+            }).then(function(r) {
+                if (!r.ok) {
+                    setStatus('API error (' + r.status + ')', false);
+                    showEvent('orchestration API failed (' + r.status + ')');
+                    return null;
                 }
+                return r.json();
+            }).then(function(data) {
+                if (!data) return;
                 if (data.status === 'no_tenant') {
                     setStatus('no tenant', false);
                     showEvent('orchestration: no tenant');
