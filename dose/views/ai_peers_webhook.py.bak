@@ -33,18 +33,6 @@ BROADCAST_CHANNELS = {'town-square'}
 
 PEER_SPECS = [
     {
-        'username': 'github',
-        'display_name': 'GitHub',
-        'token_setting': 'BOT_TOKEN_GITHUB',
-        'provider_setting': 'AI_PEER_PROVIDER_GITHUB',
-        'default_provider': 'anthropic',
-        'persona': (
-            'You are GitHub, the repository peer for mikeoliveraz2/PolySaaS. '
-            'Answer questions about the codebase, branches, PRs, and project structure.'
-        ),
-        'aliases': [],
-    },
-    {
         'username': 'copilot',
         'display_name': 'Copilot',
         'token_setting': 'BOT_TOKEN_COPILOT',

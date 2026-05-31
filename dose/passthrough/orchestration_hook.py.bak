@@ -93,24 +93,9 @@ def _instruction_matches(instr, upstream_path, method):
             return False
 
     norm = upstream_path.lower()
-    mv_l = mv.lower().rstrip('/')
 
     if mt in ('path', 'contains'):
-        if mv_l in norm:
-            return True
-        # Odoo 18: rule /odoo/accounting/116 also matches navigation to /odoo/accounting
-        m = re.match(r'^(.+)/(\d+)$', mv_l)
-        if m:
-            base = m.group(1)
-            menu_from_rule = m.group(2)
-            if base in norm or norm.startswith(base + '/'):
-                _, menu_from_path = _extract_odoo_ids(upstream_path)
-                if not menu_from_path or menu_from_path == menu_from_rule:
-                    return True
-        # Shorter incoming path matches longer rule prefix (e.g. rule has extra segment)
-        if norm and (mv_l.startswith(norm + '/') or norm.startswith(mv_l + '/')):
-            return True
-        return False
+        return mv.lower() in norm
     elif mt == 'action_id':
         action_id, _ = _extract_odoo_ids(upstream_path)
         return bool(action_id and mv.lower() in action_id.lower())

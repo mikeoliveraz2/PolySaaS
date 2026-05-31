@@ -11,7 +11,7 @@ import json
 import logging
 import re
 import time
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -23,275 +23,22 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
+        host = urlparse(url).netloc.lower() if url else ''
+        slug = str(getattr(endpoint, 'slug', '') or '').lower()
+        trigger = str(getattr(endpoint, 'trigger_path', '') or '').lower()
+        blob = f"{host} {slug} {trigger}"
+        return 'mattermost' in blob
+
     def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
         """Static bundle URLs are served by mattermost_static_proxy in URLconf, not PT core."""
         import re as _re
         m = _re.match(r'^/pt/admin/([^/]+)/static/', path_info)
         return bool(m and 'mattermost' in m.group(1).lower())
 
-    def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """Follow document GET redirects inside the handler so Mattermost auth hops do not escape the passthrough path."""
-        if request.method != 'GET':
-            return False
-
-        path = (upstream_path or '').lower()
-        if any(path.startswith(prefix) for prefix in ('/api/', '/plugins/', '/boards/', '/calls/', '/websocket')):
-            return False
-
-        last_segment = path.rsplit('/', 1)[-1]
-        if '.' in last_segment:
-            return False
-
-        accept = (request.headers.get('Accept', '') or '').lower()
-        return 'text/html' in accept or not accept
-
-    def _get_team_name(self, request, endpoint=None):
-        """Resolve the Mattermost team slug used for post-login redirects."""
-        try:
-            extra = self._get_tenantapp_extra_config(request) or {}
-            team_name = self._resolve_team_name(request, extra, endpoint=endpoint)
-            if team_name:
-                return team_name
-        except Exception:
-            pass
-        return 'polysaas-dev-team'
-
-    def _normalize_team_candidate(self, value: str) -> str:
-        value = (value or '').strip().lower()
-        if not value:
-            return ''
-        value = re.sub(r'[^a-z0-9-]+', '-', value)
-        value = re.sub(r'-+', '-', value).strip('-')
-        return value
-
-    def _resolve_team_name(self, request, extra: dict, endpoint=None) -> str:
-        stored_team = (extra.get('mm_team_name') or extra.get('team_name') or '').strip()
-        stored_team_id = (extra.get('mm_team_id') or extra.get('team_id') or '').strip()
-        candidates = {
-            stored_team.lower(),
-            self._normalize_team_candidate(stored_team),
-        }
-        candidates.discard('')
-
-        token = (
-            request.COOKIES.get('MMAUTHTOKEN')
-            or request.COOKIES.get('mmauthtoken')
-            or extra.get('mmauthtoken')
-            or extra.get('mm_session_token')
-            or extra.get('mm_token')
-            or ''
-        )
-        mm_origin = (
-            extra.get('mm_url')
-            or extra.get('mattermost_url')
-            or extra.get('mm_origin')
-            or getattr(endpoint, 'endpoint_url', '')
-            or getattr(getattr(request, '_passthrough_endpoint', None), 'endpoint_url', '')
-            or ''
-        ).rstrip('/')
-
-        if token and mm_origin:
-            try:
-                import requests as _req
-
-                teams_resp = _req.get(
-                    f'{mm_origin}/api/v4/users/me/teams',
-                    headers={'Authorization': f'Bearer {token}'},
-                    timeout=10,
-                )
-                if teams_resp.status_code == 200:
-                    teams = teams_resp.json() or []
-                    if stored_team_id:
-                        for team in teams:
-                            if str(team.get('id') or '') == stored_team_id and team.get('name'):
-                                return team['name']
-                    for team in teams:
-                        team_name = (team.get('name') or '').strip()
-                        display_name = (team.get('display_name') or '').strip()
-                        team_candidates = {
-                            team_name.lower(),
-                            display_name.lower(),
-                            self._normalize_team_candidate(display_name),
-                        }
-                        if candidates & team_candidates and team_name:
-                            return team_name
-                    if teams:
-                        first_name = (teams[0].get('name') or '').strip()
-                        if first_name:
-                            return first_name
-                else:
-                    print(f'[MM TEAM] users/me/teams failed: {teams_resp.status_code}')
-            except Exception as exc:
-                print(f'[MM TEAM] team lookup failed: {exc}')
-
-        if stored_team:
-            return self._normalize_team_candidate(stored_team) or stored_team
-        return ''
-
     _cors_patched = False  # class-level flag: only patch once per process
-
-    def _credential_matches_active_user(self, request, login_id: str) -> bool:
-        """Allow auto-login only when stored credentials map to the active Django user."""
-        normalized = (login_id or '').strip().lower()
-        if not normalized:
-            return False
-        user = getattr(request, 'user', None)
-        candidates = {
-            (getattr(user, 'username', '') or '').strip().lower(),
-            (getattr(user, 'email', '') or '').strip().lower(),
-        }
-        candidates.discard('')
-        return normalized in candidates
-
-    def _get_runtime_mattermost_admin_token(self) -> str:
-        """Prefer the deployment PAT for config operations like AllowCorsFrom patching."""
-        try:
-            from django.conf import settings
-
-            token = (getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '') or '').strip()
-            if token:
-                return token
-        except Exception:
-            pass
-
-        try:
-            from django.db import connection
-            from parameters.crypto import decrypt_json_dict
-
-            with connection.cursor() as cur:
-                cur.execute("SET search_path TO public,pg_catalog")
-                cur.execute(
-                    """SELECT encrypted_payload, param2
-                       FROM parameters_parameter
-                       WHERE matchingKey = %s
-                       ORDER BY sequence ASC
-                       LIMIT 1""",
-                    ['MattermostProvisioningService'],
-                )
-                row = cur.fetchone()
-            if not row:
-                return ''
-
-            encrypted_payload, param2 = row
-            if encrypted_payload:
-                secrets = decrypt_json_dict(encrypted_payload) or {}
-                token = (
-                    secrets.get('admin_token')
-                    or secrets.get('MATTERMOST_ADMIN_TOKEN')
-                    or ''
-                ).strip()
-                if token:
-                    return token
-
-            token = (param2 or '').strip()
-            if token and token != 'N/A':
-                return token
-        except Exception as exc:
-            print(f'[MM CORS] Admin token lookup failed: {exc}')
-
-        return ''
-
-    def _prefix_proxy_path(self, value: str, proxy_prefix: str) -> str:
-        if not value or not value.startswith('/'):
-            return value
-        if value == proxy_prefix or value.startswith(proxy_prefix + '/'):
-            return value
-        if value.startswith('/pt/admin/'):
-            return value
-        return f'{proxy_prefix}{value}'
-
-    def _rewrite_asset_url(self, value: str, base_origin: str, proxy_prefix: str) -> str:
-        if not value:
-            return value
-        if value.startswith(base_origin):
-            return value
-        if value.startswith(proxy_prefix + '/static/'):
-            return f'{base_origin}{value[len(proxy_prefix):]}'
-        if value.startswith('http://') or value.startswith('https://') or value.startswith('//'):
-            return value
-        if value.startswith('/static/'):
-            return f'{base_origin}{value}'
-        if value.startswith('static/'):
-            return f"{base_origin}/{value}"
-        if value.startswith('/pt/admin/'):
-            return value
-        if value.startswith('/'):
-            return f'{base_origin}{value}'
-        return value
-
-    def _proxy_prefix_from_request(self, request) -> str:
-        path = getattr(request, 'path_info', '') or ''
-        parts = path.strip('/').split('/')
-        if len(parts) >= 3 and parts[0] == 'pt' and parts[1] == 'admin':
-            return f'/{parts[0]}/{parts[1]}/{parts[2]}'
-        return ''
-
-    def postprocess_upstream_response(
-        self,
-        resp,
-        request,
-        *,
-        endpoint_url,
-        target_url,
-        upstream_path,
-        outbound_headers,
-        upstream_cookies,
-    ):
-        if resp.status_code not in (301, 302, 303, 307, 308):
-            return resp
-
-        location = (resp.headers.get('Location') or '').strip()
-        if not location:
-            return resp
-
-        proxy_prefix = self._proxy_prefix_from_request(request)
-        if not proxy_prefix:
-            return resp
-
-        request_origin = request.build_absolute_uri('/').rstrip('/')
-        upstream_origin = endpoint_url.rstrip('/')
-        request_host = (urlparse(request_origin).netloc or '').lower()
-
-        absolute_location = location
-        if location.startswith('/'):
-            absolute_location = request_origin + location
-        elif not re.match(r'^https?://', location, re.IGNORECASE):
-            absolute_location = request_origin + '/' + location.lstrip('/')
-
-        parsed = urlparse(absolute_location)
-        query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
-        query = dict(query_pairs)
-        redirect_to = (query.get('redirect_to') or '').strip()
-
-        if redirect_to.startswith(upstream_origin):
-            redirect_to = redirect_to[len(upstream_origin):] or '/'
-        elif redirect_to.startswith(request_origin):
-            redirect_to = redirect_to[len(request_origin):] or '/'
-
-        if redirect_to.startswith('/') and not redirect_to.startswith('/pt/admin/'):
-            query['redirect_to'] = f'{proxy_prefix}{redirect_to}'
-
-        same_host_redirect = (parsed.netloc or '').lower() == request_host
-        root_escape = parsed.path in ('', '/') and same_host_redirect
-        expired_redirect = query.get('extra') == 'expired'
-
-        if root_escape and expired_redirect:
-            login_query = [('force', '1')]
-            if query.get('redirect_to'):
-                login_query.append(('redirect_to', query['redirect_to']))
-            normalized = f"{upstream_origin}/login?{urlencode(login_query)}"
-            resp.headers['Location'] = normalized
-            print(f"[MM REDIRECT] expired root redirect normalized: {location} -> {normalized}")
-            return resp
-
-        if same_host_redirect:
-            normalized = f"{upstream_origin}{parsed.path or '/'}"
-            if query:
-                normalized += '?' + urlencode(list(query.items()))
-            resp.headers['Location'] = normalized
-            print(f"[MM REDIRECT] same-host redirect normalized: {location} -> {normalized}")
-
-        return resp
 
     def _ensure_cors_allowed(self, request, mm_origin, token):
         """Patch Mattermost's AllowCorsFrom once per process so WebSocket connections succeed."""
@@ -299,14 +46,11 @@ class MattermostPassthroughHandler:
             return
         try:
             import requests as _req
-            polysaas_origin = request.build_absolute_uri('/').rstrip('/')
-            auth_token = self._get_runtime_mattermost_admin_token() or token
-            if not auth_token:
-                print('[MM CORS] No token available for config check')
-                return
+            polysaas_origin = f"https://{request.get_host()}"
+            # Get current config
             cfg_resp = _req.get(
                 f'{mm_origin}/api/v4/config',
-                headers={'Authorization': f'Bearer {auth_token}'},
+                headers={'Authorization': f'Bearer {token}'},
                 timeout=10,
             )
             if cfg_resp.status_code != 200:
@@ -314,10 +58,6 @@ class MattermostPassthroughHandler:
                 return
             cfg = cfg_resp.json()
             current = cfg.get('ServiceSettings', {}).get('AllowCorsFrom', '') or ''
-            if current.strip() == '*':
-                print('[MM CORS] AllowCorsFrom already set to *')
-                MattermostPassthroughHandler._cors_patched = True
-                return
             if polysaas_origin in current:
                 print(f"[MM CORS] Already allowed: {current}")
                 MattermostPassthroughHandler._cors_patched = True
@@ -327,7 +67,7 @@ class MattermostPassthroughHandler:
             patch_resp = _req.put(
                 f'{mm_origin}/api/v4/config/patch',
                 json=patch,
-                headers={'Authorization': f'Bearer {auth_token}'},
+                headers={'Authorization': f'Bearer {token}'},
                 timeout=10,
             )
             if patch_resp.status_code == 200:
@@ -341,21 +81,67 @@ class MattermostPassthroughHandler:
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         Root-only intercept:
-          - Token present → forward to Mattermost (return None).
-          - No token     → try server-side SSO; if that works set cookie + redirect
-                           to /channels/town-square; otherwise serve login bridge
-                           INLINE (no redirect to /login — that caused the loop).
+          - Token present → return None (let forwarder fetch Mattermost / with token).
+          - No token     → serve login bridge INLINE (no redirect to /login).
         All non-root paths return None immediately so the forwarder handles them.
         """
         if request.method != "GET":
             return None
-        print('[MM ROOT] Preserving native upstream root/login document')
-        return None
+        trigger = url_trigger_segment.strip("/")
+        proxy_prefix = f"/pt/admin/{trigger}"
+
+        # Only intercept the exact root. Everything else (channels, api, login, …)
+        # is forwarded to Mattermost directly — no /login intercept here.
+        if request.path_info.rstrip("/") != proxy_prefix:
+            return None
+
+        # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
+        force_login = request.GET.get('force') == '1'
+
+        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+
+        # ALWAYS try plugin auth first — stale browser cookie may be rejected by Mattermost,
+        # causing native /login HTML with empty fields. Plugin auth bypasses that path.
+        endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
+        if endpoint_url and not force_login:
+            plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
+            if plugin_token:
+                print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
+                from django.http import HttpResponse
+                redirect_html = f"""<!DOCTYPE html>
+<html><head><title>PolySaaS &rarr; Mattermost</title></head>
+<body>
+<script>
+  localStorage.removeItem('storage:MMAUTHTOKEN');
+  localStorage.removeItem('MMAUTHTOKEN');
+  localStorage.removeItem('mmauthtoken');
+  document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
+  document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
+  window.location.href = '{proxy_prefix}/';
+</script>
+<p>Redirecting to Mattermost...</p>
+</body></html>"""
+                resp = HttpResponse(redirect_html, content_type="text/html; charset=utf-8")
+                resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
+                resp.set_cookie('mmauthtoken', plugin_token, max_age=86400, path='/', samesite='Lax')
+                return resp
+            else:
+                print(f"[MM ROOT] ====== PLUGIN AUTH FAILED ======")
+
+        # Plugin unavailable or failed — trust existing browser cookie as fallback.
+        if token and not force_login:
+            print(f"[MM ROOT] Existing token cookie present — letting Mattermost handle redirect")
+            return None
+
+        # No valid token at all — serve the login bridge INLINE.
+        print(f"[MM ROOT] No valid token — serving login bridge inline at root")
+        bridge = self._serve_login_bridge(request, trigger, endpoint)
+        from dose.passthrough.forwarding import _wrap_in_admin_template
+        return _wrap_in_admin_template(request, bridge, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
         from django.http import HttpResponse
-        from django.conf import settings
         from html import escape as h
         from dose.passthrough.credential_container import PassthroughCredentialContainer
 
@@ -364,47 +150,55 @@ class MattermostPassthroughHandler:
         password = ""
         allow_auto_submit = False
         try:
+            # First try to get credentials from encrypted session storage
             session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+            print(f"[MM LoginBridge] Session creds retrieved: {bool(session_creds)}")
             if session_creds:
+                print(f"[MM LoginBridge] Session creds keys: {list(session_creds.keys())}")
                 candidate_login = session_creds.get('username', '')
                 candidate_password = session_creds.get('password', '')
-                if self._credential_matches_active_user(request, candidate_login):
+                print(f"[MM LoginBridge] Candidate login: {candidate_login!r}, password present: {bool(candidate_password)}")
+                cred_match = self._credential_matches_active_user(request, candidate_login)
+                print(f"[MM LoginBridge] Credential match result: {cred_match}")
+                if cred_match:
                     login_id = candidate_login
                     password = candidate_password
                     allow_auto_submit = bool(login_id and password)
-                    logger.info("[MM LoginBridge] Using active-user credentials from encrypted session")
+                    print(f"[MM LoginBridge] Using session credentials, auto_submit={allow_auto_submit}")
                 else:
-                    logger.info("[MM LoginBridge] Ignoring session credentials that do not match the active user")
+                    print(f"[MM LoginBridge] Ignoring session credentials - don't match active user")
 
+            # Fallback to extra_config if session credentials not available
+            print(f"[MM LoginBridge] After session check: login_id={login_id!r}, has_password={bool(password)}")
             if not login_id or not password:
                 extra = self._get_tenantapp_extra_config(request) or {}
-                mm_login = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
-                            extra.get('mattermost_username') or extra.get('mm_username') or '')
-                mm_pass = (extra.get('mattermost_password') or extra.get('mm_password') or '')
-                fallback_login = extra.get('username') or extra.get('login_id') or ''
-                fallback_pass = extra.get('password') or ''
-                default_pass = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!') or ''
+                print(f"[MM LoginBridge] Fallback to extra_config, keys={list(extra.keys())}")
+                # Debug: show what credential keys we found
+                for k in ['mm_login_id', 'mattermost_login_id', 'mattermost_username', 'mm_password', 'mattermost_password']:
+                    if extra.get(k):
+                        print(f"[MM LoginBridge] Found {k} in extra_config")
+                stored_login = (extra.get('mattermost_username') or
+                               extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                               extra.get('username') or extra.get('login_id') or '')
+                stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
+                              extra.get('password') or '')
+                # Use stored credentials directly — they were provisioned for this tenant.
+                # Fall back to Django username, then email if nothing stored.
                 django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
-                candidate_login = mm_login or fallback_login or django_username or user_email
-                if self._credential_matches_active_user(request, candidate_login):
-                    login_id = candidate_login
-                    password = mm_pass or fallback_pass or default_pass
-                else:
-                    login_id = django_username or user_email
-                    password = ''
-                    logger.info("[MM LoginBridge] Refusing auto-submit for stored credentials that do not match the active user")
+                login_id = stored_login or django_username or user_email
+                password = stored_pass
                 allow_auto_submit = bool(login_id and password)
         except Exception as exc:
             logger.warning("[MM LoginBridge] Credentials lookup failed: %s", exc)
             login_id = user_email
 
-        logger.info("[MM LoginBridge] login_id=%r len=%d password_present=%s",
-                    login_id, len(login_id or ''), bool(password))
+        print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
         # HTML-escape so a quote in the password can't break the value attribute.
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
-        allow_auto_submit_js = "true" if allow_auto_submit else "false"
+        user_email_js = json.dumps(user_email)
+
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>
 <style>
@@ -431,12 +225,21 @@ class MattermostPassthroughHandler:
   <div class="sub">via PolySaaS Passthrough</div>
   <input type="text" id="lid" placeholder="Email or Username" value="{lid_attr}" autocomplete="username">
   <input type="password" id="pwd" placeholder="Password" value="{pwd_attr}" autocomplete="current-password">
-  <button id="btn" type="button">Sign In</button>
+  <button id="btn" type="button" onclick="window._mmDoLogin()">Sign In</button>
   <div id="status"></div>
+  <div id="debug" style="margin-top:10px;padding:8px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;font-size:11px;color:#333;max-height:120px;overflow:auto;"></div>
 </div>
 <script>
 (function () {{
+try {{
+    var _allowAutoSubmit = {'true' if allow_auto_submit else 'false'};
     function $(id) {{ return document.getElementById(id); }}
+    function dbg(msg) {{
+        console.log('[LoginBridge] ' + msg);
+        var d = $('debug');
+        if (d) {{ d.innerHTML += '<div style=\"margin:1px 0;\">' + new Date().toLocaleTimeString() + ' — ' + msg + '</div>'; d.scrollTop = d.scrollHeight; }}
+    }}
+    dbg('IIFE entered');
     function setStatus(msg, err) {{
         var s = $('status');
         s.className = err ? 'err' : '';
@@ -445,64 +248,137 @@ class MattermostPassthroughHandler:
     function base() {{
         return window.location.pathname.replace(/\/login(\/.*)?$/, '') || '/';
     }}
-    function successTarget() {{
-        try {{
-            var current = new URL(window.location.href);
-            var redirectTo = current.searchParams.get('redirect_to') || '';
-            if (redirectTo) return redirectTo;
-        }} catch (e) {{}}
-        return base();
-    }}
     function doLogin() {{
         var lid = $('lid').value.trim();
         var pwd = $('pwd').value;
+        dbg('doLogin called lid=' + lid + ' pwd_len=' + pwd.length);
         if (!lid || !pwd) {{ setStatus('Enter username and password.', true); return; }}
         $('btn').disabled = true;
         setStatus('Signing in...');
 
         var url = base().replace(/\/$/, '') + '/api/v4/users/login';
-        console.log('[LoginBridge] POST', url);
+        dbg('POST ' + url);
 
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.withCredentials = true;
         xhr.onload = function () {{
+            dbg('onload status=' + xhr.status);
             var token = xhr.getResponseHeader('Token');
-            console.log('[LoginBridge] status=' + xhr.status + ' token=' + (token ? 'yes' : 'no') +
-                        ' body=' + (xhr.responseText || '').slice(0, 300));
+            dbg('token=' + (token ? 'present' : 'MISSING'));
             if (xhr.status >= 200 && xhr.status < 300 && token) {{
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
-                try {{ localStorage.setItem('storage:MMAuthtokenExpiry', JSON.stringify(Date.now() + 108000000)); }} catch (e) {{}}
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
-                try {{ window.MMAUTHTOKEN = token; }} catch (e) {{}}
                 setStatus('Success! Loading...');
-                var target = successTarget();
-                console.log('[LoginBridge] success target:', target);
-                window.location.replace(target);
+                // Write token to IndexedDB so Mattermost Redux hydrates correctly
+                var mmUrl = 'https://polysaas-mattermost.onrender.com';
+                try {{
+                    var req = indexedDB.open('localforage', 2);
+                    req.onsuccess = function(e) {{
+                        var db = e.target.result;
+                        var tx = db.transaction('keyvaluepairs', 'readwrite');
+                        var store = tx.objectStore('keyvaluepairs');
+                        var getReq = store.get('persist:storage');
+                        getReq.onsuccess = function() {{
+                            var data = {{}};
+                            try {{ data = JSON.parse(getReq.result || '{{}}'); }} catch(_) {{}}
+                            data.entities = data.entities || {{}};
+                            data.entities.general = data.entities.general || {{}};
+                            data.entities.general.credentials = {{ url: mmUrl, token: token }};
+                            store.put(JSON.stringify(data), 'persist:storage');
+                            dbg('IDB persist:storage written');
+                        }};
+                        tx.oncomplete = function() {{ db.close(); }};
+                    }};
+                }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
+                var baseUrl = base().replace(/\/$/, '');
+                var redirectUrl = baseUrl + '/channels/town-square';
+                dbg('token stored, redirecting to ' + redirectUrl);
+                window.location.replace(redirectUrl);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
             try {{ var b = JSON.parse(xhr.responseText || '{{}}'); if (b.message) msg = b.message; }} catch (e) {{}}
+            dbg('fail msg=' + msg);
             $('btn').disabled = false;
             setStatus(msg, true);
         }};
         xhr.onerror = function () {{
+            dbg('onerror — network failure');
             $('btn').disabled = false;
-            setStatus('Network error.', true);
+            setStatus('Network error — check console.', true);
         }};
-        xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
+        xhr.onabort = function () {{
+            dbg('onabort');
+            $('btn').disabled = false;
+            setStatus('Request aborted.', true);
+        }};
+        xhr.ontimeout = function () {{
+            dbg('ontimeout');
+            $('btn').disabled = false;
+            setStatus('Request timed out.', true);
+        }};
+        try {{
+            xhr.send(JSON.stringify({{ login_id: lid, password: pwd }}));
+            dbg('xhr.send() called');
+        }} catch (e) {{
+            dbg('xhr.send() threw: ' + e);
+            $('btn').disabled = false;
+            setStatus('Send error: ' + e.message, true);
+        }}
     }}
 
-    document.addEventListener('DOMContentLoaded', function () {{
+    function initBridge() {{
         $('btn').addEventListener('click', doLogin);
-        console.log('[LoginBridge] loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
-                    ' pwd=' + ($('pwd').value ? 'yes' : 'no'));
-        if ({allow_auto_submit_js} && $('lid').value && $('pwd').value) {{
-            setTimeout(doLogin, 300);
+        var hasCreds = !!($('lid').value && $('pwd').value);
+        var existingToken = '';
+        try {{ existingToken = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+        if (!existingToken) {{
+            var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+            if (m) existingToken = m[1];
         }}
-    }});
+        var forceLogin = window.location.search.indexOf('force=1') !== -1;
+        dbg('loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
+                    ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
+                    ' hasCreds=' + hasCreds +
+                    ' allowAuto=' + _allowAutoSubmit +
+                    ' hasToken=' + (existingToken ? 'yes' : 'no') +
+                    ' force=' + forceLogin);
+        if (existingToken && !forceLogin) {{
+            dbg('Token already exists — redirecting to town-square, skipping login');
+            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
+            return;
+        }}
+        if (forceLogin && existingToken) {{
+            dbg('force=1 detected — clearing stale token and re-authenticating');
+            try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
+            try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(e) {{}}
+            try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(e) {{}}
+            document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+            existingToken = '';
+        }}
+        if (_allowAutoSubmit && hasCreds) {{
+            dbg('auto-submit in 300ms');
+            setTimeout(doLogin, 300);
+        }} else {{
+            dbg('auto-submit skipped: allow=' + _allowAutoSubmit + ' hasCreds=' + hasCreds);
+        }}
+    }}
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', initBridge);
+    }} else {{
+        initBridge();
+    }}
+    window._mmDoLogin = doLogin;
+}} catch (e) {{
+    var errMsg = '[LoginBridge FATAL] ' + (e && e.message ? e.message : String(e));
+    console.error(errMsg, e);
+    var dbgPanel = document.getElementById('debug');
+    if (dbgPanel) dbgPanel.innerHTML = '<div style="color:#b91c1c;font-weight:bold;">' + errMsg + '</div>';
+    else alert(errMsg);
+}}
 }})();
 </script>
 </div>
@@ -510,221 +386,332 @@ class MattermostPassthroughHandler:
 
         resp = HttpResponse(html, content_type="text/html; charset=utf-8")
         resp["Cache-Control"] = "no-cache, no-store, must-revalidate"
-
         return resp
 
-    def _rewrite_static_asset_urls(self, html: str, proxy_prefix: str) -> str:
-        """Aggressive rewrite of /static/ asset URLs to proxy path in HTML.
+    def _credential_matches_active_user(self, request, login_id: str) -> bool:
+        """Allow auto-login when user is authenticated and we have credentials.
+        Credentials are encrypted per-session and only accessible to the logged-in user."""
+        user = getattr(request, 'user', None)
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        # Require exact match on username/email to prevent cross-user credential use
+        normalized = (login_id or '').strip().lower()
+        if not normalized:
+            return False
+        candidates = {
+            (getattr(user, 'username', '') or '').strip().lower(),
+            (getattr(user, 'email', '') or '').strip().lower(),
+        }
+        candidates.discard('')
+        return normalized in candidates
+
+    def _get_plugin_auth_token(self, request, endpoint_url, trigger):
+        """Call the Mattermost plugin's /polysaas-auth endpoint to get a session token.
+        Returns the token string or None if plugin is not available or auth fails."""
+        try:
+            from django.conf import settings
+            secret = getattr(settings, 'MATTERMOST_PASSTHROUGH_SECRET', '')
+            if not secret:
+                print(f"[MM PLUGIN] MATTERMOST_PASSTHROUGH_SECRET not configured")
+                return None
+
+            user = getattr(request, 'user', None)
+            if not user or not getattr(user, 'is_authenticated', False):
+                print(f"[MM PLUGIN] User not authenticated")
+                return None
+
+            mm_origin = endpoint_url.rstrip('/')
+            plugin_url = f"{mm_origin}/plugins/com.polysaas.passthrough/api/v1/polysaas-auth"
+            username = getattr(user, 'username', '') or getattr(user, 'email', '').split('@')[0]
+            email = getattr(user, 'email', '') or ''
+
+            if not username or not email:
+                print(f"[MM PLUGIN] Missing username/email")
+                return None
+
+            import requests as _req
+            import json as _json
+
+            payload = {
+                'email': email,
+                'username': username,
+                'secret': secret,
+            }
+            print(f"[MM PLUGIN] Calling {plugin_url} for user={email}")
+            resp = _req.post(
+                plugin_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=10,
+            )
+            print(f"[MM PLUGIN] ====== RESPONSE {resp.status_code} ======")
+            if resp.status_code == 200:
+                data = resp.json()
+                token = data.get('token')
+                if token:
+                    print(f"[MM PLUGIN] Token received len={len(token)}")
+                    return token
+                else:
+                    print(f"[MM PLUGIN] No token in response")
+            else:
+                print(f"[MM PLUGIN] Auth failed: {resp.status_code} {resp.text[:200]}")
+        except Exception as exc:
+            print(f"[MM PLUGIN] ====== EXCEPTION: {exc} ======")
+        print(f"[MM PLUGIN] ====== RETURNING NONE ======")
+        return None
+
+    def _get_login_credentials(self, request):
+        """Get Mattermost login credentials and team name from session or extra_config.
+        Returns (login_id, password, team_name) tuple."""
+        from dose.passthrough.credential_container import PassthroughCredentialContainer
         
-        This ensures static assets like CSS, JS, images load through the proxy
-        instead of requesting from the root /static/ path which would 404.
+        user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
+        login_id = ""
+        password = ""
+        team_name = ""
         
-        Patterns caught:
-        - Any path starting with /static/
-        - Explicit /static/css/ patterns
-        - .css files with higher priority
-        - All other static asset extensions
-        """
-        import re
-        if not html or not proxy_prefix:
-            return html
+        extra = self._get_tenantapp_extra_config(request) or {}
+        team_name = extra.get('mm_team_name') or extra.get('team_name') or 'polysaas-dev-team'
         
-        # Ensure proxy_prefix doesn't end with /
-        proxy_prefix = proxy_prefix.rstrip('/')
+        # First try to get credentials from encrypted session storage
+        session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost')
+        if session_creds:
+            candidate_login = session_creds.get('username', '')
+            candidate_password = session_creds.get('password', '')
+            if self._credential_matches_active_user(request, candidate_login):
+                login_id = candidate_login
+                password = candidate_password
+                print(f"[MM LoginPreFill] Using session credentials for {login_id!r}")
         
-        # Track rewrites for debugging
-        rewrite_count = [0]  # Use list to allow modification in nested function
+        # Fallback to extra_config if session credentials not available
+        if not login_id or not password:
+            stored_login = (extra.get('mattermost_username') or
+                           extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                           extra.get('username') or extra.get('login_id') or '')
+            stored_pass = (extra.get('mattermost_password') or extra.get('mm_password') or
+                          extra.get('password') or '')
+            django_username = getattr(getattr(request, 'user', None), 'username', '') or ''
+            login_id = stored_login or django_username or user_email
+            password = stored_pass
+            if login_id and password:
+                print(f"[MM LoginPreFill] Using extra_config credentials for {login_id!r}")
         
-        def log_rewrite(original, rewritten):
-            """Log every rewritten URL for debugging."""
-            rewrite_count[0] += 1
-            logger.debug(f"[STATIC_REWRITE] #{rewrite_count[0]}: {original} -> {rewritten}")
-            print(f"[STATIC_REWRITE] #{rewrite_count[0]}: {original} -> {rewritten}")
-        
-        # Pattern 1: href="/static/..." and src="/static/..." (most common)
-        pattern1 = r'((?:href|src)=["\'])/static(/[^"\']*?)(["\'])'
-        def replacer1(m):
-            attr = m.group(1)
-            path = m.group(2)
-            quote = m.group(3)
-            original = f'/static{path}'
-            # Don't double-rewrite if already has proxy prefix
-            if path.startswith(proxy_prefix):
-                return m.group(0)
-            rewritten = f'{attr}{proxy_prefix}/static{path}{quote}'
-            log_rewrite(original, f'{proxy_prefix}/static{path}')
-            return rewritten
-        
-        html = re.sub(pattern1, replacer1, html, flags=re.IGNORECASE)
-        
-        # Pattern 2: data-src="/static/..." (for lazy-loaded images)
-        pattern2 = r'(data-src=["\'])/static(/[^"\']*?)(["\'])'
-        def replacer2(m):
-            attr = m.group(1)
-            path = m.group(2)
-            quote = m.group(3)
-            original = f'/static{path}'
-            if path.startswith(proxy_prefix):
-                return m.group(0)
-            rewritten = f'{attr}{proxy_prefix}/static{path}{quote}'
-            log_rewrite(original, f'{proxy_prefix}/static{path}')
-            return rewritten
-        
-        html = re.sub(pattern2, replacer2, html, flags=re.IGNORECASE)
-        
-        # Pattern 3: Explicit /static/css/ paths (higher priority for CSS files)
-        pattern3 = r'((?:href|src)=["\'])/static/css(/[^"\']*?\.css)(["\'])'
-        def replacer3(m):
-            attr = m.group(1)
-            path = m.group(2)
-            quote = m.group(3)
-            original = f'/static/css{path}'
-            if path.startswith(proxy_prefix):
-                return m.group(0)
-            rewritten = f'{attr}{proxy_prefix}/static/css{path}{quote}'
-            log_rewrite(original, f'{proxy_prefix}/static/css{path}')
-            return rewritten
-        
-        html = re.sub(pattern3, replacer3, html, flags=re.IGNORECASE)
-        
-        # Pattern 4: Catch any remaining /static/ paths in common attributes
-        # This catches action, formaction, poster, etc.
-        pattern4 = r'((?:action|formaction|poster|data)=["\'])/static(/[^"\']*?)(["\'])'
-        def replacer4(m):
-            attr = m.group(1)
-            path = m.group(2)
-            quote = m.group(3)
-            original = f'/static{path}'
-            if path.startswith(proxy_prefix):
-                return m.group(0)
-            rewritten = f'{attr}{proxy_prefix}/static{path}{quote}'
-            log_rewrite(original, f'{proxy_prefix}/static{path}')
-            return rewritten
-        
-        html = re.sub(pattern4, replacer4, html, flags=re.IGNORECASE)
-        
-        # Pattern 5: Catch /static/ paths in style tags and inline CSS (url(/static/...))
-        pattern5 = r'url\(["\']?/static(/[^)"\']*?)["\']?\)'
-        def replacer5(m):
-            path = m.group(1)
-            original = f'url("/static{path}")'
-            if path.startswith(proxy_prefix):
-                return m.group(0)
-            rewritten = f'url("{proxy_prefix}/static{path}")'
-            log_rewrite(original, f'url("{proxy_prefix}/static{path}")')
-            return rewritten
-        
-        html = re.sub(pattern5, replacer5, html, flags=re.IGNORECASE)
-        
-        # Pattern 6: Catch webpack/jsonp callbacks that reference /static/ paths
-        # These are often in script tags like: __webpack_public_path__ = "/static/";
-        pattern6 = r'(__webpack_public_path__\s*=\s*["\'])/static(["\'])'
-        def replacer6(m):
-            prefix = m.group(1)
-            quote = m.group(2)
-            original = f'{prefix}/static{quote}'
-            rewritten = f'{prefix}{proxy_prefix}/static{quote}'
-            log_rewrite(original, f'{prefix}{proxy_prefix}/static{quote}')
-            return rewritten
-        
-        html = re.sub(pattern6, replacer6, html, flags=re.IGNORECASE)
-        
-        # Pattern 7: Catch import statements that reference /static/
-        pattern7 = r'(import\s+.*?\s+from\s+["\'])/static(/[^"\']*?)(["\'])'
-        def replacer7(m):
-            prefix = m.group(1)
-            path = m.group(2)
-            quote = m.group(3)
-            original = f'{prefix}/static{path}{quote}'
-            if path.startswith(proxy_prefix):
-                return m.group(0)
-            rewritten = f'{prefix}{proxy_prefix}/static{path}{quote}'
-            log_rewrite(original, f'{prefix}{proxy_prefix}/static{path}{quote}')
-            return rewritten
-        
-        html = re.sub(pattern7, replacer7, html, flags=re.IGNORECASE)
-        
-        logger.info(f"[STATIC_REWRITE] Total rewrites: {rewrite_count[0]} for proxy_prefix={proxy_prefix}")
-        print(f"[STATIC_REWRITE] Total rewrites: {rewrite_count[0]} for proxy_prefix={proxy_prefix}")
-        
-        return html
+        return login_id, password, team_name
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        logger.info("[MattermostPassthroughHandler] Processing HTML response")
+        print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
 
+        # Derive trigger from path for use throughout the function
+        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
+        _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
+
+        # If Mattermost served its login HTML, inject credential pre-fill instead of replacing.
         path_info = getattr(request, 'path_info', '') or ''
-        lowered_html = (html_str or '').lower()
-        is_login_document = (
-            '/login' in path_info or
-            ('mattermost' in lowered_html and 'forgot your password' in lowered_html and 'log in to your account' in lowered_html) or
-            ('id="loginId"'.lower() in lowered_html and 'id="loginPassword"'.lower() in lowered_html)
+        html_lower = html_str.lower()
+        is_login_page = (
+            '/login' in path_info
+            or 'name="loginid"' in html_lower
+            or "name='loginid'" in html_lower
+            or 'session has expired' in html_lower
+            or 'id="loginid"' in html_lower
         )
+        if is_login_page:
+            if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+                _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+            else:
+                _proxy_prefix = "/pt/admin/mattermost"
+            # Get credentials and inject pre-fill script into Mattermost's login form
+            login_id, password, team_name = self._get_login_credentials(request)
+            if login_id and password:
+                print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}, team={team_name!r}")
+                prefill_script = f"""<script>
+(function() {{
+    var attempts = 0;
+    function fill() {{
+        var li = document.querySelector('input[name="loginId"], input[id="loginId"], input[placeholder*="Email"], input[type="text"]');
+        var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
+        if (!li || !pw) return false;
+        li.value = {json.dumps(login_id)};
+        li.dispatchEvent(new Event('input', {{bubbles: true}}));
+        pw.value = {json.dumps(password)};
+        pw.dispatchEvent(new Event('input', {{bubbles: true}}));
+        console.log('[PolySaaS] Pre-filled login form for team={team_name}');
+        return true;
+    }}
+    function tryFill() {{
+        if (fill()) return;
+        if (++attempts < 60) setTimeout(tryFill, 100);
+    }}
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', tryFill);
+    }} else {{
+        tryFill();
+    }}
+}})();
+</script></head>"""
+                # Inject before </head> or append to <body> if no head
+                if '</head>' in html_str:
+                    html_str = html_str.replace('</head>', prefill_script)
+                else:
+                    html_str = html_str + prefill_script
+                return html_str, None
 
-        # Get proxy prefix for static asset rewriting
-        proxy_prefix = self._proxy_prefix_from_request(request)
-        
-        # Rewrite static asset URLs to use proxy path (prevents 404s)
-        # This is done for both login and non-login documents
-        if proxy_prefix and html_str:
-            html_str = self._rewrite_static_asset_urls(html_str, proxy_prefix)
-
-        # Preserve native Mattermost login HTML rather than substituting a custom bridge.
-        if is_login_document:
-            logger.info('[MattermostPassthroughHandler] Preserving native login document (with static rewrites)')
+        if not endpoint_url:
             return html_str, None
 
-        logger.info('[MattermostPassthroughHandler] Preserving native non-login HTML document (with static rewrites)')
-        return html_str, None
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        # Derive proxy_prefix from the request path — never hardcode.
+        _path_parts = request.path_info.strip('/').split('/')
+        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+        else:
+            proxy_prefix = "/pt/admin/mattermost"
+
+        html_str = self._strip_base_tags(html_str)
+        html_str = self._strip_meta_redirects(html_str)
+        html_str = self._strip_csp(html_str)
+
+        # Rewrite form action attributes so native form POSTs go through the proxy prefix.
+        html_str = re.sub(
+            r'(action=)(["\'])(/[^"\']*)',
+            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Load static files DIRECTLY from Mattermost origin to avoid Django dev
+        # server concurrency limits (ERR_CONNECTION_REFUSED on many chunks).
+        # Only API calls and form POSTs go through the proxy.
+        html_str = re.sub(
+            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Keep absolute upstream-origin static URLs as-is (already direct)
+        _abs_static = re.escape(base_origin) + r'/static/'
+        html_str = re.sub(
+            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+
+        # Rewrite window.basename so React Router uses proxy prefix as its base
+        html_str = re.sub(
+            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
+            lambda m: m.group(1) + f"'{proxy_prefix}'",
+            html_str,
+        )
+
+        # Inject the full client shim into every proxied HTML page so the
+        # auto-login watcher runs on /login regardless of navigation path.
+        if '<head' in html_str.lower():
+            print(f"[MM HANDLER] Injecting shim into HTML, proxy_prefix={proxy_prefix}")
+            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
+        else:
+            print(f"[MM HANDLER] No <head> found, skipping shim injection")
+
+        # Return modified HTML; forward_request_standardized will wrap it in
+        # the admin template (passthrough lives inside the admin template div).
+        print(f"[MM HANDLER] Returning modified HTML for admin template wrap")
+        return html_str
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
-        """Preserve native Mattermost JSON bodies for HAR parity."""
-        return None
+        """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
+        if not upstream_path or '/api/v4/config/client' not in upstream_path:
+            return None
+        if 'json' not in (content_type or '').lower():
+            return None
+        try:
+            import json as _json
+            data = _json.loads(body)
+            scheme = 'https' if request.is_secure() else 'http'
+            origin = f"{scheme}://{request.get_host()}"
+            # Rewrite to origin-only — no proxy prefix. Mattermost's Client4 will call
+            # http://localhost:8000/api/v4/... and the shim's toProxy() converts those
+            # transparently to /pt/admin/mattermost/api/v4/... Mattermost never sees /pt/admin/.
+            if 'SiteURL' in data:
+                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {origin}")
+                data['SiteURL'] = origin
+            if 'WebsocketURL' in data:
+                ws_scheme = 'wss' if request.is_secure() else 'ws'
+                ws_origin = f"{ws_scheme}://{request.get_host()}"
+                data['WebsocketURL'] = ws_origin
+                print(f"[MM] Rewriting WebsocketURL -> {ws_origin}")
+            return _json.dumps(data).encode('utf-8')
+        except Exception as exc:
+            print(f"[MM] rewrite_upstream_body failed: {exc}")
+            return None
 
     def _get_tenantapp_extra_config(self, request=None):
-        """Query TenantApp extra_config from public schema using raw SQL to avoid schema issues.
-        Filters by current tenant first; falls back to any active mattermost TenantApp."""
-        import json
-        from django.db import connection
-        tenant_id = None
-        if request is not None:
+        """Return extra_config dict for this tenant's Mattermost TenantApp.
+        Uses ORM with PublicTenantAppBundleManager (search_path=public) — the records
+        are global (public schema), not per-tenant-schema copies."""
+        try:
+            from dose.models import TenantApp
+            tenant = None
+            if request is not None:
+                try:
+                    from dose.utils import get_current_tenant
+                    tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+                except Exception as _te:
+                    print(f"[MM LoginBridge] tenant lookup error: {_te}")
+            # Tenant-specific first (public schema)
+            if tenant:
+                try:
+                    ta = TenantApp.public_bundles.filter(
+                        app_name='mattermost', tenant=tenant
+                    ).exclude(extra_config={}).first()
+                    if ta and ta.extra_config:
+                        print(f"[MM LoginBridge] extra_config found via public tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        return ta.extra_config
+                except Exception as _q1:
+                    print(f"[MM LoginBridge] public tenant query error: {_q1}")
+                # Fallback: tenant schema
+                try:
+                    ta = TenantApp.objects.filter(
+                        app_name='mattermost', tenant=tenant
+                    ).exclude(extra_config={}).first()
+                    if ta and ta.extra_config:
+                        print(f"[MM LoginBridge] extra_config found via tenant schema tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        return ta.extra_config
+                except Exception as _q2:
+                    print(f"[MM LoginBridge] tenant schema query error: {_q2}")
+            # Fallback: any active mattermost app with credentials (public schema)
             try:
-                from dose.utils import get_current_tenant
-                t = getattr(request, 'tenant', None) or get_current_tenant(request)
-                if t:
-                    tenant_id = t.id
-            except Exception:
-                pass
-        with connection.cursor() as cur:
-            cur.execute("SET search_path TO public,pg_catalog")
-            # Try tenant-specific record first (any status with non-empty config)
-            if tenant_id:
-                cur.execute(
-                    """SELECT extra_config FROM dose_tenantapp
-                       WHERE app_name = 'mattermost' AND tenant_id = %s
-                       AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
-                       LIMIT 1""",
-                    [tenant_id],
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    cfg = row[0]
-                    if isinstance(cfg, str):
-                        return json.loads(cfg)
-                    return cfg
-            # Fall back to any active mattermost TenantApp with credentials
-            cur.execute(
-                """SELECT extra_config FROM dose_tenantapp
-                   WHERE app_name = 'mattermost' AND status = 'active'
-                   AND extra_config IS NOT NULL AND extra_config != '{}'::jsonb
-                   LIMIT 1""",
-            )
-            row = cur.fetchone()
-            if row and row[0]:
-                cfg = row[0]
-                if isinstance(cfg, str):
-                    return json.loads(cfg)
-                return cfg
-        return None
+                ta = TenantApp.public_bundles.filter(
+                    app_name='mattermost', status='active'
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[MM LoginBridge] extra_config found via public active fallback keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            except Exception as _q3:
+                print(f"[MM LoginBridge] public active fallback error: {_q3}")
+            # Fallback: any active mattermost app (tenant schema)
+            try:
+                ta = TenantApp.objects.filter(
+                    app_name='mattermost', status='active'
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[MM LoginBridge] extra_config found via tenant active fallback keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            except Exception as _q4:
+                print(f"[MM LoginBridge] tenant active fallback error: {_q4}")
+            print(f"[MM LoginBridge] extra_config NOT found (tenant={tenant})")
+        except Exception as exc:
+            print(f"[MM LoginBridge] _get_tenantapp_extra_config outer error: {exc}")
+        return {}
 
     def _save_tenantapp_token(self, token, request=None):
         """Save refreshed token to public schema TenantApp using raw SQL."""
@@ -760,6 +747,34 @@ class MattermostPassthroughHandler:
                     [json.dumps(extra)],
                 )
 
+    def _save_tenantapp_config(self, request, extra_config: dict):
+        """Save extra_config to TenantApp without modifying token fields."""
+        import json
+        from django.db import connection
+        tenant_id = None
+        if request is not None:
+            try:
+                from dose.utils import get_current_tenant
+                t = getattr(request, 'tenant', None) or get_current_tenant(request)
+                if t:
+                    tenant_id = t.id
+            except Exception:
+                pass
+        with connection.cursor() as cur:
+            cur.execute("SET search_path TO public,pg_catalog")
+            if tenant_id:
+                cur.execute(
+                    """UPDATE dose_tenantapp SET extra_config = %s
+                       WHERE app_name = 'mattermost' AND tenant_id = %s""",
+                    [json.dumps(extra_config), tenant_id],
+                )
+            else:
+                cur.execute(
+                    """UPDATE dose_tenantapp SET extra_config = %s
+                       WHERE app_name = 'mattermost' AND status = 'active'""",
+                    [json.dumps(extra_config)],
+                )
+
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
         """Strip MMAUTHTOKEN on login/logout requests so a stale session can't poison auth."""
         path = (getattr(request, 'path_info', '') or '')
@@ -771,127 +786,46 @@ class MattermostPassthroughHandler:
     def get_upstream_cookies(self, request):
         """
         Provide session cookies for SSO/auto-login to Mattermost.
-        Mattermost primarily uses MMAUTHTOKEN header/cookie.
+        NEVER create a server-side login session — that pushes the browser's session
+        past Mattermost's per-user session limit and revokes it, causing infinite loops.
         """
         # Don't inject a session token into the login/logout request itself —
         # Mattermost rejects login attempts that carry a stale session.
         _path = (getattr(request, 'path_info', '') or '')
         if '/api/v4/users/login' in _path or '/api/v4/users/logout' in _path:
             return {}
-        try:
-            from dose.utils import get_current_tenant
-            from django.conf import settings
-            from dose.passthrough.credential_container import PassthroughCredentialContainer
-            import requests as _req
 
-            tenant = get_current_tenant(request)
-            print(f"[MM_AUTH] tenant: {tenant}")
-            if not tenant:
-                return {}
+        # BROWSER COOKIE ONLY: If the browser has MMAUTHTOKEN, return it.
+        # If not, return {} — let the login bridge handle authentication.
+        # Server-side logins create NEW sessions that invalidate the browser's token.
+        browser_token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        if browser_token:
+            print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
+            return {'MMAUTHTOKEN': browser_token}
 
-            extra_config = self._get_tenantapp_extra_config(request)
-            print(f"[MM_AUTH] extra_config found: {extra_config is not None}")
-
-            if not extra_config:
-                print("[MM_AUTH] No extra_config for mattermost TenantApp")
-                return {}
-
-            # Try cached MMAUTHTOKEN first
-            token = (extra_config.get('mmauthtoken') or 
-                     extra_config.get('mm_session_token') or
-                     extra_config.get('mm_token'))
-            token_time = (extra_config.get('mmauthtoken_time') or 
-                          extra_config.get('mm_session_token_time', 0))
-
-            if token and (time.time() - token_time < 3600):
-                # Verify cached token is still valid before returning it
-                _ep = getattr(request, '_passthrough_endpoint', None)
-                _ep_url = getattr(_ep, 'endpoint_url', None) or ''
-                _mm_origin_verify = (
-                    extra_config.get('mm_url') or extra_config.get('mattermost_url') or _ep_url
-                ).rstrip('/')
-                try:
-                    _verify = _req.get(
-                        f'{_mm_origin_verify}/api/v4/users/me',
-                        headers={'Authorization': f'Bearer {token}'},
-                        timeout=5,
-                    )
-                    if _verify.status_code == 200:
-                        logger.info("[MattermostPassthroughHandler] Cached token valid: %s...", token[:8])
-                        return {'MMAUTHTOKEN': token}
-                    print(f"[MM_AUTH] Cached token invalid ({_verify.status_code}), refreshing...")
-                except Exception as _ve:
-                    print(f"[MM_AUTH] Token verify error: {_ve}, refreshing...")
-
-            # Refresh session if needed
-            session_creds = PassthroughCredentialContainer.retrieve(request, app_name='mattermost') or {}
-            session_login = session_creds.get('username') or ''
-            session_password = session_creds.get('password') or ''
-            if self._credential_matches_active_user(request, session_login):
-                login_id = session_login
-                password = session_password
-            else:
-                login_id = ''
-                password = ''
-
-            if not login_id:
-                configured_login = (extra_config.get('mattermost_login_id') or 
-                                    extra_config.get('mm_login_id') or
-                                    extra_config.get('mattermost_username') or
-                                    extra_config.get('mm_username') or '')
-                if self._credential_matches_active_user(request, configured_login):
-                    login_id = configured_login
-                    password = (extra_config.get('mattermost_password') or 
-                                extra_config.get('mm_password') or
-                                extra_config.get('password') or
-                                getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'))
-
-            print(f"[MM_AUTH] password present: {bool(password)}")
-            if not password:
-                logger.warning("[MattermostPassthroughHandler] No active-user Mattermost password available")
-                return {}
-
-            if not login_id:
-                login_id = request.user.email
-            print(f"[MM_AUTH] login_id: {login_id}")
-
-            _ep = getattr(request, '_passthrough_endpoint', None)
-            _ep_url = getattr(_ep, 'endpoint_url', None) or ''
-            mm_origin = (
-                extra_config.get('mm_url') or
-                extra_config.get('mattermost_url') or
-                extra_config.get('mm_origin') or
-                _ep_url
-            ).rstrip('/')
-            print(f"[MM_AUTH] mm_origin: {mm_origin}")
-            resp = _req.post(
-                f'{mm_origin}/api/v4/users/login',
-                json={'login_id': login_id, 'password': password},
-                timeout=10,
-            )
-            print(f"[MM_AUTH] login response status: {resp.status_code}")
-
-            if resp.status_code == 200:
-                token = resp.headers.get('Token')
-                print(f"[MM_AUTH] Token header present: {bool(token)}")
-                if token:
-                    self._save_tenantapp_token(token, request)
-                    logger.info("[MattermostPassthroughHandler] MMAUTHTOKEN refreshed: %s...", token[:8])
-                    return {'MMAUTHTOKEN': token}
-
-        except Exception as exc:
-            logger.warning("[MattermostPassthroughHandler] get_upstream_cookies failed: %s", exc)
-            print(f"[MM_AUTH] EXCEPTION: {exc}")
-
+        print("[MM_AUTH] No browser MMAUTHTOKEN — returning empty cookies (login bridge will handle auth)")
         return {}
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """Inject Authorization Bearer token for all Mattermost requests forwarded through proxy."""
+        print(f'[MM_AUTH] augment_outbound_headers called for {target_url}')
         # Never inject on login/logout — Mattermost rejects requests with a stale session token.
         if '/api/v4/users/login' in (target_url or '') or '/api/v4/users/logout' in (target_url or ''):
+            print('[MM_AUTH] Skipping login/logout path')
             return
-        # Browser-sent cookie is the freshest token (set by shim after first load)
+        
+        # PRIORITY: Browser cookie first — always fresh after successful login bridge.
+        # Server cache may hold stale provisioning tokens or expired session tokens.
+        all_cookies = dict(request.COOKIES)
+        print(f'[MM_AUTH] Incoming cookies: {list(all_cookies.keys())}')
+        print(f'[MM_AUTH] MMAUTHTOKEN cookie: {"PRESENT" if all_cookies.get("MMAUTHTOKEN") else "MISSING"}')
+        print(f'[MM_AUTH] mmauthtoken cookie: {"PRESENT" if all_cookies.get("mmauthtoken") else "MISSING"}')
+        print(f'[MM_AUTH] Cookie values present: {[k for k,v in all_cookies.items() if v]}')
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        _src = 'browser-cookie' if token else 'none'
+        print(f'[MM_AUTH] Selected token source: {_src}')
+        
+        # Fallback to server cache if browser has no token (first visit)
         if not token:
             try:
                 extra_config = self._get_tenantapp_extra_config(request)
@@ -899,50 +833,76 @@ class MattermostPassthroughHandler:
                     token = (extra_config.get('mmauthtoken') or
                              extra_config.get('mm_session_token') or
                              extra_config.get('mm_token'))
-            except Exception:
-                pass
+                    if token:
+                        _src = 'server-cache'
+                        print(f'[MM_AUTH] Using server cache token')
+            except Exception as exc:
+                print(f'[MM_AUTH] Error getting cached token: {exc}')
+        
         if token and 'Authorization' not in headers:
             headers['Authorization'] = f'Bearer {token}'
-            _src = 'browser-cookie' if request.COOKIES.get('MMAUTHTOKEN') else 'cached'
             print(f'[MM_AUTH] Injected Authorization ({_src}, token={token[:8]}...) for {target_url}')
-            try:
-                parsed = urlparse(target_url or '')
-                mm_origin = f'{parsed.scheme}://{parsed.netloc}' if parsed.scheme and parsed.netloc else ''
-                if mm_origin:
-                    self._ensure_cors_allowed(request, mm_origin, token)
-            except Exception as exc:
-                print(f'[MM CORS] Skipping auto-patch after auth inject: {exc}')
+            # Fire CORS patch once per process on first authenticated API call
+            if '/api/v4/' in (target_url or '') and not MattermostPassthroughHandler._cors_patched:
+                try:
+                    _ep = getattr(request, '_passthrough_endpoint', None)
+                    _ep_url = getattr(_ep, 'endpoint_url', None) or ''
+                    self._ensure_cors_allowed(request, _ep_url.rstrip('/'), token)
+                except Exception as exc:
+                    print(f'[MM CORS] Fire-and-forget error: {exc}')
         elif not token:
             print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
 
-    def postprocess_upstream_response(
-        self,
-        resp,
-        request,
-        *,
-        endpoint_url,
-        target_url,
-        upstream_path,
-        outbound_headers,
-        upstream_cookies,
-    ):
-        """Normalize known non-fatal Mattermost plugin responses for the SPA."""
-        normalized_path = (upstream_path or '').split('?', 1)[0]
-        if normalized_path == '/plugins/github/api/v1/connected' and resp.status_code == 501:
-            body_text = ''
+    def postprocess_upstream_response(self, resp, request, **kwargs):
+        """Hook to handle upstream responses - log all API calls and clear token on 401."""
+        target_url = kwargs.get('endpoint_url', '')
+        
+        # Log ALL Mattermost API responses for debugging
+        if '/api/v4/' in (target_url or ''):
+            print(f'[MM_RESP] {target_url} -> HTTP {resp.status_code}')
+            # Log auth-related response headers
+            token_header = resp.headers.get('Token')
+            if token_header:
+                print(f'[MM_RESP] Token header present: {token_header[:10]}...')
+
+        # Store fresh login token in server cache so subsequent page loads can use it
+        # even if browser cookies/localStorage fail.
+        if resp.status_code == 200 and '/api/v4/users/login' in (target_url or ''):
+            token_header = resp.headers.get('Token')
+            if token_header:
+                try:
+                    self._save_tenantapp_token(token_header, request)
+                    print(f'[MM_AUTH] Stored fresh login token in server cache (len={len(token_header)})')
+                except Exception as exc:
+                    print(f'[MM_AUTH] Failed to store login token in server cache: {exc}')
+
+        # If we get a 401 on ANY API call (not just /users/me), the token is invalid.
+        # Clear BOTH server cache AND browser cookie to force re-auth via login bridge.
+        if resp.status_code == 401 and '/api/v4/' in (target_url or ''):
+            print(f'[MM_AUTH] Got 401 on {target_url} - clearing token EVERYWHERE')
             try:
-                body_text = (resp.content or b'').decode('utf-8', errors='ignore')
-            except Exception:
-                body_text = ''
-            if 'this plugin is not configured' in body_text.lower():
-                print('[MM RESP] Normalizing unconfigured GitHub plugin probe to disconnected=false')
-                replacement = b'{"connected":false}'
-                resp.status_code = 200
-                resp.reason = 'OK'
-                resp._content = replacement
-                resp.headers['Content-Type'] = 'application/json'
-                resp.headers['Content-Length'] = str(len(replacement))
-        return resp
+                # Clear server cache
+                extra_config = self._get_tenantapp_extra_config(request)
+                if extra_config:
+                    for key in ['mmauthtoken', 'mm_session_token', 'mm_token', 'mmauthtoken_time', 'mm_session_token_time']:
+                        if key in extra_config:
+                            del extra_config[key]
+                    self._save_tenantapp_config(request, extra_config)
+                    print(f'[MM_AUTH] Cleared invalid token from server cache')
+            except Exception as exc:
+                print(f'[MM_AUTH] Failed to clear server cache: {exc}')
+            # We can't clear browser cookies from server-side, but the shim does this client-side.
+            # Return a response that clears the cookie so the browser knows to re-auth.
+            if '/users/me' in (target_url or ''):
+                from django.http import HttpResponse
+                clear_resp = HttpResponse(resp.content, status=resp.status_code)
+                for hk, hv in resp.headers.items():
+                    if hk.lower() not in ('content-length', 'transfer-encoding', 'set-cookie'):
+                        clear_resp[hk] = hv
+                clear_resp['Set-Cookie'] = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax'
+                print(f'[MM_AUTH] Injected Set-Cookie to clear MMAUTHTOKEN on 401 response')
+                return clear_resp
+        return None  # Return None to let normal processing continue
 
     def _strip_base_tags(self, html):
         return re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
@@ -961,36 +921,34 @@ class MattermostPassthroughHandler:
         fetch/XHR/WebSocket → proxy, attribute/prototype patching (matches generated handler).
         Display shell must include network patches or API/WS stay on the admin origin → spinner.
         """
-        from django.conf import settings
-        # Prefer the fresh browser-sent cookie (set by our login bridge after a
-        # successful XHR login) over any cached token. Only fall back to the
-        # cached/SSO-fetched token if the browser doesn't have one yet.
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
-        if not token:
-            try:
-                cookies = self.get_upstream_cookies(request) or {}
-                token = cookies.get("MMAUTHTOKEN") or ""
-            except Exception as exc:
-                logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
-        logger.info("[MM Shim] token source=%s len=%d",
-                    'browser' if request.COOKIES.get('MMAUTHTOKEN') else 'server', len(token))
+        # Prefer URL parameter (from login bridge redirect) first
+        token = request.GET.get('mm_token') or ""
+        if token:
+            logger.info("[MM Shim] token from URL param, len=%d", len(token))
+        else:
+            # Fallback to browser cookie — it's always fresh after login bridge succeeds.
+            # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
+            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+            if token:
+                logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
+            else:
+                # Fallback to server-side token if browser has none
+                try:
+                    cookies = self.get_upstream_cookies(request) or {}
+                    token = cookies.get("MMAUTHTOKEN") or ""
+                    logger.info("[MM Shim] token from server, len=%d", len(token))
+                except Exception as exc:
+                    logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
 
         login_id = ""
         password = ""
         try:
             extra = self._get_tenantapp_extra_config(request) or {}
-            configured_login = (extra.get('mattermost_login_id') or
-                                extra.get('mm_login_id') or
-                                extra.get('mattermost_username') or
-                                extra.get('mm_username') or
-                                extra.get('login_id') or
-                                getattr(getattr(request, 'user', None), 'email', '') or '')
-            if self._credential_matches_active_user(request, configured_login):
-                login_id = configured_login
-                password = (extra.get('mattermost_password') or
-                            extra.get('mm_password') or
-                            extra.get('password') or
-                            getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!') or '')
+            login_id = (extra.get('mattermost_login_id') or extra.get('mm_login_id') or
+                        extra.get('mattermost_username') or extra.get('login_id') or
+                        getattr(getattr(request, 'user', None), 'email', '') or '')
+            password = (extra.get('mattermost_password') or extra.get('mm_password') or
+                        extra.get('password') or '')
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
 
@@ -999,7 +957,7 @@ class MattermostPassthroughHandler:
         password_js = json.dumps(password)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
-        team_route_js = json.dumps(f"/{self._get_team_name(request)}/channels/town-square")
+        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'}")
 
         return f"""
 <script data-polysaas-mattermost-shim="1">
@@ -1007,32 +965,27 @@ class MattermostPassthroughHandler:
     var B = {base_js};
     var PROXY = {proxy_js};
     var O = window.location.origin;
-    var MMAUTHTOKEN = {token_js};
+    var _serverToken = {token_js};
+    var MMAUTHTOKEN = '';
+    // Prefer localStorage (fresh after login bridge) over server cache
+    try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+    if (!MMAUTHTOKEN) {{
+        try {{
+            var stored = localStorage.getItem('storage:MMAUTHTOKEN');
+            if (stored) {{ MMAUTHTOKEN = JSON.parse(stored); }}
+        }} catch(e) {{}}
+    }}
+    if (!MMAUTHTOKEN && _serverToken) {{
+        MMAUTHTOKEN = _serverToken;
+    }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
-    var TEAM_ROUTE = {team_route_js};
 
-    // Spy on localStorage reads to diagnose what key Mattermost uses for the auth token
     var _lsGet = Storage.prototype.getItem;
-    Storage.prototype.getItem = function(key) {{
-        var val = _lsGet.call(this, key);
-        if (key && (key.indexOf('MMAUTHTOKEN') !== -1 || key.indexOf('MMAuth') !== -1 ||
-                    key.indexOf('persist:') !== -1 || key.indexOf('credentials') !== -1)) {{
-            console.log('[PolySaaS MM] localStorage.getItem("' + key + '") =>', val ? val.slice(0, 60) : 'null');
-        }}
-        return val;
-    }};
     var _lsSet = Storage.prototype.setItem;
-    Storage.prototype.setItem = function(key, value) {{
-        if (key && (key.indexOf('MMAUTHTOKEN') !== -1 || key.indexOf('MMAuth') !== -1 ||
-                    key.indexOf('persist:') !== -1 || key.indexOf('credentials') !== -1)) {{
-            var display = typeof value === 'string' ? value.slice(0, 60) : value;
-            console.log('[PolySaaS MM] localStorage.setItem("' + key + '") =', display);
-        }}
-        return _lsSet.call(this, key, value);
-    }};
+    var _lsDel = Storage.prototype.removeItem;
 
-    var PS_PREFIXES = ['/static/admin/', '/static/img/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+    var PS_PREFIXES = ['/static/admin/', '/static/img/', '/static/vendor/', '/static/jazzmin/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
     function isPolySaaSPath(s) {{
         for (var i = 0; i < PS_PREFIXES.length; i++) {{
             if (s.startsWith(PS_PREFIXES[i])) return true;
@@ -1043,87 +996,100 @@ class MattermostPassthroughHandler:
     function toProxy(s) {{
         if (typeof s !== 'string') return s;
         if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
-        if (s.startsWith(B + '/static/')) return s;
-        if (s.startsWith(PROXY + '/static/')) return B + s.slice(PROXY.length);
-        if (s.startsWith(B)) {{
+
+        // External URL → strip origin first
+        if (s.startsWith(O + '/')) {{
+            s = s.slice(O.length);
+        }} else if (s.startsWith(B)) {{
             var tail = s.slice(B.length);
             if (!tail.startsWith('/')) tail = '/' + tail;
+            if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(tail)) {{
+                return B + tail;
+            }}
             return PROXY + tail;
+        }} else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
+            return s;
         }}
-        if (s.startsWith(O + '/')) s = s.slice(O.length);
-        else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
-        if (s.startsWith('static/')) return B + '/' + s;
+
+        // Relative path → strip proxy prefix if present
+        if (s.startsWith(PROXY + '/')) {{
+            s = s.slice(PROXY.length);
+        }} else if (s === PROXY) {{
+            s = '/';
+        }}
+
         if (s.charAt(0) !== '/') return s;
-        if (s.startsWith('/static/')) return B + s;
         if (isPolySaaSPath(s)) return s;
+        // Static files load directly from Mattermost; API calls proxy through Django
+        if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(s)) {{
+            return B + s;
+        }}
         return PROXY + s;
     }}
 
-    function toUpstreamApi(s) {{
-        if (typeof s !== 'string') return s;
-        if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
-        if (s.indexOf('/api/v4/') === -1) return s;
-        if (s.startsWith(O + PROXY + '/')) return s.slice(O.length);
-        if (s.startsWith(PROXY + '/')) return s;
-        if (s.startsWith(B)) {{
-            var tail = s.slice(B.length);
-            if (!tail.startsWith('/')) tail = '/' + tail;
-            return PROXY + tail;
-        }}
-        if (s.startsWith(O + '/')) s = s.slice(O.length);
-        else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
-        if (s.charAt(0) === '/' && !isPolySaaSPath(s)) return PROXY + s;
-        return s;
-    }}
-
-    function recoverToTeam(reason) {{
-        var target = PROXY + TEAM_ROUTE;
-        console.log('[PolySaaS MM] Recovering from ' + reason + ' -> ' + target);
-        window.location.replace(target);
-    }}
-
-    function toPassthroughNav(s) {{
-        if (typeof s !== 'string') return s;
-        if (!s || s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('javascript:')) return s;
-        if (s.startsWith(O + PROXY + '/')) return s;
-        if (s.startsWith(PROXY + '/')) return s;
-        if (s.startsWith(B)) {{
-            var tail = s.slice(B.length);
-            if (!tail.startsWith('/')) tail = '/' + tail;
-            return O + PROXY + tail;
-        }}
-        if (s.startsWith(O + '/')) s = s.slice(O.length);
-        else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
-        if (s.charAt(0) !== '/') return s;
-        if (isPolySaaSPath(s)) return s;
-        return PROXY + s;
-    }}
-
-    function toAssetUrl(s) {{
-        if (typeof s !== 'string') return s;
-        if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
-        if (s.startsWith(B)) return s;
-        if (s.startsWith(PROXY + '/static/')) {{
-            console.log('[PolySaaS MM] toAssetUrl: already proxied', s.slice(0, 80));
-            return B + s.slice(PROXY.length);
-        }}
-        if (s.startsWith(O + '/')) s = s.slice(O.length);
-        else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) return s;
-        if (s.startsWith('static/')) {{
-            var result = B + '/' + s;
-            console.log('[PolySaaS MM] toAssetUrl: relative static ->', result.slice(0, 80));
-            return result;
-        }}
-        if (s.startsWith('/static/')) {{
-            var result = B + s;
-            console.log('[PolySaaS MM] toAssetUrl: /static/ ->', result.slice(0, 80));
-            return result;
-        }}
-        return s;
+    // Write token into IndexedDB (localforage) so Mattermost's redux-persist hydration finds it.
+    // Mattermost does NOT use localStorage for persist — it uses localforage (IndexedDB).
+    // We write persist:storage with a minimal credentials slice before Mattermost reads it.
+    function _writeTokenToIDB(token) {{
+        try {{
+            var _dbReq = indexedDB.open('localforage');
+            _dbReq.onsuccess = function(e) {{
+                var _db = e.target.result;
+                var _stores = _db.objectStoreNames;
+                var _storeName = _stores.contains('keyvaluepairs') ? 'keyvaluepairs' : (_stores.length ? _stores[0] : null);
+                if (!_storeName) {{ console.log('[PolySaaS MM IDB] No object store found'); return; }}
+                try {{
+                    var _tx = _db.transaction([_storeName], 'readwrite');
+                    var _store = _tx.objectStore(_storeName);
+                    // Read existing persist:storage to merge, not overwrite
+                    var _getReq = _store.get('persist:storage');
+                    _getReq.onsuccess = function(ge) {{
+                        var _existing = {{}};
+                        try {{ _existing = JSON.parse(ge.target.result || '{{}}') || {{}}; }} catch(_pe) {{}}
+                        // Deep-set entities.general.credentials.token
+                        _existing.entities = _existing.entities || '{{}}';
+                        var _entities = {{}};
+                        try {{ _entities = JSON.parse(_existing.entities) || {{}}; }} catch(_ee) {{}}
+                        _entities.general = _entities.general || {{}};
+                        var _general = {{}};
+                        try {{ _general = typeof _entities.general === 'string' ? JSON.parse(_entities.general) : _entities.general; }} catch(_ge) {{}}
+                        _general.credentials = {{ url: window.location.origin, token: token }};
+                        _entities.general = _general;
+                        _existing.entities = JSON.stringify(_entities);
+                        var _putReq = _store.put(JSON.stringify(_existing), 'persist:storage');
+                        _putReq.onsuccess = function() {{
+                            console.log('[PolySaaS MM IDB] persist:storage written with token len=' + token.length);
+                        }};
+                        _putReq.onerror = function(pe) {{
+                            console.log('[PolySaaS MM IDB] put error:', pe.target.error);
+                        }};
+                    }};
+                    _getReq.onerror = function(ge) {{
+                        console.log('[PolySaaS MM IDB] get error:', ge.target.error);
+                    }};
+                }} catch(_txe) {{ console.log('[PolySaaS MM IDB] tx error:', _txe); }}
+            }};
+            _dbReq.onerror = function(e) {{
+                console.log('[PolySaaS MM IDB] open error:', e.target.error);
+            }};
+            _dbReq.onupgradeneeded = function(e) {{
+                var _db2 = e.target.result;
+                if (!_db2.objectStoreNames.contains('keyvaluepairs')) {{
+                    _db2.createObjectStore('keyvaluepairs');
+                    console.log('[PolySaaS MM IDB] Created keyvaluepairs store');
+                }}
+            }};
+        }} catch(_idbe) {{ console.log('[PolySaaS MM IDB] error:', _idbe); }}
     }}
 
     // Cookie + localStorage fallback (server-side fetch interceptor still injects MM-Auth-Token header)
     if (MMAUTHTOKEN) {{
+        // Write into IndexedDB so Mattermost's localforage/redux-persist hydration finds the token
+        _writeTokenToIDB(MMAUTHTOKEN);
+        // Also set localStorage keys as secondary fallback
+        try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
+        try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(_e) {{}}
+        try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
         try {{
             localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(MMAUTHTOKEN));
             localStorage.setItem('storage:MMAuthtokenExpiry', JSON.stringify(Date.now() + 108000000));
@@ -1131,10 +1097,57 @@ class MattermostPassthroughHandler:
         }} catch(_e) {{}}
         document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; max-age=108000';
         window.MMAUTHTOKEN = MMAUTHTOKEN;
-        console.log('[PolySaaS MM] Token set in localStorage, ready for app init');
+        console.log('[PolySaaS MM] Token set in localStorage + cookie + IDB, len=' + MMAUTHTOKEN.length);
     }}
 
-    console.log('[PolySaaS MM] Shim loaded. token:', MMAUTHTOKEN ? 'yes' : 'none');
+    console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
+
+    // Plugin diagnostic helpers (if plugin is deployed)
+    function checkPluginDiagnostics() {{
+        var diagUrl = PROXY + '/plugins/com.polysaas.passthrough/api/v1/diagnostics';
+        console.log('[PolySaaS MM] Checking plugin diagnostics:', diagUrl);
+        fetch(diagUrl, {{
+            headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}
+        }}).then(function(r) {{
+            if (r.ok) {{
+                return r.json();
+            }}
+            console.log('[PolySaaS MM] Plugin diagnostics not available (plugin may not be deployed)');
+            return null;
+        }}).then(function(data) {{
+            if (data) {{
+                console.log('[PolySaaS MM] Plugin diagnostics:', data);
+            }}
+        }}).catch(function(e) {{
+            console.log('[PolySaaS MM] Plugin diagnostics error:', e);
+        }});
+    }}
+    
+    function checkPluginAuth() {{
+        var authUrl = PROXY + '/plugins/com.polysaas.passthrough/api/v1/auth-check';
+        console.log('[PolySaaS MM] Checking plugin auth:', authUrl);
+        fetch(authUrl, {{
+            headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}
+        }}).then(function(r) {{
+            if (r.ok) {{
+                return r.json();
+            }}
+            console.log('[PolySaaS MM] Plugin auth check failed:', r.status);
+            return null;
+        }}).then(function(data) {{
+            if (data) {{
+                console.log('[PolySaaS MM] Plugin auth check:', data);
+            }}
+        }}).catch(function(e) {{
+            console.log('[PolySaaS MM] Plugin auth check error:', e);
+        }});
+    }}
+    
+    // Run plugin diagnostics after a short delay
+    setTimeout(function() {{
+        checkPluginDiagnostics();
+        checkPluginAuth();
+    }}, 2000);
 
     // Intercept client-side React Router navigation to /login.
     // Mattermost SPA pushes /login when its token check fails; without this hook
@@ -1143,167 +1156,188 @@ class MattermostPassthroughHandler:
     (function() {{
         var _push = history.pushState;
         var _repl = history.replaceState;
-        function getPath(url) {{
-            try {{
-                return (typeof url === 'string') ? url : (url && url.pathname) || '';
-            }} catch (e) {{ return ''; }}
-        }}
         function isLoginPath(url) {{
-            return /\/login(\/.*)?$/.test(getPath(url));
+            try {{
+                var p = (typeof url === 'string') ? url : (url && url.pathname) || '';
+                // Match /login, /login/..., /login?... (query params matter — Mattermost pushes /login?redirect_to=...)
+                return /\/login([/?]|$)/.test(p);
+            }} catch (e) {{ return false; }}
         }}
-        function isErrorPath(url) {{
-            return /\/error(\/.*)?$/.test(getPath(url));
+        function _hasValidToken() {{
+            var t = '';
+            try {{ t = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+            return !!t;
+        }}
+        var _loginBlockCount = 0;
+        var _idbReloadKey = '_polysaas_mm_idb_reload';
+        function _blockLoginAndRetry() {{
+            _loginBlockCount++;
+            console.log('[PolySaaS MM] Blocked /login redirect #' + _loginBlockCount + ' — token is valid');
+            // On first block: write IDB token and reload so Mattermost re-hydrates from IDB.
+            // Guard with sessionStorage to prevent reload loop (only reload once per session).
+            if (_loginBlockCount === 1) {{
+                var _alreadyReloaded = false;
+                try {{ _alreadyReloaded = !!sessionStorage.getItem(_idbReloadKey); }} catch(_e) {{}}
+                if (!_alreadyReloaded) {{
+                    var _tok = '';
+                    try {{ _tok = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(_e) {{}}
+                    if (_tok) {{
+                        console.log('[PolySaaS MM] Writing IDB and reloading to force re-hydration (once)');
+                        try {{ sessionStorage.setItem(_idbReloadKey, '1'); }} catch(_e) {{}}
+                        _writeTokenToIDB(_tok);
+                        // Small delay to let IDB write complete before reload
+                        setTimeout(function() {{ window.location.reload(); }}, 400);
+                    }}
+                }} else {{
+                    console.log('[PolySaaS MM] IDB reload already attempted — not reloading again');
+                }}
+            }}
         }}
         history.pushState = function(state, title, url) {{
             if (isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
                 console.log('[PolySaaS MM] Intercept pushState(/login) -> hard redirect to bridge');
                 window.location.replace(PROXY + '/login');
-                return;
-            }}
-            if (isErrorPath(url)) {{
-                recoverToTeam('pushState(/error)');
                 return;
             }}
             return _push.apply(this, arguments);
         }};
         history.replaceState = function(state, title, url) {{
             if (isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
                 console.log('[PolySaaS MM] Intercept replaceState(/login) -> hard redirect to bridge');
                 window.location.replace(PROXY + '/login');
                 return;
             }}
-            if (isErrorPath(url)) {{
-                recoverToTeam('replaceState(/error)');
+            return _repl.apply(this, arguments);
+        }};
+
+        // Also catch hard location changes (Mattermost sometimes uses window.location directly)
+        var _locAssign = window.location.assign;
+        window.location.assign = function(url) {{
+            if (typeof url === 'string' && isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
+                console.log('[PolySaaS MM] Intercept location.assign(/login) -> bridge');
+                _locAssign.call(window.location, PROXY + '/login');
                 return;
             }}
-            return _repl.apply(this, arguments);
+            return _locAssign.apply(this, arguments);
+        }};
+        var _locReplace = window.location.replace;
+        window.location.replace = function(url) {{
+            if (typeof url === 'string' && isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
+                console.log('[PolySaaS MM] Intercept location.replace(/login) -> bridge');
+                _locReplace.call(window.location, PROXY + '/login');
+                return;
+            }}
+            return _locReplace.apply(this, arguments);
         }};
     }})();
 
-    (function() {{
-        function patchLocationMethod(proto, name) {{
-            if (!proto) return;
-            var desc = Object.getOwnPropertyDescriptor(proto, name);
-            if (!desc || typeof desc.value !== 'function') return;
-            var original = desc.value;
-            Object.defineProperty(proto, name, {{
-                value: function(url) {{
-                    var mapped = toPassthroughNav(url);
-                    if (mapped !== url) console.log('[PolySaaS MM] location.' + name + ':', url, '->', mapped);
-                    return original.call(this, mapped);
-                }},
-                configurable: true,
-                enumerable: desc.enumerable,
-                writable: desc.writable !== false,
-            }});
-        }}
-
-        function patchLocationSetter(proto, name) {{
-            if (!proto) return;
-            var desc = Object.getOwnPropertyDescriptor(proto, name);
-            if (!desc || typeof desc.set !== 'function') return;
-            Object.defineProperty(proto, name, {{
-                get: desc.get,
-                set: function(value) {{
-                    var mapped = typeof value === 'string' ? toPassthroughNav(value) : value;
-                    if (mapped !== value) console.log('[PolySaaS MM] location.' + name + ' =', value, '->', mapped);
-                    return desc.set.call(this, mapped);
-                }},
-                configurable: true,
-                enumerable: desc.enumerable,
-            }});
-        }}
-
-        try {{
-            var locationProto = (window.Location && window.Location.prototype) || Object.getPrototypeOf(window.location);
-            patchLocationMethod(locationProto, 'assign');
-            patchLocationMethod(locationProto, 'replace');
-            patchLocationSetter(locationProto, 'href');
-            patchLocationSetter(locationProto, 'pathname');
-
-            var windowProto = Object.getPrototypeOf(window);
-            var windowLocationDesc = windowProto && Object.getOwnPropertyDescriptor(windowProto, 'location');
-            if (windowLocationDesc && typeof windowLocationDesc.set === 'function') {{
-                Object.defineProperty(windowProto, 'location', {{
-                    get: windowLocationDesc.get,
-                    set: function(value) {{
-                        var raw = (value && typeof value === 'object' && typeof value.href === 'string') ? value.href : value;
-                        var mapped = typeof raw === 'string' ? toPassthroughNav(raw) : raw;
-                        if (mapped !== raw) console.log('[PolySaaS MM] window.location =', raw, '->', mapped);
-                        return windowLocationDesc.set.call(this, mapped);
-                    }},
-                    configurable: true,
-                    enumerable: windowLocationDesc.enumerable,
-                }});
-            }}
-
-            var _open = window.open;
-            if (typeof _open === 'function') {{
-                window.open = function(url) {{
-                    var mapped = toPassthroughNav(url);
-                    if (mapped !== url) console.log('[PolySaaS MM] window.open:', url, '->', mapped);
-                    arguments[0] = mapped;
-                    return _open.apply(this, arguments);
-                }};
-            }}
-        }} catch (e) {{
-            console.warn('[PolySaaS MM] location patch failed:', e);
-        }}
-
-        document.addEventListener('click', function(event) {{
-            var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
-            if (!link) return;
-            var href = link.getAttribute('href') || '';
-            var mapped = toPassthroughNav(href);
-            if (mapped === href) return;
-            event.preventDefault();
-            console.log('[PolySaaS MM] anchor nav:', href, '->', mapped);
-            window.location.assign(mapped);
-        }}, true);
-
-        document.addEventListener('submit', function(event) {{
-            var form = event.target;
-            if (!form || !form.getAttribute) return;
-            var action = form.getAttribute('action') || '';
-            var mapped = toPassthroughNav(action);
-            if (mapped === action) return;
-            form.setAttribute('action', mapped);
-            console.log('[PolySaaS MM] form action:', action, '->', mapped);
-        }}, true);
-    }})();
-
-    if (/\/error(\/.*)?$/.test(window.location.pathname)) {{
-        recoverToTeam('initial /error');
-        return;
-    }}
-
     window.__webpack_public_path__ = B + '/static/';
     window.basename = PROXY;
+    // Protect basename from being overwritten by upstream scripts
+    setInterval(function() {{
+        if (window.basename !== PROXY) {{
+            console.log('[PolySaaS MM] Resetting basename from', window.basename, 'to', PROXY);
+            window.basename = PROXY;
+        }}
+    }}, 500);
 
-    // Strip PolySaaS proxy paths from redirect_to — Mattermost history.push(redirect_to)
-    // would navigate within the SPA and fail to match any route, falling back to /login.
+    // Strip redirect_to from root URL — the root handler redirects anyway, and
+    // leaving it causes Mattermost's login component to redirect to it, creating loops.
     try {{
         var _rurl = new URL(window.location.href);
         var _rt = _rurl.searchParams.get('redirect_to');
-        if (_rt && (_rt.startsWith('/pt/') || _rt.indexOf('://') !== -1)) {{
+        if (_rt) {{
             _rurl.searchParams.delete('redirect_to');
             window.history.replaceState({{}}, '', _rurl.toString());
-            console.log('[PolySaaS MM] Stripped invalid redirect_to:', _rt);
+            console.log('[PolySaaS MM] Stripped redirect_to to prevent loop:', _rt);
         }}
     }} catch(e) {{}}
+
+    // LOOP BREAKER: Track redirects to /login to prevent infinite loops.
+    // Persisted in sessionStorage (survives page reloads), auto-resets after 2 min.
+    var _mmRedirectCount = 0;
+    var _mmRedirectKey = '_polysaas_mm_redirect_count';
+    var _mmRedirectTimeKey = '_polysaas_mm_redirect_time';
+    try {{
+        var _lastTime = parseInt(sessionStorage.getItem(_mmRedirectTimeKey) || '0', 10);
+        var _now = Date.now();
+        if (_now - _lastTime > 120000) {{
+            sessionStorage.removeItem(_mmRedirectKey);
+            sessionStorage.removeItem(_mmRedirectTimeKey);
+            _mmRedirectCount = 0;
+        }} else {{
+            _mmRedirectCount = parseInt(sessionStorage.getItem(_mmRedirectKey) || '0', 10);
+        }}
+    }} catch(e) {{}}
+    function _mmShouldRedirect() {{
+        if (_mmRedirectCount >= 3) {{
+            console.error('[PolySaaS MM] LOOP BREAKER: Stopping after 3 redirects in 2 min. Manual refresh required.');
+            return false;
+        }}
+        _mmRedirectCount++;
+        try {{
+            sessionStorage.setItem(_mmRedirectKey, String(_mmRedirectCount));
+            sessionStorage.setItem(_mmRedirectTimeKey, String(Date.now()));
+        }} catch(e) {{}}
+        return true;
+    }}
+    function _mmClearToken() {{
+        try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
+        try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(_e) {{}}
+        try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
+        document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    }}
+    function _mmRedirectToLogin() {{
+        if (!_mmShouldRedirect()) return;
+        console.log('[PolySaaS MM] Redirecting to login bridge');
+        setTimeout(function() {{ window.location.replace(PROXY + '/login?force=1'); }}, 300);
+    }}
 
     var _f = window.fetch;
     window.fetch = function(input, init) {{
         var original = input;
+        var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        
+        // Block external analytics requests that cause CORS errors and hang the UI
+        if (reqUrl.indexOf('matterlytics.com') !== -1 || 
+            reqUrl.indexOf('rudderstack.com') !== -1 ||
+            reqUrl.indexOf('segment.io') !== -1) {{
+            console.log('[PolySaaS MM] Blocked external analytics request:', reqUrl);
+            return Promise.resolve(new Response(null, {{status: 204, statusText: 'No Content'}}));
+        }}
+        
         if (typeof input === 'string') {{
-            input = toUpstreamApi(input);
+            input = toProxy(input);
         }} else if (typeof Request !== 'undefined' && input instanceof Request) {{
-            var u = toUpstreamApi(input.url);
+            var u = toProxy(input.url);
             if (u !== input.url) input = new Request(u, input);
+        }}
+        
+        // Block logout requests to prevent token invalidation (check both original and proxied URL)
+        var proxiedUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        if (reqUrl.indexOf('/users/logout') !== -1 || proxiedUrl.indexOf('/users/logout') !== -1) {{
+            console.log('[PolySaaS MM] Blocked logout request to preserve session:', reqUrl, '->', proxiedUrl);
+            return Promise.resolve(new Response(null, {{status: 200, statusText: 'OK'}}));
         }}
         if (MMAUTHTOKEN) {{
             var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-            if (reqUrl.indexOf('/api/v4/') !== -1) {{
+            if (reqUrl.indexOf('/api/v4/') !== -1 || reqUrl.indexOf('/plugins/') !== -1) {{
                 init = Object.assign({{}}, init || {{}});
                 if (!init.headers) {{
                     init.headers = {{'Authorization': 'Bearer ' + MMAUTHTOKEN}};
@@ -1318,9 +1352,54 @@ class MattermostPassthroughHandler:
         if (original !== input) console.log('[PolySaaS MM] fetch:', original, '->', input);
         var _reqUrlForLog = typeof input === 'string' ? input : (input && input.url ? input.url : '');
         var _prom = _f.call(this, input, init);
+        
+        // Retry logic for plugin config 401 errors
+        if (_reqUrlForLog.indexOf('/plugins/') !== -1) {{
+            var _retryCount = 0;
+            var _maxRetries = 3;
+            var _retryDelay = 1000;
+            
+            function _retryWithBackoff(originalInput, originalInit) {{
+                return new Promise(function(resolve, reject) {{
+                    setTimeout(function() {{
+                        console.log('[PolySaaS MM] Retrying plugin request, attempt', _retryCount + 1, ':', _reqUrlForLog.slice(0, 60));
+                        _f.call(window, originalInput, originalInit).then(resolve).catch(reject);
+                    }}, _retryDelay);
+                }});
+            }}
+            
+            return _prom.catch(function(err) {{
+                if (_retryCount < _maxRetries && err.status === 401) {{
+                    _retryCount++;
+                    _retryDelay = _retryDelay * 2; // Exponential backoff
+                    console.log('[PolySaaS MM] Plugin request 401, retrying with backoff:', _retryDelay, 'ms');
+                    return _retryWithBackoff(input, init);
+                }}
+                throw err;
+            }});
+        }}
+        
         if (_reqUrlForLog.indexOf('/users/me') !== -1) {{
             return _prom.then(function(r) {{
                 console.log('[PolySaaS MM] users/me HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
+                if (r.status === 401) {{
+                    // Validate token one more time before declaring it invalid.
+                    // The 401 might be a transient error or stale server-side cache.
+                    console.log('[PolySaaS MM] Got 401 on users/me — double-checking token validity...');
+                    _f.call(window, PROXY + '/api/v4/users/me', {{headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}}}).then(function(r2) {{
+                        if (r2.status === 200) {{
+                            console.log('[PolySaaS MM] Token is actually VALID — ignoring transient 401');
+                        }} else {{
+                            console.log('[PolySaaS MM] Token confirmed invalid — clearing and redirecting');
+                            _mmClearToken();
+                            _mmRedirectToLogin();
+                        }}
+                    }}).catch(function() {{
+                        console.log('[PolySaaS MM] Token validation check failed — clearing and redirecting');
+                        _mmClearToken();
+                        _mmRedirectToLogin();
+                    }});
+                }}
                 return r;
             }});
         }}
@@ -1328,8 +1407,23 @@ class MattermostPassthroughHandler:
     }};
 
     var _xo = XMLHttpRequest.prototype.open;
+    var _xs = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(method, url) {{
-        var proxied = toUpstreamApi(url);
+        // Block external analytics requests that cause CORS errors and hang the UI
+        if (url.indexOf('matterlytics.com') !== -1 || 
+            url.indexOf('rudderstack.com') !== -1 ||
+            url.indexOf('segment.io') !== -1) {{
+            console.log('[PolySaaS MM] Blocked external analytics XHR:', url);
+            this._blocked = true;
+            return;
+        }}
+        // Block logout requests to prevent token invalidation
+        if (url.indexOf('/users/logout') !== -1) {{
+            console.log('[PolySaaS MM] Blocked logout XHR to preserve session:', url);
+            this._blocked = true;
+            return;
+        }}
+        var proxied = toProxy(url);
         if (url !== proxied) console.log('[PolySaaS MM] XHR:', method, url, '->', proxied);
         var rest = Array.prototype.slice.call(arguments, 2);
         _xo.apply(this, [method, proxied].concat(rest));
@@ -1337,68 +1431,113 @@ class MattermostPassthroughHandler:
             var _self = this;
             this.addEventListener('load', function() {{
                 console.log('[PolySaaS MM] XHR users/me status:', _self.status);
+                if (_self.status === 401) {{
+                    console.log('[PolySaaS MM] XHR 401 on users/me — clearing and redirecting');
+                    _mmClearToken();
+                    _mmRedirectToLogin();
+                }}
             }});
         }}
-        if (MMAUTHTOKEN && proxied.indexOf('/api/v4/') !== -1) {{
+        if (MMAUTHTOKEN && (proxied.indexOf('/api/v4/') !== -1 || proxied.indexOf('/plugins/') !== -1)) {{
             try {{
                 this.setRequestHeader('Authorization', 'Bearer ' + MMAUTHTOKEN);
                 if (proxied.indexOf('/users/me') !== -1)
                     console.log('[PolySaaS MM] XHR Auth injected for users/me, token starts:', MMAUTHTOKEN.slice(0, 8));
+                if (proxied.indexOf('/plugins/') !== -1)
+                    console.log('[PolySaaS MM] XHR Auth injected for plugin endpoint:', proxied);
             }} catch(e) {{}}
         }}
     }};
+    XMLHttpRequest.prototype.send = function() {{
+        if (this._blocked) {{
+            console.log('[PolySaaS MM] XHR send blocked (analytics)');
+            return;
+        }}
+        _xs.apply(this, arguments);
+    }};
+
+    // WEBSOCKET HARDENING: Exponential backoff reconnection with loop breaker
+    var _wsFailCount = 0;
+    var _wsFailTime = 0;
+    var _wsStubActive = false;
+    var _wsBackoffMs = 1000; // Start with 1s backoff
+    var _wsMaxBackoffMs = 30000; // Max 30s backoff
+    function _wsCheckFail() {{
+        var now = Date.now();
+        if (now - _wsFailTime > 2000) _wsFailCount = 0;
+        _wsFailCount++;
+        _wsFailTime = now;
+        if (_wsFailCount >= 5) {{
+            console.error('[PolySaaS MM] WebSocket loop breaker: 5 rapid failures, entering silent mode for 30s');
+            _wsStubActive = true;
+            _wsBackoffMs = 1000; // Reset backoff
+            setTimeout(function() {{ _wsStubActive = false; _wsFailCount = 0; console.log('[PolySaaS MM] WebSocket retry resumed'); }}, 30000);
+        }}
+    }}
+    function _wsSilentStub(url) {{
+        console.warn('[PolySaaS MM] WebSocket silent stub for:', url);
+        var stub = {{ onopen: null, onclose: null, onmessage: null, onerror: null, readyState: 1, send: function(){{}}, close: function(){{}} }};
+        setTimeout(function() {{ if (stub.onopen) stub.onopen(); }}, 0);
+        return stub;
+    }}
+    function _wsScheduleReconnect(originalUrl, originalProtocols) {{
+        if (_wsStubActive) return;
+        console.log('[PolySaaS MM] Scheduling WebSocket reconnect in', _wsBackoffMs, 'ms');
+        setTimeout(function() {{
+            console.log('[PolySaaS MM] Attempting WebSocket reconnect...');
+            var ws = (originalProtocols !== undefined) ? new _WS(originalUrl, originalProtocols) : new _WS(originalUrl);
+            // Apply same error handling to reconnected socket
+            var origOnError = ws.onerror;
+            ws.onerror = function(ev) {{
+                _wsCheckFail();
+                if (origOnError) origOnError.call(ws, ev);
+            }};
+            // On successful connection, reset backoff
+            ws.onopen = function() {{
+                console.log('[PolySaaS MM] WebSocket reconnected successfully');
+                _wsBackoffMs = 1000;
+                _wsFailCount = 0;
+            }};
+            // On close, schedule another reconnect with exponential backoff
+            ws.onclose = function() {{
+                console.log('[PolySaaS MM] WebSocket closed, scheduling reconnect with backoff');
+                _wsBackoffMs = Math.min(_wsBackoffMs * 2, _wsMaxBackoffMs);
+                _wsScheduleReconnect(originalUrl, originalProtocols);
+            }};
+        }}, _wsBackoffMs);
+    }}
 
     var _WS = WebSocket;
     window.WebSocket = function(url, protocols) {{
+        if (_wsStubActive) return _wsSilentStub(url);
         if (typeof url === 'string') {{
             try {{
-                var wsUrl = url;
-
-                // Normalize protocol
-                if (wsUrl.indexOf('ws://') !== 0 && wsUrl.indexOf('wss://') !== 0) {{
-                    wsUrl = wsUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-                }}
-
-                var u = new URL(wsUrl, B);
-                var upstream = new URL(B);
-
-                // Force correct hostname/port from proxy origin
-                u.hostname = upstream.hostname;
-                u.port = upstream.port;
-                u.protocol = upstream.protocol === 'https:' ? 'wss:' : 'ws:';
-
-                // Critical: Remove any proxy prefix from the path for WebSocket
-                if (u.pathname.startsWith(PROXY)) {{
+                var mmOrigin = new URL(B);
+                var u = new URL(url, location.href);
+                // Strip proxy prefix from path if present (e.g. /pt/admin/mm/api/v4/... -> /api/v4/...)
+                if (u.pathname.startsWith(PROXY + '/')) {{
                     u.pathname = u.pathname.slice(PROXY.length);
+                }} else if (u.pathname === PROXY) {{
+                    u.pathname = '/';
                 }}
-                if (!u.pathname.startsWith('/')) {{
-                    u.pathname = '/' + u.pathname;
+                u.hostname = mmOrigin.hostname;
+                u.port = mmOrigin.port || '';
+                u.protocol = 'wss:';
+                // Add auth token to WebSocket URL query parameters
+                var token = localStorage.getItem('MMAUTHTOKEN');
+                if (token && !u.searchParams.has('token')) {{
+                    u.searchParams.set('token', token);
                 }}
-
-                // Add auth token
-                if (MMAUTHTOKEN && !u.searchParams.get('access_token')) {{
-                    u.searchParams.set('access_token', MMAUTHTOKEN);
-                }}
-
                 url = u.toString();
-                console.log('[PolySaaS Mattermost] WebSocket FINAL:', url);
-            }} catch (e) {{
-                console.error('[PolySaaS Mattermost] WebSocket rewrite failed:', e, 'original:', url);
-            }}
+                console.log('[PolySaaS Mattermost] WebSocket direct to MM server:', url);
+            }} catch (e) {{ console.warn('[PolySaaS Mattermost] WebSocket rewrite:', e); }}
         }}
-
-        var ws = protocols !== undefined ? new _WS(url, protocols) : new _WS(url);
-
-        ws.addEventListener('open', function() {{
-            console.log('[PolySaaS Mattermost] WebSocket OPEN SUCCESS');
-        }});
-        ws.addEventListener('error', function(event) {{
-            console.error('[PolySaaS Mattermost] WebSocket ERROR', event);
-        }});
-        ws.addEventListener('close', function(event) {{
-            console.warn('[PolySaaS Mattermost] WebSocket CLOSED', event.code, event.reason);
-        }});
-
+        var ws = (protocols !== undefined) ? new _WS(url, protocols) : new _WS(url);
+        var origOnError = ws.onerror;
+        ws.onerror = function(ev) {{
+            _wsCheckFail();
+            if (origOnError) origOnError.call(ws, ev);
+        }};
         return ws;
     }};
     if (_WS.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WS.CONNECTING;
@@ -1412,7 +1551,7 @@ class MattermostPassthroughHandler:
         Object.defineProperty(proto, prop, {{
             get: d.get,
             set: function(v) {{
-                if (typeof v === 'string') v = toAssetUrl(v);
+                if (typeof v === 'string') v = toProxy(v);
                 d.set.call(this, v);
             }},
             configurable: true, enumerable: true
@@ -1428,7 +1567,7 @@ class MattermostPassthroughHandler:
             var ln = name.toLowerCase();
             if ((ln === 'src' || ln === 'href') &&
                 (this instanceof HTMLScriptElement || this instanceof HTMLLinkElement || this instanceof HTMLImageElement)) {{
-                value = toAssetUrl(value);
+                value = toProxy(value);
             }}
         }}
         return _setAttr.call(this, name, value);

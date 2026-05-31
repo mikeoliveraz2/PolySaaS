@@ -552,8 +552,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         # Store on request for orchestration bar display
         request._passthrough_upstream_path = upstream_path
 
-        # Block websocket/bus/discuss paths server-side — they crash through proxy
-        _blocked = ('/websocket', '/bus/', '/longpolling/', '/discuss/', '/mail/action')
+        # WebSocket upgrade cannot pass through Django WSGI; Odoo uses HTTP longpolling/bus instead.
+        _blocked = ('/websocket',)
         if any(upstream_path.startswith(b) or upstream_path == b.rstrip('/') for b in _blocked):
             from django.http import JsonResponse as _JR
             print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")

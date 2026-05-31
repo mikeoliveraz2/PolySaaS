@@ -232,49 +232,134 @@ class MLPromptAdmin(TenantAwareModelAdmin):
     search_fields = ('key', 'description', 'prompt_text')
 
 class InstructionForm(forms.ModelForm):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        init_atomic_services_registry()
-        choices = [(name, name) for name in ATOMIC_SERVICE_REGISTRY.keys()]
-        choices.append(('', 'Custom Endpoint URL'))
-        self.fields['executescript'] = forms.ChoiceField(
-            choices=choices,
-            required=False,
-            label='Atomic Service',
-            help_text='Select an atomic service or choose Custom Endpoint URL.'
-        )
+    """Atomic Service dropdown populated from dose/services registry."""
 
     class Meta:
         model = Instruction
         fields = '__all__'
 
+    def clean_executescript(self):
+        from dose.services.atomic_services_registry import normalize_executescript_value
+        return normalize_executescript_value(self.cleaned_data.get('executescript'))
+
+    def __init__(self, *args, **kwargs):
+        self.admin_request = kwargs.pop('admin_request', None)
+        super().__init__(*args, **kwargs)
+
+        if 'executescript' not in self.fields:
+            return
+
+        from dose.services.atomic_services_registry import (
+            build_executescript_choices,
+            normalize_executescript_value,
+            CUSTOM_ENDPOINT_LABEL,
+        )
+        from dose.utils import get_current_tenant
+
+        tenant_name = None
+        if self.admin_request:
+            tenant = get_current_tenant(self.admin_request)
+            if tenant and getattr(tenant, 'schema_name', None):
+                tenant_name = tenant.schema_name
+
+        current = ''
+        if self.instance and getattr(self.instance, 'pk', None):
+            current = normalize_executescript_value(self.instance.executescript)
+
+        service_names = [c[0] for c in build_executescript_choices(tenant_name=tenant_name) if c[0]]
+        choices = build_executescript_choices(tenant_name=tenant_name, current_value=current)
+
+        self.fields['executescript'] = forms.ChoiceField(
+            choices=choices,
+            required=False,
+            label='Atomic Service',
+            widget=forms.Select(
+                attrs={
+                    'class': 'form-control',
+                    'id': 'id_executescript',
+                    'style': 'width:100%; max-width:520px;',
+                }
+            ),
+            help_text=(
+                f'Select one of {len(service_names)} service(s) from dose/services/ '
+                f'(auto-discovered registry). Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist.'
+            ),
+        )
+        if not self.is_bound and current is not None:
+            self.initial['executescript'] = current
+
 class InstructionAdmin(TenantAwareModelAdmin):
     form = InstructionForm
+
+    class Media:
+        js = ('admin/js/instruction_atomic_service.js',)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+        admin_request = request
+
+        class FormWithRequest(form_class):
+            def __init__(self, *args, **kw):
+                kw['admin_request'] = admin_request
+                super().__init__(*args, **kw)
+
+        FormWithRequest.__name__ = form_class.__name__
+        return FormWithRequest
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        """Force executescript to render as <select>, not CharField text input."""
+        if db_field.name == 'executescript':
+            from dose.services.atomic_services_registry import (
+                build_executescript_choices,
+                CUSTOM_ENDPOINT_LABEL,
+            )
+            from dose.utils import get_current_tenant
+
+            tenant = get_current_tenant(request)
+            tenant_name = getattr(tenant, 'schema_name', None) if tenant else None
+            choices = build_executescript_choices(tenant_name=tenant_name)
+            service_count = sum(1 for v, _ in choices if v)
+            return forms.ChoiceField(
+                label='Atomic Service',
+                choices=choices,
+                required=False,
+                widget=forms.Select(
+                    attrs={
+                        'class': 'form-control',
+                        'id': 'id_executescript',
+                        'style': 'width:100%; max-width:520px;',
+                    }
+                ),
+                help_text=(
+                    f'Select one of {service_count} service(s) from the dose/services '
+                    f'registry. Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist instead.'
+                ),
+            )
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
     fieldsets = [
-        ('Matching Rule', {
-            'fields': ['match_type', 'requestpath', 'match_extra'],
+        ('Instruction', {
+            'fields': [
+                'match_type', 'requestpath', 'match_extra',
+                'requestmethod', 'direction',
+                'executescript', 'save_callbackdata', 'eventKey',
+                'description',
+            ],
             'description': (
-                '<b>match_type</b>: how requestpath is interpreted. '
-                'Examples — <i>path</i>: "/odoo/accounting", '
-                '<i>action_id</i>: "account.action_invoice", '
-                '<i>menu_id</i>: "116", '
-                '<i>regex</i>: r"/odoo/(accounting|invoic)", '
-                '<i>contains</i>: "invoice".<br>'
-                '<b>match_extra</b> adds AND conditions (all must be true): '
-                '<code>{"menu_id": "116"}</code> — also require menu_id in URL; '
-                '<code>{"action_id": "account.action_move_out_invoice_type"}</code> — also require action in URL; '
-                '<code>{"method": "GET"}</code> — restrict HTTP method. '
-                'Example for Odoo Invoicing: match_type=<i>path</i>, requestpath=<i>/odoo/accounting</i>, '
-                'match_extra=<code>{"menu_id": "116"}</code>.'
+                '<b>Matching</b> — requestpath + match_type decide when this instruction fires.<br>'
+                '<b>Atomic Service</b> — dropdown lists every class in <code>dose/services/</code> '
+                'that defines <code>execute_and_save(request, instruction_row)</code> '
+                '(e.g. HelloWorld, EndpointDataExtractorService). '
+                'Pick <i>Custom Endpoint URL</i> to use urllist instead.'
             ),
         }),
-        ('Action', {
-            'fields': ['executescript', 'save_callbackdata', 'eventKey'],
-        }),
-        ('Advanced', {
+        ('Custom endpoint &amp; parameters', {
             'classes': ['collapse'],
-            'fields': ['requestmethod', 'direction', 'urllist', 'appusername',
-                       'description', 'parameters_json', 'pub_date'],
+            'fields': ['urllist', 'appusername', 'parameters_json', 'pub_date'],
+            'description': (
+                'Expand when Atomic Service is <i>Custom Endpoint URL</i>. '
+                'urllist accepts one or more comma-separated URLs.'
+            ),
         }),
     ]
 
@@ -295,26 +380,48 @@ class InstructionAdmin(TenantAwareModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         from django.db import transaction
-        from dose.services.atomic_services_registry import ATOMIC_SERVICE_REGISTRY, init_atomic_services_registry
         from django.contrib import messages
-        init_atomic_services_registry()
-        executescript_name = obj.executescript
+
+        executescript_name = (obj.executescript or '').strip()
+        from dose.services.atomic_services_registry import normalize_executescript_value
+        executescript_name = normalize_executescript_value(executescript_name)
+        if not executescript_name:
+            return
+
         print(f"[DEBUG] executescript_name: {executescript_name}")
-        print(f"[DEBUG] ATOMIC_SERVICE_REGISTRY keys: {list(ATOMIC_SERVICE_REGISTRY.keys())}")
-        if executescript_name:
-            cls = ATOMIC_SERVICE_REGISTRY.get(executescript_name)
-            print(f"[DEBUG] cls: {cls}")
-            if cls and hasattr(cls, 'execute_and_save'):
-                print(f"[DEBUG] Executing atomic service: {executescript_name}")
-                try:
-                    with transaction.atomic():
-                        cls.execute_and_save(request, obj)
-                    messages.add_message(request, messages.INFO, f"Atomic service '{executescript_name}' executed successfully.")
-                except Exception as e:
-                    print(f"[ERROR] Failed to execute atomic service '{executescript_name}': {e}")
-                    messages.add_message(request, messages.WARNING, f"Atomic service '{executescript_name}' failed, but the instruction was saved. You can retry from the admin list view. Error: {str(e)}")
-            else:
-                print(f"[DEBUG] Atomic service '{executescript_name}' not found or missing 'execute_and_save'.")
+        cls = obj.select_service(
+            tenant_name=getattr(getattr(request, 'tenant', None), 'schema_name', None)
+        )
+        print(f"[DEBUG] select_service -> {cls}")
+        if cls and hasattr(cls, 'execute_and_save'):
+            print(f"[DEBUG] Executing atomic service: {executescript_name}")
+            try:
+                with transaction.atomic():
+                    atomic_result = obj.execute_atomic_service(request)
+                messages.add_message(
+                    request, messages.INFO,
+                    f"Atomic service '{executescript_name}' executed successfully.",
+                )
+                if getattr(obj, 'save_callbackdata', False):
+                    from dose.passthrough.orchestration_hook import _save_callback_data
+                    from dose.utils import get_current_tenant
+                    tenant = get_current_tenant(request)
+                    if tenant and atomic_result is not None:
+                        payload = atomic_result if isinstance(atomic_result, dict) else {'result': atomic_result}
+                        _save_callback_data(request, obj, payload, tenant)
+            except Exception as e:
+                print(f"[ERROR] Failed to execute atomic service '{executescript_name}': {e}")
+                messages.add_message(
+                    request, messages.WARNING,
+                    f"Atomic service '{executescript_name}' failed, but the instruction was saved. "
+                    f"Error: {e}",
+                )
+        else:
+            print(f"[DEBUG] Atomic service '{executescript_name}' not found in dose/services registry.")
+            messages.add_message(
+                request, messages.WARNING,
+                f"Atomic service '{executescript_name}' is not registered in dose/services/.",
+            )
 
 class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     list_display = ('get_menu_title', 'provider', 'endpoint_url', 'show_in_menu', 'is_enabled', 'debug_button', 'created_at')

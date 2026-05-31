@@ -23,6 +23,15 @@ class MattermostPassthroughHandler:
     Regenerate from fresh captures if behavior changes.
     """
 
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
+        host = urlparse(url).netloc.lower() if url else ''
+        slug = str(getattr(endpoint, 'slug', '') or '').lower()
+        trigger = str(getattr(endpoint, 'trigger_path', '') or '').lower()
+        blob = f"{host} {slug} {trigger}"
+        return 'mattermost' in blob
+
     def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
         """Static bundle URLs are served by mattermost_static_proxy in URLconf, not PT core."""
         import re as _re
@@ -88,19 +97,18 @@ class MattermostPassthroughHandler:
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
-        
+
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
 
-        # If user already has a token cookie, let Mattermost handle the redirect.
-        # Don't force a redirect — let forwarder fetch / and Mattermost will
-        # redirect to the appropriate team/channel based on user's membership.
+        # Cookie already set — let forwarder fetch Mattermost. Re-running plugin auth here
+        # returns the 557B redirect page forever and Mattermost never loads (see server logs).
         if token and not force_login:
-            print(f"[MM ROOT] Existing token cookie present — letting Mattermost handle redirect")
+            print(f"[MM ROOT] MMAUTHTOKEN present len={len(token)} — letting forwarder handle root")
             return None
 
-        # No cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
+        # No cookie — get a fresh token via plugin, then redirect back to root once.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
-        if endpoint_url:
+        if endpoint_url and not force_login:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
                 print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
@@ -498,28 +506,67 @@ try {{
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
 
         # If Mattermost served its login HTML, inject credential pre-fill instead of replacing.
-        if '/login' in (getattr(request, 'path_info', '') or ''):
+        path_info = getattr(request, 'path_info', '') or ''
+        html_lower = html_str.lower()
+        is_login_page = (
+            '/login' in path_info
+            or 'name="loginid"' in html_lower
+            or "name='loginid'" in html_lower
+            or 'session has expired' in html_lower
+            or 'id="loginid"' in html_lower
+        )
+        if is_login_page:
             if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
                 _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
             else:
                 _proxy_prefix = "/pt/admin/mattermost"
+            # Stale MMAUTHTOKEN: Mattermost rejected the cookie and served login HTML.
+            stale_token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+            if stale_token and not force_login:
+                print(f"[MM LoginPreFill] Stale token on login page — clearing cookies and retrying root")
+                retry_script = f"""<script>
+(function() {{
+  try {{
+    localStorage.removeItem('storage:MMAUTHTOKEN');
+    localStorage.removeItem('MMAUTHTOKEN');
+    localStorage.removeItem('mmauthtoken');
+  }} catch(e) {{}}
+  document.cookie = 'MMAUTHTOKEN=; path=/; max-age=0; SameSite=Lax';
+  document.cookie = 'mmauthtoken=; path=/; max-age=0; SameSite=Lax';
+  window.location.replace('{_proxy_prefix}/');
+}})();
+</script></head>"""
+                if '</head>' in html_str:
+                    html_str = html_str.replace('</head>', retry_script)
+                else:
+                    html_str = html_str + retry_script
+                return html_str, None
             # Get credentials and inject pre-fill script into Mattermost's login form
             login_id, password, team_name = self._get_login_credentials(request)
             if login_id and password:
                 print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}, team={team_name!r}")
                 prefill_script = f"""<script>
 (function() {{
+    var attempts = 0;
     function fill() {{
         var li = document.querySelector('input[name="loginId"], input[id="loginId"], input[placeholder*="Email"], input[type="text"]');
         var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
-        if (li) {{ li.value = {json.dumps(login_id)}; li.dispatchEvent(new Event('input', {{bubbles: true}})); }}
-        if (pw) {{ pw.value = {json.dumps(password)}; pw.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        if (!li || !pw) return false;
+        li.value = {json.dumps(login_id)};
+        li.dispatchEvent(new Event('input', {{bubbles: true}}));
+        pw.value = {json.dumps(password)};
+        pw.dispatchEvent(new Event('input', {{bubbles: true}}));
         console.log('[PolySaaS] Pre-filled login form for team={team_name}');
+        return true;
+    }}
+    function tryFill() {{
+        if (fill()) return;
+        if (++attempts < 60) setTimeout(tryFill, 100);
     }}
     if (document.readyState === 'loading') {{
-        document.addEventListener('DOMContentLoaded', fill);
+        document.addEventListener('DOMContentLoaded', tryFill);
     }} else {{
-        fill();
+        tryFill();
     }}
 }})();
 </script></head>"""

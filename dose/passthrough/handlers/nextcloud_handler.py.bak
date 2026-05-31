@@ -211,6 +211,15 @@ class NextcloudPassthroughHandler:
     in admin/display.html (the same shell used for Odoo and Mattermost).
     """
 
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
+        host = urlparse(url).netloc.lower() if url else ''
+        slug = str(getattr(endpoint, 'slug', '') or '').lower()
+        trigger = str(getattr(endpoint, 'trigger_path', '') or '').lower()
+        blob = f"{host} {slug} {trigger}"
+        return 'nextcloud' in blob
+
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
         """
         Nextcloud skips SameSite probe cookies when unrelated cookies are present (e.g. Django
@@ -1105,6 +1114,56 @@ function _ncPathLooksLikeLogin(pathname){{
     return p.endsWith('/login')||p.indexOf('/index.php/login')!==-1;
 }}
 
+function _ncReqLooksLikeLogin(reqUrl){{
+    if(!reqUrl||typeof reqUrl!=='string')return false;
+    if(reqUrl.indexOf('/login')!==-1||reqUrl.indexOf('index.php/login')!==-1)return true;
+    try{{
+        var p=new URL(reqUrl,O).pathname.toLowerCase();
+        return p.endsWith('/login')||p.indexOf('/index.php/login')!==-1;
+    }}catch(e){{return false;}}
+}}
+
+function _ncResolveToSameOriginNav(u){{
+    if(!u||typeof u!=='string')return null;
+    u=u.trim();
+    if(!u)return null;
+    var out;
+    if(u.indexOf('http://')===0||u.indexOf('https://')===0){{out=u;}}
+    else{{
+        var rel=u.charAt(0)==='/'?u:'/'+u;
+        rel=_toProxy(rel);
+        try{{out=new URL(rel,O).href;}}catch(e){{return null;}}
+    }}
+    try{{
+        var x=new URL(out);
+        if(x.origin!==new URL(O).origin)return null;
+        if(_ncPathLooksLikeLogin(x.pathname))return null;
+        return out;
+    }}catch(e){{return null;}}
+}}
+
+function _ncMaybeNavigateFromNcLoginResponse(text){{
+    if(!text)return;
+    var t=text.trim();
+    if(!t||(t.charAt(0)!=='{{'&&t.charAt(0)!=='['))return;
+    try{{
+        var j=JSON.parse(t);
+        var cands=[];
+        if(j&&typeof j==='object'){{
+            if(typeof j.url==='string')cands.push(j.url);
+            if(typeof j.redirectUrl==='string')cands.push(j.redirectUrl);
+            if(typeof j.redirectURL==='string')cands.push(j.redirectURL);
+            if(typeof j.location==='string')cands.push(j.location);
+            if(j.data&&typeof j.data==='object'&&typeof j.data.url==='string')cands.push(j.data.url);
+            if(j.ocs&&j.ocs.data&&typeof j.ocs.data.url==='string')cands.push(j.ocs.data.url);
+        }}
+        for(var i=0;i<cands.length;i++){{
+            var nav=_ncResolveToSameOriginNav(cands[i]);
+            if(nav){{window.location.assign(nav);return;}}
+        }}
+    }}catch(e){{}}
+}}
+
 // Patch fetch — Vue may use fetch or axios; after POST /login the document URL can stay on /login
 var _f=window.fetch;
 window.fetch=function(input,init){{
@@ -1118,13 +1177,20 @@ window.fetch=function(input,init){{
     else if(typeof Request!=='undefined'&&input instanceof Request){{_reqUrl=input.url||'';_method=input.method||'GET';}}
     return _f.call(this,input,init).then(function(resp){{
         try{{
-            var _loginUrl=_reqUrl.indexOf('/login')!==-1||_reqUrl.indexOf('index.php/login')!==-1;
-            if(!resp||_method.toUpperCase()!=='POST'||!_loginUrl)return resp;
+            if(!resp||_method.toUpperCase()!=='POST'||!_ncReqLooksLikeLogin(_reqUrl))return resp;
             var finalU=resp.url||'';
             if(!finalU||finalU.indexOf(O)!==0)return resp;
             var pu=new URL(finalU);
-            if(_ncPathLooksLikeLogin(pu.pathname))return resp;
-            if(resp.redirected||resp.ok)window.location.assign(finalU);
+            if(!_ncPathLooksLikeLogin(pu.pathname)){{
+                if(resp.redirected||resp.ok)window.location.assign(finalU);
+                return resp;
+            }}
+            if(resp.ok&&resp.clone){{
+                return resp.clone().text().then(function(txt){{
+                    _ncMaybeNavigateFromNcLoginResponse(txt);
+                    return resp;
+                }}).catch(function(){{return resp;}});
+            }}
         }}catch(e){{}}
         return resp;
     }});
@@ -1145,18 +1211,24 @@ XMLHttpRequest.prototype.send=function(){{
     var onDone=function(){{
         try{{
             if(self._polyNcMethod!=='POST')return;
-            var u=self._polyNcUrl||'';
-            if(u.indexOf('/login')===-1&&u.indexOf('index.php/login')===-1)return;
+            if(!_ncReqLooksLikeLogin(self._polyNcUrl||''))return;
             var st=Number(self.status)||0;
             if(st<200||st>=400)return;
             var ru=self.responseURL||'';
             if(!ru||ru.indexOf(O)!==0)return;
             var pu=new URL(ru);
-            if(_ncPathLooksLikeLogin(pu.pathname))return;
-            window.location.assign(ru);
+            if(!_ncPathLooksLikeLogin(pu.pathname)){{
+                window.location.assign(ru);
+                return;
+            }}
+            if(self.responseText){{
+                var ct=(self.getResponseHeader('Content-Type')||'').toLowerCase();
+                if(ct.indexOf('json')!==-1||self.responseText.trim().charAt(0)==='{{')
+                    _ncMaybeNavigateFromNcLoginResponse(self.responseText);
+            }}
         }}catch(e){{}}
     }};
-    self.addEventListener('load',onDone);
+    self.addEventListener('load',onDone,{{once:true}});
     return _xs.apply(self,arguments);
 }};
 

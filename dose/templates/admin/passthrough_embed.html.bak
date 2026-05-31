@@ -113,25 +113,40 @@ body.polysaas-passthrough-embed-page {
     width: 100% !important;
 }
 
-/* Odoo 18 — navbar + main are direct children of scope */
+/* Odoo 18 — navbar MUST stay in-flow (fixed/sticky uses viewport → hides under Jazzmin) */
+.polysaas-passthrough-scope header.o_main_navbar,
+.polysaas-passthrough-scope .o_main_navbar,
 .polysaas-passthrough-scope > .o_main_navbar,
 .polysaas-passthrough-scope > nav.o_main_navbar {
     flex: 0 0 auto !important;
     width: 100% !important;
     position: relative !important;
-    z-index: 20 !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    z-index: 30 !important;
     visibility: visible !important;
     opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+    max-height: none !important;
+    margin: 0 !important;
+    clip: auto !important;
+    clip-path: none !important;
 }
 
-.polysaas-passthrough-scope .o_navbar,
-.polysaas-passthrough-scope .o_main_navbar {
+.polysaas-passthrough-scope .o_navbar {
     flex: 0 0 auto !important;
     position: relative !important;
+    top: auto !important;
     width: 100% !important;
-    z-index: 20 !important;
+    z-index: 30 !important;
     visibility: visible !important;
     opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
 }
 
 .polysaas-passthrough-scope .o_action_manager,
@@ -169,8 +184,11 @@ body.polysaas-passthrough-embed-page {
     z-index: 200 !important;
 }
 
-.polysaas-passthrough-scope [style*="position: fixed"],
-.polysaas-passthrough-scope [style*="position:fixed"] {
+/* Do NOT rewrite fixed positioning on the navbar — only on overlays/modals */
+.polysaas-passthrough-scope .o_loading[style*="position: fixed"],
+.polysaas-passthrough-scope .o_loading[style*="position:fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position: fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position:fixed"] {
     position: absolute !important;
 }
 
@@ -212,6 +230,11 @@ body.polysaas-passthrough-embed-page {
         <div>
             ● POLYSAAS ORCHESTRATION ACTIVE — PASSTHROUGH EMBED<br>
             <span style="color:#86efac;font-size:13px;">Action Path: <code id="pss-action-path" style="background:rgba(255,255,255,0.15);color:#86efac;padding:2px 6px;border-radius:3px;font-size:12px;">loading…</code></span>
+            &nbsp;|&nbsp;
+            <span style="font-size:12px;color:#aaa;">menu_id: <span id="pss-orch-menu" style="color:#fde68a;">—</span></span>
+            &nbsp;|&nbsp;
+            <span style="font-size:12px;color:#aaa;">orch: <span id="pss-orch-status" style="color:#93c5fd;">waiting…</span></span>
+            <span id="pss-orch-event" style="display:none;margin-left:8px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
         </div>
         <button id="pss-insert-instruction-btn" style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
             + Insert Orchestration Instruction
@@ -219,51 +242,142 @@ body.polysaas-passthrough-embed-page {
     </div>
     <script>
     (function() {
-        var el = document.getElementById('pss-action-path');
-        var currentPath = '{{ upstream_path|default:"/web" }}';
-        if (el) el.textContent = currentPath;
+        var pathEl = document.getElementById('pss-action-path');
+        var menuEl = document.getElementById('pss-orch-menu');
+        var statusEl = document.getElementById('pss-orch-status');
+        var eventEl = document.getElementById('pss-orch-event');
+        var _lastOrchPath = '';
 
-        // Intercept pushState/replaceState to detect Odoo in-app navigation
-        var _pushState = history.pushState;
-        var _replaceState = history.replaceState;
-        function onNav() {
-            var raw = window.location.pathname + window.location.hash;
-            // Strip proxy prefix like /pt/admin/polysaas-odoo2.onrender.com
-            var p = raw.replace(/^\/pt\/admin\/[^\/]+/, '') || '/';
-            if (p !== currentPath) {
-                currentPath = p;
-                if (el) el.textContent = currentPath;
-                // Notify server of client-side navigation for orchestration
-                notifyOrchestration(p);
+        function getBrowserPathname() {
+            try {
+                var a = document.createElement('a');
+                a.href = window.location.href;
+                return a.pathname || window.location.pathname || '/';
+            } catch (e) {
+                return window.location.pathname || '/';
             }
         }
-        function notifyOrchestration(path) {
-            var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+
+        function getOdooPath() {
+            var browserPath = getBrowserPathname();
+            var spaPath = window.location.pathname || browserPath;
+            var hash = window.location.hash || '';
+            var m = browserPath.match(/\/pt\/admin\/[^/]+(\/.*)$/);
+            var p = m ? m[1].replace(/\/$/, '') || '/' : spaPath;
+            if (!m && p.indexOf('/pt/admin/') === 0) p = '/';
+            return p + (window.location.search || '') + hash;
+        }
+
+        function getMenuIdFromPath(p) {
+            var base = (p || '').split('?')[0].split('#')[0];
+            var mm = base.match(/\/odoo\/[^/]+\/(\d+)(?:\/|$)/);
+            if (mm) return mm[1];
+            var params = new URLSearchParams((p.split('?')[1] || '') + (p.split('#')[1] || '').replace(/^#/, '?'));
+            return params.get('menu_id') || '';
+        }
+
+        function setStatus(text, ok) {
+            if (!statusEl) return;
+            statusEl.textContent = text;
+            statusEl.style.color = ok ? '#86efac' : (ok === false ? '#fca5a5' : '#93c5fd');
+        }
+
+        function showEvent(msg) {
+            if (!eventEl) return;
+            eventEl.textContent = msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg);
+            eventEl.style.display = 'inline';
+            clearTimeout(eventEl._t);
+            eventEl._t = setTimeout(function() { eventEl.style.display = 'none'; }, 12000);
+        }
+
+        function getCsrfToken() {
+            var el = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (el && el.value) return el.value;
+            var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        }
+
+        function notifyOrchestration(fullPath) {
+            var pathOnly = (fullPath || '').split('?')[0].split('#')[0];
+            if (!pathOnly || pathOnly === _lastOrchPath) return;
+            _lastOrchPath = pathOnly;
+            setStatus('checking…', null);
             fetch('/dose/api/orchestration-navigate/', {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                body: JSON.stringify({path: path, method: 'GET'})
-            }).catch(function() {});
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({path: fullPath, method: 'GET'})
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (!data) {
+                    setStatus('no response', false);
+                    return;
+                }
+                if (data.status === 'no_tenant') {
+                    setStatus('no tenant', false);
+                    showEvent('orchestration: no tenant');
+                    return;
+                }
+                var matched = data.matched || 0;
+                var saved = data.callback_saved || 0;
+                if (matched > 0) {
+                    setStatus('matched ' + matched + ', saved ' + saved, saved > 0);
+                    showEvent('matched ' + matched + ' — CallBackData saved: ' + saved);
+                } else {
+                    setStatus('no instruction match', false);
+                    showEvent('no match for ' + pathOnly);
+                }
+            }).catch(function() {
+                setStatus('API error', false);
+                showEvent('orchestration API failed');
+            });
         }
-        history.pushState = function() {
-            _pushState.apply(this, arguments);
-            onNav();
-        };
-        history.replaceState = function() {
-            _replaceState.apply(this, arguments);
-            onNav();
-        };
-        window.addEventListener('popstate', onNav);
-        // Also poll for hash changes (fallback)
-        setInterval(onNav, 1500);
 
-        // Button click (placeholder — future: opens instruction creation modal)
+        function updateBar(forceNotify) {
+            var fullPath = getOdooPath();
+            var pathOnly = fullPath.split('?')[0].split('#')[0];
+            if (pathEl) pathEl.textContent = pathOnly;
+            if (menuEl) menuEl.textContent = getMenuIdFromPath(fullPath) || '—';
+            if (forceNotify || pathOnly !== _lastOrchPath) {
+                notifyOrchestration(fullPath);
+            }
+        }
+
+        function installHistoryHooks() {
+            var _pushState = history.pushState;
+            var _replaceState = history.replaceState;
+            history.pushState = function() {
+                var r = _pushState.apply(this, arguments);
+                updateBar(true);
+                return r;
+            };
+            history.replaceState = function() {
+                var r = _replaceState.apply(this, arguments);
+                updateBar(true);
+                return r;
+            };
+            window.addEventListener('popstate', function() { updateBar(true); });
+        }
+
+        window.__psEmbedOrchBar = { updateBar: updateBar, installHistoryHooks: installHistoryHooks };
+
+        installHistoryHooks();
+        updateBar(true);
+        setInterval(function() { updateBar(false); }, 2000);
+        [500, 1500, 3500].forEach(function(ms) {
+            setTimeout(function() {
+                installHistoryHooks();
+                updateBar(true);
+            }, ms);
+        });
+
         var btn = document.getElementById('pss-insert-instruction-btn');
         if (btn) {
             btn.addEventListener('click', function() {
-                var path = el ? el.textContent : currentPath;
-                alert('Instruction will be created for action path:\\n' + path + '\\n\\n(Feature coming soon)');
+                var path = pathEl ? pathEl.textContent : getOdooPath();
+                alert('Instruction will be created for action path:\n' + path + '\n\n(Feature coming soon)');
             });
         }
     })();
@@ -284,12 +398,18 @@ body.polysaas-passthrough-embed-page {
     <script>
     (function () {
         'use strict';
-        var scope = document.querySelector('.polysaas-passthrough-scope');
-        if (!scope) return;
+        var SCOPE_SEL = '.polysaas-passthrough-scope';
+
+        function getScope() {
+            return document.querySelector(SCOPE_SEL);
+        }
 
         var _jazzmin = new Set();
-        var _ch = document.body ? Array.prototype.slice.call(document.body.childNodes) : [];
-        for (var _i = 0; _i < _ch.length; _i++) { _jazzmin.add(_ch[_i]); }
+        function _snapshotJazzmin() {
+            var _ch = document.body ? Array.prototype.slice.call(document.body.childNodes) : [];
+            for (var _i = 0; _i < _ch.length; _i++) { _jazzmin.add(_ch[_i]); }
+        }
+        _snapshotJazzmin();
 
         function _isJazzmin(node) {
             if (_jazzmin.has(node)) return true;
@@ -305,7 +425,8 @@ body.polysaas-passthrough-embed-page {
 
         function _isOdooMount(node) {
             if (!node || node.nodeType !== 1) return false;
-            if (node === scope || scope.contains(node)) return false;
+            var scope = getScope();
+            if (scope && (node === scope || scope.contains(node))) return false;
             if (_isJazzmin(node)) return false;
             if (node.classList && (
                 node.classList.contains('o_web_client') ||
@@ -315,36 +436,84 @@ body.polysaas-passthrough-embed-page {
                 node.classList.contains('o_apps') ||
                 node.id === 'wrapwrap'
             )) return true;
-            if (node.tagName === 'MAIN' || node.tagName === 'NAV') return true;
+            if (node.tagName === 'MAIN' || node.tagName === 'NAV' || node.tagName === 'HEADER') return true;
             return false;
         }
 
+        function _pinNavbar(scope) {
+            if (!scope) return;
+            var nav = scope.querySelector(':scope > .o_main_navbar, :scope > header.o_main_navbar');
+            if (!nav) nav = document.querySelector('header.o_main_navbar, .o_main_navbar');
+            if (!nav) return;
+            if (!scope.contains(nav)) {
+                scope.insertBefore(nav, scope.firstChild);
+            } else if (scope.firstElementChild !== nav) {
+                scope.insertBefore(nav, scope.firstChild);
+            }
+            nav.style.setProperty('position', 'relative', 'important');
+            nav.style.setProperty('top', 'auto', 'important');
+            nav.style.setProperty('display', 'flex', 'important');
+            nav.style.setProperty('visibility', 'visible', 'important');
+            nav.style.setProperty('opacity', '1', 'important');
+        }
+
         function _claim(node) {
-            if (!node || node.nodeType !== 1) return;
+            var scope = getScope();
+            if (!scope || !node || node.nodeType !== 1) return;
             if (node === scope || scope.contains(node)) return;
             if (_isJazzmin(node)) return;
             if (!_isOdooMount(node)) return;
             console.log('[PolySaaS Embed] Moving Odoo node to scope:', node.tagName, node.className || node.id || '');
             scope.appendChild(node);
+            _pinNavbar(scope);
         }
 
-        var _origAppend = document.body.appendChild.bind(document.body);
-        document.body.appendChild = function (node) {
-            if (node && !_isJazzmin(node) && !_jazzmin.has(node) && _isOdooMount(node)) {
-                console.log('[PolySaaS Embed] Intercepted body.appendChild → scope:', (node.tagName || ''), (node.className || ''));
-                return scope.appendChild(node);
+        function _redirectToScope(parent, node, insertFn) {
+            if (parent !== document.body || !node || !_isOdooMount(node) || _isJazzmin(node)) {
+                return false;
             }
-            return _origAppend(node);
+            var scope = getScope();
+            if (!scope) return false;
+            console.log('[PolySaaS Embed] Redirect mount to scope:', node.tagName, node.className || node.id || '');
+            insertFn(scope, node);
+            _pinNavbar(scope);
+            return true;
+        }
+
+        var _origAppend = Element.prototype.appendChild;
+        Element.prototype.appendChild = function (child) {
+            if (_redirectToScope(this, child, function (scope, node) { _origAppend.call(scope, node); })) {
+                return child;
+            }
+            return _origAppend.call(this, child);
         };
 
-        var _origElemAppend = Element.prototype.appendChild;
-        Element.prototype.appendChild = function (child) {
-            if (this === document.body && child && _isOdooMount(child) && !_isJazzmin(child) && !_jazzmin.has(child)) {
-                console.log('[PolySaaS Embed] Intercepted Element.appendChild(body) → scope:', (child.tagName || ''), (child.className || ''));
-                return _origElemAppend.call(scope, child);
+        var _origInsertBefore = Element.prototype.insertBefore;
+        Element.prototype.insertBefore = function (newNode, ref) {
+            if (_redirectToScope(this, newNode, function (scope, node) {
+                _origInsertBefore.call(scope, node, scope.firstChild);
+            })) {
+                return newNode;
             }
-            return _origElemAppend.call(this, child);
+            return _origInsertBefore.call(this, newNode, ref);
         };
+
+        if (Element.prototype.prepend) {
+            var _origPrepend = Element.prototype.prepend;
+            Element.prototype.prepend = function () {
+                var nodes = Array.prototype.slice.call(arguments);
+                if (this === document.body && nodes.length) {
+                    var scope = getScope();
+                    if (scope) {
+                        console.log('[PolySaaS Embed] Redirect body.prepend to scope');
+                        _origPrepend.apply(scope, nodes);
+                        _pinNavbar(scope);
+                        return;
+                    }
+                }
+                return _origPrepend.apply(this, nodes);
+            };
+        }
 
         if (typeof MutationObserver !== 'undefined') {
             var _mo = new MutationObserver(function (mutations) {
@@ -354,20 +523,54 @@ body.polysaas-passthrough-embed-page {
                     });
                 });
             });
-            _mo.observe(document.body, { childList: true });
+            if (document.body) _mo.observe(document.body, { childList: true });
         }
 
         function _harvestBodyChildren() {
-            ['#wrapwrap', '.o_web_client', '.o_main_navbar', 'main', '.o_home_menu', '.o_apps'].forEach(function (sel) {
+            var scope = getScope();
+            if (!scope) return;
+            ['#wrapwrap', '.o_web_client', '.o_main_navbar', 'header.o_main_navbar', 'main', '.o_home_menu'].forEach(function (sel) {
                 var el = document.body.querySelector(':scope > ' + sel);
-                if (el && el.parentElement === document.body) {
-                    _claim(el);
-                }
+                if (el && el.parentElement === document.body) { _claim(el); }
             });
+            _pinNavbar(scope);
         }
-        [200, 500, 1000, 2000, 4000, 8000].forEach(function (ms) {
+
+        function _boot() {
+            _snapshotJazzmin();
+            _harvestBodyChildren();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', _boot);
+        } else {
+            _boot();
+        }
+        [200, 500, 1000, 2000, 4000, 8000, 12000].forEach(function (ms) {
             setTimeout(_harvestBodyChildren, ms);
         });
+    })();
+    </script>
+    {% endif %}
+    {% if embed_enable_odoo_body_scope %}
+    <script>
+    (function () {
+        if (!window.__psEmbedOrchBar) return;
+        var _psPush = history.pushState;
+        var _psReplace = history.replaceState;
+        if (_psPush) {
+            history.pushState = function () {
+                var r = _psPush.apply(history, arguments);
+                window.__psEmbedOrchBar.updateBar(true);
+                return r;
+            };
+            history.replaceState = function () {
+                var r = _psReplace.apply(history, arguments);
+                window.__psEmbedOrchBar.updateBar(true);
+                return r;
+            };
+            window.__psEmbedOrchBar.updateBar(true);
+        }
     })();
     </script>
     {% endif %}

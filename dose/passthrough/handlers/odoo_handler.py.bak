@@ -77,6 +77,190 @@ class OdooPassthroughHandler:
         receive the post-login 3xx so it navigates to the correct proxied URL."""
         return request.method != "POST"
 
+    # ------------------------------------------------------------------
+    # Incoming path rewrite (called by incoming_path_rewrite.apply_incoming_path_rewrites)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _odoo_proxy_prefix_from_endpoint(endpoint) -> str:
+        url = getattr(endpoint, 'endpoint_url', '') or ''
+        parsed = urlparse(url)
+        seg = parsed.netloc or 'odoo'
+        return f"/pt/admin/{seg}"
+
+    @staticmethod
+    def _odoo_endpoint_is_odoo(endpoint) -> bool:
+        slug = str(getattr(endpoint, 'slug', '') or '').lower()
+        url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
+        return slug == 'odoo' or 'odoo' in url
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        return cls._odoo_endpoint_is_odoo(endpoint)
+
+    @classmethod
+    def try_rewrite_incoming_path_referer_fallback(cls, request) -> bool:
+        """
+        Odoo-only: bare /web/, /odoo/, etc. with referer from an Odoo passthrough embed.
+        Lives here so shared incoming_path_rewrite stays endpoint-agnostic.
+        """
+        path = request.path_info or ''
+        if path.startswith('/pt/') or not path.startswith('/'):
+            return False
+        if not cls._odoo_root_path_should_proxy(path):
+            return False
+        ref = request.META.get('HTTP_REFERER', '') or ''
+        m = re.search(r'(/pt/admin/[^/]+)', ref)
+        if not m or 'odoo' not in m.group(1).lower():
+            return False
+        proxy_prefix = m.group(1)
+        if not cls._odoo_incoming_rewrite_confidence(request, proxy_prefix):
+            return False
+        request.path_info = proxy_prefix + path
+        print(f"[ODOO HANDLER] referer fallback → {request.path_info}")
+        return True
+
+    def passthrough_embed_template_context(self, trigger, request):
+        return {'embed_enable_odoo_body_scope': True}
+
+    def fallback_rewrite_html_for_proxy(self, html: str, request) -> str:
+        """Forwarder safety net: rewrite escaped root-relative Odoo paths in HTML bodies."""
+        if not html:
+            return html
+        path = (getattr(request, "path_info", "") or "").strip()
+        parts = path.strip("/").split("/") if path else []
+        if len(parts) < 3 or parts[0] != "pt" or parts[1] != "admin":
+            return html
+        if not self.matches_endpoint(type("_E", (), {
+            "endpoint_url": f"https://{parts[2]}",
+            "slug": parts[2],
+            "trigger_path": parts[2],
+        })()):
+            return html
+
+        proxy_prefix = f"/pt/admin/{parts[2]}"
+        out = html
+        rewrite_count = 0
+
+        def _apply_pairs(text: str, pairs):
+            local_count = 0
+            out_text = text
+            for old, new in pairs:
+                hits = out_text.count(old)
+                if hits:
+                    out_text = out_text.replace(old, new)
+                    local_count += hits
+            return out_text, local_count
+
+        quoted_pairs = (
+            ('"/web/', f'"{proxy_prefix}/web/'),
+            ("'/web/", f"'{proxy_prefix}/web/"),
+            ('"/web?', f'"{proxy_prefix}/web?'),
+            ("'/web?", f"'{proxy_prefix}/web?"),
+            ('"/website/', f'"{proxy_prefix}/website/'),
+            ("'/website/", f"'{proxy_prefix}/website/"),
+            ('"/odoo/', f'"{proxy_prefix}/odoo/'),
+            ("'/odoo/", f"'{proxy_prefix}/odoo/"),
+            ('"/bus/', f'"{proxy_prefix}/bus/'),
+            ("'/bus/", f"'{proxy_prefix}/bus/"),
+            ('"/websocket', f'"{proxy_prefix}/websocket'),
+            ("'/websocket", f"'{proxy_prefix}/websocket"),
+            ('"/longpolling/', f'"{proxy_prefix}/longpolling/'),
+            ("'/longpolling/", f"'{proxy_prefix}/longpolling/"),
+            ('"/jsonrpc', f'"{proxy_prefix}/jsonrpc'),
+            ("'/jsonrpc", f"'{proxy_prefix}/jsonrpc"),
+        )
+        out, applied = _apply_pairs(out, quoted_pairs)
+        rewrite_count += applied
+
+        public_host = request.get_host().strip().lower()
+        if public_host:
+            for scheme in ("http", "https"):
+                base = f"{scheme}://{public_host}"
+                abs_pairs = (
+                    (f"{base}/web/", f"{base}{proxy_prefix}/web/"),
+                    (f"{base}/web?", f"{base}{proxy_prefix}/web?"),
+                    (f"{base}/website/", f"{base}{proxy_prefix}/website/"),
+                    (f"{base}/odoo/", f"{base}{proxy_prefix}/odoo/"),
+                    (f"{base}/bus/", f"{base}{proxy_prefix}/bus/"),
+                    (f"{base}/websocket", f"{base}{proxy_prefix}/websocket"),
+                    (f"{base}/longpolling/", f"{base}{proxy_prefix}/longpolling/"),
+                    (f"{base}/jsonrpc", f"{base}{proxy_prefix}/jsonrpc"),
+                )
+                out, applied = _apply_pairs(out, abs_pairs)
+                rewrite_count += applied
+
+            base_proto_relative = f"//{public_host}"
+            proto_pairs = (
+                (f"{base_proto_relative}/web/", f"{base_proto_relative}{proxy_prefix}/web/"),
+                (f"{base_proto_relative}/web?", f"{base_proto_relative}{proxy_prefix}/web?"),
+                (f"{base_proto_relative}/website/", f"{base_proto_relative}{proxy_prefix}/website/"),
+                (f"{base_proto_relative}/odoo/", f"{base_proto_relative}{proxy_prefix}/odoo/"),
+                (f"{base_proto_relative}/bus/", f"{base_proto_relative}{proxy_prefix}/bus/"),
+                (f"{base_proto_relative}/websocket", f"{base_proto_relative}{proxy_prefix}/websocket"),
+                (f"{base_proto_relative}/longpolling/", f"{base_proto_relative}{proxy_prefix}/longpolling/"),
+                (f"{base_proto_relative}/jsonrpc", f"{base_proto_relative}{proxy_prefix}/jsonrpc"),
+            )
+            out, applied = _apply_pairs(out, proto_pairs)
+            rewrite_count += applied
+
+        if rewrite_count:
+            print(
+                f"[ODOO HANDLER] fallback_rewrite_html_for_proxy: {rewrite_count} refs "
+                f"for {parts[2]}"
+            )
+        return out
+
+    @staticmethod
+    def _odoo_incoming_rewrite_confidence(request, proxy_prefix: str) -> bool:
+        ref = request.META.get('HTTP_REFERER', '') or ''
+        if proxy_prefix in ref:
+            return True
+        if request.COOKIES.get('session_id'):
+            # Odoo session_id persists after navigating to Mattermost — do not rewrite
+            # bare /web/, /websocket/, etc. when the referer is another passthrough app.
+            if ref and proxy_prefix not in ref and 'odoo' not in ref.lower():
+                return False
+            return True
+        return False
+
+    @staticmethod
+    def _odoo_root_path_should_proxy(path: str) -> bool:
+        if not path or not path.startswith('/'):
+            return False
+        if path == '/web' or path.startswith('/web/'):
+            return True
+        if path == '/odoo' or path.startswith('/odoo/'):
+            return True
+        for prefix in ('/bus/', '/mail/', '/longpolling/', '/website/', '/jsonrpc/'):
+            if path.startswith(prefix):
+                return True
+        if path == '/websocket' or path.startswith('/websocket'):
+            return True
+        return False
+
+    def try_rewrite_incoming_path(self, request, endpoint) -> bool:
+        """
+        Map bare /odoo/…, /web/…, etc. onto /pt/admin/<hostname>/… when the browser
+        escaped the proxy prefix (Odoo SPA pushState or direct navigation).
+        """
+        if not self._odoo_endpoint_is_odoo(endpoint):
+            return False
+
+        proxy_prefix = self._odoo_proxy_prefix_from_endpoint(endpoint)
+        path = request.path_info or ''
+
+        if path.startswith('/pt/'):
+            return False
+        if not self._odoo_root_path_should_proxy(path):
+            return False
+        if not self._odoo_incoming_rewrite_confidence(request, proxy_prefix):
+            return False
+
+        request.path_info = proxy_prefix + path
+        print(f"[ODOO HANDLER] bare path rewrite → {request.path_info}")
+        return True
+
     # Django-owned cookies that must never be forwarded to Odoo.
     # NOTE: 'session_id' is Odoo's session cookie — do NOT include it here.
     # 'sessionid' (no underscore) is Django's session cookie.
@@ -441,10 +625,26 @@ function _toProxy(u){{
     }}
     return u;
 }}
+function _fetchUrl(input){{
+    if(typeof input==='string')return input;
+    try{{if(typeof URL!=='undefined'&&input instanceof URL)return input.href;}}catch(e){{}}
+    if(input&&input.url)return input.url;
+    return'';
+}}
+function _applyProxiedFetchInput(input,proxied){{
+    if(typeof input==='string')return proxied;
+    try{{if(typeof URL!=='undefined'&&input instanceof URL)return new URL(proxied,window.location.origin);}}catch(e){{}}
+    if(typeof Request!=='undefined'&&input instanceof Request)return new Request(proxied,input);
+    return proxied;
+}}
 var _f=window.fetch;
 window.fetch=function(input,init){{
-    if(typeof input==='string')input=_toProxy(input);
-    else if(typeof Request!=='undefined'&&input instanceof Request){{var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);}}
+    var url=_fetchUrl(input);
+    var proxied=_toProxy(url);
+    if(url&&proxied!==url){{
+        console.log('[PolySaaS] Early fetch:',url,'->',proxied);
+        input=_applyProxiedFetchInput(input,proxied);
+    }}
     return _f.call(this,input,init).then(function(r){{
         var ct=(r.headers&&r.headers.get)?r.headers.get('content-type')||'':'';
         if(ct.indexOf('text/html')!==-1){{
@@ -758,6 +958,63 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     </div>
 </body>
 </html>'''
+
+    @staticmethod
+    def _proxy_prefix_from_request(request) -> str:
+        path_info = (getattr(request, 'path_info', '') or '').strip()
+        seg = 'odoo'
+        parts = path_info.strip('/').split('/') if path_info else []
+        if len(parts) >= 3 and parts[0] == 'pt' and parts[1] == 'admin':
+            seg = parts[2]
+        return f"/pt/admin/{seg}"
+
+    def _rewrite_root_paths_in_asset_text(
+        self, text: str, proxy_prefix: str, public_host: str = ''
+    ) -> str:
+        """
+        Rewrite root-absolute and PolySaaS-host-absolute paths inside CSS (or JS) bodies.
+        Browsers resolve url(/web/static/...) from CSS against the site root, not the proxy.
+        """
+        if not text or not proxy_prefix:
+            return text
+
+        odoo_prefixes = (
+            '/web/', '/odoo/', '/bus/', '/mail/', '/longpolling/', '/websocket',
+            '/website/', '/jsonrpc/',
+        )
+
+        def _needs_proxy(path: str) -> bool:
+            if not path or not path.startswith('/'):
+                return False
+            if path.startswith('/pt/') or path.startswith(proxy_prefix):
+                return False
+            if any(path.startswith(p) for p in odoo_prefixes):
+                return True
+            if '/static/' in path:
+                return True
+            return False
+
+        def _rewrite_path(path: str) -> str:
+            return proxy_prefix + path if _needs_proxy(path) else path
+
+        def _rewrite_css_url(m):
+            quote = m.group(1) or ''
+            path = m.group(2)
+            close = m.group(3) or ''
+            return f'url({quote}{_rewrite_path(path)}{close})'
+
+        out = re.sub(
+            r'url\((["\']?)(/[^)"\']*)(["\']?)\)',
+            _rewrite_css_url,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if public_host:
+            out = self._rewrite_absolute_polysaas_host_paths(
+                out, public_host.strip(), proxy_prefix
+            )
+        return out
 
     def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo', base_origin=''):
         """
@@ -1120,31 +1377,73 @@ function toProxy(s) {
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. FETCH PATCHING
 // ═══════════════════════════════════════════════════════════════════════════
+function fetchInputUrl(input) {
+    if (typeof input === 'string') return input;
+    try {
+        if (typeof URL !== 'undefined' && input instanceof URL) return input.href;
+    } catch (e) {}
+    if (input && input.url) return input.url;
+    return '';
+}
+function applyProxiedFetchInput(input, proxied) {
+    if (typeof input === 'string') return proxied;
+    try {
+        if (typeof URL !== 'undefined' && input instanceof URL) return new URL(proxied, O);
+    } catch (e) {}
+    if (typeof Request !== 'undefined' && input instanceof Request) return new Request(proxied, input);
+    return proxied;
+}
 var _fetch = window.fetch;
 window.fetch = function(input, init) {
-    var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
-    // Pre-emptively block bus/discuss/mail requests to prevent Discuss OWL crashes
-    if (url.indexOf('/bus/') !== -1 || url.indexOf('/longpolling/') !== -1 || url.indexOf('/discuss/') !== -1 || url.indexOf('/mail/') !== -1) {
-        console.warn('[PolySaaS Odoo] Blocked outgoing request to:', url);
+    var url = fetchInputUrl(input);
+    // Discuss full-page routes crash in embed; bus/longpolling MUST reach upstream (app open depends on them).
+    var blockDiscuss = url && url.indexOf('/discuss') !== -1 &&
+        url.indexOf('/web/dataset') === -1 && url.indexOf('/web/action') === -1;
+    if (blockDiscuss) {
+        console.warn('[PolySaaS Odoo] Blocked Discuss fetch:', url);
         return Promise.resolve(new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}}));
     }
     var proxied = toProxy(url);
-    if (url !== proxied) {
+    if (url && proxied !== url) {
         console.log('[PolySaaS Odoo] fetch:', url, '->', proxied);
-    }
-    if (typeof input === 'string') {
-        input = proxied;
-    } else if (input && input.url && proxied !== input.url) {
-        input = new Request(proxied, input);
+        input = applyProxiedFetchInput(input, proxied);
     }
     return _fetch.call(this, input, init).then(function(response) {
         var ct = (response.headers && response.headers.get) ? (response.headers.get('content-type') || '') : '';
+        var u = proxied || url;
         if (ct.indexOf('text/html') !== -1) {
-            var u = proxied || url;
-            if (u.indexOf('/web/dataset/call_kw') !== -1) {
-                console.warn('[PolySaaS Odoo] Blocked HTML response for JSON endpoint:', u);
-                return new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}});
+            if (u.indexOf('/web/dataset/call_kw') !== -1 || u.indexOf('/web/action/load') !== -1) {
+                console.warn('[PolySaaS Odoo] HTML response for JSON RPC (session or proxy issue):', u);
             }
+        }
+        if (u.indexOf('/web/bundle/') !== -1 && ct.indexOf('json') !== -1 && response.ok) {
+            return response.clone().json().then(function(data) {
+                function rewriteBundleValue(v) {
+                    if (typeof v === 'string') return toProxy(v);
+                    if (Array.isArray(v)) {
+                        var out = [];
+                        for (var i = 0; i < v.length; i++) out.push(rewriteBundleValue(v[i]));
+                        return out;
+                    }
+                    if (v && typeof v === 'object') {
+                        var obj = {};
+                        for (var k in v) {
+                            if (Object.prototype.hasOwnProperty.call(v, k)) {
+                                obj[k] = rewriteBundleValue(v[k]);
+                            }
+                        }
+                        return obj;
+                    }
+                    return v;
+                }
+                var rewritten = rewriteBundleValue(data);
+                console.log('[PolySaaS Odoo] Bundle JSON paths rewritten for', u);
+                return new Response(JSON.stringify(rewritten), {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers
+                });
+            }).catch(function() { return response; });
         }
         return response;
     });
@@ -1167,25 +1466,30 @@ XMLHttpRequest.prototype.open = function(method, url) {
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. WEBSOCKET PATCHING - Critical for Odoo 18 bus
 // ═══════════════════════════════════════════════════════════════════════════
-// Block ALL WebSocket connections — Discuss/bus uses them and they crash through proxy
+// Block WebSocket upgrade (WSGI cannot proxy it). Odoo must use HTTP longpolling/bus instead.
 var _WebSocket = window.WebSocket;
 window.WebSocket = function(url, protocols) {
-    console.warn('[PolySaaS Odoo] WebSocket BLOCKED:', url);
-    // Return a fake WebSocket that does nothing
+    console.warn('[PolySaaS Odoo] WebSocket blocked — using longpolling fallback:', url);
     var fake = {
         url: url,
-        readyState: 3, // CLOSED
+        readyState: 3,
+        bufferedAmount: 0,
+        extensions: '',
+        protocol: '',
+        binaryType: 'blob',
         send: function() {},
         close: function() {},
-        addEventListener: function() {},
+        addEventListener: function(type, fn) {
+            if (type === 'close' && fn) setTimeout(function() { fn({code: 1000, reason: 'blocked', wasClean: true}); }, 50);
+        },
         removeEventListener: function() {},
+        dispatchEvent: function() { return true; },
         onopen: null, onclose: null, onmessage: null, onerror: null,
         CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3
     };
-    // Fire onclose asynchronously so callers don't crash
-    setTimeout(function() {
-        if (fake.onclose) fake.onclose({code: 1000, reason: 'blocked', wasClean: true});
-    }, 100);
+    try {
+        if (window.odoo && window.odoo.info) window.odoo.info.websocket = false;
+    } catch (e) {}
     return fake;
 };
 window.WebSocket.CONNECTING = 0;
@@ -1311,37 +1615,98 @@ HTMLFormElement.prototype.submit = function() {
     _rewriteFormAction(this);
     return _formSubmit.call(this);
 };
-// Image src rewriting for dynamically loaded assets (icons, images)
+// Rewrite dynamically injected asset URLs (images, scripts, stylesheets)
+function _rewriteResourceUrl(raw, label) {
+    if (!raw || typeof raw !== 'string') return raw;
+    if (raw.indexOf('data:') === 0 || raw.indexOf('blob:') === 0) return raw;
+    if (raw.indexOf(PROXY) !== -1 || raw.indexOf('/pt/') === 0) return raw;
+    var proxied = toProxy(raw);
+    if (proxied !== raw) {
+        console.log('[PolySaaS Odoo] ' + label + ' rewrite:', raw, '->', proxied);
+    }
+    return proxied;
+}
 function _rewriteImageSrc(img) {
     if (!img || (img.tagName !== 'IMG' && img.tagName !== 'SOURCE')) return;
-    var rawSrc = img.src || img.getAttribute('src') || '';
+    var rawSrc = img.getAttribute('src') || img.src || '';
     if (!rawSrc) return;
-    // Skip data URIs and already proxied URLs
-    if (rawSrc.indexOf('data:') === 0) return;
-    if (rawSrc.indexOf(PROXY) !== -1 || rawSrc.indexOf('/pt/') !== -1) return;
-    // Only rewrite if it's pointing to localhost or upstream URL
-    var proxied = toProxy(rawSrc);
-    if (proxied !== rawSrc) {
-        console.log('[PolySaaS Odoo] Image src rewrite:', rawSrc, '->', proxied);
-        img.src = proxied;
-    }
+    var proxied = _rewriteResourceUrl(rawSrc, 'Image src');
+    if (proxied !== rawSrc) img.src = proxied;
 }
+function _rewriteScriptSrc(el) {
+    if (!el || el.tagName !== 'SCRIPT') return;
+    var rawSrc = el.getAttribute('src') || el.src || '';
+    if (!rawSrc) return;
+    var proxied = _rewriteResourceUrl(rawSrc, 'Script src');
+    if (proxied !== rawSrc) el.src = proxied;
+}
+function _rewriteLinkHref(el) {
+    if (!el || el.tagName !== 'LINK') return;
+    var rawHref = el.getAttribute('href') || el.href || '';
+    if (!rawHref) return;
+    var proxied = _rewriteResourceUrl(rawHref, 'Link href');
+    if (proxied !== rawHref) el.href = proxied;
+}
+(function patchAssetPropertySetters() {
+    function patchProto(proto, prop, label, rewriteFn) {
+        try {
+            var desc = Object.getOwnPropertyDescriptor(proto, prop);
+            if (!desc || !desc.set) return;
+            Object.defineProperty(proto, prop, {
+                get: desc.get,
+                set: function(v) {
+                    return desc.set.call(this, _rewriteResourceUrl(v, label));
+                },
+                configurable: true,
+                enumerable: desc.enumerable !== false
+            });
+        } catch (e) {
+            console.warn('[PolySaaS Odoo] Could not patch', prop, 'on', rewriteFn.name || label, e);
+        }
+    }
+    patchProto(HTMLScriptElement.prototype, 'src', 'Script src', _rewriteScriptSrc);
+    patchProto(HTMLLinkElement.prototype, 'href', 'Link href', _rewriteLinkHref);
+    patchProto(HTMLImageElement.prototype, 'src', 'Image src', _rewriteImageSrc);
+})();
+var _setAttribute = Element.prototype.setAttribute;
+Element.prototype.setAttribute = function(name, value) {
+    if (value && typeof value === 'string') {
+        var tag = this.tagName || '';
+        if (name === 'src' && tag === 'SCRIPT') {
+            value = _rewriteResourceUrl(value, 'Script setAttribute');
+        } else if (name === 'href' && tag === 'LINK') {
+            value = _rewriteResourceUrl(value, 'Link setAttribute');
+        } else if (name === 'src' && (tag === 'IMG' || tag === 'SOURCE')) {
+            value = _rewriteResourceUrl(value, 'Image setAttribute');
+        }
+    }
+    return _setAttribute.call(this, name, value);
+};
 
 var _formObserver = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
         if (mutation.type === 'attributes' && mutation.target.tagName === 'FORM') {
             _rewriteFormAction(mutation.target);
-        } else if (mutation.type === 'attributes' && (mutation.target.tagName === 'IMG' || mutation.target.tagName === 'SOURCE')) {
-            _rewriteImageSrc(mutation.target);
+        } else if (mutation.type === 'attributes') {
+            var t = mutation.target;
+            if (t.tagName === 'IMG' || t.tagName === 'SOURCE') { _rewriteImageSrc(t); }
+            else if (t.tagName === 'SCRIPT') { _rewriteScriptSrc(t); }
+            else if (t.tagName === 'LINK') { _rewriteLinkHref(t); }
         } else if (mutation.type === 'childList') {
             mutation.addedNodes.forEach(function(node) {
                 if (!node || node.nodeType !== 1) return;
                 if (node.tagName === 'FORM') { _rewriteFormAction(node); }
                 if (node.tagName === 'IMG' || node.tagName === 'SOURCE') { _rewriteImageSrc(node); }
+                if (node.tagName === 'SCRIPT') { _rewriteScriptSrc(node); }
+                if (node.tagName === 'LINK') { _rewriteLinkHref(node); }
                 var nestedForms = node.querySelectorAll ? node.querySelectorAll('form') : [];
                 for (var i = 0; i < nestedForms.length; i++) { _rewriteFormAction(nestedForms[i]); }
                 var nestedImgs = node.querySelectorAll ? node.querySelectorAll('img, source') : [];
                 for (var i = 0; i < nestedImgs.length; i++) { _rewriteImageSrc(nestedImgs[i]); }
+                var nestedScripts = node.querySelectorAll ? node.querySelectorAll('script[src]') : [];
+                for (var j = 0; j < nestedScripts.length; j++) { _rewriteScriptSrc(nestedScripts[j]); }
+                var nestedLinks = node.querySelectorAll ? node.querySelectorAll('link[href]') : [];
+                for (var k = 0; k < nestedLinks.length; k++) { _rewriteLinkHref(nestedLinks[k]); }
             });
         }
     });
@@ -1356,14 +1721,15 @@ function _setupFormObserver() {
     }
     _formObserver.observe(scope, {
         childList: true, subtree: true,
-        attributes: true, attributeFilter: ['action', 'src'], attributeOldValue: false
+        attributes: true, attributeFilter: ['action', 'src', 'href'], attributeOldValue: false
     });
-    console.log('[PolySaaS Odoo] Form/image observer attached to passthrough scope');
-    // Bulk-rewrite any images that were already added before observer was ready
+    console.log('[PolySaaS Odoo] Form/asset observer attached to passthrough scope');
     var existingImgs = scope.querySelectorAll('img, source');
-    for (var i = 0; i < existingImgs.length; i++) {
-        _rewriteImageSrc(existingImgs[i]);
-    }
+    for (var i = 0; i < existingImgs.length; i++) { _rewriteImageSrc(existingImgs[i]); }
+    var existingScripts = scope.querySelectorAll('script[src]');
+    for (var j = 0; j < existingScripts.length; j++) { _rewriteScriptSrc(existingScripts[j]); }
+    var existingLinks = scope.querySelectorAll('link[href]');
+    for (var k = 0; k < existingLinks.length; k++) { _rewriteLinkHref(existingLinks[k]); }
     return true;
 }
 
@@ -1740,8 +2106,56 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         
         return html.replace('<head>', '<head>' + patch)
 
+    def _rewrite_bundle_json_paths(self, data, proxy_prefix: str):
+        """Rewrite /web/assets/... strings inside Odoo bundle JSON responses."""
+        if isinstance(data, str):
+            if data.startswith('/') and not data.startswith('/pt/') and not data.startswith(proxy_prefix):
+                if data.startswith('/web/') or '/static/' in data:
+                    return proxy_prefix + data
+            return data
+        if isinstance(data, list):
+            return [self._rewrite_bundle_json_paths(item, proxy_prefix) for item in data]
+        if isinstance(data, dict):
+            return {
+                k: self._rewrite_bundle_json_paths(v, proxy_prefix)
+                for k, v in data.items()
+            }
+        return data
+
     def rewrite_upstream_body(self, body, ct, request, endpoint_url=None, upstream_path=None):
-        """Preserve native Odoo non-HTML bodies for HAR parity."""
+        """Rewrite proxied CSS url() paths and Odoo bundle JSON asset paths."""
+        if not body:
+            return None
+        ct_lower = (ct or '').split(';')[0].strip().lower()
+        try:
+            proxy_prefix = self._proxy_prefix_from_request(request)
+            public_host = request.get_host() if request else ''
+            text = body.decode('utf-8') if isinstance(body, (bytes, bytearray)) else str(body)
+
+            if ct_lower == 'text/css':
+                rewritten = self._rewrite_root_paths_in_asset_text(
+                    text, proxy_prefix, public_host=public_host
+                )
+                if rewritten != text:
+                    print(
+                        f"[ODOO HANDLER] rewrite_upstream_body: CSS paths rewritten "
+                        f"for {upstream_path or '?'}"
+                    )
+                    return rewritten.encode('utf-8')
+
+            path = upstream_path or ''
+            if 'json' in ct_lower and '/web/bundle/' in path:
+                import json as _json
+                data = _json.loads(text)
+                rewritten_data = self._rewrite_bundle_json_paths(data, proxy_prefix)
+                if rewritten_data != data:
+                    print(
+                        f"[ODOO HANDLER] rewrite_upstream_body: bundle JSON rewritten "
+                        f"for {path}"
+                    )
+                    return _json.dumps(rewritten_data).encode('utf-8')
+        except Exception as exc:
+            logger.warning("[ODOO HANDLER] rewrite_upstream_body failed: %s", exc)
         return None
 
     def postprocess_upstream_response(

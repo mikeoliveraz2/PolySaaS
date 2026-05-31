@@ -44,20 +44,6 @@ logger = logging.getLogger(__name__)
 # 'router'        is the dotted Python module path for the LLM router.
 
 PEERS = {
-    'github': {
-        'aliases': [],
-        'mm_username': 'github',
-        'bot_token_key': 'BOT_TOKEN_GITHUB',
-        'api_key_key': 'ANTHROPIC_API_KEY',
-        'router': 'dose.mattermost_bot.routers.github_router',
-    },
-    'copilot': {
-        'aliases': [],
-        'mm_username': 'copilot',
-        'bot_token_key': 'BOT_TOKEN_COPILOT',
-        'api_key_key': 'ANTHROPIC_API_KEY',
-        'router': 'dose.mattermost_bot.routers.copilot_router',
-    },
     'grok': {
         'aliases': ['supergrok'],
         'mm_username': 'supergrok',
@@ -67,8 +53,8 @@ PEERS = {
     },
     'gemini': {
         'aliases': ['gem'],
-        'mm_username': 'gemini',
-        'bot_token_key': 'BOT_TOKEN_GEMINI',
+        'mm_username': 'gem',
+        'bot_token_key': 'BOT_TOKEN_GEM',
         'api_key_key': 'GEMINI_API_KEY',
         'router': 'dose.mattermost_bot.routers.gemini_router',
     },

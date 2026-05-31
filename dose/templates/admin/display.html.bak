@@ -210,17 +210,38 @@
         <span style="font-size:12px;color:#aaa;">menu_id: <span id="ps-orch-menu" style="color:#fde68a;">—</span></span>
         &nbsp;|&nbsp;
         <span style="font-size:12px;color:#aaa;">action: <span id="ps-orch-action" style="color:#fde68a;">—</span></span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">orch: <span id="ps-orch-status" style="color:#93c5fd;">waiting…</span></span>
         <span id="ps-orch-event" style="display:none;margin-left:12px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
     </div>
     <script>
     (function() {
+        /** Real browser pathname (Odoo shim may patch location.pathname for the SPA). */
+        function getBrowserPathname() {
+            try {
+                var a = document.createElement('a');
+                a.href = window.location.href;
+                return a.pathname || window.location.pathname || '/';
+            } catch (e) {
+                return window.location.pathname || '/';
+            }
+        }
+
         function getOdooInfo() {
-            var path = window.location.pathname;
-            var m = path.match(/\/pt\/admin\/[^/]+(\/.*)$/);
-            var odooPath = m ? m[1].replace(/\/$/, '') || '/' : path;
+            var browserPath = getBrowserPathname();
+            var spaPath = window.location.pathname || browserPath;
+            var m = browserPath.match(/\/pt\/admin\/[^/]+(\/.*)$/);
+            var odooPath = m ? m[1].replace(/\/$/, '') || '/' : spaPath;
+            if (!m && odooPath.indexOf('/pt/admin/') === 0) {
+                odooPath = '/';
+            }
             var params = new URLSearchParams(window.location.search + window.location.hash.replace(/^#/, '?'));
             var menuId  = params.get('menu_id') || '';
             var action  = params.get('action')  || '';
+            if (!menuId) {
+                var pm = odooPath.match(/\/odoo\/[^/]+\/(\d+)(?:\/|$|\?)/);
+                if (pm) menuId = pm[1];
+            }
             if (!action && window.location.hash) {
                 var hm = window.location.hash.match(/action=([^&]+)/);
                 if (hm) action = decodeURIComponent(hm[1]);
@@ -229,6 +250,70 @@
             }
             return { path: odooPath, menuId: menuId, action: action };
         }
+
+        function getCsrfToken() {
+            var el = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (el && el.value) return el.value;
+            var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        }
+
+        var _lastOrchPath = '';
+        var _orchHooksInstalled = false;
+
+        function setOrchStatus(text, ok) {
+            var el = document.getElementById('ps-orch-status');
+            if (!el) return;
+            el.textContent = text;
+            el.style.color = ok ? '#86efac' : (ok === false ? '#fca5a5' : '#93c5fd');
+        }
+
+        function notifyOrchestration(odooPath) {
+            if (!odooPath || odooPath === _lastOrchPath) return;
+            _lastOrchPath = odooPath;
+            var qs = window.location.search || '';
+            var hash = window.location.hash || '';
+            var fullPath = odooPath + qs + hash;
+            setOrchStatus('checking…', null);
+            fetch('/dose/api/orchestration-navigate/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({path: fullPath, method: 'GET'})
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (!data) {
+                    setOrchStatus('no response', false);
+                    return;
+                }
+                if (data.status === 'no_tenant') {
+                    setOrchStatus('no tenant', false);
+                    return;
+                }
+                var matched = data.matched || 0;
+                var saved = data.callback_saved || 0;
+                if (matched > 0) {
+                    setOrchStatus('matched ' + matched + ', saved ' + saved, saved > 0);
+                } else {
+                    setOrchStatus('no instruction match', false);
+                }
+                if (window.__psShowOrchEvent) {
+                    window.__psShowOrchEvent(
+                        matched > 0
+                            ? ('⚡ matched ' + matched + ', CallBackData saved: ' + saved)
+                            : ('⚡ no match for ' + odooPath)
+                    );
+                }
+            }).catch(function(err) {
+                setOrchStatus('API error', false);
+                if (window.__psShowOrchEvent) {
+                    window.__psShowOrchEvent('⚡ orchestration API failed');
+                }
+            });
+        }
+
         function updateBar() {
             var info = getOdooInfo();
             var pathEl   = document.getElementById('ps-orch-path');
@@ -237,23 +322,54 @@
             if (pathEl)   pathEl.textContent   = info.path   || '—';
             if (menuEl)   menuEl.textContent   = info.menuId || '—';
             if (actionEl) actionEl.textContent = info.action || '—';
+            notifyOrchestration(info.path);
         }
-        updateBar();
-        var _push = history.pushState, _replace = history.replaceState;
-        history.pushState    = function() { _push.apply(history, arguments);    updateBar(); };
-        history.replaceState = function() { _replace.apply(history, arguments); updateBar(); };
-        window.addEventListener('popstate', updateBar);
-        setInterval(updateBar, 2000);
+
+        function installHistoryHooks() {
+            if (_orchHooksInstalled) return;
+            var _push = history.pushState;
+            var _replace = history.replaceState;
+            if (!_push || !_replace) return;
+            history.pushState = function() {
+                var r = _push.apply(history, arguments);
+                updateBar();
+                return r;
+            };
+            history.replaceState = function() {
+                var r = _replace.apply(history, arguments);
+                updateBar();
+                return r;
+            };
+            window.addEventListener('popstate', updateBar);
+            _orchHooksInstalled = true;
+        }
 
         function showOrchEvent(msg) {
             var el = document.getElementById('ps-orch-event');
             if (!el) return;
-            el.textContent = '⚡ ' + msg;
+            el.textContent = msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg);
             el.style.display = 'inline';
             clearTimeout(el._t);
             el._t = setTimeout(function() { el.style.display = 'none'; }, 12000);
         }
+
         window.__psShowOrchEvent = showOrchEvent;
+        window.__psOrchBar = {
+            updateBar: updateBar,
+            installHistoryHooks: installHistoryHooks,
+            getOdooInfo: getOdooInfo
+        };
+
+        updateBar();
+        installHistoryHooks();
+        setInterval(updateBar, 2000);
+        [500, 1500, 3500].forEach(function(ms) {
+            setTimeout(function() {
+                _orchHooksInstalled = false;
+                installHistoryHooks();
+                updateBar();
+            }, ms);
+        });
     })();
     </script>
 
@@ -430,6 +546,9 @@
                     return u;
                 }
             }
+            /* Collapse accidental double /pt/admin/<endpoint>/ prefix before any rewrite. */
+            var doubled = P + P;
+            while (u.indexOf(doubled) !== -1) u = u.split(doubled).join(P);
             /* Collapse /mail/<P>/… and /bus/<P>/… (bad relative joins → double prefix in workers/RPC). */
             var mailPad = '/mail/' + P, busPad = '/bus/' + P;
             if (u === mailPad || u.indexOf(mailPad + '/') === 0) u = '/mail' + u.slice(mailPad.length);
@@ -587,6 +706,22 @@
                 }
                 return _rj.call(self).catch(function () { return null; });
             };
+        }
+        /* Re-wrap history after Odoo head shim so the green orchestration bar sees navigation. */
+        var _psPush = history.pushState;
+        var _psReplace = history.replaceState;
+        if (_psPush && window.__psOrchBar) {
+            history.pushState = function() {
+                var r = _psPush.apply(history, arguments);
+                window.__psOrchBar.updateBar();
+                return r;
+            };
+            history.replaceState = function() {
+                var r = _psReplace.apply(history, arguments);
+                window.__psOrchBar.updateBar();
+                return r;
+            };
+            window.__psOrchBar.updateBar();
         }
     })();
     </script>

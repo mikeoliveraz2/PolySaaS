@@ -12,36 +12,8 @@ import sys
 ATOMIC_SERVICE_REGISTRY = {}
 TENANT_SPECIFIC_SERVICES = {}  # tenant_name -> {service_name: service_class}
 
-CUSTOM_ENDPOINT_LABEL = 'Custom Endpoint URL'
-
 SERVICES_PATH = os.path.dirname(__file__)
 MODULE_PREFIX = __name__.rsplit('.', 1)[0] + '.' if '.' in __name__ else ''
-
-
-def normalize_executescript_value(value):
-    """Map legacy label strings to the empty choice value for Custom Endpoint URL."""
-    v = (value or '').strip()
-    if v in (CUSTOM_ENDPOINT_LABEL, '— None / custom urllist only —'):
-        return ''
-    return v
-
-
-def _merge_database_service_names(names):
-    """Include AtomicService rows uploaded via admin (public schema catalog)."""
-    try:
-        from dose.models import AtomicService
-        for svc_name in AtomicService.objects.values_list('service_name', flat=True):
-            if svc_name:
-                names.add(str(svc_name).strip())
-    except Exception as exc:
-        print(f"[ATOMIC REGISTRY] Could not load AtomicService catalog: {exc}")
-    return names
-
-
-def register_atomic_service(name, cls, tenant_name=None):
-    """Explicit registration (optional — file scan is the primary source)."""
-    registry = ATOMIC_SERVICE_REGISTRY if not tenant_name else TENANT_SPECIFIC_SERVICES.setdefault(tenant_name, {})
-    registry[name] = cls
 
 
 def init_atomic_services_registry():
@@ -72,22 +44,7 @@ def get_atomic_service_choices(tenant_name=None):
     names = set(ATOMIC_SERVICE_REGISTRY.keys())
     if tenant_name and tenant_name in TENANT_SPECIFIC_SERVICES:
         names.update(TENANT_SPECIFIC_SERVICES[tenant_name].keys())
-    _merge_database_service_names(names)
     return sorted(names)
-
-
-def build_executescript_choices(tenant_name=None, current_value=None):
-    """
-    Build (value, label) tuples for Instruction.executescript admin dropdown.
-    current_value is normalized and preserved if not in the registry.
-    """
-    names = get_atomic_service_choices(tenant_name=tenant_name)
-    current = normalize_executescript_value(current_value)
-    choices = [(name, name) for name in names]
-    if current and current not in names:
-        choices.insert(0, (current, f'{current} (saved — not in registry)'))
-    choices.append(('', CUSTOM_ENDPOINT_LABEL))
-    return choices
 
 
 def _scan_services_directory(directory_path, tenant_name=''):

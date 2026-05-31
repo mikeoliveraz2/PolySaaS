@@ -1,7 +1,7 @@
 """
 Base class for endpoint-specific passthrough handlers (Shela / Michael pattern).
 
-- **trigger_path** on PassThroughEndpoint defines the /pt/admin/<trigger>/ URL segment only.
+- **endpoint_url** hostname becomes the /pt/admin/<hostname>/ URL segment.
 - **slug** is optional and separate; use it for non-passthrough identifiers when set.
 
 Handlers that need shared helpers can subclass PassthroughHandlerBase. The legacy
@@ -22,17 +22,26 @@ logger = logging.getLogger(__name__)
 
 
 def proxy_prefix_for_trigger_endpoint(endpoint: PassThroughEndpoint) -> str:
-    """Build /pt/admin/<segment>/ from trigger_path (not slug)."""
-    raw = (endpoint.trigger_path or "").strip("/").lower().split("/")[-1].replace("-", "_")
-    return f"/pt/admin/{raw}"
+    """Build /pt/admin/<segment>/ from endpoint_url hostname."""
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url or "").netloc
+        return f"/pt/admin/{host}/" if host else "/pt/admin/"
+    except:
+        return "/pt/admin/"
 
 
 def endpoint_log_label(endpoint: PassThroughEndpoint) -> str:
-    """Prefer slug for logs when set; otherwise trigger_path."""
+    """Prefer slug for logs when set; otherwise endpoint_url hostname."""
     s = (getattr(endpoint, "slug", None) or "").strip()
     if s:
         return s
-    return (endpoint.trigger_path or "").strip() or "endpoint"
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url or "").netloc
+        return host or "endpoint"
+    except:
+        return "endpoint"
 
 
 class PassthroughHandlerBase:
@@ -53,6 +62,7 @@ class PassthroughHandlerBase:
     - `rewrite_upstream_body(body, content_type, request, **context) -> bytes | None`
     - `process_html_response(html_str, request, endpoint_url=None, **context) -> str | tuple | HttpResponse`
     - `should_forward_set_cookie_headers(request, upstream_content_type, upstream_path, response_kind) -> bool`
+    - `should_delegate_pt_admin_core(request, path_info) -> bool` (defer PT core to URLconf)
     """
 
     def __init__(self, endpoint: PassThroughEndpoint | None = None):
@@ -95,6 +105,9 @@ class PassthroughHandlerBase:
                 return True
         return False
 
+    def should_delegate_pt_admin_core(self, request, path_info: str) -> bool:
+        return False
+
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
         return False
 
@@ -102,6 +115,21 @@ class PassthroughHandlerBase:
         return resp
 
     def rewrite_upstream_body(self, body, content_type, request, **context):
+        return None
+
+    def needs_readable_response_body(self, request, target_url: str) -> bool:
+        """Return True if this handler needs the response body to be readable (uncompressed).
+        
+        When True, the forwarder will set Accept-Encoding: identity to prevent
+        upstream from sending compressed responses. Override in subclasses that
+        need to read/rewrite response bodies.
+        
+        Default is False to preserve browser's Accept-Encoding for HAR parity.
+        """
+        return False
+
+    def get_request_body(self, request, target_url: str) -> bytes | None:
+        """Override to rewrite the outgoing request body before forwarding. Return None to use request.body as-is."""
         return None
 
     def process_html_response(self, html_str, request, endpoint_url=None, **context):

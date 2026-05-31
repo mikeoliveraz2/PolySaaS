@@ -15,15 +15,13 @@ Never modify working code without explicit approval. If something appears proble
 
 If it isn't broken, don't touch it. No refactors, no "improvements", no framework swaps without consent.
 
-## Rule 2 — Post-Commit Lock (BINGO Freeze)
+## Rule 2 — Post-Commit Lock
 
 After a commit is made with documentation and a bingo/completion statement, all source files in that commit are considered **tested and read-only**.
 
-- **Every file in the BINGO commit must be annotated** with the freeze banner (see `bingo-freeze.mdc`):
-  `THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION`
 - Do NOT modify committed+documented files without the user's explicit permission
 - Treat bingo documents as certification that the associated code has been tested
-- Ask before touching any file that was part of a documented commit or that carries the freeze banner
+- Ask before touching any file that was part of a documented commit
 
 This rule exists because a previous AI agent (Copilot) unilaterally rewrote the project as FastAPI, destroying the real Django/DOSE codebase.
 

@@ -1,3 +1,26 @@
+# Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)
+# Debug logging for Allauth authentication troubleshooting
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'allauth': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
 # DO NOT MODIFY: Critical system file. Ask before making changes.
 # Stripe price ID for subscriptions (replace with your actual Stripe price ID)
 
@@ -5,16 +28,25 @@ import environ
 import importlib
 import json
 import os
+import sys
 from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env = environ.Env()
-#environ.Env.read_env()  # This loads .env file
-env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=True)
-SECRET_KEY = env('DJANGO_SECRET_KEY', default='')
-print("Loaded .env DJANGO_SECRET_KEY:", "SET" if SECRET_KEY else "NOT FOUND")
+env.read_env(os.path.join(BASE_DIR, '.env'), overwrite=False)
+
+from dose.utils.secret_manager import sm
+
+# Prefer env var for local development, fall back to GCP Secret Manager
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY') or sm('DJANGO_SECRET_KEY', 'DJANGO_SECRET_KEY')
+source = "env var" if os.environ.get('DJANGO_SECRET_KEY') else "Secret Manager"
+print(f"Loaded DJANGO_SECRET_KEY: {'SET' if SECRET_KEY else 'NOT FOUND'} (from {source})", file=sys.stderr)
 if not SECRET_KEY:
-    raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY environment variable")
+    raise ImproperlyConfigured("Set the DJANGO_SECRET_KEY secret in GCP Secret Manager or DJANGO_SECRET_KEY env var")
 DEBUG = True
+
+# Ensure all HTTP responses use UTF-8 encoding (prevents UnicodeEncodeError on Windows with cp1252)
+DEFAULT_CHARSET = 'utf-8'
+
 # Passthrough: log upstream + final HTML diagnostics to console (all endpoints). See dose/passthrough/stream_debug.py
 POLYSNIFFER_PASSTHROUGH_DEBUG = env.bool("POLYSNIFFER_PASSTHROUGH_DEBUG", default=False)
 # When True, append AdminIndexDiagMiddleware (logs one line per /admin/ index hit).
@@ -174,30 +206,43 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 
 # --- AI as Peers (Mattermost bot integration) ---
-MATTERMOST_URL = env('MATTERMOST_URL', default='http://localhost:8065')
-MATTERMOST_ADMIN_TOKEN = env('MATTERMOST_ADMIN_TOKEN', default='')
+MATTERMOST_URL = sm('mattermost-url', 'MATTERMOST_URL', 'http://localhost:8065')
+MATTERMOST_ADMIN_TOKEN = sm('MATTERMOST_ADMIN_TOKEN', 'MATTERMOST_ADMIN_TOKEN') or sm('mattermost-admin-token', 'MATTERMOST_ADMIN_TOKEN')
+POLYSAAS_APP_ADMIN_PASSWORD = sm('polysaas-app-admin-password', 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_PASSTHROUGH_SECRET', '')
+
+# --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
+ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoodb')
+ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin')
+
+# --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
+NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
+NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='ncadmin')
 
 # Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
 # If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).
 PARAMETER_FERNET_KEY = env('PARAMETER_FERNET_KEY', default='')
-ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
-XAI_API_KEY = env('XAI_API_KEY', default='')
-GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
+ANTHROPIC_API_KEY = sm('anthropic-api-key', 'ANTHROPIC_API_KEY')
+XAI_API_KEY = sm('XAI_API_KEY', 'XAI_API_KEY')
+GEMINI_API_KEY = sm('GEMINI_API_KEY', 'GEMINI_API_KEY')
 AI_PEER_PROVIDER_COPILOT = env('AI_PEER_PROVIDER_COPILOT', default='anthropic')
 AI_PEER_PROVIDER_CURSOR = env('AI_PEER_PROVIDER_CURSOR', default='anthropic')
 AI_PEER_PROVIDER_GROK = env('AI_PEER_PROVIDER_GROK', default='xai')
 AI_PEER_PROVIDER_ROUTER = env('AI_PEER_PROVIDER_ROUTER', default='anthropic')
 AI_PEER_PROVIDER_OPENCLAW = env('AI_PEER_PROVIDER_OPENCLAW', default='anthropic')
 AI_PEER_PROVIDER_GEM = env('AI_PEER_PROVIDER_GEM', default='gemini')
-BOT_TOKEN_COPILOT = env('BOT_TOKEN_COPILOT', default='')
-BOT_TOKEN_CURSOR = env('BOT_TOKEN_CURSOR', default='')
-BOT_TOKEN_GROK = env('BOT_TOKEN_GROK', default='')
-BOT_TOKEN_ROUTER = env('BOT_TOKEN_ROUTER', default='')
-BOT_TOKEN_OPENCLAW = env('BOT_TOKEN_OPENCLAW', default='')
-BOT_TOKEN_CC = env('BOT_TOKEN_CC', default='')
-BOT_TOKEN_SUPERGROK = env('BOT_TOKEN_SUPERGROK', default='')
-BOT_TOKEN_GEM = env('BOT_TOKEN_GEM', default='')
-AI_PEERS_WEBHOOK_TOKEN = env('AI_PEERS_WEBHOOK_TOKEN', default='')
+BOT_TOKEN_COPILOT = sm('bot-token-copilot', 'BOT_TOKEN_COPILOT')
+BOT_TOKEN_CURSOR = sm('bot-token-cursor', 'BOT_TOKEN_CURSOR')
+BOT_TOKEN_GROK = sm('bot-token-grok', 'BOT_TOKEN_GROK')
+BOT_TOKEN_ROUTER = sm('bot-token-router', 'BOT_TOKEN_ROUTER')
+BOT_TOKEN_OPENCLAW = sm('bot-token-openclaw', 'BOT_TOKEN_OPENCLAW')
+BOT_TOKEN_CC = sm('bot-token-cc', 'BOT_TOKEN_CC')
+BOT_TOKEN_SUPERGROK = sm('bot-token-supergrok', 'BOT_TOKEN_SUPERGROK')
+BOT_TOKEN_GEM = sm('bot-token-gem', 'BOT_TOKEN_GEM')
+BOT_TOKEN_GEMINI = sm('bot-token-gemini', 'BOT_TOKEN_GEMINI') or BOT_TOKEN_GEM
+BOT_TOKEN_WINDSURF = sm('bot-token-windsurf', 'BOT_TOKEN_WINDSURF')
+AI_PEERS_WEBHOOK_TOKEN = sm('ai-peers-webhook-token', 'AI_PEERS_WEBHOOK_TOKEN')
 # Recent posts fetched for LLM context (Option 1). Pinned posts are merged into system prompt (Option 2).
 AI_PEERS_CHANNEL_MESSAGE_LIMIT = env.int('AI_PEERS_CHANNEL_MESSAGE_LIMIT', default=75)
 
@@ -244,7 +289,15 @@ logging.info(f"SESSION_ENGINE: {SESSION_ENGINE}, SESSION_COOKIE_AGE: {SESSION_CO
 if DEBUG:                     # ← your .env probably sets DEBUG=True already
     ALLOWED_HOSTS = ['*']     # ← this is the missing line for dev
 else:
-    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.poly-saas.local', 'yourdomain.com']
+    ALLOWED_HOSTS = [
+        '127.0.0.1',
+        'localhost',
+        '.poly-saas.local',
+        'production.polysaas.online',
+        'polysaas-core.onrender.com',
+        '.onrender.com',
+        '.polysaas.online',
+    ]
 
 SITE_ID = 1
 
@@ -301,18 +354,10 @@ _oauth2_available = 'oauth2_provider' in INSTALLED_APPS
 # `active_urls` removed from `INSTALLED_APPS` per user request.
 # Django Allauth settings for OAuth2 SSO
 SITE_ID = 1
-AUTHENTICATION_BACKENDS = (
-    (
-        'oauth2_provider.backends.OAuth2Backend',
-        'mysite.auth_backends.CaseInsensitiveModelBackend',
-        'allauth.account.auth_backends.AuthenticationBackend',
-    )
-    if _oauth2_available else
-    (
-        'mysite.auth_backends.CaseInsensitiveModelBackend',
-        'allauth.account.auth_backends.AuthenticationBackend',
-    )
-)
+AUTHENTICATION_BACKENDS = [
+    'mysite.auth_backends_allauth.AllauthCaseInsensitiveBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 LOGIN_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
@@ -448,11 +493,13 @@ MIDDLEWARE = [
     'mysite.csrf_exemption_middleware.CSRFExemptionMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
     'mysite.middleware.user_request_tracking.UserRequestTrackingMiddleware',
     'dose.debug_middleware.DebugRequestMiddleware',
     'dose.middleware.admin_unauthorized.AdminUnauthorizedMiddleware',
     'mysite.admin_tenant_session_middleware.AdminTenantSessionMiddleware',
     'mysite.tenant_context_middleware.TenantContextMiddleware',
+    'dose.polysniffer.middleware.PolySnifferMiddleware',
     'mysite.session_tenant_middleware.SessionTenantMiddleware',
     'dose.doserequestcontroller.DoseRequestController',
     'dose.middleware.jazzmin_tenant_theme.JazzminTenantThemeMiddleware',
@@ -462,7 +509,6 @@ MIDDLEWARE = [
     # so it can return a response before CSRF validation occurs
     'dose.passthrough.middleware.ExternalPassthroughMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
     'mysite.admin_status_banner_middleware.AdminStatusBannerMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -485,8 +531,18 @@ TEMPLATES = [
             os.path.join(BASE_DIR, 'dose', 'templates'),
             os.path.join(BASE_DIR, 'templates'),
         ],
-        'APP_DIRS': True,
+        # NOTE: APP_DIRS is mutually exclusive with explicit `loaders` (below). We use explicit
+        # uncached loaders to bypass Django's auto-applied cached.Loader (active when DEBUG=False).
+        # The cached.Loader has been observed to mis-resolve {{ block.super }} on multi-level
+        # template inheritance (model change_form -> jazzmin/change_form -> dose/base_site ->
+        # jazzmin/base) on production, producing empty page_content output for change_form views
+        # while change_list (simpler inheritance) renders fine. Same code works on dev because
+        # dev runs with DEBUG=True which doesn't apply cached.Loader.
         'OPTIONS': {
+            'loaders': [
+                'django.template.loaders.filesystem.Loader',
+                'django.template.loaders.app_directories.Loader',
+            ],
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
@@ -499,8 +555,6 @@ TEMPLATES = [
                     'dose.context_processors.jazzmin_ui_tweaks',
                 'dose.context_processors.admin_active_urls',
                 'dose.context_processors.admin_navigation',
-                # After admin_navigation so HOME links are not wiped by its try/except.
-                'dose.context_processors.admin_home_sidebar_links',
             ],
         },
     },
@@ -516,12 +570,12 @@ ASGI_APPLICATION = 'mysite.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',  # Regular PostgreSQL backend for session-based tenancy
-        'NAME': 'dosedbsaas',
-        'USER': 'dosedbadmin',
-        'PASSWORD': env('DOSE_DB_PASSWORD', default=''),
-        'HOST': 'localhost',
-        'PORT': '5433',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env('DB_NAME', default='dosedbsaas'),
+        'USER': env('DB_USER', default='dosedbadmin'),
+        'PASSWORD': env('DOSE_DB_PASSWORD', default='PolySaaS2026!'),
+        'HOST': env('DB_HOST', default='localhost'),
+        'PORT': env('DB_PORT', default='5433'),
     }
 }
 
@@ -560,7 +614,19 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 #DEEPSEEK API KEY:sk-f3130e89988f405c9937cd6ccc350851
 DEEPSEEK_API_KEY = "sk-f3130e89988f405c9937cd6ccc350851"
 
+# --- Mattermost AI Peers Bot ---
+MATTERMOST_BOT_TOKEN = sm('mattermost-bot-token', 'MATTERMOST_BOT_TOKEN')
 
+# Per-peer Mattermost bot account tokens (each bot posts under its own identity)
+BOT_TOKEN_SUPERGROK = sm('bot-token-supergrok', 'BOT_TOKEN_SUPERGROK')  # @supergrok (Grok / xAI)
+BOT_TOKEN_GEM = sm('bot-token-gem', 'BOT_TOKEN_GEM')                    # @gem (Gemini / Google)
+BOT_TOKEN_CC = sm('bot-token-cc', 'BOT_TOKEN_CC')                       # @cc (Cursor Claude / Anthropic)
+BOT_TOKEN_WSC = sm('bot-token-wsc', 'BOT_TOKEN_WSC')                    # @wsc (Windsurf Claude)
+BOT_TOKEN_KIMI = sm('bot-token-kimi', 'BOT_TOKEN_KIMI')                 # @kimi (Moonshot Kimi)
+
+# LLM API keys (deduplicated — primary assignments are above at line ~220)
+WINDSURF_API_KEY = sm('windsurf-api-key', 'WINDSURF_API_KEY')
+KIMI_API_KEY = sm('kimi-api-key', 'KIMI_API_KEY')
 
 TIME_ZONE = 'Asia/Manila'
 
@@ -570,7 +636,12 @@ USE_L10N = True
 
 USE_TZ = True
 
-CSRF_TRUSTED_ORIGINS = ["http://localhost:8000", "http://localhost:444"]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://localhost:444",
+    "https://production.polysaas.online",
+    "https://polysaas-core.onrender.com",
+]
 #CSRF_COOKIE_DOMAIN = '.localhost'
 
 # Static files (CSS, JavaScript, Images)
@@ -633,6 +704,12 @@ DEFAULT_FROM_EMAIL = 'Dose2 <mo.gsssol@gmail.com>'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'mm_simple': {
+            'format': '%(asctime)s %(message)s',
+            'datefmt': '%H:%M:%S',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
@@ -647,8 +724,19 @@ LOGGING = {
             'class': 'logging.FileHandler',
             'filename': './info.log',
         },
+        'mm_debug_file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': './mm_debug.log',
+            'formatter': 'mm_simple',
+        },
     },
     'loggers': {
+        'mm_debug': {
+            'handlers': ['mm_debug_file', 'console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         'django': {
             'handlers': ['console', 'file', 'info_file'],
             'level': 'INFO',
@@ -659,6 +747,14 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
+        'django.contrib.auth': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+        'allauth.account': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
     },
     'root': {
         'handlers': ['console', 'file', 'info_file'],
@@ -668,5 +764,23 @@ LOGGING = {
 
 # Only keep the first LOGGING config above, which defines all handlers and loggers.
 # Custom user session settings
+
+# =============================================
+# SECURITY - PROXY SETTINGS (Traefik + Render)
+# =============================================
+
+# Critical when running behind Traefik / Render
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+# Let Traefik handle HTTPS redirects (disable Django redirect)
+SECURE_SSL_REDIRECT = False
+SECURE_REDIRECT_EXEMPT = [r'^.*']
+
+# Disable HSTS while debugging the redirect loop
+SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
 
 

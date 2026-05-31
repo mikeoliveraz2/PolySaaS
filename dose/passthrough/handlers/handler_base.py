@@ -63,6 +63,10 @@ class PassthroughHandlerBase:
     - `process_html_response(html_str, request, endpoint_url=None, **context) -> str | tuple | HttpResponse`
     - `should_forward_set_cookie_headers(request, upstream_content_type, upstream_path, response_kind) -> bool`
     - `should_delegate_pt_admin_core(request, path_info) -> bool` (defer PT core to URLconf)
+    - `matches_endpoint(endpoint) -> bool` (class method — registry discovery)
+    - `try_rewrite_incoming_path_referer_fallback(request) -> bool` (class method, optional)
+    - `fallback_rewrite_html_for_proxy(html, request) -> str` (optional forwarder safety net)
+    - `passthrough_embed_template_context(trigger, request) -> dict` (optional embed template flags)
     """
 
     def __init__(self, endpoint: PassThroughEndpoint | None = None):

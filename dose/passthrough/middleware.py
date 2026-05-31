@@ -4,10 +4,12 @@ from django.utils.deprecation import MiddlewareMixin
 from dose.models import UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.registry import (
-    get_handler_for_endpoint,
     pt_admin_core_delegated_to_urlconf,
+    resolve_handler_for_pt_admin_trigger,
 )
+from dose.passthrough.forwarding import _is_initial_page_load
 from dose.utils import get_current_tenant
+from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
 
 logger = logging.getLogger(__name__)
 
@@ -57,25 +59,8 @@ def run_pt_admin_passthrough_core(request):
 
     request._passthrough_endpoint = endpoint
 
-    # PICOLLO PASSO: Direct handler selection by hostname - avoids DB-dependent registry lookup
-    trigger_lower = trigger.lower()
-    handler = None
-    if 'odoo' in trigger_lower:
-        from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
-        handler = OdooPassthroughHandler()
-        print(f"[PT-CORE] Selected OdooPassthroughHandler for {trigger}")
-    elif 'mattermost' in trigger_lower:
-        from dose.passthrough.handlers.mattermost_handler import MattermostPassthroughHandler
-        handler = MattermostPassthroughHandler()
-        print(f"[PT-CORE] Selected MattermostPassthroughHandler for {trigger}")
-    elif 'nextcloud' in trigger_lower:
-        from dose.passthrough.handlers.nextcloud_handler import NextcloudPassthroughHandler
-        handler = NextcloudPassthroughHandler()
-        print(f"[PT-CORE] Selected NextcloudPassthroughHandler for {trigger}")
-    else:
-        # Fallback to registry for unknown hostnames
-        handler = get_handler_for_endpoint(endpoint, request)
-        print(f"[PT-CORE] Fallback registry handler for {trigger}: {handler}")
+    handler = resolve_handler_for_pt_admin_trigger(trigger)
+    print(f"[PT-CORE] Handler for {trigger}: {handler.__class__.__name__ if handler else None}")
 
     print("\n" + "=" * 120)
     print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")
@@ -119,7 +104,10 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         -> Perfect place for PASSTHROUGH-OUT
         """
         print(f"\n[PT-MW-ENTRY] __call__ - path={request.path_info}, method={request.method}")
-        
+
+        # Handlers may rewrite native app paths onto /pt/admin/<trigger>/… (via registry hooks)
+        apply_incoming_path_rewrites(request)
+
         if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
             print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
             return self.get_response(request)

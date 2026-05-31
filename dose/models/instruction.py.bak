@@ -44,39 +44,6 @@ class Instruction(TenantAwareModel):
     parameters_json = models.JSONField(null=True, blank=True)
     save_callbackdata = models.BooleanField(default=False, help_text="If true, save response content to callbackdata.")
     pub_date = models.DateTimeField('date published', default=datetime.datetime.now)
-
-    def select_service(self, tenant_name=None):
-        """
-        Resolve the atomic service class for this instruction's executescript field.
-        Scans dose/services/ via the registry (no hardcoded imports).
-        """
-        name = (self.executescript or '').strip()
-        if not name:
-            return None
-        from dose.services.atomic_services_registry import (
-            get_atomic_service,
-            init_atomic_services_registry,
-            normalize_executescript_value,
-        )
-        name = normalize_executescript_value(name)
-        if not name:
-            return None
-        init_atomic_services_registry()
-        return get_atomic_service(name, tenant_name=tenant_name)
-
-    def execute_atomic_service(self, request):
-        """Run the selected atomic service, if any. Returns service result or None."""
-        tenant_name = None
-        tenant = getattr(request, 'tenant', None)
-        if tenant and getattr(tenant, 'schema_name', None):
-            tenant_name = tenant.schema_name
-        elif self.tenant_id and getattr(self, 'tenant', None):
-            tenant_name = getattr(self.tenant, 'schema_name', None)
-        cls = self.select_service(tenant_name=tenant_name)
-        if cls and hasattr(cls, 'execute_and_save'):
-            return cls.execute_and_save(request, self)
-        return None
-
     def __str__(self):
         return self.requestpath
     def was_published_recently(self):

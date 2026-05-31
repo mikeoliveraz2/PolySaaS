@@ -20,13 +20,12 @@ from django.core.management.base import BaseCommand
 
 
 DEFAULT_TRIGGER_WORDS = [
-    'github',
-    'copilot',
-    'grok',
-    'gemini',
     'supergrok',
+    'gemini',
+    'windsurf',
     'gem',
-    'anyone',
+    'ws',
+    'grok',
 ]
 
 

@@ -58,9 +58,22 @@ class DoseAIPromptAdmin(admin.ModelAdmin):
         return super().get_model_perms(request)
     def get_queryset(self, request):
         return super().get_queryset(request)
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        return form
+        def get_form(self, request, obj=None, **kwargs):
+            # Guarantee tenant exists in DB before any form processing or save
+            from dose.tenant_utils import get_current_tenant
+            from dose.models.tenant import Tenant
+            tenant = get_current_tenant(request)
+            if tenant:
+                try:
+                    Tenant.objects.get(slug=tenant.slug)
+                except Tenant.DoesNotExist:
+                    Tenant.objects.create(
+                        slug=getattr(tenant, 'slug', f'session-{tenant.id}'),
+                        name=getattr(tenant, 'name', 'Session Tenant'),
+                        schema_name=getattr(tenant, 'schema_name', f'session_{tenant.id}')
+                    )
+            form = super().get_form(request, obj, **kwargs)
+            return form
     def get_fieldsets(self, request, obj=None):
         return super().get_fieldsets(request, obj)
     def get_list_display(self, request):
@@ -82,7 +95,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -219,17 +232,43 @@ class MLPromptAdmin(TenantAwareModelAdmin):
     search_fields = ('key', 'description', 'prompt_text')
 
 class InstructionForm(forms.ModelForm):
+    """Populates executescript from dose/services/* classes with execute_and_save()."""
+
     def __init__(self, *args, **kwargs):
+        self.admin_request = kwargs.pop('admin_request', None)
         super().__init__(*args, **kwargs)
-        init_atomic_services_registry()
-        choices = [(name, name) for name in ATOMIC_SERVICE_REGISTRY.keys()]
+
+        from dose.services.atomic_services_registry import get_atomic_service_choices
+        from dose.utils import get_current_tenant
+
+        tenant_name = None
+        if self.admin_request:
+            tenant = get_current_tenant(self.admin_request)
+            if tenant and getattr(tenant, 'schema_name', None):
+                tenant_name = tenant.schema_name
+
+        service_names = get_atomic_service_choices(tenant_name=tenant_name)
+        current = ''
+        if self.instance and getattr(self.instance, 'pk', None):
+            current = (self.instance.executescript or '').strip()
+
+        choices = [(name, name) for name in service_names]
+        if current and current not in service_names:
+            choices.insert(0, (current, f'{current} (saved — not in registry)'))
         choices.append(('', 'Custom Endpoint URL'))
+
         self.fields['executescript'] = forms.ChoiceField(
             choices=choices,
             required=False,
             label='Atomic Service',
-            help_text='Select an atomic service or choose Custom Endpoint URL.'
+            widget=forms.Select(attrs={'class': 'form-control', 'id': 'id_executescript'}),
+            help_text=(
+                f'Select one of {len(service_names)} service(s) discovered in dose/services/ '
+                f'(classes with execute_and_save). Choose "Custom Endpoint URL" to use urllist instead.'
+            ),
         )
+        if current:
+            self.initial.setdefault('executescript', current)
 
     class Meta:
         model = Instruction
@@ -237,14 +276,51 @@ class InstructionForm(forms.ModelForm):
 
 class InstructionAdmin(TenantAwareModelAdmin):
     form = InstructionForm
+
+    class Media:
+        js = ('admin/js/instruction_atomic_service.js',)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+        admin_request = request
+
+        class FormWithRequest(form_class):
+            def __init__(self, *args, **kw):
+                kw['admin_request'] = admin_request
+                super().__init__(*args, **kw)
+
+        FormWithRequest.__name__ = form_class.__name__
+        return FormWithRequest
+
     fieldsets = [
-        (None, {'fields': ['requestpath', 'eventKey', 'requestmethod', 'direction',
-                          'urllist', 'appusername', 'executescript', 'description', 'parameters_json', 'save_callbackdata', 'pub_date']}),   
+        ('Instruction', {
+            'fields': [
+                'match_type', 'requestpath', 'match_extra',
+                'requestmethod', 'direction',
+                'executescript', 'save_callbackdata', 'eventKey',
+                'description',
+            ],
+            'description': (
+                '<b>Matching</b> — requestpath + match_type decide when this instruction fires.<br>'
+                '<b>Atomic Service</b> — dropdown lists every class in <code>dose/services/</code> '
+                'that defines <code>execute_and_save(request, instruction_row)</code> '
+                '(e.g. HelloWorld, EndpointDataExtractorService). '
+                'Pick <i>Custom Endpoint URL</i> to use urllist instead.'
+            ),
+        }),
+        ('Custom endpoint &amp; parameters', {
+            'classes': ['collapse'],
+            'fields': ['urllist', 'appusername', 'parameters_json', 'pub_date'],
+            'description': (
+                'Expand when Atomic Service is <i>Custom Endpoint URL</i>. '
+                'urllist accepts one or more comma-separated URLs.'
+            ),
+        }),
     ]
 
-    list_display = ('requestpath', 'requestmethod', 'pub_date', 'was_published_recently')
-    list_filter = ['pub_date']
-    search_fields = ['requestpath']
+    list_display = ('requestpath', 'match_type', 'executescript', 'save_callbackdata', 'requestmethod', 'pub_date', 'was_published_recently')
+    list_filter = ['match_type', 'save_callbackdata', 'pub_date']
+    search_fields = ['requestpath', 'description', 'eventKey']
 
     @method_decorator(never_cache)
     def add_view(self, request, form_url='', extra_context=None):
@@ -259,32 +335,81 @@ class InstructionAdmin(TenantAwareModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         from django.db import transaction
-        from dose.services.atomic_services_registry import ATOMIC_SERVICE_REGISTRY, init_atomic_services_registry
         from django.contrib import messages
-        init_atomic_services_registry()
-        executescript_name = obj.executescript
+
+        executescript_name = (obj.executescript or '').strip()
+        if not executescript_name:
+            return
+
         print(f"[DEBUG] executescript_name: {executescript_name}")
-        print(f"[DEBUG] ATOMIC_SERVICE_REGISTRY keys: {list(ATOMIC_SERVICE_REGISTRY.keys())}")
-        if executescript_name:
-            cls = ATOMIC_SERVICE_REGISTRY.get(executescript_name)
-            print(f"[DEBUG] cls: {cls}")
-            if cls and hasattr(cls, 'execute_and_save'):
-                print(f"[DEBUG] Executing atomic service: {executescript_name}")
-                try:
-                    with transaction.atomic():
-                        cls.execute_and_save(request, obj)
-                    messages.add_message(request, messages.INFO, f"Atomic service '{executescript_name}' executed successfully.")
-                except Exception as e:
-                    print(f"[ERROR] Failed to execute atomic service '{executescript_name}': {e}")
-                    messages.add_message(request, messages.WARNING, f"Atomic service '{executescript_name}' failed, but the instruction was saved. You can retry from the admin list view. Error: {str(e)}")
-            else:
-                print(f"[DEBUG] Atomic service '{executescript_name}' not found or missing 'execute_and_save'.")
+        cls = obj.select_service(
+            tenant_name=getattr(getattr(request, 'tenant', None), 'schema_name', None)
+        )
+        print(f"[DEBUG] select_service -> {cls}")
+        if cls and hasattr(cls, 'execute_and_save'):
+            print(f"[DEBUG] Executing atomic service: {executescript_name}")
+            try:
+                with transaction.atomic():
+                    obj.execute_atomic_service(request)
+                messages.add_message(
+                    request, messages.INFO,
+                    f"Atomic service '{executescript_name}' executed successfully.",
+                )
+            except Exception as e:
+                print(f"[ERROR] Failed to execute atomic service '{executescript_name}': {e}")
+                messages.add_message(
+                    request, messages.WARNING,
+                    f"Atomic service '{executescript_name}' failed, but the instruction was saved. "
+                    f"Error: {e}",
+                )
+        else:
+            print(f"[DEBUG] Atomic service '{executescript_name}' not found in dose/services registry.")
+            messages.add_message(
+                request, messages.WARNING,
+                f"Atomic service '{executescript_name}' is not registered in dose/services/.",
+            )
 
 class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     list_display = ('get_menu_title', 'provider', 'endpoint_url', 'show_in_menu', 'is_enabled', 'debug_button', 'created_at')
-    search_fields = ('provider', 'endpoint_url', 'description', 'menu_title')
+    search_fields = ('provider', 'endpoint_url', 'description', 'menu_title', 'slug')
     list_filter = ('provider', 'show_in_menu', 'is_enabled', 'integration_mode')
     change_form_template = 'admin/dose/passthroughendpoint/change_form.html'
+
+    def _render_admin_exception(self, request, exc, operation):
+        import html
+        import traceback
+        from django.http import HttpResponseServerError
+
+        traceback_text = traceback.format_exc()
+        body = (
+            "<html><head><title>PassThroughEndpoint Admin Error</title>"
+            "<style>body{font-family:Consolas,monospace;padding:24px;background:#111;color:#eee;}"
+            "h1{color:#ff6b6b;} pre{white-space:pre-wrap;background:#1b1b1b;padding:16px;border-radius:8px;border:1px solid #333;}"
+            "code{color:#ffd166;}</style></head><body>"
+            f"<h1>PassThroughEndpoint {html.escape(operation)} failed</h1>"
+            f"<p><strong>{html.escape(exc.__class__.__name__)}</strong>: {html.escape(str(exc))}</p>"
+            f"<p>Path: <code>{html.escape(request.path)}</code></p>"
+            f"<p>Method: <code>{html.escape(request.method)}</code></p>"
+            f"<pre>{html.escape(traceback_text)}</pre>"
+            "</body></html>"
+        )
+        return HttpResponseServerError(body)
+
+    def add_view(self, request, form_url='', extra_context=None):
+        try:
+            return super().add_view(request, form_url, extra_context)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] add_view error")
+            return self._render_admin_exception(request, exc, 'add')
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        try:
+            return super().change_view(request, object_id, form_url, extra_context)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] change_view error")
+            return self._render_admin_exception(request, exc, 'change')
 
     def get_queryset(self, request):
         """Override to handle missing migration columns gracefully - adds all missing columns automatically"""
@@ -318,6 +443,7 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
                         ('menu_title', "VARCHAR(100) DEFAULT ''"),
                         ('menu_icon', "VARCHAR(100) DEFAULT '🔗'"),
                         ('menu_sort_order', 'INTEGER DEFAULT 100 NOT NULL'),
+                        ('slug', "VARCHAR(100) DEFAULT ''"),
                     ]
 
                     for column_name, column_def in columns_to_add:
@@ -330,11 +456,14 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             print(f"[AUTO-FIX] Error checking/adding columns: {e}")
 
         # Filter to only show endpoints the tenant has subscribed to.
-        # Use only('id', 'trigger_path') — these two columns have always existed,
-        # so this evaluation never triggers a missing-column error.
+        # Use only('id', 'endpoint_url') — these columns have always existed.
         try:
             from dose.models import TenantApp
             from dose.utils import get_current_tenant
+
+            if getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
+                return qs
+
             _tenant = get_current_tenant(request) or getattr(request, 'tenant', None)
             _subscribed = set(
                 TenantApp.public_bundles.filter(
@@ -343,14 +472,17 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
                 ).values_list('app_name', flat=True)
             ) if _tenant else set()
 
-            def _visible(trigger_path):
-                # Normalise: last path segment, lowercase, hyphens→underscores
-                n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-                return n == 'gmail' or n in _subscribed
+            def _visible(endpoint_url):
+                # Extract hostname from endpoint_url for matching
+                from urllib.parse import urlparse
+                host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+                return 'gmail' in host or any(
+                    app in host for app in _subscribed
+                )
 
             visible_ids = [
-                ep.id for ep in qs.only('id', 'trigger_path')
-                if _visible(ep.trigger_path)
+                ep.id for ep in qs.only('id', 'endpoint_url')
+                if _visible(ep.endpoint_url)
             ]
             qs = qs.filter(id__in=visible_ids)
         except Exception as e:
@@ -380,8 +512,13 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
 
     fieldsets = [
         ('Endpoint Configuration', {
-            'fields': ('provider', 'endpoint_url', 'trigger_path', 'is_enabled'),
-            'description': '<strong>Trigger Word:</strong> One word, no slashes please. Examples: <code>gmail</code>, <code>monitor-logger</code>, <code>nextcloud</code>. System automatically builds URLs like /pt/admin/{trigger_word}/ and /pt/dose/{trigger_word}/'
+            'fields': ('provider', 'endpoint_url', 'slug', 'is_enabled'),
+            'description': (
+                '<strong>Endpoint URL:</strong> hostname becomes the passthrough path '
+                '(<code>/pt/admin/&lt;hostname&gt;/…</code>). '
+                '<strong>Slug:</strong> optional separate id for non-passthrough use (menus, internal links); '
+                'leave blank if you do not need it.'
+            ),
         }),
         ('Menu Integration', {
             'fields': ('show_in_menu', 'menu_title', 'menu_icon', 'menu_sort_order', 'description'),
@@ -448,23 +585,34 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
     content_preview.short_description = "Content Preview"
 
     def save_model(self, request, obj, form, change):
+        import traceback
         from django.contrib import messages
         from dose.utils import get_current_tenant
 
         # TenantAwareModelAdmin saves into the schema for session tenant_id. If there is no
         # tenant, the row is written to public — reloading under Oliver Enterprises reads
-        # olient and the edit looks "lost". AdminTenantSessionMiddleware only syncs
-        # tenant_id from UserProfile on /admin-panel/, not necessarily on /admin/.
+        # olient and the edit looks "lost". The tenant session is expected to be
+        # aligned automatically on real /admin/ requests.
         if not get_current_tenant(request):
             messages.warning(
                 request,
                 "No active tenant in session: this endpoint was saved in the public schema. "
-                "If the URL reverts after reload, open /admin-panel/ once (or ensure tenant_id "
-                "is in session), then edit again so the row saves to your tenant schema.",
+                "If the URL reverts after reload, re-open the admin once so tenant_id is "
+                "restored in session, then edit again so the row saves to your tenant schema.",
             )
 
         # Call parent save which will trigger the signal to create/update navigation items
-        super().save_model(request, obj, form, change)
+        try:
+            super().save_model(request, obj, form, change)
+        except Exception as exc:
+            tb = traceback.format_exc()
+            messages.error(
+                request,
+                f'❌ Save failed: {exc.__class__.__name__}: {exc} — Full traceback: {tb}',
+            )
+            import logging
+            logging.getLogger(__name__).exception("[PassThroughEndpointAdmin] save_model error")
+            return  # stay on the form with the error message, no 500
 
         # Show a success message about menu integration
         if obj.show_in_menu:
@@ -529,12 +677,28 @@ class DoseMessageAdmin(TenantAwareModelAdmin):
     list_filter = ('level', 'is_read', 'created_at')
     search_fields = ('message',)
 
-class PolySnifferRunAdmin(TenantAwareModelAdmin):
-    list_display = ('id', 'tenant', 'run_timestamp', 'status', 'packets_captured')
-    list_filter = ('status', 'run_timestamp', 'tenant')
-    search_fields = ('notes', 'raw_data_summary')
-    readonly_fields = ('run_timestamp',)
-    ordering = ('-run_timestamp',)
+# TrafficLog admin — shows actual passthrough capture data (PolySnifferRun is deprecated/empty)
+from dose.polysniffer.models import TrafficLog
+
+# Unregister the default TrafficLog admin (registered in dose.polysniffer.admin)
+# and re-register with TenantAwareModelAdmin so it appears in tenant-scoped admin
+try:
+    admin.site.unregister(TrafficLog)
+except admin.sites.NotRegistered:
+    pass
+
+class TrafficLogAdmin(TenantAwareModelAdmin):
+    list_display = ('method', 'path', 'client_path', 'capture_source', 'status_code',
+                    'endpoint_name', 'user', 'captured_at', 'duration_ms')
+    list_filter = ('method', 'status_code', 'capture_source', 'endpoint_name', 'captured_at')
+    search_fields = ('url', 'path', 'endpoint_name', 'user__username')
+    readonly_fields = (
+        'method', 'url', 'path', 'client_path', 'capture_source',
+        'headers', 'cookies', 'query_params', 'body',
+        'status_code', 'response_headers', 'response_body', 'response_size',
+        'endpoint_name', 'user', 'captured_at', 'duration_ms', 'har_data'
+    )
+    ordering = ('-captured_at',)
 
 from .models import RequestLog, ErrorLog
 from .models import Mapping, InstructionMapping
@@ -596,10 +760,16 @@ admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)
 admin.site.register(DoseMessage, DoseMessageAdmin)
-admin.site.register(PolySnifferRun, PolySnifferRunAdmin)
+admin.site.register(TrafficLog, TrafficLogAdmin)
 admin.site.register(RequestLog)
 admin.site.register(ErrorLog)
 admin.site.register(Mapping, MappingAdmin)
+
+class AppCredentialAdmin(admin.ModelAdmin):
+    list_display = ('app_name', 'username', 'updated_at')
+    search_fields = ('app_name', 'username', 'notes')
+
+admin.site.register(AppCredential, AppCredentialAdmin)
 
 # Add session-based tenant admin classes if models are available
 if NEW_MODELS_AVAILABLE:
@@ -702,23 +872,43 @@ if NEW_MODELS_AVAILABLE:
             fields = ['tenant']
 
         def __init__(self, *args, **kwargs):
+            import logging
+            logger = logging.getLogger(__name__)
+
             super().__init__(*args, **kwargs)
-            from dose.tenant_utils import tenants_for_user_assignment
 
-            # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
-            self.fields['tenant'].queryset = tenants_for_user_assignment()
-            self.fields['tenant'].empty_label = "Select a tenant..."
-            self.fields['tenant'].required = True
+            try:
+                from dose.tenant_utils import tenants_for_user_assignment
 
-            # If this is an existing UserProfile, keep the current tenant selection
-            if self.instance.pk and self.instance.tenant:
-                # Don't override existing tenant assignment
-                pass
-            elif not self.instance.pk:
-                # For new UserProfiles, default to first assignable tenant
                 qs = tenants_for_user_assignment()
-                if qs.exists():
-                    self.fields['tenant'].initial = qs.first()
+                # Real tenants only — never the PostgreSQL public catalog as a "tenant workspace"
+                tenant_count = qs.count()
+                logger.info(f"UserProfileInlineForm: tenants_for_user_assignment returned {tenant_count} tenants")
+                
+                # Log all tenants in queryset
+                for tenant in qs:
+                    logger.info(f"  Tenant in queryset: {tenant.slug} (schema={tenant.schema_name}, active={tenant.is_active})")
+                
+                self.fields['tenant'].queryset = qs
+                self.fields['tenant'].empty_label = "Select a tenant..."
+                self.fields['tenant'].required = False
+                
+                logger.info(f"UserProfileInlineForm: Set tenant field queryset with {tenant_count} items")
+                logger.info(f"UserProfileInlineForm: Field widget is {type(self.fields['tenant'].widget).__name__}")
+
+                # If this is an existing UserProfile, keep the current tenant selection
+                if self.instance.pk and self.instance.tenant:
+                    # Don't override existing tenant assignment
+                    logger.info(f"UserProfileInlineForm: Editing existing UserProfile {self.instance.pk} with tenant {self.instance.tenant}")
+                elif not self.instance.pk:
+                    # For new UserProfiles, default to first assignable tenant
+                    if qs.exists():
+                        self.fields['tenant'].initial = qs.first()
+                        logger.info(f"UserProfileInlineForm: New UserProfile, defaulting to tenant {qs.first()}")
+                    else:
+                        logger.warning("UserProfileInlineForm: No tenants available for assignment!")
+            except Exception as e:
+                logger.error(f"UserProfileInlineForm.__init__ error: {e}", exc_info=True)
 
     # Removed signal that auto-creates UserProfile for superusers to prevent duplicate key errors
 
@@ -732,12 +922,163 @@ if NEW_MODELS_AVAILABLE:
         extra = 1  # Ensure form always shows
         max_num = 1
         min_num = 1  # Ensure at least one tenant assignment exists
+        
+        def get_queryset(self, request):
+            """Handle UserProfiles that reference users in different schemas"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            qs = super().get_queryset(request)
+            
+            # Force public schema to find user profiles
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                logger.info("UserProfileInline.get_queryset: Set search_path to public")
+            
+            # Re-query from public schema
+            qs = UserProfile.objects.all()
+            
+            # Filter to only include profiles where we can actually find the user
+            valid_ids = []
+            for profile in qs:
+                try:
+                    # Try to access the user - this will fail if user not in schema
+                    _ = profile.user.username
+                    valid_ids.append(profile.pk)
+                except User.DoesNotExist:
+                    logger.warning(f"UserProfileInline: Skipping profile {profile.pk} - user not accessible")
+                    pass
+            
+            if valid_ids:
+                return UserProfile.objects.filter(pk__in=valid_ids)
+            return UserProfile.objects.none()
 
     # Unregister the default User admin and register our custom one
     admin.site.unregister(User)
     class CustomUserAdmin(BaseUserAdmin):
         inlines = [UserProfileInline]
         list_display = ('username', 'email', 'is_active', 'is_staff', 'is_superuser')
+        
+        def get_queryset(self, request):
+            """Always query User from public schema - users are shared across tenants"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Set search_path to public to find all users
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                logger.info("CustomUserAdmin.get_queryset: Set search_path to public")
+            
+            return super().get_queryset(request)
+        
+        def get_object(self, request, object_id, from_field=None):
+            """Force public schema when retrieving user object"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # First, check what schemas exist and where the user might be
+            logger.info(f"CustomUserAdmin.get_object: Looking for user id={object_id}")
+            
+            # Check all schemas for this user
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT schema_name 
+                    FROM information_schema.schemata 
+                    WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                    AND schema_name NOT LIKE 'pg_%'
+                """)
+                schemas = [row[0] for row in cursor.fetchall()]
+                logger.info(f"CustomUserAdmin.get_object: Available schemas: {schemas}")
+                
+                # Check each schema for the user
+                for schema in schemas:
+                    cursor.execute(f"SET search_path TO {schema}")
+                    cursor.execute("SELECT id, username FROM auth_user WHERE id = %s", [object_id])
+                    result = cursor.fetchone()
+                    if result:
+                        logger.info(f"CustomUserAdmin.get_object: FOUND user {result[1]} (id={result[0]}) in schema '{schema}'")
+                        # Found the user - set search_path back to public for the actual query
+                        cursor.execute("SET search_path TO public")
+                        break
+                else:
+                    logger.error(f"CustomUserAdmin.get_object: User id={object_id} not found in ANY schema")
+                    # Show all users in all schemas
+                    for schema in schemas:
+                        cursor.execute(f"SET search_path TO {schema}")
+                        cursor.execute("SELECT id, username FROM auth_user LIMIT 5")
+                        users = cursor.fetchall()
+                        if users:
+                            logger.info(f"CustomUserAdmin.get_object: Schema '{schema}' has users: {users}")
+                    # Reset to public
+                    cursor.execute("SET search_path TO public")
+            
+            # Force public schema before the actual Django query
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+            
+            # DEBUG: Check current search_path and public schema contents
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW search_path")
+                current_search_path = cursor.fetchone()[0]
+                cursor.execute("SELECT id, username FROM auth_user ORDER BY id LIMIT 10")
+                all_users = cursor.fetchall()
+            
+            diagnostic_msg = f"search_path={current_search_path}, available_users={all_users}"
+            
+            try:
+                obj = super().get_object(request, object_id, from_field)
+                if obj:
+                    logger.info(f"CustomUserAdmin.get_object: Django found user {obj.username}")
+                return obj
+            except User.DoesNotExist:
+                logger.error(f"CustomUserAdmin.get_object: Django ORM could not find user id={object_id}. {diagnostic_msg}")
+                # Raise with diagnostic info
+                raise User.DoesNotExist(f"User id={object_id} not found. DIAGNOSTIC: {diagnostic_msg}")
+        
+        def change_view(self, request, object_id, form_url='', extra_context=None):
+            """Ensure we're looking in public schema for the user"""
+            from django.db import connection
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"CustomUserAdmin.change_view: object_id={object_id}")
+            
+            # Force public schema
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                cursor.execute("SHOW search_path")
+                search_path = cursor.fetchone()
+                logger.info(f"CustomUserAdmin.change_view: search_path set to {search_path}")
+            
+            return super().change_view(request, object_id, form_url, extra_context)
+
+        @staticmethod
+        def _force_public_schema():
+            """auth_user lives in the public schema; SessionTenantMiddleware sets search_path
+            to the tenant schema which can shadow public.auth_user with a tenant-local copy
+            (created by migrations into each tenant schema). Force public for User admin queries."""
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public;")
+
+        def get_queryset(self, request):
+            self._force_public_schema()
+            return super().get_queryset(request)
+
+        def get_object(self, request, object_id, from_field=None):
+            self._force_public_schema()
+            return super().get_object(request, object_id, from_field=from_field)
+
+        def save_model(self, request, obj, form, change):
+            self._force_public_schema()
+            super().save_model(request, obj, form, change)
+
+        def delete_model(self, request, obj):
+            self._force_public_schema()
+            super().delete_model(request, obj)
 
     admin.site.register(User, CustomUserAdmin)
 
@@ -762,9 +1103,11 @@ if NEW_MODELS_AVAILABLE:
 
         fieldsets = [
             (None, {
-                'fields': ['tenant', 'title', 'panel_type', 'description', 'is_active', 'sort_order', 'panel_css_class', 'panel_background_color']
+                'fields': ['title', 'panel_type', 'description', 'is_active', 'sort_order', 'panel_css_class', 'panel_background_color']
             }),
         ]
+
+        # Remove tenant field from form; always set from session in save_model
 
         def get_item_count(self, obj):
             """Display the number of navigation items in this panel."""
@@ -774,11 +1117,10 @@ if NEW_MODELS_AVAILABLE:
         get_item_count.short_description = 'Items'
 
         def get_queryset(self, request):
-            """Filter queryset to show only panels from user's tenant."""
+            """Filter queryset to show only panels from user's session tenant."""
             queryset = super().get_queryset(request)
             queryset = queryset.select_related('tenant').prefetch_related('navigation_items')
 
-            # Filter by user's tenant
             try:
                 from dose.utils import get_current_tenant
                 tenant = get_current_tenant(request)
@@ -791,46 +1133,56 @@ if NEW_MODELS_AVAILABLE:
             return queryset
 
         def get_form(self, request, obj=None, **kwargs):
-            """Auto-set tenant field to user's tenant and make it readonly."""
+            """Auto-set tenant field to session tenant, hide dropdown, and make readonly."""
             form = super().get_form(request, obj, **kwargs)
-
-            # Auto-set tenant to user's tenant
             try:
-                from dose.utils import get_current_tenant
+                from dose.tenant_utils import get_current_tenant
                 tenant = get_current_tenant(request)
                 if tenant and 'tenant' in form.base_fields:
-                    # Set initial value to user's tenant
-                    if not obj:  # New object
-                        form.base_fields['tenant'].initial = tenant
-                    # Make tenant field readonly (not disabled - disabled fields don't submit)
-                    form.base_fields['tenant'].widget.attrs['readonly'] = True
-                    form.base_fields['tenant'].widget.attrs['style'] = 'background-color: #e9ecef; cursor: not-allowed;'
-                    print(f"[NAV_PANEL_ADMIN] Set tenant to: {tenant.name} (readonly)")
+                    if not obj:
+                        form.base_fields['tenant'].initial = tenant.slug
+                    # Only set background color for clarity, do not block interaction
+                    form.base_fields['tenant'].widget.can_add_related = False
+                    form.base_fields['tenant'].widget.can_change_related = False
+                    form.base_fields['tenant'].widget.can_delete_related = False
+                    form.base_fields['tenant'].widget.attrs['style'] = 'background-color: #e9ecef;'
             except Exception as e:
                 print(f"[NAV_PANEL_ADMIN] Error setting tenant: {e}")
-
             return form
 
         def save_model(self, request, obj, form, change):
-            """Auto-assign tenant to user's tenant if not set."""
-            from dose.utils import get_current_tenant
-
+            """Always assign tenant from session, auto-create if missing (guaranteed before save)."""
+            from dose.tenant_utils import get_current_tenant
+            from dose.models.tenant import Tenant
+            import logging
+            logger = logging.getLogger(__name__)
             tenant = get_current_tenant(request)
+            logger.info(f"[DEBUG] save_model: session tenant from get_current_tenant = {tenant}")
+            # Log all tenants in public schema
+            all_tenants = list(Tenant.objects.all().values('slug', 'name', 'schema_name', 'is_active'))
+            logger.info(f"[DEBUG] save_model: all tenants in public schema: {all_tenants}")
             if tenant:
-                # Always set to user's tenant (override any form input)
-                obj.tenant = tenant
-                print(f"[NAV_PANEL_ADMIN] Set panel tenant to: {tenant.name}")
+                # Ensure tenant exists in DB before saving
+                try:
+                    db_tenant = Tenant.objects.get(slug=tenant.slug)
+                except Tenant.DoesNotExist:
+                    db_tenant = Tenant.objects.create(
+                        slug=tenant.slug,
+                        name=getattr(tenant, 'name', 'Session Tenant'),
+                        schema_name=getattr(tenant, 'schema_name', f'session_{tenant.slug}')
+                    )
+                    logger.info(f"[DEBUG] save_model: created tenant {db_tenant}")
+                obj.tenant = db_tenant
+                logger.info(f"[DEBUG] save_model: assigned obj.tenant = {db_tenant}")
             elif not obj.tenant_id:
                 # Fallback: Try to get user's tenant from profile
                 try:
                     user_profile = UserProfile.objects.get(user=request.user)
                     obj.tenant = user_profile.tenant
-                    print(f"[NAV_PANEL_ADMIN] Set panel tenant from profile: {user_profile.tenant.name}")
+                    logger.info(f"[DEBUG] save_model: fallback assigned obj.tenant = {obj.tenant}")
                 except UserProfile.DoesNotExist:
-                    print(f"[NAV_PANEL_ADMIN] WARNING: No tenant found for user {request.user.username}")
-
+                    logger.warning(f"[DEBUG] save_model: no tenant found for user {request.user}")
             super().save_model(request, obj, form, change)
-            print(f"[NAV_PANEL_ADMIN] Saved NavigationPanel '{obj.title}' (Tenant: {obj.tenant.name if obj.tenant else 'None'})")
 
     @admin.register(NavigationItem)
     class NavigationItemAdmin(TenantAwareModelAdmin):

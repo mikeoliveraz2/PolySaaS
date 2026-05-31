@@ -211,6 +211,15 @@ class NextcloudPassthroughHandler:
     in admin/display.html (the same shell used for Odoo and Mattermost).
     """
 
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
+        host = urlparse(url).netloc.lower() if url else ''
+        slug = str(getattr(endpoint, 'slug', '') or '').lower()
+        trigger = str(getattr(endpoint, 'trigger_path', '') or '').lower()
+        blob = f"{host} {slug} {trigger}"
+        return 'nextcloud' in blob
+
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
         """
         Nextcloud skips SameSite probe cookies when unrelated cookies are present (e.g. Django
