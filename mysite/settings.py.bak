@@ -214,7 +214,9 @@ MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
 ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
 ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoodb')
-ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'odooAdmin')
+ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'pst13@me.com')
+# XML-RPC provisioning requires Administration/Access Rights — odooAdmin, not passthrough login
+ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
@@ -226,12 +228,16 @@ PARAMETER_FERNET_KEY = env('PARAMETER_FERNET_KEY', default='')
 ANTHROPIC_API_KEY = sm('anthropic-api-key', 'ANTHROPIC_API_KEY')
 XAI_API_KEY = sm('XAI_API_KEY', 'XAI_API_KEY')
 GEMINI_API_KEY = sm('GEMINI_API_KEY', 'GEMINI_API_KEY')
+GITHUB_REPO = env('GITHUB_REPO', default='mikeoliveraz2/PolySaaS')
+GITHUB_TOKEN = sm('github-token', 'GITHUB_TOKEN') or sm('GITHUB_API_TOKEN', 'GITHUB_API_TOKEN')
+AI_PEER_PROVIDER_GITHUB = env('AI_PEER_PROVIDER_GITHUB', default='anthropic')
 AI_PEER_PROVIDER_COPILOT = env('AI_PEER_PROVIDER_COPILOT', default='anthropic')
 AI_PEER_PROVIDER_CURSOR = env('AI_PEER_PROVIDER_CURSOR', default='anthropic')
 AI_PEER_PROVIDER_GROK = env('AI_PEER_PROVIDER_GROK', default='xai')
 AI_PEER_PROVIDER_ROUTER = env('AI_PEER_PROVIDER_ROUTER', default='anthropic')
 AI_PEER_PROVIDER_OPENCLAW = env('AI_PEER_PROVIDER_OPENCLAW', default='anthropic')
 AI_PEER_PROVIDER_GEM = env('AI_PEER_PROVIDER_GEM', default='gemini')
+BOT_TOKEN_GITHUB = sm('bot-token-github', 'BOT_TOKEN_GITHUB')
 BOT_TOKEN_COPILOT = sm('bot-token-copilot', 'BOT_TOKEN_COPILOT')
 BOT_TOKEN_CURSOR = sm('bot-token-cursor', 'BOT_TOKEN_CURSOR')
 BOT_TOKEN_GROK = sm('bot-token-grok', 'BOT_TOKEN_GROK')

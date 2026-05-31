@@ -374,31 +374,8 @@ try {{
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
-            dbg('Token cookie present — validating via /users/me before skip');
-            var validateUrl = base().replace(/\/$/, '') + '/api/v4/users/me';
-            fetch(validateUrl, {{
-                credentials: 'same-origin',
-                headers: {{'Authorization': 'Bearer ' + existingToken}}
-            }}).then(function(r) {{
-                if (r.ok) {{
-                    dbg('Token valid — loading Mattermost Town Square');
-                    window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
-                    return;
-                }}
-                dbg('Token invalid (HTTP ' + r.status + ') — clearing and re-authenticating');
-                try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
-                try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(e) {{}}
-                try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(e) {{}}
-                document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-                if (_allowAutoSubmit && hasCreds) {{
-                    setTimeout(doLogin, 300);
-                }}
-            }}).catch(function(err) {{
-                dbg('Token validation failed: ' + err + ' — continuing login');
-                if (_allowAutoSubmit && hasCreds) {{
-                    setTimeout(doLogin, 300);
-                }}
-            }});
+            dbg('Token already exists — redirecting to town-square, skipping login');
+            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
             return;
         }}
         if (forceLogin && existingToken) {{

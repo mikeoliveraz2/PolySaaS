@@ -385,7 +385,9 @@ SOCIALACCOUNT_ADAPTER = 'dose.adapters.CustomSocialAccountAdapter'
 # Using new format instead of deprecated ACCOUNT_AUTHENTICATION_METHOD
 ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'  # Django's default User model uses 'username'
 ACCOUNT_LOGIN_METHODS = {'email', 'username'}
-ACCOUNT_SIGNUP_FIELDS = ['email*']
+# allauth 65 derives whether the LOGIN form shows a password field from SIGNUP_FIELDS.
+# Without 'password1', the login form goes passwordless and rejects all logins ("Invalid login").
+ACCOUNT_SIGNUP_FIELDS = ['username*', 'email*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = "none"  # or "optional" if you want to allow immediate login
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_STORE_TOKENS = True  # Enable OAuth token storage for API access
