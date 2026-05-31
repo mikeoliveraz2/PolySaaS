@@ -126,13 +126,12 @@ class MattermostPassthroughHandler:
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
 
-        # Stale cookies skip the login bridge and leave the SPA on a spinner (no proxied API calls).
-        if token and not force_login and endpoint_url:
-            if self._validate_mm_token(endpoint_url, token):
-                print(f"[MM ROOT] Valid MMAUTHTOKEN — forwarding root to Mattermost")
-                return None
-            print(f"[MM ROOT] Stale MMAUTHTOKEN — clearing cookie and serving login bridge")
-            token = None
+        # Token present → let Mattermost handle the redirect (BINGO behavior).
+        # NOTE: a synchronous upstream /users/me validation here stalled/looped on
+        # slow Render cold-starts, leaving the SPA stuck on the plugin spinner.
+        if token and not force_login:
+            print(f"[MM ROOT] Existing token cookie present — letting Mattermost handle redirect")
+            return None
 
         # No valid cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
         if endpoint_url:
@@ -149,7 +148,7 @@ class MattermostPassthroughHandler:
   localStorage.removeItem('mmauthtoken');
   document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
   document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
-  window.location.href = '{proxy_prefix}/';
+  window.location.href = '{proxy_prefix}/channels/town-square';
 </script>
 <p>Redirecting to Mattermost...</p>
 </body></html>"""
@@ -382,8 +381,8 @@ try {{
                 headers: {{'Authorization': 'Bearer ' + existingToken}}
             }}).then(function(r) {{
                 if (r.ok) {{
-                    dbg('Token valid — loading Mattermost at root');
-                    window.location.replace(base().replace(/\/$/, '') + '/');
+                    dbg('Token valid — loading Mattermost Town Square');
+                    window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
                     return;
                 }}
                 dbg('Token invalid (HTTP ' + r.status + ') — clearing and re-authenticating');
@@ -636,21 +635,6 @@ try {{
         html_str = re.sub(
             r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)\2',
             lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Defer MM bootstrap bundles so shim patches run first and #root exists in DOM.
-        _origin_q = re.escape(base_origin)
-        html_str = re.sub(
-            rf'(<script\s+src="{_origin_q}/static/main\.[^"]+\.js")>',
-            r'\1 defer>',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            rf'(<script\s+src="{_origin_q}/static/remote_entry\.js[^"]*")>',
-            r'\1 defer>',
             html_str,
             flags=re.IGNORECASE,
         )
