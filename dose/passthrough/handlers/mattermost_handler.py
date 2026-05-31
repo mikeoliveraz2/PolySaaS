@@ -294,7 +294,7 @@ try {{
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
                 var baseUrl = base().replace(/\/$/, '');
-                var redirectUrl = baseUrl + '/channels/town-square';
+                var redirectUrl = baseUrl + '/';
                 dbg('token stored, redirecting to ' + redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
@@ -347,8 +347,8 @@ try {{
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
-            dbg('Token already exists — redirecting to town-square, skipping login');
-            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
+            dbg('Token already exists — redirecting to root, skipping login');
+            window.location.replace(base().replace(/\/$/, '') + '/');
             return;
         }}
         if (forceLogin && existingToken) {{
@@ -648,6 +648,14 @@ try {{
         # the admin template (passthrough lives inside the admin template div).
         print(f"[MM HANDLER] Returning modified HTML for admin template wrap")
         return html_str
+
+    def adjust_upstream_target_url(self, target_url, upstream_path=None):
+        """Mattermost 10+ returns 501 on /api/v4/config/client without format=old."""
+        url = target_url or ''
+        if '/api/v4/config/client' not in url or 'format=' in url:
+            return target_url
+        sep = '&' if '?' in url else '?'
+        return url + sep + 'format=old'
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
         """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
@@ -1015,6 +1023,12 @@ try {{
         return false;
     }}
 
+    function ensureMmConfigClientFormat(u) {{
+        if (typeof u !== 'string' || u.indexOf('/api/v4/config/client') === -1) return u;
+        if (/[?&]format=/.test(u)) return u;
+        return u + (u.indexOf('?') >= 0 ? '&format=old' : '?format=old');
+    }}
+
     function toProxy(s) {{
         if (typeof s !== 'string') return s;
         if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
@@ -1028,7 +1042,7 @@ try {{
             if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(tail)) {{
                 return B + tail;
             }}
-            return PROXY + tail;
+            return ensureMmConfigClientFormat(PROXY + tail);
         }} else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
             return s;
         }}
@@ -1044,9 +1058,9 @@ try {{
         if (isPolySaaSPath(s)) return s;
         // Static files load directly from Mattermost; API calls proxy through Django
         if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(s)) {{
-            return B + s;
+            return ensureMmConfigClientFormat(B + s);
         }}
-        return PROXY + s;
+        return ensureMmConfigClientFormat(PROXY + s);
     }}
 
     // Write token into IndexedDB (localforage) so Mattermost's redux-persist hydration finds it.

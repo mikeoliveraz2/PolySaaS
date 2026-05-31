@@ -461,6 +461,14 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         # Store on request for orchestration bar display
         request._passthrough_upstream_path = upstream_path
 
+        if handler and hasattr(handler, 'adjust_upstream_target_url'):
+            try:
+                adjusted = handler.adjust_upstream_target_url(target_url, upstream_path)
+                if adjusted:
+                    target_url = adjusted
+            except Exception as adj_exc:
+                logger.warning("adjust_upstream_target_url failed: %s", adj_exc, exc_info=True)
+
         # WebSocket upgrade cannot pass through Django WSGI; Odoo uses HTTP longpolling/bus instead.
         _blocked = ('/websocket',)
         if any(upstream_path.startswith(b) or upstream_path == b.rstrip('/') for b in _blocked):
