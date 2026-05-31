@@ -55,22 +55,12 @@ body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
 #polysaas-orchestration-bar {
     background-color: #1a1a1a;
     color: #0f0;
-    padding: 10px 15px;
+    padding: 8px 15px;
     border-bottom: 3px solid #0f0;
     font-family: monospace;
-    font-size: 15px;
-    margin: 0 0 20px 0;
-}
-/* The scope div fills the available viewport height. */
-.polysaas-passthrough-scope {
-    position: relative !important;
-    width: 100% !important;
-    height: calc(100vh - 170px) !important;
-    overflow: visible !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    flex-direction: column !important;
-    contain: layout paint !important;
+    font-size: 14px;
+    margin: 0 0 6px 0;
+    flex: 0 0 auto !important;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -83,116 +73,125 @@ body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     z-index: 1050 !important;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ODOO CONTAINMENT - Fix #4: No apps / no adaptive display
-   The scope container becomes Odoo's viewport. All Odoo elements must stay
-   inside and use the scope's dimensions, not the browser viewport.
-   ═══════════════════════════════════════════════════════════════════════════ */
 body.polysaas-passthrough-embed-page {
-    overflow: visible !important;
-    height: auto !important;
+    overflow-x: hidden !important;
 }
 
-/* The scope is a positioned container that Odoo elements are relative to */
-.polysaas-passthrough-scope {
-    position: relative !important;
-    display: block !important;
-    width: 100% !important;
-    height: calc(100vh - 98px) !important;
-    min-height: 400px !important;
-    overflow: hidden !important;
-    background: #f0f0f0 !important;
-}
-
-/* Odoo's root containers fill the scope */
-.polysaas-passthrough-scope #wrapwrap,
-.polysaas-passthrough-scope .o_web_client {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
+/* Flex column: orch bar + Odoo scope share the content column height */
+.polysaas-passthrough-embed-wrap {
     display: flex !important;
     flex-direction: column !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    overflow: hidden !important;
+    height: calc(100vh - var(--pss-header-h, 64px) - 42px) !important;
+    min-height: 420px !important;
+    max-height: calc(100vh - var(--pss-header-h, 64px) - 42px) !important;
+    box-sizing: border-box !important;
 }
 
-/* Odoo navbar at top */
-.polysaas-passthrough-scope .o_navbar {
-    position: relative !important;
-    flex: 0 0 46px !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    width: 100% !important;
-    z-index: 100 !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* Action manager fills remaining space */
-.polysaas-passthrough-scope .o_action_manager {
+/* ── Odoo embed scope (matches display.html flex pattern) ── */
+.polysaas-passthrough-scope {
     position: relative !important;
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    overflow: auto !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* Content areas */
-.polysaas-passthrough-scope .o_content,
-.polysaas-passthrough-scope .o_view_controller,
-.polysaas-passthrough-scope .o_kanban_view,
-.polysaas-passthrough-scope .o_list_view,
-.polysaas-passthrough-scope .o_form_view {
-    position: relative !important;
     width: 100% !important;
-    height: 100% !important;
-    overflow: auto !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
-/* Apps/Home menu grid */
+/* Odoo 17 — single wrapper child */
+.polysaas-passthrough-scope > #wrapwrap,
+.polysaas-passthrough-scope > .o_web_client {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    width: 100% !important;
+}
+
+/* Odoo 18 — navbar MUST stay in-flow (fixed/sticky uses viewport → hides under Jazzmin) */
+.polysaas-passthrough-scope header.o_main_navbar,
+.polysaas-passthrough-scope .o_main_navbar,
+.polysaas-passthrough-scope > .o_main_navbar,
+.polysaas-passthrough-scope > nav.o_main_navbar {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+    max-height: none !important;
+    margin: 0 !important;
+    clip: auto !important;
+    clip-path: none !important;
+}
+
+.polysaas-passthrough-scope .o_navbar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    top: auto !important;
+    width: 100% !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+}
+
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope > main {
+    flex: 1 1 auto !important;
+    overflow: auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.polysaas-passthrough-scope .o_discuss,
+.polysaas-passthrough-scope .o_mail_discuss,
+.polysaas-passthrough-scope .o_view_controller,
+.polysaas-passthrough-scope .o_form_view,
+.polysaas-passthrough-scope .o_list_view,
+.polysaas-passthrough-scope .o_kanban_view,
+.polysaas-passthrough-scope .o_content {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+}
+
 .polysaas-passthrough-scope .o_apps,
 .polysaas-passthrough-scope .o_home_menu,
 .polysaas-passthrough-scope .o_app_board {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: flex-start !important;
-    align-content: flex-start !important;
-    padding: 20px !important;
-    gap: 15px !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    min-height: 200px !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
     overflow: auto !important;
 }
 
-/* Individual app icons */
-.polysaas-passthrough-scope .o_app,
-.polysaas-passthrough-scope .o_menuitem {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+/* User menu / systray dropdowns must float above content */
+.polysaas-passthrough-scope .o-dropdown,
+.polysaas-passthrough-scope .dropdown-menu {
+    z-index: 200 !important;
 }
 
-/* Override fixed positioning that escapes the container */
-.polysaas-passthrough-scope [style*="position: fixed"],
-.polysaas-passthrough-scope [style*="position:fixed"] {
+/* Do NOT rewrite fixed positioning on the navbar — only on overlays/modals */
+.polysaas-passthrough-scope .o_loading[style*="position: fixed"],
+.polysaas-passthrough-scope .o_loading[style*="position:fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position: fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position:fixed"] {
     position: absolute !important;
 }
 
-/* Loading indicators stay in scope */
 .polysaas-passthrough-scope .o_loading,
 .polysaas-passthrough-scope .o_blockUI {
     position: absolute !important;
@@ -202,7 +201,14 @@ body.polysaas-passthrough-embed-page {
     bottom: 0 !important;
 }
 
-/* Hide the debug banner */
+.polysaas-passthrough-scope:empty::after {
+    content: "Loading Odoo…";
+    display: block;
+    padding: 40px;
+    text-align: center;
+    color: #666;
+}
+
 .polysaas-passthrough-embed-wrap details {
     display: none !important;
 }
@@ -292,4 +298,162 @@ body.polysaas-passthrough-embed-page {
 
 {% block extrajs %}
 {{ block.super }}
+    {% if embed_enable_odoo_body_scope %}
+    <script>
+    (function () {
+        'use strict';
+        var SCOPE_SEL = '.polysaas-passthrough-scope';
+
+        function getScope() {
+            return document.querySelector(SCOPE_SEL);
+        }
+
+        var _jazzmin = new Set();
+        function _snapshotJazzmin() {
+            var _ch = document.body ? Array.prototype.slice.call(document.body.childNodes) : [];
+            for (var _i = 0; _i < _ch.length; _i++) { _jazzmin.add(_ch[_i]); }
+        }
+        _snapshotJazzmin();
+
+        function _isJazzmin(node) {
+            if (_jazzmin.has(node)) return true;
+            if (!node || !node.classList) return false;
+            var c = node.classList;
+            if (c.contains('wrapper') || c.contains('app-wrapper') ||
+                c.contains('app-footer') || c.contains('main-footer') ||
+                c.contains('modal') || c.contains('modal-backdrop') ||
+                c.contains('toast') || c.contains('tooltip') ||
+                c.contains('popover') || c.contains('dropdown-menu')) return true;
+            return false;
+        }
+
+        function _isOdooMount(node) {
+            if (!node || node.nodeType !== 1) return false;
+            var scope = getScope();
+            if (scope && (node === scope || scope.contains(node))) return false;
+            if (_isJazzmin(node)) return false;
+            if (node.classList && (
+                node.classList.contains('o_web_client') ||
+                node.classList.contains('o_main_navbar') ||
+                node.classList.contains('o_home_menu') ||
+                node.classList.contains('o_action_manager') ||
+                node.classList.contains('o_apps') ||
+                node.id === 'wrapwrap'
+            )) return true;
+            if (node.tagName === 'MAIN' || node.tagName === 'NAV' || node.tagName === 'HEADER') return true;
+            return false;
+        }
+
+        function _pinNavbar(scope) {
+            if (!scope) return;
+            var nav = scope.querySelector(':scope > .o_main_navbar, :scope > header.o_main_navbar');
+            if (!nav) nav = document.querySelector('header.o_main_navbar, .o_main_navbar');
+            if (!nav) return;
+            if (!scope.contains(nav)) {
+                scope.insertBefore(nav, scope.firstChild);
+            } else if (scope.firstElementChild !== nav) {
+                scope.insertBefore(nav, scope.firstChild);
+            }
+            nav.style.setProperty('position', 'relative', 'important');
+            nav.style.setProperty('top', 'auto', 'important');
+            nav.style.setProperty('display', 'flex', 'important');
+            nav.style.setProperty('visibility', 'visible', 'important');
+            nav.style.setProperty('opacity', '1', 'important');
+        }
+
+        function _claim(node) {
+            var scope = getScope();
+            if (!scope || !node || node.nodeType !== 1) return;
+            if (node === scope || scope.contains(node)) return;
+            if (_isJazzmin(node)) return;
+            if (!_isOdooMount(node)) return;
+            console.log('[PolySaaS Embed] Moving Odoo node to scope:', node.tagName, node.className || node.id || '');
+            scope.appendChild(node);
+            _pinNavbar(scope);
+        }
+
+        function _redirectToScope(parent, node, insertFn) {
+            if (parent !== document.body || !node || !_isOdooMount(node) || _isJazzmin(node)) {
+                return false;
+            }
+            var scope = getScope();
+            if (!scope) return false;
+            console.log('[PolySaaS Embed] Redirect mount to scope:', node.tagName, node.className || node.id || '');
+            insertFn(scope, node);
+            _pinNavbar(scope);
+            return true;
+        }
+
+        var _origAppend = Element.prototype.appendChild;
+        Element.prototype.appendChild = function (child) {
+            if (_redirectToScope(this, child, function (scope, node) { _origAppend.call(scope, node); })) {
+                return child;
+            }
+            return _origAppend.call(this, child);
+        };
+
+        var _origInsertBefore = Element.prototype.insertBefore;
+        Element.prototype.insertBefore = function (newNode, ref) {
+            if (_redirectToScope(this, newNode, function (scope, node) {
+                _origInsertBefore.call(scope, node, scope.firstChild);
+            })) {
+                return newNode;
+            }
+            return _origInsertBefore.call(this, newNode, ref);
+        };
+
+        if (Element.prototype.prepend) {
+            var _origPrepend = Element.prototype.prepend;
+            Element.prototype.prepend = function () {
+                var nodes = Array.prototype.slice.call(arguments);
+                if (this === document.body && nodes.length) {
+                    var scope = getScope();
+                    if (scope) {
+                        console.log('[PolySaaS Embed] Redirect body.prepend to scope');
+                        _origPrepend.apply(scope, nodes);
+                        _pinNavbar(scope);
+                        return;
+                    }
+                }
+                return _origPrepend.apply(this, nodes);
+            };
+        }
+
+        if (typeof MutationObserver !== 'undefined') {
+            var _mo = new MutationObserver(function (mutations) {
+                mutations.forEach(function (m) {
+                    m.addedNodes.forEach(function (node) {
+                        if (node.parentNode === document.body) { _claim(node); }
+                    });
+                });
+            });
+            if (document.body) _mo.observe(document.body, { childList: true });
+        }
+
+        function _harvestBodyChildren() {
+            var scope = getScope();
+            if (!scope) return;
+            ['#wrapwrap', '.o_web_client', '.o_main_navbar', 'header.o_main_navbar', 'main', '.o_home_menu'].forEach(function (sel) {
+                var el = document.body.querySelector(':scope > ' + sel);
+                if (el && el.parentElement === document.body) { _claim(el); }
+            });
+            _pinNavbar(scope);
+        }
+
+        function _boot() {
+            _snapshotJazzmin();
+            _harvestBodyChildren();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', _boot);
+        } else {
+            _boot();
+        }
+        [200, 500, 1000, 2000, 4000, 8000, 12000].forEach(function (ms) {
+            setTimeout(_harvestBodyChildren, ms);
+        });
+    })();
+    </script>
+    {% endif %}
 {% endblock %}
