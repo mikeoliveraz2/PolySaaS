@@ -182,6 +182,101 @@ def _extract_head_and_body(html):
     return head_content, body_content
 
 
+def _fallback_rewrite_odoo_paths_for_proxy(html: str, request) -> str:
+    """
+    Forwarder-level safety net for Odoo HTML.
+
+    If any Odoo document still contains root-relative paths like /web/...,
+    rewrite them to the current passthrough prefix (/pt/admin/<trigger>/web/...)
+    so assets/API calls do not escape to Django root and 404.
+    """
+    if not html:
+        return html
+    path = (getattr(request, "path_info", "") or "").strip()
+    parts = path.strip("/").split("/") if path else []
+    if len(parts) < 3 or parts[0] != "pt" or parts[1] != "admin":
+        return html
+
+    seg = parts[2]
+    if "odoo" not in seg.lower():
+        return html
+
+    proxy_prefix = f"/pt/admin/{seg}"
+    out = html
+    rewrite_count = 0
+
+    def _apply_pairs(text: str, pairs):
+        local_count = 0
+        out_text = text
+        for old, new in pairs:
+            hits = out_text.count(old)
+            if hits:
+                out_text = out_text.replace(old, new)
+                local_count += hits
+        return out_text, local_count
+
+    quoted_pairs = (
+        ('"/web/', f'"{proxy_prefix}/web/'),
+        ("'/web/", f"'{proxy_prefix}/web/"),
+        ('"/web?', f'"{proxy_prefix}/web?'),
+        ("'/web?", f"'{proxy_prefix}/web?"),
+        ('"/website/', f'"{proxy_prefix}/website/'),
+        ("'/website/", f"'{proxy_prefix}/website/"),
+        ('"/odoo/', f'"{proxy_prefix}/odoo/'),
+        ("'/odoo/", f"'{proxy_prefix}/odoo/"),
+        ('"/bus/', f'"{proxy_prefix}/bus/'),
+        ("'/bus/", f"'{proxy_prefix}/bus/"),
+        ('"/websocket', f'"{proxy_prefix}/websocket'),
+        ("'/websocket", f"'{proxy_prefix}/websocket"),
+        ('"/longpolling/', f'"{proxy_prefix}/longpolling/'),
+        ("'/longpolling/", f"'{proxy_prefix}/longpolling/"),
+        ('"/jsonrpc', f'"{proxy_prefix}/jsonrpc'),
+        ("'/jsonrpc", f"'{proxy_prefix}/jsonrpc"),
+    )
+    out, applied = _apply_pairs(out, quoted_pairs)
+    rewrite_count += applied
+
+    public_host = request.get_host().strip().lower()
+    if public_host:
+        for scheme in ("http", "https"):
+            base = f"{scheme}://{public_host}"
+            abs_pairs = (
+                (f"{base}/web/", f"{base}{proxy_prefix}/web/"),
+                (f"{base}/web?", f"{base}{proxy_prefix}/web?"),
+                (f"{base}/website/", f"{base}{proxy_prefix}/website/"),
+                (f"{base}/odoo/", f"{base}{proxy_prefix}/odoo/"),
+                (f"{base}/bus/", f"{base}{proxy_prefix}/bus/"),
+                (f"{base}/websocket", f"{base}{proxy_prefix}/websocket"),
+                (f"{base}/longpolling/", f"{base}{proxy_prefix}/longpolling/"),
+                (f"{base}/jsonrpc", f"{base}{proxy_prefix}/jsonrpc"),
+            )
+            out, applied = _apply_pairs(out, abs_pairs)
+            rewrite_count += applied
+
+        # Protocol-relative absolute URLs (e.g. //localhost:8000/web/...)
+        base_proto_relative = f"//{public_host}"
+        proto_pairs = (
+            (f"{base_proto_relative}/web/", f"{base_proto_relative}{proxy_prefix}/web/"),
+            (f"{base_proto_relative}/web?", f"{base_proto_relative}{proxy_prefix}/web?"),
+            (f"{base_proto_relative}/website/", f"{base_proto_relative}{proxy_prefix}/website/"),
+            (f"{base_proto_relative}/odoo/", f"{base_proto_relative}{proxy_prefix}/odoo/"),
+            (f"{base_proto_relative}/bus/", f"{base_proto_relative}{proxy_prefix}/bus/"),
+            (f"{base_proto_relative}/websocket", f"{base_proto_relative}{proxy_prefix}/websocket"),
+            (f"{base_proto_relative}/longpolling/", f"{base_proto_relative}{proxy_prefix}/longpolling/"),
+            (f"{base_proto_relative}/jsonrpc", f"{base_proto_relative}{proxy_prefix}/jsonrpc"),
+        )
+        out, applied = _apply_pairs(out, proto_pairs)
+        rewrite_count += applied
+
+    if rewrite_count:
+        print(
+            f"[FORWARDER ODOO HARDEN] rewrote {rewrite_count} path refs "
+            f"for seg={seg} path={path}"
+        )
+
+    return out
+
+
 def _wrap_in_admin_template(request, response, trigger, endpoint):
     """Wrap raw proxied HTML in admin template for embedded display."""
     content_type = response.get('Content-Type', '')
@@ -212,6 +307,8 @@ def _wrap_in_admin_template(request, response, trigger, endpoint):
                 'embed_head': embed_head,
                 'embed_body': embed_body,
                 'upstream_path': upstream_path,
+                # Odoo 18 mounts Owl nodes on document.body — passthrough_embed extrajs hijacks that.
+                'embed_enable_odoo_body_scope': 'odoo' in (trigger or '').lower(),
             },
             request=request,
         )
@@ -455,8 +552,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         # Store on request for orchestration bar display
         request._passthrough_upstream_path = upstream_path
 
-        # Block websocket/bus/discuss paths server-side — they crash through proxy
-        _blocked = ('/websocket', '/bus/', '/longpolling/', '/discuss/', '/mail/action')
+        # WebSocket upgrade cannot pass through Django WSGI; Odoo uses HTTP longpolling/bus instead.
+        _blocked = ('/websocket',)
         if any(upstream_path.startswith(b) or upstream_path == b.rstrip('/') for b in _blocked):
             from django.http import JsonResponse as _JR
             print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")
@@ -781,6 +878,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             return response
 
         content = resp.text
+        content = _fallback_rewrite_odoo_paths_for_proxy(content, request)
 
         if handler:
             print(f"HANDLER RUNNING -> {handler.__class__.__name__}")

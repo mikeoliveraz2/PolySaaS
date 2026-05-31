@@ -418,9 +418,20 @@ class OdooPassthroughHandler:
 'use strict';
 var PROXY={json.dumps(proxy_prefix)};
 var B={json.dumps(_base)};
+function _collapseProxyDupes(u){{
+    if(!u||!PROXY)return u;
+    var doubled=PROXY+PROXY;
+    while(u.indexOf(doubled)!==-1)u=u.split(doubled).join(PROXY);
+    return u;
+}}
 function _toProxy(u){{
     if(!u||typeof u!=='string')return u;
-    if(u.indexOf(B)===0)return PROXY+u.slice(B.length);
+    if(typeof window!=='undefined'&&window.location&&window.location.origin&&u.indexOf(window.location.origin)===0){{
+        u=u.slice(window.location.origin.length);
+    }}
+    u=_collapseProxyDupes(u);
+    if(u===PROXY||u.indexOf(PROXY+'/')===0)return u;
+    if(u.indexOf(B)===0)return _collapseProxyDupes(PROXY+u.slice(B.length));
     if(u.charAt(0)==='/'&&!u.startsWith(PROXY)){{
         if(u.startsWith('/web/')||u.startsWith('/odoo/')||u.startsWith('/bus/')||
            u.startsWith('/websocket')||u.startsWith('/mail/')||u.startsWith('/jsonrpc')||
@@ -634,10 +645,17 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[ODOO HANDLER] Processing HTML for {endpoint_url}")
 
-        path_info = getattr(request, 'path_info', '') or ''
-        if path_info.endswith('/web/login'):
-            print('[ODOO HANDLER] Preserving native login document')
-            return html_str, None
+        path_info = (getattr(request, 'path_info', '') or '').strip()
+        seg = 'odoo'
+        parts = path_info.strip('/').split('/') if path_info else []
+        if len(parts) >= 3 and parts[0] == 'pt' and parts[1] == 'admin':
+            seg = parts[2]
+        proxy_prefix = f"/pt/admin/{seg}"
+        base_origin = ''
+        if endpoint_url:
+            parsed = urlparse(endpoint_url)
+            if parsed.scheme and parsed.netloc:
+                base_origin = f"{parsed.scheme}://{parsed.netloc}"
 
         # Detect Odoo database selector page (login failed / user not provisioned)
         if self._is_database_selector_page(html_str):
@@ -645,7 +663,31 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             error_html = self._render_provisioning_error_page(request)
             return error_html, None
 
-        print('[ODOO HANDLER] Preserving native non-login document')
+        # Keep native Odoo document, but rewrite root-relative URLs so all traffic
+        # stays under /pt/admin/<trigger>/ instead of escaping to /web/* on Django.
+        html_str = self._rewrite_static_paths(
+            html_str,
+            proxy_prefix=proxy_prefix,
+            base_origin=base_origin,
+        )
+        html_str = self._rewrite_web_paths_for_display_shell(html_str, seg=seg)
+        html_str = self._rewrite_absolute_polysaas_host_paths(
+            html_str,
+            request.get_host(),
+            proxy_prefix,
+        )
+
+        # Patch fetch/XHR/history before Odoo boot scripts run so API calls to /web/*
+        # are proxied through /pt/admin/<trigger>/ and don't 404 on localhost.
+        html_str = self._inject_client_shim(
+            html_str,
+            base_origin,
+            session_id=request.COOKIES.get('session_id', ''),
+            proxy_prefix=proxy_prefix,
+            credentials=self.get_upstream_credentials(request),
+        )
+
+        print('[ODOO HANDLER] Rewrote Odoo document for proxy-safe asset/API routing')
         return html_str, None
 
     def _is_database_selector_page(self, html_str: str) -> bool:
@@ -750,6 +792,8 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             """Check if path is an Odoo asset that needs proxying."""
             if not path.startswith('/'):
                 return False
+            if path.startswith('/pt/') or path.startswith(proxy_prefix):
+                return False
             odoo_patterns = (
                 '/web/', '/odoo/', '/bus/', '/base/', '/static/',
                 '/im_', '/description/icon', '.png', '.jpg', '.svg', '.gif', '.css', '.js'
@@ -836,67 +880,78 @@ BASE_TAG
    when embedded in a constrained container.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* 1. Reset html/body to allow content flow */
-html, body {
-    height: auto !important;
-    min-height: 100% !important;
-    overflow: visible !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-/* 2. The scope container is the new viewport for Odoo */
+/* 1. Do NOT reset html/body globally — that breaks Jazzmin layout and lets
+   Odoo nodes flow below the admin footer when they mount on document.body. */
 .polysaas-passthrough-scope {
     position: relative !important;
     width: 100% !important;
-    height: calc(100vh - 98px) !important;
-    min-height: 400px !important;
+    min-height: 0 !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
-    background: #f8f9fa !important;
-}
-
-/* 3. Force Odoo's root elements to fill the scope, not the viewport */
-.polysaas-passthrough-scope #wrapwrap,
-.polysaas-passthrough-scope .o_web_client {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 100% !important;
-    max-height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
+    background: #fff !important;
     display: flex !important;
     flex-direction: column !important;
-    visibility: visible !important;
-    opacity: 1 !important;
 }
 
-/* 4. Odoo navbar stays at top */
-.polysaas-passthrough-scope .o_navbar {
-    position: relative !important;
-    flex: 0 0 46px !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    max-height: 46px !important;
-    width: 100% !important;
-    z-index: 100 !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* 5. Action manager fills remaining space */
-.polysaas-passthrough-scope .o_action_manager {
-    position: relative !important;
+/* Odoo 17 — wrapper fills scope via flex */
+.polysaas-passthrough-scope > #wrapwrap,
+.polysaas-passthrough-scope > .o_web_client {
     flex: 1 1 auto !important;
-    height: calc(100% - 46px) !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    width: 100% !important;
+}
+
+/* Odoo 18 — navbar + main as direct scope children */
+.polysaas-passthrough-scope > .o_main_navbar,
+.polysaas-passthrough-scope > nav.o_main_navbar {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    position: relative !important;
+    z-index: 20 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Odoo 18 — navbar must stay in-flow inside embed (fixed = viewport top under Jazzmin) */
+.polysaas-passthrough-scope header.o_main_navbar,
+.polysaas-passthrough-scope .o_main_navbar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+    max-height: none !important;
+}
+
+.polysaas-passthrough-scope .o_navbar,
+.polysaas-passthrough-scope .o_main_navbar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    top: auto !important;
+    width: 100% !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+}
+
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope > main {
+    flex: 1 1 auto !important;
     min-height: 0 !important;
     overflow: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
     visibility: visible !important;
     opacity: 1 !important;
 }
@@ -943,9 +998,11 @@ html, body {
     opacity: 1 !important;
 }
 
-/* 9. Override any fixed positioning that escapes the container */
-.polysaas-passthrough-scope [style*="position: fixed"],
-.polysaas-passthrough-scope [style*="position:fixed"] {
+/* 9. Override fixed positioning on overlays only — NOT the navbar */
+.polysaas-passthrough-scope .o_loading[style*="position: fixed"],
+.polysaas-passthrough-scope .o_loading[style*="position:fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position: fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position:fixed"] {
     position: absolute !important;
 }
 
@@ -1033,22 +1090,31 @@ function isOdooApiPath(s) {
 // DO NOT route anything direct to upstream (B) - that bypasses the entire PolySaaS value.
 // See Process Rule 1: No Unilateral Changes
 // ═══════════════════════════════════════════════════════════════════════════
+function collapseProxyDupes(s) {
+    if (!s || !PROXY) return s;
+    var doubled = PROXY + PROXY;
+    while (s.indexOf(doubled) !== -1) s = s.split(doubled).join(PROXY);
+    return s;
+}
+
 function toProxy(s) {
     if (typeof s !== 'string' || !s) return s;
     if (s.indexOf('data:') === 0 || s.indexOf('blob:') === 0) return s;
+    if (s.indexOf(O + '/') === 0) s = s.slice(O.length);  // strip our origin
+    s = collapseProxyDupes(s);
+    if (s === PROXY || s.indexOf(PROXY + '/') === 0) return s;
     // Absolute URL to upstream — rewrite to go through proxy
     if (s.indexOf(B) === 0) {
         var tail = s.slice(B.length);
         if (tail.charAt(0) !== '/') tail = '/' + tail;
-        return PROXY + tail;
+        return collapseProxyDupes(PROXY + tail);
     }
-    if (s.indexOf(O + '/') === 0) s = s.slice(O.length);  // strip our origin
     if (s.indexOf('http:') === 0 || s.indexOf('https:') === 0 || s.indexOf('//') === 0) return s;
     if (s.charAt(0) !== '/') return s;
     // PolySaaS paths stay untouched
     if (isPolySaaSPath(s)) return s;
     // ALL Odoo paths go through proxy - no exceptions
-    return PROXY + s;
+    return collapseProxyDupes(PROXY + s);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1057,9 +1123,11 @@ function toProxy(s) {
 var _fetch = window.fetch;
 window.fetch = function(input, init) {
     var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
-    // Pre-emptively block bus/discuss/mail requests to prevent Discuss OWL crashes
-    if (url.indexOf('/bus/') !== -1 || url.indexOf('/longpolling/') !== -1 || url.indexOf('/discuss/') !== -1 || url.indexOf('/mail/') !== -1) {
-        console.warn('[PolySaaS Odoo] Blocked outgoing request to:', url);
+    // Discuss full-page routes crash in embed; bus/longpolling MUST reach upstream (app open depends on them).
+    var blockDiscuss = url && url.indexOf('/discuss') !== -1 &&
+        url.indexOf('/web/dataset') === -1 && url.indexOf('/web/action') === -1;
+    if (blockDiscuss) {
+        console.warn('[PolySaaS Odoo] Blocked Discuss fetch:', url);
         return Promise.resolve(new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}}));
     }
     var proxied = toProxy(url);
@@ -1075,9 +1143,8 @@ window.fetch = function(input, init) {
         var ct = (response.headers && response.headers.get) ? (response.headers.get('content-type') || '') : '';
         if (ct.indexOf('text/html') !== -1) {
             var u = proxied || url;
-            if (u.indexOf('/web/dataset/call_kw') !== -1) {
-                console.warn('[PolySaaS Odoo] Blocked HTML response for JSON endpoint:', u);
-                return new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}});
+            if (u.indexOf('/web/dataset/call_kw') !== -1 || u.indexOf('/web/action/load') !== -1) {
+                console.warn('[PolySaaS Odoo] HTML response for JSON RPC (session or proxy issue):', u);
             }
         }
         return response;
@@ -1101,25 +1168,30 @@ XMLHttpRequest.prototype.open = function(method, url) {
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. WEBSOCKET PATCHING - Critical for Odoo 18 bus
 // ═══════════════════════════════════════════════════════════════════════════
-// Block ALL WebSocket connections — Discuss/bus uses them and they crash through proxy
+// Block WebSocket upgrade (WSGI cannot proxy it). Odoo must use HTTP longpolling/bus instead.
 var _WebSocket = window.WebSocket;
 window.WebSocket = function(url, protocols) {
-    console.warn('[PolySaaS Odoo] WebSocket BLOCKED:', url);
-    // Return a fake WebSocket that does nothing
+    console.warn('[PolySaaS Odoo] WebSocket blocked — using longpolling fallback:', url);
     var fake = {
         url: url,
-        readyState: 3, // CLOSED
+        readyState: 3,
+        bufferedAmount: 0,
+        extensions: '',
+        protocol: '',
+        binaryType: 'blob',
         send: function() {},
         close: function() {},
-        addEventListener: function() {},
+        addEventListener: function(type, fn) {
+            if (type === 'close' && fn) setTimeout(function() { fn({code: 1000, reason: 'blocked', wasClean: true}); }, 50);
+        },
         removeEventListener: function() {},
+        dispatchEvent: function() { return true; },
         onopen: null, onclose: null, onmessage: null, onerror: null,
         CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3
     };
-    // Fire onclose asynchronously so callers don't crash
-    setTimeout(function() {
-        if (fake.onclose) fake.onclose({code: 1000, reason: 'blocked', wasClean: true});
-    }, 100);
+    try {
+        if (window.odoo && window.odoo.info) window.odoo.info.websocket = false;
+    } catch (e) {}
     return fake;
 };
 window.WebSocket.CONNECTING = 0;
@@ -1411,26 +1483,113 @@ setTimeout(disableWebSocket, 500);
 setTimeout(disableWebSocket, 1000);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 11. OWL MOUNT INTERCEPTION - Redirect mount target to scope
+// 11. OWL MOUNT INTERCEPTION - Redirect mount target to scope (Odoo 17 + 18)
 // ═══════════════════════════════════════════════════════════════════════════
-// Odoo's Owl framework mounts to document.body by default.
-// We need to intercept this and redirect to our scope container.
+function _looksLikeOdooMount(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.classList && (
+        node.classList.contains('o_web_client') ||
+        node.classList.contains('o_main_navbar') ||
+        node.classList.contains('o_home_menu') ||
+        node.classList.contains('o_action_manager') ||
+        node.classList.contains('o_apps') ||
+        node.id === 'wrapwrap'
+    )) return true;
+    if (node.tagName === 'MAIN' || node.tagName === 'NAV' || node.tagName === 'HEADER') return true;
+    return false;
+}
+
+function _pinNavbarInScope() {
+    var scope = document.querySelector(SCOPE_SELECTOR);
+    if (!scope) return;
+    var nav = scope.querySelector(':scope > .o_main_navbar, :scope > header.o_main_navbar');
+    if (!nav) nav = document.querySelector('header.o_main_navbar, .o_main_navbar');
+    if (!nav) return;
+    if (!scope.contains(nav)) {
+        scope.insertBefore(nav, scope.firstChild);
+    } else if (scope.firstElementChild !== nav) {
+        scope.insertBefore(nav, scope.firstChild);
+    }
+    nav.style.setProperty('position', 'relative', 'important');
+    nav.style.setProperty('top', 'auto', 'important');
+    nav.style.setProperty('display', 'flex', 'important');
+    nav.style.setProperty('visibility', 'visible', 'important');
+}
+
 var _appendChild = Element.prototype.appendChild;
+
+function _mountIntoScope(node) {
+    var scope = document.querySelector(SCOPE_SELECTOR);
+    if (!scope || !node) return false;
+    _appendChild.call(scope, node);
+    _pinNavbarInScope();
+    return true;
+}
+
 Element.prototype.appendChild = function(child) {
-    // If Odoo is trying to append to document.body and it looks like the web client
-    if (this === document.body && child && child.classList) {
-        if (child.classList.contains('o_web_client') || 
-            child.id === 'wrapwrap' ||
-            child.classList.contains('o_home_menu')) {
-            var scope = document.querySelector(SCOPE_SELECTOR);
-            if (scope) {
-                console.log('[PolySaaS Odoo] Redirecting appendChild to scope:', child.className || child.id);
-                return _appendChild.call(scope, child);
-            }
-        }
+    if (this === document.body && child && _looksLikeOdooMount(child)) {
+        console.log('[PolySaaS Odoo] Redirect Element.appendChild(body) to scope:', child.className || child.tagName);
+        if (_mountIntoScope(child)) return child;
     }
     return _appendChild.call(this, child);
 };
+
+var _bodyRedirectsInstalled = false;
+function _installBodyRedirects() {
+    if (_bodyRedirectsInstalled) return true;
+    var scope = document.querySelector(SCOPE_SELECTOR);
+    if (!scope) return false;
+    _bodyRedirectsInstalled = true;
+
+    var _origInsertBefore = Element.prototype.insertBefore;
+    Element.prototype.insertBefore = function(newNode, ref) {
+        if (this === document.body && newNode && _looksLikeOdooMount(newNode)) {
+            console.log('[PolySaaS Odoo] Redirect insertBefore(body) to scope:', newNode.tagName, newNode.className || '');
+            _origInsertBefore.call(scope, newNode, scope.firstChild);
+            _pinNavbarInScope();
+            return newNode;
+        }
+        return _origInsertBefore.call(this, newNode, ref);
+    };
+
+    if (Element.prototype.prepend) {
+        var _origPrepend = Element.prototype.prepend;
+        Element.prototype.prepend = function() {
+            var nodes = Array.prototype.slice.call(arguments);
+            if (this === document.body && nodes.length) {
+                console.log('[PolySaaS Odoo] Redirect body.prepend to scope');
+                _origPrepend.apply(scope, nodes);
+                _pinNavbarInScope();
+                return;
+            }
+            return _origPrepend.apply(this, nodes);
+        };
+    }
+
+    var _origBodyAppend = document.body.appendChild.bind(document.body);
+    document.body.appendChild = function(child) {
+        if (child && _looksLikeOdooMount(child)) {
+            console.log('[PolySaaS Odoo] Redirect body.appendChild to scope:', child.className || child.tagName);
+            return _mountIntoScope(child) ? child : _origBodyAppend(child);
+        }
+        return _origBodyAppend(child);
+    };
+    document.body.__polysaasOdooPatched = true;
+    return true;
+}
+
+function _tryInstallBodyRedirects() {
+    if (_installBodyRedirects()) {
+        _pinNavbarInScope();
+        return;
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _tryInstallBodyRedirects);
+    } else {
+        setTimeout(_tryInstallBodyRedirects, 50);
+    }
+}
+_tryInstallBodyRedirects();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12. MUTATION OBSERVER - Catch any elements that escape to body
@@ -1439,16 +1598,20 @@ function moveOdooElementsToScope() {
     var scope = document.querySelector(SCOPE_SELECTOR);
     if (!scope) return;
     
-    // Elements that should be inside the scope
-    var selectors = ['#wrapwrap', '.o_web_client', '.o_home_menu', '.o_apps'];
+    // Elements that should be inside the scope (Odoo 17 + 18 mount patterns)
+    var selectors = [
+        '#wrapwrap', '.o_web_client', '.o_main_navbar', 'header.o_main_navbar', 'main',
+        '.o_home_menu', '.o_apps', '.o_action_manager'
+    ];
     
     selectors.forEach(function(sel) {
         var el = document.body.querySelector(':scope > ' + sel);
         if (el && el.parentElement === document.body) {
             console.log('[PolySaaS Odoo] Moving escaped element to scope:', sel);
-            scope.appendChild(el);
+            _appendChild.call(scope, el);
         }
     });
+    _pinNavbarInScope();
 }
 
 // Run periodically to catch late-mounting elements
@@ -1456,25 +1619,23 @@ setTimeout(moveOdooElementsToScope, 100);
 setTimeout(moveOdooElementsToScope, 500);
 setTimeout(moveOdooElementsToScope, 1000);
 setTimeout(moveOdooElementsToScope, 2000);
+setTimeout(moveOdooElementsToScope, 4000);
+setTimeout(moveOdooElementsToScope, 8000);
+setTimeout(moveOdooElementsToScope, 12000);
 
 // Also use MutationObserver for real-time catching
 var observer = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
             mutation.addedNodes.forEach(function(node) {
-                if (node.nodeType === 1 && node.parentElement === document.body) {
-                    if (node.classList && (
-                        node.classList.contains('o_web_client') ||
-                        node.classList.contains('o_home_menu') ||
-                        node.id === 'wrapwrap'
-                    )) {
+                if (node.nodeType === 1 && node.parentElement === document.body && _looksLikeOdooMount(node)) {
                         var scope = document.querySelector(SCOPE_SELECTOR);
                         if (scope) {
-                            console.log('[PolySaaS Odoo] MutationObserver caught:', node.className || node.id);
-                            scope.appendChild(node);
+                            console.log('[PolySaaS Odoo] MutationObserver caught:', node.className || node.id || node.tagName);
+                            _appendChild.call(scope, node);
+                            _pinNavbarInScope();
                         }
                     }
-                }
             });
         }
     });
