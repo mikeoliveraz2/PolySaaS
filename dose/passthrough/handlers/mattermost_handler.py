@@ -500,6 +500,7 @@ try {{
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
+        force_login = request.GET.get('force') == '1'
 
         # Derive trigger from path for use throughout the function
         _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')

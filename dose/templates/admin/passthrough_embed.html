@@ -73,6 +73,7 @@ body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     z-index: 1050 !important;
 }
 
+{% if embed_enable_odoo_body_scope %}
 body.polysaas-passthrough-embed-page {
     overflow-x: hidden !important;
 }
@@ -208,6 +209,25 @@ body.polysaas-passthrough-embed-page {
     text-align: center;
     color: #666;
 }
+{% else %}
+/* Mattermost / generic passthrough — bingo layout (overflow visible, full SPA height) */
+body.polysaas-passthrough-embed-page {
+    overflow: visible !important;
+    height: auto !important;
+}
+
+.polysaas-passthrough-scope {
+    position: relative !important;
+    width: 100% !important;
+    height: calc(100vh - 170px) !important;
+    min-height: 400px !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    contain: layout paint !important;
+}
+{% endif %}
 
 .polysaas-passthrough-embed-wrap details {
     display: none !important;
