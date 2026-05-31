@@ -470,9 +470,13 @@ function showSubscribeFeedback(message, options) {
         if (message) shown = true;
     }
     if (cardErr) {
-        if (useHtml) { cardErr.innerHTML = message || ''; } else { cardErr.textContent = message || ''; }
-        cardErr.style.color = message ? c : '';
-        if (message) shown = true;
+        if (isError) {
+            if (useHtml) { cardErr.innerHTML = message || ''; } else { cardErr.textContent = message || ''; }
+            cardErr.style.color = message ? c : '';
+        } else {
+            cardErr.innerHTML = '';
+            cardErr.textContent = '';
+        }
     }
     if (message && !shown) {
         var toast = document.getElementById('subscribe-fallback-toast');

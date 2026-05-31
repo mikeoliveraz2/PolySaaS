@@ -24,10 +24,21 @@
 
         <div class="form-group">
             <label for="password">Password:</label>
-            <div class="password-wrapper" style="position: relative;">
-                <input type="password" id="password" name="password" required style="padding-right: 40px; width:100%; box-sizing:border-box;">
+<<<<<<< HEAD
+            <div style="position:relative;">
+                <input type="password" id="password" name="password" required style="padding-right:2.5rem; width:100%; box-sizing:border-box;">
                 <button type="button" id="toggle-password" tabindex="-1" aria-label="Toggle password visibility"
-                    style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 5px;" title="Show/Hide Password">
+                    style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0.25rem;color:#555;font-size:1.1rem;line-height:1;">
+                    <span id="eye-icon">&#128065;</span>
+                </button>
+            </div>
+        </div>
+        <div id="creds-reminder" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:0.6rem 0.9rem;margin-bottom:0.75rem;font-size:0.88rem;color:#5d4037;">
+            &#128274; Your credentials have been pre-filled. Please save them before continuing.
+=======
+            <div class="password-wrapper" style="position: relative;">
+                <input type="password" id="password" name="password" required style="padding-right: 40px;">
+                <button type="button" id="toggle-password" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 5px;" title="Show/Hide Password">
                     <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                         <circle cx="12" cy="12" r="3"></circle>
@@ -38,12 +49,10 @@
                     </svg>
                 </button>
             </div>
-            <div id="creds-reminder" style="display:none;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:0.6rem 0.9rem;margin-top:0.5rem;font-size:0.88rem;color:#5d4037;">
-                &#128274; Your credentials have been pre-filled. Please save them before continuing.
-            </div>
             <small style="color: #666; display: block; margin-top: 5px;">
-                Remember your password — you'll need it for Odoo, Mattermost, and other bundled apps.
+                💡 <strong>Remember your password!</strong> Store it safely - you'll need it to access Odoo, Mattermost, and other bundled apps.
             </small>
+>>>>>>> 7d296d2daea8611bb967867059f2363420ae6ec3
         </div>
 
         <button type="submit" class="btn">Login</button>
@@ -97,18 +106,34 @@
     }
 
     // Toggle password visibility
+<<<<<<< HEAD
     var toggleBtn = document.getElementById('toggle-password');
     var pwField = document.getElementById('password');
     var eyeIcon = document.getElementById('eye-icon');
-    var eyeOffIcon = document.getElementById('eye-off-icon');
-    if (toggleBtn && pwField && eyeIcon && eyeOffIcon) {
+    if (toggleBtn && pwField) {
         toggleBtn.addEventListener('click', function() {
             var isHidden = pwField.type === 'password';
             pwField.type = isHidden ? 'text' : 'password';
-            eyeIcon.style.display = isHidden ? 'none' : 'block';
-            eyeOffIcon.style.display = isHidden ? 'block' : 'none';
+            eyeIcon.innerHTML = isHidden ? '&#128064;' : '&#128065;';
         });
     }
+=======
+    document.getElementById('toggle-password').addEventListener('click', function() {
+        var passwordField = document.getElementById('password');
+        var eyeIcon = document.getElementById('eye-icon');
+        var eyeOffIcon = document.getElementById('eye-off-icon');
+        
+        if (passwordField.type === 'password') {
+            passwordField.type = 'text';
+            eyeIcon.style.display = 'none';
+            eyeOffIcon.style.display = 'block';
+        } else {
+            passwordField.type = 'password';
+            eyeIcon.style.display = 'block';
+            eyeOffIcon.style.display = 'none';
+        }
+    });
+>>>>>>> 7d296d2daea8611bb967867059f2363420ae6ec3
 
     // After successful login, restore Mattermost credentials from sessionStorage (without team name)
     if (sessionStorage.getItem('polysaas_mm_creds')) {
