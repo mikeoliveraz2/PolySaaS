@@ -842,7 +842,19 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
 
         # Also set the auto-login session cookie on the browser so subsequent
         # asset/API requests are authenticated (server-side cookies don't reach the browser otherwise)
-        if upstream_cookies.get('session_id') and 'session_id' not in response.cookies:
+        _set_session_cookie = True
+        if handler and hasattr(handler, 'should_set_browser_session_cookie'):
+            try:
+                _set_session_cookie = bool(
+                    handler.should_set_browser_session_cookie(request, upstream_cookies)
+                )
+            except Exception as _ssc_exc:
+                logger.warning("should_set_browser_session_cookie failed: %s", _ssc_exc)
+        if (
+            _set_session_cookie
+            and upstream_cookies.get('session_id')
+            and 'session_id' not in response.cookies
+        ):
             response.cookies['session_id'] = upstream_cookies['session_id']
             response.cookies['session_id']['path'] = '/'
             response.cookies['session_id']['samesite'] = 'Lax'

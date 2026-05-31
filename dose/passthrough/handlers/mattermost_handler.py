@@ -194,6 +194,14 @@ class MattermostPassthroughHandler:
 
         print(f"[MM LoginBridge] login_id={login_id!r} password_present={bool(password)} user_email={user_email!r}")
 
+        team_name = ""
+        try:
+            extra_team = self._get_tenantapp_extra_config(request) or {}
+            team_name = extra_team.get('mm_team_name') or extra_team.get('team_name') or ''
+        except Exception:
+            pass
+        team_name_js = json.dumps(team_name)
+
         # HTML-escape so a quote in the password can't break the value attribute.
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
@@ -248,6 +256,11 @@ try {{
     function base() {{
         return window.location.pathname.replace(/\/login(\/.*)?$/, '') || '/';
     }}
+    var MM_TEAM = {team_name_js};
+    function teamLandingUrl(baseUrl) {{
+        var b = (baseUrl || base()).replace(/\/$/, '');
+        return MM_TEAM ? (b + '/' + MM_TEAM + '/channels/town-square') : (b + '/');
+    }}
     function doLogin() {{
         var lid = $('lid').value.trim();
         var pwd = $('pwd').value;
@@ -293,8 +306,7 @@ try {{
                         tx.oncomplete = function() {{ db.close(); }};
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
-                var baseUrl = base().replace(/\/$/, '');
-                var redirectUrl = baseUrl + '/';
+                var redirectUrl = teamLandingUrl(base());
                 dbg('token stored, redirecting to ' + redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
@@ -347,8 +359,8 @@ try {{
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
-            dbg('Token already exists — redirecting to root, skipping login');
-            window.location.replace(base().replace(/\/$/, '') + '/');
+            dbg('Token already exists — redirecting to team channel, skipping login');
+            window.location.replace(teamLandingUrl(base()));
             return;
         }}
         if (forceLogin && existingToken) {{
@@ -594,6 +606,19 @@ try {{
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
+        # Defer Mattermost bundles so the passthrough shim always runs first.
+        html_str = re.sub(
+            r'(<script)(\s+[^>]*src=["\'][^"\']*main\.[^"\']+\.js["\'][^>]*)>',
+            r'\1 defer\2>',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        html_str = re.sub(
+            r'(<script)(\s+[^>]*src=["\'][^"\']*remote_entry\.js[^"\']*["\'][^>]*)>',
+            r'\1 defer\2>',
+            html_str,
+            flags=re.IGNORECASE,
+        )
 
         # Rewrite form action attributes so native form POSTs go through the proxy prefix.
         html_str = re.sub(
@@ -806,12 +831,20 @@ try {{
                 )
 
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
-        """Strip MMAUTHTOKEN on login/logout requests so a stale session can't poison auth."""
+        """Only send Mattermost session cookies upstream — never Odoo/Django cookies."""
         path = (getattr(request, 'path_info', '') or '')
         if '/api/v4/users/login' in path or '/api/v4/users/logout' in path:
-            cookies = {k: v for k, v in (cookies or {}).items()
-                       if k.lower() not in ('mmauthtoken',)}
-        return cookies
+            return {}
+        mm = {}
+        for key in ('MMAUTHTOKEN', 'mmauthtoken'):
+            val = (cookies or {}).get(key)
+            if val:
+                mm[key] = val
+        return mm
+
+    def should_set_browser_session_cookie(self, request, upstream_cookies):
+        """Mattermost auth uses MMAUTHTOKEN only — never persist Odoo session_id."""
+        return False
 
     def get_upstream_cookies(self, request):
         """
@@ -979,12 +1012,15 @@ try {{
                         getattr(getattr(request, 'user', None), 'email', '') or '')
             password = (extra.get('mattermost_password') or extra.get('mm_password') or
                         extra.get('password') or '')
+            team_name = extra.get('mm_team_name') or extra.get('team_name') or ''
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
+            team_name = ''
 
         token_js = json.dumps(token)
         login_id_js = json.dumps(login_id)
         password_js = json.dumps(password)
+        team_name_js = json.dumps(team_name)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
         print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'}")
@@ -1010,6 +1046,12 @@ try {{
     }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
+    var MM_TEAM = {team_name_js};
+
+    function teamChannelUrl() {{
+        if (!MM_TEAM) return PROXY + '/';
+        return PROXY + '/' + MM_TEAM + '/channels/town-square';
+    }}
 
     var _lsGet = Storage.prototype.getItem;
     var _lsSet = Storage.prototype.setItem;
@@ -1623,6 +1665,29 @@ try {{
         return _origAppend.call(this, node);
     }};
     console.log('[PolySaaS Mattermost] Full shim loaded, proxy=', PROXY);
+
+    // Warm config/client through the proxy before Mattermost bundles boot.
+    if (MMAUTHTOKEN) {{
+        var _cfgUrl = ensureMmConfigClientFormat(PROXY + '/api/v4/config/client');
+        fetch(_cfgUrl, {{
+            credentials: 'same-origin',
+            headers: {{ 'Authorization': 'Bearer ' + MMAUTHTOKEN }}
+        }}).then(function(r) {{
+            console.log('[PolySaaS MM] bootstrap config/client status=', r.status);
+        }}).catch(function(e) {{
+            console.warn('[PolySaaS MM] bootstrap config/client failed:', e);
+        }});
+        if (MM_TEAM) {{
+            var _p = window.location.pathname;
+            var _teamPath = '/' + MM_TEAM + '/channels/town-square';
+            if (_p === PROXY || _p === PROXY + '/' || _p.indexOf('/landing') !== -1) {{
+                if (_p.indexOf(_teamPath) === -1) {{
+                    console.log('[PolySaaS MM] Redirect root/landing -> team channel', teamChannelUrl());
+                    window.location.replace(teamChannelUrl());
+                }}
+            }}
+        }}
+    }}
 }})();
 </script>
 """
