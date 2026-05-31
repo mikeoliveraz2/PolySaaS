@@ -5,6 +5,7 @@ Run `gcloud auth application-default login` once per machine.
 """
 import logging
 import os
+import sys
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -14,11 +15,44 @@ _client = None
 _client_unavailable = False
 
 
+def _as_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+_CLOUD_RUNTIME = any(
+    os.environ.get(name)
+    for name in (
+        "K_SERVICE",
+        "GAE_ENV",
+        "FUNCTION_TARGET",
+        "CLOUD_RUN_JOB",
+        "GOOGLE_CLOUD_PROJECT",
+        "GCP_PROJECT",
+    )
+)
+
+# Defaults:
+# - cloud runtime: use Secret Manager
+# - local runtime: skip Secret Manager (prevents noisy ADC reauth errors)
+# Override with:
+#   POLYSAAS_USE_GCP_SECRETS=1  -> force enable
+#   POLYSAAS_SKIP_GCP_SECRETS=1 -> force disable
+_USE_GCP_SECRETS = _as_bool("POLYSAAS_USE_GCP_SECRETS", default=_CLOUD_RUNTIME)
+_SKIP_GCP_SECRETS = _as_bool("POLYSAAS_SKIP_GCP_SECRETS", default=False) or not _USE_GCP_SECRETS
+
+
 def _get_client():
     global _client, _client_unavailable
     if _client is not None:
         return _client
     if _client_unavailable:
+        return None
+    if _SKIP_GCP_SECRETS:
+        _client_unavailable = True
+        logger.debug("Secret Manager disabled for this runtime")
         return None
     try:
         from google.cloud import secretmanager

@@ -2,8 +2,68 @@
 
 {% block title %}PolySaaS Display{% endblock %}
 
+{% block bodyclass %}polysaas-display-shell-page{% endblock %}
+
 {% block extrastyle %}
 <style>
+    body.polysaas-display-shell-page {
+        --pss-header-h: 64px;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid {
+        grid-template-columns: 280px 1fr !important;
+        margin-top: var(--pss-header-h, 64px) !important;
+        margin-right: 0 !important;
+        margin-bottom: 0 !important;
+        margin-left: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid.sidebar-collapse,
+    body.polysaas-display-shell-page.polysaas-collapsed .admin-content-grid {
+        grid-template-columns: 60px 1fr !important;
+    }
+
+    body.polysaas-display-shell-page #recent-actions-sidebar {
+        display: none !important;
+    }
+
+    body.polysaas-display-shell-page .content .container-fluid,
+    body.polysaas-display-shell-page .dose-content-col .container-fluid {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        max-width: none !important;
+    }
+
+    body.polysaas-display-shell-page .content .row,
+    body.polysaas-display-shell-page .dose-content-col .row {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    body.polysaas-display-shell-page .dose-content-col,
+    body.polysaas-display-shell-page .content-wrapper,
+    body.polysaas-display-shell-page .app-content,
+    body.polysaas-display-shell-page .app-content-header {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-right: 0 !important;
+        max-width: 100% !important;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid > .collapsible-nav {
+        top: var(--pss-header-h, 64px) !important;
+        height: calc(100vh - var(--pss-header-h, 64px)) !important;
+        z-index: 1041 !important;
+    }
+
+    body.polysaas-display-shell-page .admin-content-grid > .collapsible-nav .nav-header {
+        position: relative !important;
+        z-index: 2 !important;
+    }
+
     #polysaas-orchestration-bar {
         background-color: #1a1a1a;
         color: #0f0;
@@ -11,7 +71,7 @@
         border-bottom: 3px solid #0f0;
         font-family: monospace;
         font-size: 15px;
-        margin: 0 -15px 20px -15px;
+        margin: 0 0 20px 0;
     }
 
     /* ── Odoo display scope ── */
@@ -115,19 +175,91 @@
         white-space: nowrap;
         border: 0;
     }
+
+    /*
+      Nextcloud (and similar SPAs): the Odoo bucket uses flex + overflow:hidden so Owl
+      fills height. Nextcloud’s DOM does not match .o_web_client / .o_action_manager,
+      so the Vue root often gets zero usable height → blank white panel. This class is
+      set only when the handler passes display_nextcloud_bucket (see NextcloudPassthroughHandler).
+    */
+    #polysaas-display-body-bucket.polysaas-nc-bucket {
+        display: block !important;
+        flex-direction: unset !important;
+        overflow: auto !important;
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+        height: auto !important;
+        min-height: calc(100vh - 180px) !important;
+    }
+    #polysaas-display-body-bucket.polysaas-nc-bucket > * {
+        flex: none !important;
+        min-height: unset !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
     <div id="polysaas-orchestration-bar">
-        ● POLYSAAS ORCHESTRATION ACTIVE — DISPLAY SHELL (PHASE 1)<br>
-        <span style="color:#86efac;font-size:13px;">Phase 1 Shell — Use browser refresh (F5) to reload. Do not use the in-app Reload button yet.</span><br>
-        <span style="color:#86efac;font-size:13px;">Note: In-app Reload currently takes you out of Phase 1 shell. Use browser refresh (F5) to return.</span>
+        <span style="color:#0f0;">●</span> <strong>POLYSAAS ORCHESTRATION</strong>
+        &nbsp;|&nbsp;
+        <span id="ps-orch-path" style="color:#86efac;">detecting…</span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">menu_id: <span id="ps-orch-menu" style="color:#fde68a;">—</span></span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">action: <span id="ps-orch-action" style="color:#fde68a;">—</span></span>
+        <span id="ps-orch-event" style="display:none;margin-left:12px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
     </div>
+    <script>
+    (function() {
+        function getOdooInfo() {
+            var path = window.location.pathname;
+            var m = path.match(/\/pt\/admin\/[^/]+(\/.*)$/);
+            var odooPath = m ? m[1].replace(/\/$/, '') || '/' : path;
+            var params = new URLSearchParams(window.location.search + window.location.hash.replace(/^#/, '?'));
+            var menuId  = params.get('menu_id') || '';
+            var action  = params.get('action')  || '';
+            if (!action && window.location.hash) {
+                var hm = window.location.hash.match(/action=([^&]+)/);
+                if (hm) action = decodeURIComponent(hm[1]);
+                var mm = window.location.hash.match(/menu_id=(\d+)/);
+                if (mm) menuId = mm[1];
+            }
+            return { path: odooPath, menuId: menuId, action: action };
+        }
+        function updateBar() {
+            var info = getOdooInfo();
+            var pathEl   = document.getElementById('ps-orch-path');
+            var menuEl   = document.getElementById('ps-orch-menu');
+            var actionEl = document.getElementById('ps-orch-action');
+            if (pathEl)   pathEl.textContent   = info.path   || '—';
+            if (menuEl)   menuEl.textContent   = info.menuId || '—';
+            if (actionEl) actionEl.textContent = info.action || '—';
+        }
+        updateBar();
+        var _push = history.pushState, _replace = history.replaceState;
+        history.pushState    = function() { _push.apply(history, arguments);    updateBar(); };
+        history.replaceState = function() { _replace.apply(history, arguments); updateBar(); };
+        window.addEventListener('popstate', updateBar);
+        setInterval(updateBar, 2000);
+
+        function showOrchEvent(msg) {
+            var el = document.getElementById('ps-orch-event');
+            if (!el) return;
+            el.textContent = '⚡ ' + msg;
+            el.style.display = 'inline';
+            clearTimeout(el._t);
+            el._t = setTimeout(function() { el.style.display = 'none'; }, 12000);
+        }
+        window.__psShowOrchEvent = showOrchEvent;
+    })();
+    </script>
 
     <div id="polysaas-display-head-inject">{{ display_head_inner|safe }}</div>
 
-    <div id="polysaas-display-body-bucket" class="polysaas-passthrough-scope">
+    <div id="polysaas-display-body-bucket" class="polysaas-passthrough-scope{% if display_nextcloud_bucket %} polysaas-nc-bucket{% endif %}">
         {{ display_body_inner|safe }}
     </div>
 
@@ -230,6 +362,53 @@
     {# Odoo passthrough: must run at end of body (after Jazzmin extrajs) so XHR/fetch are patched before deferred Odoo modules execute. Head-inject div scripts are unreliable here. #}
     {% if display_odoo_pt_prefix %}
     <script>
+    // ── SSO Auto-Login for Odoo Display Shell ──
+    (function() {
+        var CRED_LOGIN = '{{ display_credentials.login|default:""|escapejs }}';
+        var CRED_PASS  = '{{ display_credentials.password|default:""|escapejs }}';
+        var CRED_DB    = '{{ display_credentials.db|default:"odoodb"|escapejs }}';
+        var SSO_URL    = '/dose/api/odoo-sso/';
+        var _origFetch = window.fetch;
+
+        function ssoAutoLogin() {
+            if (!CRED_LOGIN || !CRED_PASS) { console.warn('[PolySaaS Odoo] SSO skipped: no credentials in template context'); return; }
+            var already = sessionStorage.getItem('__polysaas_autologin_ts');
+            if (already && (Date.now() - parseInt(already) < 10000)) { console.log('[PolySaaS Odoo] SSO skipped: guard active (' + Math.round((10000-(Date.now()-parseInt(already)))/1000) + 's left)'); return; }
+            var loginInput = document.querySelector('input[name="login"], input[type="email"], #login');
+            var passInput  = document.querySelector('input[name="password"], input[type="password"], #password');
+            var btn        = document.querySelector('button[type="submit"], .btn-primary, .oe_login_button');
+            if (!loginInput || !passInput || !btn) { console.log('[PolySaaS Odoo] SSO skipped: no login form visible'); return; }
+            console.log('[PolySaaS Odoo] SSO auto-login starting for:', CRED_LOGIN);
+            loginInput.value = CRED_LOGIN;
+            loginInput.dispatchEvent(new Event('input', {bubbles:true}));
+            passInput.value = CRED_PASS;
+            passInput.dispatchEvent(new Event('input', {bubbles:true}));
+            var dbInput = document.querySelector('input[name="db"], select[name="db"], #db');
+            if (dbInput && CRED_DB) { dbInput.value = CRED_DB; dbInput.dispatchEvent(new Event('change', {bubbles:true})); }
+            setTimeout(function() {
+                (_origFetch || fetch)(SSO_URL, {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+                    credentials: 'include'
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    console.log('[PolySaaS Odoo] SSO response:', JSON.stringify(data).substring(0,200));
+                    if (data && data.ok && data.session_id) {
+                        document.cookie = 'session_id=' + data.session_id + '; path=/; SameSite=Lax';
+                        sessionStorage.setItem('__polysaas_autologin_ts', String(Date.now()));
+                        console.log('[PolySaaS Odoo] SSO ok — navigating to', data.redirect_url);
+                        window.location.href = data.redirect_url || window.location.href;
+                    } else {
+                        console.warn('[PolySaaS Odoo] SSO failed:', (data && data.error) || data);
+                    }
+                }).catch(function(err) { console.error('[PolySaaS Odoo] SSO error:', err); });
+            }, 800);
+        }
+        document.addEventListener('DOMContentLoaded', ssoAutoLogin);
+        setTimeout(ssoAutoLogin, 1500);
+        setTimeout(ssoAutoLogin, 3000);
+    })();
+    </script>
+    <script>
     (function () {
         console.log('[PolySaaS Odoo] Shim loaded - forcing action = null for clean start');
         if (window.odoo && window.odoo.__session_info__) {
@@ -238,7 +417,7 @@
         }
         var P = '{{ display_odoo_pt_prefix|escapejs }}';
         console.log('[PolySaaS Odoo DEBUG] Shim started - P =', P);
-        console.log('[PolySaaS Odoo DEBUG] Initial fetch path being used:', 'check network for first /pt/admin/odoo/ request');
+        console.log('[PolySaaS Odoo DEBUG] Initial fetch path being used: check network for first', P + '/ request');
         function fix(u) {
             console.log('[PolySaaS Odoo DEBUG] fix() called with url:', u);
             if (typeof u !== 'string' || !u) return u;
@@ -412,4 +591,84 @@
     })();
     </script>
     {% endif %}
+
+    {# Dynamic orchestration toast — polls DoseMessage API for new notifications #}
+    <script>
+    (function() {
+        'use strict';
+        var POLL_INTERVAL = 4000;
+        var TOAST_DURATION = 7000;
+        var seenIds = {};
+        var styleInjected = false;
+
+        var LEVEL_STYLES = {
+            success: 'background:#166534;color:#fff;',
+            info:    'background:#1565c0;color:#fff;',
+            warning: 'background:#e65100;color:#fff;',
+            error:   'background:#b71c1c;color:#fff;',
+        };
+
+        var LEVEL_ICONS = {
+            success: '\u2705',
+            info:    '\u2139\ufe0f',
+            warning: '\u26a0\ufe0f',
+            error:   '\u274c',
+        };
+
+        function injectStyle() {
+            if (styleInjected) return;
+            var s = document.createElement('style');
+            s.textContent = '@keyframes psToastIn{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}@keyframes psToastOut{from{transform:translateX(0);opacity:1;}to{transform:translateX(100%);opacity:0;}}';
+            document.head.appendChild(s);
+            styleInjected = true;
+        }
+
+        function showToast(message, level) {
+            injectStyle();
+            var icon = LEVEL_ICONS[level] || LEVEL_ICONS.info;
+            var bg = LEVEL_STYLES[level] || LEVEL_STYLES.info;
+            var el = document.createElement('div');
+            el.style.cssText = 'position:fixed;top:20px;right:20px;max-width:420px;padding:14px 22px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.3);z-index:99999;font-size:14px;line-height:1.5;font-family:system-ui,-apple-system,sans-serif;animation:psToastIn 0.3s ease;cursor:pointer;' + bg;
+            el.textContent = icon + ' ' + message;
+            el.onclick = function() { el.remove(); };
+            document.body.appendChild(el);
+            setTimeout(function() {
+                el.style.animation = 'psToastOut 0.3s ease forwards';
+                setTimeout(function() { el.remove(); }, 350);
+            }, TOAST_DURATION);
+        }
+
+        function pollMessages() {
+            fetch('/dose/api/unread-dosemessages/', {credentials: 'same-origin'})
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (!data || !data.unread_messages) return;
+                    data.unread_messages.forEach(function(msg) {
+                        if (seenIds[msg.id]) return;
+                        seenIds[msg.id] = true;
+                        showToast(msg.message, msg.level || 'success');
+                        if (msg.message && msg.message.indexOf('rchestration') !== -1 && window.__psShowOrchEvent) {
+                            window.__psShowOrchEvent(msg.message);
+                        }
+                    });
+                    if (data.count > 0) {
+                        fetch('/dose/api/unread-dosemessages/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': getCsrf()}});
+                    }
+                })
+                .catch(function() {});
+        }
+
+        function getCsrf() {
+            var m = document.cookie.match(/csrftoken=([^;]+)/);
+            return m ? m[1] : '';
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() { setInterval(pollMessages, POLL_INTERVAL); pollMessages(); });
+        } else {
+            setInterval(pollMessages, POLL_INTERVAL);
+            pollMessages();
+        }
+    })();
+    </script>
 {% endblock %}

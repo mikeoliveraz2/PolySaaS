@@ -48,10 +48,10 @@ def test_subscribe_t104():
         )
         print(f"✓ Tenant created: {tenant.schema_name}")
         
-        # Run migrations for new schema
+        # Run migrations in the configured default DB (no schema_name option here)
         from django.core.management import call_command
-        call_command('migrate', schema_name=tenant_slug, run_syncdb=True, verbosity=0)
-        print(f"✓ Migrations run for {tenant_slug}")
+        call_command('migrate', run_syncdb=True, verbosity=0)
+        print("✓ Migrations completed")
     
     # Check if user exists
     user = User.objects.filter(email=admin_email).first()
@@ -88,13 +88,13 @@ def test_subscribe_t104():
     sub, _ = Subscription.objects.get_or_create(
         tenant=tenant,
         defaults={
-            'plan': 'trial',
-            'status': 'active',
+            'plan_tier': 'polysaas-1',
+            'active': True,
             'stripe_customer_id': 'test_cus_t104',
             'stripe_subscription_id': 'test_sub_t104',
         }
     )
-        print(f"✓ Subscription: {sub.plan_tier} (Active: {sub.active})")
+    print(f"✓ Subscription: {sub.plan_tier} (Active: {sub.active})")
     
     # Create TenantApps for bundled apps
     from dose.models import TenantApp

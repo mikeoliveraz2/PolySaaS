@@ -33,8 +33,9 @@ def _odoo_upstream_bypasses_display_shell(upstream_subpath: str) -> bool:
     """
     u = upstream_subpath or ""
     # /web exact = Odoo app home after login redirect — must go through display shell, not be bypassed.
+    # /web/login = login form — must go through display shell for SSO credential injection.
     # /web/ subdpaths (assets, datasets, actions, binary, session) are API/asset calls → bypass.
-    if u.startswith("/web/"):
+    if u.startswith("/web/") and u != "/web/login":
         return True
     if u == "/website" or u.startswith("/website/"):
         return True
@@ -58,9 +59,119 @@ class OdooPassthroughHandler:
     def native_passthrough_prefixes(self):
         return ("/web", "/odoo", "/bus", "/websocket", "/longpolling")
 
+    def should_exempt_csrf_for_path(self, path_info: str) -> bool:
+        """
+        Safety net: exempt native Odoo paths from Django CSRF.
+        The client-side shim rewrites form actions to go through /pt/, but if it
+        fails (timing, Owl re-render), the POST lands here without a Django CSRF
+        token. Exempting these paths prevents a confusing 403 — the request will
+        either be forwarded by ExternalPassthroughMiddleware or 404 via urlconf.
+        """
+        for prefix in self.native_passthrough_prefixes():
+            if path_info == prefix or path_info.startswith(prefix + "/"):
+                return True
+        return False
+
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """Odoo often redirects internally before landing on the usable page/document."""
-        return True
+        """Follow GET redirect chains (e.g. login page) but NOT POST — the browser must
+        receive the post-login 3xx so it navigates to the correct proxied URL."""
+        return request.method != "POST"
+
+    # Django-owned cookies that must never be forwarded to Odoo.
+    # NOTE: 'session_id' is Odoo's session cookie — do NOT include it here.
+    # 'sessionid' (no underscore) is Django's session cookie.
+    _DJANGO_COOKIE_NAMES = frozenset({
+        "sessionid", "csrftoken",
+        "messages", "django_language",
+    })
+
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        """Remove Django session/CSRF cookies so Odoo uses its own session context."""
+        filtered = {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+        removed = set(cookies) - set(filtered)
+        if removed:
+            print(f"[ODOO HANDLER] Filtered Django cookies from upstream request: {removed}")
+        return filtered
+
+    # Thread-local cache: stores (session_id, csrf_token) fetched from a fresh GET /web/login
+    _fresh_login_session: dict = {}
+
+    def _fetch_fresh_login_session(self, odoo_base_url: str, tenant_session_id: str = None) -> tuple:
+        """
+        Do a server-side GET /web/login to Odoo and return (session_id, csrf_token).
+        Uses the tenant's cached session_id so the csrf_token MATCHES the session.
+        Caches result for 5 minutes.
+        """
+        import time as _time
+        cache_key = odoo_base_url
+        cached = self._fresh_login_session.get(cache_key, {})
+        if cached and (_time.time() - cached.get("ts", 0) < 300):
+            print(f"[ODOO HANDLER] Using cached fresh login session for {odoo_base_url}")
+            return cached["session_id"], cached["csrf_token"]
+
+        try:
+            import requests as _req
+            cookies = {}
+            if tenant_session_id:
+                cookies['session_id'] = tenant_session_id
+                print(f"[ODOO HANDLER] Fetching login page with tenant session_id")
+            resp = _req.get(
+                f"{odoo_base_url}/web/login",
+                allow_redirects=True,
+                timeout=15,
+                cookies=cookies,
+            )
+            # Prefer the session we sent; if Odoo rotated it, use the new one
+            session_id = resp.cookies.get("session_id") or tenant_session_id
+            csrf_token = None
+            if resp.status_code == 200 and resp.text:
+                m = re.search(
+                    r'<input[^>]+name=["\']csrf_token["\'][^>]+value=["\']([^"\']+)["\']',
+                    resp.text,
+                    re.IGNORECASE,
+                )
+                if not m:
+                    m = re.search(
+                        r'csrf_token["\s]*:["\s]*["\']([a-f0-9]+o\d+)["\']',
+                        resp.text,
+                    )
+                if m:
+                    csrf_token = m.group(1)
+            if session_id and csrf_token:
+                self._fresh_login_session[cache_key] = {
+                    "session_id": session_id,
+                    "csrf_token": csrf_token,
+                    "ts": _time.time(),
+                }
+                print(f"[ODOO HANDLER] Fetched fresh login session: session_id=<redacted>, csrf_token={csrf_token[:16]}...")
+                return session_id, csrf_token
+            else:
+                print(f"[ODOO HANDLER] _fetch_fresh_login_session: status={resp.status_code} session_id={bool(session_id)} csrf={bool(csrf_token)}")
+        except Exception as exc:
+            print(f"[ODOO HANDLER] _fetch_fresh_login_session failed: {exc}")
+        return None, None
+
+    def override_upstream_cookies(self, request, target_url: str):
+        """Inject tenant session only if browser has no Odoo session yet.
+        Once the browser has a session (from JSON-RPC auto-login), trust it."""
+        try:
+            # If browser already has a session_id, don't override it
+            if request.COOKIES.get('session_id'):
+                print("[ODOO HANDLER] override_upstream_cookies: browser has session_id, skipping")
+                return {}
+            cookies = self.get_upstream_cookies(request)
+            if cookies.get('session_id'):
+                print(f"[ODOO HANDLER] override_upstream_cookies: injecting tenant session_id (browser had none)")
+                return cookies
+        except Exception as exc:
+            print(f"[ODOO HANDLER] override_upstream_cookies failed: {exc}")
+        return {}
+
+    def get_request_body(self, request, target_url: str):
+        """Pass login POST body through unchanged.
+        The browser csrf_token is paired with its own session; replacing it with
+        a server-fetched token from a different session causes Odoo 400."""
+        return None
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         """
@@ -75,34 +186,12 @@ class OdooPassthroughHandler:
         headers["Host"] = parsed.netloc
         headers["X-Forwarded-For"] = request.META.get("REMOTE_ADDR", "")
         headers["X-Forwarded-Proto"] = "https" if request.is_secure() else "http"
-        headers["X-Forwarded-Host"] = request.get_host()
+        headers["X-Forwarded-Host"] = parsed.netloc
         try:
             headers["X-Forwarded-Port"] = str(request.get_port())
         except Exception:
             headers["X-Forwarded-Port"] = "443" if request.is_secure() else "80"
         headers.pop("Referer", None)
-
-    def try_rewrite_incoming_path(self, request, endpoint) -> bool:
-        """
-        Remap native Odoo URLs (/web/, /odoo/, /bus/, /websocket) onto this endpoint's proxy prefix.
-        """
-        path = request.path_info
-        if path.startswith("/pt/"):
-            return False
-        native_prefixes = tuple(prefix + "/" for prefix in self.native_passthrough_prefixes())
-        if path not in self.native_passthrough_prefixes() and not path.startswith(native_prefixes):
-            return False
-        seg = (
-            (getattr(endpoint, "trigger_path", None) or "odoo")
-            .strip("/")
-            .lower()
-            .split("/")[-1]
-            .replace("-", "_")
-        )
-        proxy_prefix = f"/pt/admin/{seg}"
-        request.path_info = proxy_prefix + path
-        print(f"[ODOO-HANDLER] native path rewrite → {request.path_info}")
-        return True
 
     def upstream_url_for_subpath(self, endpoint_url, clean_path):
         """
@@ -125,18 +214,40 @@ class OdooPassthroughHandler:
         body inner only for non-root paths (root stays empty so the SPA owns #wrapwrap — avoids
         double DOM vs server snapshot). quoted /web/ rewrite + XHR patch. Static ext → forward.
         """
+        print(f"[ODOO HANDLER] try_root_display_shell_response CALLED")
+        print(f"[ODOO HANDLER]   method={request.method}, path_info={request.path_info}")
+        print(f"[ODOO HANDLER]   url_trigger_segment={url_trigger_segment}")
+        print(f"[ODOO HANDLER]   endpoint={endpoint}")
+
         if request.method != "GET":
+            print(f"[ODOO HANDLER]   RETURN None: not GET")
             return None
-        seg = (
-            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
-        )
+
+        print("[ODOO HANDLER]   Preserving native upstream HTML document")
+        return None
+
+        # Determine seg and proxy_prefix.
+        # Hostname triggers (e.g. polysaas-odoo2.onrender.com) keep the hostname as-is so
+        # that URL rewrites inside the display shell still point to the right proxy path.
+        # Named triggers (e.g. "odoo") use the normalized slug.
+        if "." in url_trigger_segment:
+            seg = url_trigger_segment.strip("/")          # hostname kept verbatim
+        else:
+            seg = url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
+
         proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
         norm = path_info.rstrip("/")
-        if norm == proxy_prefix:
+
+        if norm == proxy_prefix.rstrip("/"):
             upstream_subpath = "/"
+            if "." in url_trigger_segment:
+                # Hostname root: redirect to /web/login so the URL is explicit
+                from django.http import HttpResponseRedirect
+                print(f"[ODOO] Hostname root → redirecting browser to {proxy_prefix}/web/login")
+                return HttpResponseRedirect(f"{proxy_prefix}/web/login")
         elif path_info.startswith(proxy_prefix + "/"):
-            upstream_subpath = path_info[len(proxy_prefix) :]
+            upstream_subpath = path_info[len(proxy_prefix):]
             if not upstream_subpath.startswith("/"):
                 upstream_subpath = "/" + upstream_subpath
         else:
@@ -186,13 +297,41 @@ class OdooPassthroughHandler:
                 if upstream_subpath.rstrip("/") in ("", "/")
                 else upstream_subpath
             )
+            fetch_dbg = {}
             raw_html = fetch_upstream_index_html(
                 request,
                 endpoint.endpoint_url,
                 fetch_path,
                 handler=self,
+                fetch_debug=fetch_dbg,
             )
+            # Windows / mixed stacks: localhost sometimes fails where 127.0.0.1 works for requests.
+            if (
+                not raw_html
+                and endpoint.endpoint_url
+                and "localhost" in endpoint.endpoint_url
+                and "127.0.0.1" not in endpoint.endpoint_url
+            ):
+                alt_ep = endpoint.endpoint_url.replace("localhost", "127.0.0.1", 1)
+                if alt_ep != endpoint.endpoint_url:
+                    fetch_dbg["retried_as"] = alt_ep
+                    raw_html = fetch_upstream_index_html(
+                        request,
+                        alt_ep,
+                        fetch_path,
+                        handler=self,
+                        fetch_debug=fetch_dbg,
+                    )
             if raw_html and not raw_html.startswith("REDIRECT:"):
+                logger.info(f"[ODOO HANDLER] Processing HTML ({len(raw_html)} chars)")
+                # Rewrite asset paths BEFORE extracting head/body so <link>/<script>
+                # src/href point through the proxy instead of bare /web/assets/...
+                raw_html = self._rewrite_static_paths(
+                    raw_html,
+                    proxy_prefix=f"/pt/admin/{seg}",
+                    base_origin=upstream_origin,
+                )
+                raw_html = self._rewrite_web_paths_for_display_shell(raw_html, seg=seg)
                 m = re.search(
                     r"<head[^>]*>(.*?)</head>",
                     raw_html,
@@ -201,6 +340,9 @@ class OdooPassthroughHandler:
                 if m:
                     head_raw = m.group(1).strip()
                     display_head_inner = self._strip_base_tags(head_raw)
+                    logger.info(f"[ODOO HANDLER] Extracted head ({len(display_head_inner)} chars)")
+                else:
+                    logger.warning("[ODOO HANDLER] No <head> tag found in HTML")
                 # TEMP DEBUG (CC): always extract upstream <body> so display.html <pre> shows raw HTML.
                 # Revert: wrap below in `if upstream_subpath.rstrip("/") not in ("", "/"):` — root was
                 # body-empty so SPA mounts #wrapwrap client-side; full body here can break layout.
@@ -211,19 +353,44 @@ class OdooPassthroughHandler:
                 )
                 if m_body:
                     display_body_inner = m_body.group(1).strip()
+                    logger.info(f"[ODOO HANDLER] Extracted body ({len(display_body_inner)} chars)")
+                else:
+                    # Fallback: no body tag found - wrap entire HTML for display
+                    logger.warning("[ODOO HANDLER] No <body> tag found, using raw HTML fallback")
+                    display_body_inner = f'<div class="odoo-raw-content">{raw_html}</div>'
             elif raw_html and raw_html.startswith("REDIRECT:"):
+                from django.utils.html import escape as _esc
+
+                loc = _esc(str(fetch_dbg.get("location") or ""))
                 display_body_inner = (
                     '<div class="alert alert-warning" style="margin:16px;">'
                     'Odoo display shell received an upstream redirect instead of HTML. '
                     'The proxy shell rendered, but the upstream app did not provide boot HTML.'
-                    '</div>'
+                    + (f"<br><small>Location: {loc}</small>" if loc else "")
+                    + "</div>"
                 )
             else:
+                from django.utils.html import escape as _esc
+
+                detail_parts = []
+                if fetch_dbg.get("error"):
+                    detail_parts.append(f"Connection: {_esc(str(fetch_dbg['error']))}")
+                st = fetch_dbg.get("status")
+                if st not in (None, ""):
+                    detail_parts.append(f"HTTP status {_esc(str(st))}")
+                if fetch_dbg.get("url"):
+                    detail_parts.append(f"last request URL: {_esc(str(fetch_dbg['url']))}")
+                detail = ("<br><small>" + " — ".join(detail_parts) + "</small>") if detail_parts else ""
                 display_body_inner = (
                     '<div class="alert alert-danger" style="margin:16px;">'
-                    f'Could not load Odoo HTML from upstream endpoint {upstream_origin}. '
-                    'The display shell is active, but the upstream service appears unavailable or returned no HTML.'
-                    '</div>'
+                    f"Could not load Odoo HTML from upstream endpoint <code>{upstream_origin}</code>. "
+                    "The display shell is active, but the server-side fetch got no HTML."
+                    f"{detail}"
+                    "<br><small>Check that Odoo is listening on that host/port. "
+                    "If Django runs in Docker, use <code>http://host.docker.internal:8069/…</code> "
+                    "or the compose service name (e.g. <code>http://odoo:8069/…</code>) in "
+                    "<strong>PassThroughEndpoint</strong> instead of <code>localhost</code>.</small>"
+                    "</div>"
                 )
 
         display_head_inner = self._rewrite_web_paths_for_display_shell(
@@ -251,9 +418,20 @@ class OdooPassthroughHandler:
 'use strict';
 var PROXY={json.dumps(proxy_prefix)};
 var B={json.dumps(_base)};
+function _collapseProxyDupes(u){{
+    if(!u||!PROXY)return u;
+    var doubled=PROXY+PROXY;
+    while(u.indexOf(doubled)!==-1)u=u.split(doubled).join(PROXY);
+    return u;
+}}
 function _toProxy(u){{
     if(!u||typeof u!=='string')return u;
-    if(u.indexOf(B)===0)return PROXY+u.slice(B.length);
+    if(typeof window!=='undefined'&&window.location&&window.location.origin&&u.indexOf(window.location.origin)===0){{
+        u=u.slice(window.location.origin.length);
+    }}
+    u=_collapseProxyDupes(u);
+    if(u===PROXY||u.indexOf(PROXY+'/')===0)return u;
+    if(u.indexOf(B)===0)return _collapseProxyDupes(PROXY+u.slice(B.length));
     if(u.charAt(0)==='/'&&!u.startsWith(PROXY)){{
         if(u.startsWith('/web/')||u.startsWith('/odoo/')||u.startsWith('/bus/')||
            u.startsWith('/websocket')||u.startsWith('/mail/')||u.startsWith('/jsonrpc')||
@@ -267,7 +445,17 @@ var _f=window.fetch;
 window.fetch=function(input,init){{
     if(typeof input==='string')input=_toProxy(input);
     else if(typeof Request!=='undefined'&&input instanceof Request){{var n=_toProxy(input.url);if(n!==input.url)input=new Request(n,input);}}
-    return _f.call(this,input,init);
+    return _f.call(this,input,init).then(function(r){{
+        var ct=(r.headers&&r.headers.get)?r.headers.get('content-type')||'':'';
+        if(ct.indexOf('text/html')!==-1){{
+            var u=(typeof input==='string')?input:(input&&input.url||'');
+            if(u.indexOf('/bus/')!==-1||u.indexOf('/longpolling/')!==-1||u.indexOf('/discuss/')!==-1||u.indexOf('/mail/')!==-1||u.indexOf('/web/dataset/')!==-1){{
+                console.warn('[PolySaaS] Blocked HTML for JSON:',u);
+                return new Response(JSON.stringify({{jsonrpc:'2.0',id:null,result:[]}}),{{status:200,headers:{{'Content-Type':'application/json'}}}});
+            }}
+        }}
+        return r;
+    }});
 }};
 var _x=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(){{
@@ -292,6 +480,7 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
                 if display_body_inner
                 else "",
                 "display_odoo_pt_prefix": proxy_prefix,
+                "display_credentials": self.get_upstream_credentials(request),
                 # Odoo 18 mounts nodes on document.body — display.html hijacks appendChild.
                 "display_enable_odoo_body_scope": True,
                 "display_shell_footer": (
@@ -366,39 +555,28 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             tenant = get_current_tenant(request)
             if not tenant:
                 return {}
-            ta = TenantApp.objects.filter(
+            ta = TenantApp.public_bundles.filter(
                 tenant=tenant, app_name='odoo', status='active',
             ).first()
             if not ta:
                 return {}
             extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
 
-            # TEMP: skip 1h session cache — it may still be another Odoo user from before admin/admin.
-            # After revert to extra_config credentials, restore the cached-session block below.
-            # session_id = ta.extra_config.get("odoo_session_id")
-            # session_time = ta.extra_config.get("odoo_session_time", 0)
-            # if session_id and (time.time() - session_time < 3600):
-            #     return {"session_id": session_id}
+            # Use cached session if still fresh (30 min TTL)
+            session_id = extra.get("odoo_session_id")
+            session_time = extra.get("odoo_session_time", 0)
+            if session_id and (time.time() - session_time < 1800):
+                return {"session_id": session_id}
 
-            # TEMP (explicit user request): sidebar passthrough always JSON-RPC logs in as Odoo
-            # admin/admin so you can reset Discuss/history on that account. Revert to
-            # extra_config odoo_login / odoo_password when done.
-            login_id = "admin"
-            password = "admin"
-            db_name = extra.get("odoo_db") or "odoo"
+            # Standardized app-admin credentials from TenantApp.extra_config
+            from django.conf import settings
+            login_id = extra.get("odoo_login") or "odooAdmin"
+            password = extra.get("odoo_password") or getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+            db_name = extra.get("odoo_db") or getattr(settings, 'ODOO_SHARED_DB', 'odoodb')
 
-            # Resolve Odoo base URL from the PassThroughEndpoint
-            odoo_url = 'http://localhost:8069'
-            try:
-                from dose.models import PassThroughEndpoint
-                ep = PassThroughEndpoint.objects.filter(
-                    trigger_path__iexact="odoo", is_enabled=True
-                ).order_by("-id").first()
-                if ep:
-                    p = urlparse(ep.endpoint_url)
-                    odoo_url = f"{p.scheme}://{p.netloc}"
-            except Exception:
-                pass
+            # Resolve Odoo base URL from settings (reliable) or extra_config
+            odoo_url = extra.get("odoo_url") or getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+            print(f"[ODOO HANDLER] get_upstream_cookies: tenant={tenant.slug}, login={login_id}, db={db_name}, url={odoo_url}")
 
             resp = _req.post(
                 f'{odoo_url}/web/session/authenticate',
@@ -434,77 +612,220 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
             logger.warning("[ODOO HANDLER] get_upstream_cookies failed: %s", exc)
         return {}
 
+    def get_upstream_credentials(self, request):
+        """Return dict with login, password, db for client-side form prepopulation.
+        Always returns fallback credentials so CRED_LOGIN is never empty."""
+        from django.conf import settings
+        default_login = 'odooAdmin'
+        default_pass  = getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+        default_db    = getattr(settings, 'ODOO_SHARED_DB', 'odoodb')
+        try:
+            tenant = getattr(request, 'tenant', None)
+            if not tenant:
+                return {'login': default_login, 'password': default_pass, 'db': default_db}
+            from dose.models import TenantApp
+            manager = getattr(TenantApp, 'public_bundles', TenantApp.objects)
+            ta = manager.filter(
+                tenant=tenant, app_name='odoo',
+            ).filter(status__in=['active', 'provisioning']).first()
+            extra = (ta.extra_config if isinstance(ta.extra_config, dict) else {}) if ta else {}
+            return {
+                'login':    extra.get('odoo_login')    or default_login,
+                'password': extra.get('odoo_password') or default_pass,
+                'db':       extra.get('odoo_db')       or default_db,
+            }
+        except Exception as exc:
+            logger.warning("[ODOO HANDLER] get_upstream_credentials failed: %s", exc)
+            return {'login': default_login, 'password': default_pass, 'db': default_db}
+
     # ------------------------------------------------------------------ #
     # HTML processing                                                      #
     # ------------------------------------------------------------------ #
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        logger.info("[ODOO HANDLER] Processing HTML")
+        print(f"[ODOO HANDLER] Processing HTML for {endpoint_url}")
 
-        if not endpoint_url:
-            return html_str, None
+        path_info = (getattr(request, 'path_info', '') or '').strip()
+        seg = 'odoo'
+        parts = path_info.strip('/').split('/') if path_info else []
+        if len(parts) >= 3 and parts[0] == 'pt' and parts[1] == 'admin':
+            seg = parts[2]
+        proxy_prefix = f"/pt/admin/{seg}"
+        base_origin = ''
+        if endpoint_url:
+            parsed = urlparse(endpoint_url)
+            if parsed.scheme and parsed.netloc:
+                base_origin = f"{parsed.scheme}://{parsed.netloc}"
 
-        parsed      = urlparse(endpoint_url.rstrip('/'))
-        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        # Detect Odoo database selector page (login failed / user not provisioned)
+        if self._is_database_selector_page(html_str):
+            print('[ODOO HANDLER] Detected database selector page - user not provisioned or login failed')
+            error_html = self._render_provisioning_error_page(request)
+            return error_html, None
 
-        session_id = (self.get_upstream_cookies(request) or {}).get('session_id') or ''
+        # Keep native Odoo document, but rewrite root-relative URLs so all traffic
+        # stays under /pt/admin/<trigger>/ instead of escaping to /web/* on Django.
+        html_str = self._rewrite_static_paths(
+            html_str,
+            proxy_prefix=proxy_prefix,
+            base_origin=base_origin,
+        )
+        html_str = self._rewrite_web_paths_for_display_shell(html_str, seg=seg)
+        html_str = self._rewrite_absolute_polysaas_host_paths(
+            html_str,
+            request.get_host(),
+            proxy_prefix,
+        )
 
-        html_str = self._strip_base_tags(html_str)
-        html_str = self._strip_meta_redirects(html_str)
-        html_str = self._strip_csp(html_str)
-        # Rewrite initial HTML asset paths BEFORE the JS shim runs.
-        # <link> and <script> tags are fetched by the browser before JS executes, so we must
-        # rewrite them server-side to route through our proxy.
-        html_str = self._rewrite_static_paths(html_str)
-        html_str = self._inject_client_shim(html_str, base_origin, session_id=session_id)
+        # Patch fetch/XHR/history before Odoo boot scripts run so API calls to /web/*
+        # are proxied through /pt/admin/<trigger>/ and don't 404 on localhost.
+        html_str = self._inject_client_shim(
+            html_str,
+            base_origin,
+            session_id=request.COOKIES.get('session_id', ''),
+            proxy_prefix=proxy_prefix,
+            credentials=self.get_upstream_credentials(request),
+        )
 
+        print('[ODOO HANDLER] Rewrote Odoo document for proxy-safe asset/API routing')
         return html_str, None
 
-    def _rewrite_static_paths(self, html):
+    def _is_database_selector_page(self, html_str: str) -> bool:
+        """Detect if Odoo is showing the database selector/manage databases page."""
+        if not html_str:
+            return False
+        # Odoo database selector indicators
+        indicators = [
+            'Manage Databases',
+            'Powered by Odoo',
+            'database/selector',
+            '/web/database/manager',
+            'name="login"',
+        ]
+        # Check for multiple indicators to reduce false positives
+        matches = sum(1 for indicator in indicators if indicator in html_str)
+        return matches >= 2 and 'database' in html_str.lower()
+
+    def _render_provisioning_error_page(self, request) -> str:
+        """Render an error page when Odoo user provisioning failed."""
+        from dose.utils import get_current_tenant
+        tenant = get_current_tenant(request)
+        tenant_name = tenant.name if tenant else 'Your tenant'
+        
+        return f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>Odoo Access Error - PolySaaS</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+               background: #f5f5f5; margin: 0; padding: 40px 20px; }}
+        .container {{ max-width: 600px; margin: 0 auto; background: white; 
+                      padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        h1 {{ color: #e74c3c; margin-bottom: 20px; }}
+        .error-icon {{ font-size: 48px; text-align: center; margin-bottom: 20px; }}
+        .message {{ color: #333; line-height: 1.6; margin-bottom: 20px; }}
+        .actions {{ margin-top: 30px; }}
+        .btn {{ display: inline-block; padding: 12px 24px; background: #3498db; 
+               color: white; text-decoration: none; border-radius: 4px; margin-right: 10px; }}
+        .btn:hover {{ background: #2980b9; }}
+        .details {{ background: #f8f9fa; padding: 15px; border-radius: 4px; 
+                    margin-top: 20px; font-size: 14px; color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-icon">⚠️</div>
+        <h1>Odoo Access Not Ready</h1>
+        <p class="message">
+            <strong>{tenant_name}</strong> does not have an active Odoo user account yet.
+        </p>
+        <p class="message">
+            This usually happens when:
+            <ul>
+                <li>Odoo user provisioning is still in progress</li>
+                <li>User creation failed during signup</li>
+                <li>The Odoo server is temporarily unavailable</li>
+            </ul>
+        </p>
+        <div class="actions">
+            <a href="/admin/" class="btn">Go to Admin Dashboard</a>
+            <a href="javascript:location.reload()" class="btn">Retry Access</a>
+        </div>
+        <div class="details">
+            <strong>Need help?</strong> Check the TenantApps status in your PolySaaS admin panel. 
+            If Odoo shows "error" status, the provisioning failed and you may need to contact support.
+        </div>
+    </div>
+</body>
+</html>'''
+
+    def _rewrite_static_paths(self, html, proxy_prefix='/pt/admin/odoo', base_origin=''):
         """
-        Rewrite src/href attributes in <link>/<script>/<img> tags that start with /web/, /website/,
-        /odoo/, or /bus/ to go through our PolySaaS proxy at /pt/admin/odoo/.
-        This must happen server-side because the browser fetches these before JS runs.
-        Also rewrites CSS url() references inside <style> blocks (for @font-face).
+        Rewrite src/href/data-src/srcset attributes in <link>/<script>/<img> tags.
+        
+        Strategy:
+        1. Odoo native paths (/web/, /odoo/, /bus/, etc.) -> route through proxy
+        2. Other relative paths (/images/, /static/, etc.) -> make absolute with upstream origin
         """
+        import re
+
+        def _rewrite_path(path):
+            if not path or not path.startswith('/'):
+                return path
+            if path.startswith('/pt/'):
+                return path
+
+            # Only rewrite paths that are likely static assets / icons
+            if any(keyword in path.lower() for keyword in (
+                '/static/', '/base/static/', '/im_', '/web/static/',
+                '/description/icon', '.png', '.jpg', '.svg', '.gif'
+            )):
+                new_path = proxy_prefix + path
+                print(f"[ODOO ICON FIX] {path} -> {new_path}")
+                return new_path
+
+            return path
+
+        # Target src/data-src for images + href/action for links/forms
+        # But only rewrite paths that look like Odoo assets or API calls
+        def _should_rewrite(path):
+            """Check if path is an Odoo asset that needs proxying."""
+            if not path.startswith('/'):
+                return False
+            if path.startswith('/pt/') or path.startswith(proxy_prefix):
+                return False
+            odoo_patterns = (
+                '/web/', '/odoo/', '/bus/', '/base/', '/static/',
+                '/im_', '/description/icon', '.png', '.jpg', '.svg', '.gif', '.css', '.js'
+            )
+            return any(p in path.lower() for p in odoo_patterns)
+
         def _rewrite_attr(m):
-            prefix = m.group(1)
-            path   = m.group(2)
-            if (
-                path.startswith('/web/')
-                or path.startswith('/website/')
-                or path.startswith('/odoo/')
-                or path.startswith('/bus/')
-                or path.startswith('/websocket')
-            ):
-                path = '/pt/admin/odoo' + path
+            prefix = m.group(1)  # e.g., 'src="' or "href='"
+            path = m.group(2)
+            if _should_rewrite(path):
+                new_path = proxy_prefix + path
+                print(f"[ODOO REWRITE] {path} -> {new_path}")
+                return prefix + new_path
             return prefix + path
 
-        # Rewrite href="...", src="...", and action="..." in tag attributes
         html = re.sub(
-            r'((?:href|src|action)=["\'])(/(?:web|website|odoo|bus|websocket)[^"\']*)',
-            _rewrite_attr, html,
+            r'((?:src|data-src|href|action)=["\'])(/[^"\']+)',
+            _rewrite_attr, html, flags=re.IGNORECASE
         )
 
-        # Rewrite url(...) inside inline <style> blocks (covers @font-face and background-image)
+        # 2. CSS url() for background icons (using same targeted _rewrite_path)
         def _rewrite_css_url(m):
             quote = m.group(1) or ''
-            path  = m.group(2)
+            path = m.group(2)
             close = m.group(3) or ''
-            if (
-                path.startswith('/web')
-                or path.startswith('/website')
-                or path.startswith('/odoo')
-                or path.startswith('/bus')
-                or path.startswith('/websocket')
-            ):
-                path = '/pt/admin/odoo' + path
-            return f'url({quote}{path}{close})'
+            return f'url({quote}{_rewrite_path(path)}{close})'
 
         html = re.sub(
-            r'url\((["\']?)(/(?:web|website|odoo|bus|websocket)[^)"\']*)(["\']?)\)',
-            _rewrite_css_url, html,
+            r'url\((["\']?)(/[^)"\']*)(["\']?)\)',
+            _rewrite_css_url, html, flags=re.IGNORECASE
         )
+
         return html
 
     # ------------------------------------------------------------------ #
@@ -531,11 +852,16 @@ console.log('[PolySaaS] Early fetch/XHR shim active, proxy='+PROXY);
     # Client-side shim                                                     #
     # ------------------------------------------------------------------ #
 
-    def _inject_client_shim(self, html, base_origin, session_id=''):
+    def _inject_client_shim(self, html, base_origin, session_id='', proxy_prefix='/pt/admin/odoo', credentials=None):
+        import time
         base_json    = json.dumps(base_origin)
         session_json = json.dumps(session_id)
-        proxy_prefix = '/pt/admin/odoo'
         proxy_json   = json.dumps(proxy_prefix)
+        ts_json      = json.dumps(str(int(time.time())))
+        creds = credentials or {}
+        cred_login_json  = json.dumps(creds.get('login', ''))
+        cred_pass_json   = json.dumps(creds.get('password', ''))
+        cred_db_json     = json.dumps(creds.get('db', ''))
 
         # ── Odoo 18 Base Path Fix ──
         # Odoo 18 often uses a <base> tag or internal logic that assumes it is at /odoo/
@@ -554,67 +880,78 @@ BASE_TAG
    when embedded in a constrained container.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* 1. Reset html/body to allow content flow */
-html, body {
-    height: auto !important;
-    min-height: 100% !important;
-    overflow: visible !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-/* 2. The scope container is the new viewport for Odoo */
+/* 1. Do NOT reset html/body globally — that breaks Jazzmin layout and lets
+   Odoo nodes flow below the admin footer when they mount on document.body. */
 .polysaas-passthrough-scope {
     position: relative !important;
     width: 100% !important;
-    height: calc(100vh - 98px) !important;
-    min-height: 400px !important;
+    min-height: 0 !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
-    background: #f8f9fa !important;
-}
-
-/* 3. Force Odoo's root elements to fill the scope, not the viewport */
-.polysaas-passthrough-scope #wrapwrap,
-.polysaas-passthrough-scope .o_web_client {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 100% !important;
-    max-height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
+    background: #fff !important;
     display: flex !important;
     flex-direction: column !important;
-    visibility: visible !important;
-    opacity: 1 !important;
 }
 
-/* 4. Odoo navbar stays at top */
-.polysaas-passthrough-scope .o_navbar {
-    position: relative !important;
-    flex: 0 0 46px !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    max-height: 46px !important;
-    width: 100% !important;
-    z-index: 100 !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* 5. Action manager fills remaining space */
-.polysaas-passthrough-scope .o_action_manager {
-    position: relative !important;
+/* Odoo 17 — wrapper fills scope via flex */
+.polysaas-passthrough-scope > #wrapwrap,
+.polysaas-passthrough-scope > .o_web_client {
     flex: 1 1 auto !important;
-    height: calc(100% - 46px) !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    width: 100% !important;
+}
+
+/* Odoo 18 — navbar + main as direct scope children */
+.polysaas-passthrough-scope > .o_main_navbar,
+.polysaas-passthrough-scope > nav.o_main_navbar {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    position: relative !important;
+    z-index: 20 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Odoo 18 — navbar must stay in-flow inside embed (fixed = viewport top under Jazzmin) */
+.polysaas-passthrough-scope header.o_main_navbar,
+.polysaas-passthrough-scope .o_main_navbar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+    max-height: none !important;
+}
+
+.polysaas-passthrough-scope .o_navbar,
+.polysaas-passthrough-scope .o_main_navbar {
+    flex: 0 0 auto !important;
+    position: relative !important;
+    top: auto !important;
+    width: 100% !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+}
+
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope > main {
+    flex: 1 1 auto !important;
     min-height: 0 !important;
     overflow: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
     visibility: visible !important;
     opacity: 1 !important;
 }
@@ -661,9 +998,11 @@ html, body {
     opacity: 1 !important;
 }
 
-/* 9. Override any fixed positioning that escapes the container */
-.polysaas-passthrough-scope [style*="position: fixed"],
-.polysaas-passthrough-scope [style*="position:fixed"] {
+/* 9. Override fixed positioning on overlays only — NOT the navbar */
+.polysaas-passthrough-scope .o_loading[style*="position: fixed"],
+.polysaas-passthrough-scope .o_loading[style*="position:fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position: fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position:fixed"] {
     position: absolute !important;
 }
 
@@ -693,10 +1032,18 @@ html, body {
 var B = BASE_JSON;       // upstream origin e.g. http://localhost:8069
 var S = SESSION_JSON;    // server-side session_id (bootstrap only)
 var PROXY = PROXY_JSON;
+var TS = TS_JSON;        // timestamp to verify fresh code
+var CRED_LOGIN = CRED_LOGIN_JSON;   // tenant login for form prepopulation
+var CRED_PASS  = CRED_PASS_JSON;    // tenant password
+var CRED_DB    = CRED_DB_JSON;      // tenant db name
 var O = window.location.origin;
 var SCOPE_SELECTOR = '.polysaas-passthrough-scope';
 
-console.log('[PolySaaS Odoo] Shim starting, upstream=' + B + ', origin=' + O);
+console.log('[PolySaaS Odoo] Shim v' + TS + ' starting, PROXY=' + PROXY + ', upstream=' + B + ', origin=' + O);
+
+// Debug: Check if passthrough scope exists
+var _scopeCheck = document.querySelector(SCOPE_SELECTOR);
+console.log('[PolySaaS Odoo] Passthrough scope found:', !!_scopeCheck, 'selector:', SCOPE_SELECTOR);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. SESSION COOKIE SEEDING
@@ -714,7 +1061,8 @@ if (S) {
 // 2. PATH CLASSIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 var PS_PREFIXES = ['/static/admin/', '/static/img/', '/static/fonts/', '/static/css/',
-                   '/static/js/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+                   '/static/js/', '/static/jazzmin/', '/admin/', '/dose/', '/media/',
+                   '/accounts/', '/pt/', '/favicon', '/swagger', '/api/', '/openapi'];
 
 function isPolySaaSPath(s) {
     if (!s || typeof s !== 'string') return false;
@@ -742,22 +1090,31 @@ function isOdooApiPath(s) {
 // DO NOT route anything direct to upstream (B) - that bypasses the entire PolySaaS value.
 // See Process Rule 1: No Unilateral Changes
 // ═══════════════════════════════════════════════════════════════════════════
+function collapseProxyDupes(s) {
+    if (!s || !PROXY) return s;
+    var doubled = PROXY + PROXY;
+    while (s.indexOf(doubled) !== -1) s = s.split(doubled).join(PROXY);
+    return s;
+}
+
 function toProxy(s) {
     if (typeof s !== 'string' || !s) return s;
     if (s.indexOf('data:') === 0 || s.indexOf('blob:') === 0) return s;
+    if (s.indexOf(O + '/') === 0) s = s.slice(O.length);  // strip our origin
+    s = collapseProxyDupes(s);
+    if (s === PROXY || s.indexOf(PROXY + '/') === 0) return s;
     // Absolute URL to upstream — rewrite to go through proxy
     if (s.indexOf(B) === 0) {
         var tail = s.slice(B.length);
         if (tail.charAt(0) !== '/') tail = '/' + tail;
-        return PROXY + tail;
+        return collapseProxyDupes(PROXY + tail);
     }
-    if (s.indexOf(O + '/') === 0) s = s.slice(O.length);  // strip our origin
     if (s.indexOf('http:') === 0 || s.indexOf('https:') === 0 || s.indexOf('//') === 0) return s;
     if (s.charAt(0) !== '/') return s;
     // PolySaaS paths stay untouched
     if (isPolySaaSPath(s)) return s;
     // ALL Odoo paths go through proxy - no exceptions
-    return PROXY + s;
+    return collapseProxyDupes(PROXY + s);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -766,6 +1123,11 @@ function toProxy(s) {
 var _fetch = window.fetch;
 window.fetch = function(input, init) {
     var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+    // Pre-emptively block bus/discuss/mail requests to prevent Discuss OWL crashes
+    if (url.indexOf('/bus/') !== -1 || url.indexOf('/longpolling/') !== -1 || url.indexOf('/discuss/') !== -1 || url.indexOf('/mail/') !== -1) {
+        console.warn('[PolySaaS Odoo] Blocked outgoing request to:', url);
+        return Promise.resolve(new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}}));
+    }
     var proxied = toProxy(url);
     if (url !== proxied) {
         console.log('[PolySaaS Odoo] fetch:', url, '->', proxied);
@@ -775,7 +1137,17 @@ window.fetch = function(input, init) {
     } else if (input && input.url && proxied !== input.url) {
         input = new Request(proxied, input);
     }
-    return _fetch.call(this, input, init);
+    return _fetch.call(this, input, init).then(function(response) {
+        var ct = (response.headers && response.headers.get) ? (response.headers.get('content-type') || '') : '';
+        if (ct.indexOf('text/html') !== -1) {
+            var u = proxied || url;
+            if (u.indexOf('/web/dataset/call_kw') !== -1) {
+                console.warn('[PolySaaS Odoo] Blocked HTML response for JSON endpoint:', u);
+                return new Response(JSON.stringify({jsonrpc:'2.0',id:null,result:[]}), {status:200, headers:{'Content-Type':'application/json'}});
+            }
+        }
+        return response;
+    });
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -795,25 +1167,31 @@ XMLHttpRequest.prototype.open = function(method, url) {
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. WEBSOCKET PATCHING - Critical for Odoo 18 bus
 // ═══════════════════════════════════════════════════════════════════════════
+// Block ALL WebSocket connections — Discuss/bus uses them and they crash through proxy
 var _WebSocket = window.WebSocket;
 window.WebSocket = function(url, protocols) {
-    var proxied = toProxy(url);
-    // Convert relative URL to absolute WebSocket URL
-    if (proxied.charAt(0) === '/') {
-        var wsProto = (window.location.protocol === 'https:') ? 'wss://' : 'ws://';
-        proxied = wsProto + window.location.host + proxied;
-    }
-    console.log('[PolySaaS Odoo] WebSocket:', url, '->', proxied);
-    if (protocols !== undefined) {
-        return new _WebSocket(proxied, protocols);
-    }
-    return new _WebSocket(proxied);
+    console.warn('[PolySaaS Odoo] WebSocket BLOCKED:', url);
+    // Return a fake WebSocket that does nothing
+    var fake = {
+        url: url,
+        readyState: 3, // CLOSED
+        send: function() {},
+        close: function() {},
+        addEventListener: function() {},
+        removeEventListener: function() {},
+        onopen: null, onclose: null, onmessage: null, onerror: null,
+        CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3
+    };
+    // Fire onclose asynchronously so callers don't crash
+    setTimeout(function() {
+        if (fake.onclose) fake.onclose({code: 1000, reason: 'blocked', wasClean: true});
+    }, 100);
+    return fake;
 };
-// Copy static properties
-if (_WebSocket.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WebSocket.CONNECTING;
-if (_WebSocket.OPEN !== undefined) window.WebSocket.OPEN = _WebSocket.OPEN;
-if (_WebSocket.CLOSING !== undefined) window.WebSocket.CLOSING = _WebSocket.CLOSING;
-if (_WebSocket.CLOSED !== undefined) window.WebSocket.CLOSED = _WebSocket.CLOSED;
+window.WebSocket.CONNECTING = 0;
+window.WebSocket.OPEN = 1;
+window.WebSocket.CLOSING = 2;
+window.WebSocket.CLOSED = 3;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. URL GUARD - Prevent navigation to un-proxied paths
@@ -858,26 +1236,153 @@ Location.prototype.assign = function(url) {
     return _locAssign.call(this, guarded);
 };
 
-// Patch location.href setter
+// Patch location.href AND pathname getters so Odoo's router sees the upstream
+// path (stripped of proxy prefix), not /pt/admin/<host>/...
+// Without this Odoo's Owl router sees an unknown route and renders nothing.
 try {
     var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-    if (hrefDesc && hrefDesc.set) {
+    var pathnameDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'pathname');
+    function _stripProxy(raw) {
+        if (raw && raw.indexOf(PROXY) === 0) return raw.slice(PROXY.length) || '/';
+        return raw;
+    }
+    if (hrefDesc && hrefDesc.get && hrefDesc.set) {
         Object.defineProperty(Location.prototype, 'href', {
-            get: hrefDesc.get,
+            get: function() {
+                var raw = hrefDesc.get.call(this);
+                // Strip proxy prefix from the path portion so Odoo reads the upstream URL
+                try {
+                    var u = new URL(raw);
+                    u.pathname = _stripProxy(u.pathname);
+                    return u.toString();
+                } catch(e2) { return raw; }
+            },
             set: function(v) {
-                var guarded = guardUrl(v);
-                return hrefDesc.set.call(this, guarded);
+                return hrefDesc.set.call(this, guardUrl(v));
             },
             configurable: true,
             enumerable: true
         });
     }
+    if (pathnameDesc && pathnameDesc.get) {
+        Object.defineProperty(Location.prototype, 'pathname', {
+            get: function() {
+                return _stripProxy(pathnameDesc.get.call(this));
+            },
+            set: pathnameDesc.set,
+            configurable: true,
+            enumerable: true
+        });
+    }
+    console.log('[PolySaaS Odoo] location.href/pathname getters patched — router sees upstream path');
 } catch(e) {
-    console.warn('[PolySaaS Odoo] Could not patch location.href:', e);
+    console.warn('[PolySaaS Odoo] Could not patch location.href/pathname:', e);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 8. ADAPTIVE UI - Make Odoo think it has the scope's dimensions
+// 8. FORM SUBMISSION INTERCEPTION
+// Odoo's Owl-rendered login form sets action="/web/login" in its component
+// template — not in the server HTML we rewrite. Without this, the form
+// submits directly to Django (bypassing the proxy) and hits CSRF rejection.
+// Covers both native submit event AND direct form.submit() calls.
+// ═══════════════════════════════════════════════════════════════════════════
+function _rewriteFormAction(form) {
+    if (!form || form.tagName !== 'FORM') return;
+    // Use form.action property (resolves absolute URL) not getAttribute
+    // Owl sets action via JS property: form.action = '/web/login'
+    var rawAction = form.action || '';
+    if (!rawAction) return;
+    // Check if already proxied
+    if (rawAction.indexOf(PROXY) !== -1 || rawAction.indexOf('/pt/') !== -1) return;
+    var proxied = toProxy(rawAction);
+    if (proxied !== rawAction) {
+        console.log('[PolySaaS Odoo] Form action rewrite:', rawAction, '->', proxied);
+        form.setAttribute('action', proxied);
+    }
+}
+// Form submission interception - simpler: rewrite all forms with unproxied Odoo paths
+document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    _rewriteFormAction(form);
+}, true);
+var _formSubmit = HTMLFormElement.prototype.submit;
+HTMLFormElement.prototype.submit = function() {
+    _rewriteFormAction(this);
+    return _formSubmit.call(this);
+};
+// Image src rewriting for dynamically loaded assets (icons, images)
+function _rewriteImageSrc(img) {
+    if (!img || (img.tagName !== 'IMG' && img.tagName !== 'SOURCE')) return;
+    var rawSrc = img.src || img.getAttribute('src') || '';
+    if (!rawSrc) return;
+    // Skip data URIs and already proxied URLs
+    if (rawSrc.indexOf('data:') === 0) return;
+    if (rawSrc.indexOf(PROXY) !== -1 || rawSrc.indexOf('/pt/') !== -1) return;
+    // Only rewrite if it's pointing to localhost or upstream URL
+    var proxied = toProxy(rawSrc);
+    if (proxied !== rawSrc) {
+        console.log('[PolySaaS Odoo] Image src rewrite:', rawSrc, '->', proxied);
+        img.src = proxied;
+    }
+}
+
+var _formObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+        if (mutation.type === 'attributes' && mutation.target.tagName === 'FORM') {
+            _rewriteFormAction(mutation.target);
+        } else if (mutation.type === 'attributes' && (mutation.target.tagName === 'IMG' || mutation.target.tagName === 'SOURCE')) {
+            _rewriteImageSrc(mutation.target);
+        } else if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach(function(node) {
+                if (!node || node.nodeType !== 1) return;
+                if (node.tagName === 'FORM') { _rewriteFormAction(node); }
+                if (node.tagName === 'IMG' || node.tagName === 'SOURCE') { _rewriteImageSrc(node); }
+                var nestedForms = node.querySelectorAll ? node.querySelectorAll('form') : [];
+                for (var i = 0; i < nestedForms.length; i++) { _rewriteFormAction(nestedForms[i]); }
+                var nestedImgs = node.querySelectorAll ? node.querySelectorAll('img, source') : [];
+                for (var i = 0; i < nestedImgs.length; i++) { _rewriteImageSrc(nestedImgs[i]); }
+            });
+        }
+    });
+});
+
+// Set up observer on passthrough scope, retrying if scope doesn't exist yet (script runs in <head>)
+function _setupFormObserver() {
+    var scope = document.querySelector('.polysaas-passthrough-scope');
+    if (!scope) {
+        console.log('[PolySaaS Odoo] Passthrough scope not found yet, retrying observer setup...');
+        return false;
+    }
+    _formObserver.observe(scope, {
+        childList: true, subtree: true,
+        attributes: true, attributeFilter: ['action', 'src'], attributeOldValue: false
+    });
+    console.log('[PolySaaS Odoo] Form/image observer attached to passthrough scope');
+    // Bulk-rewrite any images that were already added before observer was ready
+    var existingImgs = scope.querySelectorAll('img, source');
+    for (var i = 0; i < existingImgs.length; i++) {
+        _rewriteImageSrc(existingImgs[i]);
+    }
+    return true;
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!_setupFormObserver()) {
+            setTimeout(_setupFormObserver, 500);
+            setTimeout(_setupFormObserver, 1500);
+        }
+    });
+} else {
+    if (!_setupFormObserver()) {
+        setTimeout(_setupFormObserver, 500);
+        setTimeout(_setupFormObserver, 1500);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. ADAPTIVE UI - Make Odoo think it has the scope's dimensions
 // ═══════════════════════════════════════════════════════════════════════════
 function getScopeWidth() {
     var scope = document.querySelector(SCOPE_SELECTOR);
@@ -972,26 +1477,113 @@ setTimeout(disableWebSocket, 500);
 setTimeout(disableWebSocket, 1000);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 11. OWL MOUNT INTERCEPTION - Redirect mount target to scope
+// 11. OWL MOUNT INTERCEPTION - Redirect mount target to scope (Odoo 17 + 18)
 // ═══════════════════════════════════════════════════════════════════════════
-// Odoo's Owl framework mounts to document.body by default.
-// We need to intercept this and redirect to our scope container.
+function _looksLikeOdooMount(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.classList && (
+        node.classList.contains('o_web_client') ||
+        node.classList.contains('o_main_navbar') ||
+        node.classList.contains('o_home_menu') ||
+        node.classList.contains('o_action_manager') ||
+        node.classList.contains('o_apps') ||
+        node.id === 'wrapwrap'
+    )) return true;
+    if (node.tagName === 'MAIN' || node.tagName === 'NAV' || node.tagName === 'HEADER') return true;
+    return false;
+}
+
+function _pinNavbarInScope() {
+    var scope = document.querySelector(SCOPE_SELECTOR);
+    if (!scope) return;
+    var nav = scope.querySelector(':scope > .o_main_navbar, :scope > header.o_main_navbar');
+    if (!nav) nav = document.querySelector('header.o_main_navbar, .o_main_navbar');
+    if (!nav) return;
+    if (!scope.contains(nav)) {
+        scope.insertBefore(nav, scope.firstChild);
+    } else if (scope.firstElementChild !== nav) {
+        scope.insertBefore(nav, scope.firstChild);
+    }
+    nav.style.setProperty('position', 'relative', 'important');
+    nav.style.setProperty('top', 'auto', 'important');
+    nav.style.setProperty('display', 'flex', 'important');
+    nav.style.setProperty('visibility', 'visible', 'important');
+}
+
 var _appendChild = Element.prototype.appendChild;
+
+function _mountIntoScope(node) {
+    var scope = document.querySelector(SCOPE_SELECTOR);
+    if (!scope || !node) return false;
+    _appendChild.call(scope, node);
+    _pinNavbarInScope();
+    return true;
+}
+
 Element.prototype.appendChild = function(child) {
-    // If Odoo is trying to append to document.body and it looks like the web client
-    if (this === document.body && child && child.classList) {
-        if (child.classList.contains('o_web_client') || 
-            child.id === 'wrapwrap' ||
-            child.classList.contains('o_home_menu')) {
-            var scope = document.querySelector(SCOPE_SELECTOR);
-            if (scope) {
-                console.log('[PolySaaS Odoo] Redirecting appendChild to scope:', child.className || child.id);
-                return _appendChild.call(scope, child);
-            }
-        }
+    if (this === document.body && child && _looksLikeOdooMount(child)) {
+        console.log('[PolySaaS Odoo] Redirect Element.appendChild(body) to scope:', child.className || child.tagName);
+        if (_mountIntoScope(child)) return child;
     }
     return _appendChild.call(this, child);
 };
+
+var _bodyRedirectsInstalled = false;
+function _installBodyRedirects() {
+    if (_bodyRedirectsInstalled) return true;
+    var scope = document.querySelector(SCOPE_SELECTOR);
+    if (!scope) return false;
+    _bodyRedirectsInstalled = true;
+
+    var _origInsertBefore = Element.prototype.insertBefore;
+    Element.prototype.insertBefore = function(newNode, ref) {
+        if (this === document.body && newNode && _looksLikeOdooMount(newNode)) {
+            console.log('[PolySaaS Odoo] Redirect insertBefore(body) to scope:', newNode.tagName, newNode.className || '');
+            _origInsertBefore.call(scope, newNode, scope.firstChild);
+            _pinNavbarInScope();
+            return newNode;
+        }
+        return _origInsertBefore.call(this, newNode, ref);
+    };
+
+    if (Element.prototype.prepend) {
+        var _origPrepend = Element.prototype.prepend;
+        Element.prototype.prepend = function() {
+            var nodes = Array.prototype.slice.call(arguments);
+            if (this === document.body && nodes.length) {
+                console.log('[PolySaaS Odoo] Redirect body.prepend to scope');
+                _origPrepend.apply(scope, nodes);
+                _pinNavbarInScope();
+                return;
+            }
+            return _origPrepend.apply(this, nodes);
+        };
+    }
+
+    var _origBodyAppend = document.body.appendChild.bind(document.body);
+    document.body.appendChild = function(child) {
+        if (child && _looksLikeOdooMount(child)) {
+            console.log('[PolySaaS Odoo] Redirect body.appendChild to scope:', child.className || child.tagName);
+            return _mountIntoScope(child) ? child : _origBodyAppend(child);
+        }
+        return _origBodyAppend(child);
+    };
+    document.body.__polysaasOdooPatched = true;
+    return true;
+}
+
+function _tryInstallBodyRedirects() {
+    if (_installBodyRedirects()) {
+        _pinNavbarInScope();
+        return;
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _tryInstallBodyRedirects);
+    } else {
+        setTimeout(_tryInstallBodyRedirects, 50);
+    }
+}
+_tryInstallBodyRedirects();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12. MUTATION OBSERVER - Catch any elements that escape to body
@@ -1000,16 +1592,20 @@ function moveOdooElementsToScope() {
     var scope = document.querySelector(SCOPE_SELECTOR);
     if (!scope) return;
     
-    // Elements that should be inside the scope
-    var selectors = ['#wrapwrap', '.o_web_client', '.o_home_menu', '.o_apps'];
+    // Elements that should be inside the scope (Odoo 17 + 18 mount patterns)
+    var selectors = [
+        '#wrapwrap', '.o_web_client', '.o_main_navbar', 'header.o_main_navbar', 'main',
+        '.o_home_menu', '.o_apps', '.o_action_manager'
+    ];
     
     selectors.forEach(function(sel) {
         var el = document.body.querySelector(':scope > ' + sel);
         if (el && el.parentElement === document.body) {
             console.log('[PolySaaS Odoo] Moving escaped element to scope:', sel);
-            scope.appendChild(el);
+            _appendChild.call(scope, el);
         }
     });
+    _pinNavbarInScope();
 }
 
 // Run periodically to catch late-mounting elements
@@ -1017,25 +1613,23 @@ setTimeout(moveOdooElementsToScope, 100);
 setTimeout(moveOdooElementsToScope, 500);
 setTimeout(moveOdooElementsToScope, 1000);
 setTimeout(moveOdooElementsToScope, 2000);
+setTimeout(moveOdooElementsToScope, 4000);
+setTimeout(moveOdooElementsToScope, 8000);
+setTimeout(moveOdooElementsToScope, 12000);
 
 // Also use MutationObserver for real-time catching
 var observer = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
             mutation.addedNodes.forEach(function(node) {
-                if (node.nodeType === 1 && node.parentElement === document.body) {
-                    if (node.classList && (
-                        node.classList.contains('o_web_client') ||
-                        node.classList.contains('o_home_menu') ||
-                        node.id === 'wrapwrap'
-                    )) {
+                if (node.nodeType === 1 && node.parentElement === document.body && _looksLikeOdooMount(node)) {
                         var scope = document.querySelector(SCOPE_SELECTOR);
                         if (scope) {
-                            console.log('[PolySaaS Odoo] MutationObserver caught:', node.className || node.id);
-                            scope.appendChild(node);
+                            console.log('[PolySaaS Odoo] MutationObserver caught:', node.className || node.id || node.tagName);
+                            _appendChild.call(scope, node);
+                            _pinNavbarInScope();
                         }
                     }
-                }
             });
         }
     });
@@ -1050,6 +1644,86 @@ if (document.body) {
     });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. AUTO-LOGIN VIA JSON-RPC (bypasses user picker)
+// ═══════════════════════════════════════════════════════════════════════════
+function autoLoginOdoo() {
+    if (!CRED_LOGIN || !CRED_PASS || !CRED_DB) return;
+    // Prevent loop: if we just auto-logged in, don't do it again for 30 seconds
+    var lastAutoLogin = sessionStorage.getItem('__polysaas_autologin_ts');
+    if (lastAutoLogin && (Date.now() - parseInt(lastAutoLogin) < 30000)) {
+        console.log('[PolySaaS Odoo] Auto-login recently completed, skipping');
+        return;
+    }
+    var loginInput = document.querySelector('input[name="login"], input[type="email"], #login');
+    var passInput = document.querySelector('input[name="password"], input[type="password"], #password');
+    var btn = document.querySelector('button[type="submit"], .btn-primary, .oe_login_button');
+    // Only act if we see a login form — not the apps page
+    if (!loginInput || !passInput || !btn) return;
+    console.log('[PolySaaS Odoo] Auto-login starting for:', CRED_LOGIN);
+    // Clear any browser autocomplete and fill with tenant credentials
+    loginInput.value = '';
+    loginInput.value = CRED_LOGIN;
+    loginInput.dispatchEvent(new Event('input', { bubbles: true }));
+    loginInput.dispatchEvent(new Event('change', { bubbles: true }));
+    passInput.value = CRED_PASS;
+    passInput.dispatchEvent(new Event('input', { bubbles: true }));
+    passInput.dispatchEvent(new Event('change', { bubbles: true }));
+    // Also set db if visible
+    var dbSelect = document.querySelector('input[name="db"], select[name="db"], #db');
+    if (dbSelect && CRED_DB) {
+        dbSelect.value = CRED_DB;
+        dbSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    // Auto-login via PolySaaS SSO endpoint — server-side handles Odoo auth
+    setTimeout(function() {
+        console.log('[PolySaaS Odoo] Calling PolySaaS SSO endpoint...');
+        var ssoUrl = '/dose/api/odoo-sso/';
+        _fetch(ssoUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'include'
+        }).then(function(resp) {
+            return resp.json();
+        }).then(function(data) {
+            if (data && data.ok && data.session_id) {
+                console.log('[PolySaaS Odoo] SSO ok, setting session cookie');
+                document.cookie = 'session_id=' + data.session_id + '; path=/; SameSite=Lax';
+                sessionStorage.setItem('__polysaas_autologin_ts', Date.now().toString());
+                console.log('[PolySaaS Odoo] Cookie set, reloading');
+                window.location.href = data.redirect_url || window.location.href;
+            } else {
+                console.warn('[PolySaaS Odoo] SSO failed:', data.error || data);
+            }
+        }).catch(function(err) {
+            console.error('[PolySaaS Odoo] SSO error:', err);
+        });
+    }, 600);
+}
+
+function prepopulateLoginFormFallback() {
+    var loginInput = document.querySelector('input[name="login"], input[name="email"], #login, #email');
+    var passInput = document.querySelector('input[name="password"], input[type="password"], #password');
+    var dbSelect = document.querySelector('input[name="db"], select[name="db"], #db');
+    if (dbSelect && CRED_DB) dbSelect.value = CRED_DB;
+    if (loginInput && CRED_LOGIN) {
+        loginInput.value = CRED_LOGIN;
+        loginInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (passInput && CRED_PASS) {
+        passInput.value = CRED_PASS;
+        passInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
+// Try auto-login on DOMContentLoaded and with delays for async-rendered pages
+document.addEventListener('DOMContentLoaded', autoLoginOdoo);
+setTimeout(autoLoginOdoo, 500);
+setTimeout(autoLoginOdoo, 2000);
+
 console.log('[PolySaaS Odoo] Shim initialization complete');
 
 })();
@@ -1059,65 +1733,15 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
         patch = patch.replace('BASE_JSON', base_json)
         patch = patch.replace('SESSION_JSON', session_json)
         patch = patch.replace('PROXY_JSON', proxy_json)
+        patch = patch.replace('TS_JSON', ts_json)
+        patch = patch.replace('CRED_LOGIN_JSON', cred_login_json)
+        patch = patch.replace('CRED_PASS_JSON', cred_pass_json)
+        patch = patch.replace('CRED_DB_JSON', cred_db_json)
         
         return html.replace('<head>', '<head>' + patch)
 
     def rewrite_upstream_body(self, body, ct, request, endpoint_url=None, upstream_path=None):
-        """
-        Server-side body rewriting for Odoo.
-        Intercepts JavaScript bundles to redirect Owl's mount target.
-        """
-        if 'javascript' in ct:
-            try:
-                text = body.decode('utf-8', errors='ignore')
-                # Owl's mount target replacement.
-                # Odoo 17 style: app.mount(document.body)       → matches .mount(document.body
-                # Odoo 18 style: mount(WebClient, document.body) → matches ,document.body,
-                # Both are replaced so the Owl root lands in our scope div, not in body.
-                SCOPE = '.polysaas-passthrough-scope'
-                SCOPE_JS = f'(document.querySelector("{SCOPE}")||document.body)'
-                # Odoo 17 / Owl method call pattern
-                patched = text.replace(
-                    '.mount(document.body', f'.mount({SCOPE_JS}'
-                )
-                # Odoo 18 / standalone mount(Component, document.body, config) pattern
-                patched = patched.replace(
-                    ',document.body,', f',{SCOPE_JS},'
-                )
-
-                # Also rewrite paths hidden in JS strings
-                def _proxy_css_url(m):
-                    quote = m.group(1) or ''
-                    path  = m.group(2)
-                    close = m.group(3) or ''
-                    if path.startswith('/web/') or path.startswith('/odoo/') or path.startswith('/bus/') or path.startswith('/websocket'):
-                        path = '/pt/admin/odoo' + path
-                    return f'url({quote}{path}{close})'
-
-                patched = re.sub(
-                    r'url\((["\']?)(/(?:web|odoo|bus|websocket)/[^)"\']*)(["\']?)\)',
-                    _proxy_css_url, patched,
-                )
-
-                # === FIX WEBSOCKET 404 - Force Odoo to use proxied WebSocket path ===
-                # Use word-boundary regex so we only replace /websocket as a standalone
-                # path component, not inside /bus/websocket_worker_bundle.
-                if '/websocket' in patched:
-                    patched = re.sub(
-                        r'(?<!/odoo)/websocket(?!_)',
-                        '/pt/admin/odoo/websocket',
-                        patched,
-                    )
-
-                if patched != text:
-                    logger.info(
-                        "[ODOO HANDLER] Patched Owl mount(document.body) and paths in JS"
-                    )
-                    return patched.encode('utf-8', errors='ignore')
-            except Exception as exc:
-                logger.warning("[ODOO HANDLER] JS mount patch failed: %s", exc)
-            return None
-
+        """Preserve native Odoo non-HTML bodies for HAR parity."""
         return None
 
     def postprocess_upstream_response(
@@ -1142,36 +1766,11 @@ console.log('[PolySaaS Odoo] Shim initialization complete');
 
         if resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get('Location', '')
-            print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} ===")
-            if location and (location.startswith('/odoo') or location.startswith('/web')):
-                parsed = urlparse(endpoint_url)
-                follow_url = f"{parsed.scheme}://{parsed.netloc}{location}"
-                print(f"=== ODOO: Following redirect to {follow_url} ===")
-                try:
-                    follow_resp = requests.get(
-                        follow_url,
-                        headers=outbound_headers,
-                        cookies=upstream_cookies,
-                        allow_redirects=True,
-                        timeout=60,
-                    )
-                    resp = follow_resp
-                    print(f"=== ODOO: Followed redirect, final status: {resp.status_code} ===")
-                except Exception as follow_exc:
-                    print(f"=== ODOO: Failed to follow redirect: {follow_exc} ===")
+            print(f"=== ODOO REDIRECT: {resp.status_code} -> {location} (letting forwarder rewrite) ===")
 
-        if resp.content and b'</head>' in resp.content:
-            content = resp.content
-            content = content.replace(b'"/odoo/', b'"/pt/admin/odoo/odoo/')
-            content = content.replace(b"'/odoo/", b"'/pt/admin/odoo/odoo/")
-            content = content.replace(b'"/web/', b'"/pt/admin/odoo/web/')
-            content = content.replace(b"'/web/", b"'/pt/admin/odoo/web/")
-            content = content.replace(b'"/bus/', b'"/pt/admin/odoo/bus/')
-            content = content.replace(b"'/bus/", b"'/pt/admin/odoo/bus/")
-            content = content.replace(b'"/websocket', b'"/pt/admin/odoo/websocket')
-            content = content.replace(b"'/websocket", b"'/pt/admin/odoo/websocket")
-            resp._content = content
-            print("=== ODOO: Path rewriting applied ===")
+        # HTML path rewriting is handled exclusively by process_html_response/_rewrite_static_paths.
+        # Do NOT do byte-string replacements here — they run before process_html_response
+        # and cause double-rewriting (path gets proxied twice → upstream URL gets proxy prefix embedded).
 
         print("Body preview (first 400 chars):")
         print(repr(resp.content[:400]) if resp.content else "EMPTY BODY")

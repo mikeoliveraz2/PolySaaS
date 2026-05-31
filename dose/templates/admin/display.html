@@ -430,6 +430,9 @@
                     return u;
                 }
             }
+            /* Collapse accidental double /pt/admin/<endpoint>/ prefix before any rewrite. */
+            var doubled = P + P;
+            while (u.indexOf(doubled) !== -1) u = u.split(doubled).join(P);
             /* Collapse /mail/<P>/… and /bus/<P>/… (bad relative joins → double prefix in workers/RPC). */
             var mailPad = '/mail/' + P, busPad = '/bus/' + P;
             if (u === mailPad || u.indexOf(mailPad + '/') === 0) u = '/mail' + u.slice(mailPad.length);

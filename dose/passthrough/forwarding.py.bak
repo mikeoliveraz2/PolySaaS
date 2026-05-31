@@ -5,12 +5,12 @@ import requests
 import json
 import time
 from django.http import HttpResponse
-from dose.polysniffer.models import TrafficLog
-from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
 
 logger = logging.getLogger(__name__)
 
-_SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE"})
+_SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE", "HTTP_ACCEPT_ENCODING"})
 
 
 def _should_follow_upstream_redirects(handler, request, *, target_url, upstream_path):
@@ -143,13 +143,204 @@ def _origins_equivalent_for_upstream_fetch(origin_a: str, origin_b: str) -> bool
         return origin_a == origin_b
 
 
-def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handler=None):
+def _is_initial_page_load(request):
+    """Detect browser navigation vs API/asset request."""
+    xrw = request.headers.get('X-Requested-With', '')
+    if xrw == 'XMLHttpRequest':
+        return False
+    accept = request.headers.get('Accept', '')
+    if 'text/html' not in accept:
+        return False
+    last_segment = request.path_info.split('/')[-1]
+    if '.' in last_segment:
+        ext = last_segment.split('.')[-1].lower()
+        if ext in ('js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'map'):
+            return False
+    api_prefixes = ('/api/', '/plugins/', '/boards/', '/calls/', '/bus/', '/websocket')
+    for prefix in api_prefixes:
+        if prefix in request.path_info:
+            return False
+    return True
+
+
+def _extract_head_and_body(html):
+    """Extract <head> and <body> content from full HTML document."""
+    import re
+    head_content = ''
+    body_content = html
+    head_match = re.search(r'<head[^>]*>(.*?)</head>', html, re.DOTALL | re.IGNORECASE)
+    if head_match:
+        head_content = head_match.group(1)
+    body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.DOTALL | re.IGNORECASE)
+    if body_match:
+        body_content = body_match.group(1)
+    elif '<body' in html.lower():
+        body_start = re.search(r'<body[^>]*>', html, re.IGNORECASE)
+        if body_start:
+            body_content = html[body_start.end():]
+            body_content = re.sub(r'</html>\s*$', '', body_content, flags=re.IGNORECASE)
+    return head_content, body_content
+
+
+def _fallback_rewrite_odoo_paths_for_proxy(html: str, request) -> str:
+    """
+    Forwarder-level safety net for Odoo HTML.
+
+    If any Odoo document still contains root-relative paths like /web/...,
+    rewrite them to the current passthrough prefix (/pt/admin/<trigger>/web/...)
+    so assets/API calls do not escape to Django root and 404.
+    """
+    if not html:
+        return html
+    path = (getattr(request, "path_info", "") or "").strip()
+    parts = path.strip("/").split("/") if path else []
+    if len(parts) < 3 or parts[0] != "pt" or parts[1] != "admin":
+        return html
+
+    seg = parts[2]
+    if "odoo" not in seg.lower():
+        return html
+
+    proxy_prefix = f"/pt/admin/{seg}"
+    out = html
+    rewrite_count = 0
+
+    def _apply_pairs(text: str, pairs):
+        local_count = 0
+        out_text = text
+        for old, new in pairs:
+            hits = out_text.count(old)
+            if hits:
+                out_text = out_text.replace(old, new)
+                local_count += hits
+        return out_text, local_count
+
+    quoted_pairs = (
+        ('"/web/', f'"{proxy_prefix}/web/'),
+        ("'/web/", f"'{proxy_prefix}/web/"),
+        ('"/web?', f'"{proxy_prefix}/web?'),
+        ("'/web?", f"'{proxy_prefix}/web?"),
+        ('"/website/', f'"{proxy_prefix}/website/'),
+        ("'/website/", f"'{proxy_prefix}/website/"),
+        ('"/odoo/', f'"{proxy_prefix}/odoo/'),
+        ("'/odoo/", f"'{proxy_prefix}/odoo/"),
+        ('"/bus/', f'"{proxy_prefix}/bus/'),
+        ("'/bus/", f"'{proxy_prefix}/bus/"),
+        ('"/websocket', f'"{proxy_prefix}/websocket'),
+        ("'/websocket", f"'{proxy_prefix}/websocket"),
+        ('"/longpolling/', f'"{proxy_prefix}/longpolling/'),
+        ("'/longpolling/", f"'{proxy_prefix}/longpolling/"),
+        ('"/jsonrpc', f'"{proxy_prefix}/jsonrpc'),
+        ("'/jsonrpc", f"'{proxy_prefix}/jsonrpc"),
+    )
+    out, applied = _apply_pairs(out, quoted_pairs)
+    rewrite_count += applied
+
+    public_host = request.get_host().strip().lower()
+    if public_host:
+        for scheme in ("http", "https"):
+            base = f"{scheme}://{public_host}"
+            abs_pairs = (
+                (f"{base}/web/", f"{base}{proxy_prefix}/web/"),
+                (f"{base}/web?", f"{base}{proxy_prefix}/web?"),
+                (f"{base}/website/", f"{base}{proxy_prefix}/website/"),
+                (f"{base}/odoo/", f"{base}{proxy_prefix}/odoo/"),
+                (f"{base}/bus/", f"{base}{proxy_prefix}/bus/"),
+                (f"{base}/websocket", f"{base}{proxy_prefix}/websocket"),
+                (f"{base}/longpolling/", f"{base}{proxy_prefix}/longpolling/"),
+                (f"{base}/jsonrpc", f"{base}{proxy_prefix}/jsonrpc"),
+            )
+            out, applied = _apply_pairs(out, abs_pairs)
+            rewrite_count += applied
+
+        # Protocol-relative absolute URLs (e.g. //localhost:8000/web/...)
+        base_proto_relative = f"//{public_host}"
+        proto_pairs = (
+            (f"{base_proto_relative}/web/", f"{base_proto_relative}{proxy_prefix}/web/"),
+            (f"{base_proto_relative}/web?", f"{base_proto_relative}{proxy_prefix}/web?"),
+            (f"{base_proto_relative}/website/", f"{base_proto_relative}{proxy_prefix}/website/"),
+            (f"{base_proto_relative}/odoo/", f"{base_proto_relative}{proxy_prefix}/odoo/"),
+            (f"{base_proto_relative}/bus/", f"{base_proto_relative}{proxy_prefix}/bus/"),
+            (f"{base_proto_relative}/websocket", f"{base_proto_relative}{proxy_prefix}/websocket"),
+            (f"{base_proto_relative}/longpolling/", f"{base_proto_relative}{proxy_prefix}/longpolling/"),
+            (f"{base_proto_relative}/jsonrpc", f"{base_proto_relative}{proxy_prefix}/jsonrpc"),
+        )
+        out, applied = _apply_pairs(out, proto_pairs)
+        rewrite_count += applied
+
+    if rewrite_count:
+        print(
+            f"[FORWARDER ODOO HARDEN] rewrote {rewrite_count} path refs "
+            f"for seg={seg} path={path}"
+        )
+
+    return out
+
+
+def _wrap_in_admin_template(request, response, trigger, endpoint):
+    """Wrap raw proxied HTML in admin template for embedded display."""
+    content_type = response.get('Content-Type', '')
+    if 'text/html' not in content_type:
+        return response
+    try:
+        raw_html = response.content.decode('utf-8', errors='ignore')
+    except Exception:
+        return response
+    if not raw_html or len(raw_html) < 100:
+        return response
+    norm = trigger.strip('/')
+    embed_title = norm.split('.')[0].replace('-', ' ').title()
+    embed_src = f'/pt/admin/{norm}/'
+    head_content, body_content = _extract_head_and_body(raw_html)
+    embed_body = mark_safe(
+        f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{norm}">'
+        f'{body_content}</div>'
+    )
+    embed_head = mark_safe(head_content)
+    upstream_path = getattr(request, '_passthrough_upstream_path', '/web')
+    try:
+        wrapped_html = render_to_string(
+            'admin/passthrough_embed.html',
+            {
+                'embed_src': embed_src,
+                'embed_title': embed_title,
+                'embed_head': embed_head,
+                'embed_body': embed_body,
+                'upstream_path': upstream_path,
+                # Odoo 18 mounts Owl nodes on document.body — passthrough_embed extrajs hijacks that.
+                'embed_enable_odoo_body_scope': 'odoo' in (trigger or '').lower(),
+            },
+            request=request,
+        )
+        wrapped_response = HttpResponse(wrapped_html, status=response.status_code)
+        wrapped_response['Content-Type'] = 'text/html; charset=utf-8'
+        wrapped_response['X-Frame-Options'] = 'ALLOWALL'
+        wrapped_response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        for cookie_name in response.cookies:
+            wrapped_response.cookies[cookie_name] = response.cookies[cookie_name].value
+            wrapped_response.cookies[cookie_name]['path'] = response.cookies[cookie_name].get('path', '/')
+            wrapped_response.cookies[cookie_name]['samesite'] = 'Lax'
+        return wrapped_response
+    except Exception:
+        return response
+
+
+def fetch_upstream_index_html(
+    request, endpoint_url, upstream_subpath="/", handler=None, fetch_debug=None
+):
     """
     GET upstream HTML mimicking a real browser request.
     Injects any app-specific cookies (e.g. MMAUTHTOKEN) via handler.get_upstream_cookies().
     If the upstream returns a 3xx redirect the redirect target URL is returned as a string
     prefixed with 'REDIRECT:' so the caller can pass it straight through to the browser.
+
+    If ``fetch_debug`` is a dict, it is filled with failure details (error message, HTTP status,
+    last URL) when this function returns "".
     """
+    def _fail(**kwargs):
+        if fetch_debug is not None:
+            fetch_debug.update(kwargs)
+
     clean = upstream_subpath or "/"
     if not clean.startswith("/"):
         clean = "/" + clean
@@ -190,7 +381,12 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
 
     for _hop in range(15):
         try:
-            print(f"[FETCH_UPSTREAM] Hop {_hop}: GET {_current_url}")
+            print(f"\n{'>'*60}")
+            print(f"[FETCH_UPSTREAM] OUTBOUND REQUEST Hop {_hop}:")
+            print(f"  URL: {_current_url}")
+            print(f"  Headers: {dict(hop_headers)}")
+            print(f"  Cookies: {dict(upstream_cookies)}")
+            print(f"{'>'*60}")
             resp = requests.get(
                 _current_url,
                 headers=hop_headers,
@@ -198,9 +394,14 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
                 allow_redirects=False,
                 timeout=60,
             )
-            print(f"[FETCH_UPSTREAM] Hop {_hop}: Status {resp.status_code}")
+            print(f"{'<'*60}")
+            print(f"[FETCH_UPSTREAM] RESPONSE:")
+            print(f"  Status: {resp.status_code}")
+            print(f"  Headers: {dict(resp.headers)}")
+            print(f"{'<'*60}")
         except Exception as e:
             logger.warning("fetch_upstream_index_html %s failed: %s", _current_url, e)
+            _fail(error=str(e), url=_current_url, phase="request_exception")
             return ""
         
         # Check if we got a redirect
@@ -219,6 +420,12 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             if not _origins_equivalent_for_upstream_fetch(loc_origin, _origin):
                 # Cross-origin redirect - return as sentinel for caller
                 print(f"[FETCH_UPSTREAM] Cross-origin redirect, returning sentinel")
+                _fail(
+                    phase="cross_origin_redirect",
+                    status=resp.status_code,
+                    location=location,
+                    url=_current_url,
+                )
                 return f"REDIRECT:{resp.status_code}:{location}"
             # Same-origin - follow it (refresh Host / proxy headers for the new URL)
             _current_url = location
@@ -242,60 +449,70 @@ def fetch_upstream_index_html(request, endpoint_url, upstream_subpath="/", handl
             "fetch_upstream_index_html %s -> status %s", target_url, status
         )
         print(f"[FETCH_UPSTREAM] Final status {status} - returning empty")
+        snippet = ""
+        try:
+            if resp is not None and resp.content:
+                snippet = resp.content[:400].decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        _fail(
+            phase="non_200",
+            status=status,
+            url=_current_url if resp is not None else target_url,
+            body_preview=snippet,
+        )
         return ""
     
-    print(f"[FETCH_UPSTREAM] Success! Got {len(resp.content)} bytes")
+    print(f"\n{'='*60}")
+    print(f"[FETCH_UPSTREAM] FINAL SUCCESS - Got {len(resp.content)} bytes")
+    print(f"[FETCH_UPSTREAM] Response preview (first 1000 chars):")
+    print(f"{'='*60}")
+    print(resp.content[:1000].decode('utf-8', errors='replace'))
+    print(f"{'='*60}")
 
     # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
-    try:
-        from dose.polysniffer.models import TrafficLog
-        from django.contrib.auth.models import AnonymousUser
-        from django.db import connection
-        
-        capture_user = request.user if (request.user and not isinstance(request.user, AnonymousUser)) else None
-        
-        app_name = "unknown"
-        if handler:
-            app_name = handler.__class__.__name__.lower().replace("passthroughhandler", "")
-
-        # Ensure we are in the TENANT schema
-        tenant = getattr(request, "tenant", None)
-        if tenant:
-            with connection.cursor() as cur:
-                cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
-
-        try:
-            ensure_trafficlog_capture_columns(request)
-        except Exception as _patch_exc:
-            print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
-
-        TrafficLog.objects.create(
-            method="GET",
-            url=target_url,
-            path=clean,
-            headers=_outbound_headers_from_request(request),
-            cookies=upstream_cookies,
-            query_params=dict(request.GET),
-            body="",
-            status_code=resp.status_code,
-            response_headers=dict(resp.headers),
-            response_body=resp.content.decode("utf-8", errors="ignore"),
-            response_size=len(resp.content),
-            endpoint_name=app_name,
-            user=capture_user,
-            duration_ms=0,
-            capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
-            client_path=getattr(request, "path_info", "") or "",
-        )
-        print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
-    except Exception as ps_exc:
-        print(f"POLY SNIFFER — Initial HTML capture failed: {ps_exc}")
+    # try:
+    #     from dose.polysniffer.models import TrafficLog
+    #     from django.contrib.auth.models import AnonymousUser
+    #     from django.db import connection
+    #
+    #     capture_user = request.user if (request.user and not isinstance(request.user, AnonymousUser)) else None
+    #
+    #     app_name = "unknown"
+    #     if handler:
+    #         app_name = handler.__class__.__name__.lower().replace("passthroughhandler", "")
+    #
+    #     tenant = getattr(request, "tenant", None)
+    #     if tenant:
+    #         with connection.cursor() as cur:
+    #             cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
+    #
+    #     ensure_trafficlog_capture_columns(request)
+    #     TrafficLog.objects.create(
+    #         method="GET",
+    #         url=target_url,
+    #         path=clean,
+    #         headers=_outbound_headers_from_request(request),
+    #         cookies=upstream_cookies,
+    #         query_params=dict(request.GET),
+    #         body="",
+    #         status_code=resp.status_code,
+    #         response_headers=dict(resp.headers),
+    #         response_body=resp.content.decode("utf-8", errors="ignore"),
+    #         response_size=len(resp.content),
+    #         endpoint_name=app_name,
+    #         user=capture_user,
+    #         duration_ms=0,
+    #         capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
+    #         client_path=getattr(request, "path_info", "") or "",
+    #     )
+    #     print(f"POLY SNIFFER — Captured Initial HTML for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+    # except Exception as ps_exc:
+    #     print(f"POLY SNIFFER — Initial HTML capture failed: {ps_exc}")
     # ───────────────────────────────────────────────────────────────────
 
-    return resp.content.decode("utf-8", errors="ignore")
 
-
-def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None):
+def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None, trigger=None):
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
     print("FORWARDER (forward_request_standardized) CALLED")
@@ -332,10 +549,28 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             target_url = endpoint_url
             print(f"PASSTHROUGH -> USING ENDPOINT ROOT: {target_url}")
 
+        # Store on request for orchestration bar display
+        request._passthrough_upstream_path = upstream_path
+
+        # Block websocket/bus/discuss paths server-side — they crash through proxy
+        _blocked = ('/websocket', '/bus/', '/longpolling/', '/discuss/', '/mail/action')
+        if any(upstream_path.startswith(b) or upstream_path == b.rstrip('/') for b in _blocked):
+            from django.http import JsonResponse as _JR
+            print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")
+            return _JR({'jsonrpc': '2.0', 'id': None, 'result': []})
+
+        # Allow handler to intercept root/display requests before upstream fetch
+        if trigger and handler and hasattr(handler, 'try_root_display_shell_response'):
+            shell = handler.try_root_display_shell_response(request, endpoint, trigger)
+            if shell is not None:
+                print(f"[FORWARDER] Handler display shell returned for root — returning directly")
+                return shell
+
         print(f"SENDING REQUEST TO -> {target_url}")
 
         # Never forward the browser's Host (e.g. localhost:8000); upstream must see its own host.
         outbound_headers = _outbound_headers_from_request(request)
+        outbound_headers["Accept-Encoding"] = "identity"
 
         if handler and hasattr(handler, "augment_outbound_headers"):
             try:
@@ -360,21 +595,39 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                         upstream_cookies[k] = v
             except Exception as exc:
                 logger.warning("get_upstream_cookies failed: %s", exc)
+        if handler and hasattr(handler, "override_upstream_cookies"):
+            try:
+                overrides = handler.override_upstream_cookies(request, target_url) or {}
+                for k, v in overrides.items():
+                    upstream_cookies[k] = v
+                    print(f"[FORWARDER] override_upstream_cookies: {k}=<redacted>")
+            except Exception as exc:
+                logger.warning("override_upstream_cookies failed: %s", exc)
 
-        # Debug: for login requests, print exactly what is going to Mattermost
+        # Allow handler to rewrite the outgoing request body (e.g. strip Django csrf_token for Odoo login)
+        outbound_body = request.body
+        if handler and hasattr(handler, "get_request_body"):
+            try:
+                rewritten = handler.get_request_body(request, target_url)
+                if rewritten is not None:
+                    outbound_body = rewritten
+            except Exception as _body_exc:
+                logger.warning("get_request_body failed: %s", _body_exc)
+
+        # Debug: for login requests, print exactly what is going to upstream
         if "login" in target_url.lower():
             print("=== LOGIN FORWARD DEBUG ===")
             print(f"TARGET            : {target_url}")
             print(f"Cookie header sent: {'Cookie' in outbound_headers}")
             print(f"Cookies param     : { {k: v[:8]+'...' if v and len(v)>8 else v for k,v in upstream_cookies.items()} }")
-            print(f"Body preview      : {request.body[:200] if request.body else '(empty)'}")
+            print(f"Body preview      : {outbound_body[:200] if outbound_body else '(empty)'}")
             print("===========================")
 
         resp = requests.request(
             method=request.method,
             url=target_url,
             headers=outbound_headers,
-            data=request.body,
+            data=outbound_body,
             cookies=upstream_cookies,
             allow_redirects=_should_follow_upstream_redirects(
                 handler,
@@ -401,6 +654,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")
         preview_bytes = resp.content[:500] if resp.content else b""
         print(f"CONTENT PREVIEW: {preview_bytes.decode('utf-8', errors='ignore')}")
+        if '/odoo/apps' in target_url:
+            print(f"[ODOO APPS DEBUG] status={resp.status_code}, len={len(resp.content)}, preview={preview_bytes[:200].decode('utf-8', errors='ignore')}")
 
         try:
             from dose.passthrough.stream_debug import log_upstream_response_if_debug
@@ -438,32 +693,29 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                 with connection.cursor() as cur:
                     cur.execute(f"SET search_path TO {tenant.schema_name}, public;")
 
-            try:
-                ensure_trafficlog_capture_columns(request)
-            except Exception as _patch_exc:
-                print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
-
-            TrafficLog.objects.create(
-                method=request.method,
-                url=target_url,
-                path=upstream_path,
-                headers=dict(request.headers),
-                cookies=dict(request.COOKIES),
-                query_params=dict(request.GET),
-                body=request.body.decode("utf-8", errors="ignore") if request.body else "",
-                status_code=resp.status_code,
-                response_headers=dict(resp.headers),
-                response_body=resp.content.decode("utf-8", errors="ignore") if resp.content else "",
-                response_size=len(resp.content),
-                endpoint_name=app_name,
-                user=capture_user,
-                duration_ms=0,
-                capture_source=TrafficLog.CAPTURE_PASSTHROUGH,
-                client_path=getattr(request, "path_info", "") or "",
-            )
-            print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+            # try:
+            #     ensure_trafficlog_capture_columns(request)
+            # except Exception as _patch_exc:
+            #     print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
+            #
+            # TrafficLog.objects.create(...)
+            # print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+            pass
         except Exception as ps_exc:
             print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
+
+        # ── Orchestration Hook: fire for both REQ (outgoing) and RES (response received) ──
+        try:
+            from dose.passthrough.orchestration_hook import check_orchestration_trigger
+            from dose.utils import get_current_tenant
+            _orch_tenant = tenant or get_current_tenant(request)
+            print(f"[ORCHESTRATION HOOK] tenant={_orch_tenant}, path={upstream_path}")
+            check_orchestration_trigger(request, upstream_path, app_name, _orch_tenant,
+                                        direction='REQ')
+            check_orchestration_trigger(request, upstream_path, app_name, _orch_tenant,
+                                        direction='RES', upstream_response=resp)
+        except Exception as orch_exc:
+            print(f"[ORCHESTRATION HOOK] Non-blocking error: {orch_exc}")
         # ───────────────────────────────────────────────────────────────────
 
         # CRITICAL: Rewrite redirects to go through the proxy, NOT direct to upstream.
@@ -578,10 +830,15 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                 "Cache-Control",
                 "ETag",
                 "Last-Modified",
-                "Content-Disposition",
-                "Content-Language",
-                "X-Requested-With",
+                "X-Frame-Options",
+                "X-Content-Type-Options",
+                "X-XSS-Protection",
+                "Referrer-Policy",
+                "Content-Security-Policy",
+                "Strict-Transport-Security",
                 "Token",       # Mattermost login response — SPA reads this to get the session token
+                "X-Version-Id",   # Mattermost SPA version check
+                "X-Request-Id",   # Mattermost request tracking
             )
             if body_rewritten:
                 _copy_headers = tuple(h for h in _copy_headers if h != "ETag")
@@ -620,7 +877,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print("=" * 120 + "\n")
             return response
 
-        content = resp.content.decode("utf-8", errors="ignore")
+        content = resp.text
+        content = _fallback_rewrite_odoo_paths_for_proxy(content, request)
 
         if handler:
             print(f"HANDLER RUNNING -> {handler.__class__.__name__}")
@@ -663,6 +921,23 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
                     print(f"FORWARDER — forwarding Set-Cookie from HTML: {cookie_name}")
             except Exception as sc_exc:
                 print(f"FORWARDER — Set-Cookie parse error: {sc_exc}")
+
+        # Also set the auto-login session cookie on the browser so subsequent
+        # asset/API requests are authenticated (server-side cookies don't reach the browser otherwise)
+        if upstream_cookies.get('session_id') and 'session_id' not in response.cookies:
+            response.cookies['session_id'] = upstream_cookies['session_id']
+            response.cookies['session_id']['path'] = '/'
+            response.cookies['session_id']['samesite'] = 'Lax'
+            print(f"FORWARDER — set browser session_id cookie from auto-login")
+
+        # Wrap HTML responses in admin template for embedded display (generic, all endpoints)
+        # Skip API calls, static assets, and non-HTML responses
+        upstream_path = getattr(request, '_passthrough_upstream_path', '')
+        is_page_load = not any(upstream_path.endswith(ext) for ext in ['.js', '.css', '.png', '.jpg', '.json', '.woff', '.woff2'])
+        is_page_load = is_page_load and '/api/' not in upstream_path and '/static/' not in upstream_path
+        if is_page_load and resp.status_code == 200:
+            print(f"[FORWARDER] Wrapping passthrough HTML in admin template")
+            response = _wrap_in_admin_template(request, response, trigger or 'passthrough', endpoint)
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")

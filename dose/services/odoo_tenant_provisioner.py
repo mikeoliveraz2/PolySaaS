@@ -236,7 +236,7 @@ def provision_odoo_tenant(
             logger.warning("[OdooProvisioner] Welcome email failed (non-fatal): %s", e)
 
         logger.info(
-            "[OdooProvisioner] ✅ Provisioning complete: tenant=%s login=%s odoo_uid=%s",
+            "[OdooProvisioner] Provisioning complete: tenant=%s login=%s odoo_uid=%s",
             tenant_name, admin_email, odoo_user_id,
         )
 
@@ -275,7 +275,6 @@ def provision_odoo_tenant(
         logger.error("[OdooProvisioner] Provisioning failed for %s: %s", tenant_schema, exc, exc_info=True)
         if tenant_app_id:
             try:
-                from dose.models import TenantApp
                 ta = TenantApp.objects.filter(id=tenant_app_id).first()
                 if ta:
                     mark_tenant_app_error(ta, str(exc))
