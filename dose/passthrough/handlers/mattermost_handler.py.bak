@@ -203,15 +203,44 @@ class MattermostPassthroughHandler:
         if path != proxy_prefix:
             return None
 
-        # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
-        force_login = request.GET.get('force') == '1'
-        
+        # force=1 or team_not_found — skip cookie, force plugin auth + IDB wipe
+        force_login = (
+            request.GET.get('force') == '1'
+            or request.GET.get('type') == 'team_not_found'
+        )
+        if request.GET.get('type') == 'team_not_found':
+            print("[MM ROOT] team_not_found — forcing plugin auth + IDB wipe")
+
         token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
 
+        idb_cleared = request.GET.get('idb_cleared') == '1'
         if token and not force_login and endpoint_url:
             if self._validate_mm_token(endpoint_url, token):
-                print("[MM ROOT] Valid token cookie — forwarding to Mattermost /")
+                if not idb_cleared:
+                    print("[MM ROOT] Valid token — wiping stale IDB before forward")
+                    from django.http import HttpResponse
+                    dest = f"{proxy_prefix}/?idb_cleared=1"
+                    wipe_html = f"""<!DOCTYPE html>
+<html><head><title>PolySaaS &rarr; Mattermost</title></head>
+<body><script>
+  function _go() {{ window.location.replace({__import__('json').dumps(dest)}); }}
+  try {{
+    var _r = indexedDB.open('localforage');
+    _r.onsuccess = function(e) {{
+      var _db = e.target.result;
+      try {{
+        var _tx = _db.transaction('keyvaluepairs', 'readwrite');
+        _tx.objectStore('keyvaluepairs').delete('persist:storage');
+        _tx.oncomplete = function() {{ _db.close(); _go(); }};
+        _tx.onerror   = function() {{ _db.close(); _go(); }};
+      }} catch(_) {{ _go(); }}
+    }};
+    _r.onerror = function() {{ _go(); }};
+  }} catch(_) {{ _go(); }}
+</script><p>Connecting&hellip;</p></body></html>"""
+                    return HttpResponse(wipe_html, content_type="text/html; charset=utf-8")
+                print("[MM ROOT] IDB cleared — forwarding to Mattermost /")
                 return None
             print("[MM ROOT] Stale token cookie — serving login bridge inline at root")
 
@@ -226,14 +255,27 @@ class MattermostPassthroughHandler:
 <html><head><title>PolySaaS &rarr; Mattermost</title></head>
 <body>
 <script>
-  localStorage.removeItem('storage:MMAUTHTOKEN');
-  localStorage.removeItem('MMAUTHTOKEN');
-  localStorage.removeItem('mmauthtoken');
+  try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_) {{}}
+  try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_) {{}}
+  try {{ localStorage.removeItem('mmauthtoken'); }} catch(_) {{}}
   document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
   document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
-  window.location.href = '{proxy_prefix}/';
+  function _go() {{ window.location.replace('{proxy_prefix}/'); }}
+  try {{
+    var _req = indexedDB.open('localforage');
+    _req.onsuccess = function(e) {{
+      var _db = e.target.result;
+      try {{
+        var _tx = _db.transaction('keyvaluepairs', 'readwrite');
+        _tx.objectStore('keyvaluepairs').delete('persist:storage');
+        _tx.oncomplete = function() {{ _db.close(); _go(); }};
+        _tx.onerror   = function() {{ _db.close(); _go(); }};
+      }} catch(_) {{ _go(); }}
+    }};
+    _req.onerror = function() {{ _go(); }};
+  }} catch(_) {{ _go(); }}
 </script>
-<p>Redirecting to Mattermost...</p>
+<p>Connecting to Mattermost&hellip;</p>
 </body></html>"""
                 resp = HttpResponse(redirect_html, content_type="text/html; charset=utf-8")
                 resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
@@ -401,9 +443,9 @@ try {{
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
                 var baseUrl = base().replace(/\/$/, '');
-                var redirectUrl = baseUrl + '/channels/town-square';
-                dbg('token stored, redirecting to ' + redirectUrl);
-                window.location.replace(redirectUrl);
+                var redirectUrl = baseUrl + '/';
+                dbg('token stored, redirecting to root (SPA will navigate to correct team)');
+                _mmOrigReplace(redirectUrl);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
@@ -454,8 +496,8 @@ try {{
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
-            dbg('Token already exists — redirecting to town-square, skipping login');
-            window.location.replace(base().replace(/\/$/, '') + '/channels/town-square');
+            dbg('Token already exists — redirecting to root, SPA will find correct team');
+            _mmOrigReplace(base().replace(/\/$/, '') + '/');
             return;
         }}
         if (forceLogin && existingToken) {{
@@ -1257,6 +1299,7 @@ try {{
     // Intercept client-side React Router navigation to /login.
     // Mattermost SPA pushes /login when its token check fails; route to our bridge
     // (prepopulated credentials + auto-submit) instead of native Mattermost login UI.
+    var _mmOrigReplace = window.location.replace.bind(window);
     (function() {{
         var _push = history.pushState;
         var _repl = history.replaceState;
@@ -1267,16 +1310,29 @@ try {{
                 return /\/login([/?]|$)/.test(p);
             }} catch (e) {{ return false; }}
         }}
+        function isTeamNotFoundUrl(url) {{
+            try {{
+                return typeof url === 'string' && url.indexOf('type=team_not_found') !== -1;
+            }} catch (e) {{ return false; }}
+        }}
         function _redirectToLoginBridge() {{
             if (window.location.pathname.indexOf('/login') !== -1) {{
                 return;
             }}
             console.log('[PolySaaS MM] Login route detected — redirecting to PolySaaS bridge');
-            window.location.replace(PROXY + '/login?force=1');
+            _mmOrigReplace(PROXY + '/login?force=1');
+        }}
+        function _forceReentry() {{
+            console.log('[PolySaaS MM] team_not_found detected — forcing clean re-entry via server');
+            _mmOrigReplace(PROXY + '/?force=1');
         }}
         history.pushState = function(state, title, url) {{
             if (isLoginPath(url)) {{
                 _redirectToLoginBridge();
+                return;
+            }}
+            if (isTeamNotFoundUrl(url)) {{
+                _forceReentry();
                 return;
             }}
             return _push.apply(this, arguments);
@@ -1284,6 +1340,10 @@ try {{
         history.replaceState = function(state, title, url) {{
             if (isLoginPath(url)) {{
                 _redirectToLoginBridge();
+                return;
+            }}
+            if (isTeamNotFoundUrl(url)) {{
+                _forceReentry();
                 return;
             }}
             return _repl.apply(this, arguments);
@@ -1302,6 +1362,10 @@ try {{
         window.location.replace = function(url) {{
             if (typeof url === 'string' && isLoginPath(url)) {{
                 _redirectToLoginBridge();
+                return;
+            }}
+            if (typeof url === 'string' && isTeamNotFoundUrl(url)) {{
+                _forceReentry();
                 return;
             }}
             return _locReplace.apply(this, arguments);
@@ -1367,7 +1431,7 @@ try {{
     function _mmRedirectToLogin() {{
         if (!_mmShouldRedirect()) return;
         console.log('[PolySaaS MM] Redirecting to login bridge');
-        setTimeout(function() {{ window.location.replace(PROXY + '/login?force=1'); }}, 300);
+        setTimeout(function() {{ _mmOrigReplace(PROXY + '/login?force=1'); }}, 300);
     }}
 
     var _f = window.fetch;
