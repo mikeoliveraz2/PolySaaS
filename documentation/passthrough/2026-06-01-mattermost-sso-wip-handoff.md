@@ -92,6 +92,48 @@ Do not keep layering fixes. Start from one of these two clean approaches:
 
 The fastest path is likely option 1.
 
+## Session 2 changes (2026-06-02, pre-office)
+
+### Root cause identified: logout response triggering Redux LOGOUT_SUCCESS
+
+Browser console + HAR analysis revealed the `ERR_ABORTED` reload loop:
+
+1. Mattermost SPA calls `/api/v4/users/logout` via fetch and XHR.
+2. Shim blocked the request but returned `Response(null, {status: 200})` -- a **success**.
+3. Mattermost Redux middleware dispatched `LOGOUT_SUCCESS`, clearing session from Redux store.
+4. With no session, SPA entered tight `window.location.href` reload loop (~1/sec).
+
+### Fixes applied
+
+File: `dose/passthrough/handlers/mattermost_handler.py`
+
+1. **Fetch logout block**: Changed from `200 OK` to `403 Forbidden` with JSON error body `{id: "api.user.logout.disabled", message: "Logout disabled by SSO policy"}`. Redux sees logout *failed* and keeps the session.
+
+2. **XHR logout block**: Changed from silently setting `_blocked = true` (no response) to using `_logoutBlocked` flag. The `send()` override now synthesizes a full 403 response with proper `readyState=4`, fires `onreadystatechange`/`onload`/`load`/`loadend` events.
+
+3. **Unicode fix**: Replaced all `→` (U+2192) and `—` (U+2014) characters with ASCII equivalents (`->` and `--`) throughout the file. Windows cp1252 console encoding cannot encode these, causing `UnicodeEncodeError` crashes in `print()` statements.
+
+### IndexedDB fix (from end of session 1)
+
+Changed `indexedDB.open('localforage', 2)` to `indexedDB.open('localforage')` in 3 locations within the injected shim. The hardcoded version 2 caused `VersionError` when the browser already had a different version, preventing token writes to IDB entirely. After this fix, `[PolySaaS MM IDB] persist:storage merged` logs confirmed successful writes.
+
+### Status
+
+- Token acquisition: working (session token via `/api/v4/users/login`)
+- Token storage to IDB: working
+- Logout blocking: now returns 403 (untested in browser -- apply this and test at office)
+- Unicode crash: fixed
+
+### Next step at office
+
+1. Clear browser data for localhost (or incognito)
+2. Click Mattermost in sidebar
+3. Check console for:
+   - `[PolySaaS MM] Blocked logout (403)` messages (confirms new logic is active)
+   - Absence of `ERR_ABORTED` reload loop
+   - `has_session: true` in plugin diagnostics
+4. If Town Square renders, this is the new baseline for BINGO
+
 ## Verification commands run
 
 ```powershell
