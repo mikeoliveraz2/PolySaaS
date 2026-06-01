@@ -1,6 +1,10 @@
 #!/usr/bin/env python
-"""Regression test: Mattermost config/client JSON should not be rewritten by the handler."""
+# FROZEN — Mattermost Passthrough BINGO (2026-05-31)
+# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
+# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
+"""Regression test: Mattermost config/client JSON gets upstream WebSocket URL rewrite."""
 
+import json
 import os
 import sys
 
@@ -30,8 +34,11 @@ def main():
         upstream_path='/api/v4/config/client',
     )
 
-    assert processed is None, processed
-    print('PASS: Mattermost config/client JSON is preserved')
+    assert processed is not None, 'config/client must be rewritten for passthrough'
+    data = json.loads(processed)
+    assert data['WebsocketURL'] == 'wss://polysaas-mattermost.onrender.com', data
+    assert data['SiteURL'].startswith('http'), data
+    print('PASS: Mattermost config/client WebSocket URL points at upstream Mattermost')
 
 
 if __name__ == '__main__':

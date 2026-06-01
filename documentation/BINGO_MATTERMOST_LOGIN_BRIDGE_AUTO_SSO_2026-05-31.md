@@ -1,0 +1,90 @@
+# BINGO: Mattermost Passthrough — Login Bridge Auto-SSO + Town Square
+
+**Date**: 2026-05-31  
+**Status**: ✅ COMPLETE  
+**Branch**: main  
+**Commit**: `d191f2a3`
+
+---
+
+## Summary
+
+Mattermost passthrough is **certified working** inside the PolySaaS admin template:
+
+- ✅ PolySaaS login bridge (prepopulated credentials from `TenantApp.extra_config`)
+- ✅ Auto-submit login → fresh `MMAUTHTOKEN` → Town Square
+- ✅ Stale cookie rejected server-side (`/api/v4/users/me` validation at root)
+- ✅ `/login` serves PolySaaS bridge (never native Mattermost login form)
+- ✅ SPA `/login` navigation redirected to bridge with `?force=1`
+- ✅ GitHub plugin 501 → `{"connected":false}` (no forwarder crash)
+- ✅ Plugin/API HTML shells coerced to JSON stubs (spinner loop fixed)
+- ✅ Handler isolation: Mattermost rules live only in `MattermostPassthroughHandler`
+- ✅ Generic forwarder hooks only (no app names in shared control flow)
+
+---
+
+## Verification (manual — POLYSAAST122 tenant)
+
+1. Open `/pt/admin/polysaas-mattermost.onrender.com/` (incognito or hard refresh).
+2. See **Sign in to Mattermost · via PolySaaS Passthrough** (not native MM login).
+3. Credentials prepopulated; auto-submit within ~300ms.
+4. Land on **Town Square** with channels, messages, welcome modal.
+5. Server log: `[MM LOGIN] Serving PolySaaS login bridge` or `[MM ROOT] Stale token cookie — serving login bridge`.
+
+Automated regression:
+
+- `python test_mattermost_plugin_connected.py` — PASS
+- `python test_mattermost_config_client_parity.py` — PASS
+
+---
+
+## Architecture (handler isolation)
+
+| Layer | Responsibility |
+|-------|----------------|
+| `MattermostPassthroughHandler` | SSO bridge, shim, token validation, JSON coercion, config/client rewrite |
+| `forwarding.py` | Generic hooks only: `try_root_display_shell_response`, `coerce_upstream_response_for_path`, `should_process/wrap_html`, `HttpResponse` short-circuit |
+| `registry.py` | Handler discovery via `matches_endpoint()` — no `if mattermost` branches |
+| `handler_base.py` | Optional hook contract documented |
+| `passthrough_embed.html` | Admin template shell for embedded passthrough HTML |
+
+**Rule file**: `.cursor/rules/passthrough-handler-isolation.mdc`
+
+---
+
+## FROZEN FILE MANIFEST
+
+**NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela).**
+
+Every file below carries a freeze banner. Do not edit without explicit approval.
+
+| File | Role |
+|------|------|
+| `dose/passthrough/handlers/mattermost_handler.py` | Mattermost handler (primary) |
+| `dose/passthrough/handlers/mattermost_handler.py.bak` | Backup alongside handler |
+| `dose/passthrough/forwarding.py` | Shared forwarder (generic hooks used by MM) |
+| `dose/passthrough/forwarding.py.bak` | Backup alongside forwarder |
+| `dose/passthrough/handlers/handler_base.py` | Handler hook base / contract |
+| `dose/passthrough/handlers/handler_base.py.bak` | Backup alongside handler_base |
+| `dose/passthrough/registry.py` | Handler registry / discovery |
+| `dose/passthrough/registry.py.bak` | Backup alongside registry |
+| `dose/templates/admin/passthrough_embed.html` | Admin embed template (MM + Odoo shell) |
+| `dose/templates/admin/passthrough_embed.html.bak` | Backup alongside template |
+| `test_mattermost_config_client_parity.py` | Regression: SiteURL / WebsocketURL rewrite |
+| `test_mattermost_plugin_connected.py` | Regression: GitHub plugin 501 normalization |
+| `.cursor/rules/passthrough-handler-isolation.mdc` | Permanent Cursor rule |
+| `.cursor/rules/passthrough-handler-isolation.mdc.bak` | Backup alongside rule |
+| `documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md` | This certification document |
+
+### Related (committed, NOT frozen — test Odoo after this BINGO)
+
+| File | Role |
+|------|------|
+| `dose/passthrough/handlers/odoo_handler.py` | Handler isolation hooks only (`should_process/wrap_html`) |
+| `dose/passthrough/handlers/odoo_handler.py.bak` | Backup |
+
+---
+
+## Status: DONE
+
+Mattermost passthrough login bridge + Town Square boot is **production-ready** and **read-only** per post-commit lock.
