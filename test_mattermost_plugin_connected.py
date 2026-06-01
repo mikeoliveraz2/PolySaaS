@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# FROZEN — Mattermost Passthrough BINGO (2026-05-31)
+# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
+# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
 """Focused regression test for Mattermost GitHub plugin connected probe normalization."""
 
 import os

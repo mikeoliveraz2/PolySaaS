@@ -98,6 +98,38 @@ class OdooPassthroughHandler:
     def matches_endpoint(cls, endpoint) -> bool:
         return cls._odoo_endpoint_is_odoo(endpoint)
 
+    def should_process_html_response(
+        self,
+        request,
+        upstream_path: str,
+        *,
+        content_type=None,
+        status_code=200,
+    ) -> bool:
+        if status_code != 200:
+            return False
+        ct = (content_type or "").lower()
+        if "text/html" not in ct and "application/xhtml" not in ct:
+            return False
+        if _odoo_upstream_bypasses_display_shell(upstream_path or "/"):
+            return False
+        return True
+
+    def should_wrap_in_admin_template(
+        self,
+        request,
+        upstream_path: str,
+        *,
+        content_type=None,
+        status_code=200,
+    ) -> bool:
+        return self.should_process_html_response(
+            request,
+            upstream_path,
+            content_type=content_type,
+            status_code=status_code,
+        )
+
     @classmethod
     def try_rewrite_incoming_path_referer_fallback(cls, request) -> bool:
         """

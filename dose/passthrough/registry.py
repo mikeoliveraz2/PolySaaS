@@ -1,16 +1,40 @@
+# =============================================================================
+# FROZEN — Mattermost Passthrough BINGO (2026-05-31) [handler registry]
+# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
+# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
+# =============================================================================
 # dose/passthrough/registry.py
 # Generic handler discovery — no endpoint-specific names in this module.
 import importlib
 import inspect
 import logging
 import pkgutil
-from typing import List, Optional, Type
+from pathlib import Path
+from typing import List, Optional, Tuple, Type
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 _HANDLER_REGISTRY = {}
 _HANDLER_CLASSES: Optional[List[Type]] = None
+_HANDLER_DISCOVERY_KEY: Optional[Tuple] = None
+
+
+def _handler_modules_discovery_key() -> Tuple:
+    """Fingerprint handler module mtimes so dev hot-reload rediscovers handlers."""
+    import dose.passthrough.handlers as handlers_pkg
+
+    entries = []
+    for base in handlers_pkg.__path__:
+        base_path = Path(base)
+        if not base_path.is_dir():
+            continue
+        for path in sorted(base_path.glob("*_handler.py")):
+            try:
+                entries.append((path.name, path.stat().st_mtime_ns))
+            except OSError:
+                entries.append((path.name, 0))
+    return tuple(entries)
 
 
 def register_handler(trigger: str, handler_class):
@@ -22,8 +46,10 @@ def register_handler(trigger: str, handler_class):
 
 def _discover_handler_classes() -> List[Type]:
     """Load all *PassthroughHandler classes that implement matches_endpoint."""
-    global _HANDLER_CLASSES
-    if _HANDLER_CLASSES is not None:
+    global _HANDLER_CLASSES, _HANDLER_DISCOVERY_KEY
+
+    discovery_key = _handler_modules_discovery_key()
+    if _HANDLER_CLASSES is not None and _HANDLER_DISCOVERY_KEY == discovery_key:
         return _HANDLER_CLASSES
 
     classes: List[Type] = []
@@ -47,6 +73,7 @@ def _discover_handler_classes() -> List[Type]:
                 logger.debug("Discovered passthrough handler: %s", obj.__name__)
 
     _HANDLER_CLASSES = classes
+    _HANDLER_DISCOVERY_KEY = discovery_key
     return classes
 
 
@@ -71,7 +98,6 @@ def resolve_handler_for_endpoint(endpoint) -> Optional[object]:
 
 def resolve_handler_for_pt_admin_trigger(trigger: str) -> Optional[object]:
     """Resolve handler from /pt/admin/<trigger>/ URL segment (hostname or slug)."""
-
     class _SimpleEndpoint:
         def __init__(self, seg: str):
             seg = (seg or "").strip("/")

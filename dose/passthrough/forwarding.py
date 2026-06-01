@@ -1,3 +1,9 @@
+# =============================================================================
+# FROZEN — Mattermost Passthrough BINGO (2026-05-31) [shared forwarder]
+# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
+# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
+# Mattermost-specific behavior MUST stay in MattermostPassthroughHandler hooks only.
+# =============================================================================
 # dose/passthrough/forwarding.py — FINAL — PRINTS EVERYTHING — EXCEPTIONS SHOW TRUTH
 import logging
 import traceback
@@ -11,6 +17,50 @@ from django.utils.safestring import mark_safe
 logger = logging.getLogger(__name__)
 
 _SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE", "HTTP_ACCEPT_ENCODING"})
+
+
+def _default_should_wrap_in_admin_template(upstream_path, content_type, status_code):
+    """Generic wrap gate when handler does not implement should_wrap_in_admin_template."""
+    from dose.passthrough.handlers.handler_base import PassthroughHandlerBase
+
+    if status_code != 200:
+        return False
+    ct = (content_type or "").lower()
+    if "text/html" not in ct and "application/xhtml" not in ct:
+        return False
+    return not PassthroughHandlerBase._generic_non_embeddable_html_path(upstream_path or "/")
+
+
+def _handler_should_wrap_in_admin_template(handler, request, upstream_path, content_type, status_code):
+    if handler and hasattr(handler, "should_wrap_in_admin_template"):
+        try:
+            return bool(
+                handler.should_wrap_in_admin_template(
+                    request,
+                    upstream_path,
+                    content_type=content_type,
+                    status_code=status_code,
+                )
+            )
+        except Exception as exc:
+            logger.warning("should_wrap_in_admin_template failed: %s", exc, exc_info=True)
+    return _default_should_wrap_in_admin_template(upstream_path, content_type, status_code)
+
+
+def _handler_should_process_html_response(handler, request, upstream_path, content_type, status_code):
+    if handler and hasattr(handler, "should_process_html_response"):
+        try:
+            return bool(
+                handler.should_process_html_response(
+                    request,
+                    upstream_path,
+                    content_type=content_type,
+                    status_code=status_code,
+                )
+            )
+        except Exception as exc:
+            logger.warning("should_process_html_response failed: %s", exc, exc_info=True)
+    return _default_should_wrap_in_admin_template(upstream_path, content_type, status_code)
 
 
 def _should_follow_upstream_redirects(handler, request, *, target_url, upstream_path):
@@ -469,8 +519,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             except Exception as adj_exc:
                 logger.warning("adjust_upstream_target_url failed: %s", adj_exc, exc_info=True)
 
-        # WebSocket upgrade cannot pass through Django WSGI.
-        # Odoo needs /bus/ and /longpolling/ through the proxy; Mattermost uses direct WS to upstream.
+        # WebSocket upgrade cannot pass through Django WSGI (all endpoints).
         _blocked = ('/websocket',)
         if handler and hasattr(handler, 'extra_blocked_upstream_prefixes'):
             try:
@@ -573,13 +622,14 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             outbound_headers=outbound_headers,
             upstream_cookies=upstream_cookies,
         )
+        if isinstance(resp, HttpResponse):
+            print("FORWARDER — handler postprocess returned HttpResponse — returning directly")
+            return resp
 
         print(f"EXTERNAL SERVICE RESPONDED -> STATUS: {resp.status_code}")
         print(f"CONTENT LENGTH: {len(resp.content)} bytes")
         preview_bytes = resp.content[:500] if resp.content else b""
         print(f"CONTENT PREVIEW: {preview_bytes.decode('utf-8', errors='ignore')}")
-        if '/odoo/apps' in target_url:
-            print(f"[ODOO APPS DEBUG] status={resp.status_code}, len={len(resp.content)}, preview={preview_bytes[:200].decode('utf-8', errors='ignore')}")
 
         try:
             from dose.passthrough.stream_debug import log_upstream_response_if_debug
@@ -725,6 +775,27 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             "+html"
         )
 
+        if handler and hasattr(handler, "coerce_upstream_response_for_path"):
+            try:
+                coerced = handler.coerce_upstream_response_for_path(
+                    resp, request, upstream_path
+                )
+                if coerced:
+                    body, coerced_ct, coerced_status = coerced
+                    response = HttpResponse(body, status=coerced_status, content_type=coerced_ct)
+                    response["X-Frame-Options"] = "ALLOWALL"
+                    print(
+                        f"FORWARDER — handler coerced misauth HTML on {upstream_path} "
+                        f"to {coerced_ct} ({len(body)} bytes)"
+                    )
+                    print("FORWARDER SUCCESS — BINARY/TEXT PASSTHROUGH (handler-coerced)")
+                    print("=" * 120 + "\n")
+                    return response
+            except Exception as coerce_exc:
+                logger.warning(
+                    "coerce_upstream_response_for_path failed: %s", coerce_exc, exc_info=True
+                )
+
         # API, JS, CSS, images, fonts, etc. must pass through unchanged (not forced to text/html).
         # Handlers may still rewrite selected bodies (e.g. Mattermost /api/v4/config/client JSON).
         if not is_html:
@@ -805,7 +876,11 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         if handler and hasattr(handler, 'fallback_rewrite_html_for_proxy'):
             content = handler.fallback_rewrite_html_for_proxy(content, request)
 
-        if handler:
+        _process_html = _handler_should_process_html_response(
+            handler, request, upstream_path, content_type, resp.status_code
+        )
+
+        if handler and _process_html:
             print(f"HANDLER RUNNING -> {handler.__class__.__name__}")
             processed = handler.process_html_response(content, request, endpoint_url=endpoint_url)
             if isinstance(processed, HttpResponse):
@@ -817,6 +892,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             else:
                 content = processed
                 print("HANDLER FINISHED — CONTENT MODIFIED")
+        elif handler:
+            print(f"HANDLER SKIPPED process_html_response for {upstream_path} (not embeddable HTML shell)")
         else:
             print("NO HANDLER — RETURNING HTML AS-IS")
 
@@ -867,12 +944,10 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             response.cookies['session_id']['samesite'] = 'Lax'
             print(f"FORWARDER — set browser session_id cookie from auto-login")
 
-        # Wrap HTML responses in admin template for embedded display (generic, all endpoints)
-        # Skip API calls, static assets, and non-HTML responses
-        upstream_path = getattr(request, '_passthrough_upstream_path', '')
-        is_page_load = not any(upstream_path.endswith(ext) for ext in ['.js', '.css', '.png', '.jpg', '.json', '.woff', '.woff2'])
-        is_page_load = is_page_load and '/api/' not in upstream_path and '/static/' not in upstream_path
-        if is_page_load and resp.status_code == 200:
+        # Wrap HTML responses in admin template when the handler allows it.
+        if _handler_should_wrap_in_admin_template(
+            handler, request, upstream_path, content_type, resp.status_code
+        ):
             print(f"[FORWARDER] Wrapping passthrough HTML in admin template")
             response = _wrap_in_admin_template(
                 request, response, trigger or 'passthrough', endpoint, handler=handler

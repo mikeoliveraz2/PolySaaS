@@ -1,3 +1,8 @@
+# =============================================================================
+# FROZEN — Mattermost Passthrough BINGO (2026-05-31) [handler hook contract]
+# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
+# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
+# =============================================================================
 """
 Base class for endpoint-specific passthrough handlers (Shela / Michael pattern).
 
@@ -63,7 +68,21 @@ class PassthroughHandlerBase:
     - `process_html_response(html_str, request, endpoint_url=None, **context) -> str | tuple | HttpResponse`
     - `should_forward_set_cookie_headers(request, upstream_content_type, upstream_path, response_kind) -> bool`
     - `should_delegate_pt_admin_core(request, path_info) -> bool` (defer PT core to URLconf)
+    - `matches_endpoint(endpoint) -> bool` (class method — registry discovery)
+    - `try_rewrite_incoming_path_referer_fallback(request) -> bool` (class method, optional)
+    - `fallback_rewrite_html_for_proxy(html, request) -> str` (optional forwarder safety net)
+    - `passthrough_embed_template_context(trigger, request) -> dict` (optional embed template flags)
+    - `should_process_html_response(request, upstream_path, **kwargs) -> bool` (optional HTML rewrite gate)
+    - `should_wrap_in_admin_template(request, upstream_path, **kwargs) -> bool` (optional admin embed wrap gate)
+    - `extra_blocked_upstream_prefixes(request, upstream_path) -> tuple` (optional paths to block at forwarder)
+    - `coerce_upstream_response_for_path(resp, request, upstream_path) -> tuple|None` (optional API HTML→JSON stub)
     """
+
+    _GENERIC_NON_HTML_SUFFIXES = (
+        ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+        ".woff", ".woff2", ".ttf", ".eot", ".json", ".map", ".ico",
+    )
+    _GENERIC_NON_EMBED_PREFIXES = ("/api/", "/static/")
 
     def __init__(self, endpoint: PassThroughEndpoint | None = None):
         self.endpoint = endpoint
@@ -144,6 +163,50 @@ class PassthroughHandlerBase:
         response_kind=None,
     ) -> bool:
         return True
+
+    def extra_blocked_upstream_prefixes(self, request, upstream_path: str):
+        """Return extra upstream path prefixes the forwarder must not proxy (WS upgrade, etc.)."""
+        return ()
+
+    @classmethod
+    def _generic_non_embeddable_html_path(cls, upstream_path: str) -> bool:
+        """True when upstream path looks like assets/API, not an HTML app shell."""
+        path = upstream_path or "/"
+        if any(path.endswith(ext) for ext in cls._GENERIC_NON_HTML_SUFFIXES):
+            return True
+        return any(path.startswith(prefix) for prefix in cls._GENERIC_NON_EMBED_PREFIXES)
+
+    def should_process_html_response(
+        self,
+        request,
+        upstream_path: str,
+        *,
+        content_type=None,
+        status_code=200,
+    ) -> bool:
+        """Return False to skip process_html_response for API/asset HTML mis-responses."""
+        if status_code != 200:
+            return False
+        ct = (content_type or "").lower()
+        if "text/html" not in ct and "application/xhtml" not in ct:
+            return False
+        return not self._generic_non_embeddable_html_path(upstream_path)
+
+    def should_wrap_in_admin_template(
+        self,
+        request,
+        upstream_path: str,
+        *,
+        content_type=None,
+        status_code=200,
+    ) -> bool:
+        """Return False to pass HTML through without admin/passthrough_embed wrap."""
+        return self.should_process_html_response(
+            request,
+            upstream_path,
+            content_type=content_type,
+            status_code=status_code,
+        )
 
     def search_and_replace_assets(self, content: str, asset_types=None) -> str:
         if asset_types is None:
