@@ -198,12 +198,16 @@ def _call_xai(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]]
         data = resp.json()
         return data['choices'][0]['message']['content']
     except requests.HTTPError as e:
-        # Keep @grok responsive when xAI is temporarily unavailable or out of credits.
-        allow_fallback = bool(getattr(settings, 'AI_PEERS_XAI_FALLBACK_TO_ANTHROPIC', True))
-        if resp is not None and resp.status_code == 403 and allow_fallback:
-            logger.warning("xAI returned 403; falling back to Anthropic for @%s", peer.get('username', 'grok') if peer else 'grok')
-            fallback_text = _call_anthropic(messages, system_prompt, peer)
-            return f"[Grok fallback] {fallback_text}"
+        # Keep @grok responsive with a clean status message when xAI blocks requests.
+        if resp is not None and resp.status_code == 403:
+            logger.warning(
+                "xAI returned 403 for @%s; returning clean availability message",
+                peer.get('username', 'grok') if peer else 'grok',
+            )
+            return (
+                "[Grok] I am temporarily unavailable because my xAI provider "
+                "is out of credits or has hit a spend limit. Please retry shortly."
+            )
         print(f"[DEBUG] xAI error: {e}")
         logger.error("xAI API error: %s", e)
         return f"[{peer_label}] Error calling xAI: {e}"
