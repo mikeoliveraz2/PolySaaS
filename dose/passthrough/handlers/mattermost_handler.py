@@ -980,6 +980,38 @@ try {{
         upstream_path = kwargs.get('upstream_path') or ''
         combined = f"{target_url}{upstream_path}"
 
+        # Mattermost sometimes derives an invalid team slug "pt" from the proxy base
+        # path and requests /api/v4/teams/name/pt, which returns 404 and cascades into
+        # Team Not Found UI. Recover by resolving the user's first real team.
+        if resp.status_code == 404 and re.search(r'/api/v4/teams/name/pt/?(?:\?|$)', combined):
+            print('[MM_RESP] Fallback for /api/v4/teams/name/pt 404 -> resolving team via /users/me/teams')
+            try:
+                import requests as _req
+
+                endpoint_url = (kwargs.get('endpoint_url') or '').rstrip('/')
+                if endpoint_url:
+                    outbound_headers = dict(kwargs.get('outbound_headers') or {})
+                    upstream_cookies = dict(kwargs.get('upstream_cookies') or {})
+                    teams_resp = _req.get(
+                        f"{endpoint_url}/api/v4/users/me/teams",
+                        headers=outbound_headers,
+                        cookies=upstream_cookies,
+                        timeout=10,
+                        allow_redirects=False,
+                    )
+                    if teams_resp.status_code == 200:
+                        teams = teams_resp.json() or []
+                        if isinstance(teams, list) and teams:
+                            resp._content = json.dumps(teams[0]).encode('utf-8')
+                            resp.status_code = 200
+                            resp.headers['Content-Type'] = 'application/json'
+                            print(
+                                f"[MM_RESP] Recovered /teams/name/pt with team={{teams[0].get('name', '')}}"
+                            )
+                            return resp
+            except Exception as exc:
+                print(f'[MM_RESP] /teams/name/pt fallback failed: {exc}')
+
         # GitHub plugin connected probe returns 501 when unconfigured — SPA expects 200 + JSON.
         if resp.status_code == 501 and '/plugins/github/api/v1/connected' in combined:
             resp._content = b'{"connected":false}'
