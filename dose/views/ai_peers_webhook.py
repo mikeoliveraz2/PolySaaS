@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import threading
+import time
 import requests
 
 from django.conf import settings
@@ -27,6 +28,7 @@ MENTION_PATTERN = re.compile(r'[#@](\w+)')
 
 _peers_loaded = False
 _processed_posts = set()
+_hook_tokens_cache = {'tokens': set(), 'ts': 0.0}
 
 # Channels where every message broadcasts to all active peers (no @mention needed).
 # Use Mattermost channel *names* (not IDs).
@@ -239,6 +241,54 @@ def _post_dispatch_ack(peer_username: str, channel_id: str, post_id: str, trigge
         logger.warning("AI peers webhook ack post failed for @%s: %s", peer_username, exc)
 
 
+def _get_valid_webhook_tokens() -> set:
+    """Return accepted webhook tokens from settings and Mattermost outgoing hooks."""
+    raw = (getattr(settings, 'AI_PEERS_WEBHOOK_TOKEN', '') or '').strip()
+    static_tokens = {t.strip() for t in raw.split(',') if t.strip()}
+
+    # Cache Mattermost hook tokens briefly to avoid API calls on every message.
+    now = time.time()
+    if now - _hook_tokens_cache.get('ts', 0.0) < 60:
+        return static_tokens | set(_hook_tokens_cache.get('tokens', set()))
+
+    mm_url = (getattr(settings, 'MATTERMOST_URL', '') or '').rstrip('/')
+    admin_token = (getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '') or '').strip()
+    if not mm_url or not admin_token:
+        _hook_tokens_cache['tokens'] = set()
+        _hook_tokens_cache['ts'] = now
+        return static_tokens
+
+    dynamic_tokens = set()
+    try:
+        resp = requests.get(
+            f"{mm_url}/api/v4/hooks/outgoing",
+            headers={
+                'Authorization': f"Bearer {admin_token}",
+                'Content-Type': 'application/json',
+            },
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            payload = resp.json()
+            hooks = (
+                (payload.get('outgoing_webhooks') or payload.get('hooks') or [])
+                if isinstance(payload, dict)
+                else (payload or [])
+            )
+            for hook in hooks:
+                tok = (hook.get('token') or '').strip()
+                if tok:
+                    dynamic_tokens.add(tok)
+        else:
+            logger.warning("Failed to fetch Mattermost outgoing hooks for token validation: %s", resp.status_code)
+    except Exception as exc:
+        logger.warning("Webhook token refresh failed: %s", exc)
+
+    _hook_tokens_cache['tokens'] = dynamic_tokens
+    _hook_tokens_cache['ts'] = now
+    return static_tokens | dynamic_tokens
+
+
 @csrf_exempt
 @require_POST
 def ai_peers_webhook(request):
@@ -257,9 +307,11 @@ def ai_peers_webhook(request):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
     incoming_token = data.get('token', '')
-    if webhook_token and incoming_token != webhook_token:
-        logger.warning(f"AI peers webhook: token mismatch. Expected '{webhook_token}', got '{incoming_token}'")
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+    if webhook_token:
+        valid_tokens = _get_valid_webhook_tokens()
+        if incoming_token not in valid_tokens:
+            logger.warning("AI peers webhook: token mismatch for incoming webhook")
+            return JsonResponse({'error': 'Forbidden'}, status=403)
 
     text = data.get('text', '')
     channel_id = data.get('channel_id', '')

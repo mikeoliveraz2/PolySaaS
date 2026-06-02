@@ -29,6 +29,68 @@ def _mm_headers(token: str) -> dict:
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
 
+def _ensure_bot_channel_access(bot_token: str, channel_id: str) -> bool:
+    """Ensure the bot user can post in the target channel using admin permissions."""
+    admin_token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+    if not admin_token:
+        return False
+
+    try:
+        bot_resp = requests.get(
+            f"{_mm_url()}/api/v4/users/me",
+            headers=_mm_headers(bot_token),
+            timeout=15,
+        )
+        bot_resp.raise_for_status()
+        bot_user_id = (bot_resp.json() or {}).get('id', '')
+        if not bot_user_id:
+            return False
+
+        admin_headers = _mm_headers(admin_token)
+        channel_resp = requests.get(
+            f"{_mm_url()}/api/v4/channels/{channel_id}",
+            headers=admin_headers,
+            timeout=15,
+        )
+        channel_resp.raise_for_status()
+        team_id = (channel_resp.json() or {}).get('team_id', '')
+
+        if team_id:
+            team_member_resp = requests.post(
+                f"{_mm_url()}/api/v4/teams/{team_id}/members",
+                headers=admin_headers,
+                json={'team_id': team_id, 'user_id': bot_user_id},
+                timeout=15,
+            )
+            if team_member_resp.status_code not in (201, 400):
+                logger.warning(
+                    "Failed adding bot %s to team %s: %s",
+                    bot_user_id,
+                    team_id,
+                    team_member_resp.text,
+                )
+
+        channel_member_resp = requests.post(
+            f"{_mm_url()}/api/v4/channels/{channel_id}/members",
+            headers=admin_headers,
+            json={'user_id': bot_user_id},
+            timeout=15,
+        )
+        if channel_member_resp.status_code not in (201, 400):
+            logger.warning(
+                "Failed adding bot %s to channel %s: %s",
+                bot_user_id,
+                channel_id,
+                channel_member_resp.text,
+            )
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning("Bot channel access recovery failed for %s: %s", channel_id, e)
+        return False
+
+
 def register_peer(username: str, display_name: str, provider: str,
                   bot_token: str, system_prompt: str = '', aliases: Optional[List[str]] = None):
     """Register an AI peer in the in-memory registry."""
@@ -366,6 +428,14 @@ def _post_as_bot(bot_token: str, channel_id: str, message: str, root_id: str = '
             json=payload,
             timeout=15,
         )
+        if resp.status_code == 403 and _ensure_bot_channel_access(bot_token, channel_id):
+            # Retry once after auto-healing team/channel membership for this bot.
+            resp = requests.post(
+                f"{_mm_url()}/api/v4/posts",
+                headers=_mm_headers(bot_token),
+                json=payload,
+                timeout=15,
+            )
         if resp.status_code == 400 and root_id:
             print(f"[DEBUG] Mattermost root_id failed, retrying without threading...")
             payload.pop('root_id')
