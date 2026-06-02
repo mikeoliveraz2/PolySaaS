@@ -38,12 +38,13 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
     async_mode = False
 
     def __init__(self, get_response):
-        print("********** DoseRequestController initialized **********")
+        logger.info("DoseRequestController initialized")
         self.get_response = get_response
 
 
     def __call__(self, request):
-        print("[DEBUG] ENTERED DoseRequestController __call__ for path:", getattr(request, 'path', None))
+        path = safe_log_str(getattr(request, 'path', None))
+        logger.info(f"[DEBUG] ENTERED DoseRequestController __call__ for path: {path}")
         logger.info(f"[DEBUG] request.user: {getattr(request, 'user', None)} (is_authenticated: {getattr(getattr(request, 'user', None), 'is_authenticated', False)})")
         logger.info(f"[DEBUG] request.tenant: {getattr(request, 'tenant', None)}")
 
@@ -89,9 +90,7 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
         logger.info('requestmethod= %s', requestmethod)
         requestpath = request.path
         logger.info('requestpath= %s', requestpath)
-        print()
-        print('>>>>>>>>>>>>>>>>>>>>>>>> requestpath= %s', requestpath)
-        print()
+        logger.info('>>>>>>>>>>>>>>>>>>>>>>>> requestpath= %s', requestpath)
         # Initialize atomic services registry
         init_atomic_services_registry()
         logger.info("ATOMIC_SERVICE_REGISTRY keys: %s", list(ATOMIC_SERVICE_REGISTRY.keys()))
@@ -112,27 +111,27 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
                 cursor.execute(f'SET search_path TO "{tenant_schema}",public;')
                 cursor.execute("SHOW search_path;")
                 search_path = cursor.fetchone()[0]
-            print(f"[DEBUG] PostgreSQL search_path SET to: {search_path}")
+            logger.info("[DEBUG] PostgreSQL search_path SET to: %s", search_path)
         else:
             with connection.cursor() as cursor:
                 cursor.execute("SHOW search_path;")
                 search_path = cursor.fetchone()[0]
-            print(f"[DEBUG] PostgreSQL search_path (no tenant): {search_path}")
+            logger.info("[DEBUG] PostgreSQL search_path (no tenant): %s", search_path)
 
         # Use the shared _instruction_matches logic (supports match_type: path/menu_id/action_id/regex/contains)
         from dose.passthrough.orchestration_hook import _instruction_matches
         qs = request.META.get('QUERY_STRING', '')
         full_path = request.path + ('?' + qs if qs else '')
         instructions = Instruction.objects.filter(requestmethod=requestmethod, direction='REQ')
-        print(f"[DEBUG] All instructions for method={requestmethod}, direction=REQ:")
+        logger.info("[DEBUG] All instructions for method=%s, direction=REQ:", requestmethod)
         for instr in instructions:
-            print(f"  - Instruction id={getattr(instr, 'id', None)}, match_type={getattr(instr, 'match_type', 'path')}, requestpath='{instr.requestpath}'")
-        print(f"[DEBUG] Matching against path: '{full_path}'")
+            logger.info("  - Instruction id=%s, match_type=%s, requestpath='%s'", getattr(instr, 'id', None), getattr(instr, 'match_type', 'path'), instr.requestpath)
+        logger.info("[DEBUG] Matching against path: '%s'", full_path)
         matched_instructions = [
             instr for instr in instructions
             if _instruction_matches(instr, full_path, requestmethod)
         ]
-        print(f"[DEBUG] matched_instructions for path '{full_path}' and method '{requestmethod}': {len(matched_instructions)}")
+        logger.info("[DEBUG] matched_instructions for path '%s' and method '%s': %d", full_path, requestmethod, len(matched_instructions))
         logger.info("matched_instructions.count()= %s", len(matched_instructions))
         if len(matched_instructions) == 0:
             return self.get_response(request)
@@ -185,9 +184,9 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
 
             if executescript_name:
                 cls = ATOMIC_SERVICE_REGISTRY.get(executescript_name)
-                print(f"[DEBUG] DoseRequestController: executescript_name={executescript_name}, cls={cls}")
+                logger.info("[DEBUG] DoseRequestController: executescript_name=%s, cls=%s", executescript_name, cls)
                 if cls and hasattr(cls, 'execute_and_save'):
-                    print(f"[DEBUG] DoseRequestController: Executing atomic service {executescript_name}")
+                    logger.info("[DEBUG] DoseRequestController: Executing atomic service %s", executescript_name)
                     # Save the request and instruction to the RequestLog model before executing the atomic service
                     try:
                         from dose.models.request_log import RequestLog
@@ -212,9 +211,9 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
                     atomic_result = cls.execute_and_save(request, instruction_row)
             # Save atomic service result to CallBackData if flag is set
             if hasattr(instruction_row, 'save_callbackdata') and instruction_row.save_callbackdata:
-                print("[DEBUG] CALLBACKDATA BLOCK REACHED for instruction:", instruction_row)
-                print("[DEBUG] atomic_result:", atomic_result)
-                print("[DEBUG] tenant:", getattr(request, 'tenant', None))
+                logger.info("[DEBUG] CALLBACKDATA BLOCK REACHED for instruction: %s", instruction_row)
+                logger.info("[DEBUG] atomic_result: %s", atomic_result)
+                logger.info("[DEBUG] tenant: %s", getattr(request, 'tenant', None))
                 logger.info(f"[DEBUG] Entering callbackdata save block for instruction: {instruction_row}, atomic_result: {atomic_result}, tenant: {getattr(request, 'tenant', None)}")
                 import json
                 logger.info(f"[CALLBACKDATA-DEBUG] atomic_result before save: {repr(atomic_result)}")

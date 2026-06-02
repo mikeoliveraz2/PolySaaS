@@ -37,10 +37,33 @@ def run_pt_admin_passthrough_core(request):
     trigger = parts[2]
     print(f"[PT-CORE] trigger={trigger}")
 
+    def _infer_endpoint_url_from_trigger(hostname: str) -> str:
+        """Build a safe endpoint URL from /pt/admin/<trigger>/ hostname segment."""
+        raw = (hostname or "").strip()
+        if raw.startswith("http://") or raw.startswith("https://"):
+            return raw
+
+        host_only = raw
+        port = None
+        if ":" in raw:
+            _host, _port = raw.rsplit(":", 1)
+            if _port.isdigit():
+                host_only = _host
+                port = int(_port)
+
+        # Internal Docker hostnames and explicit :80 should default to HTTP.
+        if port == 80 or "." not in host_only:
+            scheme = "http"
+        elif port == 443:
+            scheme = "https"
+        else:
+            scheme = "https"
+        return f"{scheme}://{raw}"
+
     # Fallback for when DB is unavailable (recovery scenarios)
     class SimpleEndpoint:
         def __init__(self, hostname, url=None):
-            self.endpoint_url = url or f"https://{hostname}"
+            self.endpoint_url = url or _infer_endpoint_url_from_trigger(hostname)
             self.trigger_path = hostname
             self.is_enabled = True
             self.passthrough_type = 'proxy'

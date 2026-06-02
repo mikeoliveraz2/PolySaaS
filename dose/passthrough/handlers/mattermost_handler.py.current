@@ -71,7 +71,7 @@ class MattermostPassthroughHandler:
         preview = body[:300].lower()
         if "text/html" not in ct and b"<!doctype html" not in preview and b"<html" not in preview:
             return None
-        print(f"[MM HANDLER] HTML shell on API path {path} — coercing JSON stub")
+        print(f"[MM HANDLER] HTML shell on API path {path} -- coercing JSON stub")
         if path.rstrip("/").endswith("/channels"):
             stub = b"[]"
         else:
@@ -196,9 +196,7 @@ class MattermostPassthroughHandler:
         path = request.path_info.rstrip("/") or "/"
         login_path = f"{proxy_prefix}/login"
 
-        # Mattermost login does not require team selection and should always be
-        # handled by the PolySaaS bridge in passthrough mode.
-        if path == login_path or path.startswith(login_path + "/"):
+        if path == login_path:
             print("[MM LOGIN] Serving PolySaaS login bridge at /login")
             return self._wrap_login_bridge(request, trigger, endpoint)
 
@@ -207,23 +205,18 @@ class MattermostPassthroughHandler:
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
+        endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
         
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
-        endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
+        # Skip plugin auth if mm_plugin_auth=1 (we've already done it once)
+        skip_plugin_auth = request.GET.get('mm_plugin_auth') == '1'
 
-        if token and not force_login and endpoint_url:
-            if self._validate_mm_token(endpoint_url, token):
-                print("[MM ROOT] Valid token cookie — forwarding to Mattermost /")
-                return None
-            print("[MM ROOT] Stale token cookie — serving login bridge inline at root")
-
-        # No cookie or force=1 — use plugin auth for a guaranteed-valid fresh token.
-        endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
-        if endpoint_url:
+        # 1. Plugin auth first -- zero-click SSO when plugin is available (unless already done).
+        if endpoint_url and not force_login and not skip_plugin_auth:
             plugin_token = self._get_plugin_auth_token(request, endpoint_url, trigger)
             if plugin_token:
-                print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
+                print("[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
                 from django.http import HttpResponse
+                # Redirect to root with mm_idb_booted=1 flag so token validation logic triggers instead of re-running plugin auth
                 redirect_html = f"""<!DOCTYPE html>
 <html><head><title>PolySaaS &rarr; Mattermost</title></head>
 <body>
@@ -231,9 +224,10 @@ class MattermostPassthroughHandler:
   localStorage.removeItem('storage:MMAUTHTOKEN');
   localStorage.removeItem('MMAUTHTOKEN');
   localStorage.removeItem('mmauthtoken');
+  try {{ sessionStorage.removeItem('_polysaas_mm_idb_reload'); }} catch(e) {{}}
   document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
   document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
-  window.location.href = '{proxy_prefix}/';
+  window.location.href = '{proxy_prefix}/?mm_plugin_auth=1';
 </script>
 <p>Redirecting to Mattermost...</p>
 </body></html>"""
@@ -241,11 +235,58 @@ class MattermostPassthroughHandler:
                 resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
                 resp.set_cookie('mmauthtoken', plugin_token, max_age=86400, path='/', samesite='Lax')
                 return resp
-            else:
-                print(f"[MM ROOT] ====== PLUGIN AUTH FAILED ======")
+            print("[MM ROOT] ====== PLUGIN AUTH FAILED ======")
 
-        # No valid token at all — serve the login bridge INLINE.
-        print("[MM ROOT] No valid token — serving login bridge inline at root")
+        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+
+        if token and not force_login and endpoint_url:
+            if self._validate_mm_token(endpoint_url, token):
+                if request.GET.get('mm_idb_booted') == '1':
+                    print("[MM ROOT] Valid token + IDB bootstrapped -- forwarding to Mattermost /")
+                    return None
+                print("[MM ROOT] Valid token -- IDB bootstrap then forward")
+                from django.http import HttpResponse
+                mm_url = endpoint_url.rstrip('/')
+                boot_url = f"{proxy_prefix}/?mm_idb_booted=1"
+                bootstrap_html = f"""<!DOCTYPE html>
+<html><head><title>PolySaaS &rarr; Mattermost</title></head>
+<body>
+<script>
+(function() {{
+  var token = {json.dumps(token)};
+  var mmUrl = {json.dumps(mm_url)};
+  var nextUrl = {json.dumps(boot_url)};
+  try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch(_) {{}}
+  try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch(_) {{}}
+  document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
+  function _go() {{ window.location.replace(nextUrl); }}
+  try {{
+    var _req = indexedDB.open('localforage');
+    _req.onsuccess = function(e) {{
+      var _db = e.target.result;
+      var _sn = _db.objectStoreNames.contains('keyvaluepairs') ? 'keyvaluepairs'
+        : (_db.objectStoreNames.length ? _db.objectStoreNames[0] : null);
+      if (!_sn) {{ _db.close(); _go(); return; }}
+      try {{
+        var _tx = _db.transaction([_sn], 'readwrite');
+        var _store = _tx.objectStore(_sn);
+        var _payload = {{ entities: JSON.stringify({{ general: {{ credentials: {{ url: mmUrl, token: token }} }} }}) }};
+        _store.put(JSON.stringify(_payload), 'persist:storage');
+        _tx.oncomplete = function() {{ _db.close(); _go(); }};
+        _tx.onerror = function() {{ _db.close(); _go(); }};
+      }} catch(_) {{ _go(); }}
+    }};
+    _req.onerror = function() {{ _go(); }};
+  }} catch(_) {{ _go(); }}
+}})();
+</script>
+<p>Signing in to Mattermost&hellip;</p>
+</body></html>"""
+                return HttpResponse(bootstrap_html, content_type="text/html; charset=utf-8")
+            print("[MM ROOT] Stale token cookie -- serving login bridge inline at root")
+
+        # No valid token -- serve the login bridge INLINE.
+        print("[MM ROOT] No valid token -- serving login bridge inline at root")
         return self._wrap_login_bridge(request, trigger, endpoint)
 
     def _serve_login_bridge(self, request, trigger, endpoint):
@@ -384,7 +425,7 @@ try {{
                 // Write token to IndexedDB so Mattermost Redux hydrates correctly
                 var mmUrl = 'https://polysaas-mattermost.onrender.com';
                 try {{
-                    var req = indexedDB.open('localforage', 2);
+                    var req = indexedDB.open('localforage');
                     req.onsuccess = function(e) {{
                         var db = e.target.result;
                         var tx = db.transaction('keyvaluepairs', 'readwrite');
@@ -393,20 +434,9 @@ try {{
                         getReq.onsuccess = function() {{
                             var data = {{}};
                             try {{ data = JSON.parse(getReq.result || '{{}}'); }} catch(_) {{}}
-                            // Be defensive: Mattermost persist payload can store nested slices as strings.
-                            var entities = data.entities;
-                            if (typeof entities === 'string') {{
-                                try {{ entities = JSON.parse(entities || '{{}}'); }} catch(_) {{ entities = {{}}; }}
-                            }}
-                            if (!entities || typeof entities !== 'object') entities = {{}};
-                            var general = entities.general;
-                            if (typeof general === 'string') {{
-                                try {{ general = JSON.parse(general || '{{}}'); }} catch(_) {{ general = {{}}; }}
-                            }}
-                            if (!general || typeof general !== 'object') general = {{}};
-                            general.credentials = {{ url: mmUrl, token: token }};
-                            entities.general = general;
-                            data.entities = entities;
+                            data.entities = data.entities || {{}};
+                            data.entities.general = data.entities.general || {{}};
+                            data.entities.general.credentials = {{ url: mmUrl, token: token }};
                             store.put(JSON.stringify(data), 'persist:storage');
                             dbg('IDB persist:storage written');
                         }};
@@ -414,11 +444,11 @@ try {{
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
                 var baseUrl = base().replace(/\/$/, '');
-                // Mattermost login does not require explicit team/channel routing here.
-                // Redirect to passthrough root and let Mattermost resolve the user's
-                // valid default team/channel.
                 var redirectUrl = baseUrl + '/';
-                dbg('token stored, redirecting to ' + redirectUrl);
+                dbg('token stored, redirecting to root (SPA picks team/channel)');
+                try {{ sessionStorage.removeItem('_polysaas_mm_idb_reload'); }} catch(e) {{}}
+                try {{ sessionStorage.removeItem('_polysaas_mm_redirect_count'); }} catch(e) {{}}
+                try {{ sessionStorage.removeItem('_polysaas_mm_redirect_time'); }} catch(e) {{}}
                 window.location.replace(redirectUrl);
                 return;
             }}
@@ -463,15 +493,21 @@ try {{
             if (m) existingToken = m[1];
         }}
         var forceLogin = window.location.search.indexOf('force=1') !== -1;
+        var autoForce = window.location.search.indexOf('auto=1') !== -1;
         dbg('loaded. lid=' + ($('lid').value ? 'yes' : 'no') +
                     ' pwd=' + ($('pwd').value ? 'yes' : 'no') +
                     ' hasCreds=' + hasCreds +
                     ' allowAuto=' + _allowAutoSubmit +
                     ' hasToken=' + (existingToken ? 'yes' : 'no') +
-                    ' force=' + forceLogin);
-        if (existingToken && !forceLogin) {{
-            dbg('Token already exists — redirecting to passthrough root');
-            // Keep redirect neutral; Mattermost resolves the correct destination.
+                    ' force=' + forceLogin + ' auto=' + autoForce);
+        if (autoForce && _allowAutoSubmit && hasCreds) {{
+            dbg('auto=1 -- forcing credential auto-submit');
+            try {{ sessionStorage.removeItem('_polysaas_mm_idb_reload'); }} catch(e) {{}}
+            setTimeout(doLogin, 300);
+            return;
+        }}
+        if (existingToken && !forceLogin && !autoForce) {{
+            dbg('Token already exists -- redirecting to root, skipping login');
             window.location.replace(base().replace(/\/$/, '') + '/');
             return;
         }}
@@ -629,15 +665,38 @@ try {{
         _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
 
-        # Absolute rule: never render upstream Mattermost login route in passthrough.
-        # If this request is for /login under the passthrough trigger, return the
-        # PolySaaS bridge HTML directly.
-        _path_info = (getattr(request, 'path_info', '') or '').rstrip('/')
-        _proxy_login_prefix = f"/pt/admin/{_trigger}/login"
-        if _path_info == _proxy_login_prefix or _path_info.startswith(_proxy_login_prefix + "/"):
-            print("[MM HANDLER] /login route detected in process_html_response — returning PolySaaS login bridge HTML")
-            bridge_resp = self._serve_login_bridge(request, _trigger, None)
-            return bridge_resp.content.decode('utf-8')
+        # If Mattermost served its login HTML, inject credential pre-fill instead of replacing.
+        if '/login' in (getattr(request, 'path_info', '') or ''):
+            if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+                _proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+            else:
+                _proxy_prefix = "/pt/admin/mattermost"
+            # Get credentials and inject pre-fill script into Mattermost's login form
+            login_id, password, team_name = self._get_login_credentials(request)
+            if login_id and password:
+                print(f"[MM LoginPreFill] Injecting credential pre-fill for {login_id!r}, team={team_name!r}")
+                prefill_script = f"""<script>
+(function() {{
+    function fill() {{
+        var li = document.querySelector('input[name="loginId"], input[id="loginId"], input[placeholder*="Email"], input[type="text"]');
+        var pw = document.querySelector('input[name="password"], input[id="password"], input[placeholder*="Password"], input[type="password"]');
+        if (li) {{ li.value = {json.dumps(login_id)}; li.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        if (pw) {{ pw.value = {json.dumps(password)}; pw.dispatchEvent(new Event('input', {{bubbles: true}})); }}
+        console.log('[PolySaaS] Pre-filled login form for team={team_name}');
+    }}
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', fill);
+    }} else {{
+        fill();
+    }}
+}})();
+</script></head>"""
+                # Inject before </head> or append to <body> if no head
+                if '</head>' in html_str:
+                    html_str = html_str.replace('</head>', prefill_script)
+                else:
+                    html_str = html_str + prefill_script
+                return html_str, None
 
         if not endpoint_url:
             return html_str, None
@@ -651,31 +710,6 @@ try {{
             proxy_prefix = f"/pt/admin/{_path_parts[2]}"
         else:
             proxy_prefix = "/pt/admin/mattermost"
-
-        # Hard stop: never render upstream Mattermost native login in passthrough.
-        # If upstream sends login HTML (even from non-/login routes), immediately
-        # bounce to the PolySaaS bridge which owns the credential flow.
-        _lower_html = html_str.lower()
-        if (
-            'team not found' in _lower_html
-            or "the team you're requesting is private or does not exist" in _lower_html
-        ):
-            print("[MM HANDLER] Team Not Found page detected — redirecting to passthrough root")
-            return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>
-<script>window.location.replace('{proxy_prefix}/');</script>
-<p>Redirecting to Mattermost...</p>
-</body></html>"""
-
-        if (
-            'name="loginid"' in _lower_html
-            or 'id="loginid"' in _lower_html
-            or '/api/v4/users/login' in _lower_html
-        ):
-            print("[MM HANDLER] Upstream native login HTML detected — redirecting to PolySaaS bridge")
-            return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>
-<script>window.location.replace('{proxy_prefix}/login?force=1');</script>
-<p>Redirecting to sign in...</p>
-</body></html>"""
 
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
@@ -918,7 +952,7 @@ try {{
             print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
             return {'MMAUTHTOKEN': browser_token}
 
-        print("[MM_AUTH] No browser MMAUTHTOKEN — returning empty cookies (login bridge will handle auth)")
+        print("[MM_AUTH] No browser MMAUTHTOKEN -- returning empty cookies (login bridge will handle auth)")
         return {}
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
@@ -966,7 +1000,7 @@ try {{
                 except Exception as exc:
                     print(f'[MM CORS] Fire-and-forget error: {exc}')
         elif not token:
-            print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} — request will be unauthenticated')
+            print(f'[MM_AUTH] NO TOKEN AVAILABLE for {target_url} -- request will be unauthenticated')
 
     def postprocess_upstream_response(self, resp, request, **kwargs):
         """Hook to handle upstream responses - log all API calls and clear token on 401."""
@@ -1273,9 +1307,131 @@ try {{
         checkPluginAuth();
     }}, 2000);
 
-    // Intentionally do not hook React router login navigation here.
-    // Bridge ownership is enforced server-side; client-side login interception
-    // can create redirect loops during Mattermost internal route transitions.
+    // Intercept client-side React Router navigation to /login.
+    // Mattermost SPA pushes /login when its token check fails; route to our bridge
+    // (prepopulated credentials + auto-submit) instead of native Mattermost login UI.
+    (function() {{
+        var _push = history.pushState;
+        var _repl = history.replaceState;
+        function isLoginPath(url) {{
+            try {{
+                var p = (typeof url === 'string') ? url : (url && url.pathname) || '';
+                // Match /login, /login/..., /login?... (query params matter -- Mattermost pushes /login?redirect_to=...)
+                return /\/login([/?]|$)/.test(p);
+            }} catch (e) {{ return false; }}
+        }}
+        function _hasValidToken() {{
+            var t = '';
+            try {{ t = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+            if (!t) {{
+                try {{
+                    var stored = localStorage.getItem('storage:MMAUTHTOKEN');
+                    if (stored) {{ t = JSON.parse(stored); }}
+                }} catch(e) {{}}
+            }}
+            if (!t && MMAUTHTOKEN) {{ t = MMAUTHTOKEN; }}
+            if (!t) {{
+                var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+                if (m) {{ t = m[1]; }}
+            }}
+            return !!t;
+        }}
+        var _loginBlockCount = 0;
+        var _idbReloadKey = '_polysaas_mm_idb_reload';
+        function _blockLoginAndRetry() {{
+            _loginBlockCount++;
+            console.log('[PolySaaS MM] Blocked /login redirect #' + _loginBlockCount + ' -- token is valid');
+            var _alreadyReloaded = false;
+            try {{ _alreadyReloaded = !!sessionStorage.getItem(_idbReloadKey); }} catch(_e) {{}}
+            if (_loginBlockCount === 1 && !_alreadyReloaded) {{
+                var _tok = '';
+                try {{ _tok = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(_e) {{}}
+                if (!_tok) {{
+                    try {{
+                        var stored = localStorage.getItem('storage:MMAUTHTOKEN');
+                        if (stored) {{ _tok = JSON.parse(stored); }}
+                    }} catch(_e) {{}}
+                }}
+                if (!_tok && MMAUTHTOKEN) {{ _tok = MMAUTHTOKEN; }}
+                if (!_tok) {{
+                    var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+                    if (m) {{ _tok = m[1]; }}
+                }}
+                if (_tok) {{
+                    console.log('[PolySaaS MM] Writing IDB and reloading to force re-hydration (once)');
+                    try {{ sessionStorage.setItem(_idbReloadKey, '1'); }} catch(_e) {{}}
+                    _writeTokenToIDB(_tok);
+                    setTimeout(function() {{ window.location.reload(); }}, 400);
+                    return;
+                }}
+            }}
+            console.log('[PolySaaS MM] IDB retry exhausted -- PolySaaS login bridge auto=1');
+            window.location.replace(PROXY + '/login?auto=1');
+        }}
+        function _redirectToLoginBridge() {{
+            if (window.location.pathname.indexOf('/login') !== -1) {{
+                return;
+            }}
+            if (_hasValidToken()) {{
+                _blockLoginAndRetry();
+                return;
+            }}
+            console.log('[PolySaaS MM] Login route detected -- redirecting to PolySaaS bridge');
+            window.location.replace(PROXY + '/login');
+        }}
+        history.pushState = function(state, title, url) {{
+            if (isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
+                console.log('[PolySaaS MM] Intercept pushState(/login) -> bridge');
+                window.location.replace(PROXY + '/login');
+                return;
+            }}
+            return _push.apply(this, arguments);
+        }};
+        history.replaceState = function(state, title, url) {{
+            if (isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
+                console.log('[PolySaaS MM] Intercept replaceState(/login) -> bridge');
+                window.location.replace(PROXY + '/login');
+                return;
+            }}
+            return _repl.apply(this, arguments);
+        }};
+
+        // Also catch hard location changes (Mattermost sometimes uses window.location directly)
+        var _locAssign = window.location.assign;
+        window.location.assign = function(url) {{
+            if (typeof url === 'string' && isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
+                console.log('[PolySaaS MM] Intercept location.assign(/login) -> bridge');
+                _locAssign.call(window.location, PROXY + '/login');
+                return;
+            }}
+            return _locAssign.apply(this, arguments);
+        }};
+        var _locReplace = window.location.replace;
+        window.location.replace = function(url) {{
+            if (typeof url === 'string' && isLoginPath(url)) {{
+                if (_hasValidToken()) {{
+                    _blockLoginAndRetry();
+                    return;
+                }}
+                console.log('[PolySaaS MM] Intercept location.replace(/login) -> bridge');
+                _locReplace.call(window.location, PROXY + '/login');
+                return;
+            }}
+            return _locReplace.apply(this, arguments);
+        }};
+    }})();
 
     window.__webpack_public_path__ = B + '/static/';
     window.basename = PROXY;
@@ -1287,15 +1443,16 @@ try {{
         }}
     }}, 500);
 
-    // Strip redirect_to from root URL — the root handler redirects anyway, and
-    // leaving it causes Mattermost's login component to redirect to it, creating loops.
+    // Strip redirect_to and mm_idb_booted from URL after bootstrap
     try {{
         var _rurl = new URL(window.location.href);
         var _rt = _rurl.searchParams.get('redirect_to');
-        if (_rt) {{
-            _rurl.searchParams.delete('redirect_to');
+        var _idbBoot = _rurl.searchParams.get('mm_idb_booted');
+        if (_rt || _idbBoot) {{
+            if (_rt) _rurl.searchParams.delete('redirect_to');
+            if (_idbBoot) _rurl.searchParams.delete('mm_idb_booted');
             window.history.replaceState({{}}, '', _rurl.toString());
-            console.log('[PolySaaS MM] Stripped redirect_to to prevent loop:', _rt);
+            console.log('[PolySaaS MM] Stripped URL params to prevent loop:', _rt || '', _idbBoot || '');
         }}
     }} catch(e) {{}}
 
@@ -1359,7 +1516,15 @@ try {{
             if (u !== input.url) input = new Request(u, input);
         }}
         
+        // Block logout requests to prevent token invalidation (check both original and proxied URL)
         var proxiedUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        if (reqUrl.indexOf('/users/logout') !== -1 || proxiedUrl.indexOf('/users/logout') !== -1) {{
+            console.log('[PolySaaS MM] Blocked logout (403) to preserve session:', reqUrl);
+            return Promise.resolve(new Response(
+                JSON.stringify({{id: 'api.user.logout.disabled', message: 'Logout disabled by SSO policy'}}),
+                {{status: 403, statusText: 'Forbidden', headers: {{'Content-Type': 'application/json'}}}}
+            ));
+        }}
         if (MMAUTHTOKEN) {{
             var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
             if (reqUrl.indexOf('/api/v4/') !== -1 || reqUrl.indexOf('/plugins/') !== -1) {{
@@ -1442,6 +1607,12 @@ try {{
             this._blocked = true;
             return;
         }}
+        // Block logout requests -- simulate 403 so Redux does NOT dispatch LOGOUT_SUCCESS
+        if (url.indexOf('/users/logout') !== -1) {{
+            console.log('[PolySaaS MM] Blocked logout XHR (403) to preserve session:', url);
+            this._logoutBlocked = true;
+            return;
+        }}
         var proxied = toProxy(url);
         if (url !== proxied) console.log('[PolySaaS MM] XHR:', method, url, '->', proxied);
         var rest = Array.prototype.slice.call(arguments, 2);
@@ -1470,6 +1641,20 @@ try {{
     XMLHttpRequest.prototype.send = function() {{
         if (this._blocked) {{
             console.log('[PolySaaS MM] XHR send blocked (analytics)');
+            return;
+        }}
+        if (this._logoutBlocked) {{
+            var self = this;
+            setTimeout(function() {{
+                Object.defineProperty(self, 'status', {{value: 403, writable: false}});
+                Object.defineProperty(self, 'statusText', {{value: 'Forbidden', writable: false}});
+                Object.defineProperty(self, 'responseText', {{value: '{{"id":"api.user.logout.disabled","message":"Logout disabled by SSO policy"}}', writable: false}});
+                Object.defineProperty(self, 'readyState', {{value: 4, writable: false}});
+                if (self.onreadystatechange) self.onreadystatechange();
+                if (self.onload) self.onload();
+                self.dispatchEvent(new Event('load'));
+                self.dispatchEvent(new Event('loadend'));
+            }}, 0);
             return;
         }}
         _xs.apply(this, arguments);
