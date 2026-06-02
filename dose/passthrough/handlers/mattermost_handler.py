@@ -87,13 +87,16 @@ class MattermostPassthroughHandler:
         status_code=200,
     ) -> bool:
         path = self._effective_upstream_path(request, upstream_path)
-        if status_code != 200:
-            return False
         ct = (content_type or "").lower()
         if "text/html" not in ct and "application/xhtml" not in ct:
             return False
         if self._mattermost_non_embeddable_path(path):
             return False
+        # Mattermost may return login/team error HTML with non-200 statuses.
+        # Keep HTML processing enabled for auth/not-found pages so server-side
+        # guards can redirect instead of rendering native error pages.
+        if status_code in (200, 401, 403, 404):
+            return True
         return True
 
     def should_wrap_in_admin_template(
@@ -658,7 +661,10 @@ try {{
         _lower_html = html_str.lower()
         if (
             'team not found' in _lower_html
+            or '## team not found' in _lower_html
             or "the team you're requesting is private or does not exist" in _lower_html
+            or "the team you’re requesting is private or does not exist" in _lower_html
+            or 'private or does not exist' in _lower_html
         ):
             print("[MM HANDLER] Team Not Found page detected — redirecting to passthrough root")
             return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>
