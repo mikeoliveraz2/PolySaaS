@@ -137,6 +137,30 @@ def select_theme(request):
 @csrf_exempt
 @never_cache
 @login_required
+def mattermost_error_recover_view(request):
+    """Recover Mattermost's /error?type=team_not_found navigation into passthrough."""
+    err_type = (request.GET.get('type') or '').strip().lower()
+    referer = (request.META.get('HTTP_REFERER') or '').strip()
+
+    # Try to recover trigger from the referring passthrough URL.
+    trigger = ''
+    m = re.search(r'/pt/admin/([^/]+)/', referer)
+    if m:
+        trigger = m.group(1)
+
+    if err_type in ('team_not_found', 'not_found', 'team-not-found') and trigger:
+        target = f'/pt/admin/{trigger}/'
+        print(f"[MM ERROR RECOVER] Redirecting /error?type={err_type} -> {target}")
+        return redirect(target)
+
+    # Safe fallback when referer trigger is unavailable.
+    if trigger:
+        return redirect(f'/pt/admin/{trigger}/')
+    return redirect('/admin/')
+
+
+@never_cache
+@login_required
 def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
     """Main clean passthrough view"""
     print(f"[PASSTHROUGH VIEW] endpoint={endpoint}, subpath={subpath}, path={request.path}")

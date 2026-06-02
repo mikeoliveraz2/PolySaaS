@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
 
-from dose.admin_views import pt_admin_generic_passthrough_view
+from dose.admin_views import pt_admin_generic_passthrough_view, mattermost_error_recover_view
 
 urlpatterns = [
     # FORCE PASSTHROUGH FIRST - highest priority
@@ -20,6 +20,7 @@ urlpatterns = [
     path('admin/ai/', lambda r: None, name='admin_polysaas_ai'),
     path('admin/llm-router/chat-api/', lambda r: None, name='admin_llm_router_chat_api'),
     path('tenant/llm-router/chat-api/', lambda r: None, name='tenant_llm_router_chat_api'),
+    path('error', mattermost_error_recover_view, name='mattermost_error_recover'),
 
     path('', RedirectView.as_view(url='/admin/'), name='home'),
 ]
