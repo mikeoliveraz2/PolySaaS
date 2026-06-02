@@ -3,10 +3,33 @@
 Date: 2026-06-02
 Status: COMPLETE
 Branch: main
+Commit: 9908f530
 
 ## Objective
 
 Create a full Mattermost passthrough checkpoint that is safe to revert to later, with all current working-tree changes committed together and documented.
+
+## Full Commit Manifest (Authoritative)
+
+The following files are exactly what were included in commit 9908f530:
+
+1. dose/passthrough/handlers/mattermost_handler.py
+2. dose/passthrough/middleware.py
+3. dose/doserequestcontroller.py
+4. documentation/BOM_MATTERMOST_PASSTHROUGH_SSO.md
+5. documentation/BINGO_MATTERMOST_BM_BINGO_2026-06-02.md
+6. docs/temp_har.txt
+7. dose/passthrough/handlers/mattermost_handler.py.current
+
+## BOM Reference
+
+Primary BOM for this checkpoint:
+
+1. documentation/BOM_MATTERMOST_PASSTHROUGH_SSO.md
+
+Checkpoint section in BOM:
+
+1. Checkpoint: BINGO 2026-06-02
 
 ## What Was Included
 
@@ -36,10 +59,31 @@ Create a full Mattermost passthrough checkpoint that is safe to revert to later,
 Use this commit as the baseline restore point.
 
 1. Find this commit by message:
-   - `BINGO: Mattermost BM checkpoint`
+   - BINGO: Mattermost BM checkpoint
+2. Or directly by hash:
+   - 9908f530
 2. Revert to this state later with:
    - `git revert <commit_hash>` (safe reverse)
    - or `git checkout <commit_hash>` (detached historical inspection)
+
+## Verification Steps
+
+1. Open /pt/admin/polysaas-mattermost.onrender.com/ and confirm Mattermost renders in the admin embed.
+2. Confirm login route ownership:
+   - /pt/admin/polysaas-mattermost.onrender.com/login should route to PolySaaS bridge UX, not native Mattermost login form.
+3. Confirm Town Square reachability after auth:
+   - UI reaches channel content without forced team path rewrites.
+4. Confirm Team Not Found fallback behavior:
+   - if upstream sends Team Not Found HTML, passthrough redirects to /pt/admin/polysaas-mattermost.onrender.com/.
+5. Confirm NextCloud passthrough scheme for internal service:
+   - /pt/admin/polysaas-nextcloud:80/ should target http://polysaas-nextcloud:80.
+
+## Known Issues / Risks
+
+1. Browser cache can retain stale injected scripts and create false negatives when validating login flow changes.
+2. Upstream websocket reconnect churn and third-party analytics/extension console noise may still appear and are not part of this checkpoint scope.
+3. Team-scoped deep links from old history/bookmarks may still hit upstream Team Not Found before server fallback redirects to root.
+4. docs/temp_har.txt is a large diagnostic artifact and increases commit size; retained intentionally as a checkpoint forensic record.
 
 ## Verification Notes
 
