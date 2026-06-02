@@ -170,6 +170,7 @@ def _call_xai(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]]
         conversation.append({'role': role, 'content': f"{prefix}{m['content']}"})
 
     try:
+        resp = None
         resp = requests.post(
             'https://api.x.ai/v1/chat/completions',
             headers={
@@ -196,6 +197,16 @@ def _call_xai(messages: list, system_prompt: str, peer: Optional[Dict[str, Any]]
         resp.raise_for_status()
         data = resp.json()
         return data['choices'][0]['message']['content']
+    except requests.HTTPError as e:
+        # Keep @grok responsive when xAI is temporarily unavailable or out of credits.
+        allow_fallback = bool(getattr(settings, 'AI_PEERS_XAI_FALLBACK_TO_ANTHROPIC', True))
+        if resp is not None and resp.status_code == 403 and allow_fallback:
+            logger.warning("xAI returned 403; falling back to Anthropic for @%s", peer.get('username', 'grok') if peer else 'grok')
+            fallback_text = _call_anthropic(messages, system_prompt, peer)
+            return f"[Grok fallback] {fallback_text}"
+        print(f"[DEBUG] xAI error: {e}")
+        logger.error("xAI API error: %s", e)
+        return f"[{peer_label}] Error calling xAI: {e}"
     except Exception as e:
         print(f"[DEBUG] xAI error: {e}")
         logger.error("xAI API error: %s", e)
