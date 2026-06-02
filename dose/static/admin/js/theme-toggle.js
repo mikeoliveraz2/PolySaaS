@@ -39,13 +39,69 @@ function requestThemeToggle() {
     return tryEndpoint(0);
 }
 
+function detectDisplayMode() {
+    const modeCookie = (getCookie('display_mode') || '').toLowerCase();
+    if (modeCookie === 'dark' || modeCookie === 'light') {
+        return modeCookie;
+    }
+    return document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+}
+
+function ensureThemeModeBadge() {
+    if (!document.getElementById('ps-theme-mode-badge-style')) {
+        const style = document.createElement('style');
+        style.id = 'ps-theme-mode-badge-style';
+        style.textContent = [
+            '.ps-theme-mode-badge {',
+            '  margin-left: 8px;',
+            '  padding: 2px 8px;',
+            '  border-radius: 999px;',
+            '  font-size: 11px;',
+            '  font-weight: 700;',
+            '  letter-spacing: .02em;',
+            '  border: 1px solid transparent;',
+            '  vertical-align: middle;',
+            '}',
+            '.ps-theme-mode-badge.ps-theme-light {',
+            '  color: #1e40af;',
+            '  background: #dbeafe;',
+            '  border-color: #93c5fd;',
+            '}',
+            '.ps-theme-mode-badge.ps-theme-dark {',
+            '  color: #e2e8f0;',
+            '  background: #334155;',
+            '  border-color: #64748b;',
+            '}',
+        ].join('\n');
+        document.head.appendChild(style);
+    }
+
+    const mode = detectDisplayMode();
+    const controls = Array.from(document.querySelectorAll('a[href*="select-theme"], #ps-theme-toggle-btn, #theme-toggle-btn, .usermenu a[href="javascript:void(0)"]'));
+    controls.forEach(function(control) {
+        if (!control) return;
+        let badge = control.querySelector('.ps-theme-mode-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'ps-theme-mode-badge';
+            control.appendChild(badge);
+        }
+        badge.textContent = mode === 'dark' ? 'Dark' : 'Light';
+        badge.classList.toggle('ps-theme-dark', mode === 'dark');
+        badge.classList.toggle('ps-theme-light', mode !== 'dark');
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    ensureThemeModeBadge();
+
     const toggleBtn = document.getElementById('theme-toggle-btn') || document.querySelector('.usermenu a[href="javascript:void(0)"]');
     if (toggleBtn) {
         toggleBtn.addEventListener('click', function(e) {
             e.preventDefault();
             requestThemeToggle()
                 .then(function() {
+                    ensureThemeModeBadge();
                     window.location.reload();
                 })
                 .catch(function(err) {
