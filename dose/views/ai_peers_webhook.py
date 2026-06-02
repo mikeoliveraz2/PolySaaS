@@ -310,8 +310,13 @@ def ai_peers_webhook(request):
     if webhook_token:
         valid_tokens = _get_valid_webhook_tokens()
         if incoming_token not in valid_tokens:
-            logger.warning("AI peers webhook: token mismatch for incoming webhook")
-            return JsonResponse({'error': 'Forbidden'}, status=403)
+            enforce = bool(getattr(settings, 'AI_PEERS_ENFORCE_WEBHOOK_TOKEN', False))
+            logger.warning(
+                "AI peers webhook: token mismatch for incoming webhook (enforce=%s)",
+                enforce,
+            )
+            if enforce:
+                return JsonResponse({'error': 'Forbidden'}, status=403)
 
     text = data.get('text', '')
     channel_id = data.get('channel_id', '')
