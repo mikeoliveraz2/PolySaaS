@@ -42,7 +42,7 @@ class Command(BaseCommand):
         attempt = 0
 
         self.stdout.write(self.style.SUCCESS(
-            'Starting PolySaaS AI Peers Bot (@grok | @gemini | @cc | @copilot | @github | @anyone)...'
+            '🤖 Starting PolySaaS AI Peers Bot (@grok | @gemini | @windsurf | @anyone)…'
         ))
 
         while True:
@@ -51,14 +51,14 @@ class Command(BaseCommand):
                 bot = PolySaaSAIPeersBot()
                 bot.start()   # blocks on WebSocket until disconnect
             except KeyboardInterrupt:
-                self.stdout.write(self.style.WARNING('\nBot stopped by user.'))
+                self.stdout.write(self.style.WARNING('\n⛔ Bot stopped by user.'))
                 break
             except Exception as exc:
                 attempt += 1
                 logger.error('[MM Bot] Disconnected (attempt %d): %s', attempt, exc)
-                self.stdout.write(self.style.ERROR(f'Bot error (attempt {attempt}): {exc}'))
+                self.stdout.write(self.style.ERROR(f'❌ Bot error (attempt {attempt}): {exc}'))
                 if max_retries and attempt >= max_retries:
                     self.stdout.write(self.style.ERROR('Max retries reached — exiting.'))
                     break
-                self.stdout.write(f'Reconnecting in {retry_delay}s...')
+                self.stdout.write(f'↩️  Reconnecting in {retry_delay}s…')
                 time.sleep(retry_delay)

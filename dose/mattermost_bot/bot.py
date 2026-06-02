@@ -94,6 +94,13 @@ PEERS = {
         'api_key_key': 'KIMI_API_KEY',
         'router': 'dose.mattermost_bot.routers.kimi_router',
     },
+    'windsurf': {
+        'aliases': ['ws'],
+        'mm_username': 'windsurf',
+        'bot_token_key': 'BOT_TOKEN_WINDSURF',
+        'api_key_key': 'WINDSURF_API_KEY',
+        'router': 'dose.mattermost_bot.routers.windsurf_router',
+    },
 }
 
 # Build reverse alias lookup  {alias: canonical_key}
@@ -209,7 +216,7 @@ class PolySaaSAIPeersBot:
     # Event handling
     # ------------------------------------------------------------------
 
-    def _on_event(self, raw):
+    async def _on_event(self, raw):
         try:
             msg = json.loads(raw) if isinstance(raw, str) else raw
             if msg.get('event') != 'posted':

@@ -1,9 +1,8 @@
 """
-Kimi router -- Moonshot Kimi API.
-Sync -- called from a threading.Thread in bot.py.
+Kimi router — Moonshot Kimi API.
+Sync — called from a threading.Thread in bot.py.
 """
 import logging
-import re
 import requests
 from django.conf import settings
 
@@ -12,20 +11,15 @@ logger = logging.getLogger(__name__)
 KIMI_API_URL = "https://api.moonshot.cn/v1/chat/completions"
 KIMI_MODEL = "moonshot-v1-8k"
 
-_MENTION_RE = re.compile(r'@(?:kimi|anyone)\b', re.IGNORECASE)
-
 
 def handle(message: str, user_id: str, channel_id: str) -> str:
     api_key = getattr(settings, 'KIMI_API_KEY', '')
     if not api_key:
-        return "[Kimi] Offline -- KIMI_API_KEY not configured."
+        return "⚠️ Kimi is offline — KIMI_API_KEY not configured."
 
-    clean = _MENTION_RE.sub('', message).strip()
+    clean = message.replace('@kimi', '').replace('@Kimi', '').strip()
     if not clean:
-        return (
-            "Hi! I'm **Kimi**, your Moonshot AI peer on PolySaaS. "
-            "Tag **@kimi** with a question."
-        )
+        return "Hi! Ask me anything by tagging **@kimi** followed by your question."
 
     try:
         resp = requests.post(
@@ -40,13 +34,9 @@ def handle(message: str, user_id: str, channel_id: str) -> str:
                     {
                         "role": "system",
                         "content": (
-                            "You are Kimi, an AI peer by Moonshot AI, integrated into the "
-                            "PolySaaS Mattermost workspace. PolySaaS is a multi-tenant SaaS "
-                            "orchestration platform (Django/DOSE). "
-                            "You collaborate with humans (MO = Mike Oliver; Shela = co-developer) "
-                            "and other AI peers (@grok, @copilot, @github, @gemini, @cc, @wsc, @windsurf). "
-                            "Be helpful, multilingual-friendly, and concise. Use markdown. "
-                            "Keep responses under 150 words unless asked for detail."
+                            "You are Kimi, an AI assistant by Moonshot AI. "
+                            "You are integrated into PolySaaS as an AI Peer in a Mattermost team channel. "
+                            "Be helpful, multilingual-friendly, and concise. Use markdown where appropriate."
                         ),
                     },
                     {"role": "user", "content": clean},
@@ -60,7 +50,7 @@ def handle(message: str, user_id: str, channel_id: str) -> str:
         return resp.json()['choices'][0]['message']['content']
     except requests.exceptions.Timeout:
         logger.warning("[Kimi] API timeout")
-        return "[Kimi] Thinking... (timeout -- try again)"
+        return "⚠️ Kimi is thinking... (timeout — try again)"
     except Exception as exc:
         logger.error("[Kimi] API error: %s", exc)
-        return f"[Kimi] Error: {str(exc)[:120]}"
+        return f"⚠️ Kimi hit an error: {str(exc)[:120]}"

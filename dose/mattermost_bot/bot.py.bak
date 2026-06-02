@@ -26,6 +26,7 @@ import importlib
 import json
 import logging
 import threading
+import asyncio
 from urllib.parse import urlparse
 
 import requests as _requests
@@ -44,6 +45,20 @@ logger = logging.getLogger(__name__)
 # 'router'        is the dotted Python module path for the LLM router.
 
 PEERS = {
+    'github': {
+        'aliases': [],
+        'mm_username': 'github',
+        'bot_token_key': 'BOT_TOKEN_GITHUB',
+        'api_key_key': 'ANTHROPIC_API_KEY',
+        'router': 'dose.mattermost_bot.routers.github_router',
+    },
+    'copilot': {
+        'aliases': [],
+        'mm_username': 'copilot',
+        'bot_token_key': 'BOT_TOKEN_COPILOT',
+        'api_key_key': 'ANTHROPIC_API_KEY',
+        'router': 'dose.mattermost_bot.routers.copilot_router',
+    },
     'grok': {
         'aliases': ['supergrok'],
         'mm_username': 'supergrok',
@@ -53,8 +68,8 @@ PEERS = {
     },
     'gemini': {
         'aliases': ['gem'],
-        'mm_username': 'gem',
-        'bot_token_key': 'BOT_TOKEN_GEM',
+        'mm_username': 'gemini',
+        'bot_token_key': 'BOT_TOKEN_GEMINI',
         'api_key_key': 'GEMINI_API_KEY',
         'router': 'dose.mattermost_bot.routers.gemini_router',
     },
@@ -168,6 +183,8 @@ class PolySaaSAIPeersBot:
             'connect_timeout': 30,
         })
         self._bot_user_ids: set = set()
+        self._peer_by_user_id: dict = {}
+        self._channel_target_cache: dict = {}
         self._processed_posts: set = set()
 
     def start(self):
@@ -179,6 +196,13 @@ class PolySaaSAIPeersBot:
         active = _active_peers()
         logger.info("[MM Bot] Active peers: %s", active)
         logger.info("[MM Bot] Listening — %s | @anyone", ' | '.join(f'@{k}' for k in active))
+
+        # Python 3.14 may not create a default loop in non-async entrypoints.
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
         self.driver.init_websocket(self._on_event)   # blocking
 
     # ------------------------------------------------------------------
@@ -234,6 +258,13 @@ class PolySaaSAIPeersBot:
                     target_peers.append(canonical)
                     seen.add(canonical)
 
+        # In direct-message channels, route plain text to the bot on the other side
+        # so users can chat naturally without adding @mentions.
+        if not target_peers and channel_id:
+            dm_peer = self._infer_direct_message_peer(channel_id, user_id)
+            if dm_peer:
+                target_peers = [dm_peer]
+
         if not target_peers:
             return
 
@@ -270,9 +301,40 @@ class PolySaaSAIPeersBot:
                 u = self.driver.users.get_user_by_username(peer['mm_username'])
                 if u and u.get('id'):
                     self._bot_user_ids.add(u['id'])
+                    self._peer_by_user_id[u['id']] = _ALIAS_MAP.get(peer['mm_username'], peer['mm_username'])
                     logger.debug("[MM Bot] Registered bot id %s (@%s)", u['id'], peer['mm_username'])
             except Exception:
                 pass
+
+    def _infer_direct_message_peer(self, channel_id: str, sender_user_id: str) -> str:
+        """Resolve DM channel target peer from the other participant's user id."""
+        cached = self._channel_target_cache.get(channel_id)
+        if cached is not None:
+            return cached
+
+        try:
+            channel = self.driver.channels.get_channel(channel_id)
+            if (channel or {}).get('type') != 'D':
+                self._channel_target_cache[channel_id] = ''
+                return ''
+
+            # Mattermost direct channel names are '<user_id_1>__<user_id_2>'.
+            channel_name = channel.get('name', '')
+            parts = channel_name.split('__') if channel_name else []
+            if len(parts) != 2:
+                self._channel_target_cache[channel_id] = ''
+                return ''
+
+            other_user_id = parts[0] if parts[1] == sender_user_id else parts[1]
+            peer_key = self._peer_by_user_id.get(other_user_id, '')
+            if peer_key and peer_key in _active_peers():
+                self._channel_target_cache[channel_id] = peer_key
+                return peer_key
+        except Exception as exc:
+            logger.debug("[MM Bot] DM peer inference failed for channel %s: %s", channel_id, exc)
+
+        self._channel_target_cache[channel_id] = ''
+        return ''
 
 
 PolySaaSMattermostBot = PolySaaSAIPeersBot
