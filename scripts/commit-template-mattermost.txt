@@ -1,0 +1,76 @@
+
+# ====================================================================
+# MATTERMOST PASSTHROUGH SSO — Commit Message Template
+# ====================================================================
+# 
+# This template ensures your commit is complete and reproducible.
+# It enforces BOM (Bill of Materials) discipline.
+#
+# HOW TO USE:
+#   1. Configure git to use this template:
+#      git config commit.template scripts/commit-template-mattermost.txt
+#
+#   2. When you run `git commit`, this template appears in your editor
+#
+#   3. Fill in each section carefully
+#
+#   4. Save and close. Git will commit with your message.
+#
+# ====================================================================
+
+[COMMIT TYPE: Choose ONE]
+🐛 BUG FIX: / ✨ FEATURE: / 🔄 WIP: / ✅ BINGO: 
+
+[SUBJECT LINE - 50 chars max]
+Description of what this commit does
+
+[DETAILED DESCRIPTION]
+Explain WHY this change was needed. What problem does it solve?
+(2-4 sentences, wrapped at 72 chars)
+
+[FILES MODIFIED - Per BOM]
+✅ List files ACTUALLY modified:
+- dose/passthrough/handlers/mattermost_handler.py
+- dose/templates/passthrough_shim.html
+- dose/static/js/mattermost_shim.js
+
+❌ List files NOT modified (document reason):
+- dose/services/mattermost_provisioning.py (No provisioning change)
+- dose/templates/admin/passthrough_embed.html (Display unchanged)
+
+[REFERENCE BOM]
+Documentation: documentation/BOM_MATTERMOST_PASSTHROUGH_SSO.md
+
+[VERIFICATION CHECKLIST]
+Mark completed items with ✅, incomplete with ❌:
+- [ ] Changes tested locally
+- [ ] No broken templates or static asset 404s
+- [ ] Mattermost UI renders without hanging
+- [ ] SSO redirect loop verified fixed (if applicable)
+- [ ] WebSocket connection established
+- [ ] Real-time messaging functional
+- [ ] Team selection works (no "Team Not Found")
+- [ ] Repeat access doesn't trigger "Team Not Found" again
+- [ ] Browser console clean (no persistent errors)
+- [ ] All BOM files staged with `git add -A`
+
+[FOR BINGO COMMITS ONLY]
+Include this section when marking a commit as BINGO:
+- [ ] BINGO documentation created: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_YYYY-MM-DD.md
+- [ ] Freeze banners added to all source files (per bingo-freeze.mdc)
+- [ ] All verification checks above: ✅ PASSED
+- [ ] Ready to revert to this commit if needed: YES / NO
+
+[NOTES]
+Any additional context, links, or known limitations:
+
+# ====================================================================
+# GIT COMMAND REMINDER
+# ====================================================================
+# After filling this out:
+#   1. Save and close the editor
+#   2. Git will create the commit
+#   3. Verify the commit: git log -1 --stat
+#   4. Push: git push origin main
+
+# ====================================================================
