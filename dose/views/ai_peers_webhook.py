@@ -170,10 +170,19 @@ def _ensure_peers_loaded():
         f"asked for detail. You can mention other peers with {_available_peer_tags(PEER_SPECS)}."
     )
 
+    admin_fallback_token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
+
     PEER_REGISTRY.clear()
     for spec in PEER_SPECS:
         token_names = [spec['token_setting'], *spec.get('fallback_token_settings', [])]
         bot_token = _first_setting(*token_names)
+        if not bot_token and admin_fallback_token:
+            bot_token = admin_fallback_token
+            logger.warning(
+                "AI peer @%s missing %s; using MATTERMOST_ADMIN_TOKEN fallback",
+                spec['username'],
+                '/'.join(token_names),
+            )
         if not bot_token:
             continue
 
