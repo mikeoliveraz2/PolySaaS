@@ -223,7 +223,7 @@ class MattermostPassthroughHandler:
   document.cookie = 'mmauthtoken=' + tok + '; path=/; max-age=31536000; SameSite=Lax';
   function _go() {{ window.location.replace(nextUrl); }}
   try {{
-    var _req = indexedDB.open('localforage', 2);
+    var _req = indexedDB.open('localforage');
     _req.onsuccess = function(e) {{
       var _db = e.target.result;
       try {{
@@ -457,7 +457,7 @@ try {{
                 setStatus('Success! Loading...');
                 var mmUrl = {upstream_url_js};
                 try {{
-                    var req = indexedDB.open('localforage', 2);
+                    var req = indexedDB.open('localforage');
                     req.onsuccess = function(e) {{
                         var db = e.target.result;
                         var tx = db.transaction('keyvaluepairs', 'readwrite');
@@ -1181,17 +1181,15 @@ try {{
         return PROXY + '/channels/town-square?plugin_booted=1';
     }}
     var _serverToken = {token_js};
-    var MMAUTHTOKEN = '';
-    // Prefer localStorage (fresh after login bridge) over server cache
-    try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+    var MMAUTHTOKEN = _serverToken || '';
+    if (!MMAUTHTOKEN) {{
+        try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+    }}
     if (!MMAUTHTOKEN) {{
         try {{
             var stored = localStorage.getItem('storage:MMAUTHTOKEN');
             if (stored) {{ MMAUTHTOKEN = JSON.parse(stored); }}
         }} catch(e) {{}}
-    }}
-    if (!MMAUTHTOKEN && _serverToken) {{
-        MMAUTHTOKEN = _serverToken;
     }}
     if (window.location.search.indexOf('plugin_booted=1') !== -1 ||
         document.cookie.indexOf('polysaas_mm_auth=true') !== -1) {{
@@ -1250,7 +1248,7 @@ try {{
     function _writeTokenToIDB(token, done) {{
         done = done || function() {{}};
         try {{
-            var _dbReq = indexedDB.open('localforage', 2);
+            var _dbReq = indexedDB.open('localforage');
             _dbReq.onsuccess = function(e) {{
                 var _db = e.target.result;
                 var _stores = _db.objectStoreNames;
@@ -1288,7 +1286,7 @@ try {{
                     done();
                 }}
             }};
-            _dbReq.onerror = function() {{ done(); }};
+            _dbReq.onerror = function(ev) {{ console.error('[PolySaaS MM IDB] open error:', ev.target.error); done(); }};
             _dbReq.onupgradeneeded = function(e) {{
                 var _db2 = e.target.result;
                 if (!_db2.objectStoreNames.contains('keyvaluepairs')) {{
