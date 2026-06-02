@@ -39,6 +39,9 @@ function Invoke-MorningSync {
     $changedCount = ($gitStatus | Measure-Object).Count
     Write-Host ('  Found ' + $changedCount + ' uncommitted change(s)') -ForegroundColor Yellow
 
+    # Encrypt .env -> .env.enc so the encrypted copy is committed
+    Protect-PolySaaSEnv -RepoRoot $ScriptRoot
+
     $docChanges = $gitStatus | Where-Object { $_ -match "documentation/" -or $_ -match "coordination/" -or $_ -match "\.cursor/rules/" -or $_ -match '\.md$' }
     $codeChanges = $gitStatus | Where-Object { $_ -notmatch "documentation/" -and $_ -notmatch "coordination/" -and $_ -notmatch "\.cursor/rules/" -and $_ -notmatch '\.md$' }
 

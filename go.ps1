@@ -7,6 +7,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 $goDir = Join-Path $scriptDir "scripts\go"
 . (Join-Path $goDir "Go-Env.ps1")
+. (Join-Path $goDir "Go-EnvSync.ps1")
 . (Join-Path $goDir "Go-DailyBackup.ps1")
 . (Join-Path $goDir "Go-MorningSync.ps1")
 . (Join-Path $goDir "Go-Services.ps1")
@@ -30,6 +31,10 @@ if ($unmergedPaths.Count -gt 0) {
     }
     Pop-Location
 }
+
+# ── Decrypt .env from .env.enc (if repo copy is newer) ────────────────
+Write-Host "── Env Sync ──────────────────────────────────────" -ForegroundColor Cyan
+Unprotect-PolySaaSEnv -RepoRoot $scriptDir
 Write-Host ""
 
 # ── Virtual Environment (required for app check) ───────────────────────

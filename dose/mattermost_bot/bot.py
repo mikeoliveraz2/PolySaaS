@@ -2,16 +2,16 @@
 PolySaaS Mattermost Bot — WebSocket-driven AI peers dispatcher.
 
 Peer roster:
-  @grok / @supergrok  → xAI Grok        (BOT_TOKEN_SUPERGROK + XAI_API_KEY)
-  @gemini / @gem      → Google Gemini   (BOT_TOKEN_GEM + GEMINI_API_KEY)
-  @cc                 → Cursor Claude   (BOT_TOKEN_CC + ANTHROPIC_API_KEY)
-  @wsc                → Windsurf Claude (BOT_TOKEN_WSC + ANTHROPIC_API_KEY)
-  @kimi               → Moonshot Kimi   (BOT_TOKEN_KIMI + KIMI_API_KEY)
+  @grok / @supergrok  -> xAI Grok        (BOT_TOKEN_SUPERGROK + XAI_API_KEY)
+  @gemini / @gem      -> Google Gemini   (BOT_TOKEN_GEM + GEMINI_API_KEY)
+  @cc                 -> Cursor Claude   (BOT_TOKEN_CC + ANTHROPIC_API_KEY)
+  @wsc                -> Windsurf Claude (BOT_TOKEN_WSC + ANTHROPIC_API_KEY)
+  @kimi               -> Moonshot Kimi   (BOT_TOKEN_KIMI + KIMI_API_KEY)
 
 Routing rules:
-  @<peer>   → only that peer responds
-  @anyone   → all ACTIVE peers respond (those with both bot token + API key configured)
-  no tag    → silence
+  @<peer>   -> only that peer responds
+  @anyone   -> all ACTIVE peers respond (those with both bot token + API key configured)
+  no tag    -> silence
 
 Each peer posts to Mattermost using its OWN bot account token — messages appear
 as real verified bot users, not overridden webhooks.
@@ -275,7 +275,7 @@ class PolySaaSAIPeersBot:
         if not target_peers:
             return
 
-        logger.info("[MM Bot] '%s' → %s", text[:60], target_peers)
+        logger.info("[MM Bot] '%s' -> %s", text[:60], target_peers)
         root_id = post.get('root_id') or post_id
         for peer_key in target_peers:
             threading.Thread(
