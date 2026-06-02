@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import threading
+import requests
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -199,6 +200,45 @@ def _ensure_peers_loaded():
         )
 
 
+def _post_dispatch_ack(peer_username: str, channel_id: str, post_id: str, trigger_text: str):
+    """Post a short diagnostic ack as the target peer before LLM processing."""
+    peer = PEER_REGISTRY.get((peer_username or '').lower())
+    if not peer:
+        return
+
+    bot_token = peer.get('bot_token', '')
+    if not bot_token:
+        return
+
+    mm_url = (getattr(settings, 'MATTERMOST_URL', '') or '').rstrip('/')
+    if not mm_url:
+        return
+
+    preview = (trigger_text or '').strip().replace('\n', ' ')
+    if len(preview) > 80:
+        preview = preview[:77] + '...'
+
+    payload = {
+        'channel_id': channel_id,
+        'message': f"[diag] mention received, processing: {preview}",
+    }
+    if post_id:
+        payload['root_id'] = post_id
+
+    try:
+        requests.post(
+            f"{mm_url}/api/v4/posts",
+            headers={
+                'Authorization': f"Bearer {bot_token}",
+                'Content-Type': 'application/json',
+            },
+            json=payload,
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("AI peers webhook ack post failed for @%s: %s", peer_username, exc)
+
+
 @csrf_exempt
 @require_POST
 def ai_peers_webhook(request):
@@ -272,6 +312,8 @@ def ai_peers_webhook(request):
             return JsonResponse({'status': 'no_peers_mentioned', 'available': list(PEER_REGISTRY.keys())})
 
     for peer_username in mentioned_peers:
+        if bool(getattr(settings, 'AI_PEERS_DEBUG_ACK', True)):
+            _post_dispatch_ack(peer_username, channel_id, post_id, text)
         thread = threading.Thread(
             target=handle_mention,
             args=(peer_username, channel_id, text, user_name, post_id),
