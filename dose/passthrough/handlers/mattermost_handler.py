@@ -75,13 +75,56 @@ window.location.replace('/');
 </body>
 </html>"""
 
-    def _effective_upstream_path(self, request, upstream_path: str) -> str:
-        """Prefer forwarder upstream_path; fall back to passthrough subpath on request."""
-        path = (upstream_path or "").strip()
-        if path and path != "/":
-            return path if path.startswith("/") else f"/{path}"
-        import re
+    def _contains_native_login_html(self, html_str: str) -> bool:
+        if not html_str:
+            return False
+        lower = html_str.lower()
+        return (
+            'name="loginid"' in lower
+            or 'id="loginid"' in lower
+            or '/api/v4/users/login' in lower
+            or 'log in to your account' in lower
+            or 'your session has expired. please log in again.' in lower
+            or 'forgot your password?' in lower
+        )
 
+    def force_process_html_response(
+        self,
+        request,
+        upstream_path: str,
+        html_str: str,
+        *,
+        content_type=None,
+        status_code=200,
+    ) -> bool:
+        path = (upstream_path or '').lower()
+        if '/login' in path:
+            return True
+        return self._contains_native_login_html(html_str)
+
+    def finalize_html_response(
+        self,
+        request,
+        upstream_path: str,
+        html_str: str,
+        *,
+        endpoint_url=None,
+        trigger=None,
+        status_code=200,
+        content_type=None,
+    ):
+        if not self._contains_native_login_html(html_str):
+            return None
+        from django.http import HttpResponseRedirect
+        path = (getattr(request, 'path_info', '') or '').strip('/')
+        parts = path.split('/') if path else []
+        if len(parts) >= 3 and parts[0] == 'pt' and parts[1] == 'admin':
+            trig = parts[2]
+        else:
+            trig = (trigger or 'mattermost').strip('/')
+        print('[MM HANDLER] finalize_html_response: native login HTML detected -- redirecting to bridge')
+        return HttpResponseRedirect(f'/pt/admin/{trig}/login?force=1')
+        if self._contains_native_login_html(html_str):
         m = re.match(r"^/pt/(?:admin|dose)/[^/]+(.*)$", (request.path_info or "").strip())
         if not m:
             return path or "/"
@@ -1505,6 +1548,37 @@ try {{
         }}
     }});
     _teamObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
+
+    // Hard stop: never allow native Mattermost login UI in passthrough shell.
+    function _mmNativeLoginVisible() {{
+        var bodyText = ((document.body && document.body.innerText) || '').toLowerCase();
+        if (bodyText.indexOf('log in to your account') !== -1) return true;
+        if (bodyText.indexOf('your session has expired. please log in again.') !== -1) return true;
+        if (bodyText.indexOf('forgot your password?') !== -1) return true;
+        if (document.querySelector('input[name="loginId"], input#loginId, form[action*="/api/v4/users/login"]')) return true;
+        return false;
+    }}
+
+    function _mmForceBridgeLogin(reason) {{
+        if (sessionStorage.getItem('_ps_force_bridge_login')) return;
+        sessionStorage.setItem('_ps_force_bridge_login', '1');
+        console.log('[PolySaaS MM] Native login blocked (' + reason + ') -- redirecting to bridge');
+        setTimeout(function() {{ window.location.replace(PROXY + '/login?force=1'); }}, 120);
+    }}
+
+    // Immediate route check (covers client-side SPA transitions to /login without server roundtrip).
+    try {{
+        var p = (window.location && window.location.pathname) || '';
+        if (p.indexOf(PROXY + '/login') === 0) {{
+            _mmForceBridgeLogin('route');
+        }}
+    }} catch(_e) {{}}
+
+    // DOM check (covers rendered native login component).
+    var _loginObserver = new MutationObserver(function() {{
+        if (_mmNativeLoginVisible()) _mmForceBridgeLogin('dom');
+    }});
+    _loginObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
 
     window.__webpack_public_path__ = B + '/static/';
     window.basename = PROXY;
