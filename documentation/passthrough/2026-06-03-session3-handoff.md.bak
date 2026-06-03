@@ -130,39 +130,3 @@ Use the **same passphrase** on every machine. The `.env.key` file is gitignored.
 ### Verified
 
 Round-trip test passed: encrypt -> delete `.env` -> decrypt from `.env.enc` -> byte-for-byte match with original.
-
----
-
-## 3. End of day (2026-06-03 evening) — plugin SSO breakthrough
-
-### Verified working (local Django + Mattermost on Render)
-
-- `MATTERMOST_PASSTHROUGH_SECRET` set in laptop `.env` (matches Mattermost plugin **PolySaaS Shared Secret** in System Console).
-- Server log: stale cookie 401 → **`[MM PLUGIN] RESPONSE 200`** → **`PLUGIN AUTH SUCCESS`** → next hit **`users/me HTTP 200`**, shim injected, plugin auth-check via proxy.
-- UX: **no login screens**; brief **Town Square** header flash on loading spinner (SPA started; may still need team-route / redirect polish).
-
-### Run from
-
-- **Worktree:** `F:\PolySaaS-worktrees\wip` (branch `wip`) — `mattermost_handler.py` WIP not yet on `main`.
-- **Venv:** `F:\PolySaaS\venv`
-- **Tenant:** `polysaast121` / PolySaaS Test 121
-
-### EOD checklist (Michael)
-
-1. Stop runserver (or let `EOD.ps1` stop port 8000).
-2. Run `.\EOD.ps1` from `F:\PolySaaS` (main checkout).
-3. **Evening sync fix:** `Eod-EveningSync.ps1` now encrypts **before** the “clean tree” check and force-stages `.env.enc` (so new secrets commit even when no other files changed).
-4. **WIP on `wip`:** From worktree, commit/push handler changes if desired:
-   ```powershell
-   cd F:\PolySaaS-worktrees\wip
-   git add dose/passthrough/handlers/mattermost_handler.py
-   git commit -m "WIP: Mattermost plugin-first SSO and shim hardening"
-   git push -u origin wip
-   ```
-5. Office tomorrow: `go.ps1` → decrypt `.env.enc` (passphrase in `.env.key`) → pull → test Mattermost again.
-
-### Still open (next session)
-
-- Loading spinner after Town Square flash (team slug `pt` / client routing).
-- `Invoke-EveningSync` still pushes **`main`**; long-term: WIP commits on **`wip`**, BINGO merge to `main`.
-- Orchestrator log noise: `invalid input syntax for type bigint: "polysaast121"` (unrelated, non-blocking).

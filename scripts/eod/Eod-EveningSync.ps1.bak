@@ -5,37 +5,34 @@ function Invoke-EveningSync {
     )
 
     Write-Host ""
-    Write-Host "-- Evening Sync -----------------------------------" -ForegroundColor Cyan
+    Write-Host "── Evening Sync ──────────────────────────────────" -ForegroundColor Cyan
 
     $unmergedPaths = Get-PolySaaSGitUnmergedPaths -RepoRoot $ScriptRoot
     if ($unmergedPaths.Count -gt 0) {
         Write-Host "  SKIPPED - unresolved merge conflicts present" -ForegroundColor Yellow
         $unmergedPaths | ForEach-Object { Write-Host ('    U ' + $_) -ForegroundColor Yellow }
         Write-Host "  Resolve and stage those files before running sync again" -ForegroundColor Yellow
-        Write-Host "--------------------------------------------------" -ForegroundColor Cyan
+        Write-Host "──────────────────────────────────────────────────" -ForegroundColor Cyan
         Write-Host ""
         return
     }
 
     Push-Location $ScriptRoot
 
-    # Always encrypt first (.env is gitignored; a "clean" tree can still need a new .env.enc)
-    Protect-PolySaaSEnv -RepoRoot $ScriptRoot | Out-Null
-    if (Test-Path (Join-Path $ScriptRoot ".env.enc")) {
-        git add -f .env.enc 2>$null
-    }
-
     $gitStatus = git status --porcelain 2>&1
     if (-Not $gitStatus) {
-        Write-Host "  Working tree clean - nothing to commit (including .env.enc)" -ForegroundColor Green
+        Write-Host "  Working tree clean - nothing to commit" -ForegroundColor Green
         Pop-Location
-        Write-Host "--------------------------------------------------" -ForegroundColor Cyan
+        Write-Host "──────────────────────────────────────────────────" -ForegroundColor Cyan
         Write-Host ""
         return
     }
 
     $changedCount = ($gitStatus | Measure-Object).Count
     Write-Host ('  Found ' + $changedCount + ' uncommitted change(s)') -ForegroundColor Yellow
+
+    # Encrypt .env -> .env.enc so the encrypted copy is committed (mirror of morning sync)
+    Protect-PolySaaSEnv -RepoRoot $ScriptRoot
 
     $docChanges = $gitStatus | Where-Object { $_ -match "documentation/" -or $_ -match "coordination/" -or $_ -match "\.cursor/rules/" -or $_ -match '\.md$' }
     $codeChanges = $gitStatus | Where-Object { $_ -notmatch "documentation/" -and $_ -notmatch "coordination/" -and $_ -notmatch "\.cursor/rules/" -and $_ -notmatch '\.md$' }
@@ -49,19 +46,15 @@ function Invoke-EveningSync {
     }
 
     if ($codeChanges) {
-        Write-Host "  Code changes detected - staging for end-of-day commit" -ForegroundColor Yellow
+        Write-Host "  Code changes detected - staging all for end-of-day commit" -ForegroundColor Yellow
         git add -A
-        # Never commit plaintext env backups (GitHub push protection blocks API keys)
-        git reset HEAD -- .env.laptop-backup 2>$null
-        git reset HEAD -- '.env.*-backup' 2>$null
-        git reset HEAD -- '.env*.backup' 2>$null
     }
 
     $staged = git diff --cached --name-only 2>&1
     if (-Not $staged) {
         Write-Host "  Nothing staged - skipping commit" -ForegroundColor Green
         Pop-Location
-        Write-Host "--------------------------------------------------" -ForegroundColor Cyan
+        Write-Host "──────────────────────────────────────────────────" -ForegroundColor Cyan
         Write-Host ""
         return
     }

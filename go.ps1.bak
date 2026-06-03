@@ -12,7 +12,6 @@ $goDir = Join-Path $scriptDir "scripts\go"
 . (Join-Path $goDir "Go-MorningSync.ps1")
 . (Join-Path $goDir "Go-Services.ps1")
 . (Join-Path $goDir "Go-SessionEnd.ps1")
-. (Join-Path $goDir "Go-Worktree.ps1")
 
 # ── Pull first (so documentation/collaboration/README and notes are current) ─
 
@@ -36,10 +35,6 @@ if ($unmergedPaths.Count -gt 0) {
 # ── Decrypt .env from .env.enc (if repo copy is newer) ────────────────
 Write-Host "── Env Sync ──────────────────────────────────────" -ForegroundColor Cyan
 Unprotect-PolySaaSEnv -RepoRoot $scriptDir
-$worktreeRoot = Get-PolySaaSWorktreeRoot -RepoRoot $scriptDir
-if ($worktreeRoot) {
-    Sync-PolySaaSWorktreeEnv -RepoRoot $scriptDir -WorktreeRoot $worktreeRoot
-}
 Write-Host ""
 
 # ── Virtual Environment (required for app check) ───────────────────────
@@ -150,14 +145,13 @@ Write-Host 'MONITOR (app)   -> http://localhost:5000' -ForegroundColor Green
 Write-Host "POLYSNIFFER     -> http://127.0.0.1:5002" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-# Django runs from the wip worktree when present (.worktree-path or defaults).
-# Main checkout stays on branch main for pull/EOD; WIP commits happen on branch wip.
-if (-not $worktreeRoot) {
-    $worktreeRoot = Get-PolySaaSWorktreeRoot -RepoRoot $scriptDir
-}
-$worktreeManage = if ($worktreeRoot) { Join-Path $worktreeRoot "manage.py" } else { "" }
+# Hard-coded worktree path — Django runs from the active Windsurf worktree
+# regardless of where this go.ps1 is invoked from. Comment out / change when
+# the worktree is merged back to main checkout.
+$worktreeRoot = "C:\Users\PC\.windsurf\worktrees\PolySaaS\PolySaaS-a136a386"
+$worktreeManage = Join-Path $worktreeRoot "manage.py"
 
-if ($worktreeRoot -and (Test-Path $worktreeManage)) {
+if (Test-Path $worktreeManage) {
     Write-Host "RUNNING FROM WORKTREE: $worktreeRoot" -ForegroundColor Magenta
     Push-Location $worktreeRoot
     try {

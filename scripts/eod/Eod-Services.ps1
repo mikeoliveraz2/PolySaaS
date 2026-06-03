@@ -57,7 +57,7 @@ function Stop-GoBackgroundServices {
         [string]$ScriptRoot
     )
 
-    Write-Host "── Stop Services ─────────────────────────────────" -ForegroundColor Cyan
+    Write-Host "-- Stop Services --------------------------------" -ForegroundColor Cyan
 
     Stop-ListenerOnPort -Port 8000 -Name "Django runserver"
     Stop-ListenerOnPort -Port 5000 -Name "Monitor Logger"

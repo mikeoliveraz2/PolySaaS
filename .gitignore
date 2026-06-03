@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .env
 .env.key
+.env.laptop-backup
+.env.*-backup
+.env*.backup
+.worktree-path
 .env.railway.local
 .env.wordpress
 # Local cache: maps ML screenshot filenames → WordPress media URLs (wp_sync_ml_page.py)
