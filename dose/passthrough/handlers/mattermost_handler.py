@@ -387,6 +387,24 @@ window.location.replace('/');
         lid_attr = h(login_id, quote=True)
         pwd_attr = h(password, quote=True)
         user_email_js = json.dumps(user_email)
+        endpoint_url = (getattr(endpoint, 'endpoint_url', '') or '').rstrip('/')
+        if not endpoint_url and trigger:
+            raw = (trigger or '').strip()
+            if raw.startswith('http://') or raw.startswith('https://'):
+                endpoint_url = raw.rstrip('/')
+            elif raw:
+                host_only = raw
+                port = None
+                if ':' in raw:
+                    _host, _port = raw.rsplit(':', 1)
+                    if _port.isdigit():
+                        host_only = _host
+                        port = int(_port)
+                if port == 80 or '.' not in host_only:
+                    endpoint_url = f"http://{raw}".rstrip('/')
+                else:
+                    endpoint_url = f"https://{raw}".rstrip('/')
+        endpoint_url_js = json.dumps(endpoint_url)
 
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>
@@ -551,8 +569,14 @@ try {{
                     ' force=' + forceLogin);
         if (existingToken && !forceLogin) {{
             dbg('Token exists -- validating before redirect');
+            var endpointUrl = {endpoint_url_js};
+            if (!endpointUrl) {{
+                dbg('No endpoint URL for token validation -- redirecting to passthrough root');
+                window.location.replace(base().replace(/\/$/, '') + '/');
+                return;
+            }}
             var vxhr = new XMLHttpRequest();
-            vxhr.open('GET', '{endpoint_url}/api/v4/users/me', false);
+            vxhr.open('GET', endpointUrl + '/api/v4/users/me', false);
             vxhr.setRequestHeader('Authorization', 'Bearer ' + existingToken);
             try {{
                 vxhr.send();
@@ -804,6 +828,9 @@ try {{
             'name="loginid"' in _lower_html
             or 'id="loginid"' in _lower_html
             or '/api/v4/users/login' in _lower_html
+            or 'log in to your account' in _lower_html
+            or 'your session has expired. please log in again.' in _lower_html
+            or 'forgot your password?' in _lower_html
         ):
             print("[MM HANDLER] Upstream native login HTML detected — redirecting to PolySaaS bridge")
             return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>

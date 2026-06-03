@@ -1,5 +1,6 @@
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
+import requests
 from django.utils.deprecation import MiddlewareMixin
 from dose.models import UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
@@ -96,19 +97,31 @@ def run_pt_admin_passthrough_core(request):
         request, endpoint.endpoint_url, handler=handler, endpoint=endpoint, trigger=trigger
     )
 
-    # Check if upstream service is down
+    # Check if upstream service is actually down before showing a generic error page.
+    # Some 502/503/504 responses are transient proxy failures while the service is healthy.
     if response.status_code in (502, 503, 504):
-        from django.http import HttpResponse
-        error_html = f"""
-        <div style="padding: 40px; text-align: center;">
-            <h2 style="color: #dc3545;">Service Unavailable</h2>
-            <p>The external service <code>{trigger}</code> is currently not running.</p>
-            <p>Status: {response.status_code}</p>
-            <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
-        </div>
-        """
-        response = HttpResponse(error_html, status=503)
-        print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
+        service_up = False
+        try:
+            probe = requests.get(endpoint.endpoint_url, timeout=6, allow_redirects=True)
+            service_up = probe.status_code < 500
+            print(f"[PT-CORE] Health probe {endpoint.endpoint_url} -> {probe.status_code}")
+        except Exception as exc:
+            print(f"[PT-CORE] Health probe failed for {endpoint.endpoint_url}: {exc}")
+
+        if not service_up:
+            from django.http import HttpResponse
+            error_html = f"""
+            <div style="padding: 40px; text-align: center;">
+                <h2 style="color: #dc3545;">Service Unavailable</h2>
+                <p>The external service <code>{trigger}</code> is currently not running.</p>
+                <p>Status: {response.status_code}</p>
+                <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
+            </div>
+            """
+            response = HttpResponse(error_html, status=503)
+            print(f"[PT-CORE] Upstream service {trigger} appears down - showing error page")
+        else:
+            print(f"[PT-CORE] Upstream {trigger} returned {response.status_code}, but health probe is OK - preserving original response")
 
     request._passthrough_handled = True
     request._passthrough_response = response
