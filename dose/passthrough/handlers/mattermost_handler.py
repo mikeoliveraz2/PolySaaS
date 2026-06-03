@@ -79,14 +79,20 @@ window.location.replace('/');
         if not html_str:
             return False
         lower = html_str.lower()
-        return (
+        # IMPORTANT: do not use generic '/api/v4/users/login' string matching here.
+        # Mattermost app shell bundles can contain that path without being a native login page,
+        # which causes false-positive bridge redirects and login loops.
+        has_login_input = (
             'name="loginid"' in lower
             or 'id="loginid"' in lower
-            or '/api/v4/users/login' in lower
-            or 'log in to your account' in lower
-            or 'your session has expired. please log in again.' in lower
-            or 'forgot your password?' in lower
+            or 'name="login_id"' in lower
+            or 'id="login_id"' in lower
         )
+        has_login_text = (
+            'log in to your account' in lower
+            or 'your session has expired. please log in again.' in lower
+        )
+        return has_login_input or has_login_text
 
     def force_process_html_response(
         self,
@@ -122,9 +128,20 @@ window.location.replace('/');
             trig = parts[2]
         else:
             trig = (trigger or 'mattermost').strip('/')
+        token = self._select_browser_mm_token(request)
+        if token and endpoint_url and self._validate_mm_token(endpoint_url, token):
+            # If token is valid, do NOT redirect. False-positive login markers can
+            # appear in bundled HTML and redirecting here creates /pt -> /pt loops.
+            print('[MM HANDLER] finalize_html_response: login markers but valid token -- keeping upstream HTML')
+            return None
         print('[MM HANDLER] finalize_html_response: native login HTML detected -- redirecting to bridge')
         return HttpResponseRedirect(f'/pt/admin/{trig}/login?force=1')
-        if self._contains_native_login_html(html_str):
+
+    def _effective_upstream_path(self, request, upstream_path: str) -> str:
+        """Prefer forwarder upstream_path; fall back to passthrough subpath on request."""
+        path = (upstream_path or "").strip()
+        if path and path != "/":
+            return path if path.startswith("/") else f"/{path}"
         m = re.match(r"^/pt/(?:admin|dose)/[^/]+(.*)$", (request.path_info or "").strip())
         if not m:
             return path or "/"
@@ -261,6 +278,28 @@ window.location.replace('/');
 
         return _wrap_in_admin_template(request, bridge, trigger, endpoint)
 
+        def _build_token_reseed_html(self, proxy_prefix: str, token: str) -> str:
+                return f"""<!DOCTYPE html>
+<html><head><title>PolySaaS - Mattermost</title></head>
+<body>
+<script>
+    try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(e) {{}}
+    try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
+    try {{ localStorage.removeItem('mmauthtoken'); }} catch(e) {{}}
+    try {{ localStorage.removeItem('LastTeamId'); }} catch(e) {{}}
+    try {{ localStorage.removeItem('lastTeamId'); }} catch(e) {{}}
+    document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    try {{ indexedDB.deleteDatabase('localforage'); }} catch(e) {{}}
+    document.cookie = 'MMAUTHTOKEN={token}; path=/; max-age=86400; SameSite=Lax';
+    document.cookie = 'mmauthtoken={token}; path=/; max-age=86400; SameSite=Lax';
+    setTimeout(function() {{ window.location.href = '{proxy_prefix}/'; }}, 200);
+</script>
+<p>Redirecting to Mattermost...</p>
+</body></html>"""
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
         Intercept root and /login before upstream fetch:
@@ -304,17 +343,18 @@ window.location.replace('/');
 
         # Check for force=1 parameter to skip token validation (used when shim detects invalid token)
         force_login = request.GET.get('force') == '1'
+        stale_cookie_invalid = False
         
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        token = self._select_browser_mm_token(request)
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
 
         if token and not force_login and endpoint_url:
             if self._validate_mm_token(endpoint_url, token):
                 print("[MM ROOT] Valid token cookie -- forwarding to Mattermost /")
                 return None
-            print("[MM ROOT] Stale token -- redirecting to /login?force=1 to clear state")
-            from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(f"{proxy_prefix}/login?force=1")
+            # Do not immediately force bridge. Try direct/plugin auth recovery first.
+            stale_cookie_invalid = True
+            print("[MM ROOT] Stale token detected -- attempting direct/plugin recovery before bridge")
 
         # No cookie or force=1 -- try server-side login, then plugin auth as fallback.
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
@@ -326,33 +366,7 @@ window.location.replace('/');
             if plugin_token:
                 print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
                 from django.http import HttpResponse
-                redirect_html = f"""<!DOCTYPE html>
-<html><head><title>PolySaaS - Mattermost</title></head>
-<body>
-<script>
-  // Clear ALL stale Mattermost state before fresh login
-  localStorage.removeItem('storage:MMAUTHTOKEN');
-  localStorage.removeItem('MMAUTHTOKEN');
-  localStorage.removeItem('mmauthtoken');
-  localStorage.removeItem('LastTeamId');
-  localStorage.removeItem('lastTeamId');
-  // Clear team/channel routing cookies that cause "Team Not Found"
-  document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-  document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-  document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-  document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-  // Clear IndexedDB persist:storage to prevent stale Redux team state
-  try {{
-    var delReq = indexedDB.deleteDatabase('localforage');
-    delReq.onsuccess = function() {{ console.log('[PolySaaS] IDB cleared'); }};
-  }} catch(e) {{}}
-  // Now set fresh token and redirect
-  document.cookie = 'MMAUTHTOKEN={plugin_token}; path=/; max-age=86400; SameSite=Lax';
-  document.cookie = 'mmauthtoken={plugin_token}; path=/; max-age=86400; SameSite=Lax';
-  setTimeout(function() {{ window.location.href = '{proxy_prefix}/'; }}, 200);
-</script>
-<p>Redirecting to Mattermost...</p>
-</body></html>"""
+                redirect_html = self._build_token_reseed_html(proxy_prefix, plugin_token)
                 resp = HttpResponse(redirect_html, content_type="text/html; charset=utf-8")
                 resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
                 resp.set_cookie('mmauthtoken', plugin_token, max_age=86400, path='/', samesite='Lax')
@@ -363,8 +377,12 @@ window.location.replace('/');
         # Re-check: if browser has a token (possibly set by a previous login bridge
         # cycle in this session), forward to Mattermost instead of looping back
         # to the bridge. The SPA will handle auth client-side.
-        recheck_token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        recheck_token = self._select_browser_mm_token(request)
         if recheck_token:
+            if stale_cookie_invalid:
+                print("[MM ROOT] Recheck token remains stale after recovery attempt -- forcing login bridge")
+                from django.http import HttpResponseRedirect
+                return HttpResponseRedirect(f"{proxy_prefix}/login?force=1")
             print(f"[MM ROOT] Auth methods failed but browser has token (len={len(recheck_token)}) -- forwarding to MM SPA")
             return None
 
@@ -520,6 +538,7 @@ try {{
             if (xhr.status >= 200 && xhr.status < 300 && token) {{
                 try {{ localStorage.setItem('MMAUTHTOKEN', token); }} catch (e) {{}}
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
+                document.cookie = 'mmauthtoken=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
                 // Write token to IndexedDB so Mattermost Redux hydrates correctly
@@ -598,9 +617,9 @@ try {{
         $('btn').addEventListener('click', doLogin);
         var hasCreds = !!($('lid').value && $('pwd').value);
         var existingToken = '';
-        try {{ existingToken = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+        try {{ existingToken = localStorage.getItem('MMAUTHTOKEN') || localStorage.getItem('mmauthtoken') || ''; }} catch(e) {{}}
         if (!existingToken) {{
-            var m = document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+            var m = document.cookie.match(/(?:^|;\s*)mmauthtoken=([^;]+)/i);
             if (m) existingToken = m[1];
         }}
         var forceLogin = window.location.search.indexOf('force=1') !== -1;
@@ -633,6 +652,7 @@ try {{
                 dbg('Token validation error -- clearing and re-authenticating');
             }}
             try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
+            document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
             document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
             existingToken = '';
         }}
@@ -643,6 +663,7 @@ try {{
             try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(e) {{}}
             try {{ localStorage.removeItem('LastTeamId'); }} catch(e) {{}}
             try {{ localStorage.removeItem('lastTeamId'); }} catch(e) {{}}
+            document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
             document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
             document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
             document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
@@ -867,16 +888,19 @@ try {{
 
         _lower_html = html_str.lower()
 
-        if (
-            'name="loginid"' in _lower_html
-            or 'id="loginid"' in _lower_html
-            or '/api/v4/users/login' in _lower_html
-            or 'log in to your account' in _lower_html
-            or 'your session has expired. please log in again.' in _lower_html
-            or 'forgot your password?' in _lower_html
-        ):
-            print("[MM HANDLER] Upstream native login HTML detected — redirecting to PolySaaS bridge")
-            return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>
+        if self._contains_native_login_html(_lower_html):
+            token = self._select_browser_mm_token(request)
+            if token and endpoint_url and self._validate_mm_token(endpoint_url, token):
+                print("[MM HANDLER] Login markers with valid token -- reseeding token and bouncing root")
+                fresh_token = self._get_session_token_direct(request, endpoint_url)
+                if not fresh_token:
+                    fresh_token = self._get_plugin_auth_token(request, endpoint_url, _trigger)
+                if fresh_token:
+                    return self._build_token_reseed_html(proxy_prefix, fresh_token)
+                print("[MM HANDLER] Reseed failed despite valid token -- serving upstream HTML")
+            else:
+                print("[MM HANDLER] Upstream native login HTML detected — redirecting to PolySaaS bridge")
+                return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>
 <script>window.location.replace('{proxy_prefix}/login?force=1');</script>
 <p>Redirecting to sign in...</p>
 </body></html>"""
@@ -1100,7 +1124,37 @@ try {{
         if '/api/v4/users/login' in path or '/api/v4/users/logout' in path:
             cookies = {k: v for k, v in (cookies or {}).items()
                        if k.lower() not in ('mmauthtoken',)}
+            return cookies
+
+        # For all non-login requests, normalize both cookie keys to the same token.
+        # This prevents conflicting browser values from producing intermittent 401s.
+        token = self._select_browser_mm_token(request)
+        if token:
+            cookies = dict(cookies or {})
+            cookies['mmauthtoken'] = token
+            cookies['MMAUTHTOKEN'] = token
         return cookies
+
+    def override_upstream_cookies(self, request, target_url: str) -> dict:
+        """Force normalized Mattermost token cookies after forwarder merge logic."""
+        _path = (target_url or '')
+        if '/api/v4/users/login' in _path or '/api/v4/users/logout' in _path:
+            return {}
+        token = self._select_browser_mm_token(request)
+        if not token:
+            return {}
+        return {
+            'mmauthtoken': token,
+            'MMAUTHTOKEN': token,
+        }
+
+    def _select_browser_mm_token(self, request):
+        """Pick the freshest browser token. Prefer lowercase cookie used by Mattermost web sessions."""
+        lower = (request.COOKIES.get('mmauthtoken') or '').strip()
+        upper = (request.COOKIES.get('MMAUTHTOKEN') or '').strip()
+        if lower and upper and lower != upper:
+            print('[MM_AUTH] Cookie mismatch detected (mmauthtoken != MMAUTHTOKEN); preferring lowercase')
+        return lower or upper or ''
 
     def get_upstream_cookies(self, request):
         """
@@ -1117,10 +1171,10 @@ try {{
         # BROWSER COOKIE ONLY: If the browser has MMAUTHTOKEN, return it.
         # If not, return {} — let the login bridge handle authentication.
         # Server-side logins create NEW sessions that invalidate the browser's token.
-        browser_token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        browser_token = self._select_browser_mm_token(request)
         if browser_token:
             print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
-            return {'MMAUTHTOKEN': browser_token}
+            return {'mmauthtoken': browser_token, 'MMAUTHTOKEN': browser_token}
 
         print("[MM_AUTH] No browser MMAUTHTOKEN — returning empty cookies (login bridge will handle auth)")
         return {}
@@ -1140,7 +1194,7 @@ try {{
         print(f'[MM_AUTH] MMAUTHTOKEN cookie: {"PRESENT" if all_cookies.get("MMAUTHTOKEN") else "MISSING"}')
         print(f'[MM_AUTH] mmauthtoken cookie: {"PRESENT" if all_cookies.get("mmauthtoken") else "MISSING"}')
         print(f'[MM_AUTH] Cookie values present: {[k for k,v in all_cookies.items() if v]}')
-        token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken')
+        token = self._select_browser_mm_token(request)
         _src = 'browser-cookie' if token else 'none'
         print(f'[MM_AUTH] Selected token source: {_src}')
         
@@ -1304,14 +1358,14 @@ try {{
         else:
             # Fallback to browser cookie — it's always fresh after login bridge succeeds.
             # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
-            token = request.COOKIES.get('MMAUTHTOKEN') or request.COOKIES.get('mmauthtoken') or ""
+            token = self._select_browser_mm_token(request) or ""
             if token:
                 logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
             else:
                 # Fallback to server-side token if browser has none
                 try:
                     cookies = self.get_upstream_cookies(request) or {}
-                    token = cookies.get("MMAUTHTOKEN") or ""
+                    token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
                     logger.info("[MM Shim] token from server, len=%d", len(token))
                 except Exception as exc:
                     logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)

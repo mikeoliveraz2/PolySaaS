@@ -4,8 +4,11 @@ from django.urls import path, include
 from django.views.generic import RedirectView
 
 from dose.admin_views import pt_admin_generic_passthrough_view, mattermost_error_recover_view
+from dose.polysniffer.views import mattermost_static_proxy
 
 urlpatterns = [
+    # Mattermost static assets must bypass generic passthrough/login flow.
+    path('pt/admin/<str:trigger>/static/<path:path>', mattermost_static_proxy, name='mattermost_static_proxy'),
     # FORCE PASSTHROUGH FIRST - highest priority
     # Root path (e.g., /pt/admin/mattermost/)
     path('pt/admin/<str:endpoint>/', pt_admin_generic_passthrough_view, name='pt_admin_generic'),
