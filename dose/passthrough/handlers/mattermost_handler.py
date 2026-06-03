@@ -42,6 +42,39 @@ class MattermostPassthroughHandler:
                 return True
         return False
 
+    def _is_team_not_found_html(self, html_str: str) -> bool:
+        if not html_str:
+            return False
+        normalized = re.sub(r"\s+", " ", html_str).lower()
+        normalized = normalized.replace("’", "'")
+        normalized_compact = normalized.replace("'", "")
+        markers = (
+            "team not found",
+            "private or does not exist",
+            "the team you're requesting is private or does not exist",
+            "the team you are requesting is private or does not exist",
+            "the team youre requesting is private or does not exist",
+        )
+        return any(marker in normalized or marker in normalized_compact for marker in markers)
+
+    def _build_team_not_found_recovery_html(self) -> str:
+        return """<!DOCTYPE html>
+<html>
+<head><meta charset=\"utf-8\"><title>Recovering...</title></head>
+<body onload=\"(function(){
+try { localStorage.removeItem('LastTeamId'); } catch(e) {}
+try { localStorage.removeItem('lastTeamId'); } catch(e) {}
+try { localStorage.removeItem('MMTEAMID'); } catch(e) {}
+document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+document.cookie = 'MMTEAMID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+try { indexedDB.deleteDatabase('localforage'); } catch(e) {}
+window.location.replace('/');
+})()\">
+<p>Recovering session...</p>
+</body>
+</html>"""
+
     def _effective_upstream_path(self, request, upstream_path: str) -> str:
         """Prefer forwarder upstream_path; fall back to passthrough subpath on request."""
         path = (upstream_path or "").strip()
@@ -215,10 +248,12 @@ class MattermostPassthroughHandler:
 <script>
 try {{ localStorage.removeItem('LastTeamId'); }} catch(e) {{}}
 try {{ localStorage.removeItem('lastTeamId'); }} catch(e) {{}}
+try {{ localStorage.removeItem('MMTEAMID'); }} catch(e) {{}}
 document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
 document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+document.cookie = 'MMTEAMID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
 try {{ indexedDB.deleteDatabase('localforage'); }} catch(e) {{}}
-window.location.replace('{proxy_prefix}/');
+window.location.replace('/');
 </script></body></html>""", content_type="text/html")
 
         if path != proxy_prefix:
@@ -759,33 +794,11 @@ try {{
         # Hard stop: never render upstream Mattermost native login in passthrough.
         # If upstream sends login HTML (even from non-/login routes), immediately
         # bounce to the PolySaaS bridge which owns the credential flow.
+        if self._is_team_not_found_html(html_str):
+            print("[MM HANDLER] Team Not Found page detected -- returning recovery page")
+            return self._build_team_not_found_recovery_html()
+
         _lower_html = html_str.lower()
-        if (
-            'team not found' in _lower_html
-            or '## team not found' in _lower_html
-            or "the team you're requesting is private or does not exist" in _lower_html
-            or "the team you’re requesting is private or does not exist" in _lower_html
-            or 'private or does not exist' in _lower_html
-        ):
-            print("[MM HANDLER] Team Not Found page detected -- clearing team cookies and retrying")
-            return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Redirecting...</title></head><body>
-<script>
-// Keep the auth token -- just nuke team routing state
-try {{ localStorage.removeItem('LastTeamId'); }} catch(e) {{}}
-try {{ localStorage.removeItem('lastTeamId'); }} catch(e) {{}}
-document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-try {{ indexedDB.deleteDatabase('localforage'); }} catch(e) {{}}
-// One-shot guard: don't loop if we already retried
-if (sessionStorage.getItem('_ps_team_retry')) {{
-    document.body.innerHTML = '<p>Team Not Found persists after retry. Check Mattermost team membership for this user.</p>';
-}} else {{
-    sessionStorage.setItem('_ps_team_retry', '1');
-    setTimeout(function() {{ window.location.replace('{proxy_prefix}/'); }}, 300);
-}}
-</script>
-<p>Redirecting to Mattermost...</p>
-</body></html>"""
 
         if (
             'name="loginid"' in _lower_html
@@ -1094,6 +1107,21 @@ if (sessionStorage.getItem('_ps_team_retry')) {{
         target_url = kwargs.get('target_url') or kwargs.get('endpoint_url', '')
         upstream_path = kwargs.get('upstream_path') or ''
         combined = f"{target_url}{upstream_path}"
+
+        # Safety net: if Team Not Found content comes back in any upstream response,
+        # replace it with a recovery page that clears team state and goes to '/'.
+        try:
+            raw = getattr(resp, 'content', b'') or b''
+            if raw:
+                body_text = raw.decode(getattr(resp, 'encoding', None) or 'utf-8', errors='ignore')
+                if self._is_team_not_found_html(body_text):
+                    from django.http import HttpResponse
+                    print('[MM RESP] Team Not Found content detected in upstream body -- returning recovery page')
+                    recovery = HttpResponse(self._build_team_not_found_recovery_html(), content_type='text/html; charset=utf-8', status=200)
+                    recovery['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    return recovery
+        except Exception as exc:
+            print(f'[MM RESP] Team Not Found safety-net parse error: {exc}')
 
         # Mattermost can derive an invalid team slug from the proxy/admin route context
         # (e.g. "pt", "admin", etc.) and request /api/v4/teams/name/<slug>. A 404 here
