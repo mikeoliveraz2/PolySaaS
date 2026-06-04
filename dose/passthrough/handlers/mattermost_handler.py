@@ -35,6 +35,35 @@ class MattermostPassthroughHandler:
         trigger = str(getattr(endpoint, "trigger_path", "") or "").lower()
         return "mattermost" in url or "mattermost" in slug or "mattermost" in trigger
 
+    def handle_passthrough(self, request, host):
+        """Force reseed HTML - no more fallback to admin shell"""
+        
+        print(f"[MM PASSTHROUGH] Handling {request.get_full_path()}")
+
+        # Acquire token using existing credential flow (direct login preferred, then plugin)
+        token = None
+        endpoint_url = f"https://{host}" if host else ""
+        if endpoint_url:
+            token = self._get_session_token_direct(request, endpoint_url)
+            if not token:
+                # Need trigger for plugin auth; fall back to generic if not available
+                trigger = getattr(request, 'resolver_match', None)
+                trigger = trigger.url_name if trigger else 'mattermost'
+                token = self._get_plugin_auth_token(request, endpoint_url, trigger)
+        if not token:
+            print("[MM PASSTHROUGH] No token - falling back to login")
+            from django.shortcuts import redirect
+            return redirect('/pt/admin/login')
+
+        timestamp = int(time.time() * 1000)
+        redirect_url = f"https://{host}/?plugin_booted=1&cb={timestamp}&mm_token={token}"
+
+        # ALWAYS return reseed HTML for plugin_booted requests
+        html = self._build_token_reseed_html(host, token, redirect_url)
+        print("[MM PASSTHROUGH] Returning clean reseed HTML")
+        from django.http import HttpResponse
+        return HttpResponse(html)
+
     def _mattermost_non_embeddable_path(self, upstream_path: str) -> bool:
         path = upstream_path or "/"
         for prefix in self._MM_NON_EMBED_PREFIXES:
@@ -278,27 +307,75 @@ window.location.replace('/');
 
         return _wrap_in_admin_template(request, bridge, trigger, endpoint)
 
-        def _build_token_reseed_html(self, proxy_prefix: str, token: str) -> str:
-                return f"""<!DOCTYPE html>
-<html><head><title>PolySaaS - Mattermost</title></head>
+    def _build_token_reseed_html(self, host, token, redirect_url=None):
+        if redirect_url is None:
+            timestamp = int(time.time() * 1000)
+            redirect_url = f"https://{host}/?plugin_booted=1&cb={timestamp}&mm_token={token}"
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Connecting to Mattermost...</title>
+    
+    <!-- PolySaaS Aggressive Clean Boot Shim -->
+    <script data-polysaas-mm-shim="clean-boot">
+    (function() {{
+        'use strict';
+        const qs = window.location.search || '';
+        const isFresh = qs.includes('plugin_booted=1');
+        if (!isFresh) return;
+
+        console.log('[PolySaaS MM] 🚀 Aggressive clean boot starting');
+
+        try {{ localStorage.clear(); }} catch(e) {{}}
+        try {{ sessionStorage.clear(); }} catch(e) {{}}
+
+        // Nuke IndexedDB stores
+        ['localforage', 'reduxPersist', 'persist:storage', 'mm-persist'].forEach(function(name) {{
+            try {{ indexedDB.deleteDatabase(name); }} catch(e) {{}}
+        }});
+
+        // Remove team-related keys (no team logic)
+        try {{
+            var toRemove = [];
+            for (var i = 0; i < localStorage.length; i++) {{
+                var k = localStorage.key(i);
+                if (k && /team|Team|lastTeamId|LastTeamId|currentTeamId|selectedTeam/i.test(k)) {{
+                    toRemove.push(k);
+                }}
+            }}
+            toRemove.forEach(function(k) {{ localStorage.removeItem(k); }});
+        }} catch(e) {{}}
+
+        // Inject token from URL if present
+        try {{
+            var params = new URLSearchParams(qs);
+            var t = params.get('mm_token');
+            if (t) {{
+                localStorage.setItem('MMAUTHTOKEN', t);
+                localStorage.setItem('mmauthtoken', t);
+            }}
+        }} catch(e) {{}}
+
+        window.__polySaaS_MM_CleanBoot = true;
+        console.log('[PolySaaS MM] ✅ Clean boot complete');
+    }})();
+    </script>
+</head>
 <body>
-<script>
-    try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(e) {{}}
-    try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(e) {{}}
-    try {{ localStorage.removeItem('mmauthtoken'); }} catch(e) {{}}
-    try {{ localStorage.removeItem('LastTeamId'); }} catch(e) {{}}
-    try {{ localStorage.removeItem('lastTeamId'); }} catch(e) {{}}
-    document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-    document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-    document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-    document.cookie = 'MMCSRF=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-    try {{ indexedDB.deleteDatabase('localforage'); }} catch(e) {{}}
-    document.cookie = 'MMAUTHTOKEN={token}; path=/; max-age=86400; SameSite=Lax';
-    document.cookie = 'mmauthtoken={token}; path=/; max-age=86400; SameSite=Lax';
-    setTimeout(function() {{ window.location.href = '{proxy_prefix}/'; }}, 200);
-</script>
-<p>Redirecting to Mattermost...</p>
-</body></html>"""
+    <h2>Connecting to Mattermost...</h2>
+    <p>Please wait while we redirect you.</p>
+    
+    <script>
+        // Auto-redirect after shim runs
+        setTimeout(function() {{
+            window.location.href = "{redirect_url}";
+        }}, 800);
+    </script>
+</body>
+</html>"""
+        return html
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         """
@@ -338,6 +415,17 @@ try {{ indexedDB.deleteDatabase('localforage'); }} catch(e) {{}}
 window.location.replace('/');
 </script></body></html>""", content_type="text/html")
 
+        # Also catch bare ?type=... error query on the root path itself
+        # (Mattermost SPA sometimes emits /?type=team_not_found directly).
+        # Force a clean plugin_booted root so the next cycle serves the reseed HTML.
+        if path == proxy_prefix and request.GET.get('type'):
+            print(f"[MM HANDLER] Error query on root intercepted (?type={request.GET.get('type')}) -- forcing clean root boot")
+            from django.http import HttpResponseRedirect
+            import time
+            ts = int(time.time() * 1000)
+            clean_url = f"{proxy_prefix}/?plugin_booted=1&cb={ts}&force=1"
+            return HttpResponseRedirect(clean_url)
+
         if path != proxy_prefix:
             return None
 
@@ -366,7 +454,8 @@ window.location.replace('/');
             if plugin_token:
                 print(f"[MM ROOT] ====== PLUGIN AUTH SUCCESS ======")
                 from django.http import HttpResponse
-                redirect_html = self._build_token_reseed_html(proxy_prefix, plugin_token)
+                host = endpoint_url.replace('https://', '').replace('http://', '').split('/')[0]
+                redirect_html = self._build_token_reseed_html(host, plugin_token)
                 resp = HttpResponse(redirect_html, content_type="text/html; charset=utf-8")
                 resp.set_cookie('MMAUTHTOKEN', plugin_token, max_age=86400, path='/', samesite='Lax')
                 resp.set_cookie('mmauthtoken', plugin_token, max_age=86400, path='/', samesite='Lax')
@@ -896,7 +985,8 @@ try {{
                 if not fresh_token:
                     fresh_token = self._get_plugin_auth_token(request, endpoint_url, _trigger)
                 if fresh_token:
-                    return self._build_token_reseed_html(proxy_prefix, fresh_token)
+                    host = endpoint_url.replace('https://', '').replace('http://', '').split('/')[0]
+                    return self._build_token_reseed_html(host, fresh_token)
                 print("[MM HANDLER] Reseed failed despite valid token -- serving upstream HTML")
             else:
                 print("[MM HANDLER] Upstream native login HTML detected — redirecting to PolySaaS bridge")
