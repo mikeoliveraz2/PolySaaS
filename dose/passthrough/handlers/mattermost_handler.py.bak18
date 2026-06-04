@@ -42,7 +42,6 @@ class MattermostPassthroughHandler:
                 return True
         return False
 
-    # TEAMS NOT USED (Michael) — dead helper; kept for reference only, do not wire back in.
     def _is_team_not_found_html(self, html_str: str) -> bool:
         if not html_str:
             return False
@@ -58,51 +57,6 @@ class MattermostPassthroughHandler:
         )
         return any(marker in normalized or marker in normalized_compact for marker in markers)
 
-    # TEAMS NOT USED (Michael) — dead helper; direct login has no team membership prerender.
-    def _is_no_team_prerender_html(self, html_str: str) -> bool:
-        if not html_str:
-            return False
-        lower = re.sub(r'\s+', ' ', html_str).lower()
-        return (
-            'user has no team membership' in lower
-            or 'prerender 500' in lower
-            or 'error rendering page' in lower and 'team membership' in lower
-        )
-
-    # -------------------------------------------------------------------------
-    # TEAMS NOT USED (Michael): Direct Mattermost login page source has no team
-    # API, team UI, or mm_team_* config. Do NOT re-enable stubs below — prior AIs
-    # added them misdiagnosing 401s; passthrough SSO must match direct login only.
-    # -------------------------------------------------------------------------
-    # def _teams_stub_payload(self, request, *, single_team_object=False):
-    #     ...
-    # def _teams_api_path(self, combined: str, upstream_path: str = '') -> bool:
-    #     ...
-    # def _apply_teams_stub_response(self, resp, request, *, single_team_object=False):
-    #     ...
-
-    # TEAMS NOT USED (Michael) — only called from disabled prerender recovery; do not re-enable.
-    def _fetch_upstream_root_shell(self, request, endpoint_url: str) -> str:
-        """Replace prerender error HTML with the generic Mattermost app shell from /."""
-        token = self._get_sidebar_auth_token(request) or self._select_browser_mm_token(request, endpoint_url)
-        if not token or not endpoint_url:
-            return ''
-        try:
-            import requests as _req
-            mm_origin = endpoint_url.rstrip('/')
-            r = _req.get(
-                f'{mm_origin}/',
-                headers={'Authorization': f'Bearer {token}'},
-                timeout=15,
-            )
-            if r.status_code == 200 and r.text and not self._is_no_team_prerender_html(r.text):
-                print('[MM RESP] Substituted prerender error with upstream / app shell')
-                return r.text
-        except Exception as exc:
-            print(f'[MM RESP] Upstream / shell fetch failed: {exc}')
-        return ''
-
-    # TEAMS NOT USED (Michael) — dead recovery page; do not use for passthrough SSO.
     def _build_team_not_found_recovery_html(self) -> str:
         return """<!DOCTYPE html>
 <html>
@@ -121,40 +75,16 @@ window.location.replace('/');
 </body>
 </html>"""
 
-    def _is_mattermost_app_shell(self, html_str: str) -> bool:
-        """Authenticated SPA bootstrap shell (not the native login form page)."""
-        if not html_str:
-            return False
-        lower = html_str.lower()
-        return (
-            '<title>mattermost</title>' in lower
-            and 'publicpathinwindowscript' in lower
-        )
-
-    def _is_token_reseed_page(self, html_str: str) -> bool:
-        """PolySaaS cookie+redirect hop — not the Mattermost SPA (causes reload/blank UI)."""
-        if not html_str:
-            return False
-        return (
-            'Redirecting to Mattermost' in html_str
-            and '_ps_mm_plugin_boot' in html_str
-        )
-
     def _contains_native_login_html(self, html_str: str) -> bool:
         if not html_str:
             return False
         # Our injected shim embeds login-detection phrases — not upstream native login.
-        if (
-            'PolySaaS Mattermost' in html_str
-            or '[PolySaaS MM]' in html_str
-            or 'data-polysaas-mattermost-shim' in html_str
-        ):
-            return False
-        if self._is_mattermost_app_shell(html_str):
+        if 'PolySaaS Mattermost' in html_str or '[PolySaaS MM]' in html_str:
             return False
         lower = html_str.lower()
         # IMPORTANT: do not use generic '/api/v4/users/login' string matching here.
-        # Mattermost app shell bundles can contain loginId strings in JS without being a login page.
+        # Mattermost app shell bundles can contain that path without being a native login page,
+        # which causes false-positive bridge redirects and login loops.
         has_login_input = (
             'name="loginid"' in lower
             or 'id="loginid"' in lower
@@ -163,11 +93,9 @@ window.location.replace('/');
         )
         has_login_text = (
             'log in to your account' in lower
-            or 'collaborate with your team' in lower
-            or 'mattermost free edition' in lower
             or 'your session has expired. please log in again.' in lower
         )
-        return has_login_input and has_login_text
+        return has_login_input or has_login_text
 
     def force_process_html_response(
         self,
@@ -205,9 +133,10 @@ window.location.replace('/');
         proxy_prefix = f'/pt/admin/{trig}'
         endpoint_url = (endpoint_url or self._resolve_mm_endpoint_url(request, endpoint_url)).rstrip('/')
         print('[MM HANDLER] finalize: native login HTML blocked — plugin or login bridge')
-        return self._recover_auth_from_native_login_shell(
-            request, trig, getattr(request, '_passthrough_endpoint', None),
-        )
+        fresh = self._attempt_server_mm_session(request, endpoint_url, trig)
+        if fresh:
+            return self._reseed_http_response(request, proxy_prefix, fresh, trigger=trig)
+        return self._wrap_login_bridge(request, trig, getattr(request, '_passthrough_endpoint', None))
 
     def _effective_upstream_path(self, request, upstream_path: str) -> str:
         """Prefer forwarder upstream_path; fall back to passthrough subpath on request."""
@@ -262,24 +191,6 @@ window.location.replace('/');
         # guards can redirect instead of rendering native error pages.
         if status_code in (200, 401, 403, 404):
             return True
-        return True
-
-    def should_forward_set_cookie_headers(
-        self,
-        request,
-        *,
-        upstream_content_type=None,
-        upstream_path=None,
-        response_kind=None,
-    ) -> bool:
-        """PolySaaS owns MMAUTHTOKEN after sidebar login — upstream HTML must not overwrite it."""
-        ct = (upstream_content_type or '').lower()
-        if 'text/html' not in ct:
-            return True
-        path = self._effective_upstream_path(request, upstream_path or '')
-        if path.startswith('/channels/') or path in ('/', '/login'):
-            print('[MM_AUTH] Suppressing upstream Set-Cookie on HTML shell (PolySaaS owns auth)')
-            return False
         return True
 
     def should_wrap_in_admin_template(
@@ -389,7 +300,6 @@ window.location.replace('/');
     try {{ localStorage.clear(); }} catch(e) {{}}
     try {{ sessionStorage.removeItem('_ps_force_bridge_login'); }} catch(e) {{}}
     try {{ sessionStorage.removeItem('_polysaas_mm_redirect_count'); }} catch(e) {{}}
-    try {{ sessionStorage.setItem('_ps_mm_plugin_boot', '1'); }} catch(e) {{}}
     document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
@@ -436,53 +346,6 @@ window.location.replace('/');
     def _mark_fresh_sidebar_entry(self, request) -> None:
         request._mm_fresh_sidebar_entry = True
 
-    _SIDEBAR_AUTH_SESSION_KEY = 'mm_sidebar_auth_token'
-    _SIDEBAR_AUTH_TS_KEY = 'mm_sidebar_auth_token_ts'
-    _SIDEBAR_AUTH_TTL_SEC = 120
-    # After plugin auth, Mattermost SPA may hit root?redirect_to=… — do not wipe cookies again.
-    _POST_SIDEBAR_GRACE_SEC = 90
-
-    def _is_post_sidebar_auth_grace(self, request) -> bool:
-        try:
-            ts = float(request.session.get(self._SIDEBAR_AUTH_TS_KEY) or 0)
-            if not ts:
-                return False
-            return (time.time() - ts) <= self._POST_SIDEBAR_GRACE_SEC
-        except Exception:
-            return False
-
-    def _publish_sidebar_auth_token(self, request, token: str) -> None:
-        """Make fresh plugin/login token visible to parallel passthrough requests (race window)."""
-        if not token:
-            return
-        request._mm_sidebar_auth_token = token
-        try:
-            request.session[self._SIDEBAR_AUTH_SESSION_KEY] = token
-            request.session[self._SIDEBAR_AUTH_TS_KEY] = time.time()
-            request.session.modified = True
-        except Exception as exc:
-            logger.warning('[MM_AUTH] Could not store sidebar auth token in session: %s', exc)
-        try:
-            self._save_tenantapp_token(token, request)
-            print(f'[MM_AUTH] Published sidebar auth token len={len(token)} (session + TenantApp)')
-        except Exception as exc:
-            print(f'[MM_AUTH] TenantApp token save failed: {exc}')
-
-    def _get_sidebar_auth_token(self, request):
-        """Token from the latest sidebar plugin/login, valid for a short TTL."""
-        cached = (getattr(request, '_mm_sidebar_auth_token', None) or '').strip()
-        if cached:
-            return cached
-        try:
-            ts = float(request.session.get(self._SIDEBAR_AUTH_TS_KEY) or 0)
-            if ts and (time.time() - ts) <= self._SIDEBAR_AUTH_TTL_SEC:
-                tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
-                if tok:
-                    return tok
-        except Exception:
-            pass
-        return ''
-
     def _is_fresh_sidebar_entry(self, request, proxy_prefix: str, path: str) -> bool:
         """True while handling sidebar fresh-login hop (cookies stripped, plugin-only auth)."""
         if request.method != 'GET' or path != proxy_prefix:
@@ -492,10 +355,7 @@ window.location.replace('/');
         return bool(getattr(request, '_mm_fresh_sidebar_entry', False))
 
     def _mm_default_landing_path(self, proxy_prefix: str) -> str:
-        # Land on / like direct Mattermost login (generic app shell in page source).
-        # Do NOT force /channels/town-square — that was added mistakenly because /api/v4/teams exists.
-        # Mattermost routes internally after boot; plugin_booted=1 causes SPA redirect loops.
-        return f"{proxy_prefix.rstrip('/')}/"
+        return f"{proxy_prefix.rstrip('/')}/channels/town-square?plugin_booted=1"
 
     def _clear_auth_cookies_on_response(self, response):
         """Expire all Mattermost session cookies (fresh sidebar / logout)."""
@@ -529,86 +389,20 @@ window.location.replace('/');
         token = self._get_plugin_auth_token(request, endpoint_url, trigger)
         if not token:
             token = self._get_session_token_direct(request, endpoint_url)
-        if token:
-            self._publish_sidebar_auth_token(request, token)
         return token
 
-    def _recover_auth_from_native_login_shell(self, request, trigger, endpoint=None):
-        """
-        Never show native MM login or the credential bridge when plugin/sidebar auth works.
-        """
-        endpoint = endpoint or getattr(request, '_passthrough_endpoint', None)
-        endpoint_url = (getattr(endpoint, 'endpoint_url', None) or '').rstrip('/')
-        proxy_prefix = f"/pt/admin/{(trigger or 'mattermost').strip('/')}"
-        token = self._get_sidebar_auth_token(request)
-        if not token and endpoint_url:
-            token = self._attempt_server_mm_session(request, endpoint_url, trigger)
-        if token:
-            print('[MM AUTH] Native login shell blocked — plugin/sidebar reseed (no bridge)')
-            return self._reseed_http_response(
-                request, proxy_prefix, token, trigger=trigger,
-            )
-        print('[MM AUTH] Native login shell — plugin unavailable, PolySaaS login bridge')
-        bridge = self._wrap_login_bridge(request, trigger, endpoint)
-        bridge['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        return bridge
+    def _reseed_http_response(self, request, proxy_prefix: str, token: str, trigger=None):
+        from django.http import HttpResponseRedirect
 
-    def _reseed_http_response(self, request, proxy_prefix: str, token: str, trigger=None, *, fetch_upstream_shell=False):
-        """
-        After plugin auth: set cookies and load the SPA on the next hop.
-        Default skips server-side upstream / fetch (often returns native login HTML and flashes UI).
-        """
-        from django.http import HttpResponse
-        from dose.passthrough.forwarding import fetch_upstream_index_html, _wrap_in_admin_template
-
-        trig = (trigger or '').strip('/') or proxy_prefix.split('/')[-1]
-        endpoint = getattr(request, '_passthrough_endpoint', None)
-        endpoint_url = (getattr(endpoint, 'endpoint_url', None) or '').rstrip('/')
-        request._mm_sidebar_auth_token = token
-        self._publish_sidebar_auth_token(request, token)
-        request._mm_fresh_sidebar_entry = False
-
-        body_html = self._build_token_reseed_html(proxy_prefix, token)
-        if fetch_upstream_shell and endpoint_url:
-            raw = fetch_upstream_index_html(request, endpoint_url, '/', handler=self)
-            if raw and not str(raw).startswith('REDIRECT:'):
-                raw_is_shell = self._is_mattermost_app_shell(raw)
-                processed = self.process_html_response(
-                    raw, request, endpoint_url=endpoint_url,
-                )
-                candidate = processed[0] if isinstance(processed, tuple) else processed
-                if isinstance(processed, HttpResponse):
-                    candidate = None
-                shell_html = None
-                if candidate and self._is_mattermost_app_shell(candidate) and not self._is_token_reseed_page(candidate):
-                    shell_html = candidate
-                elif raw_is_shell:
-                    shell_html = self._prepare_authenticated_app_shell(
-                        raw, request, endpoint_url,
-                    )
-                    print(
-                        '[MM ROOT] Prepared app shell directly from upstream '
-                        f'(raw_len={len(raw)}, prepared_len={len(shell_html)})',
-                    )
-                if shell_html:
-                    body_html = shell_html
-                    print(
-                        '[MM ROOT] Upstream authenticated shell served after plugin auth '
-                        f'(len={len(shell_html)})',
-                    )
-                else:
-                    why = 'token reseed from process_html' if (candidate and self._is_token_reseed_page(candidate)) else (
-                        'login/bridge HTML' if (candidate and self._contains_native_login_html(candidate)) else 'empty or rejected'
-                    )
-                    print(f'[MM ROOT] Upstream shell not used ({why}) — keeping token reseed page')
-        else:
-            print('[MM ROOT] Plugin auth OK — token reseed page (no upstream login shell fetch)')
-
-        resp = HttpResponse(body_html, content_type='text/html; charset=utf-8')
+        landing = self._mm_default_landing_path(proxy_prefix)
+        resp = HttpResponseRedirect(landing)
+        self._clear_auth_cookies_on_response(resp)
         self._set_unified_auth_cookies(resp, token)
         resp['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        print(f'[MM ROOT] Reseed response ready (status=200, body_len={len(body_html)})')
+        trig = (trigger or '').strip('/') or proxy_prefix.split('/')[-1]
+        endpoint = getattr(request, '_passthrough_endpoint', None)
         if trig:
+            from dose.passthrough.forwarding import _wrap_in_admin_template
             return _wrap_in_admin_template(request, resp, trig, endpoint, handler=self)
         return resp
 
@@ -630,24 +424,8 @@ window.location.replace('/');
         # Mattermost login does not require team selection and should always be
         # handled by the PolySaaS bridge in passthrough mode (never upstream /login HTML).
         if path == login_path or path.startswith(login_path + "/"):
-            token = self._get_sidebar_auth_token(request)
-            if not token and endpoint_url:
-                token = self._attempt_server_mm_session(request, endpoint_url, trigger)
-            if token:
-                from django.http import HttpResponseRedirect
-                from dose.passthrough.forwarding import _wrap_in_admin_template
-
-                print("[MM LOGIN] Token valid — redirect /login -> app root (never native MM UI)")
-                landing = proxy_prefix.rstrip('/') + '/'
-                resp = HttpResponseRedirect(landing)
-                self._set_unified_auth_cookies(resp, token)
-                self._publish_sidebar_auth_token(request, token)
-                return _wrap_in_admin_template(request, resp, trigger, endpoint, handler=self)
-            print("[MM LOGIN] No token on /login — plugin reseed or credential bridge only")
-            recovered = self._recover_auth_from_native_login_shell(request, trigger, endpoint)
-            if recovered:
-                return recovered
-            print("[MM LOGIN] Plugin unavailable — PolySaaS login bridge (never upstream /login HTML)")
+            # Plugin auth runs only on sidebar root (mm_cleared). /login is always our bridge.
+            print("[MM LOGIN] PolySaaS login bridge only — never upstream Mattermost /login HTML")
             wrapped = self._wrap_login_bridge(request, trigger, endpoint)
             self._clear_auth_cookies_on_response(wrapped)
             return wrapped
@@ -660,35 +438,29 @@ window.location.replace('/');
         if path != proxy_prefix:
             return None
 
-        redirect_to = (request.GET.get('redirect_to') or '').strip()
-        if redirect_to and request.GET.get('mm_cleared') != '1' and self._is_post_sidebar_auth_grace(request):
+        # Sidebar always opens this URL. Each visit = new login: wipe cookies, then plugin only.
+        if request.GET.get('mm_cleared') != '1':
             from django.http import HttpResponseRedirect
-            from urllib.parse import unquote
-
-            dest_rel = unquote(redirect_to)
-            if not dest_rel.startswith('/'):
-                dest_rel = '/' + dest_rel
-            landing = proxy_prefix.rstrip('/') + dest_rel
-            resp = HttpResponseRedirect(landing)
-            tok = self._get_sidebar_auth_token(request)
-            if tok:
-                self._set_unified_auth_cookies(resp, tok)
-            print(
-                '[MM ROOT] Post-auth grace — honoring redirect_to without fresh-login wipe:',
-                dest_rel,
-            )
+            q = request.GET.copy()
+            q['mm_cleared'] = '1'
+            dest = proxy_prefix + '/'
+            if q:
+                dest += '?' + q.urlencode()
+            resp = HttpResponseRedirect(dest)
+            self._clear_auth_cookies_on_response(resp)
+            print('[MM ROOT] Sidebar click — expiring all Mattermost cookies before plugin auth')
             return resp
+
+        self._mark_fresh_sidebar_entry(request)
+        logger.info('[MM ROOT] Sidebar fresh login — plugin auth only (no stale browser cookies)')
 
         def _fresh_entry_flow():
             """Wipe client state, authenticate via plugin (server-side), never reuse browser MMAUTHTOKEN."""
             if endpoint_url:
                 token = self._attempt_server_mm_session(request, endpoint_url, trigger)
                 if token:
-                    print('[MM ROOT] Plugin auth OK — serving Mattermost shell (200, no redirect loop)')
-                    return self._reseed_http_response(
-                        request, proxy_prefix, token, trigger=trigger,
-                        fetch_upstream_shell=True,
-                    )
+                    print('[MM ROOT] Plugin auth OK — redirect with new token')
+                    return self._reseed_http_response(request, proxy_prefix, token, trigger=trigger)
             print('[MM ROOT] Plugin auth failed — login bridge auto-submit')
             bridge = self._serve_login_bridge(
                 request, trigger, endpoint, fresh_entry=True,
@@ -699,30 +471,6 @@ window.location.replace('/');
             self._clear_auth_cookies_on_response(wrapped)
             return wrapped
 
-        # Sidebar opens proxy root. Wipe+clear only when we have no server-side session token.
-        if request.GET.get('mm_cleared') != '1':
-            tok = self._get_sidebar_auth_token(request)
-            if tok:
-                self._publish_sidebar_auth_token(request, tok)
-                request._mm_sidebar_auth_token = tok
-                print(
-                    '[MM ROOT] Sidebar — session token present, delegate to forwarder '
-                    '(no reseed intercept)',
-                )
-                return None
-            from django.http import HttpResponseRedirect
-            from django.http import QueryDict
-
-            q = QueryDict(mutable=True)
-            q['mm_cleared'] = '1'
-            dest = proxy_prefix + '/?' + q.urlencode()
-            resp = HttpResponseRedirect(dest)
-            self._clear_auth_cookies_on_response(resp)
-            print('[MM ROOT] Sidebar click — no session token, mm_cleared before plugin auth')
-            return resp
-
-        self._mark_fresh_sidebar_entry(request)
-        logger.info('[MM ROOT] Sidebar fresh login — plugin auth only (no stale browser cookies)')
         return _fresh_entry_flow()
 
     def _serve_login_bridge(self, request, trigger, endpoint, fresh_entry=False):
@@ -860,7 +608,6 @@ try {{
     }}
     dbg('IIFE entered');
     var PROXY_PREFIX = {proxy_prefix_js};
-    var MM_ORIGIN = {endpoint_url_js};
     var FRESH_ENTRY = {'true' if fresh_entry else 'false'};
 {fresh_wipe_js}
     function setStatus(msg, err) {{
@@ -895,53 +642,42 @@ try {{
                 try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(token)); }} catch (e) {{}}
                 document.cookie = 'mmauthtoken=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
-                try {{ sessionStorage.setItem('_ps_mm_session_alive', '1'); }} catch(e) {{}}
                 setStatus('Success! Loading...');
-                // Write token to IndexedDB (same pattern as shim _writeTokenToIDB — create store if missing)
+                // Write token to IndexedDB so Mattermost Redux hydrates correctly
+                var mmUrl = 'https://polysaas-mattermost.onrender.com';
                 try {{
-                    var req = indexedDB.open('localforage');
-                    req.onupgradeneeded = function(ev) {{
-                        var db = ev.target.result;
-                        if (!db.objectStoreNames.contains('keyvaluepairs')) {{
-                            db.createObjectStore('keyvaluepairs');
-                        }}
-                    }};
+                    var req = indexedDB.open('localforage', 2);
                     req.onsuccess = function(e) {{
                         var db = e.target.result;
-                        if (!db.objectStoreNames.contains('keyvaluepairs')) {{
-                            dbg('IDB: keyvaluepairs store not ready');
-                            return;
-                        }}
-                        var storeName = 'keyvaluepairs';
-                        try {{
-                            var tx = db.transaction([storeName], 'readwrite');
-                            var store = tx.objectStore(storeName);
-                            var getReq = store.get('persist:storage');
-                            getReq.onsuccess = function(ge) {{
-                                var data = {{}};
-                                try {{ data = JSON.parse(ge.target.result || '{{}}') || {{}}; }} catch(_) {{}}
-                                var entities = data.entities;
-                                if (typeof entities === 'string') {{
-                                    try {{ entities = JSON.parse(entities || '{{}}'); }} catch(_) {{ entities = {{}}; }}
-                                }}
-                                if (!entities || typeof entities !== 'object') entities = {{}};
-                                var general = entities.general;
-                                if (typeof general === 'string') {{
-                                    try {{ general = JSON.parse(general || '{{}}'); }} catch(_) {{ general = {{}}; }}
-                                }}
-                                if (!general || typeof general !== 'object') general = {{}};
-                                general.credentials = {{ url: MM_ORIGIN, token: token }};
-                                entities.general = general;
-                                data.entities = JSON.stringify(entities);
-                                store.put(JSON.stringify(data), 'persist:storage');
-                                dbg('IDB persist:storage written');
-                            }};
-                        }} catch(txErr) {{ dbg('IDB tx error: ' + txErr); }}
+                        var tx = db.transaction('keyvaluepairs', 'readwrite');
+                        var store = tx.objectStore('keyvaluepairs');
+                        var getReq = store.get('persist:storage');
+                        getReq.onsuccess = function() {{
+                            var data = {{}};
+                            try {{ data = JSON.parse(getReq.result || '{{}}'); }} catch(_) {{}}
+                            // Be defensive: Mattermost persist payload can store nested slices as strings.
+                            var entities = data.entities;
+                            if (typeof entities === 'string') {{
+                                try {{ entities = JSON.parse(entities || '{{}}'); }} catch(_) {{ entities = {{}}; }}
+                            }}
+                            if (!entities || typeof entities !== 'object') entities = {{}};
+                            var general = entities.general;
+                            if (typeof general === 'string') {{
+                                try {{ general = JSON.parse(general || '{{}}'); }} catch(_) {{ general = {{}}; }}
+                            }}
+                            if (!general || typeof general !== 'object') general = {{}};
+                            general.credentials = {{ url: mmUrl, token: token }};
+                            entities.general = general;
+                            data.entities = entities;
+                            store.put(JSON.stringify(data), 'persist:storage');
+                            dbg('IDB persist:storage written');
+                        }};
+                        tx.oncomplete = function() {{ db.close(); }};
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
                 var baseUrl = base().replace(/\/$/, '');
-                var redirectUrl = baseUrl + '/';
-                dbg('token stored, redirecting to app root (same as direct MM login)');
+                var redirectUrl = baseUrl + '/channels/town-square?plugin_booted=1';
+                dbg('token stored, redirecting to ' + redirectUrl);
                 window.location.replace(redirectUrl);
                 return;
             }}
@@ -996,7 +732,7 @@ try {{
             dbg('Token exists -- validating before redirect');
             var endpointUrl = {endpoint_url_js};
             if (!endpointUrl) {{
-                dbg('No endpoint URL for token validation -- redirecting to app root');
+                dbg('No endpoint URL for token validation -- redirecting to passthrough root');
                 window.location.replace(base().replace(/\/$/, '') + '/');
                 return;
             }}
@@ -1006,7 +742,7 @@ try {{
             try {{
                 vxhr.send();
                 if (vxhr.status === 200) {{
-                    dbg('Token valid -- going to app root');
+                    dbg('Token valid -- going to passthrough root');
                     window.location.replace(base().replace(/\/$/, '') + '/');
                     return;
                 }}
@@ -1226,12 +962,7 @@ try {{
         _path_info = (getattr(request, 'path_info', '') or '').rstrip('/')
         _proxy_login_prefix = f"/pt/admin/{_trigger}/login"
         if _path_info == _proxy_login_prefix or _path_info.startswith(_proxy_login_prefix + "/"):
-            print("[MM HANDLER] /login route — plugin/sidebar recovery before bridge")
-            token = self._get_sidebar_auth_token(request)
-            if not token and endpoint_url:
-                token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
-            if token:
-                return self._build_token_reseed_html(proxy_prefix, token)
+            print("[MM HANDLER] /login route — PolySaaS login bridge only (no upstream login HTML)")
             return self._login_bridge_html(request, _trigger, None)
 
         if not endpoint_url:
@@ -1250,22 +981,16 @@ try {{
         # Hard stop: never render upstream Mattermost native login in passthrough.
         # If upstream sends login HTML (even from non-/login routes), immediately
         # bounce to the PolySaaS bridge which owns the credential flow.
-        # TEAMS NOT USED (Michael) — no team prerender recovery; direct login has no teams.
-        # if self._is_no_team_prerender_html(html_str):
-        #     replacement = self._fetch_upstream_root_shell(request, origin)
-        #     ...
+        # TEAMS NOT REQUIRED FOR LOGIN (Michael) — team-not-found HTML recovery disabled.
+        # if self._is_team_not_found_html(html_str):
+        #     print("[MM HANDLER] Team Not Found page detected -- returning recovery page")
+        #     return self._build_team_not_found_recovery_html()
 
         _lower_html = html_str.lower()
 
-        if self._is_mattermost_app_shell(html_str):
-            print('[MM HANDLER] Mattermost app shell detected — prepare without reseed redirect')
-            return self._prepare_authenticated_app_shell(html_str, request, endpoint_url)
-
         if self._contains_native_login_html(_lower_html):
             print("[MM HANDLER] Native login HTML in upstream body — block and recover")
-            fresh_token = self._get_sidebar_auth_token(request)
-            if not fresh_token:
-                fresh_token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
+            fresh_token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
             if fresh_token:
                 return self._build_token_reseed_html(proxy_prefix, fresh_token)
             return self._login_bridge_html(request, _trigger, None)
@@ -1525,13 +1250,7 @@ try {{
         When both cookie casings differ, validate against upstream or clear stale choice.
         """
         if self._is_fresh_sidebar_request(request):
-            sidebar_tok = self._get_sidebar_auth_token(request)
-            if sidebar_tok:
-                return sidebar_tok
             return ''
-        sidebar_tok = self._get_sidebar_auth_token(request)
-        if sidebar_tok:
-            return sidebar_tok
         lower = (request.COOKIES.get('mmauthtoken') or '').strip()
         upper = (request.COOKIES.get('MMAUTHTOKEN') or '').strip()
         if not lower and not upper:
@@ -1575,10 +1294,6 @@ try {{
             return {}
 
         if self._is_fresh_sidebar_request(request):
-            sidebar_tok = self._get_sidebar_auth_token(request)
-            if sidebar_tok:
-                print('[MM_AUTH] Fresh sidebar — upstream cookies from sidebar token')
-                return {'mmauthtoken': sidebar_tok, 'MMAUTHTOKEN': sidebar_tok}
             print('[MM_AUTH] Fresh sidebar — no upstream cookies injected')
             return {}
         # BROWSER COOKIE ONLY: If the browser has MMAUTHTOKEN, return it.
@@ -1597,11 +1312,6 @@ try {{
         """Inject Authorization Bearer token for all Mattermost requests forwarded through proxy."""
         print(f'[MM_AUTH] augment_outbound_headers called for {target_url}')
         if self._is_fresh_sidebar_request(request):
-            sidebar_tok = self._get_sidebar_auth_token(request)
-            if sidebar_tok and 'Authorization' not in headers:
-                headers['Authorization'] = f'Bearer {sidebar_tok}'
-                print('[MM_AUTH] Fresh sidebar — Authorization from published sidebar token')
-                return
             print('[MM_AUTH] Fresh sidebar — no Authorization from prior session')
             return
         # Never inject on login/logout — Mattermost rejects requests with a stale session token.
@@ -1618,9 +1328,7 @@ try {{
         print(f'[MM_AUTH] Cookie values present: {[k for k,v in all_cookies.items() if v]}')
         endpoint_url = (target_url or '').split('/plugins/')[0].split('/api/')[0].rstrip('/')
         token = self._select_browser_mm_token(request, endpoint_url)
-        _src = 'sidebar-session' if self._get_sidebar_auth_token(request) and token == self._get_sidebar_auth_token(request) else (
-            'browser-cookie' if token else 'none'
-        )
+        _src = 'browser-cookie' if token else 'none'
         print(f'[MM_AUTH] Selected token source: {_src}')
         
         # Fallback to server cache if browser has no token (first visit)
@@ -1675,86 +1383,19 @@ try {{
                 if on_login_route or self._contains_native_login_html(body_text):
                     _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
                     _trigger = _path_parts[2] if len(_path_parts) >= 3 else 'mattermost'
-                    print('[MM RESP] Blocking native/upstream login shell — plugin reseed or bridge')
-                    return self._recover_auth_from_native_login_shell(
-                        request, _trigger, getattr(request, '_passthrough_endpoint', None),
+                    print(
+                        '[MM RESP] Blocking native/upstream login shell — returning PolySaaS bridge'
                     )
+                    bridge = self._wrap_login_bridge(request, _trigger, None)
+                    bridge['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    return bridge
         except Exception as exc:
             print(f'[MM RESP] Login-shell safety-net error: {exc}')
 
-        # Proxy URL makes the SPA request /api/v4/teams/name/pt (etc.). Recover with the user's real team.
-        _bogus_slugs = frozenset({'pt', 'admin', 'polysaas-mattermost.onrender.com'})
-        _missing_team = re.search(r'/api/v4/teams/name/([^/?#]+)/?(?:\?|$)', combined)
-        if resp.status_code in (403, 404) and _missing_team:
-            _missing_slug = _missing_team.group(1)
-            if _missing_slug in _bogus_slugs:
-                print(
-                    f'[MM_RESP] Fallback for /api/v4/teams/name/{_missing_slug} '
-                    f'{resp.status_code} -> /users/me/teams',
-                )
-                try:
-                    import requests as _req
-
-                    endpoint_url = (kwargs.get('endpoint_url') or '').rstrip('/')
-                    if endpoint_url:
-                        outbound_headers = dict(kwargs.get('outbound_headers') or {})
-                        upstream_cookies = dict(kwargs.get('upstream_cookies') or {})
-                        teams_resp = _req.get(
-                            f'{endpoint_url}/api/v4/users/me/teams',
-                            headers=outbound_headers,
-                            cookies=upstream_cookies,
-                            timeout=10,
-                            allow_redirects=False,
-                        )
-                        if teams_resp.status_code == 200:
-                            teams = teams_resp.json() or []
-                            if isinstance(teams, list) and teams:
-                                resp._content = json.dumps(teams[0]).encode('utf-8')
-                                resp.status_code = 200
-                                resp.headers['Content-Type'] = 'application/json'
-                                real_name = teams[0].get('name', '')
-                                print(
-                                    f'[MM_RESP] Recovered /teams/name/{_missing_slug} '
-                                    f'with real team={real_name}',
-                                )
-                                return resp
-                except Exception as exc:
-                    print(f'[MM_RESP] /teams/name/<slug> fallback failed: {exc}')
-
-        if (
-            resp.status_code in (403, 404)
-            and re.search(r'/api/v4/teams(?:\?|$)', combined)
-            and '/teams/name/' not in combined
-        ):
-            print(f'[MM_RESP] Fallback for /api/v4/teams {resp.status_code} -> /users/me/teams')
-            try:
-                import requests as _req
-
-                endpoint_url = (kwargs.get('endpoint_url') or '').rstrip('/')
-                if endpoint_url:
-                    outbound_headers = dict(kwargs.get('outbound_headers') or {})
-                    upstream_cookies = dict(kwargs.get('upstream_cookies') or {})
-                    teams_resp = _req.get(
-                        f'{endpoint_url}/api/v4/users/me/teams',
-                        headers=outbound_headers,
-                        cookies=upstream_cookies,
-                        timeout=10,
-                        allow_redirects=False,
-                    )
-                    if teams_resp.status_code == 200:
-                        resp._content = teams_resp.content
-                        resp.status_code = 200
-                        resp.headers['Content-Type'] = 'application/json'
-                        print('[MM_RESP] Recovered /api/v4/teams from /users/me/teams')
-                        return resp
-            except Exception as exc:
-                print(f'[MM_RESP] /api/v4/teams fallback failed: {exc}')
-
-        # TEAMS NOT USED (Michael) — do not stub /api/v4/teams or prerender "no team membership".
-        # if self._teams_api_path(combined, upstream_path):
-        #     return self._apply_teams_stub_response(...)
-        # if self._is_no_team_prerender_html(body_text):
-        #     replacement = self._fetch_upstream_root_shell(...)
+        # TEAMS NOT REQUIRED FOR LOGIN (Michael) — /api/v4/teams/name/* fallback disabled.
+        # _missing_team = re.search(r'/api/v4/teams/name/([^/?#]+)/?(?:\?|$)', combined)
+        # if resp.status_code == 404 and _missing_team:
+        #     ... teams_resp = _req.get(f"{endpoint_url}/api/v4/users/me/teams", ...)
 
         # GitHub plugin connected probe returns 501 when unconfigured — SPA expects 200 + JSON.
         if resp.status_code == 501 and '/plugins/github/api/v1/connected' in combined:
@@ -1782,8 +1423,9 @@ try {{
                 except Exception as exc:
                     print(f'[MM_AUTH] Failed to store login token in server cache: {exc}')
 
-        # Only /users/me 401 means session is dead — other endpoints can 401 transiently (spinner loop).
-        if resp.status_code == 401 and '/api/v4/users/me' in combined:
+        # If we get a 401 on ANY API call (not just /users/me), the token is invalid.
+        # Clear BOTH server cache AND browser cookie to force re-auth via login bridge.
+        if resp.status_code == 401 and '/api/v4/' in (target_url or ''):
             print(f'[MM_AUTH] Got 401 on {target_url} - clearing token EVERYWHERE')
             try:
                 # Clear server cache
@@ -1818,55 +1460,6 @@ try {{
     def _strip_csp(self, html):
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
-    def _prepare_authenticated_app_shell(self, html_str, request, endpoint_url):
-        """Rewrite upstream Mattermost bootstrap shell and inject shim (no login/reseed logic)."""
-        origin = (endpoint_url or '').rstrip('/')
-        parsed = urlparse(origin)
-        base_origin = f"{parsed.scheme}://{parsed.netloc}"
-        _path_parts = request.path_info.strip('/').split('/')
-        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
-            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
-        else:
-            proxy_prefix = "/pt/admin/mattermost"
-
-        html_str = self._strip_base_tags(html_str)
-        html_str = self._strip_meta_redirects(html_str)
-        html_str = self._strip_csp(html_str)
-
-        html_str = re.sub(
-            r'(action=)(["\'])(/[^"\']*)',
-            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
-            lambda m: m.group(1) + f"'{proxy_prefix}'",
-            html_str,
-        )
-        if '<head' in html_str.lower():
-            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
-        return html_str
-
     def _mattermost_display_shim_html(
         self, request, proxy_prefix: str, base_origin: str
     ) -> str:
@@ -1882,21 +1475,17 @@ try {{
         else:
             # Fallback to browser cookie — it's always fresh after login bridge succeeds.
             # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
-            sidebar_tok = self._get_sidebar_auth_token(request)
-            if sidebar_tok:
-                token = sidebar_tok
-                logger.info("[MM Shim] token from sidebar session, len=%d", len(token))
+            token = self._select_browser_mm_token(request) or ""
+            if token:
+                logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
             else:
-                token = self._select_browser_mm_token(request) or ""
-                if token:
-                    logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
-                else:
-                    try:
-                        cookies = self.get_upstream_cookies(request) or {}
-                        token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
-                        logger.info("[MM Shim] token from server, len=%d", len(token))
-                    except Exception as exc:
-                        logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+                # Fallback to server-side token if browser has none
+                try:
+                    cookies = self.get_upstream_cookies(request) or {}
+                    token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
+                    logger.info("[MM Shim] token from server, len=%d", len(token))
+                except Exception as exc:
+                    logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
 
         login_id = ""
         password = ""
@@ -1910,7 +1499,6 @@ try {{
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
 
-        # TEAMS NOT USED (Michael) — no MM_TEAMS_STUB in shim (direct login has no teams).
         token_js = json.dumps(token)
         login_id_js = json.dumps(login_id)
         password_js = json.dumps(password)
@@ -1921,41 +1509,24 @@ try {{
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-    console.log('[PolySaaS MM] shim build 2026-06-04-blank-loop-fix');
     var B = {base_js};
     var PROXY = {proxy_js};
     var O = window.location.origin;
     var _serverToken = {token_js};
     var MMAUTHTOKEN = '';
-    var _mmPageLoadTime = Date.now();
-    var _mmAuthGraceMs = 20000;
-    function _mmInAuthGrace() {{ return (Date.now() - _mmPageLoadTime) < _mmAuthGraceMs; }}
-    function _mmUnderPassthrough() {{
-        try {{
-            var p = (window.location && window.location.pathname) || '';
-            return p === PROXY || p.indexOf(PROXY + '/') === 0;
-        }} catch(_e) {{ return false; }}
-    }}
-    // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
-    if (_serverToken) {{
-        MMAUTHTOKEN = _serverToken;
-        try {{
-            document.cookie = 'mmauthtoken=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
-            document.cookie = 'MMAUTHTOKEN=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
-        }} catch(_ck) {{}}
-    }}
-    if (!MMAUTHTOKEN) {{
-        try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
-    }}
+    // Prefer localStorage (fresh after login bridge) over server cache
+    try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
     if (!MMAUTHTOKEN) {{
         try {{
             var stored = localStorage.getItem('storage:MMAUTHTOKEN');
             if (stored) {{ MMAUTHTOKEN = JSON.parse(stored); }}
         }} catch(e) {{}}
     }}
+    if (!MMAUTHTOKEN && _serverToken) {{
+        MMAUTHTOKEN = _serverToken;
+    }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
-    /* TEAMS NOT USED (Michael) — direct MM login page source has no teams; do not inject stubs. */
 
     var _lsGet = Storage.prototype.getItem;
     var _lsSet = Storage.prototype.setItem;
@@ -2011,12 +1582,9 @@ try {{
             var _dbReq = indexedDB.open('localforage');
             _dbReq.onsuccess = function(e) {{
                 var _db = e.target.result;
-                if (!_db.objectStoreNames.contains('keyvaluepairs')) {{
-                    console.log('[PolySaaS MM IDB] keyvaluepairs store not ready — skip write');
-                    try {{ _db.close(); }} catch(_c) {{}}
-                    return;
-                }}
-                var _storeName = 'keyvaluepairs';
+                var _stores = _db.objectStoreNames;
+                var _storeName = _stores.contains('keyvaluepairs') ? 'keyvaluepairs' : (_stores.length ? _stores[0] : null);
+                if (!_storeName) {{ console.log('[PolySaaS MM IDB] No object store found'); return; }}
                 try {{
                     var _tx = _db.transaction([_storeName], 'readwrite');
                     var _store = _tx.objectStore(_storeName);
@@ -2103,18 +1671,20 @@ try {{
     }}
     
     function checkPluginAuth() {{
-        if (MMAUTHTOKEN) {{
-            console.log('[PolySaaS MM] Plugin auth check stub (Bearer present, valid=true)');
-            return;
-        }}
         var authUrl = PROXY + '/plugins/com.polysaas.passthrough/api/v1/auth-check';
         console.log('[PolySaaS MM] Checking plugin auth:', authUrl);
-        fetch(authUrl).then(function(r) {{
-            if (r.ok) return r.json();
+        fetch(authUrl, {{
+            headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}
+        }}).then(function(r) {{
+            if (r.ok) {{
+                return r.json();
+            }}
             console.log('[PolySaaS MM] Plugin auth check failed:', r.status);
             return null;
         }}).then(function(data) {{
-            if (data) console.log('[PolySaaS MM] Plugin auth check:', data);
+            if (data) {{
+                console.log('[PolySaaS MM] Plugin auth check:', data);
+            }}
         }}).catch(function(e) {{
             console.log('[PolySaaS MM] Plugin auth check error:', e);
         }});
@@ -2133,126 +1703,29 @@ try {{
     */
 
     // Hard stop: never allow native Mattermost login UI in passthrough shell.
-    // Only real login DOM — not footer/help text ("forgot your password?" appears on channel pages).
     function _mmNativeLoginVisible() {{
-        return !!document.querySelector(
-            'input[name="loginId"], input#loginId, form[action*="/api/v4/users/login"]'
-        );
-    }}
-
-    function _mmOnChannelWithToken() {{
-        try {{
-            var p = (window.location && window.location.pathname) || '';
-            if (p.indexOf('/channels/') === -1) return false;
-            return !!(MMAUTHTOKEN && MMAUTHTOKEN.length > 8);
-        }} catch(_e) {{ return false; }}
-    }}
-
-    function _mmHideNativeLoginForm() {{
-        try {{
-            if (document.getElementById('ps-mm-hide-native-login')) return;
-            var st = document.createElement('style');
-            st.id = 'ps-mm-hide-native-login';
-            st.textContent = 'input[name="loginId"], input#loginId, .login-body, .login-body-message, .login-body-card, button.login-body-card-form-button-submit {{ visibility: hidden !important; pointer-events: none !important; }}';
-            (document.head || document.documentElement).appendChild(st);
-        }} catch(_hs) {{}}
-    }}
-
-    function _mmAtAppRoot() {{
-        try {{
-            var p = (window.location && window.location.pathname) || '';
-            return p === PROXY || p === (PROXY + '/');
-        }} catch(_e) {{ return false; }}
-    }}
-
-    /* Never show native MM login — restart plugin SSO or reseed SPA with existing token. */
-    function _mmEscapeNativeLogin(reason) {{
-        if (document.querySelector('.mm-bridge')) return;
-        _mmHideNativeLoginForm();
-        var tok = (MMAUTHTOKEN || _serverToken || '').trim();
-        try {{ sessionStorage.removeItem('_polysaas_mm_redirect_count'); sessionStorage.removeItem('_polysaas_mm_redirect_time'); }} catch(_rc) {{}}
-        if (tok.length > 8) {{
-            console.log('[PolySaaS MM] Escape native login (' + reason + ') — token present, IDB write');
-            _writeTokenToIDB(tok);
-            if (_mmUnderPassthrough()) {{
-                console.log('[PolySaaS MM] Under passthrough URL — skip full-page reload (blank-loop fix)');
-                return;
-            }}
-            window.location.replace(PROXY + '/');
-            return;
-        }}
-        if (_mmUnderPassthrough() && _mmInAuthGrace()) {{
-            console.log('[PolySaaS MM] Escape skipped during boot grace (no token yet)');
-            return;
-        }}
-        console.log('[PolySaaS MM] Escape native login (' + reason + ') — fresh plugin via mm_cleared');
-        window.location.replace(PROXY + '/?mm_cleared=1');
+        var bodyText = ((document.body && document.body.innerText) || '').toLowerCase();
+        if (bodyText.indexOf(['log in to your',' account'].join('')) !== -1) return true;
+        if (bodyText.indexOf(['your session has expired. please log in',' again.'].join('')) !== -1) return true;
+        if (bodyText.indexOf('forgot your password?') !== -1) return true;
+        if (document.querySelector('input[name="loginId"], input#loginId, form[action*="/api/v4/users/login"]')) return true;
+        return false;
     }}
 
     function _mmForceBridgeLogin(reason) {{
         if (document.querySelector('.mm-bridge')) return;
-        if (_mmInAuthGrace() && reason === 'dom') {{
-            console.log('[PolySaaS MM] Native login DOM skipped — boot grace');
-            return;
-        }}
-        if (_mmOnChannelWithToken() && reason === 'dom') {{
-            console.log('[PolySaaS MM] Native login DOM skipped — channel route with token');
-            return;
-        }}
-        if (_mmAtAppRoot() && MMAUTHTOKEN && MMAUTHTOKEN.length > 8 && reason === 'dom') {{
-            console.log('[PolySaaS MM] Native login DOM skipped — at root with token');
-            return;
-        }}
-        _mmEscapeNativeLogin(reason);
+        if (sessionStorage.getItem('_ps_force_bridge_login')) return;
+        sessionStorage.setItem('_ps_force_bridge_login', '1');
+        console.log('[PolySaaS MM] Native login blocked (' + reason + ') — bridge now');
+        window.location.replace(PROXY + '/login?force=1');
     }}
 
-    _mmHideNativeLoginForm();
-
-    function _mmRequestPath(url) {{
-        if (!url) return '';
-        try {{
-            if (url.indexOf('http') === 0) return new URL(url).pathname;
-        }} catch(_e) {{}}
-        var q = url.indexOf('?');
-        return q >= 0 ? url.slice(0, q) : url;
-    }}
-
-    /* Strip /pt/admin/<host> prefix so interceptors match Mattermost API paths */
-    function _mmApiPath(url) {{
-        var p = _mmRequestPath(url);
-        var apiIdx = p.indexOf('/api/v4/');
-        if (apiIdx >= 0) return p.slice(apiIdx);
-        var plugIdx = p.indexOf('/plugins/');
-        if (plugIdx >= 0) return p.slice(plugIdx);
-        return p;
-    }}
-
-    function _mmIsLogoutRequest(url) {{
-        return _mmApiPath(url).indexOf('/api/v4/users/logout') !== -1;
-    }}
-
-    /* TEAMS NOT USED (Michael) — do NOT stub /api/v4/teams; direct login has no team API in page source.
-    function _mmIsTeamsApiRequest(url) {{ ... }}
-    function _mmTeamsStubBody(url) {{ ... }}
-    */
-
-    /* Plugin auth-check often 401 via proxy; Bearer in shim is enough for SPA boot */
-    function _mmIsPluginAuthCheck(url) {{
-        return _mmApiPath(url).indexOf('/plugins/com.polysaas.passthrough/api/v1/auth-check') !== -1;
-    }}
-
-    function _mmNoopJsonResponse(payload) {{
-        return Promise.resolve(new Response(
-            typeof payload === 'string' ? payload : JSON.stringify(payload),
-            {{status: 200, headers: {{'Content-Type': 'application/json'}}}}
-        ));
-    }}
-
-    // SPA client-side /login — never show native form; plugin or token reseed.
+    // SPA client-side /login without our bridge = upstream MM shell (causes JS error UI). Force full page load.
     try {{
         var p = (window.location && window.location.pathname) || '';
         if (p.indexOf(PROXY + '/login') === 0 && !document.querySelector('.mm-bridge')) {{
-            _mmEscapeNativeLogin('route');
+            console.log('[PolySaaS MM] /login route without PolySaaS bridge — full page to bridge');
+            window.location.replace(PROXY + '/login?force=1');
         }}
     }} catch(_e) {{}}
 
@@ -2260,19 +1733,16 @@ try {{
     try {{
         if (!document.querySelector('.mm-bridge')) {{
             var _errText = ((document.body && document.body.innerText) || '').toLowerCase();
-            if (_errText.indexOf('javascript error has occurred') !== -1 && !_mmInAuthGrace()) {{
-                if (sessionStorage.getItem('_ps_mm_error_restart')) return;
-                sessionStorage.setItem('_ps_mm_error_restart', '1');
-                console.log('[PolySaaS MM] Mattermost JS error shell — fresh plugin (mm_cleared)');
+            if (_errText.indexOf('javascript error has occurred') !== -1) {{
+                console.log('[PolySaaS MM] Mattermost JS error shell — restart via sidebar fresh login');
                 sessionStorage.removeItem('_ps_force_bridge_login');
                 window.location.replace(PROXY + '/?mm_cleared=1');
             }}
         }}
     }} catch(_e2) {{}}
 
-    // DOM check (covers rendered native login component) — disabled during boot grace.
+    // DOM check (covers rendered native login component).
     var _loginObserver = new MutationObserver(function() {{
-        if (_mmInAuthGrace()) return;
         if (_mmNativeLoginVisible()) _mmForceBridgeLogin('dom');
     }});
     _loginObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
@@ -2340,71 +1810,19 @@ try {{
     }}
     function _mmRedirectToLogin() {{
         if (!_mmShouldRedirect()) return;
-        if (_mmInAuthGrace()) {{
-            console.log('[PolySaaS MM] Session redirect skipped — boot grace');
-            return;
-        }}
-        if (_mmUnderPassthrough() && MMAUTHTOKEN && MMAUTHTOKEN.length > 8) {{
-            console.log('[PolySaaS MM] Session redirect skipped — token present under passthrough');
-            return;
-        }}
-        console.log('[PolySaaS MM] Session invalid — escape native login (plugin/token)');
-        setTimeout(function() {{ _mmEscapeNativeLogin('session'); }}, 300);
+        console.log('[PolySaaS MM] Redirecting to login bridge');
+        setTimeout(function() {{ window.location.replace(PROXY + '/login?force=1'); }}, 300);
     }}
 
-    /* Passthrough URL makes SPA use bogus team slugs (pt, admin, host) — resolve via /users/me/teams */
+    /* TEAMS NOT REQUIRED FOR LOGIN (Michael) — /api/v4/teams/name/* shim intercept disabled.
     var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
-
-    function _mmResolveTeamsFromMe() {{
-        if (!MMAUTHTOKEN) return Promise.resolve(null);
-        var _teamsUrl = PROXY + '/api/v4/users/me/teams';
-        return _f.call(window, _teamsUrl, {{
-            headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}},
-            credentials: 'same-origin',
-        }}).then(function(r) {{
-            if (!r.ok) return null;
-            return r.json();
-        }}).catch(function() {{ return null; }});
-    }}
-
-    function _mmBogusTeamSlug(url) {{
-        var p = _mmApiPath(url);
-        var m = p.match(/^\\/api\\/v4\\/teams\\/name\\/([^/?#]+)/);
-        if (m && _bogusTeamSlugs[m[1]]) return m[1];
-        return null;
-    }}
-
-    function _mmIsTeamsListRequest(url) {{
-        var p = _mmApiPath(url);
-        return p === '/api/v4/teams' || p.indexOf('/api/v4/teams?') === 0;
-    }}
+    ... teams/name intercept ...
+    */
 
     var _f = window.fetch;
     window.fetch = function(input, init) {{
         var original = input;
         var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-
-        var _bogusSlug = _mmBogusTeamSlug(reqUrl);
-        if (_bogusSlug && MMAUTHTOKEN) {{
-            console.log('[PolySaaS MM] Intercepting bogus team slug:', _bogusSlug, '-> /users/me/teams');
-            return _mmResolveTeamsFromMe().then(function(teams) {{
-                if (teams && teams.length) {{
-                    console.log('[PolySaaS MM] Resolved real team:', teams[0].name);
-                    return new Response(JSON.stringify(teams[0]), {{
-                        status: 200, headers: {{'Content-Type': 'application/json'}}
-                    }});
-                }}
-                return new Response('{{}}', {{status: 404}});
-            }});
-        }}
-        if (MMAUTHTOKEN && _mmIsTeamsListRequest(reqUrl)) {{
-            console.log('[PolySaaS MM] Intercepting /api/v4/teams list -> /users/me/teams');
-            return _mmResolveTeamsFromMe().then(function(teams) {{
-                return new Response(JSON.stringify(teams || []), {{
-                    status: 200, headers: {{'Content-Type': 'application/json'}}
-                }});
-            }});
-        }}
 
         // Block external analytics requests that cause CORS errors and hang the UI
         if (reqUrl.indexOf('matterlytics.com') !== -1 || 
@@ -2422,15 +1840,6 @@ try {{
         }}
         
         var proxiedUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-        if (_mmIsLogoutRequest(proxiedUrl) || _mmIsLogoutRequest(original)) {{
-            console.log('[PolySaaS MM] Blocked cross-tab /users/logout (noop 200)');
-            return _mmNoopJsonResponse({{}});
-        }}
-        /* TEAMS NOT USED (Michael) — fetch must not intercept /api/v4/teams */
-        if (MMAUTHTOKEN && (_mmIsPluginAuthCheck(proxiedUrl) || _mmIsPluginAuthCheck(original))) {{
-            console.log('[PolySaaS MM] Stub plugin auth-check (Bearer present)');
-            return _mmNoopJsonResponse({{valid: true}});
-        }}
         if (MMAUTHTOKEN) {{
             var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
             if (reqUrl.indexOf('/api/v4/') !== -1 || reqUrl.indexOf('/plugins/') !== -1) {{
@@ -2478,13 +1887,9 @@ try {{
         if (_reqUrlForLog.indexOf('/users/me') !== -1) {{
             return _prom.then(function(r) {{
                 console.log('[PolySaaS MM] users/me HTTP status:', r.status, r.ok ? 'OK' : 'FAIL');
-                if (r.ok) {{
-                    try {{
-                        sessionStorage.setItem('_ps_mm_session_alive', String(Date.now()));
-                        sessionStorage.removeItem('_ps_mm_plugin_boot');
-                    }} catch(_s) {{}}
-                }}
-                if (r.status === 401 && !_mmInAuthGrace()) {{
+                if (r.status === 401) {{
+                    // Validate token one more time before declaring it invalid.
+                    // The 401 might be a transient error or stale server-side cache.
                     console.log('[PolySaaS MM] Got 401 on users/me — double-checking token validity...');
                     _f.call(window, PROXY + '/api/v4/users/me', {{headers: {{'Authorization': 'Bearer ' + MMAUTHTOKEN}}}}).then(function(r2) {{
                         if (r2.status === 200) {{
@@ -2499,8 +1904,6 @@ try {{
                         _mmClearToken();
                         _mmRedirectToLogin();
                     }});
-                }} else if (r.status === 401) {{
-                    console.log('[PolySaaS MM] users/me 401 during boot grace — ignoring');
                 }}
                 return r;
             }});
@@ -2521,34 +1924,16 @@ try {{
         }}
         var proxied = toProxy(url);
         if (url !== proxied) console.log('[PolySaaS MM] XHR:', method, url, '->', proxied);
-        if (_mmIsLogoutRequest(proxied)) {{
-            console.log('[PolySaaS MM] XHR blocked /users/logout');
-            this._psNoopLogout = true;
-        }}
-        var _xhrBogus = _mmBogusTeamSlug(proxied);
-        if (_xhrBogus && MMAUTHTOKEN) {{
-            console.log('[PolySaaS MM] XHR intercept bogus team slug:', _xhrBogus);
-            this._psStubTeamObject = true;
-        }} else if (MMAUTHTOKEN && _mmIsTeamsListRequest(proxied)) {{
-            console.log('[PolySaaS MM] XHR intercept /api/v4/teams list');
-            this._psStubTeamsList = true;
-        }}
-        if (MMAUTHTOKEN && _mmIsPluginAuthCheck(proxied)) {{
-            console.log('[PolySaaS MM] XHR stub plugin auth-check');
-            this._psStubPluginAuth = true;
-        }}
         var rest = Array.prototype.slice.call(arguments, 2);
         _xo.apply(this, [method, proxied].concat(rest));
         if (proxied.indexOf('/users/me') !== -1) {{
             var _self = this;
             this.addEventListener('load', function() {{
                 console.log('[PolySaaS MM] XHR users/me status:', _self.status);
-                if (_self.status === 401 && !_mmInAuthGrace()) {{
+                if (_self.status === 401) {{
                     console.log('[PolySaaS MM] XHR 401 on users/me — clearing and redirecting');
                     _mmClearToken();
                     _mmRedirectToLogin();
-                }} else if (_self.status === 401) {{
-                    console.log('[PolySaaS MM] XHR users/me 401 during boot grace — ignoring');
                 }}
             }});
         }}
@@ -2565,47 +1950,6 @@ try {{
     XMLHttpRequest.prototype.send = function() {{
         if (this._blocked) {{
             console.log('[PolySaaS MM] XHR send blocked (analytics)');
-            return;
-        }}
-        if (this._psNoopLogout) {{
-            var self = this;
-            setTimeout(function() {{
-                try {{
-                    Object.defineProperty(self, 'status', {{value: 200}});
-                    Object.defineProperty(self, 'responseText', {{value: '{{}}'}});
-                    Object.defineProperty(self, 'readyState', {{value: 4}});
-                }} catch(_d) {{}}
-                if (typeof self.onload === 'function') self.onload();
-            }}, 0);
-            return;
-        }}
-        if (this._psStubTeamObject || this._psStubTeamsList) {{
-            var self = this;
-            var _list = !!this._psStubTeamsList;
-            _mmResolveTeamsFromMe().then(function(teams) {{
-                var body = _list ? JSON.stringify(teams || []) :
-                    (teams && teams.length ? JSON.stringify(teams[0]) : '{{}}');
-                setTimeout(function() {{
-                    try {{
-                        Object.defineProperty(self, 'status', {{value: 200}});
-                        Object.defineProperty(self, 'responseText', {{value: body}});
-                        Object.defineProperty(self, 'readyState', {{value: 4}});
-                    }} catch(_d) {{}}
-                    if (typeof self.onload === 'function') self.onload();
-                }}, 0);
-            }});
-            return;
-        }}
-        if (this._psStubPluginAuth) {{
-            var self = this;
-            setTimeout(function() {{
-                try {{
-                    Object.defineProperty(self, 'status', {{value: 200}});
-                    Object.defineProperty(self, 'responseText', {{value: '{{"valid":true}}'}});
-                    Object.defineProperty(self, 'readyState', {{value: 4}});
-                }} catch(_d) {{}}
-                if (typeof self.onload === 'function') self.onload();
-            }}, 0);
             return;
         }}
         _xs.apply(this, arguments);

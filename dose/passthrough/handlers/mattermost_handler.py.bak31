@@ -121,40 +121,16 @@ window.location.replace('/');
 </body>
 </html>"""
 
-    def _is_mattermost_app_shell(self, html_str: str) -> bool:
-        """Authenticated SPA bootstrap shell (not the native login form page)."""
-        if not html_str:
-            return False
-        lower = html_str.lower()
-        return (
-            '<title>mattermost</title>' in lower
-            and 'publicpathinwindowscript' in lower
-        )
-
-    def _is_token_reseed_page(self, html_str: str) -> bool:
-        """PolySaaS cookie+redirect hop — not the Mattermost SPA (causes reload/blank UI)."""
-        if not html_str:
-            return False
-        return (
-            'Redirecting to Mattermost' in html_str
-            and '_ps_mm_plugin_boot' in html_str
-        )
-
     def _contains_native_login_html(self, html_str: str) -> bool:
         if not html_str:
             return False
         # Our injected shim embeds login-detection phrases — not upstream native login.
-        if (
-            'PolySaaS Mattermost' in html_str
-            or '[PolySaaS MM]' in html_str
-            or 'data-polysaas-mattermost-shim' in html_str
-        ):
-            return False
-        if self._is_mattermost_app_shell(html_str):
+        if 'PolySaaS Mattermost' in html_str or '[PolySaaS MM]' in html_str:
             return False
         lower = html_str.lower()
         # IMPORTANT: do not use generic '/api/v4/users/login' string matching here.
-        # Mattermost app shell bundles can contain loginId strings in JS without being a login page.
+        # Mattermost app shell bundles can contain that path without being a native login page,
+        # which causes false-positive bridge redirects and login loops.
         has_login_input = (
             'name="loginid"' in lower
             or 'id="loginid"' in lower
@@ -167,7 +143,7 @@ window.location.replace('/');
             or 'mattermost free edition' in lower
             or 'your session has expired. please log in again.' in lower
         )
-        return has_login_input and has_login_text
+        return has_login_input or has_login_text
 
     def force_process_html_response(
         self,
@@ -572,35 +548,16 @@ window.location.replace('/');
         if fetch_upstream_shell and endpoint_url:
             raw = fetch_upstream_index_html(request, endpoint_url, '/', handler=self)
             if raw and not str(raw).startswith('REDIRECT:'):
-                raw_is_shell = self._is_mattermost_app_shell(raw)
                 processed = self.process_html_response(
                     raw, request, endpoint_url=endpoint_url,
                 )
                 candidate = processed[0] if isinstance(processed, tuple) else processed
-                if isinstance(processed, HttpResponse):
-                    candidate = None
-                shell_html = None
-                if candidate and self._is_mattermost_app_shell(candidate) and not self._is_token_reseed_page(candidate):
-                    shell_html = candidate
-                elif raw_is_shell:
-                    shell_html = self._prepare_authenticated_app_shell(
-                        raw, request, endpoint_url,
-                    )
-                    print(
-                        '[MM ROOT] Prepared app shell directly from upstream '
-                        f'(raw_len={len(raw)}, prepared_len={len(shell_html)})',
-                    )
-                if shell_html:
-                    body_html = shell_html
-                    print(
-                        '[MM ROOT] Upstream authenticated shell served after plugin auth '
-                        f'(len={len(shell_html)})',
-                    )
+                if candidate and not self._contains_native_login_html(candidate):
+                    if '.mm-bridge' not in candidate:
+                        body_html = candidate
+                        print('[MM ROOT] Upstream authenticated shell served after plugin auth')
                 else:
-                    why = 'token reseed from process_html' if (candidate and self._is_token_reseed_page(candidate)) else (
-                        'login/bridge HTML' if (candidate and self._contains_native_login_html(candidate)) else 'empty or rejected'
-                    )
-                    print(f'[MM ROOT] Upstream shell not used ({why}) — keeping token reseed page')
+                    print('[MM ROOT] Upstream shell was login/bridge HTML — keeping token reseed page')
         else:
             print('[MM ROOT] Plugin auth OK — token reseed page (no upstream login shell fetch)')
 
@@ -685,10 +642,7 @@ window.location.replace('/');
                 token = self._attempt_server_mm_session(request, endpoint_url, trigger)
                 if token:
                     print('[MM ROOT] Plugin auth OK — serving Mattermost shell (200, no redirect loop)')
-                    return self._reseed_http_response(
-                        request, proxy_prefix, token, trigger=trigger,
-                        fetch_upstream_shell=True,
-                    )
+                    return self._reseed_http_response(request, proxy_prefix, token, trigger=trigger)
             print('[MM ROOT] Plugin auth failed — login bridge auto-submit')
             bridge = self._serve_login_bridge(
                 request, trigger, endpoint, fresh_entry=True,
@@ -703,13 +657,13 @@ window.location.replace('/');
         if request.GET.get('mm_cleared') != '1':
             tok = self._get_sidebar_auth_token(request)
             if tok:
-                self._publish_sidebar_auth_token(request, tok)
-                request._mm_sidebar_auth_token = tok
                 print(
-                    '[MM ROOT] Sidebar — session token present, delegate to forwarder '
-                    '(no reseed intercept)',
+                    '[MM ROOT] Sidebar — session token present, serve shell once (no wipe/reseed loop)',
                 )
-                return None
+                return self._reseed_http_response(
+                    request, proxy_prefix, tok, trigger=trigger,
+                    fetch_upstream_shell=True,
+                )
             from django.http import HttpResponseRedirect
             from django.http import QueryDict
 
@@ -1256,10 +1210,6 @@ try {{
         #     ...
 
         _lower_html = html_str.lower()
-
-        if self._is_mattermost_app_shell(html_str):
-            print('[MM HANDLER] Mattermost app shell detected — prepare without reseed redirect')
-            return self._prepare_authenticated_app_shell(html_str, request, endpoint_url)
 
         if self._contains_native_login_html(_lower_html):
             print("[MM HANDLER] Native login HTML in upstream body — block and recover")
@@ -1818,55 +1768,6 @@ try {{
     def _strip_csp(self, html):
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
-    def _prepare_authenticated_app_shell(self, html_str, request, endpoint_url):
-        """Rewrite upstream Mattermost bootstrap shell and inject shim (no login/reseed logic)."""
-        origin = (endpoint_url or '').rstrip('/')
-        parsed = urlparse(origin)
-        base_origin = f"{parsed.scheme}://{parsed.netloc}"
-        _path_parts = request.path_info.strip('/').split('/')
-        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
-            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
-        else:
-            proxy_prefix = "/pt/admin/mattermost"
-
-        html_str = self._strip_base_tags(html_str)
-        html_str = self._strip_meta_redirects(html_str)
-        html_str = self._strip_csp(html_str)
-
-        html_str = re.sub(
-            r'(action=)(["\'])(/[^"\']*)',
-            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
-            lambda m: m.group(1) + f"'{proxy_prefix}'",
-            html_str,
-        )
-        if '<head' in html_str.lower():
-            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
-        return html_str
-
     def _mattermost_display_shim_html(
         self, request, proxy_prefix: str, base_origin: str
     ) -> str:
@@ -1921,21 +1822,15 @@ try {{
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-    console.log('[PolySaaS MM] shim build 2026-06-04-blank-loop-fix');
+    console.log('[PolySaaS MM] shim build 2026-06-04-spinner-fix2');
     var B = {base_js};
     var PROXY = {proxy_js};
     var O = window.location.origin;
     var _serverToken = {token_js};
     var MMAUTHTOKEN = '';
     var _mmPageLoadTime = Date.now();
-    var _mmAuthGraceMs = 20000;
+    var _mmAuthGraceMs = 10000;
     function _mmInAuthGrace() {{ return (Date.now() - _mmPageLoadTime) < _mmAuthGraceMs; }}
-    function _mmUnderPassthrough() {{
-        try {{
-            var p = (window.location && window.location.pathname) || '';
-            return p === PROXY || p.indexOf(PROXY + '/') === 0;
-        }} catch(_e) {{ return false; }}
-    }}
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
     if (_serverToken) {{
         MMAUTHTOKEN = _serverToken;
@@ -2158,13 +2053,6 @@ try {{
         }} catch(_hs) {{}}
     }}
 
-    function _mmAtAppRoot() {{
-        try {{
-            var p = (window.location && window.location.pathname) || '';
-            return p === PROXY || p === (PROXY + '/');
-        }} catch(_e) {{ return false; }}
-    }}
-
     /* Never show native MM login — restart plugin SSO or reseed SPA with existing token. */
     function _mmEscapeNativeLogin(reason) {{
         if (document.querySelector('.mm-bridge')) return;
@@ -2172,17 +2060,9 @@ try {{
         var tok = (MMAUTHTOKEN || _serverToken || '').trim();
         try {{ sessionStorage.removeItem('_polysaas_mm_redirect_count'); sessionStorage.removeItem('_polysaas_mm_redirect_time'); }} catch(_rc) {{}}
         if (tok.length > 8) {{
-            console.log('[PolySaaS MM] Escape native login (' + reason + ') — token present, IDB write');
+            console.log('[PolySaaS MM] Escape native login (' + reason + ') — token present, IDB + app root');
             _writeTokenToIDB(tok);
-            if (_mmUnderPassthrough()) {{
-                console.log('[PolySaaS MM] Under passthrough URL — skip full-page reload (blank-loop fix)');
-                return;
-            }}
             window.location.replace(PROXY + '/');
-            return;
-        }}
-        if (_mmUnderPassthrough() && _mmInAuthGrace()) {{
-            console.log('[PolySaaS MM] Escape skipped during boot grace (no token yet)');
             return;
         }}
         console.log('[PolySaaS MM] Escape native login (' + reason + ') — fresh plugin via mm_cleared');
@@ -2191,16 +2071,8 @@ try {{
 
     function _mmForceBridgeLogin(reason) {{
         if (document.querySelector('.mm-bridge')) return;
-        if (_mmInAuthGrace() && reason === 'dom') {{
-            console.log('[PolySaaS MM] Native login DOM skipped — boot grace');
-            return;
-        }}
         if (_mmOnChannelWithToken() && reason === 'dom') {{
             console.log('[PolySaaS MM] Native login DOM skipped — channel route with token');
-            return;
-        }}
-        if (_mmAtAppRoot() && MMAUTHTOKEN && MMAUTHTOKEN.length > 8 && reason === 'dom') {{
-            console.log('[PolySaaS MM] Native login DOM skipped — at root with token');
             return;
         }}
         _mmEscapeNativeLogin(reason);
@@ -2270,9 +2142,8 @@ try {{
         }}
     }} catch(_e2) {{}}
 
-    // DOM check (covers rendered native login component) — disabled during boot grace.
+    // DOM check (covers rendered native login component).
     var _loginObserver = new MutationObserver(function() {{
-        if (_mmInAuthGrace()) return;
         if (_mmNativeLoginVisible()) _mmForceBridgeLogin('dom');
     }});
     _loginObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
@@ -2340,14 +2211,6 @@ try {{
     }}
     function _mmRedirectToLogin() {{
         if (!_mmShouldRedirect()) return;
-        if (_mmInAuthGrace()) {{
-            console.log('[PolySaaS MM] Session redirect skipped — boot grace');
-            return;
-        }}
-        if (_mmUnderPassthrough() && MMAUTHTOKEN && MMAUTHTOKEN.length > 8) {{
-            console.log('[PolySaaS MM] Session redirect skipped — token present under passthrough');
-            return;
-        }}
         console.log('[PolySaaS MM] Session invalid — escape native login (plugin/token)');
         setTimeout(function() {{ _mmEscapeNativeLogin('session'); }}, 300);
     }}

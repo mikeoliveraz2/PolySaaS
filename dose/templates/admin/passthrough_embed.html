@@ -245,6 +245,8 @@ body.polysaas-passthrough-embed-page {
         var statusEl = document.getElementById('pss-orch-status');
         var eventEl = document.getElementById('pss-orch-event');
         var _lastOrchPath = '';
+        var _lastBarPath = '';
+        var _isMattermostEmbed = /\/pt\/admin\/[^/]*mattermost/i.test(window.location.pathname || '');
 
         function getBrowserPathname() {
             try {
@@ -336,12 +338,16 @@ body.polysaas-passthrough-embed-page {
             });
         }
 
-        function updateBar() {
+        function updateBar(opts) {
             var fullPath = getOdooPath();
             var pathOnly = fullPath.split('?')[0].split('#')[0];
             if (pathEl) pathEl.textContent = pathOnly;
             if (menuEl) menuEl.textContent = getMenuIdFromPath(fullPath) || '—';
-            notifyOrchestration(fullPath);
+            var doNotify = !(opts && opts.notify === false);
+            if (doNotify && !_isMattermostEmbed && pathOnly !== _lastBarPath) {
+                _lastBarPath = pathOnly;
+                notifyOrchestration(fullPath);
+            }
         }
 
         function installHistoryHooks() {
@@ -362,9 +368,14 @@ body.polysaas-passthrough-embed-page {
 
         window.__psEmbedOrchBar = { updateBar: updateBar, installHistoryHooks: installHistoryHooks };
 
+        if (_isMattermostEmbed) {
+            var _orchBar = document.getElementById('polysaas-orchestration-bar');
+            if (_orchBar) _orchBar.style.display = 'none';
+        }
+
         installHistoryHooks();
         updateBar();
-        setInterval(updateBar, 2000);
+        setInterval(function() { updateBar({notify: false}); }, 2000);
         [500, 1500, 3500].forEach(function(ms) {
             setTimeout(function() {
                 installHistoryHooks();

@@ -685,10 +685,7 @@ window.location.replace('/');
                 token = self._attempt_server_mm_session(request, endpoint_url, trigger)
                 if token:
                     print('[MM ROOT] Plugin auth OK — serving Mattermost shell (200, no redirect loop)')
-                    return self._reseed_http_response(
-                        request, proxy_prefix, token, trigger=trigger,
-                        fetch_upstream_shell=True,
-                    )
+                    return self._reseed_http_response(request, proxy_prefix, token, trigger=trigger)
             print('[MM ROOT] Plugin auth failed — login bridge auto-submit')
             bridge = self._serve_login_bridge(
                 request, trigger, endpoint, fresh_entry=True,
@@ -703,13 +700,13 @@ window.location.replace('/');
         if request.GET.get('mm_cleared') != '1':
             tok = self._get_sidebar_auth_token(request)
             if tok:
-                self._publish_sidebar_auth_token(request, tok)
-                request._mm_sidebar_auth_token = tok
                 print(
-                    '[MM ROOT] Sidebar — session token present, delegate to forwarder '
-                    '(no reseed intercept)',
+                    '[MM ROOT] Sidebar — session token present, serve shell once (no wipe/reseed loop)',
                 )
-                return None
+                return self._reseed_http_response(
+                    request, proxy_prefix, tok, trigger=trigger,
+                    fetch_upstream_shell=True,
+                )
             from django.http import HttpResponseRedirect
             from django.http import QueryDict
 
@@ -1921,21 +1918,15 @@ try {{
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-    console.log('[PolySaaS MM] shim build 2026-06-04-blank-loop-fix');
+    console.log('[PolySaaS MM] shim build 2026-06-04-shell-detect-fix');
     var B = {base_js};
     var PROXY = {proxy_js};
     var O = window.location.origin;
     var _serverToken = {token_js};
     var MMAUTHTOKEN = '';
     var _mmPageLoadTime = Date.now();
-    var _mmAuthGraceMs = 20000;
+    var _mmAuthGraceMs = 10000;
     function _mmInAuthGrace() {{ return (Date.now() - _mmPageLoadTime) < _mmAuthGraceMs; }}
-    function _mmUnderPassthrough() {{
-        try {{
-            var p = (window.location && window.location.pathname) || '';
-            return p === PROXY || p.indexOf(PROXY + '/') === 0;
-        }} catch(_e) {{ return false; }}
-    }}
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
     if (_serverToken) {{
         MMAUTHTOKEN = _serverToken;
@@ -2174,15 +2165,11 @@ try {{
         if (tok.length > 8) {{
             console.log('[PolySaaS MM] Escape native login (' + reason + ') — token present, IDB write');
             _writeTokenToIDB(tok);
-            if (_mmUnderPassthrough()) {{
-                console.log('[PolySaaS MM] Under passthrough URL — skip full-page reload (blank-loop fix)');
+            if (_mmAtAppRoot()) {{
+                console.log('[PolySaaS MM] Already at app root — skip reload (green-bar loop fix)');
                 return;
             }}
             window.location.replace(PROXY + '/');
-            return;
-        }}
-        if (_mmUnderPassthrough() && _mmInAuthGrace()) {{
-            console.log('[PolySaaS MM] Escape skipped during boot grace (no token yet)');
             return;
         }}
         console.log('[PolySaaS MM] Escape native login (' + reason + ') — fresh plugin via mm_cleared');
@@ -2270,9 +2257,8 @@ try {{
         }}
     }} catch(_e2) {{}}
 
-    // DOM check (covers rendered native login component) — disabled during boot grace.
+    // DOM check (covers rendered native login component).
     var _loginObserver = new MutationObserver(function() {{
-        if (_mmInAuthGrace()) return;
         if (_mmNativeLoginVisible()) _mmForceBridgeLogin('dom');
     }});
     _loginObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
@@ -2340,14 +2326,6 @@ try {{
     }}
     function _mmRedirectToLogin() {{
         if (!_mmShouldRedirect()) return;
-        if (_mmInAuthGrace()) {{
-            console.log('[PolySaaS MM] Session redirect skipped — boot grace');
-            return;
-        }}
-        if (_mmUnderPassthrough() && MMAUTHTOKEN && MMAUTHTOKEN.length > 8) {{
-            console.log('[PolySaaS MM] Session redirect skipped — token present under passthrough');
-            return;
-        }}
         console.log('[PolySaaS MM] Session invalid — escape native login (plugin/token)');
         setTimeout(function() {{ _mmEscapeNativeLogin('session'); }}, 300);
     }}

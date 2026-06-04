@@ -13,25 +13,17 @@ $goDir = Join-Path $scriptDir "scripts\go"
 . (Join-Path $goDir "Go-MorningSync.ps1")
 . (Join-Path $goDir "Go-Services.ps1")
 . (Join-Path $goDir "Go-SessionEnd.ps1")
-. (Join-Path $goDir "Go-Worktree.ps1")
 
-# ── Pull first (main checkout + worktree — always both) ────────────────
+# ── Pull first (main checkout + worktree when present) ─────────────────
 
 Write-Host ""
 Write-Host "── Pull ───────────────────────────────────────────────" -ForegroundColor Cyan
-$pullOk = Invoke-PolySaaSGitPullAll -ScriptRoot $scriptDir
-if (-not $pullOk) {
-    Write-Host "  Pull failed in main checkout or worktree - fix before continuing" -ForegroundColor Red
-}
+Invoke-PolySaaSGitPullAll -ScriptRoot $scriptDir | Out-Null
 Write-Host ""
 
 # ── Decrypt .env from .env.enc (if repo copy is newer) ────────────────
 Write-Host "── Env Sync ──────────────────────────────────────" -ForegroundColor Cyan
 Unprotect-PolySaaSEnv -RepoRoot $scriptDir
-$worktreeRoot = Get-PolySaaSWorktreeRoot -RepoRoot $scriptDir
-if ($worktreeRoot) {
-    Sync-PolySaaSWorktreeEnv -RepoRoot $scriptDir -WorktreeRoot $worktreeRoot
-}
 Write-Host ""
 
 # ── Virtual Environment (required for app check) ───────────────────────
@@ -142,20 +134,11 @@ Write-Host 'MONITOR (app)   -> http://localhost:5000' -ForegroundColor Green
 Write-Host "POLYSNIFFER     -> http://127.0.0.1:5002" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
-<<<<<<< Updated upstream
-# Django runs from the wip worktree when present (.worktree-path or defaults).
-# Main checkout stays on branch main for pull/EOD; WIP commits happen on branch wip.
-if (-not $worktreeRoot) {
-    $worktreeRoot = Get-PolySaaSWorktreeRoot -RepoRoot $scriptDir
-}
-$worktreeManage = if ($worktreeRoot) { Join-Path $worktreeRoot "manage.py" } else { "" }
-=======
 # Hard-coded worktree path — see scripts/go/Go-Worktree.ps1
 $worktreeRoot = Get-PolySaaSWorktreeRoot
 $worktreeManage = Join-Path $worktreeRoot "manage.py"
->>>>>>> Stashed changes
 
-if ($worktreeRoot -and (Test-Path $worktreeManage)) {
+if (Test-Path $worktreeManage) {
     Write-Host "RUNNING FROM WORKTREE: $worktreeRoot" -ForegroundColor Magenta
     Push-Location $worktreeRoot
     try {
