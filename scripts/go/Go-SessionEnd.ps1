@@ -41,12 +41,5 @@ function Invoke-GoSessionEnd {
         }
     }
 
-    Write-Host ''
-    Write-Host '── Daily backup (end of session) ─────────────────────' -ForegroundColor Cyan
-    Write-Host '  Running backup now - you will see output below.' -ForegroundColor Yellow
-    Invoke-DailyBackup -ScriptRoot $ScriptRoot
-    Write-Host '── Backup step complete ───────────────────────────────' -ForegroundColor Cyan
-    Write-Host ''
-
     Pop-Location
 }

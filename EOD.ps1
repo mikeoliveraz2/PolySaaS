@@ -1,11 +1,10 @@
 # EOD.ps1 - PolySaaS End of Day: Stop services -> Freeze/Backup -> Encrypt+Commit+Push
 #
 # Mirror of go.ps1 (morning start):
-#   go.ps1:  Pull -> Decrypt .env -> App check -> Morning sync -> Start services -> runserver -> (exit) freeze+backup
-#   EOD.ps1: Stop services -> freeze+backup -> Evening sync (encrypt+commit+push, no pull)
+#   go.ps1:  Pull -> Decrypt .env -> App check -> Morning sync -> Start services -> runserver -> (exit) pip freeze
+#   EOD.ps1: Stop services -> pip freeze -> daily zip backup -> Evening sync (encrypt+commit+push, no pull)
 #
 # Run after you stop work (Ctrl+C runserver, or let EOD stop port 8000).
-# If you already exited go.ps1 cleanly, freeze/backup may no-op; evening sync still runs.
 #
 # Implementation: scripts\eod\*.ps1 + scripts\go\*.ps1 (shared). Validate:
 #   scripts\Parse-Ps1File.ps1 -Path scripts\eod\Eod-Services.ps1
@@ -40,12 +39,18 @@ if (-Not (Test-Path $venvActivate)) {
     exit 1
 }
 
-# -- Session end: pip freeze + daily backup (same as go.ps1 finally block) --
+# ── Pip freeze (requirements.txt) ──────────────────────────────────────
 
-Write-Host "-- Session End -----------------------------------" -ForegroundColor Cyan
+Write-Host "── Pip Freeze ────────────────────────────────────" -ForegroundColor Cyan
 Invoke-GoSessionEnd -ScriptRoot $scriptDir -PythonExe $venvPython
 
-# -- Evening sync: encrypt .env, commit, push (no pull; opposite of morning) --
+# ── Daily zip backup ───────────────────────────────────────────────────
+
+Write-Host "── Daily Backup ──────────────────────────────────" -ForegroundColor Cyan
+Invoke-DailyBackup -ScriptRoot $scriptDir
+Write-Host ""
+
+# ── Evening sync: encrypt .env, commit, push (no pull — opposite of morning) ─
 
 Invoke-EveningSync -ScriptRoot $scriptDir
 

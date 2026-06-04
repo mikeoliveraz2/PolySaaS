@@ -47,3 +47,61 @@ function Sync-PolySaaSWorktreeEnv {
         }
     }
 }
+
+function Invoke-PolySaaSGitPullRepo {
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory)]
+        [string]$Label
+    )
+
+    if (-not (Test-Path $RepoRoot)) {
+        Write-Host "  $Label -> path not found: $RepoRoot" -ForegroundColor Red
+        return $false
+    }
+
+    if (-not (Test-Path (Join-Path $RepoRoot ".git"))) {
+        Write-Host "  $Label -> not a git checkout: $RepoRoot" -ForegroundColor Red
+        return $false
+    }
+
+    $unmergedPaths = Get-PolySaaSGitUnmergedPaths -RepoRoot $RepoRoot
+    if ($unmergedPaths.Count -gt 0) {
+        Write-Host "  $Label -> SKIPPED - unresolved merge conflicts" -ForegroundColor Yellow
+        $unmergedPaths | ForEach-Object { Write-Host ('    U ' + $_) -ForegroundColor Yellow }
+        return $false
+    }
+
+    Push-Location $RepoRoot
+    try {
+        Write-Host "  Pulling $Label (origin/main)..." -ForegroundColor Cyan
+        git pull origin main 2>&1 | ForEach-Object { Write-Host "    $_" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  $Label pull failed - resolve conflicts before continuing" -ForegroundColor Red
+            return $false
+        }
+        Write-Host "  $Label pull complete" -ForegroundColor Green
+        return $true
+    } finally {
+        Pop-Location
+    }
+}
+
+function Invoke-PolySaaSGitPullAll {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ScriptRoot
+    )
+
+    $allOk = Invoke-PolySaaSGitPullRepo -RepoRoot $ScriptRoot -Label "main checkout"
+
+    $worktreeRoot = Get-PolySaaSWorktreeRoot -RepoRoot $ScriptRoot
+    if (-not $worktreeRoot) {
+        Write-Host "  worktree -> not configured (set .worktree-path or create worktree)" -ForegroundColor Red
+        return $false
+    }
+
+    $worktreeOk = Invoke-PolySaaSGitPullRepo -RepoRoot $worktreeRoot -Label "worktree"
+    return ($allOk -and $worktreeOk)
+}
