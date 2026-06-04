@@ -1,4 +1,4 @@
-﻿amqp==5.3.1
+amqp==5.3.1
 asgiref==3.11.1
 beautifulsoup4==4.14.3
 billiard==4.2.4
@@ -68,5 +68,5 @@ urllib3==2.6.3
 validators==0.35.0
 vine==5.1.0
 wcwidth==0.6.0
-websockets==13.1
+websockets==16.0
 whitenoise==6.9.0
