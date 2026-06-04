@@ -880,6 +880,21 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             handler, request, upstream_path, content_type, resp.status_code
         )
 
+        # Generic handler hook: allow endpoint-specific handler to force HTML processing.
+        if handler and hasattr(handler, 'force_process_html_response'):
+            try:
+                if handler.force_process_html_response(
+                    request,
+                    upstream_path,
+                    content,
+                    content_type=content_type,
+                    status_code=resp.status_code,
+                ):
+                    _process_html = True
+                    print('[FORWARDER] Handler forced HTML processing')
+            except Exception as _fphr_exc:
+                logger.warning('force_process_html_response failed: %s', _fphr_exc, exc_info=True)
+
         if handler and _process_html:
             print(f"HANDLER RUNNING -> {handler.__class__.__name__}")
             processed = handler.process_html_response(content, request, endpoint_url=endpoint_url)
@@ -896,6 +911,25 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print(f"HANDLER SKIPPED process_html_response for {upstream_path} (not embeddable HTML shell)")
         else:
             print("NO HANDLER — RETURNING HTML AS-IS")
+
+        # Generic handler hook: allow endpoint-specific handler to return a final
+        # HttpResponse override after HTML processing, without forwarder endpoint logic.
+        if handler and hasattr(handler, 'finalize_html_response'):
+            try:
+                final_override = handler.finalize_html_response(
+                    request,
+                    upstream_path,
+                    content,
+                    endpoint_url=endpoint_url,
+                    trigger=trigger,
+                    status_code=resp.status_code,
+                    content_type=content_type,
+                )
+                if isinstance(final_override, HttpResponse):
+                    print('[FORWARDER] Handler finalize_html_response returned HttpResponse — returning directly')
+                    return final_override
+            except Exception as _fhr_exc:
+                logger.warning('finalize_html_response failed: %s', _fhr_exc, exc_info=True)
 
         response = HttpResponse(content.encode("utf-8"), status=resp.status_code)
         response["Content-Type"] = resp.headers.get("Content-Type", "text/html; charset=utf-8")

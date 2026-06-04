@@ -596,6 +596,17 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print(f"Body preview      : {outbound_body[:200] if outbound_body else '(empty)'}")
             print("===========================")
 
+        if handler and hasattr(handler, "intercept_upstream_before_fetch"):
+            try:
+                intercepted = handler.intercept_upstream_before_fetch(
+                    request, target_url, upstream_path
+                )
+                if intercepted is not None:
+                    print("[FORWARDER] Handler intercepted upstream request — returning stub")
+                    return intercepted
+            except Exception as _int_exc:
+                logger.warning("intercept_upstream_before_fetch failed: %s", _int_exc)
+
         resp = requests.request(
             method=request.method,
             url=target_url,
