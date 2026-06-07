@@ -63,7 +63,7 @@ class Tenant(models.Model):
         if not self.schema_name and self.slug:
             self.schema_name = self.slug.replace("-", "_").lower()
         self.full_clean()
-        is_new = self.pk is None
+        is_new = not Tenant.objects.filter(pk=self.pk).exists()
         super().save(*args, **kwargs)
         if is_new and self.schema_name:
             create_schema_and_copy_tables(self.schema_name)

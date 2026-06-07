@@ -14,9 +14,12 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+print("[MM HANDLER v40] dose/passthrough/handlers/mattermost_handler.py — loaded")
+
 
 class MattermostPassthroughHandler:
     """Passthrough handler for Mattermost (FROZEN — see BINGO doc in documentation/)."""
+    print("[MM ULTRA DEBUG] === MATTERMOST HANDLER CLASS LOADED AND CALLED ===")
 
     _MM_NON_EMBED_PREFIXES = (
         "/api/",
@@ -570,8 +573,24 @@ window.location.replace('/');
 
         body_html = self._build_token_reseed_html(proxy_prefix, token)
         if fetch_upstream_shell and endpoint_url:
+            print("[MM RESEED DEBUG] === ENTERED fetch_upstream_shell branch ===")
+            print(f"[MM RESEED DEBUG] endpoint_url: {endpoint_url} | trigger: {trigger}")
             raw = fetch_upstream_index_html(request, endpoint_url, '/', handler=self)
             if raw and not str(raw).startswith('REDIRECT:'):
+                print(f"[MM RESEED DEBUG] Upstream fetch SUCCESS - length: {len(raw)}")
+                # === FORCED REWRITE + DIAGNOSTIC (per Supergrok guidance) ===
+                _path_parts = request.path_info.strip('/').split('/')
+                if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+                    proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+                else:
+                    proxy_prefix = "/pt/admin/mattermost"
+                parsed = urlparse(endpoint_url)
+                base_origin = f"{parsed.scheme}://{parsed.netloc}"
+                print(f"[MM RESEED DEBUG] raw starts with: {raw[:200]!r}")
+                raw = self._rewrite_mattermost_assets(raw, proxy_prefix, base_origin)
+                print(f"[MM REWRITE] Applied to real Mattermost HTML. New length: {len(raw)}")
+                # === END FORCED REWRITE ===
+
                 raw_is_shell = self._is_mattermost_app_shell(raw)
                 processed = self.process_html_response(
                     raw, request, endpoint_url=endpoint_url,
@@ -618,6 +637,10 @@ window.location.replace('/');
           - /login → PolySaaS login bridge only.
           - Root (sidebar) → always fresh login: expire all MM cookies, plugin auth, then SPA.
         """
+        print("[MM ROOT DEBUG] === ENTERED try_root_display_shell_response ===")
+        print(f"[MM ROOT DEBUG] mm_cleared in query: {request.GET.get('mm_cleared')}")
+        print(f"[MM ROOT DEBUG] Has sidebar token: {'mm_sidebar_auth_token' in request.session}")
+
         if request.method != "GET":
             return None
         trigger = url_trigger_segment.strip("/")
@@ -699,17 +722,8 @@ window.location.replace('/');
             self._clear_auth_cookies_on_response(wrapped)
             return wrapped
 
-        # Sidebar opens proxy root. Wipe+clear only when we have no server-side session token.
+        # Sidebar opens proxy root. Always force plugin auth on every root request (Option A).
         if request.GET.get('mm_cleared') != '1':
-            tok = self._get_sidebar_auth_token(request)
-            if tok:
-                self._publish_sidebar_auth_token(request, tok)
-                request._mm_sidebar_auth_token = tok
-                print(
-                    '[MM ROOT] Sidebar — session token present, delegate to forwarder '
-                    '(no reseed intercept)',
-                )
-                return None
             from django.http import HttpResponseRedirect
             from django.http import QueryDict
 
@@ -718,12 +732,14 @@ window.location.replace('/');
             dest = proxy_prefix + '/?' + q.urlencode()
             resp = HttpResponseRedirect(dest)
             self._clear_auth_cookies_on_response(resp)
-            print('[MM ROOT] Sidebar click — no session token, mm_cleared before plugin auth')
+            print('[MM ROOT] Sidebar click — mm_cleared before plugin auth (forced every time)')
             return resp
 
         self._mark_fresh_sidebar_entry(request)
-        logger.info('[MM ROOT] Sidebar fresh login — plugin auth only (no stale browser cookies)')
-        return _fresh_entry_flow()
+        logger.info('[MM ROOT] Sidebar fresh login — plugin auth only (no stale browser cookies, even if token exists)')
+        print("[MM FORCE ROOT] Forcing full upstream rewrite in try_root_display_shell_response")
+        # Force the full path instead of small shell
+        return self._reseed_http_response(request, endpoint, trigger or '', fetch_upstream_shell=True)
 
     def _serve_login_bridge(self, request, trigger, endpoint, fresh_entry=False):
         """Plain HTML login bridge. No React, no frameworks. Just a form + XHR."""
@@ -1213,120 +1229,10 @@ try {{
         
         return login_id, password, team_name
 
-    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
-
-        # Derive trigger from path for use throughout the function
-        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
-        _trigger = _path_parts[2] if len(_path_parts) >= 3 else "mattermost"
-
-        # Absolute rule: never render upstream Mattermost login route in passthrough.
-        # If this request is for /login under the passthrough trigger, return the
-        # PolySaaS bridge HTML directly.
-        _path_info = (getattr(request, 'path_info', '') or '').rstrip('/')
-        _proxy_login_prefix = f"/pt/admin/{_trigger}/login"
-        if _path_info == _proxy_login_prefix or _path_info.startswith(_proxy_login_prefix + "/"):
-            print("[MM HANDLER] /login route — plugin/sidebar recovery before bridge")
-            token = self._get_sidebar_auth_token(request)
-            if not token and endpoint_url:
-                token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
-            if token:
-                return self._build_token_reseed_html(proxy_prefix, token)
-            return self._login_bridge_html(request, _trigger, None)
-
-        if not endpoint_url:
-            return html_str, None
-
-        origin = endpoint_url.rstrip("/")
-        parsed = urlparse(origin)
-        base_origin = f"{parsed.scheme}://{parsed.netloc}"
-        # Derive proxy_prefix from the request path — never hardcode.
-        _path_parts = request.path_info.strip('/').split('/')
-        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
-            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
-        else:
-            proxy_prefix = "/pt/admin/mattermost"
-
-        # Hard stop: never render upstream Mattermost native login in passthrough.
-        # If upstream sends login HTML (even from non-/login routes), immediately
-        # bounce to the PolySaaS bridge which owns the credential flow.
-        # TEAMS NOT USED (Michael) — no team prerender recovery; direct login has no teams.
-        # if self._is_no_team_prerender_html(html_str):
-        #     replacement = self._fetch_upstream_root_shell(request, origin)
-        #     ...
-
-        _lower_html = html_str.lower()
-
-        if self._is_mattermost_app_shell(html_str):
-            print('[MM HANDLER] Mattermost app shell detected — prepare without reseed redirect')
-            return self._prepare_authenticated_app_shell(html_str, request, endpoint_url)
-
-        if self._contains_native_login_html(_lower_html):
-            print("[MM HANDLER] Native login HTML in upstream body — block and recover")
-            fresh_token = self._get_sidebar_auth_token(request)
-            if not fresh_token:
-                fresh_token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
-            if fresh_token:
-                return self._build_token_reseed_html(proxy_prefix, fresh_token)
-            return self._login_bridge_html(request, _trigger, None)
-
-        html_str = self._strip_base_tags(html_str)
-        html_str = self._strip_meta_redirects(html_str)
-        html_str = self._strip_csp(html_str)
-
-        # Rewrite form action attributes so native form POSTs go through the proxy prefix.
-        html_str = re.sub(
-            r'(action=)(["\'])(/[^"\']*)',
-            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Load static files DIRECTLY from Mattermost origin to avoid Django dev
-        # server concurrency limits (ERR_CONNECTION_REFUSED on many chunks).
-        # Only API calls and form POSTs go through the proxy.
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Keep absolute upstream-origin static URLs as-is (already direct)
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Rewrite window.basename so React Router uses proxy prefix as its base
-        html_str = re.sub(
-            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
-            lambda m: m.group(1) + f"'{proxy_prefix}'",
-            html_str,
-        )
-
-        # Inject the full client shim into every proxied HTML page so the
-        # auto-login watcher runs on /login regardless of navigation path.
-        if '<head' in html_str.lower():
-            print(f"[MM HANDLER] Injecting shim into HTML, proxy_prefix={proxy_prefix}")
-            html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
-        else:
-            print(f"[MM HANDLER] No <head> found, skipping shim injection")
-
-        # Return modified HTML; forward_request_standardized will wrap it in
-        # the admin template (passthrough lives inside the admin template div).
-        print(f"[MM HANDLER] Returning modified HTML for admin template wrap")
-        return html_str
+    def process_html_response(self, response_text: str, request, endpoint, trigger: str = ""):
+        print("[MM FORCE FULL] Forcing full upstream HTML rewrite for Mattermost")
+        # Bypass any small shell logic
+        return self._rewrite_mattermost_assets(response_text, request, endpoint, trigger)
 
     def rewrite_upstream_body(self, body, content_type, request, endpoint_url=None, upstream_path=None):
         """Rewrite SiteURL and WebsocketURL in Mattermost config/client response."""
@@ -1818,6 +1724,58 @@ try {{
     def _strip_csp(self, html):
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
+    def _rewrite_mattermost_assets(self, html: str, proxy_prefix: str, base_origin: str) -> str:
+        """Centralized robust rewriting for Mattermost webpack SPA assets + forms + basename."""
+        # === DIAGNOSTIC - REMOVE AFTER FIX ===
+        import re
+        print(f"[MM REWRITE DEBUG] Input length: {len(html)} | proxy_prefix: {proxy_prefix} | base_origin: {base_origin}")
+        print(f"[MM REWRITE DEBUG] Contains /static/? {bool(re.search(r'/static/', html))}")
+        print(f"[MM REWRITE DEBUG] First 300 chars: {html[:300]!r}")
+        # =====================================
+
+        # Rewrite form action attributes so native form POSTs go through the proxy prefix.
+        html = re.sub(
+            r'(action=)(["\'])(/[^"\']*)',
+            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html,
+            flags=re.IGNORECASE,
+        )
+
+        # Load static files DIRECTLY from Mattermost origin to avoid Django dev
+        # server concurrency limits (ERR_CONNECTION_REFUSED on many chunks).
+        # Only API calls and form POSTs go through the proxy.
+        html = re.sub(
+            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
+            html,
+            flags=re.IGNORECASE,
+        )
+
+        html = re.sub(
+            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
+            html,
+            flags=re.IGNORECASE,
+        )
+
+        # Keep absolute upstream-origin static URLs as-is (already direct)
+        _abs_static = re.escape(base_origin) + r'/static/'
+        html = re.sub(
+            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
+            html,
+            flags=re.IGNORECASE,
+        )
+
+        # Rewrite window.basename so React Router uses proxy prefix as its base
+        html = re.sub(
+            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
+            lambda m: m.group(1) + f"'{proxy_prefix}'",
+            html,
+        )
+
+        return html
+
     def _prepare_authenticated_app_shell(self, html_str, request, endpoint_url):
         """Rewrite upstream Mattermost bootstrap shell and inject shim (no login/reseed logic)."""
         origin = (endpoint_url or '').rstrip('/')
@@ -1833,36 +1791,9 @@ try {{
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
 
-        html_str = re.sub(
-            r'(action=)(["\'])(/[^"\']*)',
-            lambda m: f'{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
-            lambda m: m.group(1) + f"'{proxy_prefix}'",
-            html_str,
-        )
+        # Centralized asset + form + basename rewriting (with diagnostic prints)
+        html_str = self._rewrite_mattermost_assets(html_str, proxy_prefix, base_origin)
+
         if '<head' in html_str.lower():
             html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
         return html_str
@@ -1936,6 +1867,30 @@ try {{
             return p === PROXY || p.indexOf(PROXY + '/') === 0;
         }} catch(_e) {{ return false; }}
     }}
+
+    // === STRONG POLYSAAS REDIRECT LOOP PROTECTION ===
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasClearFlag = urlParams.has('mm_cleared') || 
+                         window.location.search.includes('mm_cleared=1');
+
+    const hasToken = localStorage.getItem('MMAUTHTOKEN') || 
+                     document.cookie.includes('MMAUTHTOKEN') ||
+                     window.mmBridgeInitialized === true;
+
+    if (!hasClearFlag && !hasToken) {{
+        console.log('%c[PolySaaS Shim] No auth → forcing plugin login', 'color:#f59e0b;font-weight:bold');
+        window.location.replace(PROXY + '/?mm_cleared=1');
+        return;
+    }}
+
+    // === IF WE REACH HERE, STAY ON THIS PAGE ===
+    console.log('%c[PolySaaS Shim] Auth OK + mm_cleared detected → staying on full shell', 'color:#10b981;font-weight:bold');
+    window.mmBridgeInitialized = true;
+
+    if (window.history && window.history.replaceState) {{
+        window.history.replaceState({}, '', window.location.pathname + '?mm_cleared=1');
+    }}
+
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
     if (_serverToken) {{
         MMAUTHTOKEN = _serverToken;

@@ -84,14 +84,19 @@ def get_tenant_theme_colors(theme_name):
     return theme_palettes.get(theme_name, theme_palettes['tech_blue'])
 def create_schema_and_copy_tables(schema_name):
     """
-    Ensure the PostgreSQL schema exists for a new tenant. Tables are created by
-    ``python manage.py migrate`` (not by copying DDL from public), so django_migrations
-    stays consistent with the physical schema.
+    Ensure the PostgreSQL schema exists for a new tenant and run migrations
+    so all tables are ready before any code tries to use them.
     """
-    from dose.management.schema_utils import create_tenant_schema_if_missing
+    from dose.management.schema_utils import (
+        create_tenant_schema_if_missing,
+        set_search_path_for_migrations,
+    )
+    from django.core.management import call_command
 
     create_tenant_schema_if_missing(schema_name)
-    print(f"✓ Schema '{schema_name}' ensured (empty). Run: python manage.py migrate")
+    set_search_path_for_migrations(schema_name)
+    call_command("migrate", "--no-input", verbosity=0)
+    print(f"✓ Schema '{schema_name}' created and migrated.")
 
 
 def check_user_limit(tenant):

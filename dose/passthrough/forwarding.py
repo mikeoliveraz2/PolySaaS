@@ -16,6 +16,8 @@ from django.utils.safestring import mark_safe
 
 logger = logging.getLogger(__name__)
 
+print("[FORWARDER v40] dose/passthrough/forwarding.py — loaded")
+
 _SKIP_META = frozenset({"HTTP_HOST", "HTTP_CONTENT_LENGTH", "CONTENT_LENGTH", "HTTP_COOKIE", "HTTP_ACCEPT_ENCODING"})
 
 
@@ -429,6 +431,8 @@ def fetch_upstream_index_html(
     print(resp.content[:1000].decode('utf-8', errors='replace'))
     print(f"{'='*60}")
 
+    return resp.content.decode('utf-8', errors='replace')
+
     # ── PolySniffer Capture (Initial HTML) ─────────────────────────────
     # try:
     #     from dose.polysniffer.models import TrafficLog
@@ -472,6 +476,7 @@ def fetch_upstream_index_html(
 
 
 def forward_request_standardized(request, endpoint_url, handler=None, endpoint=None, trigger=None):
+    print("[MM ULTRA DEBUG] === FORWARD_REQUEST_STANDARDIZED ENTRY ===")
     # PRINT EVERYTHING — ALWAYS — NO MERCY
     print("\n" + "="*120)
     print("FORWARDER (forward_request_standardized) CALLED")
@@ -536,6 +541,7 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
         if trigger and handler and hasattr(handler, 'try_root_display_shell_response'):
             shell = handler.try_root_display_shell_response(request, endpoint, trigger)
             if shell is not None:
+                print("[MM HIGH DEBUG] About to return small display shell - this is the early return winning")
                 print(f"[FORWARDER] Handler display shell returned for root — returning directly")
                 return shell
 

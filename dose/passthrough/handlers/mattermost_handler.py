@@ -497,6 +497,82 @@ window.location.replace('/');
         # Mattermost routes internally after boot; plugin_booted=1 causes SPA redirect loops.
         return f"{proxy_prefix.rstrip('/')}/"
 
+    def _get_mm_admin_token(self):
+        """Load the Mattermost admin token — checks env var first, then Parameter model."""
+        import os
+        env_token = os.environ.get('MATTERMOST_ADMIN_TOKEN', '').strip()
+        if env_token:
+            return env_token
+        try:
+            from parameters.models import Parameter
+            params = list(Parameter.objects.all())
+            for p in params:
+                key = getattr(p, 'matchingKey', '') if hasattr(p, 'matchingKey') else ''
+                if key != 'MattermostProvisioningService':
+                    continue
+                secrets = {}
+                if hasattr(p, 'get_decrypted_secrets'):
+                    secrets = p.get_decrypted_secrets() or {}
+                admin_token = (
+                    secrets.get('admin_token')
+                    or secrets.get('MATTERMOST_ADMIN_TOKEN')
+                    or getattr(p, 'param2', '')
+                    or ''
+                ).strip()
+                if admin_token:
+                    return admin_token
+        except Exception as exc:
+            print(f'[MM AUTO-JOIN] Could not load admin token: {exc}')
+        return ''
+
+    def _auto_join_first_team(self, endpoint_url: str, user_token: str, user_id: str,
+                               team_id: str = '') -> bool:
+        """
+        When Mattermost reports type=team_not_found the provisioned user has no team
+        membership.  Uses the admin token (from provisioning Parameter) to add the user
+        to the team whose id is already stored in extra_config, or the first visible team.
+        Returns True if the user was successfully added to a team.
+        No team name is hardcoded — Mattermost determines routing after the join.
+        """
+        import requests as _req
+        admin_token = self._get_mm_admin_token()
+        auth_token = admin_token or user_token
+        headers = {'Authorization': f'Bearer {auth_token}'}
+        print(f'[MM AUTO-JOIN] Using {"admin" if admin_token else "user"} token, user_id={user_id}, team_id={team_id!r}')
+        try:
+            # If we have the team_id from provisioning, use it directly
+            resolved_team_id = team_id
+            if not resolved_team_id:
+                teams_resp = _req.get(
+                    f'{endpoint_url}/api/v4/teams',
+                    headers=headers,
+                    timeout=10,
+                )
+                if not teams_resp.ok:
+                    print(f'[MM AUTO-JOIN] /api/v4/teams failed: {teams_resp.status_code} {teams_resp.text[:200]}')
+                    return False
+                teams = teams_resp.json()
+                if not teams:
+                    print('[MM AUTO-JOIN] No teams visible to this token')
+                    return False
+                resolved_team_id = teams[0]['id']
+                print(f'[MM AUTO-JOIN] Resolved team_id={resolved_team_id} from /api/v4/teams')
+
+            join_resp = _req.post(
+                f'{endpoint_url}/api/v4/teams/{resolved_team_id}/members',
+                json={'team_id': resolved_team_id, 'user_id': user_id},
+                headers=headers,
+                timeout=10,
+            )
+            if join_resp.status_code in (200, 201):
+                print(f'[MM AUTO-JOIN] Joined team {resolved_team_id} successfully')
+                return True
+            print(f'[MM AUTO-JOIN] Join returned {join_resp.status_code}: {join_resp.text[:300]}')
+            return False
+        except Exception as exc:
+            print(f'[MM AUTO-JOIN] Error: {exc}')
+            return False
+
     def _clear_auth_cookies_on_response(self, response):
         """Expire all Mattermost session cookies (fresh sidebar / logout)."""
         expired = 'Thu, 01 Jan 1970 00:00:00 GMT'
@@ -570,7 +646,13 @@ window.location.replace('/');
 
         body_html = self._build_token_reseed_html(proxy_prefix, token)
         if fetch_upstream_shell and endpoint_url:
+            # Allow get_upstream_cookies to inject the freshly-obtained token during
+            # the server-side shell fetch. Without this, get_upstream_cookies skips the
+            # sidebar token (because _mm_fresh_sidebar_entry is False) and the upstream
+            # fetch is unauthenticated → Mattermost returns login HTML, not the SPA.
+            request._mm_fresh_sidebar_entry = True
             raw = fetch_upstream_index_html(request, endpoint_url, '/', handler=self)
+            request._mm_fresh_sidebar_entry = False
             if raw and not str(raw).startswith('REDIRECT:'):
                 raw_is_shell = self._is_mattermost_app_shell(raw)
                 processed = self.process_html_response(
@@ -618,12 +700,14 @@ window.location.replace('/');
           - /login → PolySaaS login bridge only.
           - Root (sidebar) → always fresh login: expire all MM cookies, plugin auth, then SPA.
         """
+        print(f"\n[MM HANDLER v2 ENTRY] path={request.path_info!r} trigger={url_trigger_segment!r} method={request.method}")
         if request.method != "GET":
             return None
         trigger = url_trigger_segment.strip("/")
         proxy_prefix = f"/pt/admin/{trigger}"
         path = request.path_info.rstrip("/") or "/"
         login_path = f"{proxy_prefix}/login"
+        print(f"[MM HANDLER v2] path_clean={path!r} proxy_prefix={proxy_prefix!r} match={path == proxy_prefix}")
 
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
 
@@ -657,27 +741,45 @@ window.location.replace('/');
         # if path == error_path or path.startswith(error_path + "/") or path.startswith(error_path + "?"):
         #     ...
 
-        if path != proxy_prefix:
+        if path.rstrip('/') != proxy_prefix.rstrip('/'):
             return None
 
-        redirect_to = (request.GET.get('redirect_to') or '').strip()
-        if redirect_to and request.GET.get('mm_cleared') != '1' and self._is_post_sidebar_auth_grace(request):
-            from django.http import HttpResponseRedirect
-            from urllib.parse import unquote
+        # Mattermost tells us the user has no team membership — auto-join then retry root.
+        if request.GET.get('type') == 'team_not_found':
+            print('[MM ROOT] type=team_not_found — auto-joining user to provisioned team')
+            tok = self._get_sidebar_auth_token(request) or (
+                request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or ''
+            ).strip()
+            extra = self._get_tenantapp_extra_config(request) or {}
+            mm_user_id = extra.get('mm_user_id', '')
+            mm_team_id = extra.get('mm_team_id', '')
+            if mm_user_id and endpoint_url:
+                if self._auto_join_first_team(endpoint_url, tok, mm_user_id, team_id=mm_team_id):
+                    from django.http import HttpResponseRedirect
+                    resp = HttpResponseRedirect(proxy_prefix.rstrip('/') + '/')
+                    if tok:
+                        self._set_unified_auth_cookies(resp, tok)
+                    return resp
+            print('[MM ROOT] Auto-join failed or missing credentials — serving SPA anyway')
 
-            dest_rel = unquote(redirect_to)
-            if not dest_rel.startswith('/'):
-                dest_rel = '/' + dest_rel
-            landing = proxy_prefix.rstrip('/') + dest_rel
-            resp = HttpResponseRedirect(landing)
-            tok = self._get_sidebar_auth_token(request)
-            if tok:
-                self._set_unified_auth_cookies(resp, tok)
-            print(
-                '[MM ROOT] Post-auth grace — honoring redirect_to without fresh-login wipe:',
-                dest_rel,
-            )
-            return resp
+        redirect_to = (request.GET.get('redirect_to') or '').strip()
+        if redirect_to:
+            # Mattermost SPA sent ?redirect_to= (thinks user is unauthenticated).
+            # TEAMS NOT USED (Michael) — never redirect to a team URL; that causes
+            # "Team Not Found" when the provisioned slug is wrong or absent.
+            # If token is valid, serve SPA directly at root and let Mattermost route itself.
+            tok = self._get_sidebar_auth_token(request) or (
+                request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or ''
+            ).strip()
+            if tok and self._validate_mm_token(endpoint_url, tok):
+                print(
+                    f'[MM ROOT] redirect_to — token valid, serving SPA at root (no team redirect)'
+                )
+                return self._reseed_http_response(
+                    request, proxy_prefix, tok, trigger=trigger,
+                    fetch_upstream_shell=True,
+                )
+            # No valid token — fall through to normal plugin auth flow.
 
         def _fresh_entry_flow():
             """Wipe client state, authenticate via plugin (server-side), never reuse browser MMAUTHTOKEN."""
@@ -699,8 +801,31 @@ window.location.replace('/');
             self._clear_auth_cookies_on_response(wrapped)
             return wrapped
 
-        # Sidebar opens proxy root. Always force plugin auth on every root request (Option A).
+        # Sidebar opens proxy root (or bare root hard-navigate from Mattermost SPA).
+        # If a valid session token exists, serve the SPA directly — no redirect needed.
+        # The redirect to ?mm_cleared=1 causes token invalidation because each plugin
+        # auth call creates a new Mattermost session, breaking any SPA already running.
+        # NOTE: Read session directly (bypass 120s TTL) — the Mattermost session lifetime
+        # is days/weeks; the PolySaaS TTL only matters for the initial login grace period,
+        # not for the ongoing session. Calling plugin auth again after TTL expiry
+        # creates a new Mattermost session that invalidates the previous one → loading loop.
         if request.GET.get('mm_cleared') != '1':
+            existing_tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
+            if existing_tok:
+                if self._validate_mm_token(endpoint_url, existing_tok):
+                    print(
+                        f'[MM ROOT] Plain root — token validated with upstream — serving SPA directly '
+                        f'(tok_len={len(existing_tok)}) — skip mm_cleared redirect'
+                    )
+                    self._mark_fresh_sidebar_entry(request)
+                    return self._reseed_http_response(
+                        request, proxy_prefix, existing_tok, trigger=trigger,
+                        fetch_upstream_shell=True,
+                    )
+                else:
+                    print(f'[MM ROOT] Plain root — cached token invalid (Mattermost restarted?) — clearing, will re-auth')
+                    request.session.pop(self._SIDEBAR_AUTH_SESSION_KEY, None)
+                    request.session.pop(self._SIDEBAR_AUTH_TS_KEY, None)
             from django.http import HttpResponseRedirect
             from django.http import QueryDict
 
@@ -709,8 +834,30 @@ window.location.replace('/');
             dest = proxy_prefix + '/?' + q.urlencode()
             resp = HttpResponseRedirect(dest)
             self._clear_auth_cookies_on_response(resp)
-            print('[MM ROOT] Sidebar click — mm_cleared before plugin auth (forced every time)')
+            print('[MM ROOT] Sidebar click — mm_cleared redirect (no valid token / token invalid)')
             return resp
+
+        # If we already have a session token, validate it with upstream before reusing.
+        # Reusing a valid token avoids unnecessary plugin auth (which creates a new Mattermost
+        # session and may invalidate the one the browser SPA is already using).
+        # If the token is invalid (e.g. Mattermost restarted on Render.com free tier), clear
+        # it and fall through to fresh plugin auth below.
+        existing_tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
+        if existing_tok:
+            if self._validate_mm_token(endpoint_url, existing_tok):
+                print(
+                    f'[MM ROOT] mm_cleared=1 — token validated with upstream '
+                    f'(tok_len={len(existing_tok)}) — reusing, no new plugin auth'
+                )
+                self._mark_fresh_sidebar_entry(request)
+                return self._reseed_http_response(
+                    request, proxy_prefix, existing_tok, trigger=trigger,
+                    fetch_upstream_shell=True,
+                )
+            else:
+                print(f'[MM ROOT] mm_cleared=1 — cached token invalid — clearing, running fresh plugin auth')
+                request.session.pop(self._SIDEBAR_AUTH_SESSION_KEY, None)
+                request.session.pop(self._SIDEBAR_AUTH_TS_KEY, None)
 
         self._mark_fresh_sidebar_entry(request)
         logger.info('[MM ROOT] Sidebar fresh login — plugin auth only (no stale browser cookies, even if token exists)')
@@ -1334,8 +1481,14 @@ try {{
             # http://localhost:8000/api/v4/... and the shim's toProxy() converts those
             # transparently to /pt/admin/mattermost/api/v4/... Mattermost never sees /pt/admin/.
             if 'SiteURL' in data:
-                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {origin}")
-                data['SiteURL'] = origin
+                # Include proxy prefix so Mattermost's React Router uses the correct
+                # basename. Without this the SPA routes from '/' and sees the proxy
+                # path as an unknown route, triggering redirect_to loops.
+                _pparts = request.path_info.strip('/').split('/')
+                _pfx = f"/pt/admin/{_pparts[2]}" if len(_pparts) >= 3 else ''
+                new_site_url = origin + _pfx
+                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {new_site_url}")
+                data['SiteURL'] = new_site_url
             if 'WebsocketURL' in data:
                 # WebSocket must bypass Django WSGI — connect direct to upstream Mattermost.
                 upstream = (endpoint_url or '').strip().rstrip('/')
@@ -1901,20 +2054,28 @@ try {{
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
 
-        # TEAMS NOT USED (Michael) — no MM_TEAMS_STUB in shim (direct login has no teams).
+        # TEAMS NOT USED (Michael) — mm_team_name intentionally not injected into shim.
+        mm_user_id = ''
+        try:
+            extra_for_team = self._get_tenantapp_extra_config(request) or {}
+            mm_user_id = extra_for_team.get('mm_user_id') or ''
+        except Exception:
+            pass
         token_js = json.dumps(token)
         login_id_js = json.dumps(login_id)
         password_js = json.dumps(password)
+        user_id_js = json.dumps(mm_user_id)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
-        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'}")
+        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'} user_id={mm_user_id!r}")
 
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-    console.log('[PolySaaS MM] shim build 2026-06-04-blank-loop-fix');
+        console.log('[PolySaaS MM] shim build 2026-06-07-fake-join-v16');
     var B = {base_js};
     var PROXY = {proxy_js};
+    var MM_USER_ID = {user_id_js};
     var O = window.location.origin;
     var _serverToken = {token_js};
     var MMAUTHTOKEN = '';
@@ -1927,6 +2088,64 @@ try {{
             return p === PROXY || p.indexOf(PROXY + '/') === 0;
         }} catch(_e) {{ return false; }}
     }}
+    // Defined at outer scope so ALL nested IIFEs (redirect interceptor, Redux patcher, etc.)
+    // can call it without a ReferenceError.
+    function _mmTokenPresent() {{
+        var tok = (MMAUTHTOKEN || _serverToken || '').trim();
+        return tok.length > 8;
+    }}
+
+    // === STRONG POLYSAAS REDIRECT LOOP PROTECTION ===
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasClearFlag = urlParams.has('mm_cleared') || 
+                         window.location.search.includes('mm_cleared=1');
+
+    const hasToken = localStorage.getItem('MMAUTHTOKEN') || 
+                     document.cookie.includes('MMAUTHTOKEN') ||
+                     window.mmBridgeInitialized === true;
+
+    var _psSessionInited = false;
+    try {{ _psSessionInited = sessionStorage.getItem('_ps_mm_session_init') === '1'; }} catch(e) {{}}
+
+    if (!hasClearFlag && !_psSessionInited && !hasToken) {{
+        // TEAMS NOT USED (Michael) — never navigate to a team URL; always use mm_cleared
+        // and let Mattermost route itself after authentication.
+        console.log('%c[PolySaaS Shim] No auth → mm_cleared re-auth', 'color:#f59e0b;font-weight:bold');
+        try {{ sessionStorage.setItem('_ps_mm_session_init', '1'); }} catch(e) {{}}
+        window.location.replace(PROXY + '/?mm_cleared=1');
+        return;
+    }}
+
+    // === IF WE REACH HERE, STAY ON THIS PAGE ===
+    console.log('%c[PolySaaS Shim] Auth ready → staying on full shell', 'color:#10b981;font-weight:bold');
+    window.mmBridgeInitialized = true;
+    try {{ sessionStorage.setItem('_ps_mm_session_init', '1'); }} catch(e) {{}}
+
+    // Set window.basename so Mattermost's React Router strips the proxy prefix correctly.
+    // Without this, routes like /team/channels/town-square never match — blank screen.
+    window.__webpack_public_path__ = B + '/static/';
+    window.basename = PROXY;
+    setInterval(function() {{
+        if (window.basename !== PROXY) {{
+            console.log('[PolySaaS MM] Restoring basename from', window.basename, 'to', PROXY);
+            window.basename = PROXY;
+        }}
+    }}, 500);
+
+    // Loading timeout: after 7s still at root, fire a popstate to nudge React Router.
+    // Mattermost routes itself to the user's default team/channel after loadMe() — we never
+    // push a specific team URL (that caused "Team Not Found" when the slug was wrong).
+    setTimeout(function() {{
+        try {{
+            var _curPath = window.location.pathname;
+            var _isRoot = (_curPath === PROXY || _curPath === PROXY + '/');
+            if (_isRoot) {{
+                console.log('[PolySaaS MM] Loading timeout (7s) — nudging React Router via popstate');
+                window.dispatchEvent(new PopStateEvent('popstate', {{ state: {{}}, bubbles: true }}));
+            }}
+        }} catch(_te) {{}}
+    }}, 7000);
+
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
     if (_serverToken) {{
         MMAUTHTOKEN = _serverToken;
@@ -1946,7 +2165,124 @@ try {{
     }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
-    /* TEAMS NOT USED (Michael) — direct MM login page source has no teams; do not inject stubs. */
+
+    // Intercept window.location redirects to break the redirect_to loop.
+    // When Mattermost detects no auth it does window.location.href='/?redirect_to=<current>'
+    // which causes a full-page reload loop. We block these entirely when a token is present,
+    // then aggressively re-write the token to IDB so Mattermost's Redux can hydrate.
+    (function() {{
+        // _mmTokenPresent() is defined in the outer IIFE scope (shared with Redux patcher).
+        function _mmShouldBlockRedirect(url) {{
+            if (typeof url !== 'string') return false;
+            if (!_mmTokenPresent()) return false;
+            if (url.indexOf('redirect_to=') >= 0) return true;
+            // Also block plain-root navigations from Mattermost's login component.
+            // After history.replaceState is intercepted, React Router still internally
+            // routes to login. The login component then calls window.location.replace(SiteURL)
+            // WITHOUT a redirect_to param. Detect and block that loop too.
+            try {{
+                var _bru = new URL(url, window.location.origin);
+                var _brp = _bru.pathname;
+                if ((_brp === PROXY || _brp === PROXY + '/') && _mmUnderPassthrough()) return true;
+            }} catch(_bru2) {{}}
+            return false;
+        }}
+        function _mmOnBlockForceAuth() {{
+            // Aggressively re-write token to all storage layers so Mattermost can boot
+            var tok = (MMAUTHTOKEN || _serverToken || '').trim();
+            if (!tok) return;
+            try {{ localStorage.setItem('MMAUTHTOKEN', tok); }} catch(e) {{}}
+            try {{
+                document.cookie = 'mmauthtoken=' + tok + '; path=/; max-age=86400; SameSite=Lax';
+                document.cookie = 'MMAUTHTOKEN=' + tok + '; path=/; max-age=86400; SameSite=Lax';
+            }} catch(e) {{}}
+            // Also trigger IDB write
+            if (typeof _writeTokenToIDB === 'function') {{
+                try {{ _writeTokenToIDB(tok); }} catch(e) {{}}
+            }}
+        }}
+        try {{
+            var _mmLocDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+            if (_mmLocDesc && _mmLocDesc.set) {{
+                Object.defineProperty(Location.prototype, 'href', {{
+                    get: _mmLocDesc.get,
+                    set: function(url) {{
+                        if (_mmShouldBlockRedirect(String(url))) {{
+                            console.warn('[PolySaaS MM] BLOCKED href redirect_to loop (tok present):', url);
+                            _mmOnBlockForceAuth();
+                            return;
+                        }}
+                        _mmLocDesc.set.call(this, url);
+                    }},
+                    configurable: true,
+                }});
+            }}
+        }} catch(e) {{}}
+        try {{
+            var _mmOrigReplace = Location.prototype.replace;
+            Location.prototype.replace = function(url) {{
+                if (_mmShouldBlockRedirect(String(url))) {{
+                    console.warn('[PolySaaS MM] BLOCKED replace redirect_to loop (tok present):', url);
+                    _mmOnBlockForceAuth();
+                    return;
+                }}
+                return _mmOrigReplace.call(this, url);
+            }};
+        }} catch(e) {{}}
+        try {{
+            var _mmOrigAssign = Location.prototype.assign;
+            Location.prototype.assign = function(url) {{
+                if (_mmShouldBlockRedirect(String(url))) {{
+                    console.warn('[PolySaaS MM] BLOCKED assign redirect_to loop (tok present):', url);
+                    _mmOnBlockForceAuth();
+                    return;
+                }}
+                return _mmOrigAssign.call(this, url);
+            }};
+        }} catch(e) {{}}
+
+        // === INTERCEPT history.pushState / history.replaceState with redirect_to ===
+        // React Router (v5) uses these to change the browser URL without a page reload.
+        // When Mattermost's auth guard detects no currentUserId in Redux it calls
+        // history.replace('/?redirect_to=currentPath'). We must NOT just block —
+        // we must call replaceState with the CURRENT URL so React Router's internal
+        // location stays at the current path (not "login"), preventing the login
+        // component from rendering and doing window.location.replace(SiteURL).
+        function _mmShouldBlockHistoryNav(url) {{
+            if (!_mmTokenPresent()) return false;
+            var _hsu = String(url || '');
+            if (_hsu.indexOf('redirect_to=') >= 0) return true;
+            // Block direct /login pushes (with window.basename, React Router adds proxy prefix)
+            var _loginBase = PROXY + '/login';
+            if (_hsu === _loginBase || _hsu.startsWith(_loginBase + '?') || _hsu.startsWith(_loginBase + '/')) return true;
+            return false;
+        }}
+        try {{
+            var _hsOrigPushState = window.history.pushState;
+            var _hsOrigReplaceState = window.history.replaceState;
+            window.history.pushState = function(state, title, url) {{
+                var _hsu = String(url || '');
+                if (_mmShouldBlockHistoryNav(_hsu)) {{
+                    console.warn('[PolySaaS MM] INTERCEPTED history.pushState redirect_to → holding at current URL:', _hsu.slice(0, 80));
+                    _mmOnBlockForceAuth();
+                    // Use replaceState with current href so React Router location stays correct
+                    _hsOrigReplaceState.call(this, state, title, window.location.href);
+                    return;
+                }}
+                return _hsOrigPushState.apply(this, arguments);
+            }};
+            window.history.replaceState = function(state, title, url) {{
+                var _hsu = String(url || '');
+                if (_mmShouldBlockHistoryNav(_hsu)) {{
+                    console.warn('[PolySaaS MM] INTERCEPTED history.replaceState redirect_to → holding at current URL:', _hsu.slice(0, 80));
+                    _mmOnBlockForceAuth();
+                    // Use replaceState with current href so React Router location stays correct
+                    return _hsOrigReplaceState.call(this, state, title, window.location.href);
+                }}
+                return _hsOrigReplaceState.apply(this, arguments);
+            }};
+        }} catch(e) {{}}
+    }})();
 
     var _lsGet = Storage.prototype.getItem;
     var _lsSet = Storage.prototype.setItem;
@@ -1994,10 +2330,12 @@ try {{
         return PROXY + s;
     }}
 
-    // Write token into IndexedDB (localforage) so Mattermost's redux-persist hydration finds it.
-    // Mattermost does NOT use localStorage for persist — it uses localforage (IndexedDB).
-    // We write persist:storage with a minimal credentials slice before Mattermost reads it.
-    function _writeTokenToIDB(token) {{
+        // Write token + currentUserId into IndexedDB (localforage) so Mattermost's redux-persist
+        // hydration finds both credentials AND currentUserId.
+        // Without currentUserId in entities.users, Mattermost's auth guards redirect to login
+        // even when the token is valid.
+        // _idbCallback(optional): called after write commits (used for two-load bootstrap reload).
+        function _writeTokenToIDB(token, _idbCallback) {{
         try {{
             var _dbReq = indexedDB.open('localforage');
             _dbReq.onsuccess = function(e) {{
@@ -2005,6 +2343,7 @@ try {{
                 if (!_db.objectStoreNames.contains('keyvaluepairs')) {{
                     console.log('[PolySaaS MM IDB] keyvaluepairs store not ready — skip write');
                     try {{ _db.close(); }} catch(_c) {{}}
+                    if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
                     return;
                 }}
                 var _storeName = 'keyvaluepairs';
@@ -2020,27 +2359,41 @@ try {{
                         _existing.entities = _existing.entities || '{{}}';
                         var _entities = {{}};
                         try {{ _entities = JSON.parse(_existing.entities) || {{}}; }} catch(_ee) {{}}
+                        // Write general.credentials (auth token)
                         _entities.general = _entities.general || {{}};
                         var _general = {{}};
                         try {{ _general = typeof _entities.general === 'string' ? JSON.parse(_entities.general) : _entities.general; }} catch(_ge) {{}}
                         _general.credentials = {{ url: B, token: token }};
                         _entities.general = _general;
+                        // Write users.currentUserId (the critical auth guard check)
+                        if (MM_USER_ID) {{
+                            _entities.users = _entities.users || {{}};
+                            var _users = {{}};
+                            try {{ _users = typeof _entities.users === 'string' ? JSON.parse(_entities.users) : _entities.users; }} catch(_ue) {{}}
+                            _users.currentUserId = _users.currentUserId || MM_USER_ID;
+                            _entities.users = _users;
+                            console.log('[PolySaaS MM IDB] writing currentUserId=' + MM_USER_ID);
+                        }}
                         _existing.entities = JSON.stringify(_entities);
                         var _putReq = _store.put(JSON.stringify(_existing), 'persist:storage');
                         _putReq.onsuccess = function() {{
-                            console.log('[PolySaaS MM IDB] persist:storage written with token len=' + token.length);
+                            console.log('[PolySaaS MM IDB] persist:storage written with token len=' + token.length + (MM_USER_ID ? ' + currentUserId' : ''));
+                            if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
                         }};
                         _putReq.onerror = function(pe) {{
                             console.log('[PolySaaS MM IDB] put error:', pe.target.error);
+                            if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
                         }};
                     }};
                     _getReq.onerror = function(ge) {{
                         console.log('[PolySaaS MM IDB] get error:', ge.target.error);
+                        if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
                     }};
-                }} catch(_txe) {{ console.log('[PolySaaS MM IDB] tx error:', _txe); }}
+                }} catch(_txe) {{ console.log('[PolySaaS MM IDB] tx error:', _txe); if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}} }}
             }};
             _dbReq.onerror = function(e) {{
                 console.log('[PolySaaS MM IDB] open error:', e.target.error);
+                if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
             }};
             _dbReq.onupgradeneeded = function(e) {{
                 var _db2 = e.target.result;
@@ -2052,11 +2405,9 @@ try {{
         }} catch(_idbe) {{ console.log('[PolySaaS MM IDB] error:', _idbe); }}
     }}
 
-    // Cookie + localStorage fallback (server-side fetch interceptor still injects MM-Auth-Token header)
+    // Cookie + localStorage setup (server-side fetch interceptor still injects MM-Auth-Token header)
     if (MMAUTHTOKEN) {{
-        // Write into IndexedDB so Mattermost's localforage/redux-persist hydration finds the token
-        _writeTokenToIDB(MMAUTHTOKEN);
-        // Also set localStorage keys as secondary fallback
+        // Always set localStorage and cookie for fetch interceptor
         try {{ localStorage.removeItem('storage:MMAUTHTOKEN'); }} catch(_e) {{}}
         try {{ localStorage.removeItem('storage:MMAuthtokenExpiry'); }} catch(_e) {{}}
         try {{ localStorage.removeItem('MMAUTHTOKEN'); }} catch(_e) {{}}
@@ -2067,7 +2418,22 @@ try {{
         }} catch(_e) {{}}
         document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; max-age=108000';
         window.MMAUTHTOKEN = MMAUTHTOKEN;
-        console.log('[PolySaaS MM] Token set in localStorage + cookie + IDB, len=' + MMAUTHTOKEN.length);
+
+        // One-time two-load bootstrap: seed IDB then reload ONCE so redux-persist reads
+        // currentUserId BEFORE LoggedIn.componentDidMount fires (fixing the hydration race).
+        // Protected by a 15s localStorage timestamp so only the FIRST page load reloads.
+        var _idbSeedTs = parseInt(localStorage.getItem('_ps_mm_idb_seed_ts') || '0');
+        var _idbFreshSeed = (Date.now() - _idbSeedTs < 15000);
+        if (!_idbFreshSeed) {{
+            console.log('[PolySaaS MM] Token set in localStorage + cookie, seeding IDB for bootstrap reload, len=' + MMAUTHTOKEN.length);
+            _writeTokenToIDB(MMAUTHTOKEN, function() {{
+                localStorage.setItem('_ps_mm_idb_seed_ts', String(Date.now()));
+                console.log('[PolySaaS MM] IDB seeded — one-time reload for authenticated Mattermost boot');
+                window.location.reload();
+            }});
+        }} else {{
+            console.log('[PolySaaS MM] Token set in localStorage + cookie (IDB seeded ' + Math.round((Date.now() - _idbSeedTs)/1000) + 's ago, skip reload), len=' + MMAUTHTOKEN.length);
+        }}
     }}
 
     console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
@@ -2156,27 +2522,36 @@ try {{
         }} catch(_e) {{ return false; }}
     }}
 
-    /* Never show native MM login — restart plugin SSO or reseed SPA with existing token. */
+    /* Never show native MM login — restart plugin SSO or reseed SPA with existing token.
+       IMPORTANT: do NOT call _writeTokenToIDB here — IDB is seeded at boot (two-load bootstrap).
+       Writing here causes a redux-persist re-hydration loop: IDB change → Mattermost re-renders
+       login form → MutationObserver fires → another IDB write → loop forever.
+    */
+    var _lastIdbEscapeTs = 0;
     function _mmEscapeNativeLogin(reason) {{
         if (document.querySelector('.mm-bridge')) return;
         _mmHideNativeLoginForm();
         var tok = (MMAUTHTOKEN || _serverToken || '').trim();
         try {{ sessionStorage.removeItem('_polysaas_mm_redirect_count'); sessionStorage.removeItem('_polysaas_mm_redirect_time'); }} catch(_rc) {{}}
         if (tok.length > 8) {{
-            console.log('[PolySaaS MM] Escape native login (' + reason + ') — token present, IDB write');
-            _writeTokenToIDB(tok);
-            if (_mmUnderPassthrough()) {{
-                console.log('[PolySaaS MM] Under passthrough URL — skip full-page reload (blank-loop fix)');
+            // Token present — write IDB so redux-persist picks up currentUserId, then stay.
+            // Throttle writes to 2s so rapid MutationObserver firings don't flood IDB.
+            var _now = Date.now();
+            if (_now - _lastIdbEscapeTs < 2000) {{
                 return;
             }}
-            window.location.replace(PROXY + '/');
+            _lastIdbEscapeTs = _now;
+            console.log('[PolySaaS MM] Escape native login (' + reason + ') — token present, IDB write + stay (basename fix)');
+            if (typeof _writeTokenToIDB === 'function') {{
+                try {{ _writeTokenToIDB(tok); }} catch(_we) {{}}
+            }}
             return;
         }}
         if (_mmUnderPassthrough() && _mmInAuthGrace()) {{
             console.log('[PolySaaS MM] Escape skipped during boot grace (no token yet)');
             return;
         }}
-        console.log('[PolySaaS MM] Escape native login (' + reason + ') — fresh plugin via mm_cleared');
+        console.log('[PolySaaS MM] Escape native login (' + reason + ') — no token, fresh plugin via mm_cleared');
         window.location.replace(PROXY + '/?mm_cleared=1');
     }}
 
@@ -2267,6 +2642,65 @@ try {{
         if (_mmNativeLoginVisible()) _mmForceBridgeLogin('dom');
     }});
     _loginObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
+
+    // ── Redux dispatch patcher ───────────────────────────────────────────────────
+    // Playbooks' registerReducer call triggers replaceReducer, which unmounts and
+    // remounts LoggedIn. On remount, currentUserId is momentarily '' → LoggedIn
+    // calls emitUserLoggedOutEvent → LOGOUT_SUCCESS clears Redux state → hung spinner.
+    // Fix: find the Redux store via React fiber tree, then wrap dispatch to silently
+    // drop LOGOUT_SUCCESS / LOGOUT_REQUEST while our passthrough token is valid.
+    // We also immediately dispatch RECEIVED_ME so currentUserId is re-established.
+    (function() {{
+        var _rdxPatched = false;
+        function _findStore() {{
+            // Method 1: window.store (older Mattermost builds)
+            if (window.store && typeof window.store.dispatch === 'function') return window.store;
+            // Method 2: React fiber tree — walk from #root to find the Redux Provider
+            try {{
+                var _root = document.getElementById('root');
+                if (!_root) return null;
+                var _fk = null;
+                for (var _k in _root) {{
+                    if (_k.startsWith('__reactFiber') || _k.startsWith('_reactInternalFiber')) {{
+                        _fk = _k; break;
+                    }}
+                }}
+                if (!_fk) return null;
+                var _node = _root[_fk];
+                while (_node) {{
+                    var _pp = _node.pendingProps || (_node.memoizedProps);
+                    if (_pp && _pp.store && typeof _pp.store.dispatch === 'function') return _pp.store;
+                    _node = _node.return;
+                }}
+            }} catch(_fe) {{}}
+            return null;
+        }}
+        function _tryPatch() {{
+            if (_rdxPatched || !_mmTokenPresent()) return;
+            var _s = _findStore();
+            if (!_s) return;
+            var _orig = _s.dispatch.bind(_s);
+            _s.dispatch = function(action) {{
+                if (action && typeof action.type === 'string') {{
+                    var _t = action.type;
+                    if ((_t === 'LOGOUT_SUCCESS' || _t === 'LOGOUT_REQUEST' ||
+                         _t === 'MANUAL_LOGOUT_USER_SUCCESS') && _mmTokenPresent()) {{
+                        console.log('[PolySaaS MM] BLOCKED Redux dispatch: ' + _t + ' — token valid');
+                        return action;
+                    }}
+                }}
+                return _orig(action);
+            }};
+            _rdxPatched = true;
+            console.log('[PolySaaS MM] Redux dispatch patched — LOGOUT blocked, user=' + MM_USER_ID);
+        }}
+        var _rdxPollInterval = setInterval(function() {{
+            _tryPatch();
+            if (_rdxPatched) clearInterval(_rdxPollInterval);
+        }}, 50);
+        setTimeout(function() {{ clearInterval(_rdxPollInterval); }}, 10000);
+    }})();
+    // ── end Redux dispatch patcher ───────────────────────────────────────────────
 
     window.__webpack_public_path__ = B + '/static/';
     window.basename = PROXY;
@@ -2416,6 +2850,20 @@ try {{
         if (_mmIsLogoutRequest(proxiedUrl) || _mmIsLogoutRequest(original)) {{
             console.log('[PolySaaS MM] Blocked cross-tab /users/logout (noop 200)');
             return _mmNoopJsonResponse({{}});
+        }}
+        /* Intercept POST to /api/v4/teams/{id}/members — user is already provisioned as member.
+           Private teams return 403 on self-join; return fake 201 so Mattermost proceeds. */
+        if (MMAUTHTOKEN && init && (init.method || 'GET').toUpperCase() === 'POST') {{
+            var _jurl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+            if (/\/api\/v4\/teams\/[^/]+\/members/.test(_jurl)) {{
+                console.log('[PolySaaS MM] Intercepted team join POST — returning fake 201 (user is provisioned member)');
+                var _jm = _jurl.match(/\/api\/v4\/teams\/([^/?#]+)\/members/);
+                var _jtid = _jm ? _jm[1] : 'unknown';
+                return Promise.resolve(new Response(JSON.stringify({{
+                    team_id: _jtid, user_id: 'me', roles: 'team_user',
+                    scheme_user: true, scheme_guest: false, scheme_admin: false
+                }}), {{status: 201, headers: {{'Content-Type': 'application/json'}}}}));
+            }}
         }}
         /* TEAMS NOT USED (Michael) — fetch must not intercept /api/v4/teams */
         if (MMAUTHTOKEN && (_mmIsPluginAuthCheck(proxiedUrl) || _mmIsPluginAuthCheck(original))) {{
@@ -2679,8 +3127,10 @@ try {{
                 u.hostname = mmOrigin.hostname;
                 u.port = mmOrigin.port || '';
                 u.protocol = 'wss:';
-                // Add auth token to WebSocket URL query parameters
-                var token = localStorage.getItem('MMAUTHTOKEN');
+                // Add auth token to WebSocket URL query parameters.
+                // Prefer the server-injected MMAUTHTOKEN (already in global scope) so
+                // the WebSocket is authenticated on cold boot before localStorage is populated.
+                var token = MMAUTHTOKEN || localStorage.getItem('MMAUTHTOKEN');
                 if (token && !u.searchParams.has('token')) {{
                     u.searchParams.set('token', token);
                 }}
