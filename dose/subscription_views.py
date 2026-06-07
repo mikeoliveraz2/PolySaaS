@@ -427,7 +427,15 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             from io import StringIO
             out = StringIO()
             cmd = MigrateCommand(stdout=out, stderr=out, no_color=True)
-            cmd.handle(verbosity=0, run_syncdb=True)
+            from django.db import connection as _mc
+            _mc.close()
+            parser = cmd.create_parser("manage.py", "migrate")
+            _opts = vars(parser.parse_args(["--no-input", "--run-syncdb"]))
+            _opts.pop("settings", None); _opts.pop("pythonpath", None)
+            _opts.pop("traceback", None); _opts.pop("no_color", None)
+            _opts.pop("force_color", None); _opts.pop("skip_checks", None)
+            _opts["verbosity"] = 0
+            cmd.handle(**_opts)
             print(f"[MIGRATE] Done for schema={tenant.schema_name}")
             print(f"{'='*60}\n")
         except Exception as e:
@@ -611,3 +619,4 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     
         except Exception as exc:
             logger.warning("[CRED] Failed to store %s credentials in session: %s", app_key, exc)
+
