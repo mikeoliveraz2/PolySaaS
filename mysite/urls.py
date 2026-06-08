@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
 
-from dose.admin_views import pt_admin_generic_passthrough_view, mattermost_error_recover_view
+from dose.admin_views import pt_admin_generic_passthrough_view, mattermost_error_recover_view, odoo_stray_web_request_view
 from dose.polysniffer.views import mattermost_static_proxy
 
 urlpatterns = [
@@ -14,6 +14,11 @@ urlpatterns = [
     path('pt/admin/<str:endpoint>/', pt_admin_generic_passthrough_view, name='pt_admin_generic'),
     # Subpath catch-all (e.g., /pt/admin/mattermost/login, /pt/admin/mattermost/api/v4/...)
     path('pt/admin/<str:endpoint>/<path:subpath>/', pt_admin_generic_passthrough_view, name='pt_admin_generic_subpath'),
+
+    # Catch orphaned Odoo /web/* requests (e.g., /web/manifest.webmanifest, /web/assets/...)
+    # This handles URLs that aren't prefixed with /pt/admin/ but originate from Odoo's HTML
+    path('web/', odoo_stray_web_request_view, name='odoo_web_root'),
+    path('web/<path:subpath>/', odoo_stray_web_request_view, name='odoo_web_stray'),
 
     path('admin/', admin.site.urls),
     path('dose/', include('dose.urls')),

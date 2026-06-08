@@ -48,5 +48,53 @@ class OdooPassthroughHandler:
             return response
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
-        """Pass Odoo pages through unchanged for now."""
+        """Rewrite Odoo asset URLs to route through proxy prefix."""
+        import re
+        from urllib.parse import urlparse
+        
+        if not endpoint_url or not html_str:
+            return html_str
+        
+        # Derive proxy_prefix from request path
+        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
+        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+            trigger = _path_parts[2]
+        else:
+            proxy_prefix = "/pt/admin/polysaas-odoo2.onrender.com"
+            trigger = "polysaas-odoo2.onrender.com"
+        
+        # Get base origin for direct asset loading
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        
+        logger.info(f"[ODOO HANDLER] Rewriting URLs: proxy_prefix={proxy_prefix}, base_origin={base_origin}")
+        
+        # Strategy 1: Rewrite relative asset URLs (/web/assets/, /web/images/, etc.) to go THROUGH proxy
+        # This ensures all browser requests are properly tracked and can be handled by handlers
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/web/(?:assets|images|static|css|js|favicon)[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        
+        # Strategy 2: Rewrite API endpoints (/web/webclient/, /web/session/, /web/dataset/) through proxy
+        html_str = re.sub(
+            r'(src|href|action)=(["\'])(/web/webclient[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        
+        # Strategy 3: Rewrite manifest and other config files
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/web/manifest\.webmanifest[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        
+        logger.info(f"[ODOO HANDLER] URL rewriting complete")
         return html_str

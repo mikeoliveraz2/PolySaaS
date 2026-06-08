@@ -197,3 +197,53 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
 def passthrough_embed_view(request, endpoint):
     print(f"[EMBED VIEW] endpoint={endpoint}")
     return HttpResponse(f"Embed view for {endpoint} - not fully implemented yet")
+
+
+@never_cache
+@login_required
+def odoo_stray_web_request_view(request, subpath=None):
+    """
+    Catch orphaned /web/* requests (e.g., /web/manifest.webmanifest, /web/assets/...)
+    that come from Odoo's HTML but aren't prefixed with /pt/admin/{trigger}/.
+    
+    Look up the current tenant's Odoo endpoint and proxy the request to it.
+    """
+    from dose.utils import get_current_tenant
+    from dose.models import UserTenantMembership, TenantApp
+    from dose.passthrough.registry import get_handler
+    from dose.passthrough.forwarding import forward_request_standardized
+    
+    print(f"[ODOO STRAY] Caught orphaned /web request: path={request.path}, subpath={subpath}")
+    
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden("No tenant context.")
+    
+    u = request.user
+    if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
+        return HttpResponseForbidden("Access denied to this tenant.")
+    
+    # Find the Odoo TenantApp for this tenant
+    try:
+        odoo_app = TenantApp.objects.filter(
+            tenant=tenant,
+            app__app_name__icontains='odoo'
+        ).first()
+        if not odoo_app or not odoo_app.endpoint_url:
+            print(f"[ODOO STRAY] No Odoo endpoint found for tenant {tenant.slug}")
+            return HttpResponseNotFound("Odoo not configured for this tenant.")
+        
+        endpoint_url = odoo_app.endpoint_url
+        trigger = odoo_app.endpoint_url.replace('https://', '').replace('http://', '')
+        print(f"[ODOO STRAY] Found Odoo endpoint: {endpoint_url}, trigger: {trigger}")
+    except Exception as e:
+        logger.error(f"[ODOO STRAY] Error looking up Odoo endpoint: {e}")
+        return HttpResponseNotFound(f"Error resolving Odoo endpoint: {e}")
+    
+    # Get the Odoo handler
+    handler = get_handler(trigger)
+    
+    # Reconstruct the full path for forwarding
+    # The request.path is /web/... so we just forward it as-is
+    print(f"[ODOO STRAY] Forwarding {request.path} to {endpoint_url}")
+    return forward_request_standardized(request, endpoint_url, handler=handler, endpoint=trigger, trigger=trigger)
