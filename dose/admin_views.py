@@ -164,6 +164,8 @@ def mattermost_error_recover_view(request):
 def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
     """Main clean passthrough view"""
     print(f"[PASSTHROUGH VIEW] endpoint={endpoint}, subpath={subpath}, path={request.path}")
+    with open('/tmp/odoo_view_debug.log', 'a') as f:
+        f.write(f"[VIEW] Called with endpoint={endpoint}, subpath={subpath}\n")
 
     from dose.utils import get_current_tenant
     from dose.models import UserTenantMembership, PassThroughEndpoint

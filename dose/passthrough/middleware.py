@@ -22,7 +22,9 @@ def run_pt_admin_passthrough_core(request):
     Returns HttpResponse, or None to let URLconf continue (static proxy, building pen).
     Caller must already enforce auth, tenant, and membership.
     """
-    print(f"\n[PT-CORE-ENTRY] run_pt_admin_passthrough_core - path={request.path_info}, method={request.method}")
+    import sys
+    print(f"\n🔥🔥🔥 [PT-CORE-ENTRY] run_pt_admin_passthrough_core - path={request.path_info}, method={request.method}", file=sys.stderr)
+    sys.stderr.flush()
     path = request.path_info
     if pt_admin_core_delegated_to_urlconf(request, path):
         print(f"[PT-CORE] Delegate to URLconf (handler): {path}")

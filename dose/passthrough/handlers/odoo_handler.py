@@ -85,13 +85,73 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             print(f"[ODOO ROOT] Wrap failed: {e}")
             return response
 
+    def get_client_side_shim(self, proxy_prefix):
+        """Return a client-side JavaScript shim that rewrites fetch/XHR URLs to go through proxy."""
+        return f"""
+        <script>
+        (function() {{
+            var PROXY_PREFIX = "{proxy_prefix}";
+            var ODOO_PATHS = ['/web', '/odoo', '/report', '/download', '/api', '/base', '/bus'];
+            
+            function shouldRewriteUrl(url) {{
+                if (!url) return false;
+                if (url.startsWith(PROXY_PREFIX)) return false; // Already proxied
+                if (url.startsWith('http://') || url.startsWith('https://')) return false; // External
+                for (var i = 0; i < ODOO_PATHS.length; i++) {{
+                    if (url.startsWith(ODOO_PATHS[i])) return true;
+                }}
+                return false;
+            }}
+            
+            function rewriteUrl(url) {{
+                if (shouldRewriteUrl(url)) {{
+                    return PROXY_PREFIX + url;
+                }}
+                return url;
+            }}
+            
+            // Patch fetch
+            var _originalFetch = window.fetch;
+            window.fetch = function(url, init) {{
+                var rewritten = rewriteUrl(url);
+                if (rewritten !== url) {{
+                    console.debug('[ODOO SHIM] fetch rewrite: ' + url + ' -> ' + rewritten);
+                }}
+                return _originalFetch.call(this, rewritten, init);
+            }};
+            
+            // Patch XMLHttpRequest
+            var _originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {{
+                var rewritten = rewriteUrl(url);
+                if (rewritten !== url) {{
+                    console.debug('[ODOO SHIM] XHR rewrite: ' + url + ' -> ' + rewritten);
+                }}
+                return _originalOpen.call(this, method, rewritten, async, user, pass);
+            }};
+            
+            console.log('[ODOO SHIM] Installed fetch/XHR rewriter. Proxy prefix: ' + PROXY_PREFIX);
+        }})();
+        </script>
+        """
+
     def process_html_response(self, html_str, request, endpoint_url=None, **context):
-        """Rewrite asset URLs to route through proxy prefix."""
+        """Inject client-side shim and rewrite asset URLs to route through proxy prefix."""
         if not html_str or not self.endpoint:
             return html_str
 
         prefix = self.proxy_prefix
         print(f"[ODOO HANDLER] Rewriting HTML with prefix={prefix}")
+
+        # Inject shim right after <head> tag opens
+        shim_js = self.get_client_side_shim(prefix)
+        html_str = re.sub(
+            r'(<head[^>]*>)',
+            rf'\1\n{shim_js}',
+            html_str,
+            count=1,
+            flags=re.IGNORECASE
+        )
 
         # Rewrite /web/*, /odoo/*, /report/*, etc. paths to go through proxy prefix
         # Captures: src/href = " or ' + absolute path starting with /
@@ -102,5 +162,5 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             flags=re.IGNORECASE
         )
 
-        print(f"[ODOO HANDLER] Rewriting complete")
+        print(f"[ODOO HANDLER] Rewriting complete (shim injected, asset URLs rewritten)")
         return html_str
