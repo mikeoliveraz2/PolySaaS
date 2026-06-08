@@ -86,6 +86,21 @@ def run_pt_admin_passthrough_core(request):
     handler = resolve_handler_for_pt_admin_trigger(trigger)
     print(f"[PT-CORE] Handler for {trigger}: {handler.__class__.__name__ if handler else None}")
 
+    # Resolve the actual PassThroughEndpoint ORM object so handler.proxy_prefix works
+    from dose.models import PassThroughEndpoint
+    from urllib.parse import urlparse
+    endpoint_obj = None
+    try:
+        host = urlparse(endpoint.endpoint_url).netloc.lower()
+        endpoint_obj = PassThroughEndpoint.objects.filter(
+            endpoint_url__icontains=host
+        ).first()
+        if endpoint_obj and handler and hasattr(handler, 'endpoint'):
+            handler.endpoint = endpoint_obj
+            print(f"[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
+    except Exception as e:
+        print(f"[PT-CORE] Could not resolve PassThroughEndpoint: {e}")
+
     print("\n" + "=" * 120)
     print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")
     print(f"TARGET URL: {endpoint.endpoint_url}")

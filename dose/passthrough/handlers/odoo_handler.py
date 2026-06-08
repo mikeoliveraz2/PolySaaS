@@ -93,9 +93,10 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         prefix = self.proxy_prefix
         print(f"[ODOO HANDLER] Rewriting HTML with prefix={prefix}")
 
-        # Rewrite /web/* paths to go through proxy prefix
+        # Rewrite /web/*, /odoo/*, /report/*, etc. paths to go through proxy prefix
+        # Captures: src/href = " or ' + absolute path starting with /
         html_str = re.sub(
-            r'(src|href)=(["\'])(/web/[^"\']*)',
+            r'(src|href)=(["\'])(/(web|odoo|report|download|base|api)[^"\']*)',
             rf'\1=\2{prefix}\3\2',
             html_str,
             flags=re.IGNORECASE
