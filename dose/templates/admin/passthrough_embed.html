@@ -28,6 +28,7 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 <style id="polysaas-passthrough-embed-shield">
 /* Drop the right-sidebar column — content takes the full available width */
 body.polysaas-passthrough-embed-page .admin-content-grid {
+    display: grid !important;
     grid-template-columns: 280px 1fr !important;
     margin-top: var(--pss-header-h, 64px) !important;
     margin-right: 0 !important;
@@ -36,6 +37,7 @@ body.polysaas-passthrough-embed-page .admin-content-grid {
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
 }
 body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
 body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
@@ -45,17 +47,47 @@ body.polysaas-passthrough-embed-page #recent-actions-sidebar {
     display: none !important;
 }
 /* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
+body.polysaas-passthrough-embed-page .content {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    max-height: 100% !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
+    overflow: hidden !important;
+}
 body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
     max-width: none !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
 }
 body.polysaas-passthrough-embed-page .content .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
 }
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+}
+body.polysaas-passthrough-embed-page .col-12.polysaas-passthrough-embed-col {
+    flex-basis: 100% !important;
+    width: 100% !important;
 }
 body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     top: var(--pss-header-h, 64px) !important;
@@ -68,18 +100,10 @@ body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     border-bottom: 3px solid #0f0;
     font-family: monospace;
     font-size: 15px;
-    margin: 0 0 20px 0;
-}
-/* The scope div fills the available viewport height. */
-.polysaas-passthrough-scope {
-    position: relative !important;
-    width: 100% !important;
-    height: calc(100vh - 170px) !important;
+    margin: 0 !important;
+    flex: 0 0 auto !important;
+    min-height: auto !important;
     overflow: visible !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    flex-direction: column !important;
-    contain: layout paint !important;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -107,10 +131,11 @@ body.polysaas-passthrough-embed-page {
     position: relative !important;
     display: block !important;
     width: 100% !important;
-    height: calc(100vh - 98px) !important;
-    min-height: 400px !important;
+    height: 100% !important;
+    min-height: 0 !important;
     overflow: hidden !important;
     background: #f0f0f0 !important;
+    box-sizing: border-box !important;
 }
 
 /* Odoo's root containers fill the scope */
