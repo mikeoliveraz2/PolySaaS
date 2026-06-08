@@ -668,14 +668,24 @@ window.location.replace('/');
             dest_rel = unquote(redirect_to)
             if not dest_rel.startswith('/'):
                 dest_rel = '/' + dest_rel
-            landing = proxy_prefix.rstrip('/') + dest_rel
+            # Strip any leading proxy-prefix repetitions to prevent path doubling.
+            # Mattermost sets redirect_to to the full browser path which already
+            # includes the proxy prefix. Prepending it again causes cascading doubles.
+            pp = proxy_prefix.rstrip('/')
+            while dest_rel.startswith(pp + '/') or dest_rel == pp:
+                dest_rel = dest_rel[len(pp):]
+                if not dest_rel.startswith('/'):
+                    dest_rel = '/' + dest_rel
+            if not dest_rel or dest_rel == '/':
+                dest_rel = '/?mm_cleared=1'
+            landing = pp + dest_rel
             resp = HttpResponseRedirect(landing)
             tok = self._get_sidebar_auth_token(request)
             if tok:
                 self._set_unified_auth_cookies(resp, tok)
             print(
-                '[MM ROOT] Post-auth grace — honoring redirect_to without fresh-login wipe:',
-                dest_rel,
+                '[MM ROOT] Post-auth grace — honoring redirect_to (after strip):',
+                dest_rel, '→', landing,
             )
             return resp
 
@@ -1334,8 +1344,14 @@ try {{
             # http://localhost:8000/api/v4/... and the shim's toProxy() converts those
             # transparently to /pt/admin/mattermost/api/v4/... Mattermost never sees /pt/admin/.
             if 'SiteURL' in data:
-                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {origin}")
-                data['SiteURL'] = origin
+                # Include proxy prefix so Mattermost's React Router uses the correct
+                # basename. Without this the SPA routes from '/' and sees the proxy
+                # path as an unknown route, triggering redirect_to loops.
+                _pparts = request.path_info.strip('/').split('/')
+                _pfx = f"/pt/admin/{_pparts[2]}" if len(_pparts) >= 3 else ''
+                new_site_url = origin + _pfx
+                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {new_site_url}")
+                data['SiteURL'] = new_site_url
             if 'WebsocketURL' in data:
                 # WebSocket must bypass Django WSGI — connect direct to upstream Mattermost.
                 upstream = (endpoint_url or '').strip().rstrip('/')
@@ -1948,7 +1964,7 @@ try {{
     window.mmBridgeInitialized = true;
 
     if (window.history && window.history.replaceState) {{
-        window.history.replaceState({}, '', window.location.pathname + '?mm_cleared=1');
+        window.history.replaceState({{}}, '', window.location.pathname + '?mm_cleared=1');
     }}
 
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
@@ -2703,8 +2719,10 @@ try {{
                 u.hostname = mmOrigin.hostname;
                 u.port = mmOrigin.port || '';
                 u.protocol = 'wss:';
-                // Add auth token to WebSocket URL query parameters
-                var token = localStorage.getItem('MMAUTHTOKEN');
+                // Add auth token to WebSocket URL query parameters.
+                // Prefer the server-injected MMAUTHTOKEN (already in global scope) so
+                // the WebSocket is authenticated on cold boot before localStorage is populated.
+                var token = MMAUTHTOKEN || localStorage.getItem('MMAUTHTOKEN');
                 if (token && !u.searchParams.has('token')) {{
                     u.searchParams.set('token', token);
                 }}

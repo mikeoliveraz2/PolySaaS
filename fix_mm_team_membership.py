@@ -1,0 +1,58 @@
+import os, django, requests, json
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+django.setup()
+
+MM_URL = "https://polysaas-mattermost.onrender.com"
+ADMIN_TOKEN = os.environ.get('MATTERMOST_ADMIN_TOKEN', 't4wxwjydqtbdjczdtaphjf5sbo')
+USER_ID = 'amd7ha74w3gxue78xzbew6b4zw'
+TEAM_ID = 'ifypw4ccu7njddt4edojdqdp6h'
+USER_TOKEN = 'jf7w6qcjhfy3xp9aiyj7q9t5jr'
+
+headers_admin = {'Authorization': f'Bearer {ADMIN_TOKEN}', 'Content-Type': 'application/json'}
+headers_user = {'Authorization': f'Bearer {USER_TOKEN}', 'Content-Type': 'application/json'}
+
+print("=== Checking current team membership ===")
+r = requests.get(f"{MM_URL}/api/v4/users/{USER_ID}/teams", headers=headers_admin, timeout=15)
+print(f"GET /users/{USER_ID}/teams -> {r.status_code}")
+if r.status_code == 200:
+    teams = r.json()
+    print(f"User is currently a member of {len(teams)} teams:")
+    for t in teams:
+        print(f"  - {t.get('name')} ({t.get('id')})")
+else:
+    print(f"Error: {r.text[:200]}")
+
+print("\n=== Adding user to team (admin token) ===")
+payload = {'team_id': TEAM_ID, 'user_id': USER_ID}
+r = requests.post(f"{MM_URL}/api/v4/teams/{TEAM_ID}/members", 
+                  headers=headers_admin, json=payload, timeout=15)
+print(f"POST /teams/{TEAM_ID}/members -> {r.status_code}")
+if r.status_code in (200, 201):
+    print("SUCCESS! User added to team.")
+    print(json.dumps(r.json(), indent=2))
+else:
+    print(f"Response: {r.text[:300]}")
+    
+    # Try checking if already a member
+    r2 = requests.get(f"{MM_URL}/api/v4/teams/{TEAM_ID}/members/{USER_ID}", 
+                      headers=headers_admin, timeout=15)
+    print(f"\nGET /teams/{TEAM_ID}/members/{USER_ID} -> {r2.status_code}")
+    if r2.status_code == 200:
+        print("User is already a member!")
+        print(json.dumps(r2.json(), indent=2))
+
+print("\n=== Re-checking team membership ===")
+r = requests.get(f"{MM_URL}/api/v4/users/{USER_ID}/teams", headers=headers_admin, timeout=15)
+print(f"GET /users/{USER_ID}/teams -> {r.status_code}")
+if r.status_code == 200:
+    teams = r.json()
+    print(f"User is now a member of {len(teams)} teams:")
+    for t in teams:
+        print(f"  - {t.get('name')} ({t.get('id')})")
+
+print("\n=== Verifying token is valid ===")
+r = requests.get(f"{MM_URL}/api/v4/users/me", headers=headers_user, timeout=15)
+print(f"GET /users/me (user token) -> {r.status_code}")
+if r.status_code == 200:
+    me = r.json()
+    print(f"User: {me.get('username')} / {me.get('email')}")

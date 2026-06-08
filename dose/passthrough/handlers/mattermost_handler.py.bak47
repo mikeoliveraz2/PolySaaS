@@ -1948,7 +1948,7 @@ try {{
     window.mmBridgeInitialized = true;
 
     if (window.history && window.history.replaceState) {{
-        window.history.replaceState({}, '', window.location.pathname + '?mm_cleared=1');
+        window.history.replaceState({{}}, '', window.location.pathname + '?mm_cleared=1');
     }}
 
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).

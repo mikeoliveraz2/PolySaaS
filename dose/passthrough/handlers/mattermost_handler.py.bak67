@@ -570,7 +570,13 @@ window.location.replace('/');
 
         body_html = self._build_token_reseed_html(proxy_prefix, token)
         if fetch_upstream_shell and endpoint_url:
+            # Allow get_upstream_cookies to inject the freshly-obtained token during
+            # the server-side shell fetch. Without this, get_upstream_cookies skips the
+            # sidebar token (because _mm_fresh_sidebar_entry is False) and the upstream
+            # fetch is unauthenticated → Mattermost returns login HTML, not the SPA.
+            request._mm_fresh_sidebar_entry = True
             raw = fetch_upstream_index_html(request, endpoint_url, '/', handler=self)
+            request._mm_fresh_sidebar_entry = False
             if raw and not str(raw).startswith('REDIRECT:'):
                 raw_is_shell = self._is_mattermost_app_shell(raw)
                 processed = self.process_html_response(
@@ -618,12 +624,14 @@ window.location.replace('/');
           - /login → PolySaaS login bridge only.
           - Root (sidebar) → always fresh login: expire all MM cookies, plugin auth, then SPA.
         """
+        print(f"\n[MM HANDLER v2 ENTRY] path={request.path_info!r} trigger={url_trigger_segment!r} method={request.method}")
         if request.method != "GET":
             return None
         trigger = url_trigger_segment.strip("/")
         proxy_prefix = f"/pt/admin/{trigger}"
         path = request.path_info.rstrip("/") or "/"
         login_path = f"{proxy_prefix}/login"
+        print(f"[MM HANDLER v2] path_clean={path!r} proxy_prefix={proxy_prefix!r} match={path == proxy_prefix}")
 
         endpoint_url = getattr(endpoint, 'endpoint_url', '') or ''
 
@@ -662,22 +670,21 @@ window.location.replace('/');
 
         redirect_to = (request.GET.get('redirect_to') or '').strip()
         if redirect_to and request.GET.get('mm_cleared') != '1' and self._is_post_sidebar_auth_grace(request):
-            from django.http import HttpResponseRedirect
-            from urllib.parse import unquote
-
-            dest_rel = unquote(redirect_to)
-            if not dest_rel.startswith('/'):
-                dest_rel = '/' + dest_rel
-            landing = proxy_prefix.rstrip('/') + dest_rel
-            resp = HttpResponseRedirect(landing)
             tok = self._get_sidebar_auth_token(request)
             if tok:
-                self._set_unified_auth_cookies(resp, tok)
-            print(
-                '[MM ROOT] Post-auth grace — honoring redirect_to without fresh-login wipe:',
-                dest_rel,
-            )
-            return resp
+                # We have a fresh valid session token — serve the SPA DIRECTLY without
+                # redirecting to /?mm_cleared=1.  Redirecting would trigger a new plugin
+                # auth call that invalidates this token before the SPA can use it, creating
+                # an infinite loop of: redirect → new token → token just invalidated → 401 → redirect.
+                print(
+                    f'[MM ROOT] Grace redirect loop intercepted — serving SPA directly '
+                    f'(tok_len={len(tok)}, no new plugin auth)',
+                )
+                return self._reseed_http_response(
+                    request, proxy_prefix, tok, trigger=trigger,
+                    fetch_upstream_shell=True,
+                )
+            # No valid token yet — fall through to the normal plugin auth flow below.
 
         def _fresh_entry_flow():
             """Wipe client state, authenticate via plugin (server-side), never reuse browser MMAUTHTOKEN."""
@@ -1334,8 +1341,14 @@ try {{
             # http://localhost:8000/api/v4/... and the shim's toProxy() converts those
             # transparently to /pt/admin/mattermost/api/v4/... Mattermost never sees /pt/admin/.
             if 'SiteURL' in data:
-                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {origin}")
-                data['SiteURL'] = origin
+                # Include proxy prefix so Mattermost's React Router uses the correct
+                # basename. Without this the SPA routes from '/' and sees the proxy
+                # path as an unknown route, triggering redirect_to loops.
+                _pparts = request.path_info.strip('/').split('/')
+                _pfx = f"/pt/admin/{_pparts[2]}" if len(_pparts) >= 3 else ''
+                new_site_url = origin + _pfx
+                print(f"[MM] Rewriting SiteURL: {data['SiteURL']} -> {new_site_url}")
+                data['SiteURL'] = new_site_url
             if 'WebsocketURL' in data:
                 # WebSocket must bypass Django WSGI — connect direct to upstream Mattermost.
                 upstream = (endpoint_url or '').strip().rstrip('/')
@@ -1948,7 +1961,7 @@ try {{
     window.mmBridgeInitialized = true;
 
     if (window.history && window.history.replaceState) {{
-        window.history.replaceState({}, '', window.location.pathname + '?mm_cleared=1');
+        window.history.replaceState({{}}, '', window.location.pathname + '?mm_cleared=1');
     }}
 
     // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
@@ -2703,8 +2716,10 @@ try {{
                 u.hostname = mmOrigin.hostname;
                 u.port = mmOrigin.port || '';
                 u.protocol = 'wss:';
-                // Add auth token to WebSocket URL query parameters
-                var token = localStorage.getItem('MMAUTHTOKEN');
+                // Add auth token to WebSocket URL query parameters.
+                // Prefer the server-injected MMAUTHTOKEN (already in global scope) so
+                // the WebSocket is authenticated on cold boot before localStorage is populated.
+                var token = MMAUTHTOKEN || localStorage.getItem('MMAUTHTOKEN');
                 if (token && !u.searchParams.has('token')) {{
                     u.searchParams.set('token', token);
                 }}

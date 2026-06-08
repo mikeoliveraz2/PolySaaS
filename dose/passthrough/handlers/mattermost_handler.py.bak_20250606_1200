@@ -1,0 +1,83 @@
+import re
+import logging
+from django.http import HttpResponse, HttpResponseRedirect
+
+logger = logging.getLogger(__name__)
+
+# ================================================
+# MATTERMOST HANDLER VERSION STAMP
+VERSION = "MM_HANDLER_v20250606_1130_FIXED"
+print(f"[MM VERSION STAMP] {VERSION} LOADED")
+# ================================================
+
+class MattermostPassthroughHandler:
+    """Minimal handler to recover silent login + admin wrap."""
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        url = str(getattr(endpoint, "endpoint_url", "") or "").lower()
+        slug = str(getattr(endpoint, "slug", "") or "").lower()
+        trigger = str(getattr(endpoint, "trigger_path", "") or "").lower()
+        return "mattermost" in url or "mattermost" in slug or "mattermost" in trigger
+
+    def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
+        if request.method != "GET":
+            return None
+
+        trigger = url_trigger_segment.strip("/")
+        print(f"[MM ROOT] FIXED - Path: {request.path_info} | Trigger: {trigger}")
+
+        # Always return a response - this was the crash cause
+        bridge_response = self._serve_silent_login_bridge(request, trigger, endpoint)
+
+        print("[MM ROOT] Wrapping in admin template...")
+        try:
+            from dose.passthrough.forwarding import _wrap_in_admin_template
+            wrapped = _wrap_in_admin_template(request, bridge_response, trigger, endpoint)
+            print("[MM ROOT] ✅ Wrapped successfully")
+            return wrapped
+        except Exception as e:
+            print(f"[MM ROOT] Wrap failed: {e}")
+            return bridge_response
+
+    def _serve_silent_login_bridge(self, request, trigger, endpoint):
+        """Simple silent login bridge."""
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Connecting to Mattermost...</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 80px; background: #1f2a44; color: #fff; }}
+                .loader {{ border: 8px solid #f3f3f3; border-top: 8px solid #1c58c7; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin: 30px auto; }}
+                @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+            </style>
+        </head>
+        <body>
+            <div class="loader"></div>
+            <h2>Connecting to Mattermost...</h2>
+            <p>Redirecting to Town Square</p>
+
+            <script>
+                // Try to use existing token or redirect to login
+                const token = localStorage.getItem('mm_auth_token') || sessionStorage.getItem('mm_auth_token') || document.cookie.match(/MMAUTHTOKEN=([^;]+)/);
+                if (token) {{
+                    window.location.href = "{endpoint.url.rstrip('/')}/channels/town-square";
+                }} else {{
+                    window.location.href = "{endpoint.url.rstrip('/')}/login";
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        return HttpResponse(html, content_type="text/html")
+
+    # Fallback methods
+    def _get_real_token(self, request):
+        return None
+
+    def _get_tenantapp_extra_config(self, request):
+        return {}
+
+    def process_html_response(self, response, request, endpoint):
+        return response
