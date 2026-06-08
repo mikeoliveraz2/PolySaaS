@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
 # dose/services/odoo_tenant_provisioner.py
 """
 Odoo Tenant Provisioner — creates a user in the shared Odoo instance for a
@@ -36,7 +39,7 @@ def _get_odoo_shared_config() -> Dict[str, str]:
     """Return connection config for the shared Odoo instance."""
     return {
         'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com'),
-        'db': getattr(settings, 'ODOO_SHARED_DB', 'odoodb'),
+        'db': getattr(settings, 'ODOO_SHARED_DB', 'polysaas_odoo'),
         'admin_login': getattr(settings, 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin'),
         'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
     }

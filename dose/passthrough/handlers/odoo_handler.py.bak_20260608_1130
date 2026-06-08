@@ -1,6 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
-
 import logging
 from django.http import HttpResponse
 
@@ -20,15 +17,7 @@ class OdooPassthroughHandler:
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment, fetch_upstream_shell=False):
         trigger = (url_trigger_segment or '').strip('/')
         proxy_prefix = f'/pt/admin/{trigger}'
-
-        # Only intercept the bare root click — any real sub-path (e.g. /web) must be
-        # proxied through to Odoo upstream, not redirected back to itself.
-        trigger_prefix = f'/pt/admin/{trigger}'
-        upstream_path = (request.path_info or '')[len(trigger_prefix):]
-        if upstream_path.strip('/'):
-            return None
-
-        print(f"[ODOO ROOT] {VERSION} - bare root, showing splash | Trigger: {trigger}")
+        print(f"[ODOO ROOT] {VERSION} - Path: {request.path_info} | Trigger: {trigger}")
 
         html = f"""<!DOCTYPE html>
 <html><head><title>Connecting to Odoo...</title>

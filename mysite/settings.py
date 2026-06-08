@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
 # Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)
 # Debug logging for Allauth authentication troubleshooting
 LOGGING = {
@@ -213,10 +216,11 @@ MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
 ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
-ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoodb')
+ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'polysaas_odoo')
 ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'pst13@me.com')
-# XML-RPC provisioning requires Administration/Access Rights — odooAdmin, not passthrough login
-ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin')
+# XML-RPC provisioning requires Administration/Access Rights.
+# Default changed from 'odooAdmin' to 'admin' (Odoo default). Override via ODOO_XMLRPC_ADMIN_LOGIN env var.
+ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'admin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')

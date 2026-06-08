@@ -31,8 +31,6 @@ def tenant_context(request):
 
 def jazzmin_theme(request):
     import logging
-    import logging
-    import logging
     themes = [
         "default","cerulean","cosmo","cyborg","darkly","flatly","journal","litera","lumen","lux","materia","minty","pulse","sandstone","simplex","sketchy","slate","solar","spacelab","superhero","united","yeti"
     ]
@@ -44,10 +42,7 @@ def jazzmin_theme(request):
         from dose.models import UserProfile
         from dose.tenant_utils import get_current_tenant
 
-        # Get the user's actual tenant, not hardcoded public
         tenant = get_current_tenant(request)
-
-        # If no tenant from session, try to get from user's existing profile
         if not tenant:
             try:
                 existing_profile = getattr(request.user, 'userprofile', None)
@@ -61,17 +56,20 @@ def jazzmin_theme(request):
         if tenant:
             try:
                 profile = UserProfile.objects.get(user=request.user, tenant=tenant)
-                theme = profile.last_selected_theme or "flatly"
                 jazzmin_light_theme = profile.light_theme or "default"
                 jazzmin_dark_theme = profile.dark_theme or ""
-                # print(f"[CTXPROC] Found profile for {request.user.username} in {tenant.name}: light={jazzmin_light_theme}, dark={jazzmin_dark_theme}")
             except UserProfile.DoesNotExist:
-                # print(f"[CTXPROC] No profile found for {request.user.username} in {tenant.name}")
                 pass
+
+        # ACTIVE THEME: read from session/cookie (not database) for scalability
+        display_mode = request.session.get('display_mode', 'light')
+        if 'display_mode' in request.COOKIES:
+            display_mode = request.COOKIES.get('display_mode', 'light')
+        # Use light/dark preference based on display_mode
+        theme = jazzmin_light_theme if display_mode == 'light' else (jazzmin_dark_theme or 'darkly')
         if theme not in themes:
             theme = "flatly"
-        logging.info(f"Jazzmin context processor: user={request.user.username}, tenant={tenant}, injected jazzmin_theme={theme}, light={jazzmin_light_theme}, dark={jazzmin_dark_theme}")
-    # print(f"[CTXPROC] Injecting jazzmin_theme={theme}, jazzmin_light_theme={jazzmin_light_theme}, jazzmin_dark_theme={jazzmin_dark_theme} for user={getattr(request.user, 'username', None)}")
+        logging.info(f"Jazzmin context processor: user={request.user.username}, display_mode={display_mode}, injected jazzmin_theme={theme}, light={jazzmin_light_theme}, dark={jazzmin_dark_theme}")
     return {
         "jazzmin_theme": theme,
         "jazzmin_light_theme": jazzmin_light_theme,
@@ -124,11 +122,16 @@ def jazzmin_ui_tweaks(request):
     if not profile:
         return context
 
-    theme = getattr(profile, "last_selected_theme", "flatly")
+    # ACTIVE THEME: read from session/cookie (not database)
+    display_mode = request.session.get('display_mode', 'light')
+    if 'display_mode' in request.COOKIES:
+        display_mode = request.COOKIES.get('display_mode', 'light')
+
     light_theme = getattr(profile, "light_theme", "flatly")
     dark_theme = getattr(profile, "dark_theme", "darkly")
     use_system_pref = getattr(profile, "use_system_pref", False)
-    logging.info(f"Jazzmin context processor: user={request.user.username}, theme={theme}, light_theme={light_theme}, dark_theme={dark_theme}, use_system_pref={use_system_pref}")
+    theme = light_theme if display_mode == 'light' else dark_theme
+    logging.info(f"Jazzmin context processor: user={request.user.username}, display_mode={display_mode}, theme={theme}, light_theme={light_theme}, dark_theme={dark_theme}, use_system_pref={use_system_pref}")
 
     # Add theme-related context
     context.update({
@@ -188,32 +191,6 @@ def admin_active_urls(request):
         return {}
 
 
-def _admin_home_sidebar_links(request):
-    """
-    HOME row for the custom admin sidebar (above passthrough).
-
-    Same as ``staff_admin_home_sidebar_links`` — data rows first, then optional DB rows.
-    """
-    from dose.admin_home_sidebar import staff_admin_home_sidebar_links
-
-    return staff_admin_home_sidebar_links(request)
-
-
-def admin_home_sidebar_links(request):
-    """
-    Inject ``admin_home_links`` after ``admin_navigation``.
-
-    Staff only: two DATA rows (Dashboard, PolySaaS AI) plus optional DB extras—see
-    ``dose.admin_home_sidebar.staff_admin_home_sidebar_links``. Independent of
-    ``admin_navigation`` DB failures.
-    """
-    from dose.admin_home_sidebar import staff_admin_home_sidebar_links
-
-    if not getattr(request, "user", None) or not request.user.is_authenticated:
-        return {"admin_home_links": []}
-    return {"admin_home_links": staff_admin_home_sidebar_links(request)}
-
-
 def admin_navigation(request):
     """
     Context processor to provide navigation data for custom admin sidebar.
@@ -265,22 +242,22 @@ def admin_navigation(request):
         except Exception:
             _subscribed = set()
 
-        def _endpoint_visible(trigger_path):
+        def _endpoint_visible(endpoint_url):
             if getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
                 return True
-            # Normalise: last path segment, lowercase, hyphens→underscores
-            # so /dose/monitor-logger/ → monitor_logger, monitor-logger → monitor_logger
-            n = trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-            return n == 'gmail' or n in _subscribed
+            # Extract hostname from endpoint_url for matching
+            from urllib.parse import urlparse
+            host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+            return 'gmail' in host or any(app in host for app in _subscribed)
 
         # Use endpoints from middleware if available (already queried and filtered)
         endpoints = []
         if hasattr(request, 'passthrough_endpoints') and request.passthrough_endpoints:
             endpoints = list(request.passthrough_endpoints)
             print(f"[ADMIN_NAV] Using {len(endpoints)} endpoints from request.passthrough_endpoints (set by middleware)")
-            # Debug: print all endpoint trigger_paths to see what we have
+            # Debug: print all endpoint URLs to see what we have
             for ep in endpoints:
-                print(f"[ADMIN_NAV]   - {ep.trigger_path} (menu_title: {ep.menu_title}, show_in_menu: {ep.show_in_menu}, is_enabled: {ep.is_enabled})")
+                print(f"[ADMIN_NAV]   - {ep.endpoint_url} (menu_title: {ep.menu_title}, show_in_menu: {ep.show_in_menu}, is_enabled: {ep.is_enabled})")
 
             # Also include endpoints that might not have menu_title (like v0)
             # The middleware excludes endpoints without menu_title, but we want to show them in sidebar
@@ -298,11 +275,11 @@ def admin_navigation(request):
                         additional_endpoints = list(additional_endpoints)
 
                         # Add endpoints that aren't already in the list
-                        existing_trigger_paths = {ep.trigger_path for ep in endpoints}
+                        existing_urls = {ep.endpoint_url for ep in endpoints}
                         for ep in additional_endpoints:
-                            if ep.trigger_path not in existing_trigger_paths:
+                            if ep.endpoint_url not in existing_urls:
                                 endpoints.append(ep)
-                                print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.trigger_path}")
+                                print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.endpoint_url}")
 
                         print(f"[ADMIN_NAV] Total endpoints after adding ones without menu_title: {len(endpoints)}")
                 except Exception as e:
@@ -354,29 +331,34 @@ def admin_navigation(request):
         seen_normalized = set()
 
         for endpoint in endpoints:
-            print(f"[ADMIN_NAV] Endpoint: {endpoint.trigger_path} - {endpoint.menu_title}")
+            print(f"[ADMIN_NAV] Endpoint: {endpoint.endpoint_url} - {endpoint.menu_title}")
 
             # Filter: only show gmail + subscribed bundled apps
-            if not _endpoint_visible(endpoint.trigger_path):
-                print(f"[ADMIN_NAV] Skipping unsubscribed: {endpoint.trigger_path}")
+            if not _endpoint_visible(endpoint.endpoint_url):
+                print(f"[ADMIN_NAV] Skipping unsubscribed: {endpoint.endpoint_url}")
                 continue
 
-            # Deduplicate by normalized trigger name (last path segment, hyphens→underscores)
-            norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
+            # Deduplicate by hostname
+            from urllib.parse import urlparse
+            norm = urlparse(endpoint.endpoint_url).netloc.lower().replace('-', '_')
             if norm in seen_normalized:
-                print(f"[ADMIN_NAV] Skipping duplicate (normalized '{norm}'): {endpoint.trigger_path}")
+                print(f"[ADMIN_NAV] Skipping duplicate (hostname '{norm}'): {endpoint.endpoint_url}")
                 continue
             seen_normalized.add(norm)
 
-            # CRITICAL: DO NOT CHANGE THIS URL PATTERN
-            # The /pt/admin/ prefix is the ONLY correct passthrough path.
-            # /admin/passthrough-embed/ was an unauthorized change that broke the system.
-            # See Process Rule 1: No Unilateral Changes
-            # Use the clean normalized name for the URL; ignore any /admin/ or /dose/ prefix
-            # stored in the trigger_path — that is middleware routing, not part of the endpoint.
-            url = f'/pt/admin/{norm}/'
+            # Build URL from the endpoint_url hostname.
+            # The hostname encodes the upstream target directly — the middleware strips
+            # /pt/admin/ and prepends https:// to reconstruct the upstream URL, so no
+            # second DB lookup is required to know where to forward the request.
+            from urllib.parse import urlparse as _urlparse
+            _parsed = _urlparse(endpoint.endpoint_url or '')
+            _hostname = _parsed.netloc
+            if not _hostname:
+                print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.endpoint_url}' — endpoint_url missing or invalid")
+                continue
+            url = f'/pt/admin/{_hostname}/'
             title = endpoint.menu_title or norm.replace('_', ' ').title()
-            print(f"[ADMIN_NAV] Passthrough service: {title} -> {url}")
+            print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")
 
             service_data = {
                 'id': endpoint.id,
@@ -449,16 +431,7 @@ def admin_navigation(request):
             })
 
         # Now process each panel with its items
-        from dose.admin_home_sidebar import is_admin_home_extension_panel
-
         for panel_info in panels_data:
-            if is_admin_home_extension_panel(panel_info["panel_title"]):
-                print(
-                    f"[ADMIN_NAV] Skip panel '{panel_info['panel_title']}' "
-                    "(items are merged into HOME after data rows)"
-                )
-                continue
-
             panel = panel_info['panel']
             panel_schema = panel_info['panel_schema']
             panel_id = panel_info['panel_id']
@@ -684,8 +657,7 @@ def admin_navigation(request):
             print(f"[ADMIN_NAV] ERROR getting navigation data (encoding issue, see log)")
         logger.error(f"[ADMIN_NAV] Error: {e}")
         logger.error(tb)
-        # Always return the expected structure, even on error. HOME links come from
-        # ``admin_home_sidebar_links`` (separate context processor).
+        # Always return the expected structure, even on error.
         return {
             'passthrough_services': [],
             'external_services': [],

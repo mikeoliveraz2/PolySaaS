@@ -1,7 +1,8 @@
 # =============================================================================
-# FROZEN — Mattermost Passthrough BINGO (2026-05-31) [shared forwarder]
-# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
-# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough Working — 2026-06-07
+# Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
+# Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md
 # Mattermost-specific behavior MUST stay in MattermostPassthroughHandler hooks only.
 # =============================================================================
 # dose/passthrough/forwarding.py — FINAL — PRINTS EVERYTHING — EXCEPTIONS SHOW TRUTH
@@ -537,12 +538,20 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             print(f"[PASSTHROUGH] BLOCKED path: {upstream_path}")
             return _JR({'jsonrpc': '2.0', 'id': None, 'result': []})
 
-        # Allow handler to intercept root/display requests before upstream fetch
-        if trigger and handler and hasattr(handler, 'try_root_display_shell_response'):
+        # Handler root/login intercept — only for upstream / (not every subpath).
+        if (
+            trigger
+            and handler
+            and hasattr(handler, 'try_root_display_shell_response')
+            and upstream_path in ('/', '')
+        ):
             shell = handler.try_root_display_shell_response(request, endpoint, trigger)
             if shell is not None:
-                print("[MM HIGH DEBUG] About to return small display shell - this is the early return winning")
-                print(f"[FORWARDER] Handler display shell returned for root — returning directly")
+                from django.http import HttpResponseRedirect as _HRD
+                if isinstance(shell, _HRD):
+                    print(f"[FORWARDER] Handler root intercept — HTTP redirect (status={shell.status_code})")
+                else:
+                    print("[FORWARDER] Handler root intercept — display shell / HTML early return")
                 return shell
 
         print(f"SENDING REQUEST TO -> {target_url}")

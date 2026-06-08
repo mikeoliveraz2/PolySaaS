@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
 from dose.utils import get_current_tenant, get_current_tenant_role
 from dose.models import UserProfile, Tenant
 from django.db.models import Count, Max, Q
@@ -357,6 +360,15 @@ def admin_navigation(request):
                 print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.endpoint_url}' — endpoint_url missing or invalid")
                 continue
             url = f'/pt/admin/{_hostname}/'
+            try:
+                from dose.passthrough.registry import resolve_handler_for_endpoint
+                _nav_handler = resolve_handler_for_endpoint(endpoint)
+                if _nav_handler and hasattr(_nav_handler, 'passthrough_menu_url'):
+                    _menu_url = _nav_handler.passthrough_menu_url(request, endpoint)
+                    if _menu_url:
+                        url = _menu_url
+            except Exception as _nav_exc:
+                print(f"[ADMIN_NAV] passthrough_menu_url hook failed: {_nav_exc}")
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")
 

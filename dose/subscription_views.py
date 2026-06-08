@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
 """
 Subscription / Stripe signup API — saga pattern.
 
@@ -476,7 +479,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     extra.update({
                         'odoo_login': user_obj.email,
                         'odoo_password': data.get('password'),  # Raw password from signup form
-                        'odoo_db': getattr(django_settings, 'ODOO_SHARED_DB', 'odoodb'),
+                        'odoo_db': getattr(django_settings, 'ODOO_SHARED_DB', 'polysaas_odoo'),
                     })
                     tapp.extra_config = extra
                     tapp.save(update_fields=['extra_config'])

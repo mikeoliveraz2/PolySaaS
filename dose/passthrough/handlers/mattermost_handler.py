@@ -1,7 +1,9 @@
 # =============================================================================
-# FROZEN — Mattermost Passthrough BINGO (2026-05-31)
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough Working — 2026-06-07
+# Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
+# Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md
 # NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
-# Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
 # =============================================================================
 # MattermostPassthroughHandler — SSO login bridge, client shim, config rewrite.
 # Endpoint-specific logic ONLY here (see passthrough-handler-isolation.mdc).
@@ -380,8 +382,9 @@ window.location.replace('/');
         """PolySaaS login bridge body (never upstream Mattermost login HTML)."""
         return self._serve_login_bridge(request, trigger, endpoint).content.decode('utf-8')
 
-    def _build_token_reseed_html(self, proxy_prefix: str, token: str, landing_path: str = None) -> str:
-        landing = landing_path or self._mm_default_landing_path(proxy_prefix)
+    def _build_token_reseed_html(self, proxy_prefix: str, token: str, landing_path: str = None,
+                                 request=None) -> str:
+        landing = landing_path or self._mm_default_landing_path(proxy_prefix, request)
         return f"""<!DOCTYPE html>
 <html><head><title>PolySaaS - Mattermost</title></head>
 <body>
@@ -399,7 +402,7 @@ window.location.replace('/');
     try {{ indexedDB.deleteDatabase('localforage'); }} catch(e) {{}}
     document.cookie = 'MMAUTHTOKEN={token}; path=/; max-age=86400; SameSite=Lax';
     document.cookie = 'mmauthtoken={token}; path=/; max-age=86400; SameSite=Lax';
-    setTimeout(function() {{ window.location.href = '{landing}'; }}, 200);
+    setTimeout(function() {{ window.location.replace('{landing}'); }}, 200);
 </script>
 <p>Redirecting to Mattermost...</p>
 </body></html>"""
@@ -491,11 +494,64 @@ window.location.replace('/');
             return True
         return bool(getattr(request, '_mm_fresh_sidebar_entry', False))
 
-    def _mm_default_landing_path(self, proxy_prefix: str) -> str:
-        # Land on / like direct Mattermost login (generic app shell in page source).
-        # Do NOT force /channels/town-square — that was added mistakenly because /api/v4/teams exists.
-        # Mattermost routes internally after boot; plugin_booted=1 causes SPA redirect loops.
+    def _mm_team_name_from_request(self, request) -> str:
+        extra = self._get_tenantapp_extra_config(request) or {}
+        return (extra.get('mm_team_name') or extra.get('team_name') or '').strip()
+
+    def _mm_default_landing_path(self, proxy_prefix: str, request=None) -> str:
+        team = self._mm_team_name_from_request(request) if request else ''
+        if team:
+            return f"{proxy_prefix.rstrip('/')}/{team}/channels/town-square"
         return f"{proxy_prefix.rstrip('/')}/"
+
+    def _mm_upstream_landing_subpath(self, request, proxy_prefix: str) -> str:
+        landing = self._mm_default_landing_path(proxy_prefix, request)
+        prefix = proxy_prefix.rstrip('/')
+        if landing.startswith(prefix):
+            sub = landing[len(prefix):] or '/'
+            return sub if sub.startswith('/') else f'/{sub}'
+        return '/'
+
+    def passthrough_menu_url(self, request, endpoint) -> str | None:
+        """Sidebar link: skip proxy root when team landing is known."""
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(getattr(endpoint, 'endpoint_url', '') or '').netloc
+            if not host:
+                return None
+            proxy_prefix = f'/pt/admin/{host}'
+            landing = self._mm_default_landing_path(proxy_prefix, request)
+            if landing.rstrip('/') != proxy_prefix.rstrip('/'):
+                return landing
+        except Exception:
+            pass
+        return None
+
+    def _mm_redirect_to_landing_response(self, request, proxy_prefix: str, token: str,
+                                         trigger=None, endpoint=None):
+        landing = self._mm_default_landing_path(proxy_prefix, request)
+        if landing.rstrip('/') == proxy_prefix.rstrip('/'):
+            return None
+        from django.http import HttpResponseRedirect
+
+        print(f'[MM ROOT] Server redirect to landing: {landing}')
+        resp = HttpResponseRedirect(landing)
+        self._set_unified_auth_cookies(resp, token)
+        self._publish_sidebar_auth_token(request, token)
+        # Never wrap 302 in admin template — browser must follow Location header.
+        return resp
+
+    def _mm_serve_authenticated_shell(self, request, proxy_prefix: str, token: str,
+                                      trigger=None, endpoint=None, *, fetch_upstream_shell=True):
+        redirect = self._mm_redirect_to_landing_response(
+            request, proxy_prefix, token, trigger=trigger, endpoint=endpoint,
+        )
+        if redirect is not None:
+            return redirect
+        return self._reseed_http_response(
+            request, proxy_prefix, token, trigger=trigger,
+            fetch_upstream_shell=fetch_upstream_shell,
+        )
 
     def _get_mm_admin_token(self):
         """Load the Mattermost admin token — checks env var first, then Parameter model."""
@@ -644,14 +700,17 @@ window.location.replace('/');
         self._publish_sidebar_auth_token(request, token)
         request._mm_fresh_sidebar_entry = False
 
-        body_html = self._build_token_reseed_html(proxy_prefix, token)
+        body_html = self._build_token_reseed_html(proxy_prefix, token, request=request)
         if fetch_upstream_shell and endpoint_url:
             # Allow get_upstream_cookies to inject the freshly-obtained token during
             # the server-side shell fetch. Without this, get_upstream_cookies skips the
             # sidebar token (because _mm_fresh_sidebar_entry is False) and the upstream
             # fetch is unauthenticated → Mattermost returns login HTML, not the SPA.
             request._mm_fresh_sidebar_entry = True
-            raw = fetch_upstream_index_html(request, endpoint_url, '/', handler=self)
+            landing_subpath = self._mm_upstream_landing_subpath(request, proxy_prefix)
+            raw = fetch_upstream_index_html(
+                request, endpoint_url, landing_subpath, handler=self,
+            )
             request._mm_fresh_sidebar_entry = False
             if raw and not str(raw).startswith('REDIRECT:'):
                 raw_is_shell = self._is_mattermost_app_shell(raw)
@@ -765,9 +824,7 @@ window.location.replace('/');
         redirect_to = (request.GET.get('redirect_to') or '').strip()
         if redirect_to:
             # Mattermost SPA sent ?redirect_to= (thinks user is unauthenticated).
-            # TEAMS NOT USED (Michael) — never redirect to a team URL; that causes
-            # "Team Not Found" when the provisioned slug is wrong or absent.
-            # If token is valid, serve SPA directly at root and let Mattermost route itself.
+            # If token is valid, serve authenticated shell (redirects to Town Square when provisioned).
             tok = self._get_sidebar_auth_token(request) or (
                 request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or ''
             ).strip()
@@ -775,9 +832,9 @@ window.location.replace('/');
                 print(
                     f'[MM ROOT] redirect_to — token valid, serving SPA at root (no team redirect)'
                 )
-                return self._reseed_http_response(
+                return self._mm_serve_authenticated_shell(
                     request, proxy_prefix, tok, trigger=trigger,
-                    fetch_upstream_shell=True,
+                    fetch_upstream_shell=True, endpoint=endpoint,
                 )
             # No valid token — fall through to normal plugin auth flow.
 
@@ -787,9 +844,9 @@ window.location.replace('/');
                 token = self._attempt_server_mm_session(request, endpoint_url, trigger)
                 if token:
                     print('[MM ROOT] Plugin auth OK — serving Mattermost shell (200, no redirect loop)')
-                    return self._reseed_http_response(
+                    return self._mm_serve_authenticated_shell(
                         request, proxy_prefix, token, trigger=trigger,
-                        fetch_upstream_shell=True,
+                        fetch_upstream_shell=True, endpoint=endpoint,
                     )
             print('[MM ROOT] Plugin auth failed — login bridge auto-submit')
             bridge = self._serve_login_bridge(
@@ -813,11 +870,22 @@ window.location.replace('/');
             existing_tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
             if existing_tok:
                 if self._validate_mm_token(endpoint_url, existing_tok):
+                    landing = self._mm_default_landing_path(proxy_prefix, request)
+                    if landing.rstrip('/') != proxy_prefix.rstrip('/'):
+                        print(
+                            f'[MM ROOT] Plain root — token valid — redirect to landing '
+                            f'(tok_len={len(existing_tok)})'
+                        )
+                        redirect = self._mm_redirect_to_landing_response(
+                            request, proxy_prefix, existing_tok,
+                            trigger=trigger, endpoint=endpoint,
+                        )
+                        if redirect is not None:
+                            return redirect
                     print(
-                        f'[MM ROOT] Plain root — token validated with upstream — serving SPA directly '
-                        f'(tok_len={len(existing_tok)}) — skip mm_cleared redirect'
+                        f'[MM ROOT] Plain root — token validated — serving SPA at root '
+                        f'(tok_len={len(existing_tok)})'
                     )
-                    self._mark_fresh_sidebar_entry(request)
                     return self._reseed_http_response(
                         request, proxy_prefix, existing_tok, trigger=trigger,
                         fetch_upstream_shell=True,
@@ -850,9 +918,9 @@ window.location.replace('/');
                     f'(tok_len={len(existing_tok)}) — reusing, no new plugin auth'
                 )
                 self._mark_fresh_sidebar_entry(request)
-                return self._reseed_http_response(
+                return self._mm_serve_authenticated_shell(
                     request, proxy_prefix, existing_tok, trigger=trigger,
-                    fetch_upstream_shell=True,
+                    fetch_upstream_shell=True, endpoint=endpoint,
                 )
             else:
                 print(f'[MM ROOT] mm_cleared=1 — cached token invalid — clearing, running fresh plugin auth')
@@ -941,6 +1009,9 @@ window.location.replace('/');
                     endpoint_url = f"https://{raw}".rstrip('/')
         endpoint_url_js = json.dumps(endpoint_url)
         proxy_prefix_js = json.dumps(f"/pt/admin/{trigger}")
+        landing_url_js = json.dumps(
+            self._mm_default_landing_path(f"/pt/admin/{trigger}", request)
+        )
         fresh_wipe_js = ""
         if fresh_entry:
             fresh_wipe_js = """
@@ -999,6 +1070,7 @@ try {{
     dbg('IIFE entered');
     var PROXY_PREFIX = {proxy_prefix_js};
     var MM_ORIGIN = {endpoint_url_js};
+    var LANDING_URL = {landing_url_js};
     var FRESH_ENTRY = {'true' if fresh_entry else 'false'};
 {fresh_wipe_js}
     function setStatus(msg, err) {{
@@ -1077,10 +1149,8 @@ try {{
                         }} catch(txErr) {{ dbg('IDB tx error: ' + txErr); }}
                     }};
                 }} catch(idbErr) {{ dbg('IDB write failed (non-fatal): ' + idbErr); }}
-                var baseUrl = base().replace(/\/$/, '');
-                var redirectUrl = baseUrl + '/';
-                dbg('token stored, redirecting to app root (same as direct MM login)');
-                window.location.replace(redirectUrl);
+                dbg('token stored, redirecting to landing: ' + LANDING_URL);
+                window.location.replace(LANDING_URL);
                 return;
             }}
             var msg = 'Login failed (HTTP ' + xhr.status + ')';
@@ -1134,8 +1204,8 @@ try {{
             dbg('Token exists -- validating before redirect');
             var endpointUrl = {endpoint_url_js};
             if (!endpointUrl) {{
-                dbg('No endpoint URL for token validation -- redirecting to app root');
-                window.location.replace(base().replace(/\/$/, '') + '/');
+                dbg('No endpoint URL for token validation -- redirecting to landing');
+                window.location.replace(LANDING_URL);
                 return;
             }}
             var vxhr = new XMLHttpRequest();
@@ -1144,8 +1214,8 @@ try {{
             try {{
                 vxhr.send();
                 if (vxhr.status === 200) {{
-                    dbg('Token valid -- going to app root');
-                    window.location.replace(base().replace(/\/$/, '') + '/');
+                    dbg('Token valid -- going to landing');
+                    window.location.replace(LANDING_URL);
                     return;
                 }}
                 dbg('Token invalid (HTTP ' + vxhr.status + ') -- clearing and re-authenticating');
@@ -1810,21 +1880,23 @@ try {{
         #             return recovery
 
         # Never pass native Mattermost login HTML through to the embed (process flow: bridge only).
-        try:
-            raw = getattr(resp, 'content', b'') or b''
-            if raw:
-                body_text = raw.decode(getattr(resp, 'encoding', None) or 'utf-8', errors='ignore')
-                up_path = (upstream_path or '').lower()
-                on_login_route = up_path == '/login' or up_path.startswith('/login/')
-                if on_login_route or self._contains_native_login_html(body_text):
-                    _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
-                    _trigger = _path_parts[2] if len(_path_parts) >= 3 else 'mattermost'
-                    print('[MM RESP] Blocking native/upstream login shell — plugin reseed or bridge')
-                    return self._recover_auth_from_native_login_shell(
-                        request, _trigger, getattr(request, '_passthrough_endpoint', None),
-                    )
-        except Exception as exc:
-            print(f'[MM RESP] Login-shell safety-net error: {exc}')
+        # Skip for API writes — hijacking POST JSON breaks message posting and other mutations.
+        if request.method == 'GET':
+            try:
+                raw = getattr(resp, 'content', b'') or b''
+                if raw:
+                    body_text = raw.decode(getattr(resp, 'encoding', None) or 'utf-8', errors='ignore')
+                    up_path = (upstream_path or '').lower()
+                    on_login_route = up_path == '/login' or up_path.startswith('/login/')
+                    if on_login_route or self._contains_native_login_html(body_text):
+                        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
+                        _trigger = _path_parts[2] if len(_path_parts) >= 3 else 'mattermost'
+                        print('[MM RESP] Blocking native/upstream login shell — plugin reseed or bridge')
+                        return self._recover_auth_from_native_login_shell(
+                            request, _trigger, getattr(request, '_passthrough_endpoint', None),
+                        )
+            except Exception as exc:
+                print(f'[MM RESP] Login-shell safety-net error: {exc}')
 
         # Proxy URL makes the SPA request /api/v4/teams/name/pt (etc.). Recover with the user's real team.
         _bogus_slugs = frozenset({'pt', 'admin', 'polysaas-mattermost.onrender.com'})
@@ -1976,6 +2048,12 @@ try {{
         html_str = self._strip_base_tags(html_str)
         html_str = self._strip_meta_redirects(html_str)
         html_str = self._strip_csp(html_str)
+        html_str = re.sub(
+            r'<link[^>]+rel=["\']manifest["\'][^>]*>',
+            '',
+            html_str,
+            flags=re.IGNORECASE,
+        )
 
         html_str = re.sub(
             r'(action=)(["\'])(/[^"\']*)',
@@ -2056,15 +2134,18 @@ try {{
 
         # TEAMS NOT USED (Michael) — mm_team_name intentionally not injected into shim.
         mm_user_id = ''
+        mm_team_name = ''
         try:
             extra_for_team = self._get_tenantapp_extra_config(request) or {}
             mm_user_id = extra_for_team.get('mm_user_id') or ''
+            mm_team_name = extra_for_team.get('mm_team_name') or extra_for_team.get('team_name') or ''
         except Exception:
             pass
         token_js = json.dumps(token)
         login_id_js = json.dumps(login_id)
         password_js = json.dumps(password)
         user_id_js = json.dumps(mm_user_id)
+        team_name_js = json.dumps(mm_team_name)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
         print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'} user_id={mm_user_id!r}")
@@ -2072,10 +2153,11 @@ try {{
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-        console.log('[PolySaaS MM] shim build 2026-06-07-fake-join-v16');
+        console.log('[PolySaaS MM] shim build 2026-06-08-town-square-loopfix-v23');
     var B = {base_js};
     var PROXY = {proxy_js};
     var MM_USER_ID = {user_id_js};
+    var MM_TEAM_NAME = {team_name_js};
     var O = window.location.origin;
     var _serverToken = {token_js};
     var MMAUTHTOKEN = '';
@@ -2094,6 +2176,61 @@ try {{
         var tok = (MMAUTHTOKEN || _serverToken || '').trim();
         return tok.length > 8;
     }}
+    // Prevent bare Mattermost paths (e.g. /team/channels/town-square) escaping the proxy prefix.
+    function _mmIsPolySaaSPath(p) {{
+        if (!p || p.charAt(0) !== '/') return false;
+        var _ps = ['/static/admin/', '/static/img/', '/static/vendor/', '/static/jazzmin/', '/admin/', '/dose/', '/media/', '/accounts/', '/pt/', '/favicon'];
+        for (var _i = 0; _i < _ps.length; _i++) {{
+            if (p.indexOf(_ps[_i]) === 0) return true;
+        }}
+        // Jazzmin static accidentally prefixed with PROXY (shim rewrote /static/vendor/…)
+        if (PROXY && p.indexOf(PROXY + '/static/') === 0) return true;
+        return false;
+    }}
+    function _mmStripProxyFromPolyStatic(s) {{
+        if (typeof s !== 'string' || !s || !PROXY) return s;
+        var _ps = ['/static/vendor/', '/static/admin/', '/static/jazzmin/', '/static/img/'];
+        for (var _i = 0; _i < _ps.length; _i++) {{
+            if (s.indexOf(PROXY + _ps[_i]) === 0) return s.slice(PROXY.length);
+        }}
+        return s;
+    }}
+    function _mmEnsureProxyUrl(url) {{
+        if (url == null || url === '') return url;
+        var s = String(url);
+        try {{
+            var u = new URL(s, window.location.origin);
+            if (u.origin !== window.location.origin) return s;
+            var p = u.pathname;
+            if (p === PROXY || p.indexOf(PROXY + '/') === 0) return s;
+            if (_mmIsPolySaaSPath(p)) return s;
+            if (p.charAt(0) === '/') {{
+                var fixed = PROXY + p + u.search + u.hash;
+                if (fixed !== s) {{
+                    console.log('[PolySaaS MM] Rewrote bare nav URL:', p, '->', PROXY + p);
+                }}
+                return fixed;
+            }}
+        }} catch(_eu) {{}}
+        return s;
+    }}
+
+    // Seed cookies from server token BEFORE boot auth gate (302 landing loads may not have cookies yet).
+    if (_serverToken && String(_serverToken).length > 8) {{
+        MMAUTHTOKEN = _serverToken;
+        try {{
+            document.cookie = 'mmauthtoken=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
+            document.cookie = 'MMAUTHTOKEN=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
+        }} catch(_ck0) {{}}
+    }}
+
+    function _mmIsLandingPath() {{
+        if (!MM_TEAM_NAME) return false;
+        try {{
+            var p = (window.location && window.location.pathname) || '';
+            return p.indexOf(PROXY + '/' + MM_TEAM_NAME + '/channels/') === 0;
+        }} catch(_lp) {{ return false; }}
+    }}
 
     // === STRONG POLYSAAS REDIRECT LOOP PROTECTION ===
     const urlParams = new URLSearchParams(window.location.search);
@@ -2102,14 +2239,13 @@ try {{
 
     const hasToken = localStorage.getItem('MMAUTHTOKEN') || 
                      document.cookie.includes('MMAUTHTOKEN') ||
-                     window.mmBridgeInitialized === true;
+                     window.mmBridgeInitialized === true ||
+                     (_serverToken && String(_serverToken).length > 8);
 
     var _psSessionInited = false;
     try {{ _psSessionInited = sessionStorage.getItem('_ps_mm_session_init') === '1'; }} catch(e) {{}}
 
-    if (!hasClearFlag && !_psSessionInited && !hasToken) {{
-        // TEAMS NOT USED (Michael) — never navigate to a team URL; always use mm_cleared
-        // and let Mattermost route itself after authentication.
+    if (!hasClearFlag && !_psSessionInited && !hasToken && !_mmIsLandingPath()) {{
         console.log('%c[PolySaaS Shim] No auth → mm_cleared re-auth', 'color:#f59e0b;font-weight:bold');
         try {{ sessionStorage.setItem('_ps_mm_session_init', '1'); }} catch(e) {{}}
         window.location.replace(PROXY + '/?mm_cleared=1');
@@ -2132,10 +2268,9 @@ try {{
         }}
     }}, 500);
 
-    // Loading timeout: after 7s still at root, fire a popstate to nudge React Router.
-    // Mattermost routes itself to the user's default team/channel after loadMe() — we never
-    // push a specific team URL (that caused "Team Not Found" when the slug was wrong).
+    // Loading timeout: nudge React Router only when no provisioned team landing target.
     setTimeout(function() {{
+        if (MM_TEAM_NAME) return;
         try {{
             var _curPath = window.location.pathname;
             var _isRoot = (_curPath === PROXY || _curPath === PROXY + '/');
@@ -2146,13 +2281,23 @@ try {{
         }} catch(_te) {{}}
     }}, 7000);
 
-    // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
-    if (_serverToken) {{
-        MMAUTHTOKEN = _serverToken;
+    // Client auto-land only when server did not already 302 us to Town Square.
+    function _mmAutoLandTownSquare() {{
+        if (!MM_TEAM_NAME || !_mmTokenPresent() || _mmIsLandingPath()) return;
         try {{
-            document.cookie = 'mmauthtoken=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
-            document.cookie = 'MMAUTHTOKEN=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
-        }} catch(_ck) {{}}
+            var p = window.location.pathname;
+            var isRoot = (p === PROXY || p === PROXY + '/');
+            if (!isRoot) return;
+            var target = PROXY + '/' + MM_TEAM_NAME + '/channels/town-square';
+            console.log('[PolySaaS MM] Auto-land Town Square (client fallback):', target);
+            window.location.replace(target);
+        }} catch(_al) {{}}
+    }}
+    setTimeout(_mmAutoLandTownSquare, 400);
+
+    // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
+    if (_serverToken && !MMAUTHTOKEN) {{
+        MMAUTHTOKEN = _serverToken;
     }}
     if (!MMAUTHTOKEN) {{
         try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
@@ -2187,6 +2332,25 @@ try {{
             }} catch(_bru2) {{}}
             return false;
         }}
+        function _mmLandingUrl() {{
+            if (MM_TEAM_NAME) {{
+                return PROXY + '/' + MM_TEAM_NAME + '/channels/town-square';
+            }}
+            return PROXY + '/';
+        }}
+        function _mmRouterHoldUrl() {{
+            if (MM_TEAM_NAME) {{
+                return _mmIsLandingPath() ? window.location.href : _mmLandingUrl();
+            }}
+            return window.location.href;
+        }}
+        function _mmNudgeReactRouter() {{
+            try {{
+                setTimeout(function() {{
+                    window.dispatchEvent(new PopStateEvent('popstate', {{ state: {{}}, bubbles: true }}));
+                }}, 0);
+            }} catch(_nr) {{}}
+        }}
         function _mmOnBlockForceAuth() {{
             // Aggressively re-write token to all storage layers so Mattermost can boot
             var tok = (MMAUTHTOKEN || _serverToken || '').trim();
@@ -2200,6 +2364,13 @@ try {{
             if (typeof _writeTokenToIDB === 'function') {{
                 try {{ _writeTokenToIDB(tok); }} catch(e) {{}}
             }}
+            if (MM_TEAM_NAME && !_mmIsLandingPath()) {{
+                console.log('[PolySaaS MM] Blocked root nav — sending to Town Square');
+                window.location.replace(_mmLandingUrl());
+            }} else if (MM_TEAM_NAME && _mmIsLandingPath()) {{
+                console.log('[PolySaaS MM] Blocked login nav on landing — nudging React Router');
+                _mmNudgeReactRouter();
+            }}
         }}
         try {{
             var _mmLocDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
@@ -2212,7 +2383,7 @@ try {{
                             _mmOnBlockForceAuth();
                             return;
                         }}
-                        _mmLocDesc.set.call(this, url);
+                        _mmLocDesc.set.call(this, _mmEnsureProxyUrl(String(url)));
                     }},
                     configurable: true,
                 }});
@@ -2226,7 +2397,7 @@ try {{
                     _mmOnBlockForceAuth();
                     return;
                 }}
-                return _mmOrigReplace.call(this, url);
+                return _mmOrigReplace.call(this, _mmEnsureProxyUrl(String(url)));
             }};
         }} catch(e) {{}}
         try {{
@@ -2237,7 +2408,7 @@ try {{
                     _mmOnBlockForceAuth();
                     return;
                 }}
-                return _mmOrigAssign.call(this, url);
+                return _mmOrigAssign.call(this, _mmEnsureProxyUrl(String(url)));
             }};
         }} catch(e) {{}}
 
@@ -2261,25 +2432,31 @@ try {{
             var _hsOrigPushState = window.history.pushState;
             var _hsOrigReplaceState = window.history.replaceState;
             window.history.pushState = function(state, title, url) {{
+                if (url != null && url !== '') {{
+                    url = _mmEnsureProxyUrl(String(url));
+                }}
                 var _hsu = String(url || '');
                 if (_mmShouldBlockHistoryNav(_hsu)) {{
-                    console.warn('[PolySaaS MM] INTERCEPTED history.pushState redirect_to → holding at current URL:', _hsu.slice(0, 80));
+                    console.warn('[PolySaaS MM] INTERCEPTED history.pushState login/redirect_to → holding at channel URL:', _hsu.slice(0, 80));
                     _mmOnBlockForceAuth();
-                    // Use replaceState with current href so React Router location stays correct
-                    _hsOrigReplaceState.call(this, state, title, window.location.href);
+                    var _hold = _mmRouterHoldUrl();
+                    _hsOrigReplaceState.call(this, state, title, _hold);
+                    _mmNudgeReactRouter();
                     return;
                 }}
-                return _hsOrigPushState.apply(this, arguments);
+                return _hsOrigPushState.call(this, state, title, url);
             }};
             window.history.replaceState = function(state, title, url) {{
+                if (url != null && url !== '') {{
+                    url = _mmEnsureProxyUrl(String(url));
+                }}
                 var _hsu = String(url || '');
                 if (_mmShouldBlockHistoryNav(_hsu)) {{
-                    console.warn('[PolySaaS MM] INTERCEPTED history.replaceState redirect_to → holding at current URL:', _hsu.slice(0, 80));
+                    console.warn('[PolySaaS MM] INTERCEPTED history.replaceState login/redirect_to → holding at channel URL:', _hsu.slice(0, 80));
                     _mmOnBlockForceAuth();
-                    // Use replaceState with current href so React Router location stays correct
-                    return _hsOrigReplaceState.call(this, state, title, window.location.href);
+                    return _hsOrigReplaceState.call(this, state, title, _mmRouterHoldUrl());
                 }}
-                return _hsOrigReplaceState.apply(this, arguments);
+                return _hsOrigReplaceState.call(this, state, title, url);
             }};
         }} catch(e) {{}}
     }})();
@@ -2293,11 +2470,13 @@ try {{
         for (var i = 0; i < PS_PREFIXES.length; i++) {{
             if (s.startsWith(PS_PREFIXES[i])) return true;
         }}
+        if (PROXY && s.indexOf(PROXY + '/static/') === 0) return true;
         return false;
     }}
 
     function toProxy(s) {{
         if (typeof s !== 'string') return s;
+        s = _mmStripProxyFromPolyStatic(s);
         if (!s || s.startsWith('data:') || s.startsWith('blob:')) return s;
 
         // External URL → strip origin first
@@ -2323,6 +2502,7 @@ try {{
 
         if (s.charAt(0) !== '/') return s;
         if (isPolySaaSPath(s)) return s;
+        if (s.indexOf(PROXY + '/static/') === 0) return s.slice(PROXY.length);
         // Static files load directly from Mattermost; API calls proxy through Django
         if (/\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(\?|$)/i.test(s)) {{
             return B + s;
@@ -2405,6 +2585,11 @@ try {{
         }} catch(_idbe) {{ console.log('[PolySaaS MM IDB] error:', _idbe); }}
     }}
 
+    // Eager IDB seed before Mattermost bundles run (reduces login-route race on Town Square landing).
+    if (MMAUTHTOKEN && MM_USER_ID) {{
+        try {{ _writeTokenToIDB(MMAUTHTOKEN); }} catch(_eidb) {{}}
+    }}
+
     // Cookie + localStorage setup (server-side fetch interceptor still injects MM-Auth-Token header)
     if (MMAUTHTOKEN) {{
         // Always set localStorage and cookie for fetch interceptor
@@ -2424,7 +2609,12 @@ try {{
         // Protected by a 15s localStorage timestamp so only the FIRST page load reloads.
         var _idbSeedTs = parseInt(localStorage.getItem('_ps_mm_idb_seed_ts') || '0');
         var _idbFreshSeed = (Date.now() - _idbSeedTs < 15000);
-        if (!_idbFreshSeed) {{
+        if (!_idbFreshSeed && _mmIsLandingPath()) {{
+            console.log('[PolySaaS MM] Landing path — seed IDB without reload, len=' + MMAUTHTOKEN.length);
+            _writeTokenToIDB(MMAUTHTOKEN, function() {{
+                localStorage.setItem('_ps_mm_idb_seed_ts', String(Date.now()));
+            }});
+        }} else if (!_idbFreshSeed) {{
             console.log('[PolySaaS MM] Token set in localStorage + cookie, seeding IDB for bootstrap reload, len=' + MMAUTHTOKEN.length);
             _writeTokenToIDB(MMAUTHTOKEN, function() {{
                 localStorage.setItem('_ps_mm_idb_seed_ts', String(Date.now()));
@@ -2693,6 +2883,20 @@ try {{
             }};
             _rdxPatched = true;
             console.log('[PolySaaS MM] Redux dispatch patched — LOGOUT blocked, user=' + MM_USER_ID);
+            try {{
+                var _st = _s.getState && _s.getState();
+                var _cur = _st && _st.entities && _st.entities.users && _st.entities.users.currentUserId;
+                if (!_cur && MMAUTHTOKEN) {{
+                    fetch(PROXY + '/api/v4/users/me', {{
+                        headers: {{ 'Authorization': 'Bearer ' + MMAUTHTOKEN }}
+                    }}).then(function(r) {{ return r.ok ? r.json() : null; }}).then(function(me) {{
+                        if (me && me.id) {{
+                            _orig({{ type: 'RECEIVED_ME', data: me }});
+                            console.log('[PolySaaS MM] Redux RECEIVED_ME prefetched for', me.id);
+                        }}
+                    }}).catch(function() {{}});
+                }}
+            }} catch(_me) {{}}
         }}
         var _rdxPollInterval = setInterval(function() {{
             _tryPatch();

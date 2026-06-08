@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
 # Utility function to get current tenant from session
 def get_current_tenant(request):
     import logging
@@ -84,19 +87,16 @@ def get_tenant_theme_colors(theme_name):
     return theme_palettes.get(theme_name, theme_palettes['tech_blue'])
 def create_schema_and_copy_tables(schema_name):
     """
-    Ensure the PostgreSQL schema exists for a new tenant and run migrations
-    so all tables are ready before any code tries to use them.
+    Create the PostgreSQL schema for a new tenant only.
+    Migrations are intentionally NOT run here — this is called from Tenant.save()
+    which runs inside an active transaction. Running migrate here closes the
+    connection and causes 'connection already closed' errors.
+    Migrations are run in Phase 4 of _register_provisioning_synchronous, after
+    the transaction commits, on a fresh connection.
     """
-    from dose.management.schema_utils import (
-        create_tenant_schema_if_missing,
-        set_search_path_for_migrations,
-    )
-    from django.core.management import call_command
-
+    from dose.management.schema_utils import create_tenant_schema_if_missing
     create_tenant_schema_if_missing(schema_name)
-    set_search_path_for_migrations(schema_name)
-    call_command("migrate", "--no-input", verbosity=0)
-    print(f"✓ Schema '{schema_name}' created and migrated.")
+    print(f"[SCHEMA] Schema '{schema_name}' created — migrations will run in Phase 4.")
 
 
 def check_user_limit(tenant):

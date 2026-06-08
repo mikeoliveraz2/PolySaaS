@@ -1,10 +1,15 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd -->
+
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
 
 {% comment %}
-FROZEN — Mattermost Passthrough BINGO (2026-05-31)
+THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+BINGO: Mattermost SSO Passthrough Working — 2026-06-07
+Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
+Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md
 NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
-Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
 
 Passthrough: full upstream document rendered inside the content column only.
 ALL upstream HTML (head styles + body) goes in the scope div — nothing in extrahead.
@@ -368,10 +373,8 @@ body.polysaas-passthrough-embed-page {
 
         window.__psEmbedOrchBar = { updateBar: updateBar, installHistoryHooks: installHistoryHooks };
 
-        if (_isMattermostEmbed) {
-            var _orchBar = document.getElementById('polysaas-orchestration-bar');
-            if (_orchBar) _orchBar.style.display = 'none';
-        }
+        // Orchestration bar visible on ALL passthrough screens (Mattermost, Odoo, etc.)
+        // For Mattermost: shows current channel path; for Odoo: shows action path
 
         installHistoryHooks();
         updateBar();

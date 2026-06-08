@@ -409,6 +409,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         """Run provisioners inline after transaction commit; emit Django messages for user feedback."""
         from django.contrib import messages
         from dose.management.schema_utils import set_search_path_for_migrations
+        from dose.models import TenantApp
 
         tenant = Tenant.objects.get(slug=tenant_slug)
         tenant_pk = tenant.pk
@@ -426,7 +427,15 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             from io import StringIO
             out = StringIO()
             cmd = MigrateCommand(stdout=out, stderr=out, no_color=True)
-            cmd.handle(verbosity=0, run_syncdb=True)
+            from django.db import connection as _mc
+            _mc.close()
+            parser = cmd.create_parser("manage.py", "migrate")
+            _opts = vars(parser.parse_args(["--no-input", "--run-syncdb"]))
+            _opts.pop("settings", None); _opts.pop("pythonpath", None)
+            _opts.pop("traceback", None); _opts.pop("no_color", None)
+            _opts.pop("force_color", None); _opts.pop("skip_checks", None)
+            _opts["verbosity"] = 0
+            cmd.handle(**_opts)
             print(f"[MIGRATE] Done for schema={tenant.schema_name}")
             print(f"{'='*60}\n")
         except Exception as e:
@@ -451,26 +460,34 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             if not data.get(app_key):
                 continue
             kwargs = dict(base)
-            tapp = None
+            app_name = app_key.replace('enable_', '')
+            # Always create TenantApp before OAuth — OAuth failure must not skip the row
+            tapp, _ = TenantApp.objects.get_or_create(
+                tenant=tenant,
+                app_name=app_name,
+                defaults={'status': 'provisioning'},
+            )
+            kwargs['tenant_app_id'] = tapp.id
+
+            if app_key == 'enable_odoo' and user_obj:
+                try:
+                    from django.conf import settings as django_settings
+                    extra = tapp.extra_config or {}
+                    extra.update({
+                        'odoo_login': user_obj.email,
+                        'odoo_password': data.get('password'),  # Raw password from signup form
+                        'odoo_db': getattr(django_settings, 'ODOO_SHARED_DB', 'odoodb'),
+                    })
+                    tapp.extra_config = extra
+                    tapp.save(update_fields=['extra_config'])
+                except Exception as e:
+                    logger.warning("Failed to store Odoo credentials for passthrough: %s", e)
+
             try:
                 cid, csecret, tapp = register_oauth2_app_for_tenant(
-                    tenant_pk, app_key.replace('enable_', ''), user_obj,
+                    tenant_pk, app_name, user_obj,
                 )
                 kwargs.update(oauth_client_id=cid, oauth_client_secret=csecret, tenant_app_id=tapp.id)
-                # Store user credentials for passthrough prepopulation
-                if app_key == 'enable_odoo' and user_obj:
-                    try:
-                        from django.conf import settings as django_settings
-                        extra = tapp.extra_config or {}
-                        extra.update({
-                            'odoo_login': user_obj.email,
-                            'odoo_password': data.get('password'),  # Raw password from signup form
-                            'odoo_db': getattr(django_settings, 'ODOO_SHARED_DB', 'odoodb'),
-                        })
-                        tapp.extra_config = extra
-                        tapp.save(update_fields=['extra_config'])
-                    except Exception as e:
-                        logger.warning("Failed to store Odoo credentials for passthrough: %s", e)
             except Exception as e:
                 logger.warning("OAuth2 registration for %s skipped: %s", app_key, e)
 
@@ -489,7 +506,9 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             try:
                 result = provisioner(**kwargs)
                 print(f"[PROVISION-DONE] {app_key}: success={result.get('success')} error={result.get('error')}")
-                if result.get('success'):
+                tapp.refresh_from_db()
+                provision_ok = bool(result.get('success')) and tapp.status == 'active'
+                if provision_ok:
                     messages.success(request, f"{app_display} is ready!")
                     # Store credentials in encrypted session for persistent re-authentication
                     try:
@@ -500,8 +519,8 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     except Exception as cred_err:
                         logger.warning("[PROVISION] Failed to store credentials for %s: %s", app_key, cred_err)
                 else:
-                    err = result.get('error', 'Unknown error')
-                    logger.warning("[PROVISION] %s returned failure: %s", app_key, err)
+                    err = result.get('error') or tapp.last_error or 'TenantApp not active after provisioning'
+                    logger.warning("[PROVISION] %s returned failure: %s (status=%s)", app_key, err, tapp.status)
                     messages.error(request, f"{app_display} provisioning failed: {err}")
             except Exception as exc:
                 print(f"[PROVISION-CRASH] {app_key}: {exc}")
@@ -591,6 +610,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                             'username': username,
                             'password': password,
                             'email': email,
+                            'db': extra.get('odoo_db') or kwargs.get('odoo_db', ''),
                             'api_tokens': {}
                         },
                         ttl_hours=24
@@ -599,3 +619,4 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     
         except Exception as exc:
             logger.warning("[CRED] Failed to store %s credentials in session: %s", app_key, exc)
+

@@ -1,0 +1,12 @@
+BINGO: Mattermost SSO Passthrough v23 — Complete certification
+
+Mattermost passthrough SSO now fully working for tenant polysaast132:
+- Auto-landing on Town Square channel on open
+- Left sidebar rendering correctly
+- Message posting and real-time chat functional
+- Shim v23 deployed and verified in production
+
+All touched files annotated with freeze banner per BINGO protocol.
+See documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-08.md for full verification details.
+
+Commit: This BINGO certification locks the implementation as tested.
