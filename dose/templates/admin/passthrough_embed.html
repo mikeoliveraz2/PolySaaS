@@ -389,8 +389,18 @@ body.polysaas-passthrough-embed-page {
         var btn = document.getElementById('pss-insert-instruction-btn');
         if (btn) {
             btn.addEventListener('click', function() {
-                var path = pathEl ? pathEl.textContent : getOdooPath();
-                alert('Instruction will be created for action path:\n' + path + '\n\n(Feature coming soon)');
+                // Open the *standard* admin "Add Instruction" form (InstructionAdmin + InstructionForm)
+                // pre-filled with the current Action Path shown in the bar. This works for any
+                // passthrough service because the forwarding layer wraps responses in this template.
+                // Tenant context comes from the session (TenantAwareModelAdmin handles schema).
+                var path = (pathEl && pathEl.textContent && pathEl.textContent !== 'loading…')
+                    ? pathEl.textContent
+                    : getOdooPath();
+                var url = '/admin/dose/instruction/add/?requestpath=' + encodeURIComponent(path) +
+                          '&match_type=path&direction=REQ';
+                // Open in a new tab so the live passthrough SPA (Odoo/Mattermost navigation etc.) stays intact.
+                // The bar's existing 2 s polling + orchestration-navigate API will pick up the new instruction.
+                window.open(url, '_blank');
             });
         }
     })();

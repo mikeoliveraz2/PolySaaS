@@ -134,15 +134,40 @@ def select_theme(request):
 # =============================================
 # PASSTHROUGH VIEWS
 # =============================================
+@csrf_exempt
 @never_cache
 @login_required
-def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
+def mattermost_error_recover_view(request):
+    """Recover Mattermost's /error?type=team_not_found navigation into passthrough."""
+    err_type = (request.GET.get('type') or '').strip().lower()
+    referer = (request.META.get('HTTP_REFERER') or '').strip()
+
+    # Try to recover trigger from the referring passthrough URL.
+    trigger = ''
+    m = re.search(r'/pt/admin/([^/]+)/', referer)
+    if m:
+        trigger = m.group(1)
+
+    if err_type in ('team_not_found', 'not_found', 'team-not-found') and trigger:
+        target = f'/pt/admin/{trigger}/'
+        print(f"[MM ERROR RECOVER] Redirecting /error?type={err_type} -> {target}")
+        return redirect(target)
+
+    # Safe fallback when referer trigger is unavailable.
+    if trigger:
+        return redirect(f'/pt/admin/{trigger}/')
+    return redirect('/admin/')
+
+
+@never_cache
+@login_required
+def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
     """Main clean passthrough view"""
-    print(f"[PASSTHROUGH VIEW] trigger={trigger}, subpath={subpath}, path={request.path}")
+    print(f"[PASSTHROUGH VIEW] endpoint={endpoint}, subpath={subpath}, path={request.path}")
 
     from dose.utils import get_current_tenant
     from dose.models import UserTenantMembership
-    from dose.passthrough.registry import get_handler          # ← Single registry
+    from dose.passthrough.registry import get_handler
     from dose.passthrough.forwarding import forward_request_standardized
 
     tenant = get_current_tenant(request)
@@ -153,7 +178,7 @@ def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
     if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
         return HttpResponseForbidden("Access denied to this tenant.")
 
-    handler = get_handler(trigger)
+    handler = get_handler(endpoint)
 
     if handler and hasattr(handler, 'handle_request'):
         print(f"[VIEW] Using handler: {handler.__class__.__name__}")
@@ -161,13 +186,65 @@ def pt_admin_generic_passthrough_view(request, trigger, subpath=None):
         if response is not None:
             return response
 
-    print(f"[VIEW] Using generic forwarder for {trigger}")
-    return forward_request_standardized(request, subpath, handler=handler)
+    # Construct the upstream endpoint URL from the endpoint parameter
+    endpoint_url = f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint
+    print(f"[VIEW] Using generic forwarder for {endpoint} -> {endpoint_url}")
+    return forward_request_standardized(request, endpoint_url, handler=handler, endpoint=endpoint, trigger=endpoint)
 
 
 @never_cache
 @login_required
-def passthrough_embed_view(request, trigger):
-    print(f"[EMBED VIEW] trigger={trigger}")
-    # Add your embed logic here if needed, using the same registry import
-    return HttpResponse(f"Embed view for {trigger} - not fully implemented yet")
+def passthrough_embed_view(request, endpoint):
+    print(f"[EMBED VIEW] endpoint={endpoint}")
+    return HttpResponse(f"Embed view for {endpoint} - not fully implemented yet")
+
+
+@never_cache
+@login_required
+def odoo_stray_web_request_view(request, rest=''):
+    """
+    Catch orphaned /web/* requests (e.g., /web/manifest.webmanifest, /web/assets/...)
+    that come from Odoo's HTML but aren't prefixed with /pt/admin/{trigger}/.
+    
+    rest: Everything after /web (e.g., 'assets/file.css' or empty string for just /web/)
+    Look up the current tenant's Odoo endpoint and proxy the request to it.
+    """
+    from dose.utils import get_current_tenant
+    from dose.models import UserTenantMembership, TenantApp
+    from dose.passthrough.registry import get_handler
+    from dose.passthrough.forwarding import forward_request_standardized
+    
+    print(f"[ODOO STRAY] Caught orphaned /web request: path={request.path}, rest={rest}")
+    
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return HttpResponseForbidden("No tenant context.")
+    
+    u = request.user
+    if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
+        return HttpResponseForbidden("Access denied to this tenant.")
+    
+    # Find the Odoo TenantApp for this tenant
+    try:
+        odoo_app = TenantApp.objects.filter(
+            tenant=tenant,
+            app__app_name__icontains='odoo'
+        ).first()
+        if not odoo_app or not odoo_app.endpoint_url:
+            print(f"[ODOO STRAY] No Odoo endpoint found for tenant {tenant.slug}")
+            return HttpResponseNotFound("Odoo not configured for this tenant.")
+        
+        endpoint_url = odoo_app.endpoint_url
+        trigger = odoo_app.endpoint_url.replace('https://', '').replace('http://', '')
+        print(f"[ODOO STRAY] Found Odoo endpoint: {endpoint_url}, trigger: {trigger}")
+    except Exception as e:
+        logger.error(f"[ODOO STRAY] Error looking up Odoo endpoint: {e}")
+        return HttpResponseNotFound(f"Error resolving Odoo endpoint: {e}")
+    
+    # Get the Odoo handler
+    handler = get_handler(trigger)
+    
+    # Reconstruct the full path for forwarding
+    # The request.path is /web/... so we just forward it as-is
+    print(f"[ODOO STRAY] Forwarding {request.path} to {endpoint_url}")
+    return forward_request_standardized(request, endpoint_url, handler=handler, endpoint=trigger, trigger=trigger)

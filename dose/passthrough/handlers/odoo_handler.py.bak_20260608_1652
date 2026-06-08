@@ -1,0 +1,136 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
+import logging
+from django.http import HttpResponse
+
+logger = logging.getLogger(__name__)
+
+VERSION = "ODOO_SIMPLE_HANDLER_v20260608_1000"
+print(f"[ODOO HANDLER] {VERSION} LOADED - Simple clean version")
+
+
+class OdooPassthroughHandler:
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        url = (getattr(endpoint, 'endpoint_url', '') or '').lower()
+        return 'odoo' in url
+
+    def try_root_display_shell_response(self, request, endpoint, url_trigger_segment, fetch_upstream_shell=False):
+        trigger = (url_trigger_segment or '').strip('/')
+        proxy_prefix = f'/pt/admin/{trigger}'
+
+        # Only intercept the bare root click — any real sub-path (e.g. /web) must be
+        # proxied through to Odoo upstream, not redirected back to itself.
+        trigger_prefix = f'/pt/admin/{trigger}'
+        upstream_path = (request.path_info or '')[len(trigger_prefix):]
+        if upstream_path.strip('/'):
+            return None
+
+        print(f"[ODOO ROOT] {VERSION} - bare root, showing splash | Trigger: {trigger}")
+
+        html = f"""<!DOCTYPE html>
+<html><head><title>Connecting to Odoo...</title>
+<style>body{{font-family:Arial;text-align:center;padding:100px;background:#1f2a44;color:white;}}</style>
+</head><body>
+<h2>Connecting to Odoo...</h2>
+<p>Redirecting to dashboard...</p>
+<script>window.location.href = "{proxy_prefix}/web";</script>
+</body></html>"""
+
+        response = HttpResponse(html, content_type="text/html")
+        try:
+            from dose.passthrough.forwarding import _wrap_in_admin_template
+            return _wrap_in_admin_template(request, response, trigger, endpoint)
+        except Exception as e:
+            print(f"[ODOO ROOT] wrap failed: {e}")
+            return response
+
+    def should_process_html_response(self, request, upstream_path, **kwargs):
+        """Determine if we should rewrite this HTML response."""
+        print(f"[ODOO HANDLER] should_process_html_response called: upstream_path={upstream_path}, kwargs={kwargs}")
+        status_code = kwargs.get('status_code', 200)
+        content_type = kwargs.get('content_type', '')
+        
+        # Only process HTML pages, not assets or API responses
+        if status_code != 200:
+            print(f"[ODOO HANDLER] Skipping (status {status_code} != 200)")
+            return False
+        
+        ct = (content_type or "").lower()
+        if "text/html" not in ct and "application/xhtml" not in ct:
+            print(f"[ODOO HANDLER] Skipping (content_type={ct}, not HTML)")
+            return False
+        
+        # Don't process asset paths
+        if upstream_path and any(upstream_path.endswith(ext) for ext in [".js", ".css", ".png", ".jpg", ".svg"]):
+            print(f"[ODOO HANDLER] Skipping (upstream_path={upstream_path} is an asset)")
+            return False
+        
+        print(f"[ODOO HANDLER] Will process HTML at {upstream_path}")
+        return True
+
+    def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
+        """Rewrite Odoo asset URLs to route through proxy prefix."""
+        import re
+        from urllib.parse import urlparse
+        
+        print(f"[ODOO HANDLER] process_html_response called: endpoint_url={endpoint_url}, html_len={len(html_str) if html_str else 0}")
+        
+        if not endpoint_url or not html_str:
+            print(f"[ODOO HANDLER] Skipping: endpoint_url={endpoint_url}, html_str={'<empty>' if not html_str else '<present>'}")
+            return html_str
+        
+        # Derive proxy_prefix from request path
+        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
+        if len(_path_parts) >= 3 and _path_parts[0] == 'pt' and _path_parts[1] == 'admin':
+            proxy_prefix = f"/pt/admin/{_path_parts[2]}"
+            trigger = _path_parts[2]
+        else:
+            proxy_prefix = "/pt/admin/polysaas-odoo2.onrender.com"
+            trigger = "polysaas-odoo2.onrender.com"
+        
+        # Get base origin for direct asset loading
+        origin = endpoint_url.rstrip("/")
+        parsed = urlparse(origin)
+        base_origin = f"{parsed.scheme}://{parsed.netloc}"
+        
+        print(f"[ODOO HANDLER] Rewriting URLs: proxy_prefix={proxy_prefix}, trigger={trigger}, base_origin={base_origin}")
+        
+        # Strategy 1: Rewrite relative asset URLs (/web/assets/, /web/images/, etc.) to go THROUGH proxy
+        # This ensures all browser requests are properly tracked and can be handled by handlers
+        before_count = html_str.count('src="/')
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/web/(?:assets|images|static|css|js|favicon)[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        after_count = html_str.count(f'src="{proxy_prefix}')
+        print(f"[ODOO HANDLER] Strategy 1 (assets): found ~{before_count} src=/, rewritten ~{after_count}")
+        
+        # Strategy 2: Rewrite API endpoints (/web/webclient/, /web/session/, /web/dataset/) through proxy
+        before_count = html_str.count('/web/webclient')
+        html_str = re.sub(
+            r'(src|href|action)=(["\'])(/web/webclient[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        after_count = html_str.count(f'{proxy_prefix}/web/webclient')
+        print(f"[ODOO HANDLER] Strategy 2 (webclient): found {before_count}, rewritten {after_count}")
+        
+        # Strategy 3: Rewrite manifest and other config files
+        before_count = html_str.count('/web/manifest')
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/web/manifest\.webmanifest[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        after_count = html_str.count(f'{proxy_prefix}/web/manifest')
+        print(f"[ODOO HANDLER] Strategy 3 (manifest): found {before_count}, rewritten {after_count}")
+        
+        print(f"[ODOO HANDLER] URL rewriting complete")
+        return html_str

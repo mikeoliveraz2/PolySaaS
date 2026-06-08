@@ -178,7 +178,9 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
     if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
         return HttpResponseForbidden("Access denied to this tenant.")
 
-    handler = get_handler(endpoint)
+    # Use modern handler discovery system, not legacy get_handler()
+    from dose.passthrough.registry import resolve_handler_for_pt_admin_trigger
+    handler = resolve_handler_for_pt_admin_trigger(endpoint)
 
     if handler and hasattr(handler, 'handle_request'):
         print(f"[VIEW] Using handler: {handler.__class__.__name__}")
@@ -201,11 +203,12 @@ def passthrough_embed_view(request, endpoint):
 
 @never_cache
 @login_required
-def odoo_stray_web_request_view(request, subpath=None):
+def odoo_stray_web_request_view(request, rest=''):
     """
     Catch orphaned /web/* requests (e.g., /web/manifest.webmanifest, /web/assets/...)
     that come from Odoo's HTML but aren't prefixed with /pt/admin/{trigger}/.
     
+    rest: Everything after /web (e.g., 'assets/file.css' or empty string for just /web/)
     Look up the current tenant's Odoo endpoint and proxy the request to it.
     """
     from dose.utils import get_current_tenant
@@ -213,7 +216,7 @@ def odoo_stray_web_request_view(request, subpath=None):
     from dose.passthrough.registry import get_handler
     from dose.passthrough.forwarding import forward_request_standardized
     
-    print(f"[ODOO STRAY] Caught orphaned /web request: path={request.path}, subpath={subpath}")
+    print(f"[ODOO STRAY] Caught orphaned /web request: path={request.path}, rest={rest}")
     
     tenant = get_current_tenant(request)
     if not tenant:
@@ -227,14 +230,14 @@ def odoo_stray_web_request_view(request, subpath=None):
     try:
         odoo_app = TenantApp.objects.filter(
             tenant=tenant,
-            app__app_name__icontains='odoo'
+            app_name__icontains='odoo'
         ).first()
-        if not odoo_app or not odoo_app.endpoint_url:
+        if not odoo_app or not odoo_app.app_url:
             print(f"[ODOO STRAY] No Odoo endpoint found for tenant {tenant.slug}")
             return HttpResponseNotFound("Odoo not configured for this tenant.")
         
-        endpoint_url = odoo_app.endpoint_url
-        trigger = odoo_app.endpoint_url.replace('https://', '').replace('http://', '')
+        endpoint_url = odoo_app.app_url
+        trigger = odoo_app.app_url.replace('https://', '').replace('http://', '')
         print(f"[ODOO STRAY] Found Odoo endpoint: {endpoint_url}, trigger: {trigger}")
     except Exception as e:
         logger.error(f"[ODOO STRAY] Error looking up Odoo endpoint: {e}")

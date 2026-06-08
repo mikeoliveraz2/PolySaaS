@@ -15,10 +15,9 @@ urlpatterns = [
     # Subpath catch-all (e.g., /pt/admin/mattermost/login, /pt/admin/mattermost/api/v4/...)
     path('pt/admin/<str:endpoint>/<path:subpath>/', pt_admin_generic_passthrough_view, name='pt_admin_generic_subpath'),
 
-    # Catch orphaned Odoo /web/* requests — MUST come BEFORE admin/ since admin takes precedence
-    # These patterns match: /web, /web/, /web/assets/..., /web/webclient/..., /web/manifest.webmanifest, etc.
-    path('web/', odoo_stray_web_request_view, {'rest': ''}, name='odoo_web_root'),
-    re_path(r'^web/(?P<rest>.*)$', odoo_stray_web_request_view, name='odoo_web_subpath'),
+    # Catch orphaned Odoo /web/* requests using regex to handle trailing slashes flexibly
+    # Matches: /web, /web/, /web/assets/file.css, /web/webclient/load_menus/..., etc.
+    re_path(r'^web(/.*)?$', odoo_stray_web_request_view, name='odoo_web_catch_all'),
 
     path('admin/', admin.site.urls),
     path('dose/', include('dose.urls')),

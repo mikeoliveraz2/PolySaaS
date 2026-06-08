@@ -306,6 +306,22 @@ class InstructionAdmin(TenantAwareModelAdmin):
         FormWithRequest.__name__ = form_class.__name__
         return FormWithRequest
 
+    def get_changeform_initial_data(self, request):
+        """Prefill requestpath (from the passthrough embed green bar 'Action Path')
+        and provide sensible defaults so the standard Add Instruction form is
+        immediately useful when launched from any wrapped passthrough page.
+        Tenant is supplied automatically by TenantAwareModelAdmin + session.
+        """
+        initial = super().get_changeform_initial_data(request)
+        rp = request.GET.get('requestpath')
+        if rp:
+            initial['requestpath'] = rp
+        if not initial.get('match_type'):
+            initial['match_type'] = 'path'
+        if not initial.get('direction'):
+            initial['direction'] = 'REQ'
+        return initial
+
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         """Force executescript to render as <select>, not CharField text input."""
         if db_field.name == 'executescript':
