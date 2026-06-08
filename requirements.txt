@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo Asset Routing Fix — commit 34fa6a0c
 amqp==5.3.1
 asgiref==3.11.1
 beautifulsoup4==4.14.3
