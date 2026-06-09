@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo SSO Passthrough — commit (to be filled)
+# BINGO: Odoo SSO Passthrough — commit e739a38c
 
 # mysite/urls.py
 from django.contrib import admin

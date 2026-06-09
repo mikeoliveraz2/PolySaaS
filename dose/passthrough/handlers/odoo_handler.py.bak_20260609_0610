@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo Passthrough Layout Fix — 2026-06-09
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 
 import logging
 import re
@@ -50,13 +50,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         # For Odoo, wrap everything that's HTML
         print(f"[ODOO HANDLER] Wrapping in admin template")
         return True
-
-    def passthrough_embed_template_context(self, request, upstream_path, **kwargs):
-        """Provide Odoo-specific template context including the body scope flag."""
-        print(f"[ODOO HANDLER] Setting embed_enable_odoo_body_scope=True for template")
-        return {
-            'embed_enable_odoo_body_scope': True
-        }
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment, fetch_upstream_shell=False):
         """Show a splash page for bare root click, redirect to /web through proxy."""

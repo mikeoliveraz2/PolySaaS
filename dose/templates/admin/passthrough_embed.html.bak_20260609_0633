@@ -27,8 +27,7 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {{ block.super }}
 <style id="polysaas-passthrough-embed-shield">
 /* Drop the right-sidebar column — content takes the full available width */
-.admin-content-grid {
-    display: grid !important;
+body.polysaas-passthrough-embed-page .admin-content-grid {
     grid-template-columns: 280px 1fr !important;
     margin-top: var(--pss-header-h, 64px) !important;
     margin-right: 0 !important;
@@ -37,112 +36,38 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-    height: calc(100vh - var(--pss-header-h, 64px)) !important;
 }
-.admin-content-grid.sidebar-collapse,
-.polysaas-collapsed .admin-content-grid {
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
     grid-template-columns: 60px 1fr !important;
 }
-#recent-actions-sidebar {
+body.polysaas-passthrough-embed-page #recent-actions-sidebar {
     display: none !important;
 }
 /* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
-.content {
-    flex: 1 1 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    width: 100% !important;
-    max-height: 100% !important;
-    height: calc(100vh - var(--pss-header-h, 64px)) !important;
-    overflow: hidden !important;
-}
-.content .container-fluid {
+body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
     max-width: none !important;
-    flex: 1 1 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-    width: 100% !important;
 }
-.content .row {
+body.polysaas-passthrough-embed-page .content .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
     display: flex !important;
     flex-direction: column !important;
     flex: 1 1 auto !important;
-    min-height: 0 !important;
-    width: 100% !important;
 }
-/* Alternative: use grid column selector since grid IS working */
-.admin-content-grid > :nth-child(2) {
+body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
+    padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
-    width: 100% !important;
+    flex: 1 1 auto !important;
     height: 100% !important;
-    min-height: 0 !important;
 }
-/* Make ALL children of content area flex too */
-.admin-content-grid > :nth-child(2) > * {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-}
-/* And their children */
-.admin-content-grid > :nth-child(2) > * > * {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-}
-/* And their children too */
-.admin-content-grid > :nth-child(2) > * > * > * {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-}
-.polysaas-passthrough-embed-col {
-    padding: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: 0 !important;
-}
-.col-12.polysaas-passthrough-embed-col {
-    flex-basis: 100% !important;
-    width: 100% !important;
-    max-width: 100% !important;
-}
-
-/* Flex wrapper for orchestration bar + Odoo scope - maximize width and height */
-.polysaas-passthrough-embed-wrap {
-    display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: calc(100vh - var(--pss-header-h, 64px) - 20px) !important;
-    min-height: 500px !important;
-    max-height: calc(100vh - var(--pss-header-h, 64px) - 20px) !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-.admin-content-grid > .collapsible-nav {
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     top: var(--pss-header-h, 64px) !important;
     height: calc(100vh - var(--pss-header-h, 64px)) !important;
 }
-/* Orchestration bar: fixed height, doesn't grow */
 #polysaas-orchestration-bar {
     background-color: #1a1a1a;
     color: #0f0;
@@ -152,11 +77,6 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
     font-size: 15px;
     margin: 0 !important;
     flex: 0 0 auto !important;
-    min-height: auto !important;
-    overflow: visible !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -179,40 +99,36 @@ body.polysaas-passthrough-embed-page {
     height: auto !important;
 }
 
-/* ── Odoo embed scope (matches display.html flex pattern) ── */
+/* The scope is a positioned container that Odoo elements are relative to */
 .polysaas-passthrough-scope {
     position: relative !important;
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
     width: 100% !important;
-    max-width: 100% !important;
+    flex: 1 1 auto !important;
+    min-height: 400px !important;
     overflow: hidden !important;
+    background: #f0f0f0 !important;
     box-sizing: border-box !important;
-    background: #fff !important;
-    padding: 0 !important;
+}
+
+/* Odoo's root containers fill the scope */
+.polysaas-passthrough-scope #wrapwrap,
+.polysaas-passthrough-scope .o_web_client {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     margin: 0 !important;
+    padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
-}
-
-/* Odoo 17 — single wrapper child */
-.polysaas-passthrough-scope > #wrapwrap,
-.polysaas-passthrough-scope > .o_web_client {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     overflow: hidden !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* Ensure ALL direct children of scope fill width */
-.polysaas-passthrough-scope > * {
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
 }
 
 /* Odoo navbar at top */
@@ -296,11 +212,6 @@ body.polysaas-passthrough-embed-page {
 
 /* Hide the debug banner */
 .polysaas-passthrough-embed-wrap details {
-    display: none !important;
-}
-
-/* Hide PolySaaS AI dock on passthrough pages to avoid layout conflicts */
-body.polysaas-passthrough-embed-page #pssAdminAiChatDock {
     display: none !important;
 }
 </style>
