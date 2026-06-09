@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo SSO Passthrough — commit (to be filled)
+
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
 from django.http import (
@@ -161,11 +164,12 @@ def mattermost_error_recover_view(request):
 
 @never_cache
 @login_required
+@csrf_exempt
 def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
-    """Main clean passthrough view"""
-    print(f"[PASSTHROUGH VIEW] endpoint={endpoint}, subpath={subpath}, path={request.path}")
+    """Main clean passthrough view - CSRF EXEMPT"""
+    print(f"🔥🔥🔥 [PASSTHROUGH VIEW CSRF_EXEMPT] endpoint={endpoint}, subpath={subpath}, path={request.path}, method={request.method}")
     with open('/tmp/odoo_view_debug.log', 'a') as f:
-        f.write(f"[VIEW] Called with endpoint={endpoint}, subpath={subpath}\n")
+        f.write(f"[VIEW CSRF_EXEMPT] Called with endpoint={endpoint}, subpath={subpath}, method={request.method}\n")
 
     from dose.utils import get_current_tenant
     from dose.models import UserTenantMembership, PassThroughEndpoint

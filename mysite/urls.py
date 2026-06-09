@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo SSO Passthrough — commit (to be filled)
+
 # mysite/urls.py
 from django.contrib import admin
 from django.urls import path, include, re_path
@@ -15,10 +18,17 @@ urlpatterns = [
     # Subpath catch-all (e.g., /pt/admin/mattermost/login, /pt/admin/mattermost/api/v4/...)
     path('pt/admin/<str:endpoint>/<path:subpath>/', pt_admin_generic_passthrough_view, name='pt_admin_generic_subpath'),
 
-    # Catch orphaned Odoo /web/* requests — MUST come BEFORE admin/ since admin takes precedence
+    # Catch orphaned Odoo /web/* and /odoo/* requests — MUST come BEFORE admin/ since admin takes precedence
     # These patterns match: /web, /web/, /web/assets/..., /web/webclient/..., /web/manifest.webmanifest, etc.
     path('web/', odoo_stray_web_request_view, {'rest': ''}, name='odoo_web_root'),
     re_path(r'^web/(?P<rest>.*)$', odoo_stray_web_request_view, name='odoo_web_subpath'),
+    
+    # Also catch /odoo/* paths (e.g., /odoo/apps, /odoo/settings, etc.)
+    path('odoo/', odoo_stray_web_request_view, {'rest': 'apps'}, name='odoo_apps_root'),
+    re_path(r'^odoo/(?P<rest>.*)$', odoo_stray_web_request_view, name='odoo_apps_subpath'),
+    
+    # Catch bare /apps path (Odoo redirects here after login)
+    path('apps/', odoo_stray_web_request_view, {'rest': 'apps'}, name='odoo_bare_apps'),
 
     path('admin/', admin.site.urls),
     path('dose/', include('dose.urls')),

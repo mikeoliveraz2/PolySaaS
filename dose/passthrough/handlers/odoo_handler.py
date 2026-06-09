@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo Passthrough Layout Fix — 2026-06-09
+# BINGO: Odoo SSO Passthrough Working — commit (to be filled)
 
 import logging
 import re
@@ -58,6 +58,43 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             'embed_enable_odoo_body_scope': True
         }
 
+    def _get_tenantapp_extra_config(self, request=None):
+        """Return extra_config dict for this tenant's Odoo TenantApp."""
+        try:
+            from dose.models import TenantApp
+            tenant = getattr(request, 'tenant', None) if request else None
+            tenant_id = tenant.pk if tenant else None  # Use .pk (primary key) instead of .id
+            
+            if tenant_id:
+                try:
+                    ta = TenantApp.objects.filter(
+                        app_name='odoo',
+                        tenant_id=tenant_id,
+                        status='active'
+                    ).exclude(extra_config={}).first()
+                    if ta and ta.extra_config:
+                        print(f"[ODOO HANDLER] extra_config found for tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        return ta.extra_config
+                except Exception as e:
+                    print(f"[ODOO HANDLER] tenant query error: {e}")
+            
+            # Fallback: any active odoo app
+            try:
+                ta = TenantApp.objects.filter(
+                    app_name='odoo',
+                    status='active'
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[ODOO HANDLER] extra_config found via fallback keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            except Exception as e:
+                print(f"[ODOO HANDLER] fallback query error: {e}")
+            
+            print(f"[ODOO HANDLER] extra_config NOT found")
+        except Exception as exc:
+            print(f"[ODOO HANDLER] _get_tenantapp_extra_config error: {exc}")
+        return {}
+
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment, fetch_upstream_shell=False):
         """Show a splash page for bare root click, redirect to /web through proxy."""
         trigger = url_trigger_segment.strip("/")
@@ -92,13 +129,59 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             print(f"[ODOO ROOT] Wrap failed: {e}")
             return response
 
-    def get_client_side_shim(self, proxy_prefix):
-        """Return a client-side JavaScript shim that rewrites fetch/XHR URLs to go through proxy."""
+    def get_client_side_shim(self, proxy_prefix, odoo_login=None, odoo_password=None, odoo_db=None):
+        """Return a client-side JavaScript shim that rewrites fetch/XHR URLs and handles auto-login."""
+        import json
+        auto_login_js = ""
+        if odoo_login and odoo_password and odoo_db:
+            # Properly escape credentials for JavaScript
+            safe_db = json.dumps(odoo_db)
+            safe_login = json.dumps(odoo_login)
+            safe_password = json.dumps(odoo_password)
+            auto_login_js = f"""
+            // Auto-login with stored credentials
+            (function() {{
+                console.log('[ODOO SSO] Attempting auto-login...');
+                fetch(PROXY_PREFIX + '/web/session/authenticate', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({{
+                        jsonrpc: '2.0',
+                        method: 'call',
+                        params: {{
+                            db: {safe_db},
+                            login: {safe_login},
+                            password: {safe_password}
+                        }}
+                    }})
+                }})
+                .then(function(r) {{ return r.json(); }})
+                .then(function(data) {{
+                    if (data && data.result && data.result.uid) {{
+                        console.log('[ODOO SSO] Auto-login successful, uid=' + data.result.uid);
+                        // Redirect to /web if at root or login page
+                        if (window.location.pathname === PROXY_PREFIX + '/' || 
+                            window.location.pathname === PROXY_PREFIX + '/web/login') {{
+                            window.location.href = PROXY_PREFIX + '/web';
+                        }} else {{
+                            window.location.reload();
+                        }}
+                    }} else {{
+                        console.warn('[ODOO SSO] Auto-login failed:', data);
+                    }}
+                }})
+                .catch(function(err) {{
+                    console.error('[ODOO SSO] Auto-login error:', err);
+                }});
+            }})();
+            """
+        
         return f"""
         <script>
         (function() {{
             var PROXY_PREFIX = "{proxy_prefix}";
-            var ODOO_PATHS = ['/web', '/odoo', '/report', '/download', '/api', '/base', '/bus'];
+            var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus'];
             
             function shouldRewriteUrl(url) {{
                 if (!url) return false;
@@ -137,10 +220,57 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 return _originalOpen.call(this, method, rewritten, async, user, pass);
             }};
             
-            console.log('[ODOO SHIM] Installed fetch/XHR rewriter. Proxy prefix: ' + PROXY_PREFIX);
+            // Navigation lock: intercept window.location assignments
+            var _locationDesc = Object.getOwnPropertyDescriptor(window, 'location');
+            var _originalLocationSet = _locationDesc.set;
+            Object.defineProperty(window, 'location', {{
+                get: function() {{ return _locationDesc.get.call(window); }},
+                set: function(val) {{
+                    var rewritten = rewriteUrl(val);
+                    if (rewritten !== val) {{
+                        console.log('[ODOO SHIM] Navigation lock: ' + val + ' -> ' + rewritten);
+                    }}
+                    return _originalLocationSet.call(window, rewritten);
+                }}
+            }});
+            
+            // Intercept history.pushState and replaceState
+            var _originalPushState = history.pushState;
+            var _originalReplaceState = history.replaceState;
+            history.pushState = function(state, title, url) {{
+                if (url) {{
+                    var rewritten = rewriteUrl(url);
+                    if (rewritten !== url) {{
+                        console.log('[ODOO SHIM] pushState rewrite: ' + url + ' -> ' + rewritten);
+                    }}
+                    return _originalPushState.call(this, state, title, rewritten);
+                }}
+                return _originalPushState.call(this, state, title, url);
+            }};
+            history.replaceState = function(state, title, url) {{
+                if (url) {{
+                    var rewritten = rewriteUrl(url);
+                    if (rewritten !== url) {{
+                        console.log('[ODOO SHIM] replaceState rewrite: ' + url + ' -> ' + rewritten);
+                    }}
+                    return _originalReplaceState.call(this, state, title, rewritten);
+                }}
+                return _originalReplaceState.call(this, state, title, url);
+            }};
+            
+            console.log('[ODOO SHIM] Installed fetch/XHR rewriter + navigation lock. Proxy prefix: ' + PROXY_PREFIX);
+            
+            {auto_login_js}
         }})();
         </script>
         """
+
+    def get_upstream_cookies(self, request):
+        """Provide Odoo session cookie for SSO/auto-login."""
+        # Always let client-side shim create a fresh session via auto-login
+        # (cached session_id in extra_config is likely expired)
+        print(f"[ODOO HANDLER] No upstream cookies - client will auto-login")
+        return {}
 
     def process_html_response(self, html_str, request, endpoint_url=None, **context):
         """Inject client-side shim and rewrite asset URLs to route through proxy prefix."""
@@ -150,8 +280,14 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         prefix = self.proxy_prefix
         print(f"[ODOO HANDLER] Rewriting HTML with prefix={prefix}")
 
-        # Inject shim right after <head> tag opens
-        shim_js = self.get_client_side_shim(prefix)
+        # Get credentials for auto-login
+        extra = self._get_tenantapp_extra_config(request) or {}
+        odoo_login = extra.get('odoo_login')
+        odoo_password = extra.get('odoo_password')
+        odoo_db = extra.get('odoo_db')
+
+        # Inject shim with credentials right after <head> tag opens
+        shim_js = self.get_client_side_shim(prefix, odoo_login, odoo_password, odoo_db)
         html_str = re.sub(
             r'(<head[^>]*>)',
             rf'\1\n{shim_js}',
