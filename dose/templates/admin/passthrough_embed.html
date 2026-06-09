@@ -403,8 +403,46 @@ body.polysaas-passthrough-embed-page {
         var btn = document.getElementById('pss-insert-instruction-btn');
         if (btn) {
             btn.addEventListener('click', function() {
-                var path = pathEl ? pathEl.textContent : getOdooPath();
-                alert('Instruction will be created for action path:\n' + path + '\n\n(Feature coming soon)');
+                var pathEl = document.getElementById('pss-action-path');
+                var path = pathEl ? pathEl.textContent.trim() : (typeof getOdooPath === 'function' ? getOdooPath() : '');
+
+                if (!path) {
+                    showEvent('No action path found');
+                    return;
+                }
+
+                // Robust path cleaning
+                path = path.replace(/^\/+/, '').trim();
+
+                var apiUrl = '/dose/api/orchestration-instruction/' + encodeURIComponent(path) + '/';
+                console.log('[GB-ORCH-EDIT-005] Calling:', apiUrl);
+
+                fetch(apiUrl, { 
+                    method: 'GET', 
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(r => {
+                    console.log('[GB-ORCH-EDIT-005] Status:', r.status);
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    console.log('[GB-ORCH-EDIT-005] Success:', data);
+                    var isUpdate = data.mode === 'update';
+                    var title = isUpdate 
+                        ? `Update Orchestration Instruction (ID ${data.id})` 
+                        : 'Create New Orchestration Instruction';
+                    var prefill = data.instruction_text || '';
+                    var msg = `${title}\n\nAction Path: ${data.action_path}\n\nEnter/edit instruction text:`;
+                    var newText = prompt(msg, prefill);
+                    if (newText === null) return;
+                    showEvent(isUpdate ? ' Update mode ready' : ' Create mode ready');
+                })
+                .catch(err => {
+                    console.error('[GB-ORCH-EDIT-005] Error:', err);
+                    showEvent(' Failed to load instruction. Check console (F12)');
+                });
             });
         }
     })();
