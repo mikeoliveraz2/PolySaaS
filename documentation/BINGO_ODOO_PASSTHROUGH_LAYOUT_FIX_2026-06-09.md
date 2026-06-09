@@ -1,7 +1,7 @@
 # BINGO: Odoo Passthrough Layout Fix
 
 **Date:** 2026-06-09  
-**Commit:** (to be added after commit)  
+**Commit:** 8902161c  
 **Status:** ✅ VERIFIED WORKING
 
 ## Summary
