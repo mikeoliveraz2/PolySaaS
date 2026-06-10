@@ -1,0 +1,37 @@
+#!/usr/bin/env python
+"""
+Dump the actual HTML being returned from the passthrough URL
+"""
+
+import requests
+import re
+
+url = "http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square"
+
+try:
+    response = requests.get(url, timeout=15, verify=False)
+    html = response.text
+    
+    with open('D:/PolySaaS/debug_passthrough_html.txt', 'w', encoding='utf-8') as f:
+        f.write("=" * 80 + "\n")
+        f.write(f"Status: {response.status_code}\n")
+        f.write(f"Content-Type: {response.headers.get('Content-Type')}\n")
+        f.write(f"Content-Length: {len(html)}\n")
+        f.write("=" * 80 + "\n\n")
+        f.write(html)
+    
+    print(f"[OK] HTML saved to debug_passthrough_html.txt ({len(html)} bytes)")
+    print(f"\nFirst 500 chars:")
+    print(html[:500])
+    print(f"\nSearching for critical strings:")
+    print(f"  <head: {'YES' if '<head' in html.lower() else 'NO'}")
+    print(f"  <title>: {'YES' if '<title>' in html.lower() else 'NO'}")
+    print(f"  mattermost: {'YES' if 'mattermost' in html.lower() else 'NO'}")
+    print(f"  publicpathinwindowscript: {'YES' if 'publicpathinwindowscript' in html.lower() else 'NO'}")
+    print(f"  PolySaaS: {'YES' if 'PolySaaS' in html else 'NO'}")
+    print(f"  admin: {'YES' if 'admin' in html.lower() else 'NO'}")
+    
+except Exception as e:
+    print(f"Error: {e}")
+    import traceback
+    traceback.print_exc()

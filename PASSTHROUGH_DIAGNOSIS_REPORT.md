@@ -1,0 +1,49 @@
+# Mattermost Passthrough Composer Issue - DIAGNOSIS REPORT
+
+## Problem Found
+
+The Early Fetch Guard script is **NOT being injected** into the Mattermost HTML being served via passthrough.
+
+### Root Cause
+
+When accessing the passthrough URL:
+```
+http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square
+```
+
+The server is returning the **PolySaaS login page** instead of the Mattermost app shell.
+
+This means:
+1. The passthrough middleware is not being invoked
+2. The Mattermost handler is not being called
+3. The Early Fetch Guard is never injected
+
+### Why This Happens
+
+The passthrough endpoint requires the user to be **authenticated in PolySaaS first**. When accessing the URL without an active PolySaaS session, Django redirects to the login page.
+
+## Next Steps to Test
+
+1. **Log in to PolySaaS** using your credentials (e.g., polysaast150 / PolySaaS2026)
+2. **Then** try accessing the passthrough URL for Mattermost
+3. You should see the Mattermost app shell (not the PolySaaS login page)
+4. Once you see Mattermost, check the browser console (F12) for `[PolySaaS MM]` messages
+
+## How to Verify You're Logged In
+
+- Go to: `http://localhost:8000/admin/` 
+- If you see the PolySaaS admin panel, you're logged in
+- If you see the login form, you're not logged in
+
+## Expected Behavior After Fix
+
+Once logged into PolySaaS and accessing the passthrough URL:
+1. The Mattermost app shell loads
+2. Browser console shows: `[PolySaaS MM] Early fetch guard installed`
+3. Message composer appears (no "Something went wrong" error)
+
+## Files Modified for Testing
+
+- `test_guard_injection.py` - Tests if guard is injected into HTML
+- `debug_get_html.py` - Retrieves and analyzes passthrough HTML
+- `debug_passthrough_html.txt` - Contains the actual HTML being served

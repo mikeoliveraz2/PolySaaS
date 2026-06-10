@@ -1,0 +1,140 @@
+================================================================================
+Status: 200
+Content-Type: text/html; charset=utf-8
+Content-Length: 6715
+================================================================================
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Account Base</title>
+</head>
+<body>
+    
+<div class="login-container" style="background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);max-width:400px;margin:60px auto;">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;">
+        <img src="/static/img/PolySaaS-Industrial-Logo.png" alt="PolySaaS" style="height:28px;width:auto;display:block;">
+        <h1 style="text-align:center;color:#333;font-size:1.5rem;margin:0;">Login to PolySaaS</h1>
+    </div>
+
+    
+    <div id="ps-new-user-banner" style="display:none;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:.88rem;color:#2e7d32;"></div>
+
+    
+
+    
+    <form method="post" action="" id="login-form">
+        <input type="hidden" name="csrfmiddlewaretoken" value="SrmPLxKtiM9UflnQ38eOjuD6ZqQZJCjYjQvIHduDpWYHuCWEX2chEQQBsfgdjkk6">
+        <input type="hidden" name="next" value="/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square/">
+
+        <div style="margin-bottom:14px;">
+                 <label for="id_login" style="display:block;font-weight:600;margin-bottom:4px;color:#333;font-size:.9rem;">Username or email</label>
+                 <input type="text" name="login" id="id_login" autocomplete="username"
+                     style="width:100%;padding:9px 12px;border:1px solid #ccc;border-radius:6px;font-size:.95rem;box-sizing:border-box;"
+                     placeholder="Your username or email">
+        </div>
+
+        <div style="margin-bottom:18px;">
+            <label for="id_password" style="display:block;font-weight:600;margin-bottom:4px;color:#333;font-size:.9rem;">Password</label>
+            <div style="position:relative;display:flex;align-items:center;">
+                <input type="password" name="password" id="id_password" autocomplete="current-password"
+                       style="width:100%;padding:9px 36px 9px 12px;border:1px solid #ccc;border-radius:6px;font-size:.95rem;box-sizing:border-box;"
+                       placeholder="Your password">
+                <button type="button" tabindex="-1"
+                        onclick="(function(){var f=document.getElementById('id_password'),b=this;if(f.type==='password'){f.type='text';b.textContent='🙈';}else{f.type='password';b.textContent='👁';}})(this)"
+                        aria-label="Show/hide password"
+                        style="position:absolute;right:8px;background:none;border:none;cursor:pointer;font-size:1.1em;padding:0;line-height:1;color:#666;">👁</button>
+            </div>
+        </div>
+
+        <button type="submit"
+                style="width:100%;padding:10px;background:#007bff;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;">
+            Sign in
+        </button>
+    </form>
+    
+
+    <div style="text-align:center;margin:18px 0 10px;color:#aaa;font-size:.85rem;">— or —</div>
+
+    <a href="/accounts/google/login/?prompt=select_account"
+       style="display:block;background:#4285f4;color:#fff;padding:10px;border-radius:6px;text-align:center;font-size:.95rem;font-weight:600;text-decoration:none;">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="height:18px;vertical-align:middle;margin-right:8px;" alt="">
+        Login with Google
+    </a>
+
+    <div style="text-align:center;margin-top:16px;">
+        <a href="/dose/subscribe/" style="color:#1976d2;font-size:.88rem;">Subscribe</a>
+    </div>
+
+    <hr style="margin:20px 0;border-color:#eee;">
+    <div style="background:#1976d2;color:#fff;border-radius:6px;padding:12px 16px;font-size:.82rem;line-height:1.6;">
+        <strong>Demo Credentials:</strong><br>
+        User: demouser / demouser_123<br>
+        Admin: adminuser / adminuser_123<br>
+        <small style="opacity:.8;">Use <a href="/dose/setup-demo/" style="color:#fff;">setup demo</a> to create these accounts if they don't exist.</small>
+    </div>
+</div>
+
+        <script>
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        try {
+            console.log('[AUTO-LOGIN] Checking for sessionStorage credentials...');
+            var raw = sessionStorage.getItem('polysaas_new_user_creds');
+            console.log('[AUTO-LOGIN] sessionStorage raw:', raw);
+            if (!raw) {
+                console.log('[AUTO-LOGIN] No credentials found in sessionStorage');
+                return;
+            }
+            var creds = JSON.parse(raw);
+            console.log('[AUTO-LOGIN] Parsed creds:', creds);
+            sessionStorage.removeItem('polysaas_new_user_creds');
+            if (creds.u) {
+                var uField = document.getElementById('id_login');
+                if (uField) {
+                    uField.value = creds.u;
+                    console.log('[AUTO-LOGIN] Set username field');
+                }
+            }
+            if (creds.p) {
+                var pField = document.getElementById('id_password');
+                if (pField) {
+                    pField.value = creds.p;
+                    console.log('[AUTO-LOGIN] Set password field');
+                }
+            }
+            var banner = document.getElementById('ps-new-user-banner');
+            if (banner) {
+                banner.textContent = '✅ Your new account "' + (creds.u || '') + '" has been pre-filled. Please review and click Sign in.';
+                banner.style.display = 'block';
+            }
+        } catch(e) {
+            console.error('[AUTO-LOGIN] Error:', e);
+        }
+    });
+
+    // After successful login, restore Mattermost credentials from sessionStorage (without team name)
+    if (sessionStorage.getItem('polysaas_mm_creds')) {
+        var mmCreds = JSON.parse(sessionStorage.getItem('polysaas_mm_creds'));
+        sessionStorage.removeItem('polysaas_mm_creds');
+        console.log('[AUTO-LOGIN] Restoring Mattermost credentials to session:', mmCreds);
+        // Call API to restore Mattermost credentials to Django session
+        fetch('/dose/api/restore-mm-credentials/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+            },
+            body: JSON.stringify(mmCreds),
+            credentials: 'same-origin'
+        }).then(function(resp) {
+            console.log('[AUTO-LOGIN] Restore credentials response:', resp.status);
+        }).catch(function(e) {
+            console.error('[AUTO-LOGIN] Failed to restore Mattermost credentials:', e);
+        });
+    }
+})();
+</script>
+
+</body>
+</html>
