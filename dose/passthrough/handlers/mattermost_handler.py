@@ -2271,156 +2271,8 @@ try {{
     def _mattermost_early_fetch_guard_html(
         self, request, proxy_prefix: str, base_origin: str, token: str
     ) -> str:
-        """Minimal fetch/XHR patch in a separate script — runs before Mattermost bundles."""
-        token_js = json.dumps(token)
-        proxy_js = json.dumps(proxy_prefix)
-        base_js = json.dumps(base_origin.rstrip("/"))
-        return f"""
-<script data-polysaas-mm-fetch-guard="1">
-(function() {{
-    var PROXY = {proxy_js};
-    var B = {base_js};
-    var _serverToken = {token_js};
-    var MMAUTHTOKEN = (_serverToken && String(_serverToken).length > 8) ? _serverToken : '';
-    var _f = window.fetch;
-    function _mmTokenPresent() {{
-        return (MMAUTHTOKEN || _serverToken || '').trim().length > 8;
-    }}
-    function _mmRequestPath(url) {{
-        if (!url) return '';
-        try {{ if (url.indexOf('http') === 0) return new URL(url).pathname; }} catch(_e) {{}}
-        var q = url.indexOf('?');
-        return q >= 0 ? url.slice(0, q) : url;
-    }}
-    function _mmApiPath(url) {{
-        var p = _mmRequestPath(url);
-        var apiIdx = p.indexOf('/api/v4/');
-        if (apiIdx >= 0) return p.slice(apiIdx);
-        var plugIdx = p.indexOf('/plugins/');
-        if (plugIdx >= 0) return p.slice(plugIdx);
-        return p;
-    }}
-    function _mmNoopJsonResponse(payload) {{
-        return Promise.resolve(new Response(
-            typeof payload === 'string' ? payload : JSON.stringify(payload),
-            {{status: 200, headers: {{'Content-Type': 'application/json'}}}}
-        ));
-    }}
-    var _MM_PLAYBOOKS_RUNS_EMPTY = {{items: [], total_count: 0, page_count: 0, has_more: false}};
-    function _mmGuardStub(url, method) {{
-        var p = _mmApiPath(url);
-        var m = (method || 'GET').toUpperCase();
-        if (p.indexOf('/api/v4/posts/scheduled/') !== -1) return [];
-        if (p.indexOf('/api/v4/trial-license/') !== -1) return {{}};
-        if (p.indexOf('/plugins/github/api/v1/connected') !== -1) return {{connected: false}};
-        if (p.indexOf('/plugins/com.mattermost.calls/channels') !== -1) return {{}};
-        if (p.indexOf('/plugins/playbooks/api/v0/actions/channels/') !== -1) return [];
-        if (p.indexOf('/plugins/playbooks/api/v0/runs') !== -1) return _MM_PLAYBOOKS_RUNS_EMPTY;
-        if (p.indexOf('/plugins/playbooks/api/v0/bot/connect') !== -1) return {{}};
-        if (m === 'POST' && p.indexOf('/plugins/playbooks/api/v0/query') !== -1) return {{data: {{}}}};
-        return null;
-    }}
-    function _mmTeamNameSlug(url) {{
-        var m = _mmApiPath(url).match(/^\\/api\\/v4\\/teams\\/name\\/([^/?#]+)/);
-        return m ? m[1] : null;
-    }}
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
-    function _mmBogusTeamSlug(url) {{
-        var slug = _mmTeamNameSlug(url);
-        return (slug && _bogusTeamSlugs[slug]) ? slug : null;
-    }}
-    function _mmResolveTeamsFromMe() {{
-        if (!_mmTokenPresent()) return Promise.resolve(null);
-        return _f.call(window, PROXY + '/api/v4/users/me/teams', {{
-            headers: {{'Authorization': 'Bearer ' + (MMAUTHTOKEN || _serverToken)}},
-            credentials: 'same-origin',
-        }}).then(function(r) {{ return r.ok ? r.json() : null; }}).catch(function() {{ return null; }});
-    }}
-    window.fetch = function(input, init) {{
-        var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-        var method = (init && init.method) || 'GET';
-        var _teamSlug = _mmTeamNameSlug(reqUrl);
-        var _bogus = _mmBogusTeamSlug(reqUrl);
-        if ((_bogus || _teamSlug) && _mmTokenPresent()) {{
-            var _wanted = _teamSlug || _bogus;
-            return _mmResolveTeamsFromMe().then(function(teams) {{
-                if (teams && teams.length) {{
-                    var match = teams[0];
-                    for (var ti = 0; ti < teams.length; ti++) {{
-                        if (teams[ti].name === _wanted) {{ match = teams[ti]; break; }}
-                    }}
-                    return new Response(JSON.stringify(match), {{
-                        status: 200, headers: {{'Content-Type': 'application/json'}}
-                    }});
-                }}
-                return new Response('{{}}', {{status: 404}});
-            }});
-        }}
-        var _stub = _mmGuardStub(reqUrl, method);
-        if (_stub !== null) {{
-            console.log('[PolySaaS MM] Early guard stub (fetch):', _mmApiPath(reqUrl));
-            return _mmNoopJsonResponse(_stub);
-        }}
-        return _f.apply(this, arguments);
-    }};
-    var _xo = XMLHttpRequest.prototype.open;
-    var _xs = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open = function(method, url) {{
-        this._psGuardMethod = method;
-        this._psGuardUrl = url;
-        var _stub = _mmGuardStub(url, method);
-        if (_stub !== null) {{
-            this._psGuardStubBody = JSON.stringify(_stub);
-        }} else {{
-            var _teamSlug = _mmTeamNameSlug(url);
-            var _bogus = _mmBogusTeamSlug(url);
-            if ((_bogus || _teamSlug) && _mmTokenPresent()) {{
-                this._psGuardTeamStub = true;
-                this._psGuardWantedTeam = _teamSlug || _bogus;
-            }}
-        }}
-        return _xo.apply(this, arguments);
-    }};
-    XMLHttpRequest.prototype.send = function() {{
-        if (this._psGuardStubBody) {{
-            var self = this;
-            var body = this._psGuardStubBody;
-            setTimeout(function() {{
-                self.status = 200;
-                self.responseText = body;
-                self.readyState = 4;
-                if (typeof self.onreadystatechange === 'function') try {{ self.onreadystatechange(); }} catch(_e) {{}}
-                if (typeof self.onload === 'function') try {{ self.onload(); }} catch(_e) {{}}
-            }}, 0);
-            return;
-        }}
-        if (this._psGuardTeamStub) {{
-            var self = this;
-            var wanted = this._psGuardWantedTeam || '';
-            _mmResolveTeamsFromMe().then(function(teams) {{
-                var match = (teams && teams.length) ? teams[0] : null;
-                if (teams && wanted) {{
-                    for (var ti = 0; ti < teams.length; ti++) {{
-                        if (teams[ti].name === wanted) {{ match = teams[ti]; break; }}
-                    }}
-                }}
-                var payload = match ? JSON.stringify(match) : '{{}}';
-                setTimeout(function() {{
-                    self.status = 200;
-                    self.responseText = payload;
-                    self.readyState = 4;
-                    if (typeof self.onreadystatechange === 'function') try {{ self.onreadystatechange(); }} catch(_e) {{}}
-                    if (typeof self.onload === 'function') try {{ self.onload(); }} catch(_e) {{}}
-                }}, 0);
-            }});
-            return;
-        }}
-        return _xs.apply(this, arguments);
-    }};
-    console.log('[PolySaaS MM] Early fetch guard installed');
-}})();
-</script>
-"""
+        """Stub entry point now integrated into main shim. This method is deprecated and returns empty."""
+        return ""
 
     def _mattermost_display_shim_html(
         self, request, proxy_prefix: str, base_origin: str
@@ -3147,6 +2999,9 @@ try {{
         if (apiIdx >= 0) return p.slice(apiIdx);
         var plugIdx = p.indexOf('/plugins/');
         if (plugIdx >= 0) return p.slice(plugIdx);
+        if (p.indexOf('trial-license') !== -1 || p.indexOf('posts/scheduled') !== -1) {{
+            console.log('[MM APIPATH DEBUG] url:', url.slice(0, 120), 'path:', p.slice(0, 120));
+        }}
         return p;
     }}
 
@@ -3174,15 +3029,40 @@ try {{
     function _mmComposerPreemptStub(url, method) {{
         var p = _mmApiPath(url);
         var m = (method || 'GET').toUpperCase();
-        if (_mmIsScheduledPostsRequest(url)) return [];
-        if (p.indexOf('/api/v4/trial-license/') !== -1) return {{}};
-        if (p.indexOf('/plugins/github/api/v1/connected') !== -1) return {{connected: false}};
+        var _isScheduled = _mmIsScheduledPostsRequest(url);
+        var _isTrialLic = p.indexOf('/api/v4/trial-license/') !== -1;
+        var _isGithub = p.indexOf('/plugins/github/api/v1/connected') !== -1;
+        var _isCalls = p.indexOf('/plugins/com.mattermost.calls/channels') !== -1;
+        var _isPlaybooksActions = p.indexOf('/plugins/playbooks/api/v0/actions/channels/') !== -1;
+        var _isPlaybooksRuns = p.indexOf('/plugins/playbooks/api/v0/runs') !== -1;
+        var _isPlaybooksConnect = p.indexOf('/plugins/playbooks/api/v0/bot/connect') !== -1;
+        var _isPlaybooksQuery = m === 'POST' && p.indexOf('/plugins/playbooks/api/v0/query') !== -1;
+        
+        var _shouldStub = _isScheduled || _isTrialLic || _isGithub || _isCalls || _isPlaybooksActions || _isPlaybooksRuns || _isPlaybooksConnect || _isPlaybooksQuery;
+        if (_shouldStub) {{
+            console.log('[MM STUB DEBUG] Matched:', {{
+                url: url.slice(0, 80),
+                path: p.slice(0, 80),
+                scheduled: _isScheduled,
+                trialLic: _isTrialLic,
+                github: _isGithub,
+                calls: _isCalls,
+                pbActions: _isPlaybooksActions,
+                pbRuns: _isPlaybooksRuns,
+                pbConnect: _isPlaybooksConnect,
+                pbQuery: _isPlaybooksQuery
+            }});
+        }}
+        
+        if (_isScheduled) return [];
+        if (_isTrialLic) return {{}};
+        if (_isGithub) return {{connected: false}};
         /* Calls plugin expects {{}} (object), not [] — v26 wrongly stubbed [] and broke composer */
-        if (p.indexOf('/plugins/com.mattermost.calls/channels') !== -1) return {{}};
-        if (p.indexOf('/plugins/playbooks/api/v0/actions/channels/') !== -1) return [];
-        if (p.indexOf('/plugins/playbooks/api/v0/runs') !== -1) return _MM_PLAYBOOKS_RUNS_EMPTY;
-        if (p.indexOf('/plugins/playbooks/api/v0/bot/connect') !== -1) return {{}};
-        if (m === 'POST' && p.indexOf('/plugins/playbooks/api/v0/query') !== -1) return {{data: {{}}}};
+        if (_isCalls) return {{}};
+        if (_isPlaybooksActions) return [];
+        if (_isPlaybooksRuns) return _MM_PLAYBOOKS_RUNS_EMPTY;
+        if (_isPlaybooksConnect) return {{}};
+        if (_isPlaybooksQuery) return {{data: {{}}}};
         return null;
     }}
 
@@ -3943,13 +3823,20 @@ try {{
                 token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
             except Exception:
                 token = ""
+        
+        print(f"[MM SHIM] Generating guard, token_len={len(token) if token else 0}")
         guard = self._mattermost_early_fetch_guard_html(
             request, proxy_prefix, base_origin, token
         )
+        print(f"[MM SHIM] Guard HTML generated, len={len(guard) if guard else 0}")
+        
         shim = self._mattermost_display_shim_html(
             request, proxy_prefix, base_origin
         )
+        print(f"[MM SHIM] Display shim generated, len={len(shim) if shim else 0}")
+        
         injected = guard + shim
+        print(f"[MM SHIM] Total injection len={len(injected)}")
 
         if re.search(r"<head\b", html, re.IGNORECASE):
             return re.sub(
