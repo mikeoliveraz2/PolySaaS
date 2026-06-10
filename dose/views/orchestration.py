@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from datetime import timedelta
+from django.http import JsonResponse
 from dose.models import Instruction, AtomicService
 from dose.models.request_log import RequestLog
 from dose.services.atomic_services_registry import init_atomic_services_registry, ATOMIC_SERVICE_REGISTRY
@@ -142,3 +143,45 @@ def demo_view_invoices(request):
         messages.error(request, f'View Invoices demo failed: {str(e)}')
 
     return redirect('dose:orchestration_dashboard')
+
+
+@login_required
+def get_orchestration_instruction(request, action_path):
+    """GB-ORCH-EDIT-004: Return existing instruction for update or new for create"""
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        try:
+            from dose.utils import get_current_tenant
+            tenant = get_current_tenant(request)
+        except Exception:
+            tenant = None
+
+    if not tenant:
+        return JsonResponse({'status': 'no_tenant'})
+
+    instruction = Instruction.objects.filter(
+        tenant=tenant,
+        requestpath=action_path
+    ).first()
+
+    if instruction:
+        # Update mode
+        return JsonResponse({
+            'status': 'success',
+            'mode': 'update',
+            'id': instruction.id,
+            'action_path': instruction.requestpath,
+            'instruction_text': instruction.description or '',
+            'executescript': instruction.executescript or '',
+            'direction': instruction.direction or 'REQ',
+        })
+    else:
+        # Create mode
+        return JsonResponse({
+            'status': 'success',
+            'mode': 'create',
+            'action_path': action_path,
+            'instruction_text': '',
+            'executescript': '',
+            'direction': 'REQ',
+        })

@@ -34,6 +34,21 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+# mattermostdriver 7.3.2 uses ssl.Purpose.CLIENT_AUTH for outbound WebSockets;
+# Python 3.14 rejects that (needs SERVER_AUTH). Patch before Driver connects.
+import ssl as _ssl
+_orig_create_default_context = _ssl.create_default_context
+
+
+def _patched_create_default_context(*args, **kwargs):
+    if kwargs.get('purpose') == _ssl.Purpose.CLIENT_AUTH:
+        kwargs = dict(kwargs)
+        kwargs['purpose'] = _ssl.Purpose.SERVER_AUTH
+    return _orig_create_default_context(*args, **kwargs)
+
+
+_ssl.create_default_context = _patched_create_default_context
+
 # ---------------------------------------------------------------------------
 # Peer table — single source of truth for all AI peers
 # ---------------------------------------------------------------------------
@@ -61,7 +76,7 @@ PEERS = {
     },
     'grok': {
         'aliases': ['supergrok'],
-        'mm_username': 'supergrok',
+        'mm_username': 'grok',
         'bot_token_key': 'BOT_TOKEN_SUPERGROK',
         'api_key_key': 'XAI_API_KEY',
         'router': 'dose.mattermost_bot.routers.grok_router',
@@ -255,7 +270,7 @@ class PolySaaSAIPeersBot:
 
         # Routing
         lower = text.lower()
-        if '@anyone' in lower:
+        if '@anyone' in lower or '@everyone' in lower or '@channel' in lower:
             target_peers = _active_peers()
         else:
             seen: set = set()
