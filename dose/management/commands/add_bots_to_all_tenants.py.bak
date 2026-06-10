@@ -7,16 +7,18 @@ Usage:
 """
 
 import logging
+from typing import Optional
 
 import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Add demo AI Peer bots to a Mattermost team and sync Town Square roster."
+    help = "Add all configured AI Peer bots to a Mattermost team."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -51,7 +53,7 @@ class Command(BaseCommand):
             mm_url = options['mm_url']
             self._add_bots_to_team(mm_url, headers, team_id)
             self.stdout.write(
-                self.style.SUCCESS(f'OK Bots synced for team {team_id} at {mm_url}')
+                self.style.SUCCESS(f'✓ Bots added to team {team_id} at {mm_url}')
             )
             return
 
@@ -62,11 +64,11 @@ class Command(BaseCommand):
         if tenant_filter:
             tenants = TenantApp.objects.filter(
                 tenant__schema_name=tenant_filter,
-                app_name__icontains='mattermost',
+                app__name__icontains='mattermost',
             )
         else:
             tenants = TenantApp.objects.filter(
-                app_name__icontains='mattermost',
+                app__name__icontains='mattermost',
             )
 
         if not tenants.exists():
@@ -74,7 +76,6 @@ class Command(BaseCommand):
                 f'No Mattermost TenantApps found. {f"Tenant: {tenant_filter}" if tenant_filter else ""}'
             )
 
-        seen_teams = set()
         for ta in tenants:
             try:
                 extra = ta.extra_config or {}
@@ -84,42 +85,42 @@ class Command(BaseCommand):
                 if not mm_url or not team_id:
                     self.stdout.write(
                         self.style.WARNING(
-                            f'WARN {ta.tenant.schema_name}: Missing MM URL or team ID in extra_config'
+                            f'⚠ {ta.tenant.schema_name}: Missing MM URL or team ID in extra_config'
                         )
                     )
                     continue
 
-                team_key = (mm_url.rstrip('/'), team_id)
-                if team_key in seen_teams:
-                    continue
-                seen_teams.add(team_key)
-
                 self._add_bots_to_team(mm_url, headers, team_id)
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f'OK {ta.tenant.schema_name}: Demo bots synced for team {team_id}'
+                        f'✓ {ta.tenant.schema_name}: Bots added to team {team_id}'
                     )
                 )
             except Exception as e:
                 self.stdout.write(
                     self.style.ERROR(
-                        f'FAIL {ta.tenant.schema_name}: {e}'
+                        f'✗ {ta.tenant.schema_name}: {e}'
                     )
                 )
 
     def _add_bots_to_team(self, mm_url: str, headers: dict, team_id: str) -> None:
-        """Add demo peers to team and sync Town Square channel membership."""
-        from dose.mattermost_bot.demo_roster import (
-            DEMO_TOWN_SQUARE_USERNAMES,
-            sync_town_square_demo_roster,
-        )
-
-        bot_usernames = list(DEMO_TOWN_SQUARE_USERNAMES)
+        """Add all configured AI Peer bots to a team."""
+        bot_usernames = [
+            getattr(settings, 'BOT_USERNAME_SUPERGROK', 'supergrok'),
+            getattr(settings, 'BOT_USERNAME_GEMINI', getattr(settings, 'BOT_USERNAME_GEM', 'gemini')),
+            getattr(settings, 'BOT_USERNAME_WINDSURF', 'windsurf'),
+            getattr(settings, 'BOT_USERNAME_CC', 'cc'),
+            getattr(settings, 'BOT_USERNAME_ROUTER', 'router'),
+            getattr(settings, 'BOT_USERNAME_OPENCLAW', 'openclaw'),
+            getattr(settings, 'BOT_USERNAME_KIMI', 'kimi'),
+            getattr(settings, 'BOT_USERNAME_WSC', 'wsc'),
+        ]
 
         added, skipped, errors = [], [], []
 
         for bot_username in bot_usernames:
             try:
+                # Resolve username → user ID
                 r = requests.get(
                     f'{mm_url}/api/v4/users/username/{bot_username}',
                     headers=headers,
@@ -134,6 +135,7 @@ class Command(BaseCommand):
                     skipped.append(bot_username)
                     continue
 
+                # Add to team
                 r2 = requests.post(
                     f'{mm_url}/api/v4/teams/{team_id}/members',
                     headers=headers,
@@ -147,12 +149,8 @@ class Command(BaseCommand):
             except Exception as exc:
                 errors.append(f'{bot_username}:{exc}')
 
-        sync_town_square_demo_roster(
-            mm_url, headers, team_id, log=lambda m: self.stdout.write(m)
-        )
-
         logger.info(
-            'Demo bots synced: %s added=%s skipped=%s errors=%s',
+            'Bots added: %s=%s, skipped=%s, errors=%s',
             team_id,
             added,
             skipped,

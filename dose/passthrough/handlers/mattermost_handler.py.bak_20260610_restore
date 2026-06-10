@@ -364,6 +364,99 @@ window.location.replace('/');
             print(f"[MM AUTH] Token validation error: {exc}")
             return False
 
+    def _mm_token_user_id(self, endpoint_url, token):
+        """Return Mattermost user id for token, or None."""
+        if not endpoint_url or not token:
+            return None
+        try:
+            import requests as _req
+
+            r = _req.get(
+                f"{endpoint_url.rstrip('/')}/api/v4/users/me",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=8,
+            )
+            if r.status_code == 200:
+                return (r.json() or {}).get('id')
+        except Exception as exc:
+            print(f"[MM AUTH] Token user-id lookup error: {exc}")
+        return None
+
+    def _pick_mattermost_tenantapp(self, queryset, request=None):
+        """Best TenantApp row when duplicates exist (token + username match win)."""
+        try:
+            candidates = list(
+                queryset.filter(status='active').exclude(extra_config={}).order_by('-id')[:50]
+            )
+        except Exception:
+            candidates = list(queryset.exclude(extra_config={}).order_by('-id')[:50])
+        if not candidates:
+            return None
+
+        django_user = ''
+        if request is not None:
+            u = getattr(request, 'user', None)
+            if u is not None and getattr(u, 'is_authenticated', False):
+                django_user = (getattr(u, 'username', '') or '').strip().lower()
+
+        def _score(ta):
+            ec = ta.extra_config or {}
+            s = ta.id
+            if ec.get('mm_token') or ec.get('mmauthtoken') or ec.get('mm_session_token'):
+                s += 1_000_000
+            if ec.get('mm_team_name') or ec.get('team_name'):
+                s += 10_000
+            if ec.get('mm_user_id'):
+                s += 1_000
+            mm_u = (ec.get('mm_username') or ec.get('mattermost_username') or '').strip().lower()
+            if django_user and mm_u and mm_u == django_user:
+                s += 10_000_000
+            return s
+
+        return max(candidates, key=_score)
+
+    def _resolve_mm_auth_token(self, request, endpoint_url=None):
+        """Pick MM session token that matches provisioned TenantApp user when possible."""
+        extra = self._get_tenantapp_extra_config(request) or {}
+        expected_uid = (extra.get('mm_user_id') or '').strip()
+        provisioned = (
+            extra.get('mm_token') or extra.get('mmauthtoken') or
+            extra.get('mm_session_token') or ''
+        ).strip()
+        origin = self._resolve_mm_endpoint_url(request, endpoint_url)
+
+        seen = set()
+        candidates = []
+        for label, tok in (
+            ('url', (request.GET.get('mm_token') or '').strip()),
+            ('provisioned', provisioned),
+            ('sidebar', (self._get_sidebar_auth_token(request) or '').strip()),
+            ('browser', (self._select_browser_mm_token(request, endpoint_url) or '').strip()),
+        ):
+            if tok and tok not in seen:
+                seen.add(tok)
+                candidates.append((label, tok))
+
+        for label, tok in candidates:
+            if not self._validate_mm_token(origin, tok):
+                continue
+            if expected_uid:
+                uid = self._mm_token_user_id(origin, tok)
+                if uid and uid != expected_uid:
+                    print(
+                        f'[MM_AUTH] Token from {label} is user {uid}, '
+                        f'expected {expected_uid} — skip',
+                    )
+                    continue
+            print(f'[MM_AUTH] Resolved token from {label}, len={len(tok)}')
+            return tok
+
+        for label, tok in candidates:
+            if self._validate_mm_token(origin, tok):
+                print(f'[MM_AUTH] Fallback token from {label}, len={len(tok)}')
+                return tok
+        return provisioned
+
     def _wrap_login_bridge(self, request, trigger, endpoint):
         bridge = self._serve_login_bridge(request, trigger, endpoint)
         from dose.passthrough.forwarding import _wrap_in_admin_template
@@ -795,6 +888,20 @@ window.location.replace('/');
             self._clear_auth_cookies_on_response(wrapped)
             return wrapped
 
+        error_path = f"{proxy_prefix}/error"
+        if path == error_path or path.startswith(error_path + "/") or path.startswith(error_path + "?"):
+            from django.http import HttpResponseRedirect
+            from dose.passthrough.forwarding import _wrap_in_admin_template
+
+            landing = self._mm_default_landing_path(proxy_prefix, request)
+            tok = self._resolve_mm_auth_token(request, endpoint_url) or ''
+            print(f'[MM ERROR] Team-not-found /error — redirect to {landing}')
+            resp = HttpResponseRedirect(landing)
+            if tok:
+                self._set_unified_auth_cookies(resp, tok)
+                self._publish_sidebar_auth_token(request, tok)
+            return _wrap_in_admin_template(request, resp, trigger, endpoint, handler=self)
+
         # TEAMS NOT REQUIRED FOR LOGIN (Michael) — team-not-found /error intercept disabled.
         # error_path = f"{proxy_prefix}/error"
         # if path == error_path or path.startswith(error_path + "/") or path.startswith(error_path + "?"):
@@ -1017,11 +1124,7 @@ window.location.replace('/');
             fresh_wipe_js = """
     dbg('Fresh sidebar entry — wiping prior Mattermost client state');
     try { localStorage.clear(); } catch(e) {}
-    // Preserve IDB-seeded flag to prevent reload loop, then clear the rest
-    var _preserveIdbSeeded = null;
-    try { _preserveIdbSeeded = sessionStorage.getItem('_ps_mm_idb_seeded'); } catch(e) {}
     try { sessionStorage.clear(); } catch(e) {}
-    if (_preserveIdbSeeded) try { sessionStorage.setItem('_ps_mm_idb_seeded', _preserveIdbSeeded); } catch(e) {}
     document.cookie = 'MMAUTHTOKEN=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     document.cookie = 'mmauthtoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     document.cookie = 'MMUSERID=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
@@ -1144,7 +1247,7 @@ try {{
                                     try {{ general = JSON.parse(general || '{{}}'); }} catch(_) {{ general = {{}}; }}
                                 }}
                                 if (!general || typeof general !== 'object') general = {{}};
-                                general.credentials = {{ url: (window.location.origin + PROXY_PREFIX), token: token }};
+                                general.credentials = {{ url: MM_ORIGIN, token: token }};
                                 entities.general = general;
                                 data.entities = JSON.stringify(entities);
                                 store.put(JSON.stringify(data), 'persist:storage');
@@ -1596,41 +1699,58 @@ try {{
             # Tenant-specific first (public schema)
             if tenant:
                 try:
-                    ta = TenantApp.public_bundles.filter(
-                        app_name='mattermost', tenant=tenant
-                    ).exclude(extra_config={}).first()
+                    ta = self._pick_mattermost_tenantapp(
+                        TenantApp.public_bundles.filter(app_name='mattermost', tenant=tenant),
+                        request,
+                    )
                     if ta and ta.extra_config:
-                        print(f"[MM LoginBridge] extra_config found via public tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        print(
+                            f"[MM LoginBridge] extra_config via public tenant={tenant} "
+                            f"id={ta.id} team={ta.extra_config.get('mm_team_name')!r} "
+                            f"keys={list(ta.extra_config.keys())}",
+                        )
                         return ta.extra_config
                 except Exception as _q1:
                     print(f"[MM LoginBridge] public tenant query error: {_q1}")
                 # Fallback: tenant schema
                 try:
-                    ta = TenantApp.objects.filter(
-                        app_name='mattermost', tenant=tenant
-                    ).exclude(extra_config={}).first()
+                    ta = self._pick_mattermost_tenantapp(
+                        TenantApp.objects.filter(app_name='mattermost', tenant=tenant),
+                        request,
+                    )
                     if ta and ta.extra_config:
-                        print(f"[MM LoginBridge] extra_config found via tenant schema tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        print(
+                            f"[MM LoginBridge] extra_config via tenant schema tenant={tenant} "
+                            f"id={ta.id} team={ta.extra_config.get('mm_team_name')!r}",
+                        )
                         return ta.extra_config
                 except Exception as _q2:
                     print(f"[MM LoginBridge] tenant schema query error: {_q2}")
             # Fallback: any active mattermost app with credentials (public schema)
             try:
-                ta = TenantApp.public_bundles.filter(
-                    app_name='mattermost', status='active'
-                ).exclude(extra_config={}).first()
+                ta = self._pick_mattermost_tenantapp(
+                    TenantApp.public_bundles.filter(app_name='mattermost'),
+                    request,
+                )
                 if ta and ta.extra_config:
-                    print(f"[MM LoginBridge] extra_config found via public active fallback keys={list(ta.extra_config.keys())}")
+                    print(
+                        f"[MM LoginBridge] extra_config via public active fallback "
+                        f"id={ta.id} team={ta.extra_config.get('mm_team_name')!r}",
+                    )
                     return ta.extra_config
             except Exception as _q3:
                 print(f"[MM LoginBridge] public active fallback error: {_q3}")
             # Fallback: any active mattermost app (tenant schema)
             try:
-                ta = TenantApp.objects.filter(
-                    app_name='mattermost', status='active'
-                ).exclude(extra_config={}).first()
+                ta = self._pick_mattermost_tenantapp(
+                    TenantApp.objects.filter(app_name='mattermost'),
+                    request,
+                )
                 if ta and ta.extra_config:
-                    print(f"[MM LoginBridge] extra_config found via tenant active fallback keys={list(ta.extra_config.keys())}")
+                    print(
+                        f"[MM LoginBridge] extra_config via tenant active fallback "
+                        f"id={ta.id} team={ta.extra_config.get('mm_team_name')!r}",
+                    )
                     return ta.extra_config
             except Exception as _q4:
                 print(f"[MM LoginBridge] tenant active fallback error: {_q4}")
@@ -1903,43 +2023,46 @@ try {{
                 print(f'[MM RESP] Login-shell safety-net error: {exc}')
 
         # Proxy URL makes the SPA request /api/v4/teams/name/pt (etc.). Recover with the user's real team.
-        _bogus_slugs = frozenset({'pt', 'admin', 'polysaas-mattermost.onrender.com'})
         _missing_team = re.search(r'/api/v4/teams/name/([^/?#]+)/?(?:\?|$)', combined)
         if resp.status_code in (403, 404) and _missing_team:
             _missing_slug = _missing_team.group(1)
-            if _missing_slug in _bogus_slugs:
-                print(
-                    f'[MM_RESP] Fallback for /api/v4/teams/name/{_missing_slug} '
-                    f'{resp.status_code} -> /users/me/teams',
-                )
-                try:
-                    import requests as _req
+            print(
+                f'[MM_RESP] Fallback for /api/v4/teams/name/{_missing_slug} '
+                f'{resp.status_code} -> /users/me/teams',
+            )
+            try:
+                import requests as _req
 
-                    endpoint_url = (kwargs.get('endpoint_url') or '').rstrip('/')
-                    if endpoint_url:
-                        outbound_headers = dict(kwargs.get('outbound_headers') or {})
-                        upstream_cookies = dict(kwargs.get('upstream_cookies') or {})
-                        teams_resp = _req.get(
-                            f'{endpoint_url}/api/v4/users/me/teams',
-                            headers=outbound_headers,
-                            cookies=upstream_cookies,
-                            timeout=10,
-                            allow_redirects=False,
-                        )
-                        if teams_resp.status_code == 200:
-                            teams = teams_resp.json() or []
-                            if isinstance(teams, list) and teams:
-                                resp._content = json.dumps(teams[0]).encode('utf-8')
-                                resp.status_code = 200
-                                resp.headers['Content-Type'] = 'application/json'
-                                real_name = teams[0].get('name', '')
-                                print(
-                                    f'[MM_RESP] Recovered /teams/name/{_missing_slug} '
-                                    f'with real team={real_name}',
-                                )
-                                return resp
-                except Exception as exc:
-                    print(f'[MM_RESP] /teams/name/<slug> fallback failed: {exc}')
+                endpoint_url = (kwargs.get('endpoint_url') or '').rstrip('/')
+                if endpoint_url:
+                    outbound_headers = dict(kwargs.get('outbound_headers') or {})
+                    upstream_cookies = dict(kwargs.get('upstream_cookies') or {})
+                    teams_resp = _req.get(
+                        f'{endpoint_url}/api/v4/users/me/teams',
+                        headers=outbound_headers,
+                        cookies=upstream_cookies,
+                        timeout=10,
+                        allow_redirects=False,
+                    )
+                    if teams_resp.status_code == 200:
+                        teams = teams_resp.json() or []
+                        if isinstance(teams, list) and teams:
+                            picked = teams[0]
+                            for t in teams:
+                                if t.get('name') == _missing_slug:
+                                    picked = t
+                                    break
+                            resp._content = json.dumps(picked).encode('utf-8')
+                            resp.status_code = 200
+                            resp.headers['Content-Type'] = 'application/json'
+                            real_name = picked.get('name', '')
+                            print(
+                                f'[MM_RESP] Recovered /teams/name/{_missing_slug} '
+                                f'with team={real_name}',
+                            )
+                            return resp
+            except Exception as exc:
+                print(f'[MM_RESP] /teams/name/<slug> fallback failed: {exc}')
 
         if (
             resp.status_code in (403, 404)
@@ -1991,11 +2114,11 @@ try {{
             print('[MM_RESP] Stub scheduled posts %s -> 200 []' % resp.status_code)
             return resp
 
-        if '/api/v4/trial-license/' in combined and resp.status_code in (403, 404, 400):
+        if '/api/v4/trial-license/' in combined and resp.status_code in (403, 404):
             resp._content = b'{}'
             resp.status_code = 200
             resp.headers['Content-Type'] = 'application/json'
-            print('[MM_RESP] Stub trial-license %s -> 200 {}' % resp.status_code)
+            print('[MM_RESP] Stub trial-license %s -> 200 {{}}' % resp.status_code)
             return resp
 
         if '/plugins/com.mattermost.calls/channels' in combined and resp.status_code in (403, 404, 501):
@@ -2003,14 +2126,6 @@ try {{
             resp.status_code = 200
             resp.headers['Content-Type'] = 'application/json'
             print('[MM_RESP] Stub calls/channels %s -> 200 {}' % resp.status_code)
-            return resp
-
-        if '/plugins/com.mattermost.calls/config' in combined and resp.status_code == 200:
-            resp._content = (
-                b'{"enabled":false,"ICEServers":[],"AllowEnableCalls":false,"EnableRinging":false}'
-            )
-            resp.headers['Content-Type'] = 'application/json'
-            print('[MM_RESP] Stub calls/config -> enabled false')
             return resp
 
         if '/plugins/playbooks/api/v0/actions/channels/' in combined and resp.status_code >= 400:
@@ -2026,6 +2141,22 @@ try {{
             resp.headers['Content-Type'] = 'application/json'
             print('[MM_RESP] Stub playbooks runs %s -> 200 empty' % resp.status_code)
             return resp
+
+        if '/plugins/playbooks/api/v0/bot/connect' in combined:
+            if resp.status_code >= 400 or not (resp.content or b'').strip():
+                resp._content = b'{}'
+                resp.status_code = 200
+                resp.headers['Content-Type'] = 'application/json'
+                print('[MM_RESP] Stub playbooks bot/connect %s -> 200 {}' % resp.status_code)
+                return resp
+
+        if '/plugins/playbooks/api/v0/query' in combined:
+            if resp.status_code >= 400 or not (resp.content or b'').strip():
+                resp._content = b'{"data":{}}'
+                resp.status_code = 200
+                resp.headers['Content-Type'] = 'application/json'
+                print('[MM_RESP] Stub playbooks GraphQL query %s -> 200 {{data:{{}}}}' % resp.status_code)
+                return resp
         
         # Log ALL Mattermost API responses for debugging
         if '/api/v4/' in (target_url or ''):
@@ -2137,6 +2268,12 @@ try {{
             html_str = self._inject_client_shim(html_str, base_origin, request, proxy_prefix)
         return html_str
 
+    def _mattermost_early_fetch_guard_html(
+        self, request, proxy_prefix: str, base_origin: str, token: str
+    ) -> str:
+        """Stub entry point now integrated into main shim. This method is deprecated and returns empty."""
+        return ""
+
     def _mattermost_display_shim_html(
         self, request, proxy_prefix: str, base_origin: str
     ) -> str:
@@ -2146,27 +2283,21 @@ try {{
         Display shell must include network patches or API/WS stay on the admin origin → spinner.
         """
         # Prefer URL parameter (from login bridge redirect) first
-        token = request.GET.get('mm_token') or ""
+        endpoint_url_resolved = self._resolve_mm_endpoint_url(request) or ''
+        token = (request.GET.get('mm_token') or '').strip()
         if token:
             logger.info("[MM Shim] token from URL param, len=%d", len(token))
         else:
-            # Fallback to browser cookie — it's always fresh after login bridge succeeds.
-            # Server-side cache may be stale (e.g., provisioning token vs post-login session token).
-            sidebar_tok = self._get_sidebar_auth_token(request)
-            if sidebar_tok:
-                token = sidebar_tok
-                logger.info("[MM Shim] token from sidebar session, len=%d", len(token))
+            token = self._resolve_mm_auth_token(request, endpoint_url_resolved) or ''
+            if token:
+                logger.info("[MM Shim] token from resolved auth, len=%d", len(token))
             else:
-                token = self._select_browser_mm_token(request) or ""
-                if token:
-                    logger.info("[MM Shim] token from browser cookie, len=%d", len(token))
-                else:
-                    try:
-                        cookies = self.get_upstream_cookies(request) or {}
-                        token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
-                        logger.info("[MM Shim] token from server, len=%d", len(token))
-                    except Exception as exc:
-                        logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
+                try:
+                    cookies = self.get_upstream_cookies(request) or {}
+                    token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
+                    logger.info("[MM Shim] token from server cookies, len=%d", len(token))
+                except Exception as exc:
+                    logger.warning("[MattermostPassthroughHandler] Token lookup failed: %s", exc)
 
         login_id = ""
         password = ""
@@ -2182,17 +2313,10 @@ try {{
 
         # TEAMS NOT USED (Michael) — mm_team_name intentionally not injected into shim.
         mm_user_id = ''
-        mm_username = ''
         mm_team_name = ''
         try:
             extra_for_team = self._get_tenantapp_extra_config(request) or {}
             mm_user_id = extra_for_team.get('mm_user_id') or ''
-            mm_username = (
-                extra_for_team.get('mm_username')
-                or extra_for_team.get('mattermost_username')
-                or extra_for_team.get('mattermost_login_id')
-                or ''
-            )
             mm_team_name = extra_for_team.get('mm_team_name') or extra_for_team.get('team_name') or ''
         except Exception:
             pass
@@ -2200,7 +2324,6 @@ try {{
         login_id_js = json.dumps(login_id)
         password_js = json.dumps(password)
         user_id_js = json.dumps(mm_user_id)
-        username_js = json.dumps(mm_username)
         team_name_js = json.dumps(mm_team_name)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
@@ -2209,102 +2332,12 @@ try {{
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-        console.log('[PolySaaS MM] shim build 2026-06-11-v33-composer-direct');
+        console.log('[PolySaaS MM] shim build 2026-06-10-composer-v30');
     var B = {base_js};
     var PROXY = {proxy_js};
-
-    // Error capture to diagnose composer crash
-    window.onerror = function(msg, src, line, col, err) {{
-        console.error('[PolySaaS MM ERROR]', msg, 'at', src, line + ':' + col);
-        if (err && err.stack) console.error('[PolySaaS MM STACK]', err.stack);
-        return false;
-    }};
-    window.addEventListener('unhandledrejection', function(e) {{
-        console.error('[PolySaaS MM UNHANDLED PROMISE]', e.reason);
-        if (e.reason && e.reason.stack) console.error('[PolySaaS MM STACK]', e.reason.stack);
-    }});
-
-    // Redirect webpack lazy chunks from localhost/static/ to upstream Mattermost server.
-    // Webpack's public_path is hardcoded to /static/ so chunks request localhost:8000/static/HASH.js
-    // which 404s on Django. This intercepts appendChild/insertBefore and rewrites those URLs
-    // before the browser ever makes the request — fixes "Something went wrong" composer error.
-    (function() {{
-        var _lo = window.location.origin;
-        var _re = /\/static\/[\w.-]+\.(js|css)(\?.*)?$/;
-        var _skipStatic = ['/static/admin/', '/static/vendor/', '/static/jazzmin/', '/static/img/'];
-        function _isMmChunkPath(path) {{
-            if (!path || !_re.test(path)) return false;
-            for (var _si = 0; _si < _skipStatic.length; _si++) {{
-                if (path.indexOf(_skipStatic[_si]) !== -1) return false;
-            }}
-            return true;
-        }}
-        function _rewriteChunkUrl(url) {{
-            if (!url || typeof url !== 'string' || url.indexOf(_lo) !== 0) return url;
-            var path = url.slice(_lo.length);
-            if (PROXY && path.indexOf(PROXY + '/static/') === 0) {{
-                path = path.slice(PROXY.length);
-            }}
-            if (!_isMmChunkPath(path)) return url;
-            return B + (path.charAt(0) === '/' ? path : '/' + path);
-        }}
-        function _fix(el) {{
-            if (!el || !el.tagName) return;
-            try {{
-                var t = el.tagName.toLowerCase();
-                if (t === 'script' && el.src) {{
-                    var ns = _rewriteChunkUrl(el.src);
-                    if (ns !== el.src) {{
-                        el.src = ns;
-                        console.log('[PolySaaS MM] chunk->upstream: ' + ns.slice(-60));
-                    }}
-                }} else if (t === 'link' && el.href) {{
-                    var nh = _rewriteChunkUrl(el.href);
-                    if (nh !== el.href) el.href = nh;
-                }}
-            }} catch(_e) {{}}
-        }}
-        var _ac = Element.prototype.appendChild;
-        var _ib = Element.prototype.insertBefore;
-        Element.prototype.appendChild = function(c) {{ _fix(c); return _ac.apply(this, arguments); }};
-        Element.prototype.insertBefore = function(n, r) {{ _fix(n); return _ib.apply(this, arguments); }};
-        console.log('[PolySaaS MM] Chunk redirect installed, upstream=' + B);
-    }})();
     var MM_USER_ID = {user_id_js};
-    var MM_USERNAME = {username_js};
     var MM_TEAM_NAME = {team_name_js};
     var O = window.location.origin;
-
-    function _mmCredentialSiteUrl() {{
-        return O + PROXY;
-    }}
-
-    function _mmRewriteFetchUrl(url) {{
-        if (typeof url !== 'string' || !url) return url;
-        var path = url;
-        if (url.indexOf(O) === 0) {{
-            path = url.slice(O.length);
-        }} else if (url.indexOf(B) === 0) {{
-            path = url.slice(B.length);
-            if (!path.startsWith('/')) path = '/' + path;
-            if (path.indexOf('/api/v4/') === 0 || path.indexOf('/plugins/') === 0) {{
-                return PROXY + path;
-            }}
-            if (/\.(js|css)(\?|$)/i.test(path)) {{
-                return B + path;
-            }}
-        }}
-        if (PROXY && path.indexOf(PROXY + '/static/') === 0) {{
-            path = path.slice(PROXY.length);
-        }}
-        if (path.indexOf('/static/') !== -1 && /\.(js|css)(\?|$)/i.test(path) &&
-            path.indexOf('/static/admin/') === -1 &&
-            path.indexOf('/static/vendor/') === -1 &&
-            path.indexOf('/static/jazzmin/') === -1) {{
-            if (url.indexOf(O) === 0) return B + (path.charAt(0) === '/' ? path : '/' + path);
-        }}
-        return url;
-    }}
     var _serverToken = {token_js};
     var MMAUTHTOKEN = '';
     var _mmPageLoadTime = Date.now();
@@ -2322,6 +2355,13 @@ try {{
         var tok = (MMAUTHTOKEN || _serverToken || '').trim();
         return tok.length > 8;
     }}
+    try {{
+        var _errPath = (window.location && window.location.pathname) || '';
+        if (_errPath.indexOf(PROXY + '/error') === 0 && MM_TEAM_NAME && _mmTokenPresent()) {{
+            console.log('[PolySaaS MM] /error page — redirect to Town Square');
+            window.location.replace(PROXY + '/' + MM_TEAM_NAME + '/channels/town-square');
+        }}
+    }} catch(_errRedirect) {{}}
     // Prevent bare Mattermost paths (e.g. /team/channels/town-square) escaping the proxy prefix.
     function _mmIsPolySaaSPath(p) {{
         if (!p || p.charAt(0) !== '/') return false;
@@ -2371,38 +2411,12 @@ try {{
     }}
 
     function _mmIsLandingPath() {{
+        if (!MM_TEAM_NAME) return false;
         try {{
             var p = (window.location && window.location.pathname) || '';
-            if (p.indexOf(PROXY + '/') !== 0) return false;
-            if (MM_TEAM_NAME && p.indexOf(PROXY + '/' + MM_TEAM_NAME + '/channels/') === 0) return true;
-            return p.indexOf('/channels/') !== -1;
+            return p.indexOf(PROXY + '/' + MM_TEAM_NAME + '/channels/') === 0;
         }} catch(_lp) {{ return false; }}
     }}
-
-    function _mmInstallBasenameLock() {{
-        var _basenameVal = PROXY;
-        try {{
-            Object.defineProperty(window, 'basename', {{
-                get: function() {{ return _basenameVal; }},
-                set: function(v) {{
-                    if (!v || v === '') {{
-                        console.log('[PolySaaS MM] Blocked empty basename');
-                        _basenameVal = PROXY;
-                        return;
-                    }}
-                    if (v !== PROXY) {{
-                        console.log('[PolySaaS MM] basename forced to PROXY (was', v, ')');
-                    }}
-                    _basenameVal = PROXY;
-                }},
-                configurable: true
-            }});
-        }} catch(_bl) {{
-            window.basename = PROXY;
-        }}
-        window.__webpack_public_path__ = B + '/static/';
-    }}
-    _mmInstallBasenameLock();
 
     // === STRONG POLYSAAS REDIRECT LOOP PROTECTION ===
     const urlParams = new URLSearchParams(window.location.search);
@@ -2429,7 +2443,16 @@ try {{
     window.mmBridgeInitialized = true;
     try {{ sessionStorage.setItem('_ps_mm_session_init', '1'); }} catch(e) {{}}
 
-    _mmInstallBasenameLock();
+    // Set window.basename so Mattermost's React Router strips the proxy prefix correctly.
+    // Without this, routes like /team/channels/town-square never match — blank screen.
+    window.__webpack_public_path__ = B + '/static/';
+    window.basename = PROXY;
+    setInterval(function() {{
+        if (window.basename !== PROXY) {{
+            console.log('[PolySaaS MM] Restoring basename from', window.basename, 'to', PROXY);
+            window.basename = PROXY;
+        }}
+    }}, 500);
 
     // Loading timeout: nudge React Router only when no provisioned team landing target.
     setTimeout(function() {{
@@ -2458,18 +2481,27 @@ try {{
     }}
     setTimeout(_mmAutoLandTownSquare, 400);
 
-    // Server token wins over stale localStorage (prevents mismatched mmauthtoken/MMAUTHTOKEN loop).
-    if (_serverToken && !MMAUTHTOKEN) {{
+    // Server token always wins — purge stale browser copies (wrong-tenant token breaks team/composer).
+    if (_serverToken && String(_serverToken).length > 8) {{
         MMAUTHTOKEN = _serverToken;
-    }}
-    if (!MMAUTHTOKEN) {{
-        try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
-    }}
-    if (!MMAUTHTOKEN) {{
         try {{
-            var stored = localStorage.getItem('storage:MMAUTHTOKEN');
-            if (stored) {{ MMAUTHTOKEN = JSON.parse(stored); }}
-        }} catch(e) {{}}
+            var _lsTok = localStorage.getItem('MMAUTHTOKEN') || '';
+            if (_lsTok && _lsTok !== _serverToken) {{
+                console.log('[PolySaaS MM] Replacing stale localStorage token');
+            }}
+            localStorage.setItem('MMAUTHTOKEN', _serverToken);
+            try {{ localStorage.setItem('storage:MMAUTHTOKEN', JSON.stringify(_serverToken)); }} catch(_j) {{}}
+            document.cookie = 'mmauthtoken=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
+            document.cookie = 'MMAUTHTOKEN=' + _serverToken + '; path=/; max-age=86400; SameSite=Lax';
+        }} catch(_tok) {{}}
+    }} else if (!MMAUTHTOKEN) {{
+        try {{ MMAUTHTOKEN = localStorage.getItem('MMAUTHTOKEN') || ''; }} catch(e) {{}}
+        if (!MMAUTHTOKEN) {{
+            try {{
+                var stored = localStorage.getItem('storage:MMAUTHTOKEN');
+                if (stored) {{ MMAUTHTOKEN = JSON.parse(stored); }}
+            }} catch(e) {{}}
+        }}
     }}
     var MM_LOGIN_ID = {login_id_js};
     var MM_PASSWORD = {password_js};
@@ -2527,15 +2559,12 @@ try {{
             if (typeof _writeTokenToIDB === 'function') {{
                 try {{ _writeTokenToIDB(tok); }} catch(e) {{}}
             }}
-            if (MM_TEAM_NAME && _mmIsLandingPath()) {{
-                console.log('[PolySaaS MM] Blocked login nav on landing — nudging React Router');
-                _mmNudgeReactRouter();
-            }} else if ((window.location.pathname || '').indexOf('/channels/') !== -1) {{
-                console.log('[PolySaaS MM] Blocked nav on channel — nudging React Router (stay on channel)');
-                _mmNudgeReactRouter();
-            }} else if (MM_TEAM_NAME) {{
+            if (MM_TEAM_NAME && !_mmIsLandingPath()) {{
                 console.log('[PolySaaS MM] Blocked root nav — sending to Town Square');
                 window.location.replace(_mmLandingUrl());
+            }} else if (MM_TEAM_NAME && _mmIsLandingPath()) {{
+                console.log('[PolySaaS MM] Blocked login nav on landing — nudging React Router');
+                _mmNudgeReactRouter();
             }}
         }}
         try {{
@@ -2577,20 +2606,6 @@ try {{
                 return _mmOrigAssign.call(this, _mmEnsureProxyUrl(String(url)));
             }};
         }} catch(e) {{}}
-
-        // Preserve basename + IDB across Mattermost error-boundary reload clicks.
-        try {{
-            var _origReload = Location.prototype.reload;
-            Location.prototype.reload = function(forced) {{
-                _mmInstallBasenameLock();
-                var tok = (MMAUTHTOKEN || _serverToken || '').trim();
-                if (tok && typeof _writeTokenToIDB === 'function') {{
-                    try {{ _writeTokenToIDB(tok); }} catch(_re) {{}}
-                }}
-                console.log('[PolySaaS MM] reload() — basename/IDB refreshed before reload');
-                return _origReload.call(this, forced);
-            }};
-        }} catch(_rle) {{}}
 
         // === INTERCEPT history.pushState / history.replaceState with redirect_to ===
         // React Router (v5) uses these to change the browser URL without a page reload.
@@ -2670,6 +2685,10 @@ try {{
             }}
             return PROXY + tail;
         }} else if (s.startsWith('http:') || s.startsWith('https:') || s.indexOf('//') === 0) {{
+            if (s.indexOf('/api/v4/posts/scheduled/') !== -1) {{
+                var _schedPath = s.indexOf('/api/v4/posts/scheduled/');
+                return PROXY + s.slice(_schedPath);
+            }}
             return s;
         }}
 
@@ -2723,28 +2742,16 @@ try {{
                         _entities.general = _entities.general || {{}};
                         var _general = {{}};
                         try {{ _general = typeof _entities.general === 'string' ? JSON.parse(_entities.general) : _entities.general; }} catch(_ge) {{}}
-                        _general.credentials = {{ url: _mmCredentialSiteUrl(), token: token }};
+                        _general.credentials = {{ url: B, token: token }};
                         _entities.general = _general;
-                        // Write users.currentUserId + minimal profile (composer needs profiles[id])
+                        // Write users.currentUserId (the critical auth guard check)
                         if (MM_USER_ID) {{
                             _entities.users = _entities.users || {{}};
                             var _users = {{}};
                             try {{ _users = typeof _entities.users === 'string' ? JSON.parse(_entities.users) : _entities.users; }} catch(_ue) {{}}
-                            _users.currentUserId = MM_USER_ID;
-                            var _profiles = {{}};
-                            try {{
-                                _profiles = typeof _users.profiles === 'string' ? JSON.parse(_users.profiles) : (_users.profiles || {{}});
-                            }} catch(_pe2) {{}}
-                            if (!_profiles[MM_USER_ID]) {{
-                                _profiles[MM_USER_ID] = {{
-                                    id: MM_USER_ID,
-                                    username: MM_USERNAME || ('user_' + MM_USER_ID.slice(0, 8)),
-                                    roles: 'system_user'
-                                }};
-                            }}
-                            _users.profiles = _profiles;
+                            _users.currentUserId = _users.currentUserId || MM_USER_ID;
                             _entities.users = _users;
-                            console.log('[PolySaaS MM IDB] writing currentUserId=' + MM_USER_ID + ' + profile stub');
+                            console.log('[PolySaaS MM IDB] writing currentUserId=' + MM_USER_ID);
                         }}
                         _existing.entities = JSON.stringify(_entities);
                         var _putReq = _store.put(JSON.stringify(_existing), 'persist:storage');
@@ -2777,77 +2784,6 @@ try {{
         }} catch(_idbe) {{ console.log('[PolySaaS MM IDB] error:', _idbe); }}
     }}
 
-    // Merge a full /users/me payload into IDB profiles (Composer-004).
-    function _writeUserProfileToIDB(me, _idbCallback) {{
-        if (!me || !me.id || !MMAUTHTOKEN) {{
-            if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
-            return;
-        }}
-        try {{
-            var _dbReq = indexedDB.open('localforage');
-            _dbReq.onsuccess = function(e) {{
-                var _db = e.target.result;
-                if (!_db.objectStoreNames.contains('keyvaluepairs')) {{
-                    try {{ _db.close(); }} catch(_c) {{}}
-                    if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
-                    return;
-                }}
-                try {{
-                    var _tx = _db.transaction(['keyvaluepairs'], 'readwrite');
-                    var _store = _tx.objectStore('keyvaluepairs');
-                    var _getReq = _store.get('persist:storage');
-                    _getReq.onsuccess = function(ge) {{
-                        var _existing = {{}};
-                        try {{ _existing = JSON.parse(ge.target.result || '{{}}') || {{}}; }} catch(_pe) {{}}
-                        var _entities = {{}};
-                        try {{ _entities = JSON.parse(_existing.entities || '{{}}') || {{}}; }} catch(_ee) {{}}
-                        var _users = {{}};
-                        try {{ _users = typeof _entities.users === 'string' ? JSON.parse(_entities.users) : (_entities.users || {{}}); }} catch(_ue) {{}}
-                        var _profiles = {{}};
-                        try {{ _profiles = typeof _users.profiles === 'string' ? JSON.parse(_users.profiles) : (_users.profiles || {{}}); }} catch(_pe2) {{}}
-                        _profiles[me.id] = me;
-                        _users.profiles = _profiles;
-                        _users.currentUserId = me.id;
-                        _entities.users = _users;
-                        _existing.entities = JSON.stringify(_entities);
-                        _store.put(JSON.stringify(_existing), 'persist:storage').onsuccess = function() {{
-                            console.log('[PolySaaS MM IDB] profile merged for', me.username || me.id);
-                            if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
-                        }};
-                    }};
-                }} catch(_txe) {{
-                    if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
-                }}
-            }};
-            _dbReq.onerror = function() {{
-                if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
-            }};
-        }} catch(_e) {{
-            if (_idbCallback) try {{ _idbCallback(); }} catch(_cbE) {{}}
-        }}
-    }}
-
-    function _bootstrapIdbThen(_next) {{
-        if (!MMAUTHTOKEN) {{
-            if (_next) _next();
-            return;
-        }}
-        _writeTokenToIDB(MMAUTHTOKEN, function() {{
-            fetch(PROXY + '/api/v4/users/me', {{
-                headers: {{ 'Authorization': 'Bearer ' + MMAUTHTOKEN }}
-            }}).then(function(r) {{ return r.ok ? r.json() : null; }}).then(function(me) {{
-                if (me && me.id) {{
-                    _writeUserProfileToIDB(me, _next);
-                }} else if (_next) {{
-                    _next();
-                }}
-            }}).catch(function() {{ if (_next) _next(); }});
-        }});
-    }}
-
-    // GB-MATTERMOST-COMPOSER-004: ensure redux-persist hydrates user before composer mounts.
-    console.log('[PolySaaS MM Composer-004] early IDB bootstrap');
-
     // Eager IDB seed before Mattermost bundles run (reduces login-route race on Town Square landing).
     if (MMAUTHTOKEN && MM_USER_ID) {{
         try {{ _writeTokenToIDB(MMAUTHTOKEN); }} catch(_eidb) {{}}
@@ -2867,55 +2803,27 @@ try {{
         document.cookie = 'MMAUTHTOKEN=' + MMAUTHTOKEN + '; path=/; max-age=108000';
         window.MMAUTHTOKEN = MMAUTHTOKEN;
 
-        // Composer-004: first tab visit — seed IDB + profile, then ONE reload so redux-persist
-        // reads currentUserId BEFORE LoggedIn/AdvancedTextEditor mount (Grok hydration race fix).
-        var _idbAlreadySeeded = false;
-        try {{ _idbAlreadySeeded = sessionStorage.getItem('_ps_mm_idb_seeded') === '1'; }} catch(_e) {{}}
-        if (!_idbAlreadySeeded) {{
-            console.log('[PolySaaS MM Composer-004] first visit — IDB seed + profile fetch, then reload');
-            _bootstrapIdbThen(function() {{
-                try {{ sessionStorage.setItem('_ps_mm_idb_seeded', '1'); }} catch(_e) {{}}
-                console.log('[PolySaaS MM Composer-004] IDB ready — reloading once for redux-persist hydration');
+        // One-time two-load bootstrap: seed IDB then reload ONCE so redux-persist reads
+        // currentUserId BEFORE LoggedIn.componentDidMount fires (fixing the hydration race).
+        // Protected by a 15s localStorage timestamp so only the FIRST page load reloads.
+        var _idbSeedTs = parseInt(localStorage.getItem('_ps_mm_idb_seed_ts') || '0');
+        var _idbFreshSeed = (Date.now() - _idbSeedTs < 15000);
+        if (!_idbFreshSeed && _mmIsLandingPath()) {{
+            console.log('[PolySaaS MM] Landing path — seed IDB without reload, len=' + MMAUTHTOKEN.length);
+            _writeTokenToIDB(MMAUTHTOKEN, function() {{
+                localStorage.setItem('_ps_mm_idb_seed_ts', String(Date.now()));
+            }});
+        }} else if (!_idbFreshSeed) {{
+            console.log('[PolySaaS MM] Token set in localStorage + cookie, seeding IDB for bootstrap reload, len=' + MMAUTHTOKEN.length);
+            _writeTokenToIDB(MMAUTHTOKEN, function() {{
+                localStorage.setItem('_ps_mm_idb_seed_ts', String(Date.now()));
+                console.log('[PolySaaS MM] IDB seeded — one-time reload for authenticated Mattermost boot');
                 window.location.reload();
             }});
-            return;
+        }} else {{
+            console.log('[PolySaaS MM] Token set in localStorage + cookie (IDB seeded ' + Math.round((Date.now() - _idbSeedTs)/1000) + 's ago, skip reload), len=' + MMAUTHTOKEN.length);
         }}
-        console.log('[PolySaaS MM Composer-004] IDB already seeded — refreshing credentials url + continuing boot');
-        try {{ _writeTokenToIDB(MMAUTHTOKEN); }} catch(_refIdb) {{}}
     }}
-
-    // Recover blank channel view after error-boundary reload or basename race.
-    function _mmChannelViewReady() {{
-        try {{
-            var root = document.getElementById('root');
-            if (!root) return false;
-            return !!root.querySelector(
-                '.post-list, .channel-view, #post-list, .app__content, [class*="ChannelView"], [class*="PostList"]'
-            );
-        }} catch(_cv) {{ return false; }}
-    }}
-    function _mmRecoverBlankChannelView(reason) {{
-        if (!_mmTokenPresent()) return;
-        var p = (window.location && window.location.pathname) || '';
-        if (p.indexOf('/channels/') === -1 && !(p === PROXY || p === PROXY + '/')) return;
-        if (_mmChannelViewReady()) return;
-        console.warn('[PolySaaS MM] Blank channel view (' + reason + ') — recovering');
-        _mmInstallBasenameLock();
-        if (typeof _writeTokenToIDB === 'function') {{
-            try {{ _writeTokenToIDB(MMAUTHTOKEN || _serverToken); }} catch(_e) {{}}
-        }}
-        if (p === PROXY || p === PROXY + '/') {{
-            if (MM_TEAM_NAME) {{
-                window.location.replace(PROXY + '/' + MM_TEAM_NAME + '/channels/town-square');
-                return;
-            }}
-        }}
-        try {{
-            window.dispatchEvent(new PopStateEvent('popstate', {{ state: {{}}, bubbles: true }}));
-        }} catch(_ps) {{}}
-    }}
-    setTimeout(function() {{ _mmRecoverBlankChannelView('5s watchdog'); }}, 5000);
-    setTimeout(function() {{ _mmRecoverBlankChannelView('10s watchdog'); }}, 10000);
 
     console.log('[PolySaaS MM] Shim loaded. token preview:', MMAUTHTOKEN ? MMAUTHTOKEN.substring(0, 8) + '...' : 'none');
 
@@ -2969,6 +2877,26 @@ try {{
     var _teamObserver = new MutationObserver(function() {{ ... }});
     _teamObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
     */
+    (function() {{
+        var _teamRetryDone = false;
+        function _mmRecoverFromTeamNotFound() {{
+            if (_teamRetryDone || !MM_TEAM_NAME || !_mmTokenPresent()) return;
+            try {{
+                var txt = ((document.body && document.body.innerText) || '').toLowerCase();
+                var p = (window.location && window.location.pathname) || '';
+                if (p.indexOf(PROXY + '/error') !== -1 ||
+                    txt.indexOf('team not found') !== -1 ||
+                    (txt.indexOf('team you') !== -1 && txt.indexOf('private') !== -1)) {{
+                    _teamRetryDone = true;
+                    console.log('[PolySaaS MM] Team Not Found UI — redirect to Town Square');
+                    window.location.replace(PROXY + '/' + MM_TEAM_NAME + '/channels/town-square');
+                }}
+            }} catch(_tnf) {{}}
+        }}
+        var _teamObserver = new MutationObserver(_mmRecoverFromTeamNotFound);
+        _teamObserver.observe(document.documentElement, {{ childList: true, subtree: true }});
+        setTimeout(_mmRecoverFromTeamNotFound, 500);
+    }})();
 
     // Hard stop: never allow native Mattermost login UI in passthrough shell.
     // Only real login DOM — not footer/help text ("forgot your password?" appears on channel pages).
@@ -3071,6 +2999,9 @@ try {{
         if (apiIdx >= 0) return p.slice(apiIdx);
         var plugIdx = p.indexOf('/plugins/');
         if (plugIdx >= 0) return p.slice(plugIdx);
+        if (p.indexOf('trial-license') !== -1 || p.indexOf('posts/scheduled') !== -1) {{
+            console.log('[MM APIPATH DEBUG] url:', url.slice(0, 120), 'path:', p.slice(0, 120));
+        }}
         return p;
     }}
 
@@ -3088,11 +3019,77 @@ try {{
         return _mmApiPath(url).indexOf('/plugins/com.polysaas.passthrough/api/v1/auth-check') !== -1;
     }}
 
-    /* Scheduled posts is Enterprise-only; upstream 400 breaks the message composer */
+    /* Scheduled posts is Enterprise-only; upstream returns 400 and breaks the composer */
     function _mmIsScheduledPostsRequest(url) {{
+        return _mmApiPath(url).indexOf('/api/v4/posts/scheduled/') !== -1;
+    }}
+
+    /* Preemptive stubs — composer deps that fail or return wrong shapes through proxy */
+    var _MM_PLAYBOOKS_RUNS_EMPTY = {{items: [], total_count: 0, page_count: 0, has_more: false}};
+    function _mmComposerPreemptStub(url, method) {{
         var p = _mmApiPath(url);
-        return p.indexOf('/api/v4/posts/scheduled') !== -1 ||
-            p.indexOf('/api/v4/scheduled_posts') !== -1;
+        var m = (method || 'GET').toUpperCase();
+        var _isScheduled = _mmIsScheduledPostsRequest(url);
+        var _isTrialLic = p.indexOf('/api/v4/trial-license/') !== -1;
+        var _isGithub = p.indexOf('/plugins/github/api/v1/connected') !== -1;
+        var _isCalls = p.indexOf('/plugins/com.mattermost.calls/channels') !== -1;
+        var _isPlaybooksActions = p.indexOf('/plugins/playbooks/api/v0/actions/channels/') !== -1;
+        var _isPlaybooksRuns = p.indexOf('/plugins/playbooks/api/v0/runs') !== -1;
+        var _isPlaybooksConnect = p.indexOf('/plugins/playbooks/api/v0/bot/connect') !== -1;
+        var _isPlaybooksQuery = m === 'POST' && p.indexOf('/plugins/playbooks/api/v0/query') !== -1;
+        
+        var _shouldStub = _isScheduled || _isTrialLic || _isGithub || _isCalls || _isPlaybooksActions || _isPlaybooksRuns || _isPlaybooksConnect || _isPlaybooksQuery;
+        if (_shouldStub) {{
+            console.log('[MM STUB DEBUG] Matched:', {{
+                url: url.slice(0, 80),
+                path: p.slice(0, 80),
+                scheduled: _isScheduled,
+                trialLic: _isTrialLic,
+                github: _isGithub,
+                calls: _isCalls,
+                pbActions: _isPlaybooksActions,
+                pbRuns: _isPlaybooksRuns,
+                pbConnect: _isPlaybooksConnect,
+                pbQuery: _isPlaybooksQuery
+            }});
+        }}
+        
+        if (_isScheduled) return [];
+        if (_isTrialLic) return {{}};
+        if (_isGithub) return {{connected: false}};
+        /* Calls plugin expects {{}} (object), not [] — v26 wrongly stubbed [] and broke composer */
+        if (_isCalls) return {{}};
+        if (_isPlaybooksActions) return [];
+        if (_isPlaybooksRuns) return _MM_PLAYBOOKS_RUNS_EMPTY;
+        if (_isPlaybooksConnect) return {{}};
+        if (_isPlaybooksQuery) return {{data: {{}}}};
+        return null;
+    }}
+
+    /* Rewrite-on-error fallback for composer URLs not fully preempted */
+    function _mmComposerErrorStub(url) {{
+        var p = _mmApiPath(url);
+        if (p.indexOf('/plugins/com.mattermost.calls/channels') !== -1) return {{}};
+        if (p.indexOf('/plugins/playbooks/api/v0/actions/channels/') !== -1) return [];
+        if (p.indexOf('/plugins/playbooks/api/v0/runs') !== -1) return _MM_PLAYBOOKS_RUNS_EMPTY;
+        if (p.indexOf('/plugins/playbooks/api/v0/bot/connect') !== -1) return {{}};
+        if (p.indexOf('/plugins/playbooks/api/v0/query') !== -1) return {{data: {{}}}};
+        if (_mmIsScheduledPostsRequest(url)) return [];
+        if (p.indexOf('/api/v4/trial-license/') !== -1) return {{}};
+        if (p.indexOf('/plugins/github/api/v1/connected') !== -1) return {{connected: false}};
+        return null;
+    }}
+
+    /* Upstream 200 with wrong JSON shape (e.g. [] instead of {{}}) breaks lazy-loaded composer */
+    function _mmComposerRepairBody(url, text) {{
+        var p = _mmApiPath(url);
+        if (p.indexOf('/plugins/com.mattermost.calls/channels') !== -1) {{
+            try {{
+                var parsed = JSON.parse(text);
+                if (Array.isArray(parsed)) return '{{}}';
+            }} catch (_e) {{}}
+        }}
+        return null;
     }}
 
     function _mmNoopJsonResponse(payload) {{
@@ -3140,10 +3137,7 @@ try {{
     // We also immediately dispatch RECEIVED_ME so currentUserId is re-established.
     (function() {{
         var _rdxPatched = false;
-        var _rdxStore = null;
-        var _rdxOrigDispatch = null;
         function _findStore() {{
-            if (_rdxStore) return _rdxStore;
             // Method 1: window.store (older Mattermost builds)
             if (window.store && typeof window.store.dispatch === 'function') return window.store;
             // Method 2: React fiber tree — walk from #root to find the Redux Provider
@@ -3166,36 +3160,11 @@ try {{
             }} catch(_fe) {{}}
             return null;
         }}
-        window._mmEnsureReduxUser = function(force) {{
-            if (!_mmTokenPresent()) return;
-            var _s = _findStore();
-            if (!_s) return;
-            var _st = _s.getState && _s.getState();
-            var _users = _st && _st.entities && _st.entities.users;
-            var _cur = _users && _users.currentUserId;
-            var _profiles = _users && _users.profiles;
-            var _need = force || !_cur || (_cur && _profiles && !_profiles[_cur]);
-            if (!_need) return;
-            var _dispatch = _rdxOrigDispatch || _s.dispatch.bind(_s);
-            fetch(PROXY + '/api/v4/users/me', {{
-                headers: {{ 'Authorization': 'Bearer ' + MMAUTHTOKEN }}
-            }}).then(function(r) {{ return r.ok ? r.json() : null; }}).then(function(me) {{
-                if (me && me.id) {{
-                    _dispatch({{ type: 'RECEIVED_ME', data: me }});
-                    console.log('[PolySaaS MM Composer-004] Redux RECEIVED_ME for', me.username || me.id);
-                    if (typeof _writeUserProfileToIDB === 'function') {{
-                        try {{ _writeUserProfileToIDB(me); }} catch(_wp) {{}}
-                    }}
-                }}
-            }}).catch(function() {{}});
-        }};
         function _tryPatch() {{
             if (_rdxPatched || !_mmTokenPresent()) return;
             var _s = _findStore();
             if (!_s) return;
-            _rdxStore = _s;
-            _rdxOrigDispatch = _s.dispatch.bind(_s);
-            var _orig = _rdxOrigDispatch;
+            var _orig = _s.dispatch.bind(_s);
             _s.dispatch = function(action) {{
                 if (action && typeof action.type === 'string') {{
                     var _t = action.type;
@@ -3209,45 +3178,42 @@ try {{
             }};
             _rdxPatched = true;
             console.log('[PolySaaS MM] Redux dispatch patched — LOGOUT blocked, user=' + MM_USER_ID);
-            window._mmEnsureReduxUser(true);
+            try {{
+                var _st = _s.getState && _s.getState();
+                var _cur = _st && _st.entities && _st.entities.users && _st.entities.users.currentUserId;
+                if (!_cur && MMAUTHTOKEN) {{
+                    fetch(PROXY + '/api/v4/users/me', {{
+                        headers: {{ 'Authorization': 'Bearer ' + MMAUTHTOKEN }}
+                    }}).then(function(r) {{ return r.ok ? r.json() : null; }}).then(function(me) {{
+                        if (me && me.id) {{
+                            if (MM_USER_ID && me.id !== MM_USER_ID) {{
+                                console.warn('[PolySaaS MM] users/me mismatch', me.id, 'expected', MM_USER_ID, '— skip prefetch');
+                                return;
+                            }}
+                            _orig({{ type: 'RECEIVED_ME', data: me }});
+                            console.log('[PolySaaS MM] Redux RECEIVED_ME prefetched for', me.id);
+                        }}
+                    }}).catch(function() {{}});
+                }}
+            }} catch(_me) {{}}
         }}
         var _rdxPollInterval = setInterval(function() {{
             _tryPatch();
             if (_rdxPatched) clearInterval(_rdxPollInterval);
         }}, 50);
-        setTimeout(function() {{ clearInterval(_rdxPollInterval); }}, 30000);
-    }})();
-    // Composer-004: recover when AdvancedTextEditor error boundary appears.
-    (function() {{
-        var _composerRecoveryTs = 0;
-        function _mmComposerErrorVisible() {{
-            try {{
-                var t = document.body ? (document.body.innerText || '') : '';
-                return t.indexOf('Something went wrong while loading the component') !== -1;
-            }} catch(_ce) {{ return false; }}
-        }}
-        function _mmTryComposerRecovery(reason) {{
-            if (!_mmComposerErrorVisible()) return;
-            var now = Date.now();
-            if (now - _composerRecoveryTs < 5000) return;
-            _composerRecoveryTs = now;
-            console.warn('[PolySaaS MM Composer-004] composer error visible (' + reason + ') — rehydrating user');
-            if (typeof window._mmEnsureReduxUser === 'function') {{
-                window._mmEnsureReduxUser(true);
-            }}
-            if (typeof _writeTokenToIDB === 'function' && MMAUTHTOKEN) {{
-                try {{ _writeTokenToIDB(MMAUTHTOKEN); }} catch(_we) {{}}
-            }}
-        }}
-        var _composerObs = new MutationObserver(function() {{
-            _mmTryComposerRecovery('mutation');
-        }});
-        _composerObs.observe(document.documentElement, {{ childList: true, subtree: true, characterData: true }});
-        setTimeout(function() {{ _mmTryComposerRecovery('8s scan'); }}, 8000);
+        setTimeout(function() {{ clearInterval(_rdxPollInterval); }}, 10000);
     }})();
     // ── end Redux dispatch patcher ───────────────────────────────────────────────
 
-    _mmInstallBasenameLock();
+    window.__webpack_public_path__ = B + '/static/';
+    window.basename = PROXY;
+    // Protect basename from being overwritten by upstream scripts
+    setInterval(function() {{
+        if (window.basename !== PROXY) {{
+            console.log('[PolySaaS MM] Resetting basename from', window.basename, 'to', PROXY);
+            window.basename = PROXY;
+        }}
+    }}, 500);
 
     // Strip redirect_to from root URL — the root handler redirects anyway, and
     // leaving it causes Mattermost's login component to redirect to it, creating loops.
@@ -3329,10 +3295,15 @@ try {{
         }}).catch(function() {{ return null; }});
     }}
 
-    function _mmBogusTeamSlug(url) {{
+    function _mmTeamNameSlug(url) {{
         var p = _mmApiPath(url);
         var m = p.match(/^\\/api\\/v4\\/teams\\/name\\/([^/?#]+)/);
-        if (m && _bogusTeamSlugs[m[1]]) return m[1];
+        return m ? m[1] : null;
+    }}
+
+    function _mmBogusTeamSlug(url) {{
+        var slug = _mmTeamNameSlug(url);
+        if (slug && _bogusTeamSlugs[slug]) return slug;
         return null;
     }}
 
@@ -3341,105 +3312,30 @@ try {{
         return p === '/api/v4/teams' || p.indexOf('/api/v4/teams?') === 0;
     }}
 
-    // Coalesce duplicate GETs during WebSocket reconnect storms (same URL in-flight or recent cache).
-    var _mmInflightGet = {{}};
-    var _mmRecentGet = {{}};
-    var _mmWsBurstUntil = 0;
-    var _MM_GET_CACHE_MS = 1500;
-    var _MM_GET_BURST_MS = 4000;
-
-    function _mmFetchMethod(input, init) {{
-        if (init && init.method) return String(init.method).toUpperCase();
-        if (typeof Request !== 'undefined' && input instanceof Request && input.method) {{
-            return String(input.method).toUpperCase();
-        }}
-        return 'GET';
-    }}
-
-    function _mmIsReconnectDedupePath(url) {{
-        var p = _mmApiPath(url);
-        if (p.indexOf('/users/me/channels') !== -1) return true;
-        if (p.indexOf('/channel_members') !== -1) return true;
-        if (p.indexOf('/channels/categories') !== -1) return true;
-        if (p.indexOf('/teams/unread') !== -1) return true;
-        if (p.indexOf('/plugins/webapp') !== -1) return true;
-        if (p.indexOf('/users/status/ids') !== -1) return true;
-        if (p.indexOf('/channels/members/me/view') !== -1) return true;
-        return false;
-    }}
-
-    function _mmGetCacheTtl() {{
-        return (Date.now() < _mmWsBurstUntil) ? _MM_GET_BURST_MS : _MM_GET_CACHE_MS;
-    }}
-
-    function _mmMarkWsBurst() {{
-        _mmWsBurstUntil = Date.now() + _MM_GET_BURST_MS;
-        console.log('[PolySaaS MM] WS reconnect burst — deduping duplicate GETs for', _MM_GET_BURST_MS, 'ms');
-    }}
-
-    function _mmCachedResponse(entry) {{
-        return new Response(entry.body, {{
-            status: entry.status,
-            statusText: entry.statusText || 'OK',
-            headers: entry.headers || {{'Content-Type': 'application/json'}}
-        }});
-    }}
-
-    function _mmDedupeGet(url, doFetch) {{
-        var now = Date.now();
-        var ttl = _mmGetCacheTtl();
-        var cached = _mmRecentGet[url];
-        if (cached && (now - cached.ts) < ttl) {{
-            console.log('[PolySaaS MM] GET cache hit:', url.slice(-72));
-            return Promise.resolve(_mmCachedResponse(cached));
-        }}
-        if (_mmInflightGet[url]) {{
-            console.log('[PolySaaS MM] GET in-flight dedupe:', url.slice(-72));
-            return _mmInflightGet[url];
-        }}
-        var prom = doFetch().then(function(resp) {{
-            if (resp && resp.ok) {{
-                return resp.clone().text().then(function(body) {{
-                    var hdrs = {{}};
-                    try {{
-                        resp.headers.forEach(function(v, k) {{ hdrs[k] = v; }});
-                    }} catch(_he) {{ hdrs = {{'Content-Type': 'application/json'}}; }}
-                    _mmRecentGet[url] = {{
-                        ts: Date.now(),
-                        status: resp.status,
-                        statusText: resp.statusText,
-                        headers: hdrs,
-                        body: body
-                    }};
-                    return resp;
-                }}).catch(function() {{ return resp; }});
-            }}
-            return resp;
-        }}).finally(function() {{
-            delete _mmInflightGet[url];
-        }});
-        _mmInflightGet[url] = prom;
-        return prom;
-    }}
-
     var _f = window.fetch;
     window.fetch = function(input, init) {{
         var original = input;
         var reqUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-        reqUrl = _mmRewriteFetchUrl(reqUrl);
-        if (typeof input === 'string') {{
-            input = reqUrl;
-        }} else if (typeof Request !== 'undefined' && input instanceof Request && reqUrl !== input.url) {{
-            input = new Request(reqUrl, input);
-        }}
 
         var _bogusSlug = _mmBogusTeamSlug(reqUrl);
-        if (_bogusSlug && MMAUTHTOKEN) {{
-            console.log('[PolySaaS MM] Intercepting bogus team slug:', _bogusSlug, '-> /users/me/teams');
+        var _teamSlug = _mmTeamNameSlug(reqUrl);
+        if ((_bogusSlug || _teamSlug) && _mmTokenPresent()) {{
+            var _wanted = _teamSlug || _bogusSlug;
+            console.log('[PolySaaS MM] Intercepting teams/name:', _wanted, '-> /users/me/teams');
             return _mmResolveTeamsFromMe().then(function(teams) {{
                 if (teams && teams.length) {{
-                    console.log('[PolySaaS MM] Resolved real team:', teams[0].name);
-                    return new Response(JSON.stringify(teams[0]), {{
+                    var match = teams[0];
+                    for (var ti = 0; ti < teams.length; ti++) {{
+                        if (teams[ti].name === _wanted) {{ match = teams[ti]; break; }}
+                    }}
+                    if (match.name !== _wanted) {{
+                        console.log('[PolySaaS MM] Team slug mismatch', _wanted, '->', match.name);
+                        setTimeout(function() {{
+                            window.location.replace(PROXY + '/' + match.name + '/channels/town-square');
+                        }}, 50);
+                    }}
+                    console.log('[PolySaaS MM] Resolved team:', match.name);
+                    return new Response(JSON.stringify(match), {{
                         status: 200, headers: {{'Content-Type': 'application/json'}}
                     }});
                 }}
@@ -3454,6 +3350,12 @@ try {{
                 }});
             }});
         }}
+        var _reqMethod = (init && init.method) ? String(init.method).toUpperCase() : 'GET';
+        var _composerStub = _mmComposerPreemptStub(reqUrl, _reqMethod);
+        if (_composerStub !== null) {{
+            console.log('[PolySaaS MM] Composer stub (fetch):', _mmApiPath(reqUrl));
+            return _mmNoopJsonResponse(_composerStub);
+        }}
 
         // Block external analytics requests that cause CORS errors and hang the UI
         if (reqUrl.indexOf('matterlytics.com') !== -1 || 
@@ -3462,35 +3364,6 @@ try {{
             console.log('[PolySaaS MM] Blocked external analytics request:', reqUrl);
             return Promise.resolve(new Response(null, {{status: 204, statusText: 'No Content'}}));
         }}
-
-        // Stub Enterprise-only endpoints that return 400/403 and disrupt the SPA
-        if (_mmIsScheduledPostsRequest(reqUrl)) {{
-            console.log('[PolySaaS MM] Stub scheduled posts -> []');
-            return _mmNoopJsonResponse('[]');
-        }}
-        if (reqUrl.indexOf('/api/v4/trial-license') !== -1) {{
-            console.log('[PolySaaS MM] Stub trial-license -> {{}}');
-            return Promise.resolve(new Response('{{}}', {{status: 200, headers: {{'Content-Type': 'application/json'}}}}));
-        }}
-        // Re-enable plugins now that we ruled them out
-        // (removing the stub so real plugins load)
-        
-        // DIAGNOSTIC: Log any API errors that might break the composer
-        var _diagWrapFetch = function(fetchPromise, endpoint) {{
-            return fetchPromise.then(function(resp) {{
-                if (!resp.ok && resp.status >= 400) {{
-                    console.warn('[PolySaaS MM] API ERROR ' + resp.status + ' for: ' + endpoint);
-                }}
-                // Extra logging for composer-critical endpoints
-                if (endpoint.indexOf('/channels/') !== -1 && endpoint.indexOf('/members/me') !== -1) {{
-                    console.log('[PolySaaS MM] Channel member response:', resp.status, endpoint);
-                }}
-                return resp;
-            }}).catch(function(err) {{
-                console.error('[PolySaaS MM] FETCH FAILED for:', endpoint, err);
-                throw err;
-            }});
-        }};
         
         if (typeof input === 'string') {{
             input = toProxy(input);
@@ -3500,6 +3373,11 @@ try {{
         }}
         
         var proxiedUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        var _composerStubPx = _mmComposerPreemptStub(proxiedUrl, _reqMethod);
+        if (_composerStubPx !== null) {{
+            console.log('[PolySaaS MM] Composer stub (fetch proxied):', _mmApiPath(proxiedUrl));
+            return _mmNoopJsonResponse(_composerStubPx);
+        }}
         if (_mmIsLogoutRequest(proxiedUrl) || _mmIsLogoutRequest(original)) {{
             console.log('[PolySaaS MM] Blocked cross-tab /users/logout (noop 200)');
             return _mmNoopJsonResponse({{}});
@@ -3539,15 +3417,29 @@ try {{
         }}
         if (original !== input) console.log('[PolySaaS MM] fetch:', original, '->', input);
         var _reqUrlForLog = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-        var _fetchMethod = _mmFetchMethod(input, init);
-        function _mmExecuteFetch() {{
-            return _f.call(window, input, init);
-        }}
-        var _prom;
-        if (_fetchMethod === 'GET' && _mmIsReconnectDedupePath(_reqUrlForLog)) {{
-            _prom = _mmDedupeGet(_reqUrlForLog, _mmExecuteFetch);
-        }} else {{
-            _prom = _mmExecuteFetch();
+        var _prom = _f.call(this, input, init);
+
+        var _composerRewrite = _mmComposerErrorStub(_reqUrlForLog);
+        if (_composerRewrite === null) _composerRewrite = _mmComposerErrorStub(original);
+        if (_composerRewrite !== null) {{
+            return _prom.then(function(r) {{
+                if (r.ok) {{
+                    return r.clone().text().then(function(t) {{
+                        var fixed = _mmComposerRepairBody(_reqUrlForLog || original, t);
+                        if (fixed !== null) {{
+                            console.log('[PolySaaS MM] Composer repair 200 body ->', _mmApiPath(_reqUrlForLog || original));
+                            return new Response(fixed, {{status: 200, headers: {{'Content-Type': 'application/json'}}}});
+                        }}
+                        return r;
+                    }});
+                }}
+                console.log('[PolySaaS MM] Rewriting composer HTTP', r.status, '-> 200', _mmApiPath(_reqUrlForLog || original));
+                return new Response(JSON.stringify(_composerRewrite), {{
+                    status: 200, headers: {{'Content-Type': 'application/json'}}
+                }});
+            }}).catch(function() {{
+                return _mmNoopJsonResponse(_composerRewrite);
+            }});
         }}
         
         // Retry logic for plugin config 401 errors
@@ -3606,17 +3498,7 @@ try {{
                 return r;
             }});
         }}
-        if (_mmIsScheduledPostsRequest(_reqUrlForLog)) {{
-            return _prom.then(function(r) {{
-                if (!r.ok) {{
-                    console.log('[PolySaaS MM] Rewriting scheduled posts', r.status, '-> 200 []');
-                    return _mmNoopJsonResponse('[]');
-                }}
-                return r;
-            }});
-        }}
-        // Wrap with diagnostic logging for all API calls
-        return _diagWrapFetch(_prom, _reqUrlForLog);
+        return _prom;
     }};
 
     var _xo = XMLHttpRequest.prototype.open;
@@ -3630,17 +3512,18 @@ try {{
             this._blocked = true;
             return;
         }}
-        var proxied = _mmRewriteFetchUrl(url);
-        proxied = toProxy(proxied);
+        var proxied = toProxy(url);
         if (url !== proxied) console.log('[PolySaaS MM] XHR:', method, url, '->', proxied);
         if (_mmIsLogoutRequest(proxied)) {{
             console.log('[PolySaaS MM] XHR blocked /users/logout');
             this._psNoopLogout = true;
         }}
         var _xhrBogus = _mmBogusTeamSlug(proxied);
-        if (_xhrBogus && MMAUTHTOKEN) {{
-            console.log('[PolySaaS MM] XHR intercept bogus team slug:', _xhrBogus);
+        var _xhrTeamSlug = _mmTeamNameSlug(proxied);
+        if ((_xhrBogus || _xhrTeamSlug) && _mmTokenPresent()) {{
+            console.log('[PolySaaS MM] XHR intercept teams/name:', _xhrTeamSlug || _xhrBogus);
             this._psStubTeamObject = true;
+            this._psWantedTeamSlug = _xhrTeamSlug || _xhrBogus;
         }} else if (MMAUTHTOKEN && _mmIsTeamsListRequest(proxied)) {{
             console.log('[PolySaaS MM] XHR intercept /api/v4/teams list');
             this._psStubTeamsList = true;
@@ -3649,9 +3532,13 @@ try {{
             console.log('[PolySaaS MM] XHR stub plugin auth-check');
             this._psStubPluginAuth = true;
         }}
-        if (_mmIsScheduledPostsRequest(proxied)) {{
-            console.log('[PolySaaS MM] XHR stub scheduled posts');
-            this._psStubScheduledPosts = true;
+        var _xhrComposer = _mmComposerPreemptStub(proxied, method);
+        if (_xhrComposer !== null) {{
+            console.log('[PolySaaS MM] XHR composer stub:', _mmApiPath(proxied));
+            this._psComposerStubBody = JSON.stringify(_xhrComposer);
+        }} else {{
+            var _xhrComposerErr = _mmComposerErrorStub(proxied);
+            if (_xhrComposerErr !== null) this._psComposerErrorStub = _xhrComposerErr;
         }}
         var rest = Array.prototype.slice.call(arguments, 2);
         _xo.apply(this, [method, proxied].concat(rest));
@@ -3698,9 +3585,21 @@ try {{
         if (this._psStubTeamObject || this._psStubTeamsList) {{
             var self = this;
             var _list = !!this._psStubTeamsList;
+            var _wantedSlug = this._psWantedTeamSlug || '';
             _mmResolveTeamsFromMe().then(function(teams) {{
+                var match = (teams && teams.length) ? teams[0] : null;
+                if (teams && teams.length && _wantedSlug) {{
+                    for (var ti = 0; ti < teams.length; ti++) {{
+                        if (teams[ti].name === _wantedSlug) {{ match = teams[ti]; break; }}
+                    }}
+                }}
                 var body = _list ? JSON.stringify(teams || []) :
-                    (teams && teams.length ? JSON.stringify(teams[0]) : '{{}}');
+                    (match ? JSON.stringify(match) : '{{}}');
+                if (match && _wantedSlug && match.name !== _wantedSlug) {{
+                    setTimeout(function() {{
+                        window.location.replace(PROXY + '/' + match.name + '/channels/town-square');
+                    }}, 50);
+                }}
                 setTimeout(function() {{
                     try {{
                         Object.defineProperty(self, 'status', {{value: 200}});
@@ -3724,6 +3623,19 @@ try {{
             }}, 0);
             return;
         }}
+        if (this._psComposerStubBody) {{
+            var self = this;
+            var _body = this._psComposerStubBody;
+            setTimeout(function() {{
+                try {{
+                    Object.defineProperty(self, 'status', {{value: 200}});
+                    Object.defineProperty(self, 'responseText', {{value: _body}});
+                    Object.defineProperty(self, 'readyState', {{value: 4}});
+                }} catch(_d) {{}}
+                if (typeof self.onload === 'function') self.onload();
+            }}, 0);
+            return;
+        }}
         if (this._psStubScheduledPosts) {{
             var self = this;
             setTimeout(function() {{
@@ -3735,6 +3647,19 @@ try {{
                 if (typeof self.onload === 'function') self.onload();
             }}, 0);
             return;
+        }}
+        if (this._psComposerErrorStub) {{
+            var self = this;
+            var _errStub = this._psComposerErrorStub;
+            this.addEventListener('load', function() {{
+                if (self.status >= 400) {{
+                    console.log('[PolySaaS MM] XHR composer rewrite', self.status, '-> 200');
+                    try {{
+                        Object.defineProperty(self, 'status', {{value: 200}});
+                        Object.defineProperty(self, 'responseText', {{value: JSON.stringify(_errStub)}});
+                    }} catch(_d) {{}}
+                }}
+            }});
         }}
         _xs.apply(this, arguments);
     }};
@@ -3833,9 +3758,6 @@ try {{
             _wsCheckFail();
             if (origOnError) origOnError.call(ws, ev);
         }};
-        ws.addEventListener('close', function() {{
-            _mmMarkWsBurst();
-        }});
         return ws;
     }};
     if (_WS.CONNECTING !== undefined) window.WebSocket.CONNECTING = _WS.CONNECTING;
@@ -3878,23 +3800,50 @@ try {{
     window.addEventListener('unhandledrejection', function(e) {{
         console.error('[PolySaaS MM] Unhandled promise rejection:', e.reason);
     }});
+    // Log when scripts are loaded
+    var _origAppend = HTMLHeadElement.prototype.appendChild;
+    HTMLHeadElement.prototype.appendChild = function(node) {{
+        if (node.tagName === 'SCRIPT') console.log('[PolySaaS MM] Script appended:', node.src || '(inline)');
+        return _origAppend.call(this, node);
+    }};
     console.log('[PolySaaS Mattermost] Full shim loaded, proxy=', PROXY);
 }})();
 </script>
 """
 
     def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
-        """Inject full Mattermost shim first in <head>."""
+        """Inject early fetch guard then full Mattermost shim first in <head>."""
+        endpoint_url_resolved = self._resolve_mm_endpoint_url(request) or ''
+        token = (request.GET.get('mm_token') or '').strip()
+        if not token:
+            token = self._resolve_mm_auth_token(request, endpoint_url_resolved) or ''
+        if not token:
+            try:
+                cookies = self.get_upstream_cookies(request) or {}
+                token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
+            except Exception:
+                token = ""
+        
+        print(f"[MM SHIM] Generating guard, token_len={len(token) if token else 0}")
+        guard = self._mattermost_early_fetch_guard_html(
+            request, proxy_prefix, base_origin, token
+        )
+        print(f"[MM SHIM] Guard HTML generated, len={len(guard) if guard else 0}")
+        
         shim = self._mattermost_display_shim_html(
             request, proxy_prefix, base_origin
         )
+        print(f"[MM SHIM] Display shim generated, len={len(shim) if shim else 0}")
+        
+        injected = guard + shim
+        print(f"[MM SHIM] Total injection len={len(injected)}")
 
         if re.search(r"<head\b", html, re.IGNORECASE):
             return re.sub(
                 r"(<head[^>]*>)",
-                lambda m: m.group(1) + shim,
+                lambda m: m.group(1) + injected,
                 html,
                 count=1,
                 flags=re.IGNORECASE,
             )
-        return shim + html
+        return injected + html

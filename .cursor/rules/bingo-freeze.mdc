@@ -23,6 +23,28 @@ Optional second line (recommended): `BINGO: <short name> — commit <hash>`
 2. **Annotate every file in the commit** with the freeze banner (see formats below).
 3. Commit code + doc + annotations together (or annotations in an immediate follow-up commit before push).
 4. Pull → commit → push per process rules.
+5. **Create a BINGO ZIP** — zip the entire project folder and save it to `D:\BINGO ZIPS\BINGO_<short-name>_<YYYY-MM-DD>.zip`. This is the gold-master restore point. If git alone cannot restore exact behavior (e.g. a file outside the commit changed state), the ZIP is the authoritative source of truth.
+
+## BINGO ZIP — exact command
+
+```powershell
+$name = "BINGO_<short-name>_<YYYY-MM-DD>"
+Compress-Archive -Path "D:\PolySaaS\*" -DestinationPath "D:\BINGO ZIPS\$name.zip" -CompressionLevel Optimal
+Write-Host "BINGO ZIP created: D:\BINGO ZIPS\$name.zip"
+```
+
+Exclude `.git` if the zip would be too large — but include all source files, templates, static files, and `.bak` files.
+
+## Restoring from a BINGO ZIP
+
+```powershell
+# 1. Rename current project folder as a safety copy
+Rename-Item "D:\PolySaaS" "D:\PolySaaS_pre_restore"
+# 2. Create fresh folder and extract
+New-Item -ItemType Directory "D:\PolySaaS"
+Expand-Archive -Path "D:\BINGO ZIPS\BINGO_<name>.zip" -DestinationPath "D:\PolySaaS"
+# 3. Restart server
+```
 
 ## How to find files in the BINGO commit
 

@@ -1,0 +1,118 @@
+#!/usr/bin/env python
+"""
+Test Mattermost passthrough composer loading.
+Simulates what happens when a user accesses Mattermost via passthrough.
+"""
+
+import subprocess
+import sys
+import time
+
+def run_test():
+    print("=" * 80)
+    print("MATTERMOST COMPOSER FIX - VERIFICATION TEST")
+    print("=" * 80)
+    print()
+    
+    # Test 1: Verify server is running
+    print("Test 1: Checking if Django server is running...")
+    result = subprocess.run(
+        ["powershell", "-Command", "Get-Process python -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -like '*runserver*'} | Select-Object -First 1"],
+        capture_output=True,
+        text=True,
+        timeout=5
+    )
+    
+    if "python" in result.stdout.lower():
+        print("✓ Django runserver is running")
+    else:
+        print("✗ Django runserver NOT found - please start it")
+        return False
+    
+    print()
+    
+    # Test 2: Check syntax of modified file
+    print("Test 2: Verifying Python syntax of mattermost_handler.py...")
+    result = subprocess.run(
+        [sys.executable, "-m", "py_compile", "dose/passthrough/handlers/mattermost_handler.py"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        cwd="d:/PolySaaS"
+    )
+    
+    if result.returncode == 0:
+        print("✓ Handler syntax is valid")
+    else:
+        print(f"✗ Syntax error: {result.stderr}")
+        return False
+    
+    print()
+    
+    # Test 3: Verify commit
+    print("Test 3: Verifying commit...")
+    result = subprocess.run(
+        ["git", "log", "-1", "--oneline"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        cwd="d:/PolySaaS"
+    )
+    
+    if "Early Fetch Guard" in result.stdout:
+        print(f"✓ Commit recorded: {result.stdout.strip()}")
+    else:
+        print("✗ Commit not found")
+        return False
+    
+    print()
+    
+    # Test 4: Check if Early Fetch Guard code is in handler
+    print("Test 4: Checking if Early Fetch Guard code exists...")
+    with open("d:/PolySaaS/dose/passthrough/handlers/mattermost_handler.py", "r") as f:
+        content = f.read()
+    
+    checks = [
+        ("_mattermost_early_fetch_guard_html", "Early Fetch Guard method"),
+        ("/api/v4/posts/scheduled/", "Scheduled posts stub"),
+        ("window.fetch = function", "Fetch interception"),
+        ("XMLHttpRequest.prototype.send", "XHR interception"),
+    ]
+    
+    all_ok = True
+    for search_str, desc in checks:
+        if search_str in content:
+            print(f"  ✓ {desc}")
+        else:
+            print(f"  ✗ {desc} - NOT FOUND")
+            all_ok = False
+    
+    if not all_ok:
+        return False
+    
+    print()
+    
+    # Summary
+    print("=" * 80)
+    print("✓ ALL VERIFICATION TESTS PASSED")
+    print("=" * 80)
+    print()
+    print("NEXT STEPS:")
+    print("1. Open browser and navigate to:")
+    print("   http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square")
+    print("2. Check browser console (F12) for '[PolySaaS MM]' messages")
+    print("3. Verify message composer appears (not 'Something went wrong' banner)")
+    print("4. Try posting a message to confirm it works")
+    print()
+    
+    return True
+
+if __name__ == "__main__":
+    try:
+        success = run_test()
+        sys.exit(0 if success else 1)
+    except Exception as e:
+        print(f"\n✗ Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

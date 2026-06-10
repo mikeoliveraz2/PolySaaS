@@ -1,9 +1,8 @@
 """
 Provision demo AI peers in Mattermost Town Square.
 
-Creates @copilot, @grok, @gemini bot accounts, adds them to the tenant's
-Town Square channel, prunes other bots from the channel, posts welcome intros,
-and prints env vars for .env.
+Creates @github, @copilot, @grok, @gemini bot accounts, adds them to the tenant's
+Town Square channel, posts welcome intros, and prints env vars for .env.
 
 Usage:
     python manage.py setup_demo_mattermost_peers --tenant-schema=polysaast122
@@ -20,6 +19,16 @@ from django.db import connection
 
 
 DEMO_BOTS = [
+    {
+        'username': 'github',
+        'display_name': 'GitHub',
+        'description': 'PolySaaS repo peer — PRs, issues, and project context for mikeoliveraz2/PolySaaS.',
+        'env_key': 'BOT_TOKEN_GITHUB',
+        'intro': (
+            "👋 I'm **@github**, your repo peer for **mikeoliveraz2/PolySaaS**. "
+            "Ask about branches, PRs, or what's in the codebase."
+        ),
+    },
     {
         'username': 'copilot',
         'display_name': 'Copilot',
@@ -54,7 +63,7 @@ DEMO_BOTS = [
 
 
 class Command(BaseCommand):
-    help = 'Create demo Mattermost AI peers (copilot, grok, gemini) in Town Square'
+    help = 'Create demo Mattermost AI peers (github, copilot, grok, gemini) in Town Square'
 
     def add_arguments(self, parser):
         parser.add_argument('--tenant-schema', type=str, help='Tenant schema (e.g. polysaast122)')
@@ -114,13 +123,6 @@ class Command(BaseCommand):
         if options.get('tenant_schema') and tokens:
             self._store_tenant_tokens(options['tenant_schema'], tokens)
 
-        from dose.mattermost_bot.demo_roster import sync_town_square_demo_roster
-
-        self.stdout.write('\nPruning extra bots from Town Square...')
-        sync_town_square_demo_roster(
-            mm_url, headers, team_id, log=lambda m: self.stdout.write(m)
-        )
-
         if not options['no_welcome']:
             self._post_welcomes(mm_url, tokens, channel_id)
 
@@ -137,7 +139,7 @@ class Command(BaseCommand):
             '\nNext:\n'
             '  1. Restart Django after updating .env\n'
             '  2. python manage.py run_mattermost_bot   (or configure outgoing webhook)\n'
-            '  3. In Town Square: @copilot @grok @gemini — or say hello everyone\n'
+            '  3. In Town Square: @github @copilot @grok @gemini — or say hello everyone\n'
         )
 
     def _team_from_tenant(self, schema):

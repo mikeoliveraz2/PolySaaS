@@ -21,6 +21,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from dose.services.ai_peer_service import handle_mention, PEER_REGISTRY
+from dose.mattermost_bot.demo_roster import DEMO_TOWN_SQUARE_USERNAMES
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ _peers_loaded = False
 _processed_posts = set()
 _hook_tokens_cache = {'tokens': set(), 'ts': 0.0}
 
-# Channels where every message broadcasts to all active peers (no @mention needed).
+# Channels where every message broadcasts to demo peers (no @mention needed).
 # Use Mattermost channel *names* (not IDs).
 BROADCAST_CHANNELS = {'town-square'}
 
@@ -355,7 +356,10 @@ def ai_peers_webhook(request):
             # Message is from one of our own bots — skip to prevent echo loops.
             return JsonResponse({'status': 'bot_message_skipped'})
         if channel_name in BROADCAST_CHANNELS:
-            mentioned_peers = list(PEER_REGISTRY.keys())
+            demo_usernames = {u.lower() for u in DEMO_TOWN_SQUARE_USERNAMES}
+            mentioned_peers = [
+                p for p in PEER_REGISTRY.keys() if p.lower() in demo_usernames
+            ]
             # Deduplicate (aliases point to same peer record)
             seen_tokens = set()
             deduped = []

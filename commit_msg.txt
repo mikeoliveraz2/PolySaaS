@@ -1,0 +1,38 @@
+fix: Mattermost composer loading via passthrough — Early Fetch Guard
+
+Problem
+-------
+Users (t142, t150, etc.) accessing Mattermost via passthrough could not see the 
+message composer. Instead, they saw "Something went wrong while loading the component" 
+error banner. Root cause: `/api/v4/posts/scheduled/` endpoint returns 400 (requires 
+Enterprise license), which crashed React's message composer component.
+
+Solution
+--------
+Added "Early Fetch Guard" — a minimal client-side script injected before Mattermost's 
+main bundles load that intercepts fetch/XHR calls and converts error responses to safe 
+stubs:
+- `/api/v4/posts/scheduled/` → returns [] (200 OK)
+- `/api/v4/trial-license/` → returns {} (200 OK)  
+- `/plugins/github/api/v1/connected` → returns {connected: false} (200 OK)
+- `/plugins/playbooks/api/v0/*` → returns safe stubs
+- Team name slug resolution → resolves from /users/me/teams
+
+Changes Made
+------------
+1. Added `_mattermost_early_fetch_guard_html()` method that generates client-side 
+   fetch/XHR interception script with proper stubs
+2. Added `_mm_token_user_id()` to get Mattermost user ID for token validation
+3. Added `_pick_mattermost_tenantapp()` for better credential selection when 
+   multiple TenantApp records exist (scoring by token, team name, username match)
+4. Added `_resolve_mm_auth_token()` to resolve best auth token from multiple sources
+5. Added `/error` path handler for team-not-found redirects
+6. Added `get_orchestration_instruction()` API endpoint for instruction management
+7. Fixed XHR stubbing to properly set response properties
+
+Testing
+-------
+- Verified syntax: ✓ Python compile OK
+- Verified Guard injection: ✓ Script properly formatted and escaped
+- Early Fetch Guard runs before Mattermost bundles: ✓ Injected in <head>
+- Ready for user testing with t142, t150
