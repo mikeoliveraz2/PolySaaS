@@ -1,5 +1,5 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-// BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
+// BINGO: Font and Theme Toggle — commit 1dcca3bd
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
