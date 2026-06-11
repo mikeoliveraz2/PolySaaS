@@ -1,0 +1,112 @@
+/* THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+   BINGO: Orchestration Bar + Instruction Embed — commit PENDING */
+/**
+ * Instruction add/change — readable selects in dark mode (admin + orchestration embed).
+ * Jazzmin applies Select2 to selects; native <option> CSS is not enough on Windows.
+ */
+
+#instruction_form select.ps-instruction-select,
+.model-instruction.change-form select.ps-instruction-select {
+    width: 100%;
+    max-width: 520px;
+}
+
+/* Native select fallback */
+html[data-ps-theme="darkly"] #instruction_form select,
+html[data-ps-theme="cyborg"] #instruction_form select,
+html[data-ps-theme="slate"] #instruction_form select,
+html[data-ps-theme="solar"] #instruction_form select,
+html[data-ps-theme="superhero"] #instruction_form select,
+html[data-bs-theme="dark"] #instruction_form select,
+body.ps-orch-embed-dark #instruction_form select {
+    color-scheme: dark;
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border-color: #475569 !important;
+}
+
+/* ---- Select2 dark (dropdown is appended to <body>) ---- */
+body.ps-orch-embed-dark .select2-dropdown,
+body.ps-orch-embed-dark .ps-instruction-select2-dark,
+html[data-bs-theme="dark"] .select2-dropdown,
+html[data-bs-theme="dark"] .ps-instruction-select2-dark,
+html[data-ps-theme="darkly"] .select2-dropdown,
+html[data-ps-theme="cyborg"] .select2-dropdown,
+html[data-ps-theme="slate"] .select2-dropdown,
+html[data-ps-theme="solar"] .select2-dropdown,
+html[data-ps-theme="superhero"] .select2-dropdown {
+    background-color: #1e293b !important;
+    border-color: #475569 !important;
+    color: #f8fafc !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-search--dropdown .select2-search__field,
+html[data-bs-theme="dark"] .select2-container--default .select2-search--dropdown .select2-search__field,
+html[data-ps-theme="darkly"] .select2-container--default .select2-search--dropdown .select2-search__field,
+html[data-ps-theme="cyborg"] .select2-container--default .select2-search--dropdown .select2-search__field,
+html[data-ps-theme="slate"] .select2-container--default .select2-search--dropdown .select2-search__field,
+html[data-ps-theme="solar"] .select2-container--default .select2-search--dropdown .select2-search__field,
+html[data-ps-theme="superhero"] .select2-container--default .select2-search--dropdown .select2-search__field {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+    border-color: #475569 !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-results__option,
+html[data-bs-theme="dark"] .select2-container--default .select2-results__option,
+html[data-ps-theme="darkly"] .select2-container--default .select2-results__option,
+html[data-ps-theme="cyborg"] .select2-container--default .select2-results__option,
+html[data-ps-theme="slate"] .select2-container--default .select2-results__option,
+html[data-ps-theme="solar"] .select2-container--default .select2-results__option,
+html[data-ps-theme="superhero"] .select2-container--default .select2-results__option {
+    color: #f8fafc !important;
+    background-color: #1e293b !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-results__option--highlighted,
+html[data-bs-theme="dark"] .select2-container--default .select2-results__option--highlighted,
+html[data-ps-theme="darkly"] .select2-container--default .select2-results__option--highlighted,
+html[data-ps-theme="cyborg"] .select2-container--default .select2-results__option--highlighted,
+html[data-ps-theme="slate"] .select2-container--default .select2-results__option--highlighted,
+html[data-ps-theme="solar"] .select2-container--default .select2-results__option--highlighted,
+html[data-ps-theme="superhero"] .select2-container--default .select2-results__option--highlighted,
+body.ps-orch-embed-dark .select2-container--default .select2-results__option--highlighted.select2-results__option--selectable,
+html[data-bs-theme="dark"] .select2-container--default .select2-results__option--highlighted.select2-results__option--selectable {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-results__option[aria-selected=true],
+html[data-bs-theme="dark"] .select2-container--default .select2-results__option[aria-selected=true],
+html[data-ps-theme="darkly"] .select2-container--default .select2-results__option[aria-selected=true] {
+    background-color: #334155 !important;
+    color: #f8fafc !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-selection--single,
+html[data-bs-theme="dark"] .select2-container--default .select2-selection--single,
+html[data-ps-theme="darkly"] .select2-container--default .select2-selection--single,
+html[data-ps-theme="cyborg"] .select2-container--default .select2-selection--single,
+html[data-ps-theme="slate"] .select2-container--default .select2-selection--single,
+html[data-ps-theme="solar"] .select2-container--default .select2-selection--single,
+html[data-ps-theme="superhero"] .select2-container--default .select2-selection--single {
+    background-color: #0f172a !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-selection--single .select2-selection__rendered,
+html[data-bs-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__rendered,
+html[data-ps-theme="darkly"] .select2-container--default .select2-selection--single .select2-selection__rendered,
+html[data-ps-theme="cyborg"] .select2-container--default .select2-selection--single .select2-selection__rendered,
+html[data-ps-theme="slate"] .select2-container--default .select2-selection--single .select2-selection__rendered,
+html[data-ps-theme="solar"] .select2-container--default .select2-selection--single .select2-selection__rendered,
+html[data-ps-theme="superhero"] .select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: #f1f5f9 !important;
+}
+
+body.ps-orch-embed-dark .select2-container--default .select2-selection--single .select2-selection__arrow b,
+html[data-bs-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__arrow b,
+html[data-ps-theme="darkly"] .select2-container--default .select2-selection--single .select2-selection__arrow b {
+    border-color: #f1f5f9 transparent transparent transparent !important;
+}

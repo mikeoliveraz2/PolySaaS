@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
 # --- Gmail Admin View Integration ---
 from django.apps import apps
 from django.contrib import admin
@@ -8,6 +10,18 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views import View
 from django.shortcuts import render
+from functools import wraps
+
+
+def _allow_sameorigin_iframe(view_func):
+    """Let orchestration modal embed admin add/change on same origin (skip global DENY)."""
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        response = view_func(*args, **kwargs)
+        response.xframe_options_exempt = True
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        return response
+    return wrapped
 
 class GmailAdminView(View):
     """Gmail view for admin interface - requires staff status"""
@@ -275,9 +289,8 @@ class InstructionForm(forms.ModelForm):
             label='Atomic Service',
             widget=forms.Select(
                 attrs={
-                    'class': 'form-control',
+                    'class': 'form-select ps-instruction-select ps-atomic-service-select',
                     'id': 'id_executescript',
-                    'style': 'width:100%; max-width:520px;',
                 }
             ),
             help_text=(
@@ -288,11 +301,23 @@ class InstructionForm(forms.ModelForm):
         if not self.is_bound and current is not None:
             self.initial['executescript'] = current
 
+@method_decorator(_allow_sameorigin_iframe, name='add_view')
+@method_decorator(_allow_sameorigin_iframe, name='change_view')
 class InstructionAdmin(TenantAwareModelAdmin):
     form = InstructionForm
+    change_form_template = 'admin/dose/instruction/change_form.html'
 
     class Media:
-        js = ('admin/js/instruction_atomic_service.js',)
+        css = {'all': ('admin/css/ps_instruction_form.css',)}
+
+    def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
+        import json
+        from dose.services.atomic_service_param_samples import ATOMIC_SERVICE_PARAM_SAMPLES
+
+        context['atomic_service_param_samples_json'] = json.dumps(ATOMIC_SERVICE_PARAM_SAMPLES)
+        return super().render_change_form(
+            request, context, add=add, change=change, form_url=form_url, obj=obj
+        )
 
     def get_form(self, request, obj=None, **kwargs):
         form_class = super().get_form(request, obj, **kwargs)
@@ -320,6 +345,9 @@ class InstructionAdmin(TenantAwareModelAdmin):
             initial['match_type'] = 'path'
         if not initial.get('direction'):
             initial['direction'] = 'REQ'
+        rm = request.GET.get('requestmethod')
+        if rm and not initial.get('requestmethod'):
+            initial['requestmethod'] = rm.upper()
         return initial
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
@@ -341,9 +369,8 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 required=False,
                 widget=forms.Select(
                     attrs={
-                        'class': 'form-control',
+                        'class': 'form-select ps-instruction-select ps-atomic-service-select',
                         'id': 'id_executescript',
-                        'style': 'width:100%; max-width:520px;',
                     }
                 ),
                 help_text=(
@@ -358,7 +385,7 @@ class InstructionAdmin(TenantAwareModelAdmin):
             'fields': [
                 'match_type', 'requestpath', 'match_extra',
                 'requestmethod', 'direction',
-                'executescript', 'save_callbackdata', 'eventKey',
+                'executescript', 'parameters_json', 'save_callbackdata', 'eventKey',
                 'description',
             ],
             'description': (
@@ -366,12 +393,13 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 '<b>Atomic Service</b> — dropdown lists every class in <code>dose/services/</code> '
                 'that defines <code>execute_and_save(request, instruction_row)</code> '
                 '(e.g. HelloWorld, EndpointDataExtractorService). '
+                'Selecting a service fills <code>parameters_json</code> with sample required fields. '
                 'Pick <i>Custom Endpoint URL</i> to use urllist instead.'
             ),
         }),
         ('Custom endpoint &amp; parameters', {
             'classes': ['collapse'],
-            'fields': ['urllist', 'appusername', 'parameters_json', 'pub_date'],
+            'fields': ['urllist', 'appusername', 'pub_date'],
             'description': (
                 'Expand when Atomic Service is <i>Custom Endpoint URL</i>. '
                 'urllist accepts one or more comma-separated URLs.'

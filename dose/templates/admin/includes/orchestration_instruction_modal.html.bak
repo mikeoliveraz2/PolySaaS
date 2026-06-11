@@ -1,0 +1,67 @@
+<style id="ps-orch-instruction-modal-style">
+#ps-orch-instruction-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+#ps-orch-instruction-modal.ps-orch-modal-open {
+    display: flex;
+}
+#ps-orch-instruction-modal .ps-orch-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+#ps-orch-instruction-modal .ps-orch-modal-panel {
+    position: relative;
+    z-index: 1;
+    width: min(960px, 96vw);
+    height: min(88vh, 900px);
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#ps-orch-instruction-modal .ps-orch-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #1e293b;
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 600;
+}
+#ps-orch-instruction-modal .ps-orch-modal-close {
+    background: transparent;
+    border: none;
+    color: #f8fafc;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+#ps-orch-instruction-modal #ps-orch-instruction-iframe {
+    flex: 1 1 auto;
+    width: 100%;
+    border: 0;
+    background: #fff;
+}
+</style>
+<div id="ps-orch-instruction-modal" aria-hidden="true" role="dialog" aria-labelledby="ps-orch-modal-title">
+    <div class="ps-orch-modal-backdrop" data-orch-modal-close></div>
+    <div class="ps-orch-modal-panel">
+        <div class="ps-orch-modal-header">
+            <span id="ps-orch-modal-title">Orchestration Instruction</span>
+            <button type="button" class="ps-orch-modal-close" id="ps-orch-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <iframe id="ps-orch-instruction-iframe" title="Orchestration instruction form"></iframe>
+    </div>
+</div>

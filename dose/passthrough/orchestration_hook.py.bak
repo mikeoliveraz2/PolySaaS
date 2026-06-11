@@ -5,6 +5,9 @@ Called from forwarding.py after every passthrough request is captured. Checks if
 the upstream path matches any Instruction for the current tenant. If matched,
 executes the corresponding atomic service and records CallBackData + DoseMessage.
 """
+
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
 import json
 import logging
 
@@ -93,9 +96,24 @@ def _instruction_matches(instr, upstream_path, method):
             return False
 
     norm = upstream_path.lower()
+    mv_l = mv.lower().rstrip('/')
 
     if mt in ('path', 'contains'):
-        return mv.lower() in norm
+        if mv_l in norm:
+            return True
+        # Odoo 18: rule /odoo/accounting/116 also matches navigation to /odoo/accounting
+        m = re.match(r'^(.+)/(\d+)$', mv_l)
+        if m:
+            base = m.group(1)
+            menu_from_rule = m.group(2)
+            if base in norm or norm.startswith(base + '/'):
+                _, menu_from_path = _extract_odoo_ids(upstream_path)
+                if not menu_from_path or menu_from_path == menu_from_rule:
+                    return True
+        # Shorter incoming path matches longer rule prefix (e.g. rule has extra segment)
+        if norm and (mv_l.startswith(norm + '/') or norm.startswith(mv_l + '/')):
+            return True
+        return False
     elif mt == 'action_id':
         action_id, _ = _extract_odoo_ids(upstream_path)
         return bool(action_id and mv.lower() in action_id.lower())
@@ -109,6 +127,20 @@ def _instruction_matches(instr, upstream_path, method):
             logger.warning("[ORCH] Invalid regex in instruction id=%s: %s", instr.id, mv)
             return False
     return False
+
+
+def find_matching_instructions(tenant, upstream_path, method='GET', direction='REQ'):
+    """Return instructions that match upstream_path using the same rules as the orchestration bar."""
+    if not tenant:
+        return []
+    instructions = _load_instructions_for_direction(tenant, direction)
+    matched = []
+    for instr in instructions:
+        if not _instruction_passes_requestmethod(instr, method):
+            continue
+        if _instruction_matches(instr, upstream_path, method):
+            matched.append(instr)
+    return matched
 
 
 def _instruction_passes_requestmethod(instr, method):

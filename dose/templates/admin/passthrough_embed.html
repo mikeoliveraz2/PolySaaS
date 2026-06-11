@@ -1,5 +1,6 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-BINGO: Odoo Passthrough Layout Fix — 2026-06-09 -->
+BINGO: Odoo Passthrough Layout Fix — 2026-06-09
+BINGO: Orchestration Bar + Instruction Embed — commit PENDING -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -64,6 +65,14 @@ body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     font-size: 14px;
     margin: 0 0 6px 0;
     flex: 0 0 auto !important;
+    position: relative;
+    z-index: 1060;
+    pointer-events: auto;
+}
+#pss-insert-instruction-btn {
+    position: relative;
+    z-index: 1061;
+    pointer-events: auto;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -259,194 +268,12 @@ body.polysaas-passthrough-embed-page {
             <span style="font-size:12px;color:#aaa;">orch: <span id="pss-orch-status" style="color:#93c5fd;">waiting…</span></span>
             <span id="pss-orch-event" style="display:none;margin-left:8px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
         </div>
-        <button id="pss-insert-instruction-btn" style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+        <button type="button" id="pss-insert-instruction-btn"
+            onclick="if(window.PolySaaSOrchBar){PolySaaSOrchBar.openFromButton(event);}"
+            style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
             + Insert Orchestration Instruction
         </button>
     </div>
-    <script>
-    (function() {
-        var pathEl = document.getElementById('pss-action-path');
-        var menuEl = document.getElementById('pss-orch-menu');
-        var statusEl = document.getElementById('pss-orch-status');
-        var eventEl = document.getElementById('pss-orch-event');
-        var _lastOrchPath = '';
-
-        function getBrowserPathname() {
-            try {
-                var a = document.createElement('a');
-                a.href = window.location.href;
-                return a.pathname || window.location.pathname || '/';
-            } catch (e) {
-                return window.location.pathname || '/';
-            }
-        }
-
-        function getOdooPath() {
-            var browserPath = getBrowserPathname();
-            var spaPath = window.location.pathname || browserPath;
-            var hash = window.location.hash || '';
-            var m = browserPath.match(/\/pt\/admin\/[^/]+(\/.*)$/);
-            var p = m ? m[1].replace(/\/$/, '') || '/' : spaPath;
-            if (!m && p.indexOf('/pt/admin/') === 0) p = '/';
-            return p + (window.location.search || '') + hash;
-        }
-
-        function getMenuIdFromPath(p) {
-            var base = (p || '').split('?')[0].split('#')[0];
-            var mm = base.match(/\/odoo\/[^/]+\/(\d+)(?:\/|$)/);
-            if (mm) return mm[1];
-            var params = new URLSearchParams((p.split('?')[1] || '') + (p.split('#')[1] || '').replace(/^#/, '?'));
-            return params.get('menu_id') || '';
-        }
-
-        function setStatus(text, ok) {
-            if (!statusEl) return;
-            statusEl.textContent = text;
-            statusEl.style.color = ok ? '#86efac' : (ok === false ? '#fca5a5' : '#93c5fd');
-        }
-
-        function showEvent(msg) {
-            if (!eventEl) return;
-            eventEl.textContent = msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg);
-            eventEl.style.display = 'inline';
-            clearTimeout(eventEl._t);
-            eventEl._t = setTimeout(function() { eventEl.style.display = 'none'; }, 12000);
-        }
-
-        function getCsrfToken() {
-            var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-            if (m) return decodeURIComponent(m[1]);
-            var el = document.querySelector('[name=csrfmiddlewaretoken]');
-            return el && el.value ? el.value : '';
-        }
-
-        function notifyOrchestration(fullPath) {
-            var pathOnly = (fullPath || '').split('?')[0].split('#')[0];
-            if (!pathOnly || pathOnly === _lastOrchPath) return;
-            _lastOrchPath = pathOnly;
-            setStatus('checking…', null);
-            fetch('/dose/api/orchestration-navigate/', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken()
-                },
-                body: JSON.stringify({path: fullPath, method: 'GET'})
-            }).then(function(r) {
-                if (!r.ok) {
-                    setStatus('API error (' + r.status + ')', false);
-                    showEvent('orchestration API failed (' + r.status + ')');
-                    return null;
-                }
-                return r.json();
-            }).then(function(data) {
-                if (!data) return;
-                if (data.status === 'no_tenant') {
-                    setStatus('no tenant', false);
-                    showEvent('orchestration: no tenant');
-                    return;
-                }
-                var matched = data.matched || 0;
-                var saved = data.callback_saved || 0;
-                if (matched > 0) {
-                    setStatus('matched ' + matched + ', saved ' + saved, saved > 0);
-                    showEvent('matched ' + matched + ' — CallBackData saved: ' + saved);
-                } else {
-                    setStatus('no instruction match', false);
-                    showEvent('no match for ' + pathOnly);
-                }
-            }).catch(function() {
-                setStatus('API error', false);
-                showEvent('orchestration API failed');
-            });
-        }
-
-        function updateBar(forceNotify) {
-            var fullPath = getOdooPath();
-            var pathOnly = fullPath.split('?')[0].split('#')[0];
-            if (pathEl) pathEl.textContent = pathOnly;
-            if (menuEl) menuEl.textContent = getMenuIdFromPath(fullPath) || '—';
-            if (forceNotify || pathOnly !== _lastOrchPath) {
-                notifyOrchestration(fullPath);
-            }
-        }
-
-        function installHistoryHooks() {
-            var _pushState = history.pushState;
-            var _replaceState = history.replaceState;
-            history.pushState = function() {
-                var r = _pushState.apply(this, arguments);
-                updateBar(true);
-                return r;
-            };
-            history.replaceState = function() {
-                var r = _replaceState.apply(this, arguments);
-                updateBar(true);
-                return r;
-            };
-            window.addEventListener('popstate', function() { updateBar(true); });
-        }
-
-        window.__psEmbedOrchBar = { updateBar: updateBar, installHistoryHooks: installHistoryHooks };
-
-        installHistoryHooks();
-        updateBar(true);
-        setInterval(function() { updateBar(false); }, 2000);
-        [500, 1500, 3500].forEach(function(ms) {
-            setTimeout(function() {
-                installHistoryHooks();
-                updateBar(true);
-            }, ms);
-        });
-
-        var btn = document.getElementById('pss-insert-instruction-btn');
-        if (btn) {
-            btn.addEventListener('click', function() {
-                var pathEl = document.getElementById('pss-action-path');
-                var path = pathEl ? pathEl.textContent.trim() : (typeof getOdooPath === 'function' ? getOdooPath() : '');
-
-                if (!path) {
-                    showEvent('No action path found');
-                    return;
-                }
-
-                // Robust path cleaning
-                path = path.replace(/^\/+/, '').trim();
-
-                var apiUrl = '/dose/api/orchestration-instruction/' + encodeURIComponent(path) + '/';
-                console.log('[GB-ORCH-EDIT-005] Calling:', apiUrl);
-
-                fetch(apiUrl, { 
-                    method: 'GET', 
-                    credentials: 'same-origin',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(r => {
-                    console.log('[GB-ORCH-EDIT-005] Status:', r.status);
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
-                .then(data => {
-                    console.log('[GB-ORCH-EDIT-005] Success:', data);
-                    var isUpdate = data.mode === 'update';
-                    var title = isUpdate 
-                        ? `Update Orchestration Instruction (ID ${data.id})` 
-                        : 'Create New Orchestration Instruction';
-                    var prefill = data.instruction_text || '';
-                    var msg = `${title}\n\nAction Path: ${data.action_path}\n\nEnter/edit instruction text:`;
-                    var newText = prompt(msg, prefill);
-                    if (newText === null) return;
-                    showEvent(isUpdate ? ' Update mode ready' : ' Create mode ready');
-                })
-                .catch(err => {
-                    console.error('[GB-ORCH-EDIT-005] Error:', err);
-                    showEvent(' Failed to load instruction. Check console (F12)');
-                });
-            });
-        }
-    })();
-    </script>
     {% if embed_body %}
     {{ embed_body }}
     {% endif %}
@@ -459,6 +286,8 @@ body.polysaas-passthrough-embed-page {
 
 {% block extrajs %}
 {{ block.super }}
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260611-8"></script>
+<script>PolySaaSOrchBar.initEmbed();</script>
     {% if embed_enable_odoo_body_scope %}
     <script>
     (function () {

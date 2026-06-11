@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
 # dose/urls.py
 from django.urls import path, include
 from django.views.generic import RedirectView
@@ -15,10 +17,15 @@ except ImportError:
 from dose.views import subscribe_view, connect_social_after_subscribe, restore_mm_credentials, login_view, DisplaySettingsView, UnreadDoseMessagesView
 from dose.orchestration_navigate_api import orchestration_navigate_api
 from dose.views.atomic_service_names import atomic_service_names
+from dose.views.atomic_service_param_sample import atomic_service_param_sample
 from dose.views.ai_peers_webhook import ai_peers_webhook
 from dose.subscription_views import SubscriptionApiViewSet
 from dose.theme_views import toggle_theme, set_theme
 from dose.views.orchestration import get_orchestration_instruction
+from dose.views.orchestration_instruction_embed import (
+    orchestration_instruction_embed_add,
+    orchestration_instruction_embed_change,
+)
 
 try:
     from rest_framework.routers import DefaultRouter
@@ -41,7 +48,10 @@ urlpatterns = [
     path('api/unread-dosemessages/', UnreadDoseMessagesView.as_view(), name='unread_dosemessages'),
     path('api/orchestration-navigate/', orchestration_navigate_api, name='api_orchestration_navigate'),
     path('api/atomic-service-names/', atomic_service_names, name='atomic_service_names'),
+    path('api/atomic-service-param-sample/', atomic_service_param_sample, name='atomic_service_param_sample'),
     path('api/orchestration-instruction/<path:action_path>/', get_orchestration_instruction, name='get_orchestration_instruction'),
+    path('orchestration/instruction/add/', orchestration_instruction_embed_add, name='orchestration_instruction_embed_add'),
+    path('orchestration/instruction/<int:object_id>/change/', orchestration_instruction_embed_change, name='orchestration_instruction_embed_change'),
     path('toggle-theme/', toggle_theme, name='toggle_theme'),
     path('set-theme/', set_theme, name='set_theme'),
 ]

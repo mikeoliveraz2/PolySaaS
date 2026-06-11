@@ -5,6 +5,9 @@ Called from forwarding.py after every passthrough request is captured. Checks if
 the upstream path matches any Instruction for the current tenant. If matched,
 executes the corresponding atomic service and records CallBackData + DoseMessage.
 """
+
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
 import json
 import logging
 
@@ -124,6 +127,20 @@ def _instruction_matches(instr, upstream_path, method):
             logger.warning("[ORCH] Invalid regex in instruction id=%s: %s", instr.id, mv)
             return False
     return False
+
+
+def find_matching_instructions(tenant, upstream_path, method='GET', direction='REQ'):
+    """Return instructions that match upstream_path using the same rules as the orchestration bar."""
+    if not tenant:
+        return []
+    instructions = _load_instructions_for_direction(tenant, direction)
+    matched = []
+    for instr in instructions:
+        if not _instruction_passes_requestmethod(instr, method):
+            continue
+        if _instruction_matches(instr, upstream_path, method):
+            matched.append(instr)
+    return matched
 
 
 def _instruction_passes_requestmethod(instr, method):

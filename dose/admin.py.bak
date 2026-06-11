@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
 # --- Gmail Admin View Integration ---
 from django.apps import apps
 from django.contrib import admin
@@ -8,6 +10,18 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views import View
 from django.shortcuts import render
+from functools import wraps
+
+
+def _allow_sameorigin_iframe(view_func):
+    """Let orchestration modal embed admin add/change on same origin (skip global DENY)."""
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        response = view_func(*args, **kwargs)
+        response.xframe_options_exempt = True
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        return response
+    return wrapped
 
 class GmailAdminView(View):
     """Gmail view for admin interface - requires staff status"""
@@ -232,13 +246,28 @@ class MLPromptAdmin(TenantAwareModelAdmin):
     search_fields = ('key', 'description', 'prompt_text')
 
 class InstructionForm(forms.ModelForm):
-    """Populates executescript from dose/services/* classes with execute_and_save()."""
+    """Atomic Service dropdown populated from dose/services registry."""
+
+    class Meta:
+        model = Instruction
+        fields = '__all__'
+
+    def clean_executescript(self):
+        from dose.services.atomic_services_registry import normalize_executescript_value
+        return normalize_executescript_value(self.cleaned_data.get('executescript'))
 
     def __init__(self, *args, **kwargs):
         self.admin_request = kwargs.pop('admin_request', None)
         super().__init__(*args, **kwargs)
 
-        from dose.services.atomic_services_registry import get_atomic_service_choices
+        if 'executescript' not in self.fields:
+            return
+
+        from dose.services.atomic_services_registry import (
+            build_executescript_choices,
+            normalize_executescript_value,
+            CUSTOM_ENDPOINT_LABEL,
+        )
         from dose.utils import get_current_tenant
 
         tenant_name = None
@@ -247,38 +276,48 @@ class InstructionForm(forms.ModelForm):
             if tenant and getattr(tenant, 'schema_name', None):
                 tenant_name = tenant.schema_name
 
-        service_names = get_atomic_service_choices(tenant_name=tenant_name)
         current = ''
         if self.instance and getattr(self.instance, 'pk', None):
-            current = (self.instance.executescript or '').strip()
+            current = normalize_executescript_value(self.instance.executescript)
 
-        choices = [(name, name) for name in service_names]
-        if current and current not in service_names:
-            choices.insert(0, (current, f'{current} (saved — not in registry)'))
-        choices.append(('', 'Custom Endpoint URL'))
+        service_names = [c[0] for c in build_executescript_choices(tenant_name=tenant_name) if c[0]]
+        choices = build_executescript_choices(tenant_name=tenant_name, current_value=current)
 
         self.fields['executescript'] = forms.ChoiceField(
             choices=choices,
             required=False,
             label='Atomic Service',
-            widget=forms.Select(attrs={'class': 'form-control', 'id': 'id_executescript'}),
+            widget=forms.Select(
+                attrs={
+                    'class': 'form-select ps-instruction-select ps-atomic-service-select',
+                    'id': 'id_executescript',
+                }
+            ),
             help_text=(
-                f'Select one of {len(service_names)} service(s) discovered in dose/services/ '
-                f'(classes with execute_and_save). Choose "Custom Endpoint URL" to use urllist instead.'
+                f'Select one of {len(service_names)} service(s) from dose/services/ '
+                f'(auto-discovered registry). Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist.'
             ),
         )
-        if current:
-            self.initial.setdefault('executescript', current)
+        if not self.is_bound and current is not None:
+            self.initial['executescript'] = current
 
-    class Meta:
-        model = Instruction
-        fields = '__all__'
-
+@method_decorator(_allow_sameorigin_iframe, name='add_view')
+@method_decorator(_allow_sameorigin_iframe, name='change_view')
 class InstructionAdmin(TenantAwareModelAdmin):
     form = InstructionForm
+    change_form_template = 'admin/dose/instruction/change_form.html'
 
     class Media:
-        js = ('admin/js/instruction_atomic_service.js',)
+        css = {'all': ('admin/css/ps_instruction_form.css',)}
+
+    def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
+        import json
+        from dose.services.atomic_service_param_samples import ATOMIC_SERVICE_PARAM_SAMPLES
+
+        context['atomic_service_param_samples_json'] = json.dumps(ATOMIC_SERVICE_PARAM_SAMPLES)
+        return super().render_change_form(
+            request, context, add=add, change=change, form_url=form_url, obj=obj
+        )
 
     def get_form(self, request, obj=None, **kwargs):
         form_class = super().get_form(request, obj, **kwargs)
@@ -292,12 +331,61 @@ class InstructionAdmin(TenantAwareModelAdmin):
         FormWithRequest.__name__ = form_class.__name__
         return FormWithRequest
 
+    def get_changeform_initial_data(self, request):
+        """Prefill requestpath (from the passthrough embed green bar 'Action Path')
+        and provide sensible defaults so the standard Add Instruction form is
+        immediately useful when launched from any wrapped passthrough page.
+        Tenant is supplied automatically by TenantAwareModelAdmin + session.
+        """
+        initial = super().get_changeform_initial_data(request)
+        rp = request.GET.get('requestpath')
+        if rp:
+            initial['requestpath'] = rp
+        if not initial.get('match_type'):
+            initial['match_type'] = 'path'
+        if not initial.get('direction'):
+            initial['direction'] = 'REQ'
+        rm = request.GET.get('requestmethod')
+        if rm and not initial.get('requestmethod'):
+            initial['requestmethod'] = rm.upper()
+        return initial
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        """Force executescript to render as <select>, not CharField text input."""
+        if db_field.name == 'executescript':
+            from dose.services.atomic_services_registry import (
+                build_executescript_choices,
+                CUSTOM_ENDPOINT_LABEL,
+            )
+            from dose.utils import get_current_tenant
+
+            tenant = get_current_tenant(request)
+            tenant_name = getattr(tenant, 'schema_name', None) if tenant else None
+            choices = build_executescript_choices(tenant_name=tenant_name)
+            service_count = sum(1 for v, _ in choices if v)
+            return forms.ChoiceField(
+                label='Atomic Service',
+                choices=choices,
+                required=False,
+                widget=forms.Select(
+                    attrs={
+                        'class': 'form-select ps-instruction-select ps-atomic-service-select',
+                        'id': 'id_executescript',
+                    }
+                ),
+                help_text=(
+                    f'Select one of {service_count} service(s) from the dose/services '
+                    f'registry. Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist instead.'
+                ),
+            )
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
     fieldsets = [
         ('Instruction', {
             'fields': [
                 'match_type', 'requestpath', 'match_extra',
                 'requestmethod', 'direction',
-                'executescript', 'save_callbackdata', 'eventKey',
+                'executescript', 'parameters_json', 'save_callbackdata', 'eventKey',
                 'description',
             ],
             'description': (
@@ -305,12 +393,13 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 '<b>Atomic Service</b> — dropdown lists every class in <code>dose/services/</code> '
                 'that defines <code>execute_and_save(request, instruction_row)</code> '
                 '(e.g. HelloWorld, EndpointDataExtractorService). '
+                'Selecting a service fills <code>parameters_json</code> with sample required fields. '
                 'Pick <i>Custom Endpoint URL</i> to use urllist instead.'
             ),
         }),
         ('Custom endpoint &amp; parameters', {
             'classes': ['collapse'],
-            'fields': ['urllist', 'appusername', 'parameters_json', 'pub_date'],
+            'fields': ['urllist', 'appusername', 'pub_date'],
             'description': (
                 'Expand when Atomic Service is <i>Custom Endpoint URL</i>. '
                 'urllist accepts one or more comma-separated URLs.'
@@ -338,6 +427,8 @@ class InstructionAdmin(TenantAwareModelAdmin):
         from django.contrib import messages
 
         executescript_name = (obj.executescript or '').strip()
+        from dose.services.atomic_services_registry import normalize_executescript_value
+        executescript_name = normalize_executescript_value(executescript_name)
         if not executescript_name:
             return
 
@@ -350,11 +441,18 @@ class InstructionAdmin(TenantAwareModelAdmin):
             print(f"[DEBUG] Executing atomic service: {executescript_name}")
             try:
                 with transaction.atomic():
-                    obj.execute_atomic_service(request)
+                    atomic_result = obj.execute_atomic_service(request)
                 messages.add_message(
                     request, messages.INFO,
                     f"Atomic service '{executescript_name}' executed successfully.",
                 )
+                if getattr(obj, 'save_callbackdata', False):
+                    from dose.passthrough.orchestration_hook import _save_callback_data
+                    from dose.utils import get_current_tenant
+                    tenant = get_current_tenant(request)
+                    if tenant and atomic_result is not None:
+                        payload = atomic_result if isinstance(atomic_result, dict) else {'result': atomic_result}
+                        _save_callback_data(request, obj, payload, tenant)
             except Exception as e:
                 print(f"[ERROR] Failed to execute atomic service '{executescript_name}': {e}")
                 messages.add_message(

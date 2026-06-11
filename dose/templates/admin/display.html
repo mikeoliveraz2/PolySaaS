@@ -1,4 +1,7 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+BINGO: Orchestration Bar + Instruction Embed — commit PENDING -->
 {% extends "admin/base_site.html" %}
+{% load static %}
 
 {% block title %}PolySaaS Display{% endblock %}
 
@@ -72,6 +75,11 @@
         font-family: monospace;
         font-size: 15px;
         margin: 0 0 20px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
     /* ── Odoo display scope ── */
@@ -203,181 +211,24 @@
 
 {% block content %}
     <div id="polysaas-orchestration-bar">
-        <span style="color:#0f0;">●</span> <strong>POLYSAAS ORCHESTRATION</strong>
-        &nbsp;|&nbsp;
-        <span id="ps-orch-path" style="color:#86efac;">detecting…</span>
-        &nbsp;|&nbsp;
-        <span style="font-size:12px;color:#aaa;">menu_id: <span id="ps-orch-menu" style="color:#fde68a;">—</span></span>
-        &nbsp;|&nbsp;
-        <span style="font-size:12px;color:#aaa;">action: <span id="ps-orch-action" style="color:#fde68a;">—</span></span>
-        &nbsp;|&nbsp;
-        <span style="font-size:12px;color:#aaa;">orch: <span id="ps-orch-status" style="color:#93c5fd;">waiting…</span></span>
-        <span id="ps-orch-event" style="display:none;margin-left:12px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
+        <div>
+            <span style="color:#0f0;">●</span> <strong>POLYSAAS ORCHESTRATION</strong>
+            &nbsp;|&nbsp;
+            <span id="ps-orch-path" style="color:#86efac;">detecting…</span>
+            &nbsp;|&nbsp;
+            <span style="font-size:12px;color:#aaa;">menu_id: <span id="ps-orch-menu" style="color:#fde68a;">—</span></span>
+            &nbsp;|&nbsp;
+            <span style="font-size:12px;color:#aaa;">action: <span id="ps-orch-action" style="color:#fde68a;">—</span></span>
+            &nbsp;|&nbsp;
+            <span style="font-size:12px;color:#aaa;">orch: <span id="ps-orch-status" style="color:#93c5fd;">waiting…</span></span>
+            <span id="ps-orch-event" style="display:none;margin-left:12px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
+        </div>
+        <button type="button" id="ps-insert-instruction-btn"
+            onclick="if(window.PolySaaSOrchBar){PolySaaSOrchBar.openFromButton(event);}"
+            style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+            + Insert Orchestration Instruction
+        </button>
     </div>
-    <script>
-    (function() {
-        /** Real browser pathname (Odoo shim may patch location.pathname for the SPA). */
-        function getBrowserPathname() {
-            try {
-                var a = document.createElement('a');
-                a.href = window.location.href;
-                return a.pathname || window.location.pathname || '/';
-            } catch (e) {
-                return window.location.pathname || '/';
-            }
-        }
-
-        function getOdooInfo() {
-            var browserPath = getBrowserPathname();
-            var spaPath = window.location.pathname || browserPath;
-            var m = browserPath.match(/\/pt\/admin\/[^/]+(\/.*)$/);
-            var odooPath = m ? m[1].replace(/\/$/, '') || '/' : spaPath;
-            if (!m && odooPath.indexOf('/pt/admin/') === 0) {
-                odooPath = '/';
-            }
-            var params = new URLSearchParams(window.location.search + window.location.hash.replace(/^#/, '?'));
-            var menuId  = params.get('menu_id') || '';
-            var action  = params.get('action')  || '';
-            if (!menuId) {
-                var pm = odooPath.match(/\/odoo\/[^/]+\/(\d+)(?:\/|$|\?)/);
-                if (pm) menuId = pm[1];
-            }
-            if (!action && window.location.hash) {
-                var hm = window.location.hash.match(/action=([^&]+)/);
-                if (hm) action = decodeURIComponent(hm[1]);
-                var mm = window.location.hash.match(/menu_id=(\d+)/);
-                if (mm) menuId = mm[1];
-            }
-            return { path: odooPath, menuId: menuId, action: action };
-        }
-
-        function getCsrfToken() {
-            var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-            if (m) return decodeURIComponent(m[1]);
-            var el = document.querySelector('[name=csrfmiddlewaretoken]');
-            return el && el.value ? el.value : '';
-        }
-
-        var _lastOrchPath = '';
-        var _orchHooksInstalled = false;
-
-        function setOrchStatus(text, ok) {
-            var el = document.getElementById('ps-orch-status');
-            if (!el) return;
-            el.textContent = text;
-            el.style.color = ok ? '#86efac' : (ok === false ? '#fca5a5' : '#93c5fd');
-        }
-
-        function notifyOrchestration(odooPath) {
-            if (!odooPath || odooPath === _lastOrchPath) return;
-            _lastOrchPath = odooPath;
-            var qs = window.location.search || '';
-            var hash = window.location.hash || '';
-            var fullPath = odooPath + qs + hash;
-            setOrchStatus('checking…', null);
-            fetch('/dose/api/orchestration-navigate/', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken()
-                },
-                body: JSON.stringify({path: fullPath, method: 'GET'})
-            }).then(function(r) {
-                if (!r.ok) {
-                    setOrchStatus('API error (' + r.status + ')', false);
-                    if (window.__psShowOrchEvent) {
-                        window.__psShowOrchEvent('⚡ orchestration API failed (' + r.status + ')');
-                    }
-                    return null;
-                }
-                return r.json();
-            }).then(function(data) {
-                if (!data) return;
-                if (data.status === 'no_tenant') {
-                    setOrchStatus('no tenant', false);
-                    return;
-                }
-                var matched = data.matched || 0;
-                var saved = data.callback_saved || 0;
-                if (matched > 0) {
-                    setOrchStatus('matched ' + matched + ', saved ' + saved, saved > 0);
-                } else {
-                    setOrchStatus('no instruction match', false);
-                }
-                if (window.__psShowOrchEvent) {
-                    window.__psShowOrchEvent(
-                        matched > 0
-                            ? ('⚡ matched ' + matched + ', CallBackData saved: ' + saved)
-                            : ('⚡ no match for ' + odooPath)
-                    );
-                }
-            }).catch(function(err) {
-                setOrchStatus('API error', false);
-                if (window.__psShowOrchEvent) {
-                    window.__psShowOrchEvent('⚡ orchestration API failed');
-                }
-            });
-        }
-
-        function updateBar() {
-            var info = getOdooInfo();
-            var pathEl   = document.getElementById('ps-orch-path');
-            var menuEl   = document.getElementById('ps-orch-menu');
-            var actionEl = document.getElementById('ps-orch-action');
-            if (pathEl)   pathEl.textContent   = info.path   || '—';
-            if (menuEl)   menuEl.textContent   = info.menuId || '—';
-            if (actionEl) actionEl.textContent = info.action || '—';
-            notifyOrchestration(info.path);
-        }
-
-        function installHistoryHooks() {
-            if (_orchHooksInstalled) return;
-            var _push = history.pushState;
-            var _replace = history.replaceState;
-            if (!_push || !_replace) return;
-            history.pushState = function() {
-                var r = _push.apply(history, arguments);
-                updateBar();
-                return r;
-            };
-            history.replaceState = function() {
-                var r = _replace.apply(history, arguments);
-                updateBar();
-                return r;
-            };
-            window.addEventListener('popstate', updateBar);
-            _orchHooksInstalled = true;
-        }
-
-        function showOrchEvent(msg) {
-            var el = document.getElementById('ps-orch-event');
-            if (!el) return;
-            el.textContent = msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg);
-            el.style.display = 'inline';
-            clearTimeout(el._t);
-            el._t = setTimeout(function() { el.style.display = 'none'; }, 12000);
-        }
-
-        window.__psShowOrchEvent = showOrchEvent;
-        window.__psOrchBar = {
-            updateBar: updateBar,
-            installHistoryHooks: installHistoryHooks,
-            getOdooInfo: getOdooInfo
-        };
-
-        updateBar();
-        installHistoryHooks();
-        setInterval(updateBar, 2000);
-        [500, 1500, 3500].forEach(function(ms) {
-            setTimeout(function() {
-                _orchHooksInstalled = false;
-                installHistoryHooks();
-                updateBar();
-            }, ms);
-        });
-    })();
-    </script>
 
     <div id="polysaas-display-head-inject">{{ display_head_inner|safe }}</div>
 
@@ -390,6 +241,8 @@
 
 {% block extrajs %}
 {{ block.super }}
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260611-8"></script>
+<script>PolySaaSOrchBar.initDisplay();</script>
     {#
       Odoo-only: Owl may mount direct children on document.body. Mattermost/Nextcloud
       must NOT run this — it breaks their SPAs (React/Vue). Enabled only when the handler

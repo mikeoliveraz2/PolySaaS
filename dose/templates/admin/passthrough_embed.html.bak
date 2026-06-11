@@ -1,16 +1,11 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd -->
+BINGO: Odoo Passthrough Layout Fix — 2026-06-09
+BINGO: Orchestration Bar + Instruction Embed — commit PENDING -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
 
 {% comment %}
-THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-BINGO: Mattermost SSO Passthrough Working — 2026-06-07
-Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
-Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md
-NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
-
 Passthrough: full upstream document rendered inside the content column only.
 ALL upstream HTML (head styles + body) goes in the scope div — nothing in extrahead.
 This prevents Mattermost's global CSS from blowing out the sidebar and header.
@@ -27,8 +22,7 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {{ block.super }}
 <style id="polysaas-passthrough-embed-shield">
 /* Drop the right-sidebar column — content takes the full available width */
-.admin-content-grid {
-    display: grid !important;
+body.polysaas-passthrough-embed-page .admin-content-grid {
     grid-template-columns: 280px 1fr !important;
     margin-top: var(--pss-header-h, 64px) !important;
     margin-right: 0 !important;
@@ -37,126 +31,48 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-    height: calc(100vh - var(--pss-header-h, 64px)) !important;
 }
-.admin-content-grid.sidebar-collapse,
-.polysaas-collapsed .admin-content-grid {
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
     grid-template-columns: 60px 1fr !important;
 }
-#recent-actions-sidebar {
+body.polysaas-passthrough-embed-page #recent-actions-sidebar {
     display: none !important;
 }
 /* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
-.content {
-    flex: 1 1 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    width: 100% !important;
-    max-height: 100% !important;
-    height: calc(100vh - var(--pss-header-h, 64px)) !important;
-    overflow: hidden !important;
-}
-.content .container-fluid {
+body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
     max-width: none !important;
-    flex: 1 1 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-    width: 100% !important;
 }
-.content .row {
+body.polysaas-passthrough-embed-page .content .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    width: 100% !important;
 }
-/* Alternative: use grid column selector since grid IS working */
-.admin-content-grid > :nth-child(2) {
-    display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 0 !important;
-}
-/* Make ALL children of content area flex too */
-.admin-content-grid > :nth-child(2) > * {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-}
-/* And their children */
-.admin-content-grid > :nth-child(2) > * > * {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-}
-/* And their children too */
-.admin-content-grid > :nth-child(2) > * > * > * {
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-}
-.polysaas-passthrough-embed-col {
-    padding: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: 0 !important;
-}
-.col-12.polysaas-passthrough-embed-col {
-    flex-basis: 100% !important;
-    width: 100% !important;
-    max-width: 100% !important;
-}
-
-/* Flex wrapper for orchestration bar + Odoo scope - maximize width and height */
-.polysaas-passthrough-embed-wrap {
-    display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: calc(100vh - var(--pss-header-h, 64px) - 20px) !important;
-    min-height: 500px !important;
-    max-height: calc(100vh - var(--pss-header-h, 64px) - 20px) !important;
-    box-sizing: border-box !important;
-    margin: 0 !important;
+body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
 }
-.admin-content-grid > .collapsible-nav {
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
     top: var(--pss-header-h, 64px) !important;
     height: calc(100vh - var(--pss-header-h, 64px)) !important;
 }
-/* Orchestration bar: fixed height, doesn't grow */
 #polysaas-orchestration-bar {
     background-color: #1a1a1a;
     color: #0f0;
-    padding: 10px 15px;
+    padding: 8px 15px;
     border-bottom: 3px solid #0f0;
     font-family: monospace;
-    font-size: 15px;
-    margin: 0 !important;
+    font-size: 14px;
+    margin: 0 0 6px 0;
     flex: 0 0 auto !important;
-    min-height: auto !important;
-    overflow: visible !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
+    position: relative;
+    z-index: 1060;
+    pointer-events: auto;
+}
+#pss-insert-instruction-btn {
+    position: relative;
+    z-index: 1061;
+    pointer-events: auto;
 }
 /* PolySaaS sidebar — always on top, never overridden */
 .admin-content-grid > .collapsible-nav {
@@ -169,14 +85,19 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
     z-index: 1050 !important;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ODOO CONTAINMENT - Fix #4: No apps / no adaptive display
-   The scope container becomes Odoo's viewport. All Odoo elements must stay
-   inside and use the scope's dimensions, not the browser viewport.
-   ═══════════════════════════════════════════════════════════════════════════ */
+{% if embed_enable_odoo_body_scope %}
 body.polysaas-passthrough-embed-page {
-    overflow: visible !important;
-    height: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* Flex column: orch bar + Odoo scope share the content column height */
+.polysaas-passthrough-embed-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    height: calc(100vh - var(--pss-header-h, 64px) - 42px) !important;
+    min-height: 420px !important;
+    max-height: calc(100vh - var(--pss-header-h, 64px) - 42px) !important;
+    box-sizing: border-box !important;
 }
 
 /* ── Odoo embed scope (matches display.html flex pattern) ── */
@@ -185,7 +106,6 @@ body.polysaas-passthrough-embed-page {
     flex: 1 1 auto !important;
     min-height: 0 !important;
     width: 100% !important;
-    max-width: 100% !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
     background: #fff !important;
@@ -204,87 +124,87 @@ body.polysaas-passthrough-embed-page {
     flex-direction: column !important;
     overflow: hidden !important;
     width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
 }
 
-/* Ensure ALL direct children of scope fill width */
-.polysaas-passthrough-scope > * {
+/* Odoo 18 — navbar MUST stay in-flow (fixed/sticky uses viewport → hides under Jazzmin) */
+.polysaas-passthrough-scope header.o_main_navbar,
+.polysaas-passthrough-scope .o_main_navbar,
+.polysaas-passthrough-scope > .o_main_navbar,
+.polysaas-passthrough-scope > nav.o_main_navbar {
+    flex: 0 0 auto !important;
     width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* Odoo navbar at top */
-.polysaas-passthrough-scope .o_navbar {
     position: relative !important;
-    flex: 0 0 46px !important;
-    height: 46px !important;
-    min-height: 46px !important;
-    width: 100% !important;
-    z-index: 100 !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    z-index: 30 !important;
     visibility: visible !important;
     opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+    max-height: none !important;
+    margin: 0 !important;
+    clip: auto !important;
+    clip-path: none !important;
 }
 
-/* Action manager fills remaining space */
-.polysaas-passthrough-scope .o_action_manager {
+.polysaas-passthrough-scope .o_navbar {
+    flex: 0 0 auto !important;
     position: relative !important;
+    top: auto !important;
+    width: 100% !important;
+    z-index: 30 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    min-height: 46px !important;
+}
+
+.polysaas-passthrough-scope .o_action_manager,
+.polysaas-passthrough-scope > main {
+    flex: 1 1 auto !important;
+    overflow: auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.polysaas-passthrough-scope .o_discuss,
+.polysaas-passthrough-scope .o_mail_discuss,
+.polysaas-passthrough-scope .o_view_controller,
+.polysaas-passthrough-scope .o_form_view,
+.polysaas-passthrough-scope .o_list_view,
+.polysaas-passthrough-scope .o_kanban_view,
+.polysaas-passthrough-scope .o_content {
     flex: 1 1 auto !important;
     min-height: 0 !important;
     overflow: auto !important;
-    visibility: visible !important;
-    opacity: 1 !important;
 }
 
-/* Content areas */
-.polysaas-passthrough-scope .o_content,
-.polysaas-passthrough-scope .o_view_controller,
-.polysaas-passthrough-scope .o_kanban_view,
-.polysaas-passthrough-scope .o_list_view,
-.polysaas-passthrough-scope .o_form_view {
-    position: relative !important;
-    width: 100% !important;
-    height: 100% !important;
-    overflow: auto !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* Apps/Home menu grid */
 .polysaas-passthrough-scope .o_apps,
 .polysaas-passthrough-scope .o_home_menu,
 .polysaas-passthrough-scope .o_app_board {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: flex-start !important;
-    align-content: flex-start !important;
-    padding: 20px !important;
-    gap: 15px !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    min-height: 200px !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
     overflow: auto !important;
 }
 
-/* Individual app icons */
-.polysaas-passthrough-scope .o_app,
-.polysaas-passthrough-scope .o_menuitem {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+/* User menu / systray dropdowns must float above content */
+.polysaas-passthrough-scope .o-dropdown,
+.polysaas-passthrough-scope .dropdown-menu {
+    z-index: 200 !important;
 }
 
-/* Override fixed positioning that escapes the container */
-.polysaas-passthrough-scope [style*="position: fixed"],
-.polysaas-passthrough-scope [style*="position:fixed"] {
+/* Do NOT rewrite fixed positioning on the navbar — only on overlays/modals */
+.polysaas-passthrough-scope .o_loading[style*="position: fixed"],
+.polysaas-passthrough-scope .o_loading[style*="position:fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position: fixed"],
+.polysaas-passthrough-scope .o_blockUI[style*="position:fixed"] {
     position: absolute !important;
 }
 
-/* Loading indicators stay in scope */
 .polysaas-passthrough-scope .o_loading,
 .polysaas-passthrough-scope .o_blockUI {
     position: absolute !important;
@@ -294,13 +214,34 @@ body.polysaas-passthrough-embed-page {
     bottom: 0 !important;
 }
 
-/* Hide the debug banner */
-.polysaas-passthrough-embed-wrap details {
-    display: none !important;
+.polysaas-passthrough-scope:empty::after {
+    content: "Loading Odoo…";
+    display: block;
+    padding: 40px;
+    text-align: center;
+    color: #666;
+}
+{% else %}
+/* Mattermost / generic passthrough — bingo layout (overflow visible, full SPA height) */
+body.polysaas-passthrough-embed-page {
+    overflow: visible !important;
+    height: auto !important;
 }
 
-/* Hide PolySaaS AI dock on passthrough pages to avoid layout conflicts */
-body.polysaas-passthrough-embed-page #pssAdminAiChatDock {
+.polysaas-passthrough-scope {
+    position: relative !important;
+    width: 100% !important;
+    height: calc(100vh - 170px) !important;
+    min-height: 400px !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    contain: layout paint !important;
+}
+{% endif %}
+
+.polysaas-passthrough-embed-wrap details {
     display: none !important;
 }
 </style>
@@ -327,172 +268,12 @@ body.polysaas-passthrough-embed-page #pssAdminAiChatDock {
             <span style="font-size:12px;color:#aaa;">orch: <span id="pss-orch-status" style="color:#93c5fd;">waiting…</span></span>
             <span id="pss-orch-event" style="display:none;margin-left:8px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
         </div>
-        <button id="pss-insert-instruction-btn" style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+        <button type="button" id="pss-insert-instruction-btn"
+            onclick="if(window.PolySaaSOrchBar){PolySaaSOrchBar.openFromButton(event);}"
+            style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
             + Insert Orchestration Instruction
         </button>
     </div>
-    <script>
-    (function() {
-        var pathEl = document.getElementById('pss-action-path');
-        var menuEl = document.getElementById('pss-orch-menu');
-        var statusEl = document.getElementById('pss-orch-status');
-        var eventEl = document.getElementById('pss-orch-event');
-        var _lastOrchPath = '';
-        var _lastBarPath = '';
-        var _isMattermostEmbed = /\/pt\/admin\/[^/]*mattermost/i.test(window.location.pathname || '');
-
-        function getBrowserPathname() {
-            try {
-                var a = document.createElement('a');
-                a.href = window.location.href;
-                return a.pathname || window.location.pathname || '/';
-            } catch (e) {
-                return window.location.pathname || '/';
-            }
-        }
-
-        function getOdooPath() {
-            var browserPath = getBrowserPathname();
-            var spaPath = window.location.pathname || browserPath;
-            var hash = window.location.hash || '';
-            var m = browserPath.match(/\/pt\/admin\/[^/]+(\/.*)$/);
-            var p = m ? m[1].replace(/\/$/, '') || '/' : spaPath;
-            if (!m && p.indexOf('/pt/admin/') === 0) p = '/';
-            return p + (window.location.search || '') + hash;
-        }
-
-        function getMenuIdFromPath(fullPath) {
-            var base = (fullPath || '').split('?')[0].split('#')[0];
-            var mm = base.match(/\/odoo\/[^/]+\/(\d+)(?:\/|$)/);
-            if (mm) return mm[1];
-            var params = new URLSearchParams((fullPath.split('?')[1] || '') + (fullPath.split('#')[1] || '').replace(/^#/, '?'));
-            return params.get('menu_id') || '';
-        }
-
-        function getCsrfToken() {
-            var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-            if (m) return decodeURIComponent(m[1]);
-            var el = document.querySelector('[name=csrfmiddlewaretoken]');
-            return el && el.value ? el.value : '';
-        }
-
-        function setStatus(text, ok) {
-            if (!statusEl) return;
-            statusEl.textContent = text;
-            statusEl.style.color = ok ? '#86efac' : (ok === false ? '#fca5a5' : '#93c5fd');
-        }
-
-        function showEvent(msg) {
-            if (!eventEl) return;
-            eventEl.textContent = msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg);
-            eventEl.style.display = 'inline';
-            clearTimeout(eventEl._t);
-            eventEl._t = setTimeout(function() { eventEl.style.display = 'none'; }, 12000);
-        }
-
-        function notifyOrchestration(fullPath) {
-            var pathOnly = (fullPath || '').split('?')[0].split('#')[0];
-            if (!pathOnly || pathOnly === _lastOrchPath) return;
-            _lastOrchPath = pathOnly;
-            setStatus('checking…', null);
-            fetch('/dose/api/orchestration-navigate/', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken()
-                },
-                body: JSON.stringify({path: fullPath, method: 'GET'})
-            }).then(function(r) {
-                if (!r.ok) {
-                    setStatus('API error (' + r.status + ')', false);
-                    showEvent('orchestration API failed (' + r.status + ')');
-                    return null;
-                }
-                return r.json();
-            }).then(function(data) {
-                if (!data) return;
-                if (data.status === 'no_tenant') {
-                    setStatus('no tenant', false);
-                    return;
-                }
-                var matched = data.matched || 0;
-                var saved = data.callback_saved || 0;
-                if (matched > 0) {
-                    setStatus('matched ' + matched + ', saved ' + saved, saved > 0);
-                    showEvent('matched ' + matched + ' — CallBackData saved: ' + saved);
-                } else {
-                    setStatus('no instruction match', false);
-                    showEvent('no match for ' + pathOnly);
-                }
-            }).catch(function() {
-                setStatus('API error', false);
-                showEvent('orchestration API failed');
-            });
-        }
-
-        function updateBar(opts) {
-            var fullPath = getOdooPath();
-            var pathOnly = fullPath.split('?')[0].split('#')[0];
-            if (pathEl) pathEl.textContent = pathOnly;
-            if (menuEl) menuEl.textContent = getMenuIdFromPath(fullPath) || '—';
-            var doNotify = !(opts && opts.notify === false);
-            if (doNotify && !_isMattermostEmbed && pathOnly !== _lastBarPath) {
-                _lastBarPath = pathOnly;
-                notifyOrchestration(fullPath);
-            }
-        }
-
-        function installHistoryHooks() {
-            var _push = history.pushState;
-            var _replace = history.replaceState;
-            history.pushState = function() {
-                var r = _push.apply(history, arguments);
-                updateBar();
-                return r;
-            };
-            history.replaceState = function() {
-                var r = _replace.apply(history, arguments);
-                updateBar();
-                return r;
-            };
-            window.addEventListener('popstate', updateBar);
-        }
-
-        window.__psEmbedOrchBar = { updateBar: updateBar, installHistoryHooks: installHistoryHooks };
-
-        // Orchestration bar visible on ALL passthrough screens (Mattermost, Odoo, etc.)
-        // For Mattermost: shows current channel path; for Odoo: shows action path
-
-        installHistoryHooks();
-        updateBar();
-        setInterval(function() { updateBar({notify: false}); }, 2000);
-        [500, 1500, 3500].forEach(function(ms) {
-            setTimeout(function() {
-                installHistoryHooks();
-                updateBar();
-            }, ms);
-        });
-
-        var btn = document.getElementById('pss-insert-instruction-btn');
-        if (btn) {
-            btn.addEventListener('click', function() {
-                // Open the *standard* admin "Add Instruction" form (InstructionAdmin + InstructionForm)
-                // pre-filled with the current Action Path shown in the bar. This works for any
-                // passthrough service because the forwarding layer wraps responses in this template.
-                // Tenant context comes from the session (TenantAwareModelAdmin handles schema).
-                var path = (pathEl && pathEl.textContent && pathEl.textContent !== 'loading…')
-                    ? pathEl.textContent
-                    : getOdooPath();
-                var url = '/admin/dose/instruction/add/?requestpath=' + encodeURIComponent(path) +
-                          '&match_type=path&direction=REQ';
-                // Open in a new tab so the live passthrough SPA (Odoo/Mattermost navigation etc.) stays intact.
-                // The bar's existing 2 s polling + orchestration-navigate API will pick up the new instruction.
-                window.open(url, '_blank');
-            });
-        }
-    })();
-    </script>
     {% if embed_body %}
     {{ embed_body }}
     {% endif %}
@@ -505,26 +286,186 @@ body.polysaas-passthrough-embed-page #pssAdminAiChatDock {
 
 {% block extrajs %}
 {{ block.super }}
-{% if embed_enable_odoo_body_scope %}
-<script>
-(function () {
-    if (!window.__psEmbedOrchBar) return;
-    var _psPush = history.pushState;
-    var _psReplace = history.replaceState;
-    if (_psPush) {
-        history.pushState = function () {
-            var r = _psPush.apply(history, arguments);
-            window.__psEmbedOrchBar.updateBar();
-            return r;
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260611-8"></script>
+<script>PolySaaSOrchBar.initEmbed();</script>
+    {% if embed_enable_odoo_body_scope %}
+    <script>
+    (function () {
+        'use strict';
+        var SCOPE_SEL = '.polysaas-passthrough-scope';
+
+        function getScope() {
+            return document.querySelector(SCOPE_SEL);
+        }
+
+        var _jazzmin = new Set();
+        function _snapshotJazzmin() {
+            var _ch = document.body ? Array.prototype.slice.call(document.body.childNodes) : [];
+            for (var _i = 0; _i < _ch.length; _i++) { _jazzmin.add(_ch[_i]); }
+        }
+        _snapshotJazzmin();
+
+        function _isJazzmin(node) {
+            if (_jazzmin.has(node)) return true;
+            if (!node || !node.classList) return false;
+            var c = node.classList;
+            if (c.contains('wrapper') || c.contains('app-wrapper') ||
+                c.contains('app-footer') || c.contains('main-footer') ||
+                c.contains('modal') || c.contains('modal-backdrop') ||
+                c.contains('toast') || c.contains('tooltip') ||
+                c.contains('popover') || c.contains('dropdown-menu')) return true;
+            return false;
+        }
+
+        function _isOdooMount(node) {
+            if (!node || node.nodeType !== 1) return false;
+            var scope = getScope();
+            if (scope && (node === scope || scope.contains(node))) return false;
+            if (_isJazzmin(node)) return false;
+            if (node.classList && (
+                node.classList.contains('o_web_client') ||
+                node.classList.contains('o_main_navbar') ||
+                node.classList.contains('o_home_menu') ||
+                node.classList.contains('o_action_manager') ||
+                node.classList.contains('o_apps') ||
+                node.id === 'wrapwrap'
+            )) return true;
+            if (node.tagName === 'MAIN' || node.tagName === 'NAV' || node.tagName === 'HEADER') return true;
+            return false;
+        }
+
+        function _pinNavbar(scope) {
+            if (!scope) return;
+            var nav = scope.querySelector(':scope > .o_main_navbar, :scope > header.o_main_navbar');
+            if (!nav) nav = document.querySelector('header.o_main_navbar, .o_main_navbar');
+            if (!nav) return;
+            if (!scope.contains(nav)) {
+                scope.insertBefore(nav, scope.firstChild);
+            } else if (scope.firstElementChild !== nav) {
+                scope.insertBefore(nav, scope.firstChild);
+            }
+            nav.style.setProperty('position', 'relative', 'important');
+            nav.style.setProperty('top', 'auto', 'important');
+            nav.style.setProperty('display', 'flex', 'important');
+            nav.style.setProperty('visibility', 'visible', 'important');
+            nav.style.setProperty('opacity', '1', 'important');
+        }
+
+        function _claim(node) {
+            var scope = getScope();
+            if (!scope || !node || node.nodeType !== 1) return;
+            if (node === scope || scope.contains(node)) return;
+            if (_isJazzmin(node)) return;
+            if (!_isOdooMount(node)) return;
+            console.log('[PolySaaS Embed] Moving Odoo node to scope:', node.tagName, node.className || node.id || '');
+            scope.appendChild(node);
+            _pinNavbar(scope);
+        }
+
+        function _redirectToScope(parent, node, insertFn) {
+            if (parent !== document.body || !node || !_isOdooMount(node) || _isJazzmin(node)) {
+                return false;
+            }
+            var scope = getScope();
+            if (!scope) return false;
+            console.log('[PolySaaS Embed] Redirect mount to scope:', node.tagName, node.className || node.id || '');
+            insertFn(scope, node);
+            _pinNavbar(scope);
+            return true;
+        }
+
+        var _origAppend = Element.prototype.appendChild;
+        Element.prototype.appendChild = function (child) {
+            if (_redirectToScope(this, child, function (scope, node) { _origAppend.call(scope, node); })) {
+                return child;
+            }
+            return _origAppend.call(this, child);
         };
-        history.replaceState = function () {
-            var r = _psReplace.apply(history, arguments);
-            window.__psEmbedOrchBar.updateBar();
-            return r;
+
+        var _origInsertBefore = Element.prototype.insertBefore;
+        Element.prototype.insertBefore = function (newNode, ref) {
+            if (_redirectToScope(this, newNode, function (scope, node) {
+                _origInsertBefore.call(scope, node, scope.firstChild);
+            })) {
+                return newNode;
+            }
+            return _origInsertBefore.call(this, newNode, ref);
         };
-        window.__psEmbedOrchBar.updateBar();
-    }
-})();
-</script>
-{% endif %}
+
+        if (Element.prototype.prepend) {
+            var _origPrepend = Element.prototype.prepend;
+            Element.prototype.prepend = function () {
+                var nodes = Array.prototype.slice.call(arguments);
+                if (this === document.body && nodes.length) {
+                    var scope = getScope();
+                    if (scope) {
+                        console.log('[PolySaaS Embed] Redirect body.prepend to scope');
+                        _origPrepend.apply(scope, nodes);
+                        _pinNavbar(scope);
+                        return;
+                    }
+                }
+                return _origPrepend.apply(this, nodes);
+            };
+        }
+
+        if (typeof MutationObserver !== 'undefined') {
+            var _mo = new MutationObserver(function (mutations) {
+                mutations.forEach(function (m) {
+                    m.addedNodes.forEach(function (node) {
+                        if (node.parentNode === document.body) { _claim(node); }
+                    });
+                });
+            });
+            if (document.body) _mo.observe(document.body, { childList: true });
+        }
+
+        function _harvestBodyChildren() {
+            var scope = getScope();
+            if (!scope) return;
+            ['#wrapwrap', '.o_web_client', '.o_main_navbar', 'header.o_main_navbar', 'main', '.o_home_menu'].forEach(function (sel) {
+                var el = document.body.querySelector(':scope > ' + sel);
+                if (el && el.parentElement === document.body) { _claim(el); }
+            });
+            _pinNavbar(scope);
+        }
+
+        function _boot() {
+            _snapshotJazzmin();
+            _harvestBodyChildren();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', _boot);
+        } else {
+            _boot();
+        }
+        [200, 500, 1000, 2000, 4000, 8000, 12000].forEach(function (ms) {
+            setTimeout(_harvestBodyChildren, ms);
+        });
+    })();
+    </script>
+    {% endif %}
+    {% if embed_enable_odoo_body_scope %}
+    <script>
+    (function () {
+        if (!window.__psEmbedOrchBar) return;
+        var _psPush = history.pushState;
+        var _psReplace = history.replaceState;
+        if (_psPush) {
+            history.pushState = function () {
+                var r = _psPush.apply(history, arguments);
+                window.__psEmbedOrchBar.updateBar(true);
+                return r;
+            };
+            history.replaceState = function () {
+                var r = _psReplace.apply(history, arguments);
+                window.__psEmbedOrchBar.updateBar(true);
+                return r;
+            };
+            window.__psEmbedOrchBar.updateBar(true);
+        }
+    })();
+    </script>
+    {% endif %}
 {% endblock %}
