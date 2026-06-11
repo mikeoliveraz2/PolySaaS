@@ -3,7 +3,7 @@ CreateGitHubIssueService — create an issue in a configured GitHub repository.
 """
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+# BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 import logging
 
 import requests

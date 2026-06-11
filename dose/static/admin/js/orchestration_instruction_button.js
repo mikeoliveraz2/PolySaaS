@@ -1,5 +1,5 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-// BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+// BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 /**
  * Passthrough orchestration bar + green instruction button (modal iframe → Django admin).
  */

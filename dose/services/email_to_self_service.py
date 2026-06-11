@@ -3,7 +3,7 @@ EmailToSelfService — send a formatted email to the authenticated user.
 """
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+# BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 import logging
 
 from django.conf import settings

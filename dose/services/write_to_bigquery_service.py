@@ -3,7 +3,7 @@ WriteToBigQueryService — insert orchestration rows into BigQuery (ADC or servi
 """
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+# BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 import json
 import logging
 import os

@@ -1,7 +1,7 @@
 """Minimal Instruction add/change for orchestration modal iframe (no admin chrome)."""
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+# BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required

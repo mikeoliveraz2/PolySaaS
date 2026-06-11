@@ -3,7 +3,7 @@ CreateCeleryTaskService — queue a Celery background task by name.
 """
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+# BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 import logging
 
 from dose.services.atomic_service_base import AtomicServiceBase

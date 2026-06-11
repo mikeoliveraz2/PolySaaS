@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-11  
 **Declared by:** Michael  
-**Commit:** `PENDING` (hash recorded in immediate follow-up commit)  
+**Commit:** `8cd810c0`  
 **Baseline:** BINGO `8293f54f` — Mattermost Composer Roles v45 (2026-06-11)  
 **Test tenant:** PolySaaS Test 150 (`polysaast150`, team `polysaas-test-150`)  
 **Test URL:** `http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square`

@@ -3,7 +3,7 @@ PublishToPubSubService — publish structured events to GCP Pub/Sub or MQ fallba
 """
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Orchestration Bar + Instruction Embed — commit PENDING
+# BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 import json
 import logging
 
