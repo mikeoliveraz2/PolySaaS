@@ -5,9 +5,6 @@
   delimiters across lines: Django lexer does not treat those as comments when the
   block spans newlines, so the banner was rendered as visible text at the top of every admin page.
 
-  THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-  BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
-
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  FINAL — WORKS 100% — DO NOT MODIFY WITHOUT APPROVAL                ║
   ║                                                                      ║
@@ -497,7 +494,9 @@
     });
   };
   document.addEventListener('DOMContentLoaded', function() {
-    /* Top nav #ps-theme-toggle = mode toggle only (theme-toggle.js). Palette = Bootswatch picks. */
+    document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
+      a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
+    });
     document.getElementById('ps-theme-close').addEventListener('click', closeThemeModal);
     document.getElementById('ps-theme-modal-overlay').addEventListener('click', closeThemeModal);
     document.getElementById('ps-theme-save-btn').addEventListener('click', function() {

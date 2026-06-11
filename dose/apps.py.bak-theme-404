@@ -2,8 +2,6 @@
 """
 App configuration for dose
 """
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
 from django.apps import AppConfig
 
 
@@ -51,29 +49,7 @@ class DoseConfig(AppConfig):
         except Exception as _e:
             print(f"[admin_registry_diag] could not read registry: {_e}", flush=True, file=sys.stderr)
 
-        self._register_admin_theme_urls()
         print("[Django] DoseConfig.ready() completed", flush=True, file=sys.stderr)
-
-    @staticmethod
-    def _register_admin_theme_urls():
-        """Register /admin/select-theme/ on AdminSite (palette save API + legacy page)."""
-        from django.contrib import admin
-        from django.urls import path
-        from dose.admin_views import select_theme, select_theme_api
-
-        if getattr(admin.site, '_ps_theme_urls_registered', False):
-            return
-        original_get_urls = admin.site.get_urls
-
-        def get_urls():
-            custom = [
-                path('select-theme/api/', admin.site.admin_view(select_theme_api), name='select_theme_api'),
-                path('select-theme/', admin.site.admin_view(select_theme), name='select_theme'),
-            ]
-            return custom + original_get_urls()
-
-        admin.site.get_urls = get_urls
-        admin.site._ps_theme_urls_registered = True
 
 
 class YourAppConfig(AppConfig):

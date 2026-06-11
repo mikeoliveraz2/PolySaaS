@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
+# BINGO: Odoo SSO Passthrough — commit e739a38c
 
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
@@ -79,13 +79,8 @@ def set_theme(request):
     })
 
 
-LIGHT_THEMES = sorted([
-    "cerulean", "cosmo", "flatly", "journal", "litera", "lumen", "lux", "materia",
-    "minty", "pulse", "sandstone", "simplex", "sketchy", "spacelab", "united", "yeti",
-])
-DARK_THEMES = sorted(["cyborg", "darkly", "slate", "solar", "superhero"])
-LIGHT_THEME_DEFAULT = "sandstone"
-DARK_THEME_DEFAULT = "darkly"
+LIGHT_THEMES = sorted(["flatly","cerulean","cosmo","journal","litera","lumen","lux","minty","pulse","sandstone","simplex","sketchy","spacelab","united","yeti"])
+DARK_THEMES = sorted(["cyborg","darkly","slate","solar","superhero"])
 
 
 @login_required
@@ -99,10 +94,8 @@ def select_theme_api(request):
         profile, _ = UserProfile.objects.get_or_create(user=request.user, tenant=tenant)
 
     return JsonResponse({
-        'light_theme': profile.light_theme if profile else LIGHT_THEME_DEFAULT,
-        'dark_theme': profile.dark_theme if profile else DARK_THEME_DEFAULT,
-        'light_themes': LIGHT_THEMES,
-        'dark_themes': DARK_THEMES,
+        'light_theme': profile.light_theme if profile else 'flatly',
+        'dark_theme': profile.dark_theme if profile else 'darkly',
         'use_light_mode': request.session.get('display_mode', 'light') == 'light',
     })
 

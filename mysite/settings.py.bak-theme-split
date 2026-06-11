@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 
 # Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)
 # Debug logging for Allauth authentication troubleshooting
@@ -80,7 +80,7 @@ JAZZMIN_SETTINGS = {
         # external url that opens in a new window (Permissions can be added)
         {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},
 
-        {"name": "Toggle light/dark", "url": "#ps-theme-toggle", "permissions": ["auth.view_user"]},
+        {"name": "Toggle light/dark", "url": "/admin/select-theme/", "permissions": ["auth.view_user"]},
 
         {"name": "API Docs", "url": "/swagger/", "new_window": True, "icon": "fas fa-book"},
         {"name": "Platform help", "url": "/help/", "permissions": ["auth.view_user"], "icon": "fas fa-life-ring"},

@@ -1,5 +1,5 @@
-// THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-// BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
+console.log('Theme toggle JS loaded');
+
 function getCookie(name) {
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
@@ -79,9 +79,7 @@ function ensureThemeModeBadge() {
     }
 
     const mode = detectDisplayMode();
-    const controls = Array.from(document.querySelectorAll(
-        'a[href="#ps-theme-toggle"], a[href*="select-theme"], #ps-theme-toggle-btn, #theme-toggle-btn'
-    ));
+    const controls = Array.from(document.querySelectorAll('a[href*="select-theme"], #ps-theme-toggle-btn, #theme-toggle-btn'));
     controls.forEach(function(control) {
         if (!control) return;
         let badge = control.querySelector('.ps-theme-mode-badge');
@@ -96,55 +94,51 @@ function ensureThemeModeBadge() {
     });
 }
 
-function bindThemeToggleControl(control) {
-    if (!control || control.dataset.psThemeToggleBound === '1') {
-        return;
-    }
-    control.dataset.psThemeToggleBound = '1';
-    control.addEventListener('click', function(e) {
-        e.preventDefault();
-        requestThemeToggle()
-            .then(function() {
-                ensureThemeModeBadge();
-                window.location.reload();
-            })
-            .catch(function(err) {
-                console.error('Failed to toggle theme:', err);
-                alert('Failed to toggle theme. Please try again.');
-            });
-    });
-}
-
-function isToggleMenuLink(anchor) {
-    if (!anchor || !anchor.getAttribute) return false;
-    const href = (anchor.getAttribute('href') || '').toLowerCase();
-    const text = (anchor.textContent || '').toLowerCase();
-    if (href === '#ps-theme-toggle') return true;
-    if (href.indexOf('select-theme') !== -1 && text.indexOf('toggle') !== -1) return true;
-    if (text.indexOf('toggle light') !== -1 || text.indexOf('toggle theme') !== -1) return true;
-    return false;
-}
-
+// Toggle light/dark mode on the theme selection page.
 document.addEventListener('DOMContentLoaded', function() {
     ensureThemeModeBadge();
 
-    document.querySelectorAll('a[href="#ps-theme-toggle"], a[href*="select-theme"]').forEach(function(a) {
-        if (isToggleMenuLink(a)) {
-            bindThemeToggleControl(a);
-        }
-    });
-
-    document.querySelectorAll('.navbar-nav a.nav-link, .nav-item a').forEach(function(a) {
-        if (isToggleMenuLink(a)) {
-            bindThemeToggleControl(a);
-        }
-    });
-
-    const userToggle = document.querySelector('.usermenu a[href="javascript:void(0)"]');
-    if (userToggle && (userToggle.textContent || '').toLowerCase().indexOf('toggle theme') !== -1) {
-        bindThemeToggleControl(userToggle);
+    const toggleBtn = document.getElementById('theme-toggle-btn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            requestThemeToggle()
+                .then(function(data) {
+                    console.log('Theme toggled:', data.theme, data.mode);
+                    ensureThemeModeBadge();
+                    window.location.reload();
+                })
+                .catch(function(err) {
+                    console.error('Failed to toggle theme:', err);
+                    alert('Failed to toggle theme. Please try again.');
+                });
+        });
     }
 
-    bindThemeToggleControl(document.getElementById('theme-toggle-btn'));
-    bindThemeToggleControl(document.getElementById('ps-theme-toggle-btn'));
+    // THEME PICKER LOGIC (for actual Jazzmin picker)
+    const jazzminPicker = document.getElementById('jazzmin-theme-chooser');
+    if (jazzminPicker) {
+        console.log('[ThemePicker] Jazzmin picker found, current value:', jazzminPicker.value);
+            // DISABLED: POST on theme select event for Jazzmin picker. Now handled by Save button in override template.
+            // jazzminPicker.addEventListener('change', function() {
+            //     const selectedTheme = jazzminPicker.value;
+            //     console.log('[ThemePicker] Jazzmin picker changed, selected:', selectedTheme);
+            //     fetch('/admin/set-theme/', {
+            //         method: 'POST',
+            //         headers: {
+            //             'Content-Type': 'application/x-www-form-urlencoded',
+            //             'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]')?.value || getCookie('csrftoken')),
+            //         },
+            //         body: `type=light&theme=${encodeURIComponent(selectedTheme)}`
+            //     })
+            //     .then(response => {
+            //         console.log('[ThemePicker] POST response status:', response.status);
+            //         return response.json();
+            //     })
+            //     .then(data => {
+            //         console.log('[ThemePicker] POST response data:', data);
+            //         window.location.reload();
+            //     });
+            // });
+    }
 });

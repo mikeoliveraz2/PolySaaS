@@ -1,5 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md -->
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
 {% load i18n static custom_menu_tags %}
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
@@ -34,7 +32,6 @@
         --pss-sidebar-passthrough-border: #3b82f6;
     }
 
-    html[data-bs-theme="dark"],
     html[data-ps-theme="darkly"],
     html[data-ps-theme="cyborg"],
     html[data-ps-theme="slate"],
@@ -448,175 +445,6 @@
         padding-left: 12px;
     }
 
-    /* CONTROLS row — labeled tiles (Themes + Alerts) */
-    .pss-sidebar-controls-row {
-        display: flex;
-        gap: 8px;
-        justify-content: stretch;
-        padding: 10px 10px 12px;
-        position: relative;
-    }
-    .pss-sidebar-control-wrap {
-        position: relative;
-        flex: 1 1 0;
-        min-width: 0;
-    }
-    .pss-sidebar-control-btn {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        width: 100%;
-        min-height: 58px;
-        padding: 8px 6px;
-        border-radius: 10px;
-        border: 1px solid var(--pss-sidebar-panel-border);
-        background: var(--pss-sidebar-surface);
-        cursor: pointer;
-        position: relative;
-        line-height: 1.1;
-        transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-    }
-    .pss-sidebar-control-btn:hover,
-    .pss-sidebar-control-btn:focus-visible {
-        outline: none;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
-    }
-    /* SVG icons — immune to applyFont() stomping font-family on every element */
-    .pss-sidebar-control-btn .pss-control-icon {
-        display: inline-flex !important;
-        align-items: center;
-        justify-content: center;
-        width: 1.5rem;
-        height: 1.5rem;
-        line-height: 1;
-        color: inherit !important;
-        flex-shrink: 0;
-    }
-    .pss-sidebar-control-btn .pss-control-icon .pss-control-svg {
-        width: 1.35rem;
-        height: 1.35rem;
-        display: block;
-    }
-    .pss-sidebar-control-btn .pss-control-label {
-        font-size: 0.68rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: inherit;
-        opacity: 0.95;
-    }
-    .pss-sidebar-control-btn--themes {
-        color: #5b21b6;
-        border-color: #c4b5fd;
-        background: linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%);
-    }
-    .pss-sidebar-control-btn--themes:hover,
-    .pss-sidebar-control-btn--themes:focus-visible {
-        color: #4c1d95;
-        border-color: #a78bfa;
-        background: linear-gradient(180deg, #ede9fe 0%, #ddd6fe 100%);
-    }
-    .pss-sidebar-control-btn--alerts {
-        color: #b45309;
-        border-color: #fcd34d;
-        background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
-    }
-    .pss-sidebar-control-btn--alerts:hover,
-    .pss-sidebar-control-btn--alerts:focus-visible {
-        color: #92400e;
-        border-color: #fbbf24;
-        background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
-    }
-    html[data-bs-theme="dark"] .pss-sidebar-control-btn--themes,
-    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--themes,
-    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--themes,
-    html[data-ps-theme="slate"] .pss-sidebar-control-btn--themes,
-    html[data-ps-theme="solar"] .pss-sidebar-control-btn--themes,
-    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--themes {
-        color: #e9d5ff;
-        border-color: #7c3aed;
-        background: linear-gradient(180deg, #3b2667 0%, #2e1065 100%);
-    }
-    html[data-bs-theme="dark"] .pss-sidebar-control-btn--themes:hover,
-    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--themes:hover,
-    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--themes:hover,
-    html[data-ps-theme="slate"] .pss-sidebar-control-btn--themes:hover,
-    html[data-ps-theme="solar"] .pss-sidebar-control-btn--themes:hover,
-    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--themes:hover {
-        color: #f5f3ff;
-        border-color: #a78bfa;
-        background: linear-gradient(180deg, #4c1d95 0%, #3b0764 100%);
-    }
-    html[data-bs-theme="dark"] .pss-sidebar-control-btn--alerts,
-    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--alerts,
-    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--alerts,
-    html[data-ps-theme="slate"] .pss-sidebar-control-btn--alerts,
-    html[data-ps-theme="solar"] .pss-sidebar-control-btn--alerts,
-    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--alerts {
-        color: #fde68a;
-        border-color: #d97706;
-        background: linear-gradient(180deg, #4a3410 0%, #3f2d0f 100%);
-    }
-    html[data-bs-theme="dark"] .pss-sidebar-control-btn--alerts:hover,
-    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--alerts:hover,
-    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--alerts:hover,
-    html[data-ps-theme="slate"] .pss-sidebar-control-btn--alerts:hover,
-    html[data-ps-theme="solar"] .pss-sidebar-control-btn--alerts:hover,
-    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--alerts:hover {
-        color: #fff7ed;
-        border-color: #fbbf24;
-        background: linear-gradient(180deg, #5c4312 0%, #4a3410 100%);
-    }
-    .pss-sidebar-control-btn--alerts #sidebar-unread-count {
-        top: 4px;
-        right: 8px;
-    }
-    .collapsible-nav.collapsed .pss-control-label,
-    #dose-custom-sidebar.collapsed .pss-control-label {
-        display: none;
-    }
-    .collapsible-nav.collapsed .pss-sidebar-control-btn,
-    #dose-custom-sidebar.collapsed .pss-sidebar-control-btn {
-        min-height: 44px;
-        padding: 8px 4px;
-    }
-
-    /* Theme picker — portaled to body; fixed so sidebar overflow cannot clip it */
-    #sidebar-display-settings-popover {
-        display: none;
-        position: fixed;
-        background: #ffffff;
-        color: #222;
-        width: 310px;
-        max-height: calc(100vh - 24px);
-        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
-        border-radius: 12px;
-        z-index: 10050;
-        overflow: hidden;
-        border: 1px solid #e2e8f0;
-    }
-    #sidebar-display-settings-popover .pss-theme-popover-header {
-        padding: 14px 16px;
-        border-bottom: 1px solid #e2e8f0;
-        font-weight: 700;
-        font-size: 14px;
-        background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-        color: #4c1d95;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    #sidebar-display-settings-popover .pss-theme-popover-body {
-        padding: 16px;
-        font-size: 13px;
-        max-height: min(480px, calc(100vh - 100px));
-        overflow-y: auto;
-    }
-
     /* ── Passthrough logo card grid ── */
     .pss-pt-cards {
         display: grid;
@@ -889,27 +717,18 @@
         <!-- Controls Panel (Display Settings + Bell Icon) -->
         <div class="nav-panel">
             <h4 class="nav-panel-title">CONTROLS</h4>
-            <div class="nav-panel-items pss-sidebar-controls-row">
-                <!-- Themes — Bootswatch picker -->
-                <div class="pss-sidebar-control-wrap">
-                    <button type="button" id="sidebarDisplaySettingsBtn" class="pss-sidebar-control-btn pss-sidebar-control-btn--themes" title="Theme picker — colors, fonts, display" aria-label="Open theme picker">
-                        <span class="pss-control-icon" aria-hidden="true">
-                            <svg class="pss-control-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="13.5" cy="6.5" r="2.5" fill="currentColor" stroke="none"/>
-                                <circle cx="17.5" cy="10.5" r="2.5" fill="currentColor" stroke="none"/>
-                                <circle cx="8.5" cy="7.5" r="2.5" fill="currentColor" stroke="none"/>
-                                <circle cx="6.5" cy="12.5" r="2.5" fill="currentColor" stroke="none"/>
-                                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.672 0-.437-.18-.835-.437-1.123-.29-.289-.438-.652-.438-1.123 0-.87.695-1.562 1.565-1.562H16.5c2.485 0 4.5-2.015 4.5-4.5C21 6.015 16.985 2 12 2z"/>
-                            </svg>
-                        </span>
-                        <span class="pss-control-label">Themes</span>
+            <div class="nav-panel-items" style="display: flex; gap: 10px; justify-content: space-around; position: relative;">
+                <!-- Display Settings Button with Popover -->
+                <div style="position: relative;">
+                    <button id="sidebarDisplaySettingsBtn" title="Display Settings" style="background: none; border: none; cursor: pointer; font-size: 24px; padding: 8px; color: #2c3e50;">
+                        <i class="fas fa-palette" style="font-family:'Font Awesome 5 Free',FontAwesome,sans-serif!important;font-weight:900!important;font-style:normal!important;display:inline-block!important;"></i>
                     </button>
-                    <div id="sidebar-display-settings-popover" role="dialog" aria-modal="true" aria-label="Theme picker">
-                        <div class="pss-theme-popover-header">
-                            <span>🎨 Theme Picker</span>
-                            <button type="button" id="display-settings-close" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; padding: 0 4px;" title="Close">✕</button>
+                    <div id="sidebar-display-settings-popover" style="display: none; position: absolute; top: 40px; right: -240px; background: #ffffff; color: #222; width: 310px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); border-radius: 12px; z-index: 9999; overflow: hidden; border: 1px solid #e2e8f0;">
+                        <div style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; font-size: 14px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); color: #1e293b; display: flex; align-items: center; justify-content: space-between;">
+                            <span>⚙️ Display Settings</span>
+                            <button id="display-settings-close" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; padding: 0 4px;" title="Close">✕</button>
                         </div>
-                        <div class="pss-theme-popover-body">
+                        <div style="padding: 16px; font-size: 13px; max-height: 420px; overflow-y: auto;">
                             <!-- Theme Mode -->
                             <div style="margin-bottom: 16px;">
                                 <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Display Mode</label>
@@ -979,17 +798,11 @@
                         </div>
                     </div>
                 </div>
-                <!-- Alerts — unread messages -->
-                <div class="pss-sidebar-control-wrap">
-                    <button type="button" id="sidebarBellBtn" class="pss-sidebar-control-btn pss-sidebar-control-btn--alerts" title="Unread messages and alerts" aria-label="Open unread messages">
-                        <span class="pss-control-icon" aria-hidden="true">
-                            <svg class="pss-control-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                            </svg>
-                        </span>
-                        <span class="pss-control-label">Alerts</span>
-                        <span id="sidebar-unread-count" style="position: absolute; top: 4px; right: 8px; background: #e74c3c; color: #fff; border-radius: 50%; padding: 2px 5px; font-size: 0.7rem; display: none; min-width: 18px; text-align: center; font-weight: 700;">0</span>
+                <!-- Bell Icon Button with Dropdown -->
+                <div style="position: relative;">
+                    <button id="sidebarBellBtn" title="Unread Messages" style="background: none; border: none; cursor: pointer; font-size: 24px; padding: 8px; color: #2c3e50; position: relative;">
+                        <i class="fas fa-bell" style="font-family:'Font Awesome 5 Free',FontAwesome,sans-serif!important;font-weight:900!important;font-style:normal!important;display:inline-block!important;"></i>
+                        <span id="sidebar-unread-count" style="position: absolute; top: 0; right: 0; background: #e74c3c; color: #fff; border-radius: 50%; padding: 2px 5px; font-size: 0.7rem; display: none; min-width: 18px; text-align: center;">0</span>
                     </button>
                     <div id="sidebar-unread-dropdown" style="display: none; position: absolute; bottom: -380px; left: -190px; background: #ffffff; color: #222; width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); border-radius: 12px; z-index: 999; border: 1px solid #e2e8f0; overflow: hidden;">
                         <div style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; font-size: 14px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); color: #1e293b; display: flex; align-items: center; justify-content: space-between;">
@@ -1363,39 +1176,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function positionDisplaySettingsPopover() {
-        if (!displaySettingsBtn || !displaySettingsPopover) return;
-        var rect = displaySettingsBtn.getBoundingClientRect();
-        var popW = 310;
-        var gap = 10;
-        var left = rect.right + gap;
-        var top = rect.top;
-        if (left + popW > window.innerWidth - 12) {
-            left = Math.max(12, rect.left - popW - gap);
-        }
-        if (left < 12) {
-            left = 12;
-        }
-        displaySettingsPopover.style.left = left + 'px';
-        displaySettingsPopover.style.top = top + 'px';
-        var popH = displaySettingsPopover.offsetHeight;
-        if (top + popH > window.innerHeight - 12) {
-            top = Math.max(12, window.innerHeight - popH - 12);
-            displaySettingsPopover.style.top = top + 'px';
-        }
-    }
-
-    // Open display settings popover (portal to body — escapes sidebar overflow:hidden)
+    // Open display settings popover
     function openDisplaySettings() {
         if (displaySettingsPopover) {
-            if (displaySettingsPopover.parentNode !== document.body) {
-                document.body.appendChild(displaySettingsPopover);
-            }
+            // Load current settings first
             loadDisplaySettings();
             loadBootswatchThemeSelects();
             displaySettingsPopover.style.display = 'block';
-            positionDisplaySettingsPopover();
-            requestAnimationFrame(positionDisplaySettingsPopover);
         }
     }
 
@@ -1625,12 +1412,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && displaySettingsPopover && displaySettingsPopover.style.display === 'block') {
                 closeDisplaySettings();
-            }
-        });
-
-        window.addEventListener('resize', function() {
-            if (displaySettingsPopover && displaySettingsPopover.style.display === 'block') {
-                positionDisplaySettingsPopover();
             }
         });
     }

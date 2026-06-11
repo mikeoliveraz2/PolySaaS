@@ -5,9 +5,6 @@
   delimiters across lines: Django lexer does not treat those as comments when the
   block spans newlines, so the banner was rendered as visible text at the top of every admin page.
 
-  THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-  BINGO: Font and Theme Toggle — 2026-06-11 — documentation/BINGO_FONT_AND_THEME_TOGGLE_2026-06-11.md
-
   ╔══════════════════════════════════════════════════════════════════════╗
   ║  FINAL — WORKS 100% — DO NOT MODIFY WITHOUT APPROVAL                ║
   ║                                                                      ║
@@ -436,8 +433,8 @@
 </div>
 <script>
 (function() {
-  var PS_LIGHT_THEMES = ["sandstone","cerulean","cosmo","journal","litera","lumen","lux",
-                         "materia","minty","pulse","flatly","simplex","sketchy","spacelab",
+  var PS_LIGHT_THEMES = ["flatly","cerulean","cosmo","journal","litera","lumen","lux",
+                         "minty","pulse","sandstone","simplex","sketchy","spacelab",
                          "united","yeti"];
   var PS_DARK_THEMES = ["cyborg","darkly","slate","solar","superhero"];
   function buildSelect(el, themes, current) {
@@ -449,7 +446,7 @@
       el.appendChild(o);
     });
   }
-  window.openThemeModal = function openThemeModal() {
+  function openThemeModal() {
     document.getElementById('ps-theme-modal').style.display = 'block';
     document.getElementById('ps-theme-modal-overlay').style.display = 'block';
     fetch('/admin/select-theme/api/', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
@@ -463,7 +460,7 @@
         document.getElementById('ps-theme-toggle-text').textContent = isLight ? 'Change to Dark Mode' : 'Change to Light Mode';
       })
       .catch(function() {
-        buildSelect(document.getElementById('ps-light-theme'), PS_LIGHT_THEMES, 'sandstone');
+        buildSelect(document.getElementById('ps-light-theme'), PS_LIGHT_THEMES, 'flatly');
         buildSelect(document.getElementById('ps-dark-theme'),  PS_DARK_THEMES, 'darkly');
         document.getElementById('ps-use-light-cb').value = 'light';
         document.getElementById('ps-theme-toggle-text').textContent = 'Change to Dark Mode';
@@ -497,7 +494,9 @@
     });
   };
   document.addEventListener('DOMContentLoaded', function() {
-    /* Top nav #ps-theme-toggle = mode toggle only (theme-toggle.js). Palette = Bootswatch picks. */
+    document.querySelectorAll('a[href*="select-theme"]').forEach(function(a) {
+      a.addEventListener('click', function(e) { e.preventDefault(); openThemeModal(); });
+    });
     document.getElementById('ps-theme-close').addEventListener('click', closeThemeModal);
     document.getElementById('ps-theme-modal-overlay').addEventListener('click', closeThemeModal);
     document.getElementById('ps-theme-save-btn').addEventListener('click', function() {
