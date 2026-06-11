@@ -1,0 +1,215 @@
+# BINGO — Mattermost Passthrough WITH WORKING COMPOSER (v45-roles)
+
+**Date:** 2026-06-11
+**Declared by:** Michael
+**Shim build:** `2026-06-11-v45-roles`
+**Commit:** (filled in by follow-up banner commit — see git log for this doc's commit)
+**Baseline:** BINGO commit `0ee10489` — Mattermost SSO Passthrough v23 (2026-06-08)
+**Test user:** `polysaast150` (PolySaaS Test 150, team `bba4y4hkejnp9xzkjbte3uu4qa`)
+**Test URL:** `http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square`
+
+---
+
+## What Was Achieved
+
+The Mattermost message **composer now renders and accepts input** inside the
+PolySaaS passthrough embed. This was the last broken piece of the Mattermost
+SSO passthrough. Verified by screenshot 2026-06-11 08:59: full admin shell,
+sidebar (Odoo / NextCloud / Mattermost tiles), orchestration bar, channel
+list, message history, AND the "Write to Town Square" composer with
+formatting toolbar, attach, emoji, and send controls.
+
+Everything previously certified still works:
+
+- PolySaaS admin shell wraps Mattermost ✓
+- Silent SSO — user lands already logged in ✓
+- Channel list (Off-Topic, Town Square, DMs) ✓
+- Message history readable ✓
+- WebSocket direct to upstream ✓
+- No team-not-found, no logout loop, no reload loop ✓
+- **Composer loads — messages can be typed and sent ✓ (NEW)**
+
+---
+
+## The Root Cause (Definitive — From Mattermost 10.5.1 Source)
+
+The banner **"Something went wrong while loading the component. Please wait a
+moment, or try reloading the app."** is NOT an error, NOT a crash, NOT a
+webpack chunk 404, and NOT a plugin failure.
+
+It is i18n key `center_panel.input.cannot_load_component`, rendered by the
+`InputLoading` placeholder component
+(`webapp/channels/src/components/channel_view/input_loading.tsx`).
+`ChannelView` deliberately renders `InputLoading` **instead of**
+`AdvancedCreatePost` whenever `missingChannelRole` is true
+(`webapp/channels/src/components/channel_view/channel_view.tsx`):
+
+```tsx
+} else if (this.props.missingChannelRole || this.state.waitForLoader) {
+    createPost = <InputLoading updateWaitForLoader={this.onUpdateInputShowLoader}/>;
+} else {
+    createPost = ( ... <AdvancedCreatePost/> ... );
+}
+```
+
+`missingChannelRole` comes from
+`webapp/channels/src/components/channel_view/index.ts`:
+
+```tsx
+function isMissingChannelRoles(state: GlobalState, channel?: Channel) {
+    const channelRoles = channel ? getMyChannelMembership(state, channel.id)?.roles || '' : '';
+    return !channelRoles.split(' ').some((v) => Boolean(getRoles(state)[v]));
+}
+```
+
+i.e. **the composer is withheld when none of the role names in the user's
+channel membership (e.g. `channel_user`) exist as role objects in
+`state.entities.roles.roles`.** `InputLoading` shows the banner after a
+5-second timeout (`TIME_TO_SHOW = 5000`) — matching the observed
+"composer error visible (10s scan)" timing in every diagnostic session.
+
+### Why direct login works but passthrough did not
+
+| | Direct login | PolySaaS passthrough (pre-v45) |
+|---|---|---|
+| Auth | `POST /api/v4/users/login` → full `loadMe()` | Token seeded via IndexedDB + manual `RECEIVED_ME` dispatch |
+| Roles | `loadMe()` triggers `loadRolesIfNeeded` → `POST /api/v4/roles/names` → `RECEIVED_ROLES` | **Never requested — roles map stayed empty forever** |
+| Result | `getRoles(state)['channel_user']` exists → composer renders | `missingChannelRole === true` → `InputLoading` banner |
+
+**HAR evidence:** `har_diff_clean.txt` — direct capture contains
+`200 POST /api/v4/roles/names`; the passthrough capture contains **no
+`roles/names` request at all**. No console log from v36 through v44 ever
+showed a `roles/names` fetch.
+
+The PolySaaS SSO shim bypasses Mattermost's `loadMe()` flow by design
+(token-based silent SSO). That bypass skipped exactly one critical step:
+hydrating the role definitions. Forty-four prior shim versions attacked
+chunk loading, plugins, CORS, scheduled posts, and Redux user hydration —
+all real issues that were fixed along the way, but none of them was the
+composer gate.
+
+---
+
+## The Fix (GB-MATTERMOST-ROLES-001)
+
+In `dose/passthrough/handlers/mattermost_handler.py`
+(`_mattermost_display_shim_html`):
+
+1. **`_mmHydrateRolesVia(store, me, reason)`** — new function. After every
+   `RECEIVED_ME` dispatch (both the `window._mmEnsureReduxUser` fiber-store
+   path and the `_mmForceReduxHydration` path), it:
+   - Collects role names: the standard superset
+     (`system_user/admin/guest`, `team_user/admin/guest`,
+     `channel_user/admin/guest`) plus `me.roles` plus any roles found in
+     `state.entities.channels.myMembers` and `state.entities.teams.myMembers`.
+   - `POST {upstream}/api/v4/roles/names` with `Authorization: Bearer`,
+     `credentials: 'omit'` (direct-to-upstream, consistent with the v40+
+     direct API routing).
+   - Dispatches `{type: 'RECEIVED_ROLES', data: roles}` into the Redux store.
+     (Action contract verified against mattermost-redux v10.5.1:
+     `action_types/roles.ts` + `reducers/entities/roles.ts` — reducer keys
+     `action.data[]` by `role.name` into `entities.roles.roles`.)
+   - Deduped with a 5-second window (`_mmRolesHydratedAt`).
+   - Console marker: `[PolySaaS MM Roles] RECEIVED_ROLES dispatched (...)`.
+
+2. **Store export** — `_tryPatch()` now sets `window._psMmStore` when it
+   finds the Redux store via React fiber walk, so later code paths and manual
+   console diagnostics can reach the store.
+
+3. **Composer diagnostic** — `_mmTryComposerRecovery()` now logs
+   `[PolySaaS MM Roles] DIAG roles=[...] member.roles=... channel=...`
+   whenever the banner is detected, so any future regression immediately
+   shows which side of `isMissingChannelRoles` failed (empty roles map vs.
+   missing channel membership). No more guessing.
+
+Once `RECEIVED_ROLES` lands, `mapStateToProps` re-runs, `missingChannelRole`
+flips to false, and `ChannelView` swaps `InputLoading` for
+`<AdvancedCreatePost/>` — the composer appears without a reload.
+
+---
+
+## Supporting Fixes Retained From v40–v44 (All Part of This Certification)
+
+| Build | Fix | Why it was needed |
+|---|---|---|
+| v40-direct-api | `/api/v4/*` and `/plugins/*` (except `com.polysaas.passthrough`) routed **direct to upstream**; `_mmShouldRouteDirect()`, `_mmUpstreamApi()` | Waitress thread exhaustion → `ERR_CONNECTION_REFUSED` during SPA API bursts |
+| v41-cors-omit | `credentials: 'omit'` + `withCredentials = false` on upstream API calls (Bearer-only auth); `_ensure_cors_allowed()` patches upstream `AllowCorsFrom` | Upstream returns `Access-Control-Allow-Origin: *`, which browsers reject when credentials mode is `include` |
+| v41 | Waitress threads 16 → 32 (`runall.ps1`) | Headroom for proxied HTML + PolySaaS plugin traffic |
+| v42-strip-plugins | `_mmFilterPluginsWebappResponse()` strips `com.mattermost.calls`, `playbooks`, `github`, `com.mattermost.nps` from `/api/v4/plugins/webapp` | Plugin bundles executed JS even with stubbed APIs; eliminated as confound |
+| v43-main-guard | `_mmPluginGuardStub()` stubs plugin API calls in the main fetch wrapper (incl. NPS `connected` POST) | NPS POST bypassed the early guard → CORS error |
+| v44-config-client | `_mmRewriteConfigClientResponse()` patches `SiteURL` → proxy origin client-side; early `__webpack_public_path__`; chunk redirect extended to fonts/maps/json; script-load failure logging | Direct API routing bypassed the server-side `rewrite_upstream_body` SiteURL rewrite — upstream was returning `https://mattermost.production.polysaas.online` |
+| earlier | Chunk redirect (appendChild/insertBefore/src-setter intercept) to upstream `/static/` | Webpack lazy chunks 404'd on Django |
+| earlier | Early fetch guard stubs: scheduled posts, trial-license, calls config/channels, playbooks runs/settings/bot-connect, github connected | Enterprise/plugin endpoints returning 4xx during boot |
+| earlier | IDB seeding (`persist:storage` token + currentUserId + profile stub), `RECEIVED_ME` hydration, LOGOUT dispatch block, basename lock, WebSocket direct with token | Silent SSO foundation (prior BINGOs) |
+
+---
+
+## Console Markers of a Healthy Boot (v45)
+
+```
+[PolySaaS MM] Early fetch guard installed (v36)
+[PolySaaS MM] shim build 2026-06-11-v45-roles
+[PolySaaS MM] Chunk redirect installed, upstream=https://polysaas-mattermost.onrender.com
+[PolySaaS Shim] Auth ready → staying on full shell
+[PolySaaS MM IDB] persist:storage written with token len=26 + currentUserId
+[PolySaaS MM] Redux dispatch patched — LOGOUT blocked, user=...
+[PolySaaS MM Composer-005] Redux RECEIVED_ME for polysaast150
+[PolySaaS MM Roles] RECEIVED_ROLES dispatched (ensure): system_user,channel_user,...
+[PolySaaS MM] Stripped plugin from webapp (composer safety): github / nps / calls / playbooks
+[PolySaaS MM] Patched config/client SiteURL: ... -> http://localhost:8000/pt/admin/...
+[PolySaaS MM] users/me HTTP status: 200 OK
+```
+
+The composer renders; no `composer error visible` warnings persist.
+
+---
+
+## Architecture (Certified State)
+
+- **HTML / navigation** → through Django proxy (`/pt/admin/polysaas-mattermost.onrender.com/...`), wrapped in admin template
+- **Webpack chunks / static / fonts** → direct upstream via chunk-redirect intercepts
+- **API v4 + MM plugin APIs** → direct upstream, Bearer token, `credentials: 'omit'`
+- **`config/client`** → fetched direct, patched client-side (SiteURL → proxy origin)
+- **`plugins/webapp`** → fetched direct, filtered client-side (4 plugins stripped)
+- **Roles** → fetched direct post-RECEIVED_ME, dispatched as `RECEIVED_ROLES`
+- **WebSocket** → direct upstream `wss://` with token query param
+- **PolySaaS plugin (`com.polysaas.passthrough`)** → stays on proxy
+- **Analytics (matterlytics/rudderstack/segment)** → blocked client-side
+
+## Files In This BINGO Commit
+
+| File | Change |
+|---|---|
+| `dose/passthrough/handlers/mattermost_handler.py` | v40→v45 shim work; GB-MATTERMOST-ROLES-001 roles hydration + diagnostic |
+| `dose/passthrough/handlers/handler_base.py` | `passthrough_early_shell_paths()` hook (generic, all handlers) |
+| `dose/passthrough/middleware.py` | Generic early-shell intercept via handler hook (no app-specific logic) |
+| `mysite/urls.py` | Serve static/media under Waitress in DEBUG |
+| `runall.ps1` | Waitress threads 16→32; robust process-tree cleanup |
+| `*.bak` files | Pre-edit backups per bak-before-edit rule |
+
+## Known Limitations / Notes
+
+- Calls, Playbooks, GitHub, and NPS plugin UIs are intentionally disabled in
+  the passthrough (manifest stripped) for composer stability. Re-enabling any
+  of them requires owner sign-off and a regression test of the composer.
+- `_ensure_cors_allowed` patches upstream `AllowCorsFrom` once per process;
+  production deployments on a different PolySaaS origin must be in that list.
+- The roles superset request is harmless if a role doesn't exist upstream —
+  `roles/names` returns only matching roles.
+- Composer-005 recovery (mutation observer + one-shot reload) remains as a
+  safety net but should not fire in a healthy boot.
+
+## Restore Points
+
+- **BINGO ZIP:** `D:\BINGO ZIPS\BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.zip`
+- **Git:** this commit on `main`
+
+## Diagnostic Trail (For Posterity)
+
+1. v36-diag: confirmed webpack chunk 404s → chunk redirect (fixed a real issue, not the banner)
+2. v40: direct API routing → fixed `ERR_CONNECTION_REFUSED` (Waitress threads)
+3. v41: `credentials: 'omit'` → fixed CORS wildcard-vs-credentials failures
+4. v42/v43: plugin stripping + main-guard stubs → eliminated plugin confounds, fixed NPS CORS leak
+5. v44: client-side SiteURL patch → fixed config bypass introduced by direct routing
+6. **v45: read MM 10.5.1 source for the banner string → `InputLoading` / `isMissingChannelRoles` → roles hydration → COMPOSER RENDERS** ✓
+7. Key lesson recorded: the banner is a **roles-gate placeholder**, not an error boundary. The HAR diff (`roles/names` present in direct, absent in passthrough) was the decisive evidence.

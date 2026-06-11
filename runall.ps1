@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11
+# Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # PolySaaS Run All Services
 # Activates venv, starts Waitress WSGI server (Windows), syncs AI peers, starts Mattermost bot
 
@@ -5,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = if ($PSScriptRoot) { $PSScriptRoot } else { "D:\PolySaaS" }
 $WaitressListen = "0.0.0.0:8000"
 $WaitressPort = 8000
-$WaitressThreads = 16
+$WaitressThreads = 32
 
 function Get-PolySaaSVenvPython {
     param([string]$Root)
@@ -16,19 +19,33 @@ function Get-PolySaaSVenvPython {
     throw "No venv found under $Root (expected venv\Scripts\python.exe or .venv\Scripts\python.exe)"
 }
 
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+    if ($ProcessId -le 0) { return }
+    $ErrorActionPreference = 'SilentlyContinue'
+    & taskkill.exe /T /F /PID $ProcessId 2>$null | Out-Null
+    $ErrorActionPreference = 'Stop'
+}
+
+function Get-WaitressPortOwnerPids {
+    param([int]$Port = 8000)
+    @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.OwningProcess } |
+        Where-Object { $_ -gt 0 } |
+        Sort-Object -Unique)
+}
+
 function Stop-ListenerOnPort {
     param(
         [int]$Port,
         [string]$Label = "port $Port"
     )
-    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
-    foreach ($conn in $listeners) {
-        $procId = $conn.OwningProcess
-        if (-not $procId -or $procId -le 0) { continue }
+    $pids = @(Get-WaitressPortOwnerPids -Port $Port)
+    foreach ($procId in $pids) {
         try {
             $proc = Get-Process -Id $procId -ErrorAction Stop
-            Stop-Process -Id $procId -Force -ErrorAction Stop
-            Write-Host "  Stopped $($proc.ProcessName) (PID $procId) on $Label" -ForegroundColor Yellow
+            Stop-ProcessTree -ProcessId $procId
+            Write-Host "  Stopped $($proc.ProcessName) tree (PID $procId) on $Label" -ForegroundColor Yellow
         } catch {
             Write-Host "  Could not stop PID $procId on $Label : $_" -ForegroundColor DarkYellow
         }
@@ -73,12 +90,12 @@ function Stop-PolySaaSServiceProcesses {
 
         Get-PolySaaSServiceProcesses -Root $Root | ForEach-Object {
             Write-Host "  Stopping PID $($_.ProcessId): $($_.Name)" -ForegroundColor Yellow
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            Stop-ProcessTree -ProcessId $_.ProcessId
         }
 
         Start-Sleep -Seconds 2
 
-        $onPort = @(Get-NetTCPConnection -State Listen -LocalPort $WaitressPort -ErrorAction SilentlyContinue)
+        $onPort = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
         $left = @(Get-PolySaaSServiceProcesses -Root $Root)
         if ($onPort.Count -eq 0 -and $left.Count -eq 0) { break }
         if ($round -lt 3) {
@@ -86,23 +103,45 @@ function Stop-PolySaaSServiceProcesses {
         }
     }
 
-    $remainingPort = @(Get-NetTCPConnection -State Listen -LocalPort $WaitressPort -ErrorAction SilentlyContinue)
-    if ($remainingPort.Count -gt 0) {
-        Write-Host "WARNING: port $WaitressPort still has $($remainingPort.Count) listener(s)" -ForegroundColor Red
+    if (-not (Wait-PortFree -Port $WaitressPort -TimeoutSec 15)) {
+        Write-Host "WARNING: port $WaitressPort still in use after cleanup" -ForegroundColor Red
     }
 }
 
-function Wait-ForSinglePortListener {
+function Wait-PortFree {
     param(
-        [int]$Port,
-        [int]$TimeoutSec = 20
+        [int]$Port = 8000,
+        [int]$TimeoutSec = 30
     )
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
-        if ($listeners.Count -eq 1) { return $listeners[0].OwningProcess }
-        if ($listeners.Count -gt 1) { return -1 }
-        Start-Sleep -Milliseconds 400
+        $owners = @(Get-WaitressPortOwnerPids -Port $Port)
+        if ($owners.Count -eq 0) { return $true }
+        foreach ($procId in $owners) {
+            Write-Host "  Port $Port still held by PID $procId — killing..." -ForegroundColor DarkYellow
+            Stop-ProcessTree -ProcessId $procId
+        }
+        Start-Sleep -Seconds 2
+    }
+    return (@(Get-WaitressPortOwnerPids -Port $Port).Count -eq 0)
+}
+
+function Wait-ForPortListener {
+    param(
+        [int]$Port,
+        [int]$TimeoutSec = 45
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $owners = @(Get-WaitressPortOwnerPids -Port $Port)
+        if ($owners.Count -eq 1) { return $owners[0] }
+        if ($owners.Count -gt 1) {
+            Write-Host "  Multiple PIDs on port $Port ($($owners -join ', ')) — cleaning..." -ForegroundColor DarkYellow
+            foreach ($procId in $owners) { Stop-ProcessTree -ProcessId $procId }
+            Start-Sleep -Seconds 2
+        } else {
+            Start-Sleep -Milliseconds 500
+        }
     }
     return $null
 }
@@ -114,25 +153,18 @@ function Start-PolySaaSWaitress {
     )
 
     Write-Host "Starting Waitress on http://$WaitressListen (threads=$WaitressThreads)..." -ForegroundColor Green
+    if (-not (Wait-PortFree -Port $WaitressPort -TimeoutSec 20)) {
+        throw "Port $WaitressPort is still in use — close other Waitress/Django processes and retry"
+    }
+
     Start-Process -FilePath $WaitressExe `
         -ArgumentList "--listen=$WaitressListen", "--threads=$WaitressThreads", "mysite.wsgi:application" `
         -WorkingDirectory $Root `
         -WindowStyle Hidden
 
-    $ownerPid = Wait-ForSinglePortListener -Port $WaitressPort
-    if ($ownerPid -eq -1) {
-        Write-Host "Multiple listeners on port $WaitressPort — killing and restarting Waitress once..." -ForegroundColor Red
-        Stop-ListenerOnPort -Port $WaitressPort
-        Start-Sleep -Seconds 2
-        Start-Process -FilePath $WaitressExe `
-            -ArgumentList "--listen=$WaitressListen", "--threads=$WaitressThreads", "mysite.wsgi:application" `
-            -WorkingDirectory $Root `
-            -WindowStyle Hidden
-        $ownerPid = Wait-ForSinglePortListener -Port $WaitressPort
-    }
-
+    $ownerPid = Wait-ForPortListener -Port $WaitressPort -TimeoutSec 45
     if (-not $ownerPid -or $ownerPid -le 0) {
-        throw "Waitress failed to bind port $WaitressPort within timeout"
+        throw "Waitress failed to bind port $WaitressPort within timeout (check venv and mysite.wsgi:application)"
     }
 
     Write-Host "Waitress listening on port $WaitressPort (PID $ownerPid)" -ForegroundColor Green
@@ -154,9 +186,9 @@ function Start-PolySaaSAIPeersBot {
     # Always start from zero bot processes
     Get-AIPeersBotProcesses | ForEach-Object {
         Write-Host "  Stopping stray bot PID $($_.ProcessId)" -ForegroundColor Yellow
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        Stop-ProcessTree -ProcessId $_.ProcessId
     }
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 2
 
     Write-Host "Syncing AI peer bots to tenant teams..." -ForegroundColor Cyan
     Push-Location $Root
@@ -176,18 +208,26 @@ function Start-PolySaaSAIPeersBot {
         -ArgumentList "manage.py", "run_mattermost_bot" `
         -WorkingDirectory $Root `
         -WindowStyle Hidden
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 4
 
     $bots = @(Get-AIPeersBotProcesses)
     if ($bots.Count -gt 1) {
-        Write-Host "Found $($bots.Count) bot processes — keeping none, restarting one..." -ForegroundColor Red
-        $bots | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-        Start-Sleep -Seconds 1
+        Write-Host "Found $($bots.Count) bot processes — keeping newest, stopping others..." -ForegroundColor Red
+        $keep = $bots | Sort-Object CreationDate -Descending | Select-Object -First 1
+        $bots | Where-Object { $_.ProcessId -ne $keep.ProcessId } | ForEach-Object {
+            Stop-ProcessTree -ProcessId $_.ProcessId
+        }
+        Start-Sleep -Seconds 2
+        $bots = @(Get-AIPeersBotProcesses)
+    }
+
+    if ($bots.Count -eq 0) {
+        Write-Host "  Bot not running after start — retrying once..." -ForegroundColor DarkYellow
         Start-Process -FilePath $PythonExe `
             -ArgumentList "manage.py", "run_mattermost_bot" `
             -WorkingDirectory $Root `
             -WindowStyle Hidden
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 4
         $bots = @(Get-AIPeersBotProcesses)
     }
 
@@ -221,19 +261,27 @@ $null = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
 Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
 
 Write-Host "`nRunning processes:" -ForegroundColor Cyan
-$portListeners = @(Get-NetTCPConnection -State Listen -LocalPort $WaitressPort -ErrorAction SilentlyContinue)
-Write-Host "  Port $WaitressPort listeners: $($portListeners.Count)" -ForegroundColor $(if ($portListeners.Count -eq 1) { 'Green' } else { 'Red' })
+$portOwners = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
+Write-Host "  Port $WaitressPort listeners: $($portOwners.Count)" -ForegroundColor $(if ($portOwners.Count -eq 1) { 'Green' } else { 'Red' })
 
-Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='waitress-serve.exe'" -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.CommandLine -like '*waitress-serve*' -or $_.CommandLine -like '*run_mattermost_bot*' -or $_.CommandLine -like '*manage.py runserver*'
-    } |
-    Select-Object ProcessId, @{N='Service';E={
-        if ($_.CommandLine -like '*waitress-serve*') { "Waitress ($WaitressListen)" }
-        elseif ($_.CommandLine -like '*run_mattermost_bot*') { 'AI Peers bot' }
-        elseif ($_.CommandLine -like '*runserver*') { 'Django runserver (legacy)' }
-        else { 'Other' }
-    }} | Format-Table -AutoSize
+$statusRows = @()
+foreach ($ownerPid in $portOwners) {
+    $statusRows += [PSCustomObject]@{
+        ProcessId = $ownerPid
+        Service   = "Waitress ($WaitressListen)"
+    }
+}
+Get-AIPeersBotProcesses | ForEach-Object {
+    $statusRows += [PSCustomObject]@{
+        ProcessId = $_.ProcessId
+        Service   = 'AI Peers bot'
+    }
+}
+if ($statusRows.Count -gt 0) {
+    $statusRows | Format-Table -AutoSize
+} else {
+    Write-Host "  (no service processes found)" -ForegroundColor DarkYellow
+}
 
 Write-Host "`nAll services started!" -ForegroundColor Green
 Write-Host "Django (Waitress): http://localhost:$WaitressPort" -ForegroundColor White

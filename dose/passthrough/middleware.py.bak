@@ -1,12 +1,14 @@
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
+import requests
 from django.utils.deprecation import MiddlewareMixin
 from dose.models import UserTenantMembership
 from dose.passthrough.forwarding import forward_request_standardized
 from dose.passthrough.registry import (
-    get_handler_for_endpoint,
     pt_admin_core_delegated_to_urlconf,
+    resolve_handler_for_pt_admin_trigger,
 )
+from dose.passthrough.forwarding import _is_initial_page_load
 from dose.utils import get_current_tenant
 from dose.passthrough.incoming_path_rewrite import apply_incoming_path_rewrites
 
@@ -20,7 +22,9 @@ def run_pt_admin_passthrough_core(request):
     Returns HttpResponse, or None to let URLconf continue (static proxy, building pen).
     Caller must already enforce auth, tenant, and membership.
     """
-    print(f"\n[PT-CORE-ENTRY] run_pt_admin_passthrough_core - path={request.path_info}, method={request.method}")
+    import sys
+    print(f"\n🔥🔥🔥 [PT-CORE-ENTRY] run_pt_admin_passthrough_core - path={request.path_info}, method={request.method}", file=sys.stderr)
+    sys.stderr.flush()
     path = request.path_info
     if pt_admin_core_delegated_to_urlconf(request, path):
         print(f"[PT-CORE] Delegate to URLconf (handler): {path}")
@@ -36,10 +40,33 @@ def run_pt_admin_passthrough_core(request):
     trigger = parts[2]
     print(f"[PT-CORE] trigger={trigger}")
 
+    def _infer_endpoint_url_from_trigger(hostname: str) -> str:
+        """Build a safe endpoint URL from /pt/admin/<trigger>/ hostname segment."""
+        raw = (hostname or "").strip()
+        if raw.startswith("http://") or raw.startswith("https://"):
+            return raw
+
+        host_only = raw
+        port = None
+        if ":" in raw:
+            _host, _port = raw.rsplit(":", 1)
+            if _port.isdigit():
+                host_only = _host
+                port = int(_port)
+
+        # Internal Docker hostnames and explicit :80 should default to HTTP.
+        if port == 80 or "." not in host_only:
+            scheme = "http"
+        elif port == 443:
+            scheme = "https"
+        else:
+            scheme = "https"
+        return f"{scheme}://{raw}"
+
     # Fallback for when DB is unavailable (recovery scenarios)
     class SimpleEndpoint:
         def __init__(self, hostname, url=None):
-            self.endpoint_url = url or f"https://{hostname}"
+            self.endpoint_url = url or _infer_endpoint_url_from_trigger(hostname)
             self.trigger_path = hostname
             self.is_enabled = True
             self.passthrough_type = 'proxy'
@@ -58,25 +85,23 @@ def run_pt_admin_passthrough_core(request):
 
     request._passthrough_endpoint = endpoint
 
-    # PICOLLO PASSO: Direct handler selection by hostname - avoids DB-dependent registry lookup
-    trigger_lower = trigger.lower()
-    handler = None
-    if 'odoo' in trigger_lower:
-        from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
-        handler = OdooPassthroughHandler()
-        print(f"[PT-CORE] Selected OdooPassthroughHandler for {trigger}")
-    elif 'mattermost' in trigger_lower:
-        from dose.passthrough.handlers.mattermost_handler import MattermostPassthroughHandler
-        handler = MattermostPassthroughHandler()
-        print(f"[PT-CORE] Selected MattermostPassthroughHandler for {trigger}")
-    elif 'nextcloud' in trigger_lower:
-        from dose.passthrough.handlers.nextcloud_handler import NextcloudPassthroughHandler
-        handler = NextcloudPassthroughHandler()
-        print(f"[PT-CORE] Selected NextcloudPassthroughHandler for {trigger}")
-    else:
-        # Fallback to registry for unknown hostnames
-        handler = get_handler_for_endpoint(endpoint, request)
-        print(f"[PT-CORE] Fallback registry handler for {trigger}: {handler}")
+    handler = resolve_handler_for_pt_admin_trigger(trigger)
+    print(f"[PT-CORE] Handler for {trigger}: {handler.__class__.__name__ if handler else None}")
+
+    # Resolve the actual PassThroughEndpoint ORM object so handler.proxy_prefix works
+    from dose.models import PassThroughEndpoint
+    from urllib.parse import urlparse
+    endpoint_obj = None
+    try:
+        host = urlparse(endpoint.endpoint_url).netloc.lower()
+        endpoint_obj = PassThroughEndpoint.objects.filter(
+            endpoint_url__icontains=host
+        ).first()
+        if endpoint_obj and handler and hasattr(handler, 'endpoint'):
+            handler.endpoint = endpoint_obj
+            print(f"[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
+    except Exception as e:
+        print(f"[PT-CORE] Could not resolve PassThroughEndpoint: {e}")
 
     print("\n" + "=" * 120)
     print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")
@@ -89,19 +114,31 @@ def run_pt_admin_passthrough_core(request):
         request, endpoint.endpoint_url, handler=handler, endpoint=endpoint, trigger=trigger
     )
 
-    # Check if upstream service is down
+    # Check if upstream service is actually down before showing a generic error page.
+    # Some 502/503/504 responses are transient proxy failures while the service is healthy.
     if response.status_code in (502, 503, 504):
-        from django.http import HttpResponse
-        error_html = f"""
-        <div style="padding: 40px; text-align: center;">
-            <h2 style="color: #dc3545;">Service Unavailable</h2>
-            <p>The external service <code>{trigger}</code> is currently not running.</p>
-            <p>Status: {response.status_code}</p>
-            <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
-        </div>
-        """
-        response = HttpResponse(error_html, status=503)
-        print(f"[PT-CORE] Upstream service {trigger} returned {response.status_code} - showing error page")
+        service_up = False
+        try:
+            probe = requests.get(endpoint.endpoint_url, timeout=6, allow_redirects=True)
+            service_up = probe.status_code < 500
+            print(f"[PT-CORE] Health probe {endpoint.endpoint_url} -> {probe.status_code}")
+        except Exception as exc:
+            print(f"[PT-CORE] Health probe failed for {endpoint.endpoint_url}: {exc}")
+
+        if not service_up:
+            from django.http import HttpResponse
+            error_html = f"""
+            <div style="padding: 40px; text-align: center;">
+                <h2 style="color: #dc3545;">Service Unavailable</h2>
+                <p>The external service <code>{trigger}</code> is currently not running.</p>
+                <p>Status: {response.status_code}</p>
+                <p><small>Endpoint: {endpoint.endpoint_url}</small></p>
+            </div>
+            """
+            response = HttpResponse(error_html, status=503)
+            print(f"[PT-CORE] Upstream service {trigger} appears down - showing error page")
+        else:
+            print(f"[PT-CORE] Upstream {trigger} returned {response.status_code}, but health probe is OK - preserving original response")
 
     request._passthrough_handled = True
     request._passthrough_response = response
@@ -121,7 +158,7 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
         """
         print(f"\n[PT-MW-ENTRY] __call__ - path={request.path_info}, method={request.method}")
 
-        # Handlers (Odoo, Nextcloud, …) may rewrite native app paths onto /pt/admin/<trigger>/…
+        # Handlers may rewrite native app paths onto /pt/admin/<trigger>/… (via registry hooks)
         apply_incoming_path_rewrites(request)
 
         if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):

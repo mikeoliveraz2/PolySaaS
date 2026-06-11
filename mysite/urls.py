@@ -1,10 +1,12 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo SSO Passthrough — commit e739a38c
+# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 (documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md)
+# Prior BINGO: Odoo SSO Passthrough — commit e739a38c
 
 # mysite/urls.py
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.views.generic import RedirectView
+from django.conf import settings
 
 from dose.admin_views import pt_admin_generic_passthrough_view, mattermost_error_recover_view, odoo_stray_web_request_view
 from dose.polysniffer.views import mattermost_static_proxy
@@ -42,3 +44,11 @@ urlpatterns = [
 
     path('', RedirectView.as_view(url='/admin/'), name='home'),
 ]
+
+# Waitress (runall.ps1) does not auto-serve static like runserver; wire static in DEBUG.
+if settings.DEBUG:
+    from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+    from django.conf.urls.static import static
+
+    urlpatterns += staticfiles_urlpatterns()
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

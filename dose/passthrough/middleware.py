@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11
+# Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
 import requests
@@ -87,6 +90,36 @@ def run_pt_admin_passthrough_core(request):
 
     handler = resolve_handler_for_pt_admin_trigger(trigger)
     print(f"[PT-CORE] Handler for {trigger}: {handler.__class__.__name__ if handler else None}")
+
+    # Handler hook: some paths (e.g. Mattermost /login) need try_root before upstream fetch.
+    if handler and hasattr(handler, "try_root_display_shell_response"):
+        early_paths = ()
+        if hasattr(handler, "passthrough_early_shell_paths"):
+            try:
+                early_paths = tuple(handler.passthrough_early_shell_paths() or ())
+            except Exception as _eps_exc:
+                print(f"[PT-CORE] passthrough_early_shell_paths error: {_eps_exc}")
+        if early_paths:
+            import re
+            _path_only = path.split("?")[0]
+            _sub_match = re.match(r"^/pt/(?:admin|dose)/[^/]+(.*)$", _path_only)
+            _sub = (_sub_match.group(1) if _sub_match else "") or "/"
+            if not _sub.startswith("/"):
+                _sub = "/" + _sub
+            _norm = _sub.rstrip("/") or "/"
+            _hit = _norm in {p.rstrip("/") or "/" for p in early_paths}
+            if not _hit:
+                for _ep in early_paths:
+                    _epn = (_ep or "/").rstrip("/") or "/"
+                    if _norm == _epn or _norm.startswith(_epn + "/"):
+                        _hit = True
+                        break
+            if _hit:
+                print(f"[PT-CORE] Early shell intercept for upstream subpath {_norm!r}")
+                shell = handler.try_root_display_shell_response(request, endpoint, trigger)
+                if shell is not None:
+                    request._passthrough_handled = True
+                    return shell
 
     # Resolve the actual PassThroughEndpoint ORM object so handler.proxy_prefix works
     from dose.models import PassThroughEndpoint

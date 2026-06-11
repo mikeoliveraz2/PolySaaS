@@ -1,7 +1,10 @@
 # =============================================================================
-# FROZEN — Mattermost Passthrough BINGO (2026-05-31) [handler hook contract]
-# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11
+# Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
+# Prior FROZEN — Mattermost Passthrough BINGO (2026-05-31) [handler hook contract]
 # Certification: documentation/BINGO_MATTERMOST_LOGIN_BRIDGE_AUTO_SSO_2026-05-31.md
+# NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
 # =============================================================================
 """
 Base class for endpoint-specific passthrough handlers (Shela / Michael pattern).
@@ -102,6 +105,10 @@ class PassthroughHandlerBase:
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
         return None
+
+    def passthrough_early_shell_paths(self):
+        """Upstream subpaths that invoke try_root_display_shell_response before forward."""
+        return ()
 
     def augment_outbound_headers(self, request, headers: dict, target_url: str) -> None:
         return None
