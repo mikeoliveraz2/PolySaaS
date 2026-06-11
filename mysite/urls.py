@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 (documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md)
+# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f (documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md)
 # Prior BINGO: Odoo SSO Passthrough — commit e739a38c
 
 # mysite/urls.py

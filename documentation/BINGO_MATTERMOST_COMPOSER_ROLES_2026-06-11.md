@@ -3,7 +3,7 @@
 **Date:** 2026-06-11
 **Declared by:** Michael
 **Shim build:** `2026-06-11-v45-roles`
-**Commit:** (filled in by follow-up banner commit — see git log for this doc's commit)
+**Commit:** `8293f54f` (hash recorded in immediate follow-up commit)
 **Baseline:** BINGO commit `0ee10489` — Mattermost SSO Passthrough v23 (2026-06-08)
 **Test user:** `polysaast150` (PolySaaS Test 150, team `bba4y4hkejnp9xzkjbte3uu4qa`)
 **Test URL:** `http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/polysaas-test-150/channels/town-square`
