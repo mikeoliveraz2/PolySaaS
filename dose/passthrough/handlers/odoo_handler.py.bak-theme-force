@@ -1,0 +1,682 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo SSO Passthrough Working — commit e739a38c
+
+import logging
+import re
+from urllib.parse import urlparse
+
+from django.http import HttpResponse
+from dose.passthrough.handlers.handler_base import PassthroughHandlerBase
+
+logger = logging.getLogger(__name__)
+
+VERSION = "ODOO_HANDLER_v20260612_theme_force"
+print(f"[ODOO HANDLER] {VERSION} LOADED")
+
+
+class OdooPassthroughHandler(PassthroughHandlerBase):
+    """Odoo passthrough — all Odoo-specific routing/rewrite logic lives here only."""
+
+    _DJANGO_COOKIE_NAMES = frozenset({
+        "sessionid", "csrftoken",
+        "messages", "django_language",
+    })
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        """Discover Odoo endpoints by hostname."""
+        url = (getattr(endpoint, 'endpoint_url', '') or '').lower()
+        return 'odoo' in url
+
+    def native_passthrough_prefixes(self):
+        """Bare paths Odoo uses when the browser escapes the /pt/admin/<trigger>/ prefix."""
+        return ("/web", "/odoo", "/apps", "/bus", "/websocket", "/longpolling")
+
+    def needs_readable_response_body(self, request, target_url: str) -> bool:
+        """We need readable body to rewrite asset URLs."""
+        return True
+
+    def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
+        """Follow GET redirect chains; POST must return to the browser for login flows."""
+        follow = request.method != "POST"
+        print(
+            f"[ODOO HANDLER] should_follow_upstream_redirects: method={request.method}, "
+            f"path={upstream_path}, follow={follow}"
+        )
+        return follow
+
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        """Strip Django session/CSRF cookies — Odoo uses its own session_id."""
+        filtered = {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+        removed = set(cookies) - set(filtered)
+        if removed:
+            print(f"[ODOO HANDLER] Filtered Django cookies from upstream request: {removed}")
+
+        # Sidebar entry: drop stale Odoo session so server-side SSO can inject a fresh one.
+        if request.method == 'GET':
+            path = (getattr(request, 'path_info', '') or '')
+            if '/pt/admin/' in path:
+                tail = path.split('/pt/admin/', 1)[-1]
+                tail = tail.split('/', 1)[-1] if '/' in tail else ''
+                tail = '/' + tail.lstrip('/') if tail else '/'
+                tail_norm = tail.rstrip('/') or '/'
+                if tail_norm in ('/', '/web', '/web/login', '/odoo', '/apps'):
+                    if 'session_id' in filtered:
+                        print(f"[ODOO HANDLER] Sidebar entry — stripping stale session_id for fresh SSO")
+                        filtered = {k: v for k, v in filtered.items() if k != 'session_id'}
+
+        scheme = self._polysaas_display_mode(request)
+        prev = filtered.get('color_scheme')
+        filtered['color_scheme'] = scheme
+        if prev != scheme:
+            print(f"[ODOO HANDLER] Upstream color_scheme: {prev!r} -> {scheme!r}")
+
+        return filtered
+
+    def override_upstream_cookies(self, request, target_url: str):
+        """Force Odoo color_scheme to match PolySaaS admin light/dark mode."""
+        return {'color_scheme': self._polysaas_display_mode(request)}
+
+    def apply_browser_response_cookies(self, request, response):
+        """Set color_scheme on the browser so Odoo asset requests stay in sync."""
+        scheme = self._polysaas_display_mode(request)
+        response.cookies['color_scheme'] = scheme
+        response.cookies['color_scheme']['path'] = '/'
+        response.cookies['color_scheme']['samesite'] = 'Lax'
+        response.cookies['color_scheme']['max-age'] = 365 * 24 * 60 * 60
+        print(f"[ODOO HANDLER] Browser Set-Cookie color_scheme={scheme}")
+
+    @staticmethod
+    def _odoo_proxy_prefix_from_endpoint(endpoint) -> str:
+        url = getattr(endpoint, 'endpoint_url', '') or ''
+        parsed = urlparse(url)
+        seg = parsed.netloc or 'odoo'
+        return f"/pt/admin/{seg}"
+
+    @staticmethod
+    def _odoo_endpoint_is_odoo(endpoint) -> bool:
+        slug = str(getattr(endpoint, 'slug', '') or '').lower()
+        url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
+        return slug == 'odoo' or 'odoo' in url
+
+    @staticmethod
+    def _odoo_root_path_should_proxy(path: str) -> bool:
+        if not path or not path.startswith('/'):
+            return False
+        if path == '/web' or path.startswith('/web/'):
+            return True
+        if path == '/odoo' or path.startswith('/odoo/'):
+            return True
+        if path == '/apps' or path.startswith('/apps/'):
+            return True
+        for prefix in ('/bus/', '/mail/', '/longpolling/', '/website/', '/jsonrpc/'):
+            if path.startswith(prefix):
+                return True
+        if path == '/websocket' or path.startswith('/websocket'):
+            return True
+        # Odoo addon module assets: /account/static/..., /sale_management/static/...
+        if re.match(r'^/[a-z][a-z0-9_]*(?:/|$)', path) and '/static/' in path:
+            return True
+        return False
+
+    @staticmethod
+    def _odoo_incoming_rewrite_confidence(request, proxy_prefix: str) -> bool:
+        ref = request.META.get('HTTP_REFERER', '') or ''
+        if proxy_prefix in ref:
+            return True
+        if request.COOKIES.get('session_id'):
+            if ref and proxy_prefix not in ref and 'odoo' not in ref.lower():
+                return False
+            return True
+        return False
+
+    @classmethod
+    def try_rewrite_incoming_path_referer_fallback(cls, request) -> bool:
+        """
+        Map bare /web/login POST (and similar) onto /pt/admin/<hostname>/… when the
+        browser escaped the proxy prefix. Handler-only — no shared urlconf rules.
+        """
+        path = request.path_info or ''
+        if path.startswith('/pt/') or not cls._odoo_root_path_should_proxy(path):
+            return False
+        ref = request.META.get('HTTP_REFERER', '') or ''
+        m = re.search(r'(/pt/admin/[^/]+)', ref)
+        if not m or 'odoo' not in m.group(1).lower():
+            return False
+        proxy_prefix = m.group(1)
+        if not cls._odoo_incoming_rewrite_confidence(request, proxy_prefix):
+            return False
+        request.path_info = proxy_prefix + path
+        print(f"[ODOO HANDLER] referer fallback rewrite → {request.path_info}")
+        return True
+
+    def try_rewrite_incoming_path(self, request, endpoint) -> bool:
+        """Rewrite bare Odoo paths onto /pt/admin/<hostname>/… before urlconf routing."""
+        if not self._odoo_endpoint_is_odoo(endpoint):
+            return False
+
+        proxy_prefix = self._odoo_proxy_prefix_from_endpoint(endpoint)
+        path = request.path_info or ''
+
+        if path.startswith('/pt/'):
+            return False
+        if not self._odoo_root_path_should_proxy(path):
+            return False
+        if not self._odoo_incoming_rewrite_confidence(request, proxy_prefix):
+            return False
+
+        request.path_info = proxy_prefix + path
+        print(f"[ODOO HANDLER] bare path rewrite → {request.path_info}")
+        return True
+
+    def should_wrap_in_admin_template(self, request, upstream_path, **kwargs):
+        """Force wrapping in admin template for Odoo HTML pages."""
+        print(f"[ODOO HANDLER] should_wrap_in_admin_template: upstream_path={upstream_path}, status={kwargs.get('status_code')}, ct={kwargs.get('content_type')}")
+
+        status = kwargs.get('status_code', 200)
+        ct = (kwargs.get('content_type') or '').lower()
+
+        if status != 200:
+            print(f"[ODOO HANDLER] Not wrapping: status {status}")
+            return False
+
+        if 'text/html' not in ct and 'application/xhtml' not in ct:
+            print(f"[ODOO HANDLER] Not wrapping: content_type {ct}")
+            return False
+
+        print(f"[ODOO HANDLER] Wrapping in admin template")
+        return True
+
+    def passthrough_embed_template_context(self, trigger, request):
+        """Provide Odoo-specific template context including the body scope flag."""
+        mode = self._polysaas_display_mode(request)
+        print(f"[ODOO HANDLER] embed context: body_scope=True, display_mode={mode}")
+        return {
+            'embed_enable_odoo_body_scope': True,
+            'embed_polysaas_display_mode': mode,
+        }
+
+    @staticmethod
+    def _polysaas_display_mode(request) -> str:
+        """PolySaaS admin light/dark mode for cross-app theme sync."""
+        if not request:
+            return 'light'
+        mode = request.session.get('display_mode') if hasattr(request, 'session') else None
+        if not mode:
+            mode = request.COOKIES.get('display_mode')
+        mode = (mode or 'light').strip().lower()
+        if mode == 'system':
+            # Client resolves system; default light server-side.
+            mode = request.COOKIES.get('ps_theme_effective') or 'light'
+            mode = (mode or 'light').strip().lower()
+        if mode not in ('light', 'dark'):
+            mode = 'light'
+        return mode
+
+    def _resolve_tenant(self, request):
+        """Tenant for TenantApp lookup — session/middleware, not only request.tenant."""
+        if not request:
+            return None
+        tenant = getattr(request, 'tenant', None)
+        if tenant:
+            return tenant
+        try:
+            from dose.utils import get_current_tenant
+            return get_current_tenant(request)
+        except Exception:
+            return None
+
+    def _get_tenantapp_extra_config(self, request=None):
+        """Return extra_config dict for this tenant's Odoo TenantApp."""
+        try:
+            from dose.models import TenantApp
+            tenant = self._resolve_tenant(request)
+            tenant_id = tenant.pk if tenant else None
+
+            if tenant_id:
+                try:
+                    ta = TenantApp.objects.filter(
+                        app_name='odoo',
+                        tenant_id=tenant_id,
+                        status='active'
+                    ).exclude(extra_config={}).first()
+                    if ta and ta.extra_config:
+                        print(f"[ODOO HANDLER] extra_config found for tenant={tenant} keys={list(ta.extra_config.keys())}")
+                        return ta.extra_config
+                except Exception as e:
+                    print(f"[ODOO HANDLER] tenant query error: {e}")
+
+            try:
+                ta = TenantApp.objects.filter(
+                    app_name='odoo',
+                    status='active'
+                ).exclude(extra_config={}).first()
+                if ta and ta.extra_config:
+                    print(f"[ODOO HANDLER] extra_config found via fallback keys={list(ta.extra_config.keys())}")
+                    return ta.extra_config
+            except Exception as e:
+                print(f"[ODOO HANDLER] fallback query error: {e}")
+
+            print(f"[ODOO HANDLER] extra_config NOT found")
+        except Exception as exc:
+            print(f"[ODOO HANDLER] _get_tenantapp_extra_config error: {exc}")
+        return {}
+
+    def try_root_display_shell_response(self, request, endpoint, url_trigger_segment, fetch_upstream_shell=False):
+        """Show a splash page for bare root click, redirect to /web through proxy."""
+        trigger = url_trigger_segment.strip("/")
+        print(f"[ODOO ROOT] {VERSION} - Path: {request.path_info} | Trigger: {trigger}")
+
+        proxy_redirect = f"/pt/admin/{trigger}/web"
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Connecting to Odoo...</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; text-align: center; padding: 120px; background: #1f2a44; color: white; }}
+        h2 {{ margin-bottom: 20px; }}
+    </style>
+</head>
+<body>
+    <h2>Connecting to Odoo...</h2>
+    <p>Redirecting to dashboard...</p>
+    <script>
+        window.location.href = "{proxy_redirect}";
+    </script>
+</body>
+</html>"""
+
+        response = HttpResponse(html, content_type="text/html")
+        try:
+            from dose.passthrough.forwarding import _wrap_in_admin_template
+            wrapped = _wrap_in_admin_template(request, response, trigger, endpoint)
+            print(f"[ODOO ROOT] {VERSION} - Wrapped in admin template")
+            return wrapped
+        except Exception as e:
+            print(f"[ODOO ROOT] Wrap failed: {e}")
+            return response
+
+    def get_client_side_shim(self, proxy_prefix, odoo_login=None, odoo_password=None, odoo_db=None, display_mode='light'):
+        """Client shim: rewrite fetch/XHR/navigation/form POSTs through /pt/admin/<trigger>/."""
+        import json
+        auto_login_js = ""
+        if odoo_login and odoo_password and odoo_db:
+            safe_db = json.dumps(odoo_db)
+            safe_login = json.dumps(odoo_login)
+            safe_password = json.dumps(odoo_password)
+            auto_login_js = f"""
+            (function() {{
+                console.log('[ODOO SSO] Attempting auto-login...');
+                fetch(PROXY_PREFIX + '/web/session/authenticate', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({{
+                        jsonrpc: '2.0',
+                        method: 'call',
+                        params: {{
+                            db: {safe_db},
+                            login: {safe_login},
+                            password: {safe_password}
+                        }}
+                    }})
+                }})
+                .then(function(r) {{ return r.json(); }})
+                .then(function(data) {{
+                    if (data && data.result && data.result.uid) {{
+                        console.log('[ODOO SSO] Auto-login successful, uid=' + data.result.uid);
+                        if (window.location.pathname === PROXY_PREFIX + '/' ||
+                            window.location.pathname.indexOf(PROXY_PREFIX + '/web/login') === 0) {{
+                            window.location.href = PROXY_PREFIX + '/web';
+                        }} else {{
+                            window.location.reload();
+                        }}
+                    }} else {{
+                        console.warn('[ODOO SSO] Auto-login failed:', data);
+                    }}
+                }})
+                .catch(function(err) {{
+                    console.error('[ODOO SSO] Auto-login error:', err);
+                }});
+            }})();
+            """
+
+        return f"""
+        <script>
+        (function() {{
+            var PROXY_PREFIX = "{proxy_prefix}";
+            var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus'];
+
+            function normalizeToPath(url) {{
+                if (!url || typeof url !== 'string') return url;
+                if (url.indexOf(PROXY_PREFIX) === 0) return url;
+                try {{
+                    var parsed = new URL(url, window.location.origin);
+                    if (parsed.origin === window.location.origin) {{
+                        return parsed.pathname + parsed.search + parsed.hash;
+                    }}
+                }} catch (e) {{}}
+                return url;
+            }}
+
+            function shouldRewritePath(path) {{
+                if (!path || typeof path !== 'string') return false;
+                if (path.indexOf(PROXY_PREFIX) === 0) return false;
+                if (path.charAt(0) !== '/') return false;
+                if (path.indexOf('/admin/') === 0 || path === '/admin') return false;
+                if (path.indexOf('/dose/') === 0) return false;
+                if (path.indexOf('/static/admin/') === 0) return false;
+                if (path.indexOf('/accounts/') === 0) return false;
+                for (var i = 0; i < ODOO_PATHS.length; i++) {{
+                    if (path === ODOO_PATHS[i] || path.indexOf(ODOO_PATHS[i] + '/') === 0) return true;
+                }}
+                if (/^\\/[a-z][a-z0-9_]*\\/static\\//.test(path)) return true;
+                return false;
+            }}
+
+            function rewriteUrl(url) {{
+                var path = normalizeToPath(url);
+                if (shouldRewritePath(path)) {{
+                    return PROXY_PREFIX + path;
+                }}
+                return url;
+            }}
+
+            function rewriteFormAction(form) {{
+                if (!form || form.tagName !== 'FORM') return;
+                var rawAction = form.action || '';
+                if (!rawAction) return;
+                if (rawAction.indexOf(PROXY_PREFIX) !== -1) return;
+                var proxied = rewriteUrl(rawAction);
+                if (proxied !== rawAction) {{
+                    console.log('[ODOO SHIM] Form action rewrite:', rawAction, '->', proxied);
+                    form.setAttribute('action', proxied);
+                }}
+            }}
+
+            document.addEventListener('submit', function(e) {{
+                rewriteFormAction(e.target);
+            }}, true);
+
+            var _formSubmit = HTMLFormElement.prototype.submit;
+            HTMLFormElement.prototype.submit = function() {{
+                rewriteFormAction(this);
+                return _formSubmit.call(this);
+            }};
+
+            var _formObserver = new MutationObserver(function(mutations) {{
+                mutations.forEach(function(mutation) {{
+                    if (mutation.type === 'attributes' && mutation.target.tagName === 'FORM') {{
+                        rewriteFormAction(mutation.target);
+                    }} else if (mutation.type === 'childList') {{
+                        mutation.addedNodes.forEach(function(node) {{
+                            if (!node || node.nodeType !== 1) return;
+                            if (node.tagName === 'FORM') rewriteFormAction(node);
+                            if (node.querySelectorAll) {{
+                                var forms = node.querySelectorAll('form');
+                                for (var i = 0; i < forms.length; i++) rewriteFormAction(forms[i]);
+                            }}
+                        }});
+                    }}
+                }});
+            }});
+
+            function attachFormObserver() {{
+                var scope = document.querySelector('.polysaas-passthrough-scope') || document.body;
+                if (!scope) return false;
+                _formObserver.observe(scope, {{
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['action']
+                }});
+                var existingForms = scope.querySelectorAll('form');
+                for (var i = 0; i < existingForms.length; i++) rewriteFormAction(existingForms[i]);
+                console.log('[ODOO SHIM] Form observer attached');
+                return true;
+            }}
+
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', function() {{
+                    if (!attachFormObserver()) setTimeout(attachFormObserver, 500);
+                }});
+            }} else if (!attachFormObserver()) {{
+                setTimeout(attachFormObserver, 500);
+            }}
+
+            var _originalFetch = window.fetch;
+            window.fetch = function(url, init) {{
+                var rewritten = rewriteUrl(url);
+                if (rewritten !== url) {{
+                    console.debug('[ODOO SHIM] fetch rewrite: ' + url + ' -> ' + rewritten);
+                }}
+                return _originalFetch.call(this, rewritten, init);
+            }};
+
+            var _originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {{
+                var rewritten = rewriteUrl(url);
+                if (rewritten !== url) {{
+                    console.debug('[ODOO SHIM] XHR rewrite: ' + url + ' -> ' + rewritten);
+                }}
+                return _originalOpen.call(this, method, rewritten, async, user, pass);
+            }};
+
+            var _origSetAttribute = Element.prototype.setAttribute;
+            Element.prototype.setAttribute = function(name, value) {{
+                if ((name === 'src' || name === 'href') && typeof value === 'string') {{
+                    value = rewriteUrl(value);
+                }}
+                return _origSetAttribute.call(this, name, value);
+            }};
+
+            try {{
+                var _locationDesc = Object.getOwnPropertyDescriptor(window, 'location');
+                if (_locationDesc && _locationDesc.set && _locationDesc.configurable) {{
+                    var _originalLocationSet = _locationDesc.set;
+                    Object.defineProperty(window, 'location', {{
+                        configurable: true,
+                        get: function() {{ return _locationDesc.get.call(window); }},
+                        set: function(val) {{
+                            var rewritten = rewriteUrl(val);
+                            if (rewritten !== val) {{
+                                console.log('[ODOO SHIM] Navigation lock: ' + val + ' -> ' + rewritten);
+                            }}
+                            return _originalLocationSet.call(window, rewritten);
+                        }}
+                    }});
+                }}
+            }} catch (locErr) {{
+                console.warn('[ODOO SHIM] location lock skipped (non-configurable):', locErr);
+            }}
+
+            var _originalPushState = history.pushState;
+            var _originalReplaceState = history.replaceState;
+            history.pushState = function(state, title, url) {{
+                if (url) {{
+                    var rewritten = rewriteUrl(url);
+                    if (rewritten !== url) {{
+                        console.log('[ODOO SHIM] pushState rewrite: ' + url + ' -> ' + rewritten);
+                    }}
+                    return _originalPushState.call(this, state, title, rewritten);
+                }}
+                return _originalPushState.call(this, state, title, url);
+            }};
+            history.replaceState = function(state, title, url) {{
+                if (url) {{
+                    var rewritten = rewriteUrl(url);
+                    if (rewritten !== url) {{
+                        console.log('[ODOO SHIM] replaceState rewrite: ' + url + ' -> ' + rewritten);
+                    }}
+                    return _originalReplaceState.call(this, state, title, rewritten);
+                }}
+                return _originalReplaceState.call(this, state, title, url);
+            }};
+
+            console.log('[ODOO SHIM] Installed rewriter + form POST guard. Proxy prefix: ' + PROXY_PREFIX);
+            {auto_login_js}
+        }})();
+        </script>
+        """
+
+    def get_upstream_cookies(self, request):
+        """
+        Server-side Odoo session for sidebar entry (SSO).
+        Authenticates via JSON-RPC when the browser has no session_id yet.
+        Client-side shim remains as fallback only.
+        """
+        import time
+
+        path = (getattr(request, 'path_info', '') or '').lower()
+        if '/web/session/authenticate' in path or (
+            path.endswith('/web/login') and request.method == 'POST'
+        ):
+            return {}
+
+        try:
+            import requests as _req
+            from django.conf import settings
+            from dose.models import TenantApp
+
+            tenant = self._resolve_tenant(request)
+            if not tenant:
+                print(f"[ODOO HANDLER] get_upstream_cookies: no tenant context")
+                return {}
+
+            ta = TenantApp.objects.filter(
+                tenant=tenant, app_name='odoo', status='active',
+            ).first()
+            if not ta:
+                print(f"[ODOO HANDLER] get_upstream_cookies: no active Odoo TenantApp")
+                return {}
+
+            extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
+
+            session_id = extra.get('odoo_session_id')
+            session_time = extra.get('odoo_session_time', 0)
+            if session_id and (time.time() - float(session_time or 0) < 1800):
+                print(f"[ODOO HANDLER] Using cached Odoo session for tenant={tenant.slug}")
+                return {'session_id': session_id}
+
+            login_id = extra.get('odoo_login')
+            password = extra.get('odoo_password')
+            if not login_id or not password:
+                print(f"[ODOO HANDLER] get_upstream_cookies: missing odoo_login/password in extra_config")
+                return {}
+
+            db_name = (
+                extra.get('odoo_db')
+                or getattr(settings, 'ODOO_SHARED_DB', None)
+                or 'polysaas_odoo'
+            )
+            odoo_url = (
+                extra.get('odoo_url')
+                or ta.app_url
+                or getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+            ).rstrip('/')
+
+            print(
+                f"[ODOO HANDLER] get_upstream_cookies: authenticating tenant={tenant.slug} "
+                f"login={login_id} db={db_name}"
+            )
+            resp = _req.post(
+                f'{odoo_url}/web/session/authenticate',
+                json={
+                    'jsonrpc': '2.0',
+                    'method': 'call',
+                    'id': 1,
+                    'params': {
+                        'db': db_name,
+                        'login': login_id,
+                        'password': password,
+                    },
+                },
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                print(f"[ODOO HANDLER] authenticate HTTP {resp.status_code}")
+                return {}
+
+            body = resp.json()
+            uid = (body.get('result') or {}).get('uid')
+            sid = resp.cookies.get('session_id')
+            if uid and sid:
+                if not isinstance(ta.extra_config, dict):
+                    ta.extra_config = {}
+                ta.extra_config['odoo_session_id'] = sid
+                ta.extra_config['odoo_session_time'] = time.time()
+                ta.save(update_fields=['extra_config'])
+                print(f"[ODOO HANDLER] Server-side SSO ok uid={uid}")
+                return {'session_id': sid}
+
+            err = (body.get('error') or {}).get('message') or 'auth failed'
+            print(f"[ODOO HANDLER] authenticate failed uid={uid} err={err}")
+        except Exception as exc:
+            print(f"[ODOO HANDLER] get_upstream_cookies error: {exc}")
+            logger.warning("[ODOO HANDLER] get_upstream_cookies failed: %s", exc)
+        return {}
+
+    @staticmethod
+    def _inject_after_open_tag(html_str, tag_pattern, injection):
+        """Insert text immediately after the first matching opening tag (no re.sub replacement)."""
+        m = re.search(tag_pattern, html_str, re.IGNORECASE)
+        if not m:
+            return html_str
+        idx = m.end()
+        return html_str[:idx] + '\n' + injection + html_str[idx:]
+
+    def _rewrite_form_actions_server_side(self, html_str, prefix):
+        """Rewrite static form actions before Owl renders (login page HTML from upstream)."""
+        html_str = re.sub(
+            r'(<form[^>]*\saction=["\'])(/[^"\']*)',
+            lambda m: f'{m.group(1)}{prefix}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        return html_str
+
+    def process_html_response(self, html_str, request, endpoint_url=None, **context):
+        """Inject client-side shim and rewrite asset/form URLs through proxy prefix."""
+        if not html_str or not self.endpoint:
+            return html_str
+
+        prefix = self.proxy_prefix.rstrip('/')
+        print(f"[ODOO HANDLER] Rewriting HTML with prefix={prefix}")
+
+        extra = self._get_tenantapp_extra_config(request) or {}
+        odoo_login = extra.get('odoo_login')
+        odoo_password = extra.get('odoo_password')
+        odoo_db = extra.get('odoo_db')
+
+        is_login_html = '/web/login' in (request.path_info or '').lower() or 'csrf_token' in html_str
+
+        display_mode = self._polysaas_display_mode(request)
+        shim_js = self.get_client_side_shim(
+            prefix, odoo_login, odoo_password, odoo_db, display_mode=display_mode,
+        )
+        html_str = self._inject_after_open_tag(
+            html_str,
+            r'<head[^>]*>',
+            f'<base href="{prefix}/">\n{shim_js}',
+        )
+
+        html_str = self._rewrite_form_actions_server_side(html_str, prefix)
+
+        html_str = re.sub(
+            r'(src|href|action)=(["\'])(/(web|odoo|apps|report|download|base|api|bus)[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE
+        )
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/([a-z][a-z0-9_]*)/static/[^"\']*)',
+            lambda m: f'{m.group(1)}={m.group(2)}{prefix}{m.group(3)}{m.group(2)}',
+            html_str,
+            flags=re.IGNORECASE
+        )
+
+        if is_login_html:
+            print(f"[ODOO HANDLER] Login page rewritten — form POSTs must target {prefix}/web/login")
+
+        print(f"[ODOO HANDLER] Rewriting complete (shim injected, assets/forms rewritten)")
+        return html_str

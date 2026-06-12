@@ -54,17 +54,6 @@ def handle(message: str, user_id: str, channel_id: str) -> str:
     except requests.exceptions.Timeout:
         logger.warning("[Copilot] API timeout")
         return "[Copilot] Thinking... (timeout -- try again)"
-    except requests.exceptions.HTTPError as exc:
-        detail = ""
-        try:
-            err = exc.response.json().get("error", {})
-            detail = (err.get("message") or "").strip()
-        except Exception:
-            pass
-        logger.error("[Copilot] API HTTP %s: %s", getattr(exc.response, "status_code", "?"), detail or exc)
-        if detail:
-            return f"[Copilot] Anthropic API: {detail[:200]}"
-        return f"[Copilot] Error: {str(exc)[:120]}"
     except Exception as exc:
         logger.error("[Copilot] API error: %s", exc)
         return f"[Copilot] Error: {str(exc)[:120]}"

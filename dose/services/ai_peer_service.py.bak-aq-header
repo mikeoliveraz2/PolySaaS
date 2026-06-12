@@ -334,17 +334,10 @@ def _call_gemini(messages: list, system_prompt: str, peer: Optional[Dict[str, An
         conversation.append({'role': role, 'parts': [{'text': f"{prefix}{m['content']}"}]})
 
     try:
-        gemini_url = (
-            'https://generativelanguage.googleapis.com/v1beta/models/'
-            'gemini-2.5-flash:generateContent'
-        )
-        print(f"[DEBUG] Gemini request to: {gemini_url} (x-goog-api-key)")
+        print(f"[DEBUG] Gemini request to: https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key[:5]}...")
         resp = requests.post(
-            gemini_url,
-            headers={
-                'Content-Type': 'application/json',
-                'x-goog-api-key': api_key,
-            },
+            f'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}',
+            headers={'Content-Type': 'application/json'},
             json={
                 'system_instruction': {'parts': [{'text': system_prompt or (
                     f"You are {peer_label}, an AI peer collaborating in a Mattermost channel "
