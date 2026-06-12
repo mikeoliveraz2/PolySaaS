@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: PolySaaS → Mattermost one-way theme sync — 2026-06-13
+# BINGO: PolySaaS → Mattermost one-way theme sync — commit 10427a4d
 
 """
 Built-in Mattermost theme JSON presets for PolySaaS → MM one-way theme sync.

@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13  
 **Declared by:** Michael  
-**Commit:** _(recorded in follow-up hash commit)_  
+**Commit:** `10427a4d`  
 **Baseline:** BINGO `09c5587b` — Gemini AQ keys + Copilot errors (2026-06-12 EOD)  
 **Test tenant:** PolySaaS Test 152 (`polysast152`)  
 **Test URL:** `http://localhost:8000/pt/admin/polysaas-mattermost.onrender.com/`
