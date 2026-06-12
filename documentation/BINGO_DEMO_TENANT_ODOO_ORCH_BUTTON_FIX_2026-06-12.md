@@ -1,0 +1,80 @@
+# BINGO — Demo Tenant Odoo Render + Orchestration Button Fix
+
+**Date:** 2026-06-12  
+**Declared by:** Michael  
+**Commit:** _(recorded in follow-up hash commit)_  
+**Baseline:** BINGO `1dcca3bd` — Font and Theme Toggle (2026-06-11)  
+**Test tenants:** PolySaaS Test 151 (`polysaast151`), Test 150, Test 152  
+**Test URL:** `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/web`
+
+---
+
+## What Was Achieved
+
+Demo-scenario tenants can open Odoo in the passthrough embed without a blank white screen, use the green **+ Insert Orchestration Instruction** button under Waitress, and get correct per-tenant SSO for Odoo and Mattermost.
+
+### Certified behaviors
+
+| Feature | Status |
+|---------|--------|
+| Odoo 18 passthrough embed renders apps/home UI (not blank white panel) | ✓ |
+| `+ Insert Orchestration Instruction` loads JS under Waitress (`PolySaaSOrchBar` defined) | ✓ |
+| Odoo server SSO via `TenantApp.public_bundles` (no cross-tenant credential leak) | ✓ |
+| Browser `session_id` stripped on `/pt/admin/` Odoo requests; server session injected | ✓ |
+| Mattermost token validated against expected tenant username | ✓ |
+| Cross-tenant `MMAUTHTOKEN` stripped; sidebar token bound to tenant slug | ✓ |
+| Orchestration instructions scoped to current tenant only | ✓ |
+| Auto-provision Odoo invoicing instructions on subscribe / backfill command | ✓ |
+| Removed stray `/web/*` and `/odoo/*` urlconf (Odoo handler shim + referer fallback) | ✓ |
+
+---
+
+## Root Causes Fixed
+
+| Symptom | Fix |
+|---------|-----|
+| Blank white Odoo embed (t151) | Odoo 18 mounts `o_main_navbar` + `o_action_manager` on `document.body`; embed now wraps them in inner `.o_web_client` shell and shields `body.o_web_client` from Jazzmin |
+| `orchestration_instruction_button.js` 404 / `PolySaaSOrchBar is not defined` | WhiteNoise middleware + `WHITENOISE_USE_FINDERS`; canonical copy in `static/admin/js/` |
+| Wrong Odoo/Mattermost user on localhost | Shared cookies; server SSO + tenant-bound MM token validation |
+| Legacy instruction id=17 matching wrong tenant | `_instruction_belongs_to_tenant()` in orchestration hook |
+| No invoicing instructions for t150–t152 | `odoo_orchestration_provisioner` + management command backfill |
+
+---
+
+## Files in This BINGO
+
+| File | Change |
+|------|--------|
+| `dose/templates/admin/passthrough_embed.html` | Odoo 18 `.o_web_client` shell, body-class mirror/shield, harvest |
+| `mysite/settings.py` | WhiteNoise middleware for `/static/` under Waitress |
+| `static/admin/js/orchestration_instruction_button.js` | Served copy for Waitress/WhiteNoise |
+| `dose/passthrough/handlers/odoo_handler.py` | `public_bundles` SSO, session cookie control, shim paths |
+| `dose/passthrough/handlers/mattermost_handler.py` | Tenant-bound MM token validation |
+| `dose/passthrough/orchestration_hook.py` | Tenant instruction filter |
+| `dose/passthrough/forwarding.py` | Generic `apply_browser_response_cookies` hook call |
+| `dose/services/odoo_orchestration_provisioner.py` | Auto-create invoicing Instructions |
+| `dose/management/commands/provision_odoo_invoicing_orchestration.py` | Backfill command |
+| `dose/services/odoo_tenant_provisioner.py` | Call orchestration provisioner after Odoo user create |
+| `dose/subscription_views.py` | Call orchestration provisioner on Odoo subscribe |
+| `dose/admin_views.py` | Remove `odoo_stray_web_request_view` |
+| `mysite/urls.py` | Remove stray `/web/` and `/odoo/` catch-all routes |
+
+---
+
+## Verification Steps
+
+1. `.\runall` (Waitress on port 8000)
+2. Incognito per tenant on localhost (avoid shared `session_id` / `MMAUTHTOKEN`)
+3. Login as Test 151 → Odoo passthrough → apps UI visible
+4. Green bar shows; **+ Insert Orchestration Instruction** opens modal (no console 404)
+5. Navigate to Invoicing → orchestration match / Callback Data (instructions backfilled)
+6. Mattermost shows correct tenant username (not cross-tenant leak)
+
+---
+
+## Backfill Command
+
+```powershell
+python manage.py provision_odoo_invoicing_orchestration polysaast151
+python manage.py provision_odoo_invoicing_orchestration --all-odoo-active
+```

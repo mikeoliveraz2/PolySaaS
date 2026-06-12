@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Waitress WhiteNoise static / orchestration button — 2026-06-12
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 
 # Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)
@@ -500,6 +501,7 @@ import os
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'mysite.debug_session_middleware.DebugSessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'mysite.csrf_exemption_middleware.CSRFExemptionMiddleware',
@@ -663,6 +665,9 @@ CSRF_TRUSTED_ORIGINS = [
 STATIC_URL = '/static/'
 STATIC_ROOT = 'var/static_root/'
 STATICFILES_DIRS = ['static']
+# Waitress (runall.ps1) does not serve static like runserver; WhiteNoise serves /static/.
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_KEEP_ONLY_HASHED_FILES = False
 
 # Media files for tenant logos
 MEDIA_URL = '/media/'

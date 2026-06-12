@@ -1,5 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Demo Tenant MM Token Bind — 2026-06-12
 # BINGO: Mattermost Composer via Roles Hydration (v45-roles) — 2026-06-11 — commit 8293f54f
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # Prior BINGO: Mattermost SSO Passthrough Working — 2026-06-07
@@ -368,6 +369,78 @@ window.location.replace('/');
             print(f"[MM AUTH] Token validation error: {exc}")
             return False
 
+    def _current_tenant_slug(self, request):
+        try:
+            from dose.utils import get_current_tenant
+            tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+            return (getattr(tenant, 'slug', None) or getattr(tenant, 'pk', None) or '')
+        except Exception:
+            return ''
+
+    def _expected_mm_username(self, request) -> str:
+        """Mattermost username for the active PolySaaS tenant (public bundle only)."""
+        try:
+            from dose.models import TenantApp
+            from dose.utils import get_current_tenant
+            tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+            if not tenant:
+                return ''
+            ta = TenantApp.public_bundles.filter(
+                tenant=tenant, app_name='mattermost', status='active',
+            ).first()
+            if not ta:
+                return ''
+            extra = ta.extra_config or {}
+            return (
+                extra.get('mm_login_id')
+                or extra.get('mattermost_username')
+                or extra.get('mattermost_login_id')
+                or ''
+            ).strip().lower()
+        except Exception as exc:
+            print(f"[MM AUTH] _expected_mm_username error: {exc}")
+            return ''
+
+    def _mm_token_username(self, endpoint_url, token) -> str:
+        if not endpoint_url or not token:
+            return ''
+        try:
+            import requests as _req
+            r = _req.get(
+                f"{endpoint_url.rstrip('/')}/api/v4/users/me",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=8,
+            )
+            if r.status_code != 200:
+                return ''
+            return (r.json().get('username') or '').strip().lower()
+        except Exception:
+            return ''
+
+    def _mm_token_matches_current_user(self, request, endpoint_url, token) -> bool:
+        """Reject browser/session tokens from another tenant user on shared localhost cookies."""
+        if not token:
+            return False
+        if not self._validate_mm_token(endpoint_url, token):
+            return False
+        expected = self._expected_mm_username(request)
+        if not expected:
+            return True
+        origin = self._resolve_mm_endpoint_url(request, endpoint_url)
+        actual = self._mm_token_username(origin, token)
+        if not actual:
+            return False
+        ok = actual == expected
+        if not ok:
+            print(
+                f"[MM AUTH] Token user mismatch: MM username={actual!r} "
+                f"expected={expected!r} tenant={self._current_tenant_slug(request)!r}"
+            )
+        return ok
+
+    def _validate_mm_token_for_request(self, request, endpoint_url, token) -> bool:
+        return self._mm_token_matches_current_user(request, endpoint_url, token)
+
     def _wrap_login_bridge(self, request, trigger, endpoint):
         bridge = self._serve_login_bridge(request, trigger, endpoint)
         from dose.passthrough.forwarding import _wrap_in_admin_template
@@ -445,6 +518,7 @@ window.location.replace('/');
 
     _SIDEBAR_AUTH_SESSION_KEY = 'mm_sidebar_auth_token'
     _SIDEBAR_AUTH_TS_KEY = 'mm_sidebar_auth_token_ts'
+    _SIDEBAR_AUTH_TENANT_KEY = 'mm_sidebar_auth_tenant_slug'
     _SIDEBAR_AUTH_TTL_SEC = 120
     # After plugin auth, Mattermost SPA may hit root?redirect_to=… — do not wipe cookies again.
     _POST_SIDEBAR_GRACE_SEC = 90
@@ -458,6 +532,16 @@ window.location.replace('/');
         except Exception:
             return False
 
+    def _clear_sidebar_auth_session(self, request) -> None:
+        try:
+            request.session.pop(self._SIDEBAR_AUTH_SESSION_KEY, None)
+            request.session.pop(self._SIDEBAR_AUTH_TS_KEY, None)
+            request.session.pop(self._SIDEBAR_AUTH_TENANT_KEY, None)
+            request.session.modified = True
+        except Exception:
+            pass
+        request._mm_sidebar_auth_token = ''
+
     def _publish_sidebar_auth_token(self, request, token: str) -> None:
         """Make fresh plugin/login token visible to parallel passthrough requests (race window)."""
         if not token:
@@ -466,6 +550,7 @@ window.location.replace('/');
         try:
             request.session[self._SIDEBAR_AUTH_SESSION_KEY] = token
             request.session[self._SIDEBAR_AUTH_TS_KEY] = time.time()
+            request.session[self._SIDEBAR_AUTH_TENANT_KEY] = self._current_tenant_slug(request)
             request.session.modified = True
         except Exception as exc:
             logger.warning('[MM_AUTH] Could not store sidebar auth token in session: %s', exc)
@@ -477,6 +562,15 @@ window.location.replace('/');
 
     def _get_sidebar_auth_token(self, request):
         """Token from the latest sidebar plugin/login, valid for a short TTL."""
+        current_tenant = self._current_tenant_slug(request)
+        session_tenant = (request.session.get(self._SIDEBAR_AUTH_TENANT_KEY) or '').strip()
+        if current_tenant and session_tenant and session_tenant != current_tenant:
+            print(
+                f"[MM AUTH] Sidebar token tenant mismatch "
+                f"({session_tenant!r} != {current_tenant!r}) — clearing"
+            )
+            self._clear_sidebar_auth_session(request)
+            return ''
         cached = (getattr(request, '_mm_sidebar_auth_token', None) or '').strip()
         if cached:
             return cached
@@ -836,7 +930,7 @@ window.location.replace('/');
             tok = self._get_sidebar_auth_token(request) or (
                 request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or ''
             ).strip()
-            if tok and self._validate_mm_token(endpoint_url, tok):
+            if tok and self._validate_mm_token_for_request(request, endpoint_url, tok):
                 print(
                     f'[MM ROOT] redirect_to — token valid, serving SPA at root (no team redirect)'
                 )
@@ -877,7 +971,7 @@ window.location.replace('/');
         if request.GET.get('mm_cleared') != '1':
             existing_tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
             if existing_tok:
-                if self._validate_mm_token(endpoint_url, existing_tok):
+                if self._validate_mm_token_for_request(request, endpoint_url, existing_tok):
                     landing = self._mm_default_landing_path(proxy_prefix, request)
                     if landing.rstrip('/') != proxy_prefix.rstrip('/'):
                         print(
@@ -899,9 +993,8 @@ window.location.replace('/');
                         fetch_upstream_shell=True,
                     )
                 else:
-                    print(f'[MM ROOT] Plain root — cached token invalid (Mattermost restarted?) — clearing, will re-auth')
-                    request.session.pop(self._SIDEBAR_AUTH_SESSION_KEY, None)
-                    request.session.pop(self._SIDEBAR_AUTH_TS_KEY, None)
+                    print(f'[MM ROOT] Plain root — cached token invalid/wrong user — clearing, will re-auth')
+                    self._clear_sidebar_auth_session(request)
             from django.http import HttpResponseRedirect
             from django.http import QueryDict
 
@@ -920,7 +1013,7 @@ window.location.replace('/');
         # it and fall through to fresh plugin auth below.
         existing_tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
         if existing_tok:
-            if self._validate_mm_token(endpoint_url, existing_tok):
+            if self._validate_mm_token_for_request(request, endpoint_url, existing_tok):
                 print(
                     f'[MM ROOT] mm_cleared=1 — token validated with upstream '
                     f'(tok_len={len(existing_tok)}) — reusing, no new plugin auth'
@@ -931,9 +1024,8 @@ window.location.replace('/');
                     fetch_upstream_shell=True, endpoint=endpoint,
                 )
             else:
-                print(f'[MM ROOT] mm_cleared=1 — cached token invalid — clearing, running fresh plugin auth')
-                request.session.pop(self._SIDEBAR_AUTH_SESSION_KEY, None)
-                request.session.pop(self._SIDEBAR_AUTH_TS_KEY, None)
+                print(f'[MM ROOT] mm_cleared=1 — cached token invalid/wrong user — clearing, running fresh plugin auth')
+                self._clear_sidebar_auth_session(request)
 
         self._mark_fresh_sidebar_entry(request)
         logger.info('[MM ROOT] Sidebar fresh login — plugin auth only (no stale browser cookies, even if token exists)')
@@ -1769,12 +1861,18 @@ try {{
         if '/api/v4/users/login' in path or '/api/v4/users/logout' in path:
             return self._strip_mm_cookies_from_dict(cookies)
 
-        # For all non-login requests, normalize both cookie keys to the same token.
-        # This prevents conflicting browser values from producing intermittent 401s.
         endpoint_url = self._resolve_mm_endpoint_url(request)
+        cookies = dict(cookies or {})
+        lower = (cookies.get('mmauthtoken') or request.COOKIES.get('mmauthtoken') or '').strip()
+        upper = (cookies.get('MMAUTHTOKEN') or request.COOKIES.get('MMAUTHTOKEN') or '').strip()
+        browser_tok = lower or upper
+        if browser_tok and not self._mm_token_matches_current_user(request, endpoint_url, browser_tok):
+            print('[MM_AUTH] Stripping cross-tenant browser MMAUTHTOKEN')
+            return self._strip_mm_cookies_from_dict(cookies)
+
+        # For all non-login requests, normalize both cookie keys to the same token.
         token = self._select_browser_mm_token(request, endpoint_url)
         if token:
-            cookies = dict(cookies or {})
             cookies['mmauthtoken'] = token
             cookies['MMAUTHTOKEN'] = token
         return cookies
@@ -1807,36 +1905,50 @@ try {{
             return ''
         sidebar_tok = self._get_sidebar_auth_token(request)
         if sidebar_tok:
-            return sidebar_tok
+            if self._mm_token_matches_current_user(request, endpoint_url, sidebar_tok):
+                return sidebar_tok
+            print('[MM_AUTH] Rejecting sidebar session token — wrong Mattermost user')
+            self._clear_sidebar_auth_session(request)
         lower = (request.COOKIES.get('mmauthtoken') or '').strip()
         upper = (request.COOKIES.get('MMAUTHTOKEN') or '').strip()
         if not lower and not upper:
             return ''
         if lower == upper or not lower or not upper:
-            return lower or upper
+            chosen = lower or upper
+            if chosen and not self._mm_token_matches_current_user(request, endpoint_url, chosen):
+                print('[MM_AUTH] Rejecting browser MMAUTHTOKEN — wrong Mattermost user for tenant')
+                return ''
+            return chosen
 
         origin = self._resolve_mm_endpoint_url(request, endpoint_url)
         logger.warning(
             "[MM_AUTH] Cookie mismatch (mmauthtoken != MMAUTHTOKEN); resolving via validation"
         )
+        chosen = ''
         if origin:
             lower_ok = self._validate_mm_token(origin, lower)
             upper_ok = self._validate_mm_token(origin, upper)
             if upper_ok and not lower_ok:
                 logger.info("[MM_AUTH] Mismatch resolved: using MMAUTHTOKEN (validated)")
-                return upper
-            if lower_ok and not upper_ok:
+                chosen = upper
+            elif lower_ok and not upper_ok:
                 logger.info("[MM_AUTH] Mismatch resolved: using mmauthtoken (validated)")
-                return lower
-            if upper_ok and lower_ok:
+                chosen = lower
+            elif upper_ok and lower_ok:
                 logger.info("[MM_AUTH] Both cookies valid; using MMAUTHTOKEN")
-                return upper
-            logger.warning("[MM_AUTH] Both cookies invalid on mismatch — no token")
-            return ''
+                chosen = upper
+            else:
+                logger.warning("[MM_AUTH] Both cookies invalid on mismatch — no token")
+                return ''
 
-        # No origin to validate: do not forward a guessed stale half-pair.
-        logger.warning("[MM_AUTH] Mismatch with no endpoint — ignoring browser tokens")
-        return ''
+        if not chosen:
+            # No origin to validate: do not forward a guessed stale half-pair.
+            logger.warning("[MM_AUTH] Mismatch with no endpoint — ignoring browser tokens")
+            return ''
+        if not self._mm_token_matches_current_user(request, endpoint_url, chosen):
+            print('[MM_AUTH] Rejecting resolved browser MMAUTHTOKEN — wrong Mattermost user')
+            return ''
+        return chosen
 
     def get_upstream_cookies(self, request):
         """
@@ -1865,6 +1977,14 @@ try {{
         if browser_token:
             print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
             return {'mmauthtoken': browser_token, 'MMAUTHTOKEN': browser_token}
+
+        _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
+        _trigger = _path_parts[2] if len(_path_parts) >= 3 else 'mattermost'
+        server_token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
+        if server_token:
+            print(f"[MM_AUTH] Server SSO token for tenant user len={len(server_token)}")
+            self._publish_sidebar_auth_token(request, server_token)
+            return {'mmauthtoken': server_token, 'MMAUTHTOKEN': server_token}
 
         print("[MM_AUTH] No browser MMAUTHTOKEN — returning empty cookies (login bridge will handle auth)")
         return {}

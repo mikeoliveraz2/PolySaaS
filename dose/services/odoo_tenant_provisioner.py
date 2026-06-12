@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo invoicing orchestration provision hook — 2026-06-12
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 
 # dose/services/odoo_tenant_provisioner.py
@@ -241,6 +242,23 @@ def provision_odoo_tenant(
                 logger.warning("[OdooProvisioner] Welcome email failed (non-fatal): %s", e)
 
         if user_created:
+            try:
+                from dose.models import Tenant
+                from dose.services.odoo_orchestration_provisioner import (
+                    provision_odoo_invoicing_orchestration,
+                )
+                tenant_obj = Tenant.objects.filter(schema_name=tenant_schema).first()
+                if tenant_obj:
+                    orch = provision_odoo_invoicing_orchestration(tenant_obj)
+                    logger.info(
+                        "[OdooProvisioner] Invoicing orchestration for %s: %s",
+                        tenant_schema, orch,
+                    )
+            except Exception as orch_exc:
+                logger.warning(
+                    "[OdooProvisioner] Invoicing orchestration setup failed (non-fatal): %s",
+                    orch_exc,
+                )
             logger.info(
                 "[OdooProvisioner] Provisioning complete: tenant=%s login=%s odoo_uid=%s",
                 tenant_name, admin_email, odoo_user_id,

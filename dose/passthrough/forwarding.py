@@ -1,5 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Demo Tenant apply_browser_response_cookies hook — 2026-06-12
 # BINGO: Mattermost SSO Passthrough Working — 2026-06-07
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
 # Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md
@@ -1001,6 +1002,12 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             response = _wrap_in_admin_template(
                 request, response, trigger or 'passthrough', endpoint, handler=handler
             )
+
+        if handler and hasattr(handler, 'apply_browser_response_cookies'):
+            try:
+                handler.apply_browser_response_cookies(request, response)
+            except Exception as _abc_exc:
+                logger.warning('apply_browser_response_cookies failed: %s', _abc_exc, exc_info=True)
 
         print("FORWARDER SUCCESS — RESPONSE SENT TO BROWSER")
         print("=" * 120 + "\n")

@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Remove odoo_stray_web_request_view — 2026-06-12
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 
 from django.views.decorators.csrf import csrf_exempt
@@ -6,7 +7,6 @@ from django.views.decorators.cache import never_cache
 from django.http import (
     JsonResponse,
     HttpResponse,
-    HttpResponseNotFound,
     HttpResponseForbidden,
 )
 from django.contrib.auth.decorators import login_required
@@ -244,71 +244,3 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
 def passthrough_embed_view(request, endpoint):
     print(f"[EMBED VIEW] endpoint={endpoint}")
     return HttpResponse(f"Embed view for {endpoint} - not fully implemented yet")
-
-
-@never_cache
-@login_required
-def odoo_stray_web_request_view(request, rest=''):
-    """
-    Catch orphaned /web/* requests (e.g., /web/manifest.webmanifest, /web/assets/...)
-    that come from Odoo's HTML but aren't prefixed with /pt/admin/{trigger}/.
-    
-    rest: Everything after /web (e.g., 'assets/file.css' or empty string for just /web/)
-    Look up the current tenant's Odoo endpoint and proxy the request to it.
-    """
-    from dose.utils import get_current_tenant
-    from dose.models import UserTenantMembership, TenantApp, PassThroughEndpoint
-    from dose.passthrough.registry import get_handler, resolve_handler_for_pt_admin_trigger
-    from dose.passthrough.forwarding import forward_request_standardized
-    from urllib.parse import urlparse
-    
-    print(f"[ODOO STRAY] Caught orphaned /web request: path={request.path}, rest={rest}")
-    
-    tenant = get_current_tenant(request)
-    if not tenant:
-        return HttpResponseForbidden("No tenant context.")
-    
-    u = request.user
-    if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
-        return HttpResponseForbidden("Access denied to this tenant.")
-    
-    # Find the Odoo TenantApp for this tenant
-    try:
-        odoo_app = TenantApp.objects.filter(
-            tenant=tenant,
-            app_name__icontains='odoo'
-        ).first()
-        if not odoo_app or not odoo_app.app_url:
-            print(f"[ODOO STRAY] No Odoo endpoint found for tenant {tenant.slug}")
-            return HttpResponseNotFound("Odoo not configured for this tenant.")
-        
-        endpoint_url = odoo_app.app_url
-        trigger = odoo_app.app_url.replace('https://', '').replace('http://', '')
-        print(f"[ODOO STRAY] Found Odoo endpoint: {endpoint_url}, trigger: {trigger}")
-    except Exception as e:
-        logger.error(f"[ODOO STRAY] Error looking up Odoo endpoint: {e}")
-        return HttpResponseNotFound(f"Error resolving Odoo endpoint: {e}")
-    
-    # Get the Odoo handler
-    handler = resolve_handler_for_pt_admin_trigger(trigger)
-    
-    # Lookup the actual PassThroughEndpoint ORM object
-    endpoint_obj = None
-    try:
-        host = urlparse(endpoint_url).netloc.lower()
-        endpoint_obj = PassThroughEndpoint.objects.filter(
-            endpoint_url__icontains=host
-        ).first()
-        if endpoint_obj:
-            print(f"[ODOO STRAY] Resolved endpoint_obj: {endpoint_obj.endpoint_url}")
-            # SET the endpoint on the handler so proxy_prefix works
-            if handler and hasattr(handler, 'endpoint'):
-                handler.endpoint = endpoint_obj
-                print(f"[ODOO STRAY] Set handler.endpoint to PassThroughEndpoint object")
-    except Exception as e:
-        print(f"[ODOO STRAY] Could not resolve PassThroughEndpoint: {e}")
-    
-    # Reconstruct the full path for forwarding
-    # The request.path is /web/... so we just forward it as-is
-    print(f"[ODOO STRAY] Forwarding {request.path} to {endpoint_url}")
-    return forward_request_standardized(request, endpoint_url, handler=handler, endpoint=endpoint_obj, trigger=trigger)

@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo invoicing orchestration on subscribe — 2026-06-12
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 
 """
@@ -513,6 +514,27 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 provision_ok = bool(result.get('success')) and tapp.status == 'active'
                 if provision_ok:
                     messages.success(request, f"{app_display} is ready!")
+                    if app_key == 'enable_odoo':
+                        try:
+                            from dose.services.odoo_orchestration_provisioner import (
+                                provision_odoo_invoicing_orchestration,
+                            )
+                            orch = provision_odoo_invoicing_orchestration(tenant)
+                            if orch.get('success'):
+                                logger.info(
+                                    "[PROVISION] Odoo invoicing orchestration for %s: %s",
+                                    tenant.slug, orch.get('instruction_ids'),
+                                )
+                            else:
+                                logger.warning(
+                                    "[PROVISION] Odoo invoicing orchestration failed for %s: %s",
+                                    tenant.slug, orch.get('error'),
+                                )
+                        except Exception as orch_exc:
+                            logger.warning(
+                                "[PROVISION] Odoo invoicing orchestration error for %s: %s",
+                                tenant.slug, orch_exc,
+                            )
                     # Store credentials in encrypted session for persistent re-authentication
                     try:
                         SubscriptionApiViewSet._store_passthrough_credentials_in_session(

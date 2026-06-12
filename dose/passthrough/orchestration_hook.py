@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Demo Tenant instruction filter — 2026-06-12
+
 """
 Orchestration Hook — bridges PolySniffer traffic capture and dynamic orchestration.
 
@@ -129,6 +132,17 @@ def _instruction_matches(instr, upstream_path, method):
     return False
 
 
+def _instruction_belongs_to_tenant(instr, tenant):
+    """Only match instructions owned by this tenant (or global tenant=None)."""
+    if not tenant:
+        return True
+    tid = getattr(instr, 'tenant_id', None)
+    if tid is None:
+        return True
+    tenant_key = getattr(tenant, 'pk', None) or getattr(tenant, 'slug', None)
+    return str(tid) == str(tenant_key)
+
+
 def find_matching_instructions(tenant, upstream_path, method='GET', direction='REQ'):
     """Return instructions that match upstream_path using the same rules as the orchestration bar."""
     if not tenant:
@@ -136,6 +150,8 @@ def find_matching_instructions(tenant, upstream_path, method='GET', direction='R
     instructions = _load_instructions_for_direction(tenant, direction)
     matched = []
     for instr in instructions:
+        if not _instruction_belongs_to_tenant(instr, tenant):
+            continue
         if not _instruction_passes_requestmethod(instr, method):
             continue
         if _instruction_matches(instr, upstream_path, method):
@@ -163,6 +179,14 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
 
     matched = []
     for instr in instructions:
+        if not _instruction_belongs_to_tenant(instr, tenant):
+            orch_log(
+                'skip_tenant',
+                id=instr.id,
+                instr_tenant=instr.tenant_id,
+                tenant=getattr(tenant, 'pk', None),
+            )
+            continue
         if not _instruction_passes_requestmethod(instr, method):
             orch_log(
                 'skip_requestmethod',
