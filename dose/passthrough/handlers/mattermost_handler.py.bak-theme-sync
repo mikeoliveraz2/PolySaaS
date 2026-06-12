@@ -1,6 +1,5 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: PolySaaS → Mattermost one-way theme sync — 2026-06-13
 # BINGO: Demo Tenant MM Token Bind — commit 7d05920e
 # BINGO: Mattermost Composer via Roles Hydration (v45-roles) — 2026-06-11 — commit 8293f54f
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
@@ -2661,21 +2660,14 @@ try {{
         team_name_js = json.dumps(mm_team_name)
         proxy_js = json.dumps(proxy_prefix)
         base_js = json.dumps(base_origin.rstrip("/"))
-        ps_display_mode = self._polysaas_display_mode(request)
-        ps_display_mode_js = json.dumps(ps_display_mode)
-        print(
-            f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'} "
-            f"user_id={mm_user_id!r} ps_display_mode={ps_display_mode}"
-        )
+        print(f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'} user_id={mm_user_id!r}")
 
         return f"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
-        console.log('[PolySaaS MM] shim build 2026-06-12-theme-sync');
+        console.log('[PolySaaS MM] shim build 2026-06-11-v45-roles');
     var B = {base_js};
     var PROXY = {proxy_js};
-    var PS_DISPLAY_MODE = {ps_display_mode_js};
-    console.log('[PolySaaS MM] PolySaaS display_mode (one-way theme sync):', PS_DISPLAY_MODE);
 
     // Error capture to diagnose composer crash
     window.onerror = function(msg, src, line, col, err) {{
@@ -4694,125 +4686,6 @@ try {{
 </script>
 """
 
-    _DARK_JAZZMIN_THEMES = frozenset({'darkly', 'cyborg', 'slate', 'solar', 'superhero'})
-
-    @classmethod
-    def _polysaas_display_mode(cls, request) -> str:
-        """PolySaaS admin light/dark — same source as Odoo passthrough theme sync."""
-        if not request:
-            return 'light'
-
-        display_mode = 'light'
-        if hasattr(request, 'session'):
-            display_mode = request.session.get('display_mode', 'light')
-        if request.COOKIES.get('display_mode'):
-            display_mode = request.COOKIES.get('display_mode', display_mode)
-
-        display_mode = str(display_mode or 'light').strip().lower()
-        if display_mode == 'system':
-            display_mode = (
-                request.COOKIES.get('ps_theme_effective')
-                or request.COOKIES.get('display_mode')
-                or 'light'
-            ).strip().lower()
-        if display_mode not in ('light', 'dark'):
-            display_mode = 'light'
-
-        try:
-            from dose.models import UserProfile
-            from dose.utils import get_current_tenant
-
-            light_theme = 'sandstone'
-            dark_theme = 'darkly'
-            if hasattr(request, 'session'):
-                light_theme = request.session.get('light_theme') or light_theme
-                dark_theme = request.session.get('dark_theme') or dark_theme
-            user = getattr(request, 'user', None)
-            tenant = get_current_tenant(request)
-            if user and getattr(user, 'is_authenticated', False) and tenant:
-                profile = UserProfile.objects.filter(user=user, tenant=tenant).first()
-                if profile:
-                    light_theme = request.session.get('light_theme') or profile.light_theme or light_theme
-                    dark_theme = request.session.get('dark_theme') or profile.dark_theme or dark_theme
-            active_theme = dark_theme if display_mode == 'dark' else light_theme
-            if str(active_theme or '').lower() in cls._DARK_JAZZMIN_THEMES and display_mode != 'dark':
-                display_mode = 'dark'
-        except Exception as exc:
-            print(f'[MM THEME] display_mode jazzmin fallback error: {exc}')
-
-        return display_mode
-
-    def _sync_polysaas_theme_to_mattermost(self, request, endpoint_url: str, token: str) -> None:
-        """One-way sync: PolySaaS display_mode → Mattermost user theme on passthrough open."""
-        if not token or not endpoint_url:
-            return
-        try:
-            import requests as _req
-
-            from dose.passthrough.handlers.mm_theme_presets import (
-                MM_THEME_DARK_JSON,
-                MM_THEME_LIGHT_JSON,
-            )
-
-            mode = self._polysaas_display_mode(request)
-            sync_key = 'polysaas_mm_theme_sync_mode'
-            if request.session.get(sync_key) == mode:
-                print(f'[MM THEME] skip — already synced mode={mode}')
-                return
-
-            base = endpoint_url.rstrip('/')
-            headers = {
-                'Authorization': f'Bearer {token}',
-                'Content-Type': 'application/json',
-            }
-            extra = self._get_tenantapp_extra_config(request) or {}
-            user_id = (extra.get('mm_user_id') or '').strip()
-            if not user_id:
-                me = _req.get(f'{base}/api/v4/users/me', headers=headers, timeout=15)
-                if me.status_code != 200:
-                    print(f'[MM THEME] users/me failed HTTP {me.status_code}')
-                    return
-                user_id = (me.json() or {}).get('id') or ''
-            if not user_id:
-                print('[MM THEME] no Mattermost user_id — skip')
-                return
-
-            theme_json = MM_THEME_DARK_JSON if mode == 'dark' else MM_THEME_LIGHT_JSON
-            prefs = [
-                {
-                    'user_id': user_id,
-                    'category': 'theme',
-                    'name': 'enable_theme_sync',
-                    'value': 'false',
-                },
-                {
-                    'user_id': user_id,
-                    'category': 'theme',
-                    'name': '',
-                    'value': theme_json,
-                },
-            ]
-            resp = _req.put(
-                f'{base}/api/v4/users/{user_id}/preferences',
-                headers=headers,
-                json=prefs,
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                request.session[sync_key] = mode
-                try:
-                    request.session.modified = True
-                except Exception:
-                    pass
-                print(f'[MM THEME] synced Mattermost theme to PolySaaS mode={mode}')
-            else:
-                print(
-                    f'[MM THEME] preferences PUT HTTP {resp.status_code}: '
-                    f'{resp.text[:120]}'
-                )
-        except Exception as exc:
-            print(f'[MM THEME] sync error: {exc}')
-
     def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
         """Inject early fetch guard then full Mattermost shim first in <head>."""
         token = (request.GET.get('mm_token') or '').strip()
@@ -4828,14 +4701,6 @@ try {{
                         token = cookies.get("mmauthtoken") or cookies.get("MMAUTHTOKEN") or ""
                     except Exception:
                         token = ""
-
-        if token and base_origin:
-            try:
-                self._sync_polysaas_theme_to_mattermost(
-                    request, base_origin.rstrip('/'), token,
-                )
-            except Exception as exc:
-                print(f'[MM THEME] sync skipped in inject: {exc}')
 
         if token and not MattermostPassthroughHandler._cors_patched:
             try:
