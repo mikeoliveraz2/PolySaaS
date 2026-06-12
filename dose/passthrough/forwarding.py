@@ -1,6 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Demo Tenant apply_browser_response_cookies hook — 2026-06-12
+# BINGO: Demo Tenant apply_browser_response_cookies hook — commit 7d05920e
 # BINGO: Mattermost SSO Passthrough Working — 2026-06-07
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
 # Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md

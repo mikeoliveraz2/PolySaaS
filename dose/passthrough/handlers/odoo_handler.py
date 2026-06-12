@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Demo Tenant Odoo SSO + public_bundles — 2026-06-12
+# BINGO: Demo Tenant Odoo SSO + public_bundles — commit 7d05920e
 # BINGO: Odoo SSO Passthrough Working — commit e739a38c
 
 import logging

@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Waitress WhiteNoise static / orchestration button — 2026-06-12
+# BINGO: Waitress WhiteNoise static / orchestration button — commit 7d05920e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 
 # Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)

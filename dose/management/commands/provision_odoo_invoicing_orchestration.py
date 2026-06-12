@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Demo Tenant Odoo invoicing orchestration backfill — 2026-06-12
+# BINGO: Demo Tenant Odoo invoicing orchestration backfill — commit 7d05920e
 
 """
 Backfill Odoo Invoicing orchestration Instructions for existing tenants.

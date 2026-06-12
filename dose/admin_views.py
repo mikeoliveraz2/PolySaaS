@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Remove odoo_stray_web_request_view — 2026-06-12
+# BINGO: Remove odoo_stray_web_request_view — commit 7d05920e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 
 from django.views.decorators.csrf import csrf_exempt

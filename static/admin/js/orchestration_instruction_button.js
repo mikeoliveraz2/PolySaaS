@@ -1,5 +1,5 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-// BINGO: Waitress static copy for orchestration button — 2026-06-12
+// BINGO: Waitress static copy for orchestration button — commit 7d05920e
 // BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 /**
  * Passthrough orchestration bar + green instruction button (modal iframe → Django admin).

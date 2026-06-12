@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-12  
 **Declared by:** Michael  
-**Commit:** _(recorded in follow-up hash commit)_  
+**Commit:** `7d05920e`  
 **Baseline:** BINGO `1dcca3bd` — Font and Theme Toggle (2026-06-11)  
 **Test tenants:** PolySaaS Test 151 (`polysaast151`), Test 150, Test 152  
 **Test URL:** `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/web`

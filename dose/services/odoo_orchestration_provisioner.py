@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Demo Tenant Odoo invoicing orchestration — 2026-06-12
+# BINGO: Demo Tenant Odoo invoicing orchestration — commit 7d05920e
 
 """
 Provision Odoo Invoicing orchestration Instructions when a tenant subscribes to Odoo.
