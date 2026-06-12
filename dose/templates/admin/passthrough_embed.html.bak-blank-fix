@@ -1,5 +1,4 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — 2026-06-12
 BINGO: Demo Tenant Odoo Embed o_web_client Shell — commit 7d05920e
 BINGO: Odoo Passthrough Layout Fix — 2026-06-09
 BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0 -->
@@ -139,8 +138,8 @@ body.polysaas-passthrough-embed-page.o_web_client {
 }
 
 {% if embed_polysaas_display_mode == 'dark' %}
-.polysaas-passthrough-scope.o_dark,
-.polysaas-passthrough-scope.o_dark > .o_web_client {
+.polysaas-passthrough-scope.o_web_client,
+.polysaas-passthrough-scope.o_dark {
     background: #1B1D26 !important;
     color-scheme: dark;
 }
@@ -401,45 +400,22 @@ body.polysaas-passthrough-embed-page {
             _pinNavbar(scope);
         }
 
-        function _applyScopeThemeMode(scope) {
-            if (!scope) return;
-            var psMode = (scope.getAttribute('data-polysaas-display-mode') || '').toLowerCase();
-            var shell = scope.querySelector(':scope > .o_web_client[data-polysaas-odoo-shell]')
-                || scope.querySelector(':scope > .o_web_client');
-            var targets = [scope];
-            if (shell) targets.push(shell);
-            targets.forEach(function (el) {
-                if (psMode === 'dark') {
-                    el.classList.add('o_dark');
-                    el.classList.remove('o_light');
-                } else if (psMode === 'light') {
-                    el.classList.add('o_light');
-                    el.classList.remove('o_dark');
-                }
-            });
-        }
-
         function _mirrorOdooBodyClasses() {
             var scope = getScope();
             if (!scope) return;
-            _applyScopeThemeMode(scope);
-            /* Move Odoo body classes off Jazzmin body onto embed scope only. */
+            var psMode = (scope.getAttribute('data-polysaas-display-mode') || '').toLowerCase();
+            if (psMode === 'dark') {
+                scope.classList.add('o_dark');
+                scope.classList.remove('o_light');
+            } else if (psMode === 'light') {
+                scope.classList.add('o_light');
+                scope.classList.remove('o_dark');
+            }
             _ODOO_SCOPE_CLASSES.forEach(function (cls) {
                 if (document.body.classList.contains(cls)) {
                     scope.classList.add(cls);
-                    document.body.classList.remove(cls);
                 }
             });
-            var shell = scope.querySelector(':scope > .o_web_client[data-polysaas-odoo-shell]')
-                || scope.querySelector(':scope > .o_web_client');
-            if (shell) {
-                _ODOO_SCOPE_CLASSES.forEach(function (cls) {
-                    if (scope.classList.contains(cls)) {
-                        shell.classList.add(cls);
-                    }
-                });
-            }
-            _applyScopeThemeMode(scope);
             _ODOO_BODY_STRIP_CLASSES.forEach(function (cls) {
                 if (document.body.classList.contains(cls)) {
                     document.body.classList.remove(cls);

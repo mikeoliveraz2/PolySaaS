@@ -1,6 +1,5 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — 2026-06-12
 # BINGO: Demo Tenant apply_browser_response_cookies hook — commit 7d05920e
 # BINGO: Mattermost SSO Passthrough Working — 2026-06-07
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
@@ -237,24 +236,6 @@ def _extract_head_and_body(html):
     return head_content, body_content
 
 
-def _extract_upstream_root_classes(html):
-    """Collect class names from upstream <html> and <body> (Odoo o_dark lives here)."""
-    import re
-    found = []
-    for pattern in (
-        r'<html[^>]*class=["\']([^"\']*)["\']',
-        r'<body[^>]*class=["\']([^"\']*)["\']',
-    ):
-        match = re.search(pattern, html or '', re.IGNORECASE | re.DOTALL)
-        if match:
-            found.extend(match.group(1).split())
-    deduped = []
-    for cls in found:
-        if cls and cls not in deduped:
-            deduped.append(cls)
-    return ' '.join(deduped)
-
-
 def _wrap_in_admin_template(request, response, trigger, endpoint, handler=None):
     """Wrap raw proxied HTML in admin template for embedded display."""
     content_type = response.get('Content-Type', '')
@@ -270,30 +251,8 @@ def _wrap_in_admin_template(request, response, trigger, endpoint, handler=None):
     embed_title = norm.split('.')[0].replace('-', ' ').title()
     embed_src = f'/pt/admin/{norm}/'
     head_content, body_content = _extract_head_and_body(raw_html)
-    upstream_root_classes = _extract_upstream_root_classes(raw_html)
-    scope_extra_classes = upstream_root_classes
-    if handler and hasattr(handler, 'passthrough_embed_scope_classes'):
-        try:
-            scope_extra_classes = (
-                handler.passthrough_embed_scope_classes(
-                    request, raw_html, upstream_root_classes,
-                )
-                or upstream_root_classes
-            )
-        except Exception as exc:
-            logger.warning('passthrough_embed_scope_classes failed: %s', exc)
-    scope_class = 'polysaas-passthrough-scope'
-    if scope_extra_classes:
-        scope_class = f'{scope_class} {scope_extra_classes.strip()}'
-    display_mode = ''
-    if handler and hasattr(handler, '_polysaas_display_mode'):
-        try:
-            display_mode = handler._polysaas_display_mode(request) or ''
-        except Exception:
-            display_mode = ''
     embed_body = mark_safe(
-        f'<div class="{scope_class}" data-polysaas-embed-trigger="{norm}"'
-        f' data-polysaas-display-mode="{display_mode}">'
+        f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{norm}">'
         f'{body_content}</div>'
     )
     embed_head = mark_safe(head_content)

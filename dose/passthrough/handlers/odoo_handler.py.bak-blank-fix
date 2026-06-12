@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — 2026-06-12
 # BINGO: Demo Tenant Odoo SSO + public_bundles — commit 7d05920e
 # BINGO: Odoo SSO Passthrough Working — commit e739a38c
 
@@ -235,12 +234,15 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         }
 
     def passthrough_embed_scope_classes(self, request, raw_html, upstream_root_classes=''):
-        """Preserve Odoo o_dark/o_light on embed scope — never on Jazzmin document.body."""
+        """Preserve Odoo body/html classes (o_dark) stripped during embed extraction."""
         mode = self._polysaas_display_mode(request)
         classes = []
         for cls in (upstream_root_classes or '').split():
-            if cls in ('o_dark', 'o_light', 'o_rtl', 'o_touch'):
+            if cls.startswith('o_') or cls == 'o_web_client':
                 classes.append(cls)
+        for required in ('o_web_client',):
+            if required not in classes:
+                classes.append(required)
         if mode == 'dark':
             if 'o_dark' not in classes:
                 classes.append('o_dark')
@@ -592,20 +594,57 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             console.log('[ODOO SHIM] color_scheme set to', PS_DISPLAY_MODE);
 
             function applyOdooThemeVisuals() {{
-                /* Never add Odoo classes to Jazzmin document.body — breaks admin shell. */
-                if (PS_DISPLAY_MODE !== 'dark') return;
                 var scope = document.querySelector('.polysaas-passthrough-scope');
-                if (!scope || !scope.classList) return;
-                scope.classList.add('o_dark');
-                scope.classList.remove('o_light');
-                var shell = scope.querySelector('.o_web_client[data-polysaas-odoo-shell]')
-                    || scope.querySelector(':scope > .o_web_client');
-                if (shell && shell.classList) {{
-                    shell.classList.add('o_dark');
-                    shell.classList.remove('o_light');
+                var body = document.body;
+                if (PS_DISPLAY_MODE === 'dark') {{
+                    document.documentElement.classList.add('o_dark');
+                    if (body && body.classList) {{
+                        body.classList.add('o_dark');
+                        body.classList.remove('o_light');
+                    }}
+                    if (scope && scope.classList) {{
+                        scope.classList.add('o_web_client', 'o_dark');
+                        scope.classList.remove('o_light');
+                        scope.style.setProperty('background', '#1B1D26', 'important');
+                    }}
+                    document.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {{
+                        var href = link.getAttribute('href') || '';
+                        if (href.indexOf('web.assets_web.') >= 0 &&
+                            href.indexOf('assets_web_dark') < 0 &&
+                            href.indexOf('assets_web_print') < 0) {{
+                            link.setAttribute('href', href.replace(/web\\.assets_web\\./g, 'web.assets_web_dark.'));
+                        }}
+                    }});
+                }} else if (body && body.classList) {{
+                    document.documentElement.classList.remove('o_dark');
+                    body.classList.remove('o_dark');
+                    body.classList.add('o_light');
+                    if (scope && scope.classList) {{
+                        scope.classList.remove('o_dark');
+                        scope.classList.add('o_light');
+                    }}
                 }}
             }}
-            document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
+            }} else {{
+                applyOdooThemeVisuals();
+            }}
+            var _themeScopeObserver = new MutationObserver(function() {{ applyOdooThemeVisuals(); }});
+            function _watchThemeScope() {{
+                var scope = document.querySelector('.polysaas-passthrough-scope');
+                if (scope) {{
+                    _themeScopeObserver.observe(scope, {{ attributes: true, childList: true, subtree: true }});
+                    applyOdooThemeVisuals();
+                }} else {{
+                    setTimeout(_watchThemeScope, 50);
+                }}
+            }}
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', _watchThemeScope);
+            }} else {{
+                _watchThemeScope();
+            }}
 
             var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus', '/mail', '/longpolling', '/websocket', '/jsonrpc', '/website'];
 

@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — 2026-06-12
 # BINGO: Demo Tenant Odoo SSO + public_bundles — commit 7d05920e
 # BINGO: Odoo SSO Passthrough Working — commit e739a38c
 
@@ -12,10 +11,8 @@ from dose.passthrough.handlers.handler_base import PassthroughHandlerBase
 
 logger = logging.getLogger(__name__)
 
-VERSION = "ODOO_HANDLER_v20260613_theme_sync_fix"
+VERSION = "ODOO_HANDLER_v20260612_tenant_bundle_fix"
 print(f"[ODOO HANDLER] {VERSION} LOADED")
-
-ODOO_THEME_SYNC_SESSION_KEY = 'polysaas_odoo_theme_sync_mode'
 
 
 class OdooPassthroughHandler(PassthroughHandlerBase):
@@ -65,7 +62,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
         scheme = self._polysaas_display_mode(request)
         prev = filtered.get('color_scheme')
-        filtered.pop('color_scheme', None)
         filtered['color_scheme'] = scheme
         if prev != scheme:
             print(f"[ODOO HANDLER] Upstream color_scheme: {prev!r} -> {scheme!r}")
@@ -108,20 +104,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 response.cookies['session_id']['path'] = '/'
                 response.cookies['session_id']['samesite'] = 'Lax'
                 print("[ODOO HANDLER] Browser Set-Cookie session_id from server SSO")
-
-    def should_forward_set_cookie_headers(
-        self,
-        request,
-        *,
-        upstream_content_type=None,
-        upstream_path=None,
-        response_kind=None,
-    ) -> bool:
-        """Block upstream Set-Cookie — Odoo resets color_scheme=light and breaks theme sync."""
-        print(
-            f"[ODOO HANDLER] Suppressing upstream Set-Cookie ({response_kind}, {upstream_path})"
-        )
-        return False
 
     @staticmethod
     def _odoo_proxy_prefix_from_endpoint(endpoint) -> str:
@@ -227,33 +209,11 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
     def passthrough_embed_template_context(self, trigger, request):
         """Provide Odoo-specific template context including the body scope flag."""
         mode = self._polysaas_display_mode(request)
-        self._ensure_odoo_theme_sync_for_request(request, mode)
         print(f"[ODOO HANDLER] embed context: body_scope=True, display_mode={mode}")
         return {
             'embed_enable_odoo_body_scope': True,
             'embed_polysaas_display_mode': mode,
         }
-
-    def passthrough_embed_scope_classes(self, request, raw_html, upstream_root_classes=''):
-        """Preserve Odoo o_dark/o_light on embed scope — never on Jazzmin document.body."""
-        mode = self._polysaas_display_mode(request)
-        classes = []
-        for cls in (upstream_root_classes or '').split():
-            if cls in ('o_dark', 'o_light', 'o_rtl', 'o_touch'):
-                classes.append(cls)
-        if mode == 'dark':
-            if 'o_dark' not in classes:
-                classes.append('o_dark')
-            if 'o_light' in classes:
-                classes.remove('o_light')
-        else:
-            if 'o_light' not in classes:
-                classes.append('o_light')
-            if 'o_dark' in classes:
-                classes.remove('o_dark')
-        merged = ' '.join(dict.fromkeys(classes))
-        print(f"[ODOO HANDLER] embed scope classes: {merged!r} (mode={mode})")
-        return merged
 
     _DARK_JAZZMIN_THEMES = frozenset({'darkly', 'cyborg', 'slate', 'solar', 'superhero'})
 
@@ -266,7 +226,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         display_mode = 'light'
         if hasattr(request, 'session'):
             display_mode = request.session.get('display_mode', 'light')
-        if hasattr(request, 'COOKIES') and 'display_mode' in request.COOKIES:
+        if request.COOKIES.get('display_mode'):
             display_mode = request.COOKIES.get('display_mode', display_mode)
 
         display_mode = str(display_mode or 'light').strip().lower()
@@ -315,7 +275,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         """Force Odoo webclient onto dark/light asset bundles in proxied HTML."""
         if not html_str or mode != 'dark':
             return html_str
-        if 'web.assets_web_dark' in html_str and 'web.assets_web.min' not in html_str:
+        if 'assets_web_dark' in html_str:
             return html_str
         out = html_str
         for light, dark in (
@@ -325,19 +285,14 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             ('web.assets_web.js', 'web.assets_web_dark.js'),
         ):
             out = out.replace(light, dark)
-        out = re.sub(
-            r'web\.assets_web(?!(?:_dark|_print))',
-            'web.assets_web_dark',
-            out,
-        )
         if out != html_str:
             print('[ODOO HANDLER] Rewrote web.assets_web -> web.assets_web_dark in HTML')
         return out
 
-    def _sync_odoo_user_color_scheme(self, odoo_url, session_id, uid, scheme) -> bool:
-        """Write color_scheme on Odoo res.users when permitted (best-effort)."""
+    def _sync_odoo_user_color_scheme(self, odoo_url, session_id, uid, scheme):
+        """Write color_scheme on Odoo res.users so the SPA does not revert to light."""
         if not odoo_url or not session_id or not uid:
-            return False
+            return
         scheme = 'dark' if scheme == 'dark' else 'light'
         try:
             import requests as _req
@@ -358,55 +313,12 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 cookies={'session_id': session_id, 'color_scheme': scheme},
                 timeout=15,
             )
-            body = resp.json() if resp.content else {}
-            if body.get('error'):
-                print(
-                    f"[ODOO HANDLER] Odoo user color_scheme sync uid={uid} "
-                    f"scheme={scheme} denied: {body['error'].get('data', {}).get('name') or body['error'].get('message')}"
-                )
-                return False
             print(
                 f"[ODOO HANDLER] Odoo user color_scheme sync uid={uid} "
                 f"scheme={scheme} HTTP={resp.status_code}"
             )
-            return resp.status_code == 200
         except Exception as exc:
             print(f"[ODOO HANDLER] Odoo user color_scheme sync failed: {exc}")
-            return False
-
-    def _ensure_odoo_theme_sync_for_request(self, request, scheme=None) -> None:
-        """One-way PolySaaS display_mode → Odoo color_scheme (best-effort user sync)."""
-        if not request:
-            return
-        scheme = scheme or self._polysaas_display_mode(request)
-        if hasattr(request, 'session') and request.session.get(ODOO_THEME_SYNC_SESSION_KEY) == scheme:
-            return
-        try:
-            from dose.models import TenantApp
-
-            tenant = self._resolve_tenant(request)
-            if not tenant:
-                return
-            ta = TenantApp.public_bundles.filter(
-                tenant=tenant, app_name='odoo', status='active',
-            ).first()
-            if not ta:
-                return
-            extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
-            odoo_url = (extra.get('odoo_url') or ta.app_url or '').rstrip('/')
-            session_id = extra.get('odoo_session_id')
-            uid = extra.get('odoo_uid')
-            if odoo_url and session_id and uid:
-                self._sync_odoo_user_color_scheme(odoo_url, session_id, uid, scheme)
-            if hasattr(request, 'session'):
-                request.session[ODOO_THEME_SYNC_SESSION_KEY] = scheme
-                try:
-                    request.session.modified = True
-                except Exception:
-                    pass
-            print(f"[ODOO HANDLER] Theme sync session marked mode={scheme}")
-        except Exception as exc:
-            print(f"[ODOO HANDLER] Theme sync ensure failed: {exc}")
 
     @staticmethod
     def _clear_odoo_session_cache(ta):
@@ -590,23 +502,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             var PS_DISPLAY_MODE = "{display_mode}";
             document.cookie = 'color_scheme=' + PS_DISPLAY_MODE + '; path=/; max-age=' + (365 * 24 * 60 * 60) + '; SameSite=Lax';
             console.log('[ODOO SHIM] color_scheme set to', PS_DISPLAY_MODE);
-
-            function applyOdooThemeVisuals() {{
-                /* Never add Odoo classes to Jazzmin document.body — breaks admin shell. */
-                if (PS_DISPLAY_MODE !== 'dark') return;
-                var scope = document.querySelector('.polysaas-passthrough-scope');
-                if (!scope || !scope.classList) return;
-                scope.classList.add('o_dark');
-                scope.classList.remove('o_light');
-                var shell = scope.querySelector('.o_web_client[data-polysaas-odoo-shell]')
-                    || scope.querySelector(':scope > .o_web_client');
-                if (shell && shell.classList) {{
-                    shell.classList.add('o_dark');
-                    shell.classList.remove('o_light');
-                }}
-            }}
-            document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
-
             var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus', '/mail', '/longpolling', '/websocket', '/jsonrpc', '/website'];
 
             function normalizeToPath(url) {{
@@ -824,13 +719,14 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 )
                 if uid:
                     print(f"[ODOO HANDLER] Using cached Odoo session for tenant={tenant.slug} uid={uid}")
-                    if hasattr(request, 'session') and request.session.get(ODOO_THEME_SYNC_SESSION_KEY) != scheme:
+                    last_sync = extra.get('odoo_color_scheme_sync')
+                    if last_sync != scheme:
                         self._sync_odoo_user_color_scheme(odoo_url, session_id, uid, scheme)
-                        request.session[ODOO_THEME_SYNC_SESSION_KEY] = scheme
-                        try:
-                            request.session.modified = True
-                        except Exception:
-                            pass
+                        if not isinstance(ta.extra_config, dict):
+                            ta.extra_config = {}
+                        ta.extra_config['odoo_color_scheme_sync'] = scheme
+                        ta.extra_config['odoo_uid'] = uid
+                        ta.save(update_fields=['extra_config'])
                     return {'session_id': session_id, 'color_scheme': scheme}
                 print(f"[ODOO HANDLER] Cached Odoo session invalid for tenant={tenant.slug} — re-authenticating")
                 self._clear_odoo_session_cache(ta)
@@ -879,13 +775,8 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 ta.extra_config['odoo_session_id'] = sid
                 ta.extra_config['odoo_session_time'] = time.time()
                 ta.extra_config['odoo_uid'] = uid
+                ta.extra_config['odoo_color_scheme_sync'] = scheme
                 ta.save(update_fields=['extra_config'])
-                if hasattr(request, 'session'):
-                    request.session[ODOO_THEME_SYNC_SESSION_KEY] = scheme
-                    try:
-                        request.session.modified = True
-                    except Exception:
-                        pass
                 self._sync_odoo_user_color_scheme(odoo_url, sid, uid, scheme)
                 print(f"[ODOO HANDLER] Server-side SSO ok uid={uid}")
                 return {'session_id': sid, 'color_scheme': scheme}
@@ -952,7 +843,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                     print(f"[ODOO HANDLER] login-page cache invalidate failed: {exc}")
 
         display_mode = self._polysaas_display_mode(request)
-        self._ensure_odoo_theme_sync_for_request(request, display_mode)
         shim_js = self.get_client_side_shim(
             prefix, odoo_login, odoo_password, odoo_db,
             display_mode=display_mode,
@@ -960,7 +850,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         )
         if is_login_html:
             print(f"[ODOO HANDLER] Login page detected — client auto-login fallback enabled")
-        html_str = self._rewrite_asset_bundles_for_mode(html_str, display_mode)
         html_str = self._inject_after_open_tag(
             html_str,
             r'<head[^>]*>',
@@ -984,6 +873,8 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
         if is_login_html:
             print(f"[ODOO HANDLER] Login page rewritten — form POSTs must target {prefix}/web/login")
+
+        html_str = self._rewrite_asset_bundles_for_mode(html_str, display_mode)
 
         print(f"[ODOO HANDLER] Rewriting complete (shim injected, assets/forms rewritten)")
         return html_str

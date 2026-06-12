@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — 2026-06-12
 # BINGO: Demo Tenant Odoo SSO + public_bundles — commit 7d05920e
 # BINGO: Odoo SSO Passthrough Working — commit e739a38c
 
@@ -233,27 +232,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             'embed_enable_odoo_body_scope': True,
             'embed_polysaas_display_mode': mode,
         }
-
-    def passthrough_embed_scope_classes(self, request, raw_html, upstream_root_classes=''):
-        """Preserve Odoo o_dark/o_light on embed scope — never on Jazzmin document.body."""
-        mode = self._polysaas_display_mode(request)
-        classes = []
-        for cls in (upstream_root_classes or '').split():
-            if cls in ('o_dark', 'o_light', 'o_rtl', 'o_touch'):
-                classes.append(cls)
-        if mode == 'dark':
-            if 'o_dark' not in classes:
-                classes.append('o_dark')
-            if 'o_light' in classes:
-                classes.remove('o_light')
-        else:
-            if 'o_light' not in classes:
-                classes.append('o_light')
-            if 'o_dark' in classes:
-                classes.remove('o_dark')
-        merged = ' '.join(dict.fromkeys(classes))
-        print(f"[ODOO HANDLER] embed scope classes: {merged!r} (mode={mode})")
-        return merged
 
     _DARK_JAZZMIN_THEMES = frozenset({'darkly', 'cyborg', 'slate', 'solar', 'superhero'})
 
@@ -592,19 +570,30 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             console.log('[ODOO SHIM] color_scheme set to', PS_DISPLAY_MODE);
 
             function applyOdooThemeVisuals() {{
-                /* Never add Odoo classes to Jazzmin document.body — breaks admin shell. */
-                if (PS_DISPLAY_MODE !== 'dark') return;
-                var scope = document.querySelector('.polysaas-passthrough-scope');
-                if (!scope || !scope.classList) return;
-                scope.classList.add('o_dark');
-                scope.classList.remove('o_light');
-                var shell = scope.querySelector('.o_web_client[data-polysaas-odoo-shell]')
-                    || scope.querySelector(':scope > .o_web_client');
-                if (shell && shell.classList) {{
-                    shell.classList.add('o_dark');
-                    shell.classList.remove('o_light');
+                var scope = document.querySelector('.polysaas-passthrough-scope') || document.body;
+                if (PS_DISPLAY_MODE === 'dark') {{
+                    document.documentElement.classList.add('o_dark');
+                    document.body.classList.add('o_dark');
+                    document.body.classList.remove('o_light');
+                    if (scope && scope.classList) {{
+                        scope.classList.add('o_dark');
+                        scope.classList.remove('o_light');
+                    }}
+                    document.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {{
+                        var href = link.getAttribute('href') || '';
+                        if (href.indexOf('web.assets_web.') >= 0 &&
+                            href.indexOf('assets_web_dark') < 0 &&
+                            href.indexOf('assets_web_print') < 0) {{
+                            link.setAttribute('href', href.replace(/web\\.assets_web\\./g, 'web.assets_web_dark.'));
+                        }}
+                    }});
+                }} else {{
+                    document.documentElement.classList.remove('o_dark');
+                    document.body.classList.remove('o_dark');
+                    document.body.classList.add('o_light');
                 }}
             }}
+            applyOdooThemeVisuals();
             document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
 
             var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus', '/mail', '/longpolling', '/websocket', '/jsonrpc', '/website'];
