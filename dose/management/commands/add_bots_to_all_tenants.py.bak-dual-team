@@ -1,11 +1,9 @@
 """
-Management command: Sync demo AI Peer bots to the shared Mattermost collaboration team.
-
-AI peers (@copilot, @grok, @gemini) live on the shared team Town Square only.
+Management command: Add all configured AI Peer bots to a tenant's Mattermost team.
 
 Usage:
-  python manage.py add_bots_to_all_tenants
-  python manage.py add_bots_to_all_tenants --team-id=<id> --mm-url=<url>
+  python manage.py add_bots_to_all_tenants      # All tenants with MM configured
+  python manage.py add_bots_to_all_tenants --tenant=t41  # Specific tenant
 """
 
 import logging
@@ -18,14 +16,14 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Add demo AI Peer bots to the shared Mattermost team Town Square."
+    help = "Add demo AI Peer bots to a Mattermost team and sync Town Square roster."
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--tenant',
             type=str,
             default=None,
-            help='Ignored (runall.ps1 compatibility). Bots sync to shared team only.',
+            help='Specific tenant schema name (e.g., t41). Omit to process all.',
         )
         parser.add_argument(
             '--team-id',
@@ -47,27 +45,67 @@ class Command(BaseCommand):
 
         headers = {'Authorization': f'Bearer {admin_token}'}
 
+        # Option 1: Direct MM credentials
         if options.get('team_id') and options.get('mm_url'):
-            mm_url = options['mm_url'].rstrip('/')
             team_id = options['team_id']
+            mm_url = options['mm_url']
+            self._add_bots_to_team(mm_url, headers, team_id)
+            self.stdout.write(
+                self.style.SUCCESS(f'OK Bots synced for team {team_id} at {mm_url}')
+            )
+            return
+
+        # Option 2: All or specific tenant
+        tenant_filter = options.get('tenant')
+        from dose.models import TenantApp
+
+        if tenant_filter:
+            tenants = TenantApp.objects.filter(
+                tenant__schema_name=tenant_filter,
+                app_name__icontains='mattermost',
+            )
         else:
-            from dose.services.mattermost_tenant_provisioner import (
-                _get_mattermost_base_url,
-                resolve_shared_mattermost_team_id,
+            tenants = TenantApp.objects.filter(
+                app_name__icontains='mattermost',
             )
 
-            mm_url = _get_mattermost_base_url()
-            team_id = resolve_shared_mattermost_team_id(mm_url, headers) or ''
-            if not team_id:
-                raise CommandError(
-                    'Shared Mattermost team not found. '
-                    'Set MATTERMOST_SHARED_TEAM_NAME or pass --team-id and --mm-url.'
-                )
+        if not tenants.exists():
+            raise CommandError(
+                f'No Mattermost TenantApps found. {f"Tenant: {tenant_filter}" if tenant_filter else ""}'
+            )
 
-        self._add_bots_to_team(mm_url, headers, team_id)
-        self.stdout.write(
-            self.style.SUCCESS(f'OK Demo bots synced for shared team {team_id} at {mm_url}')
-        )
+        seen_teams = set()
+        for ta in tenants:
+            try:
+                extra = ta.extra_config or {}
+                mm_url = extra.get('mattermost_url', '')
+                team_id = extra.get('mm_team_id', '')
+
+                if not mm_url or not team_id:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'WARN {ta.tenant.schema_name}: Missing MM URL or team ID in extra_config'
+                        )
+                    )
+                    continue
+
+                team_key = (mm_url.rstrip('/'), team_id)
+                if team_key in seen_teams:
+                    continue
+                seen_teams.add(team_key)
+
+                self._add_bots_to_team(mm_url, headers, team_id)
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'OK {ta.tenant.schema_name}: Demo bots synced for team {team_id}'
+                    )
+                )
+            except Exception as e:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f'FAIL {ta.tenant.schema_name}: {e}'
+                    )
+                )
 
     def _add_bots_to_team(self, mm_url: str, headers: dict, team_id: str) -> None:
         """Add demo peers to team and sync Town Square channel membership."""

@@ -2,14 +2,13 @@
 Synchronous Mattermost tenant provisioning.
 
 Runs inline during subscription signup. Creates:
-  1. Private MM team (company name — tenant-owned; future company members join here)
-  2. Shared MM team (polysaas-dev-team — AI peers + cross-subscriber collaboration)
-  3. MM user account (email/username match Django user) — so OIDC login unifies
-  4. Team membership on BOTH teams
-  5. Personal access token for passthrough auth
-  6. OIDC SSO config (if client_id/secret provided)
-  7. PassThroughEndpoint row in tenant schema (sidebar entry)
-  8. Welcome email
+  1. MM team (name=schema, display=company)
+  2. MM user account (email/username match Django user) — so OIDC login unifies
+  3. Team membership (adds user to team)
+  4. Personal access token for passthrough auth
+  5. OIDC SSO config (if client_id/secret provided)
+  6. PassThroughEndpoint row in tenant schema (sidebar entry)
+  7. Welcome email
 
 All steps are non-fatal except team creation — returns detailed result dict.
 """
@@ -46,29 +45,6 @@ def _get_default_app_password() -> str:
     from django.conf import settings
 
     return getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!') or 'PolySaaS2026!'
-
-
-def _shared_team_name() -> str:
-    """Mattermost team slug for shared Town Square (all demo/subscriber users)."""
-    import os
-    from django.conf import settings
-
-    return (
-        os.environ.get('MATTERMOST_SHARED_TEAM_NAME', '').strip()
-        or str(getattr(settings, 'MATTERMOST_SHARED_TEAM_NAME', '') or '').strip()
-        or 'polysaas-dev-team'
-    )
-
-
-def _shared_team_display_name() -> str:
-    import os
-    from django.conf import settings
-
-    return (
-        os.environ.get('MATTERMOST_SHARED_TEAM_DISPLAY_NAME', '').strip()
-        or str(getattr(settings, 'MATTERMOST_SHARED_TEAM_DISPLAY_NAME', '') or '').strip()
-        or 'PolySaaS Dev Team'
-    )
 
 
 def _get_admin_token() -> str:
@@ -339,9 +315,9 @@ def _promote_to_system_admin(mm_url: str, headers: dict, user_id: str, result: d
 
 
 def _ensure_dev_team(mm_url: str, headers: dict, result: dict) -> Optional[str]:
-    """Create or ensure the shared collaboration team exists (Town Square for all subscribers)."""
-    team_name = _shared_team_name()
-    team_display_name = _shared_team_display_name()
+    """Create or ensure 'polysaas-dev-team' exists (shared team for all subscribers)."""
+    team_name = 'polysaas-dev-team'  # Mattermost team name (lowercase, hyphens)
+    team_display_name = 'PolySaaS Dev Team'  # Display name
     
     # Check if team already exists
     try:
@@ -415,20 +391,9 @@ def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, result: dict) 
         result['passthrough_endpoint_error'] = str(e)
 
 
-def _store_credentials(
-    tenant_app_id: int,
-    mm_url: str,
-    token: str,
-    mm_user_id: str,
-    username: str,
-    password: str,
-    team_id: str,
-    team_name: str,
-    oidc_enabled: bool,
-    *,
-    shared_team_id: str = '',
-    shared_team_name: str = '',
-) -> None:
+def _store_credentials(tenant_app_id: int, mm_url: str, token: str, mm_user_id: str,
+                       username: str, password: str, team_id: str, team_name: str,
+                       oidc_enabled: bool) -> None:
     if not tenant_app_id:
         return
     try:
@@ -455,31 +420,11 @@ def _store_credentials(
             cfg['mm_team_id'] = team_id
         if team_name:
             cfg['mm_team_name'] = team_name
-        if shared_team_id:
-            cfg['mm_shared_team_id'] = shared_team_id
-        if shared_team_name:
-            cfg['mm_shared_team_name'] = shared_team_name
         ta.extra_config = cfg
         ta.save(update_fields=['extra_config'])
         mark_tenant_app_active(ta, app_url=mm_url)
     except Exception as e:
         logger.warning("[MM-PROV] Credential persist failed: %s", e)
-
-
-def resolve_shared_mattermost_team_id(mm_url: str, headers: dict) -> Optional[str]:
-    """Look up the shared collaboration team ID by configured slug."""
-    team_name = _shared_team_name()
-    try:
-        resp = requests.get(
-            f"{mm_url.rstrip('/')}/api/v4/teams/name/{team_name}",
-            headers=headers,
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            return resp.json().get('id') or None
-    except Exception as exc:
-        logger.warning("[MM-PROV] Shared team lookup failed: %s", exc)
-    return None
 
 
 def _send_welcome_email(admin_email: str, mm_url: str, display_name: str) -> None:
@@ -555,37 +500,26 @@ def provision_mattermost_tenant(
     try:
         _ensure_passthrough_endpoint(tenant_schema, mm_url, result)
 
-        # Private company team — tenant-owned workspace for their org
-        company_team_id = _create_team(mm_url, headers, tenant_schema, display_name, result)
-        if not company_team_id:
+        # Create team from company name
+        team_id = _create_team(mm_url, headers, tenant_schema, display_name, result)
+        if not team_id:
             result['success'] = False
-            detail = result.get('team_error') or 'unknown'
-            result['error'] = f'Company Mattermost team unavailable: {detail}'
+            detail = result.get('team_error', 'unknown')
+            result['error'] = f'Team creation failed: {detail}'
             return result
-        company_team_name = result.get('team_name', '')
-
-        # Shared collaboration team — AI peers + cross-subscriber Town Square
-        shared_team_id = _ensure_dev_team(mm_url, headers, result)
-        if not shared_team_id:
-            result['success'] = False
-            detail = result.get('dev_team_error') or result.get('team_error') or 'unknown'
-            result['error'] = f'Shared Mattermost team unavailable: {detail}'
-            return result
-        shared_team_name = _shared_team_name()
 
         # Ensure system admin user (mmadmin) exists and has system admin role
         system_admin_id = _ensure_system_admin_user(mm_url, headers, result)
-
-        # Add system admin to shared team if both exist
-        if system_admin_id and shared_team_id:
-            _add_user_to_team(mm_url, headers, shared_team_id, system_admin_id, result)
-            logger.info("[MM-PROV] Added system admin to shared team")
+        
+        # Add system admin to tenant team if both exist
+        if system_admin_id and team_id:
+            _add_user_to_team(mm_url, headers, team_id, system_admin_id, result)
+            logger.info("[MM-PROV] Added system admin to tenant team")
 
         user_id = _create_user(mm_url, headers, admin_email, username, effective_password, result)
         token = ''
         if user_id:
-            _add_user_to_team(mm_url, headers, company_team_id, user_id, result)
-            _add_user_to_team(mm_url, headers, shared_team_id, user_id, result)
+            _add_user_to_team(mm_url, headers, team_id, user_id, result)
             token = _create_user_token(mm_url, headers, user_id, result) or ''
 
         oidc_enabled = False
@@ -595,29 +529,20 @@ def provision_mattermost_tenant(
         _store_credentials(
             tenant_app_id, mm_url, token, user_id or '',
             username, result.get('mm_effective_password') or effective_password,
-            company_team_id, company_team_name, oidc_enabled,
-            shared_team_id=shared_team_id,
-            shared_team_name=shared_team_name,
+            team_id, result.get('team_name', ''), oidc_enabled,
         )
 
         _send_welcome_email(admin_email, mm_url, display_name)
 
         result['success'] = True
         result['oidc_enabled'] = oidc_enabled
-        result['message'] = 'Mattermost tenant provisioned (company + shared teams)'
-        result['company_team_id'] = company_team_id
-        result['company_team_name'] = company_team_name
-        result['shared_team_id'] = shared_team_id
-        result['shared_team_name'] = shared_team_name
-        logger.info(
-            "[MM-PROV] Success for %s (company=%s shared=%s user=%s)",
-            tenant_schema, company_team_name, shared_team_name, user_id,
-        )
+        result['message'] = 'Mattermost tenant provisioned'
+        logger.info("[MM-PROV] Success for %s (team=%s user=%s)", tenant_schema, team_id, user_id)
 
-        # ── Setup AI Agents in shared Town Square ────────────────────────────────
+        # ── Step 8: Setup AI Agents in Town Square ───────────────────────────────
         try:
             from dose.services.mattermost_multi_agent_bot import MattermostMultiAgentBot
-            bot = MattermostMultiAgentBot(mm_url, team_name=shared_team_name)
+            bot = MattermostMultiAgentBot(mm_url, team_name=result.get('team_name', 'polysaas-dev-team'))
             bot.say_hello_all()
             result['ai_agents_setup'] = True
             logger.info("[MM-PROV] AI agents initialized in Town Square")
@@ -641,123 +566,3 @@ def provision_mattermost_tenant(
         result['success'] = False
         result['error'] = str(exc)
         return result
-
-
-def ensure_dual_mattermost_teams(
-    tenant_schema: str,
-    company_name: str = '',
-) -> Dict[str, Any]:
-    """
-    Backfill dual-team membership for an existing tenant:
-      - mm_team_id / mm_team_name  → private company team
-      - mm_shared_team_id / mm_shared_team_name → shared collaboration team
-    Ensures the MM user is a member of both teams.
-    """
-    result: Dict[str, Any] = {'tenant_schema': tenant_schema, 'success': False}
-    admin_token = _get_admin_token()
-    if not admin_token:
-        result['error'] = 'MATTERMOST_ADMIN_TOKEN not configured'
-        return result
-
-    headers = {"Authorization": f"Bearer {admin_token}"}
-    mm_url = _get_mattermost_base_url()
-    shared_name = _shared_team_name()
-
-    try:
-        from django.db import connection
-        from dose.models import Tenant, TenantApp
-
-        tenant = Tenant.objects.filter(schema_name=tenant_schema).first()
-        if not tenant:
-            result['error'] = f'Tenant not found: {tenant_schema}'
-            return result
-
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
-
-        ta = TenantApp.objects.filter(tenant=tenant, app_name='mattermost').first()
-        if not ta:
-            result['error'] = 'No Mattermost TenantApp'
-            return result
-
-        extra = dict(ta.extra_config or {})
-        user_id = (extra.get('mm_user_id') or '').strip()
-        if not user_id:
-            result['error'] = 'mm_user_id missing in extra_config'
-            return result
-
-        shared_team_id = _ensure_dev_team(mm_url, headers, result)
-        if not shared_team_id:
-            result['error'] = result.get('dev_team_error') or 'shared team unavailable'
-            return result
-
-        _add_user_to_team(mm_url, headers, shared_team_id, user_id, result)
-
-        existing_team_id = (extra.get('mm_team_id') or '').strip()
-        existing_team_name = (extra.get('mm_team_name') or '').strip()
-        company_team_id = ''
-        company_team_name = ''
-
-        if existing_team_id and existing_team_id != shared_team_id:
-            company_team_id = existing_team_id
-            company_team_name = existing_team_name
-            _add_user_to_team(mm_url, headers, company_team_id, user_id, result)
-        else:
-            # Config only had shared team (or nothing) — infer private team from MM memberships
-            try:
-                teams_resp = requests.get(
-                    f"{mm_url}/api/v4/users/{user_id}/teams",
-                    headers=headers,
-                    timeout=15,
-                )
-                if teams_resp.status_code == 200:
-                    for team in teams_resp.json():
-                        if team.get('id') and team.get('id') != shared_team_id:
-                            company_team_id = team['id']
-                            company_team_name = team.get('name') or ''
-                            break
-            except Exception as exc:
-                logger.warning("[MM-PROV] Could not list user teams: %s", exc)
-
-            if not company_team_id:
-                display = company_name or tenant.name or tenant_schema
-                prov_result: Dict[str, Any] = {}
-                company_team_id = _create_team(
-                    mm_url, headers, tenant_schema, display, prov_result,
-                ) or ''
-                company_team_name = prov_result.get('team_name') or ''
-                if company_team_id:
-                    _add_user_to_team(mm_url, headers, company_team_id, user_id, result)
-
-        extra['mm_shared_team_id'] = shared_team_id
-        extra['mm_shared_team_name'] = shared_name
-        if company_team_id:
-            extra['mm_team_id'] = company_team_id
-        if company_team_name:
-            extra['mm_team_name'] = company_team_name
-        ta.extra_config = extra
-        ta.save(update_fields=['extra_config'])
-
-        result['success'] = True
-        result['mm_user_id'] = user_id
-        result['mm_team_name'] = company_team_name
-        result['mm_team_id'] = company_team_id
-        result['mm_shared_team_name'] = shared_name
-        result['mm_shared_team_id'] = shared_team_id
-        result['message'] = (
-            f'Dual teams: company={company_team_name or "?"} shared={shared_name}'
-        )
-        logger.info(
-            "[MM-PROV] Dual-team backfill %s company=%s shared=%s user=%s",
-            tenant_schema, company_team_name, shared_name, user_id,
-        )
-        return result
-    except Exception as exc:
-        logger.error("[MM-PROV] Dual-team backfill failed for %s: %s", tenant_schema, exc, exc_info=True)
-        result['error'] = str(exc)
-        return result
-
-
-def ensure_tenant_on_shared_mattermost_team(tenant_schema: str) -> Dict[str, Any]:
-    """Legacy alias — use ensure_dual_mattermost_teams."""
-    return ensure_dual_mattermost_teams(tenant_schema)

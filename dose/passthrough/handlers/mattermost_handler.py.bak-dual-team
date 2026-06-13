@@ -595,11 +595,7 @@ window.location.replace('/');
 
     def _mm_team_name_from_request(self, request) -> str:
         extra = self._get_tenantapp_extra_config(request) or {}
-        # Passthrough opens shared Town Square (AI peers); company team remains in MM sidebar.
-        return (
-            (extra.get('mm_shared_team_name') or extra.get('shared_team_name') or '').strip()
-            or (extra.get('mm_team_name') or extra.get('team_name') or '').strip()
-        )
+        return (extra.get('mm_team_name') or extra.get('team_name') or '').strip()
 
     def _mm_default_landing_path(self, proxy_prefix: str, request=None) -> str:
         team = self._mm_team_name_from_request(request) if request else ''
