@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f
+# Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # PolySaaS Run All Services
 # Activates venv, starts Waitress WSGI server (Windows), syncs AI peers, starts Mattermost bot
 
@@ -229,15 +232,74 @@ function Start-PolySaaSAIPeersBot {
     }
 
     if ($bots.Count -eq 0) {
-        Write-Host "WARNING: AI Peers bot did not start — check .env (MATTERMOST_BOT_TOKEN, etc.)" -ForegroundColor Red
+        Write-Host "WARNING: AI Peers bot did not start — check .env (MATTERMOST_ADMIN_TOKEN, API keys)" -ForegroundColor Red
     } elseif ($bots.Count -eq 1) {
         Write-Host "AI Peers bot running (PID $($bots[0].ProcessId))" -ForegroundColor Green
     } else {
         Write-Host "WARNING: $($bots.Count) bot processes still running" -ForegroundColor Red
     }
+
+    return @{
+        Count = $bots.Count
+        Pid   = if ($bots.Count -ge 1) { ($bots | Sort-Object CreationDate -Descending | Select-Object -First 1).ProcessId } else { 0 }
+        Ok    = ($bots.Count -eq 1)
+    }
+}
+
+function Show-PolySaaSRunAllSummary {
+    param(
+        [int]$WaitressPid,
+        [bool]$WaitressOk,
+        [hashtable]$BotStatus,
+        [int]$Port = 8000
+    )
+
+    $botOk = [bool]$BotStatus.Ok
+    $allOk = $WaitressOk -and $botOk
+    $line = ('=' * 62)
+
+    Write-Host ""
+    Write-Host $line -ForegroundColor Cyan
+    Write-Host "  PolySaaS runall — complete" -ForegroundColor Cyan
+    Write-Host $line -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Deployment (current phase):" -ForegroundColor White
+    Write-Host "    Django / PolySaaS admin  -> LOCAL ONLY  http://localhost:$Port" -ForegroundColor Gray
+    Write-Host "    Mattermost + bundled apps -> Render (cloud); bot connects outbound" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Service status:" -ForegroundColor White
+
+    if ($WaitressOk) {
+        Write-Host "    [OK]   Django (Waitress)     PID $WaitressPid  port $Port" -ForegroundColor Green
+    } else {
+        Write-Host "    [FAIL] Django (Waitress)     not listening on port $Port" -ForegroundColor Red
+    }
+
+    if ($botOk) {
+        Write-Host "    [OK]   AI Peers bot          PID $($BotStatus.Pid)  (@grok @gemini @copilot)" -ForegroundColor Green
+    } elseif ($BotStatus.Count -gt 1) {
+        Write-Host "    [WARN] AI Peers bot          $($BotStatus.Count) processes — expect exactly 1" -ForegroundColor Red
+    } else {
+        Write-Host "    [FAIL] AI Peers bot          not running" -ForegroundColor Red
+    }
+
+    Write-Host ""
+    if ($allOk) {
+        Write-Host "  READY FOR DEMO / VIDEO SESSION" -ForegroundColor Green
+        Write-Host "  Pre-flight: open Mattermost Town Square and post  @grok ping" -ForegroundColor Green
+    } else {
+        Write-Host "  NOT READY — fix the [FAIL]/[WARN] items above, then run .\runall again" -ForegroundColor Red
+    }
+    Write-Host ""
+    Write-Host $line -ForegroundColor Cyan
+    Write-Host ""
 }
 
 Stop-PolySaaSServiceProcesses -Root $ProjectRoot
+
+Write-Host ""
+Write-Host "PolySaaS runall — starting local services (Django is local-only for now)..." -ForegroundColor Cyan
+Write-Host ""
 
 Write-Host "Activating virtual environment..." -ForegroundColor Cyan
 $VenvPython = Get-PolySaaSVenvPython -Root $ProjectRoot
@@ -254,32 +316,10 @@ if (-not (Test-Path $WaitressExe)) {
     }
 }
 
-$null = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
-Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
+$waitressPid = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
+$botStatus = Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
 
-Write-Host "`nRunning processes:" -ForegroundColor Cyan
 $portOwners = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
-Write-Host "  Port $WaitressPort listeners: $($portOwners.Count)" -ForegroundColor $(if ($portOwners.Count -eq 1) { 'Green' } else { 'Red' })
+$waitressOk = ($portOwners.Count -eq 1)
 
-$statusRows = @()
-foreach ($ownerPid in $portOwners) {
-    $statusRows += [PSCustomObject]@{
-        ProcessId = $ownerPid
-        Service   = "Waitress ($WaitressListen)"
-    }
-}
-Get-AIPeersBotProcesses | ForEach-Object {
-    $statusRows += [PSCustomObject]@{
-        ProcessId = $_.ProcessId
-        Service   = 'AI Peers bot'
-    }
-}
-if ($statusRows.Count -gt 0) {
-    $statusRows | Format-Table -AutoSize
-} else {
-    Write-Host "  (no service processes found)" -ForegroundColor DarkYellow
-}
-
-Write-Host "`nAll services started!" -ForegroundColor Green
-Write-Host "Django (Waitress): http://localhost:$WaitressPort" -ForegroundColor White
-Write-Host "AI Peers:          @copilot @grok @gemini in Town Square (single WebSocket bot process)" -ForegroundColor White
+Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -Port $WaitressPort

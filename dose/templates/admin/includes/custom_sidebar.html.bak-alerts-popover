@@ -618,57 +618,6 @@
         overflow-y: auto;
     }
 
-    /* Alerts dropdown — portaled to body; fixed so sidebar overflow cannot clip it */
-    #sidebar-unread-dropdown {
-        display: none;
-        position: fixed;
-        background: #ffffff;
-        color: #222;
-        width: 320px;
-        max-height: min(420px, calc(100vh - 24px));
-        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
-        border-radius: 12px;
-        z-index: 10051;
-        border: 1px solid #e2e8f0;
-        overflow: hidden;
-    }
-    #sidebar-unread-dropdown .pss-alerts-popover-header {
-        padding: 14px 16px;
-        border-bottom: 1px solid #e2e8f0;
-        font-weight: 700;
-        font-size: 14px;
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        color: #1e293b;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    #sidebar-unread-messages-list {
-        max-height: min(350px, calc(100vh - 120px));
-        overflow-y: auto;
-        font-size: 13px;
-    }
-    html[data-bs-theme="dark"] #sidebar-unread-dropdown,
-    html[data-ps-theme="darkly"] #sidebar-unread-dropdown,
-    html[data-ps-theme="cyborg"] #sidebar-unread-dropdown,
-    html[data-ps-theme="slate"] #sidebar-unread-dropdown,
-    html[data-ps-theme="solar"] #sidebar-unread-dropdown,
-    html[data-ps-theme="superhero"] #sidebar-unread-dropdown {
-        background: #2b2b2b;
-        color: #e2e8f0;
-        border-color: #4b525a;
-    }
-    html[data-bs-theme="dark"] #sidebar-unread-dropdown .pss-alerts-popover-header,
-    html[data-ps-theme="darkly"] #sidebar-unread-dropdown .pss-alerts-popover-header,
-    html[data-ps-theme="cyborg"] #sidebar-unread-dropdown .pss-alerts-popover-header,
-    html[data-ps-theme="slate"] #sidebar-unread-dropdown .pss-alerts-popover-header,
-    html[data-ps-theme="solar"] #sidebar-unread-dropdown .pss-alerts-popover-header,
-    html[data-ps-theme="superhero"] #sidebar-unread-dropdown .pss-alerts-popover-header {
-        background: linear-gradient(135deg, #343a40 0%, #2b3035 100%);
-        color: #f8f9fa;
-        border-bottom-color: #4b525a;
-    }
-
     /* ── Passthrough logo card grid ── */
     .pss-pt-cards {
         display: grid;
@@ -1043,12 +992,12 @@
                         <span class="pss-control-label">Alerts</span>
                         <span id="sidebar-unread-count" style="position: absolute; top: 4px; right: 8px; background: #e74c3c; color: #fff; border-radius: 50%; padding: 2px 5px; font-size: 0.7rem; display: none; min-width: 18px; text-align: center; font-weight: 700;">0</span>
                     </button>
-                    <div id="sidebar-unread-dropdown" role="dialog" aria-labelledby="sidebar-alerts-title" aria-hidden="true">
-                        <div class="pss-alerts-popover-header">
-                            <span id="sidebar-alerts-title">🔔 Unread Messages</span>
-                            <button type="button" id="mark-all-read-btn" style="background: none; border: none; font-size: 12px; cursor: pointer; color: #2563eb; font-weight: 600; padding: 2px 8px; border-radius: 4px; transition: background 0.15s;" title="Mark all as read">Mark all read</button>
+                    <div id="sidebar-unread-dropdown" style="display: none; position: absolute; bottom: -380px; left: -190px; background: #ffffff; color: #222; width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); border-radius: 12px; z-index: 999; border: 1px solid #e2e8f0; overflow: hidden;">
+                        <div style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; font-size: 14px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); color: #1e293b; display: flex; align-items: center; justify-content: space-between;">
+                            <span>🔔 Unread Messages</span>
+                            <button id="mark-all-read-btn" style="background: none; border: none; font-size: 12px; cursor: pointer; color: #2563eb; font-weight: 600; padding: 2px 8px; border-radius: 4px; transition: background 0.15s;" title="Mark all as read">Mark all read</button>
                         </div>
-                        <div id="sidebar-unread-messages-list"></div>
+                        <div id="sidebar-unread-messages-list" style="max-height: 350px; overflow-y: auto; font-size: 13px;"></div>
                     </div>
                 </div>
             </div>
@@ -2147,88 +2096,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 .catch(function () {});
         }
 
-        var alertsOutsideClickArmed = false;
-
-        function positionAlertsDropdown() {
-            if (!sidebarBellBtn || !sidebarUnreadDropdown) return;
-            var rect = sidebarBellBtn.getBoundingClientRect();
-            var popW = 320;
-            var gap = 10;
-            var left = rect.right + gap;
-            var top = rect.top;
-            if (left + popW > window.innerWidth - 12) {
-                left = Math.max(12, rect.left - popW - gap);
-            }
-            if (left < 12) {
-                left = 12;
-            }
-            sidebarUnreadDropdown.style.left = left + 'px';
-            sidebarUnreadDropdown.style.top = top + 'px';
-            var popH = sidebarUnreadDropdown.offsetHeight;
-            if (top + popH > window.innerHeight - 12) {
-                top = Math.max(12, window.innerHeight - popH - 12);
-                sidebarUnreadDropdown.style.top = top + 'px';
-            }
-        }
-
-        function closeAlertsDropdown() {
-            alertsOutsideClickArmed = false;
-            sidebarUnreadDropdown.style.display = 'none';
-            sidebarUnreadDropdown.setAttribute('aria-hidden', 'true');
-        }
-
-        function openAlertsDropdown() {
-            if (sidebarUnreadDropdown.parentNode !== document.body) {
-                document.body.appendChild(sidebarUnreadDropdown);
-            }
-            sidebarUnreadDropdown.style.display = 'block';
-            sidebarUnreadDropdown.setAttribute('aria-hidden', 'false');
-            positionAlertsDropdown();
-            requestAnimationFrame(positionAlertsDropdown);
-            setTimeout(function() {
-                alertsOutsideClickArmed = true;
-            }, 0);
-        }
-
-        function loadAlertsDropdownContent() {
-            fetch('/dose/api/unread-dosemessages/')
-                .then(unreadJsonOrNull)
-                .then(function(data) {
-                    if (!data) return;
-                    renderUnreadMessagesList(data);
-                    updateBadgeCount(data.count || 0);
-                    if ((data.count || 0) > 0) {
-                        markAllAsReadKeepList();
-                    }
-                    if (sidebarUnreadDropdown.style.display === 'block') {
-                        positionAlertsDropdown();
-                    }
-                })
-                .catch(function(err) {
-                    console.log('[Bell Notifications] Error opening alerts:', err);
-                });
-        }
-
         // Initial load
         updateSidebarUnreadCount();
         
-        // Refresh every 30 seconds (keep dropdown open if user is reading)
-        setInterval(function() {
-            if (sidebarUnreadDropdown.style.display === 'block') return;
-            updateSidebarUnreadCount();
-        }, 30000);
+        // Refresh every 30 seconds
+        setInterval(updateSidebarUnreadCount, 30000);
 
         // Bell click toggles dropdown; opening shows unread list and clears badge
         sidebarBellBtn.addEventListener('click', function(e) {
-            e.preventDefault();
             e.stopPropagation();
             const isVisible = sidebarUnreadDropdown.style.display === 'block';
 
-            if (isVisible) {
-                closeAlertsDropdown();
+            if (!isVisible) {
+                sidebarUnreadDropdown.style.display = 'block';
+                fetch('/dose/api/unread-dosemessages/')
+                    .then(unreadJsonOrNull)
+                    .then(function(data) {
+                        if (!data) return;
+                        renderUnreadMessagesList(data);
+                        updateBadgeCount(data.count || 0);
+                        if ((data.count || 0) > 0) {
+                            markAllAsReadKeepList();
+                        }
+                    })
+                    .catch(function(err) {
+                        console.log('[Bell Notifications] Error opening alerts:', err);
+                    });
             } else {
-                openAlertsDropdown();
-                loadAlertsDropdownContent();
+                sidebarUnreadDropdown.style.display = 'none';
             }
         });
 
@@ -2247,32 +2142,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
-        // Close dropdown when clicking outside (deferred so the opening click does not instantly close)
+        // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {
-            if (!alertsOutsideClickArmed || sidebarUnreadDropdown.style.display !== 'block') return;
             if (!sidebarBellBtn.contains(e.target) && !sidebarUnreadDropdown.contains(e.target)) {
-                closeAlertsDropdown();
+                sidebarUnreadDropdown.style.display = 'none';
             }
         });
 
         // Close on Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && sidebarUnreadDropdown.style.display === 'block') {
-                closeAlertsDropdown();
+                sidebarUnreadDropdown.style.display = 'none';
             }
         });
-
-        window.addEventListener('resize', function() {
-            if (sidebarUnreadDropdown.style.display === 'block') {
-                positionAlertsDropdown();
-            }
-        });
-
-        window.addEventListener('scroll', function() {
-            if (sidebarUnreadDropdown.style.display === 'block') {
-                positionAlertsDropdown();
-            }
-        }, true);
     }
 });
 

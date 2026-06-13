@@ -177,15 +177,30 @@ function Get-AIPeersBotProcesses {
     }
 }
 
+function Get-AIPeersBotProcessRoots {
+    # Windows Python often spawns a parent+child pair with the same command line.
+    # Count/stop process trees by root PID, not every matching python.exe.
+    $all = @(Get-AIPeersBotProcesses)
+    if ($all.Count -eq 0) { return @() }
+
+    $byPid = @{}
+    foreach ($proc in $all) { $byPid[$proc.ProcessId] = $proc }
+
+    @($all | Where-Object {
+        $parent = $byPid[$_.ParentProcessId]
+        -not ($parent -and $parent.CommandLine -like '*run_mattermost_bot*')
+    })
+}
+
 function Start-PolySaaSAIPeersBot {
     param(
         [string]$PythonExe,
         [string]$Root
     )
 
-    # Always start from zero bot processes
-    Get-AIPeersBotProcesses | ForEach-Object {
-        Write-Host "  Stopping stray bot PID $($_.ProcessId)" -ForegroundColor Yellow
+    # Always start from zero bot process trees
+    Get-AIPeersBotProcessRoots | ForEach-Object {
+        Write-Host "  Stopping stray bot tree (root PID $($_.ProcessId))" -ForegroundColor Yellow
         Stop-ProcessTree -ProcessId $_.ProcessId
     }
     Start-Sleep -Seconds 2
@@ -208,39 +223,101 @@ function Start-PolySaaSAIPeersBot {
         -ArgumentList "manage.py", "run_mattermost_bot" `
         -WorkingDirectory $Root `
         -WindowStyle Hidden
-    Start-Sleep -Seconds 4
+    Start-Sleep -Seconds 6
 
-    $bots = @(Get-AIPeersBotProcesses)
-    if ($bots.Count -gt 1) {
-        Write-Host "Found $($bots.Count) bot processes — keeping newest, stopping others..." -ForegroundColor Red
-        $keep = $bots | Sort-Object CreationDate -Descending | Select-Object -First 1
-        $bots | Where-Object { $_.ProcessId -ne $keep.ProcessId } | ForEach-Object {
+    $botRoots = @(Get-AIPeersBotProcessRoots)
+    if ($botRoots.Count -gt 1) {
+        Write-Host "Found $($botRoots.Count) bot trees — keeping newest, stopping others..." -ForegroundColor Red
+        $keep = $botRoots | Sort-Object CreationDate -Descending | Select-Object -First 1
+        $botRoots | Where-Object { $_.ProcessId -ne $keep.ProcessId } | ForEach-Object {
             Stop-ProcessTree -ProcessId $_.ProcessId
         }
         Start-Sleep -Seconds 2
-        $bots = @(Get-AIPeersBotProcesses)
+        $botRoots = @(Get-AIPeersBotProcessRoots)
     }
 
-    if ($bots.Count -eq 0) {
+    if ($botRoots.Count -eq 0) {
         Write-Host "  Bot not running after start — retrying once..." -ForegroundColor DarkYellow
         Start-Process -FilePath $PythonExe `
             -ArgumentList "manage.py", "run_mattermost_bot" `
             -WorkingDirectory $Root `
             -WindowStyle Hidden
-        Start-Sleep -Seconds 4
-        $bots = @(Get-AIPeersBotProcesses)
+        Start-Sleep -Seconds 6
+        $botRoots = @(Get-AIPeersBotProcessRoots)
     }
 
-    if ($bots.Count -eq 0) {
-        Write-Host "WARNING: AI Peers bot did not start — check .env (MATTERMOST_BOT_TOKEN, etc.)" -ForegroundColor Red
-    } elseif ($bots.Count -eq 1) {
-        Write-Host "AI Peers bot running (PID $($bots[0].ProcessId))" -ForegroundColor Green
+    $botPids = @(Get-AIPeersBotProcesses | ForEach-Object { $_.ProcessId })
+    if ($botRoots.Count -eq 0) {
+        Write-Host "WARNING: AI Peers bot did not start — check .env (MATTERMOST_ADMIN_TOKEN, API keys)" -ForegroundColor Red
+    } elseif ($botRoots.Count -eq 1) {
+        $rootPid = $botRoots[0].ProcessId
+        $procNote = if ($botPids.Count -gt 1) { " ($($botPids.Count) PIDs — normal on Windows)" } else { "" }
+        Write-Host "AI Peers bot running (root PID $rootPid$procNote)" -ForegroundColor Green
     } else {
-        Write-Host "WARNING: $($bots.Count) bot processes still running" -ForegroundColor Red
+        Write-Host "WARNING: $($botRoots.Count) bot trees still running" -ForegroundColor Red
+    }
+
+    return @{
+        Count = $botRoots.Count
+        Pid   = if ($botRoots.Count -ge 1) { ($botRoots | Sort-Object CreationDate -Descending | Select-Object -First 1).ProcessId } else { 0 }
+        Ok    = ($botRoots.Count -eq 1)
     }
 }
 
+function Show-PolySaaSRunAllSummary {
+    param(
+        [int]$WaitressPid,
+        [bool]$WaitressOk,
+        [hashtable]$BotStatus,
+        [int]$Port = 8000
+    )
+
+    $botOk = [bool]$BotStatus.Ok
+    $allOk = $WaitressOk -and $botOk
+    $line = ('=' * 62)
+
+    Write-Host ""
+    Write-Host $line -ForegroundColor Cyan
+    Write-Host "  PolySaaS runall — complete" -ForegroundColor Cyan
+    Write-Host $line -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Deployment (current phase):" -ForegroundColor White
+    Write-Host "    Django / PolySaaS admin  -> LOCAL ONLY  http://localhost:$Port" -ForegroundColor Gray
+    Write-Host "    Mattermost + bundled apps -> Render (cloud); bot connects outbound" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Service status:" -ForegroundColor White
+
+    if ($WaitressOk) {
+        Write-Host "    [OK]   Django (Waitress)     PID $WaitressPid  port $Port" -ForegroundColor Green
+    } else {
+        Write-Host "    [FAIL] Django (Waitress)     not listening on port $Port" -ForegroundColor Red
+    }
+
+    if ($botOk) {
+        Write-Host "    [OK]   AI Peers bot          PID $($BotStatus.Pid)  (@grok @gemini @copilot)" -ForegroundColor Green
+    } elseif ($BotStatus.Count -gt 1) {
+        Write-Host "    [WARN] AI Peers bot          $($BotStatus.Count) bot trees — expect exactly 1" -ForegroundColor Red
+    } else {
+        Write-Host "    [FAIL] AI Peers bot          not running" -ForegroundColor Red
+    }
+
+    Write-Host ""
+    if ($allOk) {
+        Write-Host "  READY FOR DEMO / VIDEO SESSION" -ForegroundColor Green
+        Write-Host "  Pre-flight: open Mattermost Town Square and post  @grok ping" -ForegroundColor Green
+    } else {
+        Write-Host "  NOT READY — fix the [FAIL]/[WARN] items above, then run .\runall again" -ForegroundColor Red
+    }
+    Write-Host ""
+    Write-Host $line -ForegroundColor Cyan
+    Write-Host ""
+}
+
 Stop-PolySaaSServiceProcesses -Root $ProjectRoot
+
+Write-Host ""
+Write-Host "PolySaaS runall — starting local services (Django is local-only for now)..." -ForegroundColor Cyan
+Write-Host ""
 
 Write-Host "Activating virtual environment..." -ForegroundColor Cyan
 $VenvPython = Get-PolySaaSVenvPython -Root $ProjectRoot
@@ -257,32 +334,10 @@ if (-not (Test-Path $WaitressExe)) {
     }
 }
 
-$null = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
-Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
+$waitressPid = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
+$botStatus = Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
 
-Write-Host "`nRunning processes:" -ForegroundColor Cyan
 $portOwners = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
-Write-Host "  Port $WaitressPort listeners: $($portOwners.Count)" -ForegroundColor $(if ($portOwners.Count -eq 1) { 'Green' } else { 'Red' })
+$waitressOk = ($portOwners.Count -eq 1)
 
-$statusRows = @()
-foreach ($ownerPid in $portOwners) {
-    $statusRows += [PSCustomObject]@{
-        ProcessId = $ownerPid
-        Service   = "Waitress ($WaitressListen)"
-    }
-}
-Get-AIPeersBotProcesses | ForEach-Object {
-    $statusRows += [PSCustomObject]@{
-        ProcessId = $_.ProcessId
-        Service   = 'AI Peers bot'
-    }
-}
-if ($statusRows.Count -gt 0) {
-    $statusRows | Format-Table -AutoSize
-} else {
-    Write-Host "  (no service processes found)" -ForegroundColor DarkYellow
-}
-
-Write-Host "`nAll services started!" -ForegroundColor Green
-Write-Host "Django (Waitress): http://localhost:$WaitressPort" -ForegroundColor White
-Write-Host "AI Peers:          @copilot @grok @gemini in Town Square (single WebSocket bot process)" -ForegroundColor White
+Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -Port $WaitressPort
