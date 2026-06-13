@@ -1,6 +1,4 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: PolySaaS AI Context-Aware Chat — commit PENDING -->
-{# Staff PolySaaS AI chat: defaults inline in admin content; "Pop out" → fixed floating panel. Layout/mode in sessionStorage; chat resets each page. #}
+{# Staff PolySaaS AI chat: defaults inline in admin content; "Pop out" → fixed floating panel. Persisted in sessionStorage. #}
 {% load i18n static %}
 <style>
     #pssAdminAiChatDock {
@@ -121,8 +119,8 @@
 <script src="{% static 'admin/js/polysaas_ai_page_context.js' %}?v=20260613-geronimo"></script>
 <script>
 (function () {
-    var SK_HISTORY_LEGACY = 'pss_admin_llm_v1_history';
-    var SK_META_LEGACY = 'pss_admin_llm_v1_meta';
+    var SK_HISTORY = 'pss_admin_llm_v1_history';
+    var SK_META = 'pss_admin_llm_v1_meta';
     var SK_MODE = 'pss_admin_llm_v1_mode';
     var SK_LAYOUT = 'pss_admin_llm_v1_layout';
     var SK_DOCK_OPEN_LEGACY = 'pss_admin_llm_v1_dock_open';
@@ -248,11 +246,44 @@
             }
         } catch (e) {}
     }
-    function purgeLegacyChatStorage() {
+    function persistHistory() {
         try {
-            sessionStorage.removeItem(SK_HISTORY_LEGACY);
-            sessionStorage.removeItem(SK_META_LEGACY);
+            var s = JSON.stringify(history);
+            if (s.length > 450000) {
+                history = history.slice(-40);
+                s = JSON.stringify(history);
+            }
+            sessionStorage.setItem(SK_HISTORY, s);
         } catch (e) {}
+    }
+    function persistMeta(t) {
+        try {
+            sessionStorage.setItem(SK_META, t || '');
+        } catch (e) {}
+    }
+    function loadHistoryFromStorage() {
+        history = [];
+        try {
+            var raw = sessionStorage.getItem(SK_HISTORY);
+            if (!raw) return;
+            var arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) return;
+            for (var i = 0; i < arr.length; i++) {
+                var it = arr[i];
+                if (!it || (it.role !== 'user' && it.role !== 'assistant')) continue;
+                history.push({ role: it.role, content: String(it.content || '') });
+            }
+        } catch (e) {
+            history = [];
+        }
+    }
+    function renderLogFromHistory() {
+        if (!logEl) return;
+        logEl.innerHTML = '';
+        for (var j = 0; j < history.length; j++) {
+            var h = history[j];
+            appendLine(h.role === 'user' ? 'user' : 'assistant', h.content);
+        }
     }
     function appendLine(role, text) {
         var wrap = document.createElement('div');
@@ -269,13 +300,16 @@
     }
     function setMeta(text) {
         if (meta) meta.textContent = text || '';
+        persistMeta(text || '');
     }
     function clearChat() {
         history = [];
         if (logEl) logEl.innerHTML = '';
         setMeta('');
-        purgeLegacyChatStorage();
-        showGreeting();
+        try {
+            sessionStorage.removeItem(SK_HISTORY);
+            sessionStorage.removeItem(SK_META);
+        } catch (e) {}
     }
     function pageContextForSend() {
         if (window.PolySaaSAiPageContext && typeof window.PolySaaSAiPageContext.collect === 'function') {
@@ -315,11 +349,14 @@
     }
 
     function initChatUi() {
-        history = [];
-        if (logEl) logEl.innerHTML = '';
-        purgeLegacyChatStorage();
+        loadHistoryFromStorage();
+        renderLogFromHistory();
         showGreeting();
         loadModeRadios();
+        try {
+            var mt = sessionStorage.getItem(SK_META);
+            if (mt && meta) meta.textContent = mt;
+        } catch (e) {}
     }
 
     initChatUi();
@@ -394,6 +431,7 @@
                 appendLine('assistant', reply);
                 history.push({ role: 'user', content: text });
                 history.push({ role: 'assistant', content: reply });
+                persistHistory();
                 var tail = (data.provider || '') + ' / ' + (data.model || '') +
                     (data.task_bucket ? (' · ' + data.task_bucket) : '');
                 if (data.meta && data.meta.ml_studio) {

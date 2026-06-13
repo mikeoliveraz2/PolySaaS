@@ -271,6 +271,10 @@ LLM_ROUTER_HEAVY_PROVIDER = env("LLM_ROUTER_HEAVY_PROVIDER", default="anthropic"
 LLM_ROUTER_HEAVY_MODEL = env("LLM_ROUTER_HEAVY_MODEL", default="claude-sonnet-4-6")
 # Phase 1: extra system text for staff PolySaaS AI admin chat (after platform link block).
 LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT = env.str("LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT", default="").strip()
+# BINGO: PolySaaS AI Context-Aware Chat — commit PENDING
+# PolySaaS AI chat (Geronimo) — default Gemini for context-aware co-pilot demo
+LLM_ROUTER_ADMIN_CHAT_PROVIDER = env("LLM_ROUTER_ADMIN_CHAT_PROVIDER", default="gemini")
+LLM_ROUTER_ADMIN_CHAT_MODEL = env("LLM_ROUTER_ADMIN_CHAT_MODEL", default="gemini-2.5-flash")
 # Phase 2: tenant MLPrompt.key — refine (two-step LLM) or inject (single-call) for admin chat.
 LLM_ROUTER_ML_STUDIO_REFINE_KEY = env("LLM_ROUTER_ML_STUDIO_REFINE_KEY", default="polysaas_admin_chat_refine")
 LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM = env.bool("LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM", default=True)

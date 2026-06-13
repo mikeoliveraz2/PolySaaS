@@ -1,5 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: PolySaaS AI Context-Aware Chat — commit PENDING -->
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
 
@@ -214,8 +212,8 @@
     <script src="{% static 'admin/js/polysaas_ai_page_context.js' %}?v=20260613-geronimo"></script>
     <script>
     (function () {
-        var SK_HISTORY_LEGACY = 'pss_admin_llm_v1_history';
-        var SK_META_LEGACY = 'pss_admin_llm_v1_meta';
+        var SK_HISTORY = 'pss_admin_llm_v1_history';
+        var SK_META = 'pss_admin_llm_v1_meta';
         var SK_MODE = 'pss_admin_llm_v1_mode';
 
         var root = document.getElementById('adminLlmRouterChatRoot');
@@ -229,16 +227,49 @@
         var pageCtxEl = document.getElementById('polysaasAiPageContext');
         var history = [];
 
-        function purgeLegacyChatStorage() {
+        function persistHistory() {
             try {
-                sessionStorage.removeItem(SK_HISTORY_LEGACY);
-                sessionStorage.removeItem(SK_META_LEGACY);
+                var s = JSON.stringify(history);
+                if (s.length > 450000) {
+                    history = history.slice(-40);
+                    s = JSON.stringify(history);
+                }
+                sessionStorage.setItem(SK_HISTORY, s);
+            } catch (e) {}
+        }
+        function persistMeta(text) {
+            try {
+                sessionStorage.setItem(SK_META, text || '');
             } catch (e) {}
         }
         function persistMode() {
             try {
                 sessionStorage.setItem(SK_MODE, selectedMode());
             } catch (e) {}
+        }
+        function loadHistoryFromStorage() {
+            history = [];
+            try {
+                var raw = sessionStorage.getItem(SK_HISTORY);
+                if (!raw) return;
+                var arr = JSON.parse(raw);
+                if (!Array.isArray(arr)) return;
+                for (var i = 0; i < arr.length; i++) {
+                    var it = arr[i];
+                    if (!it || (it.role !== 'user' && it.role !== 'assistant')) continue;
+                    history.push({ role: it.role, content: String(it.content || '') });
+                }
+            } catch (e) {
+                history = [];
+            }
+        }
+        function renderLogFromHistory() {
+            if (!logEl) return;
+            logEl.innerHTML = '';
+            for (var j = 0; j < history.length; j++) {
+                var h = history[j];
+                appendLine(h.role === 'user' ? 'user' : 'assistant', h.content);
+            }
         }
         function loadModeFromStorage() {
             try {
@@ -289,40 +320,16 @@
         }
         function setMeta(text) {
             meta.textContent = text || '';
-        }
-        function detectFormName() {
-            var crumbs = document.querySelectorAll('.breadcrumbs a, #breadcrumbs a, .breadcrumb-item a, .breadcrumb a');
-            if (crumbs.length >= 2) {
-                var last = crumbs[crumbs.length - 1].textContent.trim();
-                if (last && last.length > 1) return last;
-            }
-            var m = window.location.pathname.match(/\/admin\/\w+\/(\w+)\//);
-            if (m) {
-                return m[1].replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
-            }
-            return 'this page';
-        }
-        function showGreeting() {
-            if (history.length > 0) return;
-            var username = '{{ user.get_short_name|default:user.username|escapejs }}';
-            var formName = detectFormName();
-            var greeting = 'Hi ' + (username || 'there') + " — I'm **Geronimo**, your context-aware PolySaaS co-pilot. "
-                + 'I can see where you are on this page. How can I help with ' + formName + '?';
-            appendLine('assistant', greeting);
+            persistMeta(text || '');
         }
         function clearChat() {
             history = [];
             logEl.innerHTML = '';
             setMeta('');
-            purgeLegacyChatStorage();
-            showGreeting();
-        }
-        function initChatUi() {
-            history = [];
-            logEl.innerHTML = '';
-            purgeLegacyChatStorage();
-            showGreeting();
-            loadModeFromStorage();
+            try {
+                sessionStorage.removeItem(SK_HISTORY);
+                sessionStorage.removeItem(SK_META);
+            } catch (e) {}
         }
         sendBtn.addEventListener('click', function () {
             var text = (input.value || '').trim();
@@ -362,6 +369,7 @@
                 appendLine('assistant', reply);
                 history.push({ role: 'user', content: text });
                 history.push({ role: 'assistant', content: reply });
+                persistHistory();
                 var tail = (data.provider || '') + ' / ' + (data.model || '') +
                     (data.task_bucket ? (' · ' + data.task_bucket) : '');
                 if (data.meta && data.meta.ml_studio) {
@@ -391,7 +399,13 @@
             r.addEventListener('change', persistMode);
         });
 
-        initChatUi();
+        loadHistoryFromStorage();
+        renderLogFromHistory();
+        loadModeFromStorage();
+        try {
+            var sm = sessionStorage.getItem(SK_META);
+            if (sm) meta.textContent = sm;
+        } catch (e) {}
     })();
     </script>
 {% endblock %}

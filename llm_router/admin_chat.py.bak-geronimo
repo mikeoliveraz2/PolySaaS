@@ -1,6 +1,4 @@
 """Staff-only PolySaaS AI chat (admin shell) + JSON API for the in-process LLM router."""
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: PolySaaS AI Context-Aware Chat — commit PENDING
 
 from __future__ import annotations
 
@@ -22,29 +20,13 @@ from llm_router.ml_studio_chat import (
     resolve_effective_user_message,
 )
 from llm_router.providers import complete_chat
-from llm_router.router import RoutePlan, route
+from llm_router.router import route
 
 log = logging.getLogger(__name__)
 
 _MAX_MESSAGE = 16000
 _MAX_HISTORY_TURNS = 24
 _MAX_CONTENT_PER_MSG = 32000
-_MAX_PAGE_CONTEXT = 2000
-
-
-def _admin_chat_route_plan(prompt: str) -> RoutePlan:
-    """Admin PolySaaS AI chat — default Gemini for demo / Google for Startups signal."""
-    provider = (getattr(settings, "LLM_ROUTER_ADMIN_CHAT_PROVIDER", "") or "gemini").strip().lower()
-    model = (getattr(settings, "LLM_ROUTER_ADMIN_CHAT_MODEL", "") or "gemini-2.5-flash").strip()
-    if provider:
-        return RoutePlan(
-            provider=provider,
-            model=model,
-            task_bucket="standard",
-            user_tier="staff",
-            reason="admin_chat_configured_provider",
-        )
-    return route(prompt=prompt, user_tier="staff")
 
 
 def _normalize_history(raw: Any) -> list[dict[str, str]]:
@@ -116,7 +98,7 @@ def admin_llm_router_chat_api(request):
     mode = (body.get("mode") or "standard").strip().lower()
     if mode not in ("standard", "ml_studio"):
         mode = "standard"
-    page_context = str(body.get("page_context") or "")[:_MAX_PAGE_CONTEXT]
+    page_context = str(body.get("page_context") or "")[:500]
 
     history = _normalize_history(body.get("history"))
     ml_appendix = ""
@@ -145,10 +127,9 @@ def admin_llm_router_chat_api(request):
     system = build_staff_admin_system_prompt(
         request,
         ml_studio_instruction_appendix=ml_appendix,
-        page_context=page_context,
     )
 
-    plan = _admin_chat_route_plan(effective)
+    plan = route(prompt=effective, user_tier="staff")
     try:
         reply = complete_chat(
             plan,
@@ -194,27 +175,19 @@ def tenant_llm_router_chat_api(request):
             return JsonResponse({"error": "message_too_long"}, status=400)
 
         history = _normalize_history(body.get("history"))
-        page_context = str(body.get("page_context") or "")[:_MAX_PAGE_CONTEXT]
         messages = list(history)
         messages.append({"role": "user", "content": message})
 
         # Build system prompt
         try:
-            system = build_staff_admin_system_prompt(
-                request,
-                ml_studio_instruction_appendix="",
-                page_context=page_context,
-            )
+            system = build_staff_admin_system_prompt(request, ml_studio_instruction_appendix="")
         except Exception as e:
             log.warning("Failed to build system prompt: %s", e)
-            system = (
-                "You are Geronimo, the PolySaaS AI co-pilot. "
-                "Answer questions about workspace features and how-tos."
-            )
+            system = "You are a helpful assistant for PolySaaS users. Answer questions about workspace features and how-tos."
 
-        # Route and complete — Gemini for tenant passthrough embed chat
+        # Route and complete
         try:
-            plan = _admin_chat_route_plan(message)
+            plan = route(prompt=message, user_tier="standard")
         except Exception as e:
             log.warning("LLM routing failed: %s", e)
             plan = None
