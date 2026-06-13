@@ -19,7 +19,7 @@ class DisplaySettingsView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Sidebar Alerts Dose Messages — commit PENDING
+# BINGO: Sidebar Alerts Dose Messages — commit d8a02538
 class UnreadDoseMessagesView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]

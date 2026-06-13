@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13  
 **Declared by:** Michael  
-**Commit:** `(filled after commit)`  
+**Commit:** `d8a02538`  
 **Baseline:** BINGO `c9339777` — Subscribe behavior enhanced  
 **Test URL:** Any admin page with sidebar (e.g. `http://localhost:8000/admin/`)
 
