@@ -18,70 +18,15 @@ class DisplaySettingsView(APIView):
         })
 
 @method_decorator(csrf_exempt, name='dispatch')
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Sidebar Alerts Dose Messages — commit PENDING
 class UnreadDoseMessagesView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def _unread_queryset(self, request):
-        from dose.models import DoseMessage
-
-        qs = DoseMessage.objects.filter(is_read=False).order_by('-created_at')
-        if not request.user.is_superuser:
-            qs = qs.filter(user=request.user)
-        return qs
-
-    @staticmethod
-    def _serialize_messages(queryset):
-        return [
-            {
-                'id': msg.id,
-                'message': msg.message,
-                'level': msg.level,
-                'created_at': msg.created_at.isoformat() if msg.created_at else None,
-            }
-            for msg in queryset
-        ]
-
     def get(self, request, *args, **kwargs):
-        from django.http import JsonResponse
-
-        messages = self._serialize_messages(self._unread_queryset(request))
-        return JsonResponse({'count': len(messages), 'messages': messages})
-
-    def post(self, request, *args, **kwargs):
-        from django.http import JsonResponse
-
-        updated = self._unread_queryset(request).update(is_read=True)
+        # Return a stub unread message count
         return JsonResponse({
-            'count': 0,
-            'messages': [],
-            'updated': updated,
-            'success': True,
+            'unread_count': 0
         })
-
-    def patch(self, request, *args, **kwargs):
-        import json
-
-        from django.http import JsonResponse
-        from dose.models import DoseMessage
-
-        try:
-            body = json.loads(request.body or b'{}')
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
-
-        message_id = body.get('message_id')
-        if not message_id:
-            return JsonResponse({'error': 'message_id required'}, status=400)
-
-        filt = {'id': message_id, 'is_read': False}
-        if not request.user.is_superuser:
-            filt['user'] = request.user
-        updated = DoseMessage.objects.filter(**filt).update(is_read=True)
-        count = self._unread_queryset(request).count()
-        return JsonResponse({'success': updated > 0, 'updated': updated, 'count': count})
 # Page after successful subscribe: connect to Google or skip
 def connect_social_after_subscribe(request):
     return render(request, 'dose/connect_social_after_subscribe.html')

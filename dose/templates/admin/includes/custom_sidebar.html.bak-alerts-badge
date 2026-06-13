@@ -1,6 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
-<!-- BINGO: Sidebar Alerts Dose Messages — commit PENDING -->
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
 {% load i18n static custom_menu_tags %}
 <!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
@@ -1922,99 +1921,78 @@ document.addEventListener('DOMContentLoaded', function() {
             return icons[level] || '📝';
         }
 
-        // Update badge only
-        function updateBadgeCount(count) {
-            const countSpan = document.getElementById('sidebar-unread-count');
-            if (!countSpan) return;
-            countSpan.textContent = count > 99 ? '99+' : count;
-            countSpan.style.display = count > 0 ? 'inline-block' : 'none';
-            countSpan.style.background = count > 0 ? '#ef4444' : '#9ca3af';
-        }
-
-        // Render unread messages into the dropdown list
-        function renderUnreadMessagesList(data) {
-            const messagesList = document.getElementById('sidebar-unread-messages-list');
-            if (!messagesList) return;
-
-            messagesList.innerHTML = '';
-            const messages = (data && data.messages) ? data.messages : [];
-
-            if (messages.length > 0) {
-                const recentMessages = messages.slice(0, 20);
-
-                recentMessages.forEach(function(msg) {
-                    const item = document.createElement('div');
-                    item.style.cssText = 'padding: 10px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; position: relative;';
-                    item.setAttribute('data-message-id', msg.id);
-
-                    item.innerHTML = `
-                        <div style="display: flex; align-items: flex-start; gap: 8px;">
-                            <span style="flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: ${getLevelColor(msg.level)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${getLevelIcon(msg.level)}</span>
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="font-size: 11px; font-weight: 600; color: ${getLevelColor(msg.level)}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">${msg.level}</div>
-                                <div style="font-size: 12px; color: #334155; line-height: 1.4; word-wrap: break-word;">${msg.message}</div>
-                                <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">${formatRelativeTime(msg.created_at)}</div>
-                            </div>
-                        </div>
-                    `;
-
-                    item.addEventListener('mouseenter', function() {
-                        this.style.background = '#f8fafc';
-                    });
-                    item.addEventListener('mouseleave', function() {
-                        this.style.background = '';
-                    });
-
-                    item.addEventListener('click', function() {
-                        const messageId = this.getAttribute('data-message-id');
-                        markMessageAsRead(messageId, this);
-                    });
-
-                    messagesList.appendChild(item);
-                });
-
-                if (messages.length > 20) {
-                    const moreItem = document.createElement('div');
-                    moreItem.style.cssText = 'padding: 10px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0;';
-                    moreItem.textContent = `+ ${messages.length - 20} more messages`;
-                    messagesList.appendChild(moreItem);
-                }
-            } else {
-                messagesList.innerHTML = `
-                    <div style="padding: 30px 15px; text-align: center;">
-                        <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
-                        <div style="color: #64748b; font-size: 13px;">All caught up!</div>
-                        <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">No unread messages</div>
-                    </div>
-                `;
-            }
-        }
-
-        // Mark all read without clearing the visible list (badge clear on open)
-        function markAllAsReadKeepList() {
-            fetch('/dose/api/unread-dosemessages/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCSRFToken()
-                }
-            })
-            .then(unreadJsonOrNull)
-            .then(function () {
-                updateBadgeCount(0);
-            })
-            .catch(function(err) {
-                console.log('[Bell Notifications] Error marking all as read:', err);
-            });
-        }
-
         // Update unread count and populate dropdown
         function updateSidebarUnreadCount() {
             fetch('/dose/api/unread-dosemessages/')
                 .then(unreadJsonOrNull)
                 .then(data => {
                     if (!data) return;
-                    updateBadgeCount(data.count || 0);
-                    renderUnreadMessagesList(data);
+                    
+                    const count = data.count || 0;
+                    const countSpan = document.getElementById('sidebar-unread-count');
+                    if (countSpan) {
+                        countSpan.textContent = count > 99 ? '99+' : count;
+                        countSpan.style.display = count > 0 ? 'inline-block' : 'none';
+                        countSpan.style.background = count > 0 ? '#ef4444' : '#9ca3af';
+                    }
+
+                    const messagesList = document.getElementById('sidebar-unread-messages-list');
+                    if (messagesList) {
+                        messagesList.innerHTML = '';
+                        
+                        if (data.messages && data.messages.length > 0) {
+                            // Show most recent 20 messages
+                            const recentMessages = data.messages.slice(0, 20);
+                            
+                            recentMessages.forEach(function(msg) {
+                                const item = document.createElement('div');
+                                item.style.cssText = 'padding: 10px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; position: relative;';
+                                item.setAttribute('data-message-id', msg.id);
+                                
+                                item.innerHTML = `
+                                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                        <span style="flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: ${getLevelColor(msg.level)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;">${getLevelIcon(msg.level)}</span>
+                                        <div style="flex: 1; min-width: 0;">
+                                            <div style="font-size: 11px; font-weight: 600; color: ${getLevelColor(msg.level)}; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">${msg.level}</div>
+                                            <div style="font-size: 12px; color: #334155; line-height: 1.4; word-wrap: break-word;">${msg.message}</div>
+                                            <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">${formatRelativeTime(msg.created_at)}</div>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Hover effect
+                                item.addEventListener('mouseenter', function() {
+                                    this.style.background = '#f8fafc';
+                                });
+                                item.addEventListener('mouseleave', function() {
+                                    this.style.background = '';
+                                });
+                                
+                                // Click to view and mark as read
+                                item.addEventListener('click', function() {
+                                    const messageId = this.getAttribute('data-message-id');
+                                    markMessageAsRead(messageId, this);
+                                });
+                                
+                                messagesList.appendChild(item);
+                            });
+                            
+                            if (data.messages.length > 20) {
+                                const moreItem = document.createElement('div');
+                                moreItem.style.cssText = 'padding: 10px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0;';
+                                moreItem.textContent = `+ ${data.messages.length - 20} more messages`;
+                                messagesList.appendChild(moreItem);
+                            }
+                        } else {
+                            messagesList.innerHTML = `
+                                <div style="padding: 30px 15px; text-align: center;">
+                                    <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
+                                    <div style="color: #64748b; font-size: 13px;">All caught up!</div>
+                                    <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">No unread messages</div>
+                                </div>
+                            `;
+                        }
+                    }
                 })
                 .catch(function(err) {
                     console.log('[Bell Notifications] Error fetching messages:', err);
@@ -2091,7 +2069,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(unreadJsonOrNull)
                 .then(data => {
                     if (!data) return;
-                    updateBadgeCount(data.count || 0);
+                    const count = data.count || 0;
+                    const countSpan = document.getElementById('sidebar-unread-count');
+                    if (countSpan) {
+                        countSpan.textContent = count > 99 ? '99+' : count;
+                        countSpan.style.display = count > 0 ? 'inline-block' : 'none';
+                        countSpan.style.background = count > 0 ? '#ef4444' : '#9ca3af';
+                    }
                 })
                 .catch(function () {});
         }
@@ -2102,26 +2086,15 @@ document.addEventListener('DOMContentLoaded', function() {
         // Refresh every 30 seconds
         setInterval(updateSidebarUnreadCount, 30000);
 
-        // Bell click toggles dropdown; opening shows unread list and clears badge
+        // Bell click toggles dropdown
         sidebarBellBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             const isVisible = sidebarUnreadDropdown.style.display === 'block';
-
+            
             if (!isVisible) {
                 sidebarUnreadDropdown.style.display = 'block';
-                fetch('/dose/api/unread-dosemessages/')
-                    .then(unreadJsonOrNull)
-                    .then(function(data) {
-                        if (!data) return;
-                        renderUnreadMessagesList(data);
-                        updateBadgeCount(data.count || 0);
-                        if ((data.count || 0) > 0) {
-                            markAllAsReadKeepList();
-                        }
-                    })
-                    .catch(function(err) {
-                        console.log('[Bell Notifications] Error opening alerts:', err);
-                    });
+                // Refresh the list when opening
+                updateSidebarUnreadCount();
             } else {
                 sidebarUnreadDropdown.style.display = 'none';
             }
