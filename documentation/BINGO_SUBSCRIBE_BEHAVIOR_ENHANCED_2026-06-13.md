@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-13  
 **Declared by:** Michael  
-**Commit:** `(filled after commit)`  
+**Commit:** `c9339777`  
 **Baseline:** BINGO `fd9febb8` — PolySaaS AI context-aware chat (Geronimo)  
 **Test URL:** `http://localhost:8000/dose/subscribe/`
 
