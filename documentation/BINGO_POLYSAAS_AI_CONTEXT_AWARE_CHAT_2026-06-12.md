@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-12  
 **Declared by:** Michael  
-**Commit:** `(filled after commit)`  
+**Commit:** `fd9febb8`  
 **Baseline:** BINGO `7073725c` — Mattermost dual-team provisioning  
 **Test tenant:** PolySaaS Test 154 (`polysaast154` / schema `polysaasst154`)  
 **Test URL:** `http://localhost:8000/admin/dose/instruction/add/` (any admin page with inline dock)

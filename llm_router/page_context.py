@@ -1,6 +1,6 @@
 """Format browser-collected page context for LLM system prompts."""
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: PolySaaS AI Context-Aware Chat — commit PENDING
+# BINGO: PolySaaS AI Context-Aware Chat — commit fd9febb8
 
 from __future__ import annotations
 

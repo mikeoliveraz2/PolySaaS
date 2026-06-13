@@ -1,5 +1,5 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-// BINGO: PolySaaS AI Context-Aware Chat — commit PENDING
+// BINGO: PolySaaS AI Context-Aware Chat — commit fd9febb8
 /**
  * PolySaaS AI — collect rich page context for Geronimo (Gemini co-pilot).
  * Used by polysaas_ai_chat_dock.html and polysaas_ai_chat.html on each send.
