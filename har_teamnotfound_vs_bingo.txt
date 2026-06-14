@@ -1,0 +1,14 @@
+﻿python : Traceback (most recent call last):
+At C:\Users\MikeOliver\AppData\Local\Temp\ps-script-a19db4b3-ad4b-4c47-ae6c-e5c0859eaebf.ps1:88 char:1
++ python "f:\PolySaaS\scripts\compare_hars.py" 2>&1 | Out-File -FilePat ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "f:\PolySaaS\scripts\compare_hars.py", line 50, in <module>
+    nf = summarize("NOT FOUND", hars["notfound"])
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "f:\PolySaaS\scripts\compare_hars.py", line 38, in summarize
+    entries = har["log"]["entries"]
+              ~~~^^^^^^^
+KeyError: 'log'
