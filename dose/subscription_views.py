@@ -446,6 +446,15 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             print(f"[MIGRATE-ERROR] {e}")
             logger.warning("Tenant schema migration failed for %s: %s", tenant.schema_name, e)
 
+        # ── Seed PassThroughEndpoint catalog into tenant schema (sidebar passthrough links) ──
+        try:
+            from dose.management.passthrough_seed import seed_passthrough_endpoints
+            seeded = seed_passthrough_endpoints(tenant, log=print)
+            print(f"[PASSTHROUGH-SEED] Created {seeded} endpoint row(s) in {tenant.schema_name}")
+        except Exception as e:
+            print(f"[PASSTHROUGH-SEED-ERROR] {e}")
+            logger.warning("Passthrough endpoint seed failed for %s: %s", tenant.schema_name, e)
+
         provisioners = [
             ('enable_odoo', provision_odoo_tenant),
             ('enable_nextcloud', provision_nextcloud_tenant),
