@@ -1,0 +1,45 @@
+---
+description: Mattermost passthrough — no team slug, team API, or Team Not Found recovery (owner directive)
+alwaysApply: true
+---
+
+# Mattermost Passthrough — No Team Logic (Owner Directive)
+
+**Michael (owner):** Team resolution does **not** belong in PolySaaS passthrough. This has been stated repeatedly. Do not re-add it.
+
+## The only allowed flow
+
+```
+PolySaaS click → plugin auth → MMAUTHTOKEN → Mattermost passthrough ROOT only
+```
+
+Entry URL after auth: `{proxy_prefix}/?plugin_booted=1` — **not** a team slug, channel, or town-square path.
+
+## Forbidden — never add, re-enable, or “fix” with these
+
+In `MattermostPassthroughHandler`, its injected shim, or any shared passthrough module:
+
+| Forbidden | Examples |
+|-----------|----------|
+| Team API calls **initiated by passthrough** | `/api/v4/teams`, `/api/v4/teams/name/*`, `/users/me/teams` |
+| Team slug routing / recovery | `mm_team_name`, `_get_mm_team_slug`, town-square URLs, `/{team}/channels/*` |
+| Team Not Found handling | `_build_team_not_found_recovery_html`, `/error?type=team_not_found` intercept, DOM observer on “Team Not Found” text |
+| Team-based redirects | Redirecting to a team or channel after login or on error |
+| Token clear on non-`users/me` 401 | Do **not** clear session because `/api/v4/teams` returned 401 |
+
+## “Team Not Found” is not your cue
+
+If the user sees *“The team you're requesting is private or does not exist”* — **do not** call team APIs or add recovery pages. That screen means Mattermost’s SPA failed on its own; passthrough’s job is **auth + root**, not team membership resolution.
+
+## Allowed (passive only)
+
+- **Proxy** requests the Mattermost SPA makes (including its own `/api/v4/teams` calls) — inject auth and forward. Do not initiate those calls from handler/shim logic.
+- Fix **token/cookie/header injection**, plugin auth, `basename`, and root redirect — not team state.
+
+## WIP vs main
+
+Authoritative handler work lives in **`F:\PolySaaS-worktrees\wip`** until BINGO. **`main` may still contain old team code — do not copy team logic from `main` into WIP or “restore” it from backups.**
+
+## Before proposing any Mattermost passthrough change
+
+Ask: *Does this add team slug, team API, or Team Not Found recovery?* If yes → **stop and ask Michael/Shela.**

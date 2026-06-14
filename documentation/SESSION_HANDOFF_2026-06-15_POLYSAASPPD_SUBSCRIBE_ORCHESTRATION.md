@@ -128,3 +128,24 @@ Test Odoo invoicing on `polysaasppd`: expect green orchestration bar + CallBackD
 ## Known Separate Track
 
 **Mattermost passthrough SSO** — WIP on `wip` branch/worktree; not blocking Odoo demo. Rule: no team logic in passthrough (`mattermost-passthrough-no-team.mdc`).
+
+---
+
+## Addendum — `runall.ps1` encoding fix (2026-06-15)
+
+### Symptom
+`.\runall.ps1` failed on Windows with PowerShell parse errors (`Missing argument`, `Unexpected token 'PIDs'`) because Unicode em-dashes (`—`) were corrupted to `â€"` under UTF-8 without BOM.
+
+### Fix
+- Replace em-dashes with ASCII `--` in all `Write-Host` / `throw` strings.
+- Use single-quoted strings where `@grok @gemini @copilot` would expand as splatting.
+- Save as UTF-8 with BOM so Windows PowerShell reads the file reliably.
+
+### Verify
+```powershell
+.\runall.ps1
+```
+Should complete with `PolySaaS runall -- complete` and no parser errors.
+
+### Cursor workspace launcher
+- `runwt.ps1` / `runwt.bat` — starts Waitress from workspace root with venv + PYTHONPATH (for F: laptop / Cursor).
