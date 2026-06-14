@@ -392,7 +392,7 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 '<b>Matching</b> — requestpath + match_type decide when this instruction fires.<br>'
                 '<b>Atomic Service</b> — dropdown lists every class in <code>dose/services/</code> '
                 'that defines <code>execute_and_save(request, instruction_row)</code> '
-                '(e.g. HelloWorld, EndpointDataExtractorService). '
+                '(e.g. HelloWorld, EndpointDataExtractor). '
                 'Selecting a service fills <code>parameters_json</code> with sample required fields. '
                 'Pick <i>Custom Endpoint URL</i> to use urllist instead.'
             ),

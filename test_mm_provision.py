@@ -1,4 +1,4 @@
-"""Test the MattermostProvisioningService directly for olient tenant."""
+"""Test the MattermostProvisioning directly for olient tenant."""
 import os, sys, django
 sys.path.insert(0, os.path.dirname(__file__))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
@@ -15,7 +15,7 @@ User = get_user_model()
 tenant = Tenant.objects.get(schema_name='olient')
 user = User.objects.get(username='olientAdmin')
 
-params = list(Parameter.objects.filter(matchingKey='MattermostProvisioningService').order_by('sequence'))
+params = list(Parameter.objects.filter(matchingKey='MattermostProvisioning').order_by('sequence'))
 print(f"Tenant: {tenant.name}")
 print(f"User: {user.username} ({user.email})")
 print(f"Parameters: {len(params)} found")
@@ -40,9 +40,9 @@ instruction.eventKey = 'mattermost_provision'
 instruction.description = 'Provision Mattermost for tenant'
 instruction.save_callbackdata = True
 
-from dose.services.mattermost_provisioning_service import MattermostProvisioningService
+from dose.services.mattermost_provisioning import MattermostProvisioning
 import json
 
-result = MattermostProvisioningService.execute_and_save(request, instruction)
+result = MattermostProvisioning.execute_and_save(request, instruction)
 print("\nResult:")
 print(json.dumps(result, indent=2, default=str))

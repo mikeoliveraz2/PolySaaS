@@ -6,7 +6,7 @@ import json
 
 logger = logging.getLogger(__name__)
 
-class GmailProxyService(AtomicServiceBase):
+class GmailProxy(AtomicServiceBase):
     """
     Gmail Proxy Atomic Service
 
@@ -43,7 +43,7 @@ class GmailProxyService(AtomicServiceBase):
         from dose.services.gmail_traffic_orchestrator import GmailTrafficOrchestrator
 
         # Determine Gmail action for orchestration
-        gmail_action = GmailProxyService._determine_gmail_action(request)
+        gmail_action = GmailProxy._determine_gmail_action(request)
 
         # Capture interaction for orchestration
         orchestration_data = GmailTrafficOrchestrator.capture_gmail_interaction(
@@ -53,7 +53,7 @@ class GmailProxyService(AtomicServiceBase):
         )
 
         # Get OAuth token
-        token = GmailProxyService._get_oauth_token(request.user)
+        token = GmailProxy._get_oauth_token(request.user)
         if not token:
             logger.warning(f"[GMAIL PROXY] No OAuth token found for user {request.user.username}")
             return HttpResponse("""

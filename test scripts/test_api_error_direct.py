@@ -15,7 +15,7 @@ django.setup()
 
 def test_api_error_handling():
     """Test the _handle_api_error method directly"""
-    from dose.services.gmail_proxy_service import GmailProxyService
+    from dose.services.gmail_proxy import GmailProxy
     import requests
 
     print("=== Testing Gmail API Error Handling ===")
@@ -39,7 +39,7 @@ def test_api_error_handling():
         }
     })
 
-    response = GmailProxyService._handle_api_error(mock_401_response)
+    response = GmailProxy._handle_api_error(mock_401_response)
     print(f"📊 Response status: {response.status_code}")
     print(f"📊 Response type: {type(response)}")
 

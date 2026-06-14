@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 # Keys = registry class names (Instruction.executescript values).
 ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
-    'PublishToPubSubService': {
+    'PublishToPubSub': {
         'topic': 'polysaas-orchestration',
         'payload': {
             'event': 'orchestration.demo',
@@ -19,12 +19,12 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
         'attributes': {'event_key': 'polysaas.demo'},
         'include_request': True,
     },
-    'EmailToSelfService': {
+    'EmailToSelf': {
         'subject': 'PolySaaS orchestration alert',
         'message': 'Instruction matched. Review the action path and callback data in admin.',
         'from_email': 'noreply@polysaas.online',
     },
-    'AddToMLDatasetService': {
+    'AddToMLDataset': {
         'dataset_key': 'conversations',
         'filename': 'demo_conversations.jsonl',
         'record': {
@@ -33,30 +33,30 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
             'labels': ['orchestration', 'mattermost'],
         },
     },
-    'ExportToRESTAPIService': {
+    'ExportToRESTAPI': {
         'url': 'https://hooks.example.com/polysaas/orchestration',
         'method': 'POST',
         'headers': {'Content-Type': 'application/json'},
         'body': {'event': 'instruction_matched', 'tenant': '{{tenant}}'},
         'timeout': 30,
     },
-    'CreateGitHubIssueService': {
+    'CreateGitHubIssue': {
         'repo': 'mikeoliveraz2/PolySaaS',
         'title': 'Orchestration: action path matched',
         'body': 'Auto-created from PolySaaS orchestration bar demo.',
         'labels': ['orchestration', 'demo'],
     },
-    'NotifyAIPeersService': {
+    'NotifyAIPeers': {
         'channel_id': 'REPLACE_WITH_MATTERMOST_CHANNEL_ID',
         'peers': ['grok', 'copilot', 'gemini'],
         'message': 'Orchestration instruction matched — AI peers please acknowledge.',
     },
-    'CreateCeleryTaskService': {
+    'CreateCeleryTask': {
         'task': 'parameters.tasks.add',
         'args': [1, 2],
         'kwargs': {},
     },
-    'WriteToBigQueryService': {
+    'WriteToBigQuery': {
         'project_id': 'application-integration-4524',
         'dataset_id': 'polysaas',
         'table_id': 'orchestration_events',
@@ -64,16 +64,16 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
         'source_system': 'polysaas',
         'event_data': {'demo': True},
     },
-    'GenerateImageAndExportService': {
+    'GenerateImageAndExport': {
         'prompt': 'PolySaaS orchestration dashboard hero illustration, modern SaaS',
         'filename': 'orch_demo.png',
         'export_url': '',
         'export_method': 'POST',
     },
-    'CopilotQueryService': {
+    'CopilotQuery': {
         'prompt': 'Summarize what happened on this orchestration path.',
     },
-    'EndpointDataExtractorService': {
+    'EndpointDataExtractor': {
         'note': 'Uses request body + mapping/catalog; parameters_json optional for overrides.',
     },
     'AtomicServiceSendApprovalEmail': {
@@ -82,19 +82,19 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
         'message': 'Please review this orchestration instruction.',
         'from_email': 'Dose2 <mo.gsssol@gmail.com>',
     },
-    'MattermostProvisioningService': {
-        'note': 'Configure Parameters row matchingKey=MattermostProvisioningService (mm_url, admin_token, team_type).',
+    'MattermostProvisioning': {
+        'note': 'Configure Parameters row matchingKey=MattermostProvisioning (mm_url, admin_token, team_type).',
     },
-    'OdooInvoiceNotifierService': {
+    'OdooInvoiceNotifier': {
         'mm_channel': 'town-square',
         'note': 'Triggered from MQ; uses TenantApp.extra_config for mm_url/mm_token when not in JSON.',
     },
-    'OdooCustomerSyncService': {
+    'OdooCustomerSync': {
         'odoo_url': 'https://polysaas-odoo2.onrender.com',
         'odoo_db': 'odoo',
         'note': 'MQ message body carries customer payload; optional Odoo connection overrides here.',
     },
-    'GmailProxyService': {
+    'GmailProxy': {
         'note': 'Uses OAuth session; parameters_json rarely needed.',
     },
     'AtomicService1': {
@@ -107,11 +107,20 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
     'HelloWorld': {
         'message': 'Hello from orchestration',
     },
+    'Calculus': {
+        'k': 0.3,
+        'y0': 10,
+        't0': 0,
+        'tf': 10,
+        'n_points': 100,
+    },
 }
 
 
 def get_sample_parameters_json(service_name: str) -> Optional[Dict[str, Any]]:
-    name = (service_name or '').strip()
+    from dose.services.atomic_services_registry import resolve_atomic_service_name
+
+    name = resolve_atomic_service_name((service_name or '').strip())
     if not name:
         return None
     sample = ATOMIC_SERVICE_PARAM_SAMPLES.get(name)

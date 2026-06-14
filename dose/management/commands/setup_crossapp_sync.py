@@ -1,8 +1,8 @@
 """
 Management command to set up cross-app sync Instructions.
 Creates the Instruction rows that wire:
-  1. Bundled app API calls → EndpointDataExtractorService → Pub/Sub
-  2. Pub/Sub topics → OdooCustomerSyncService (and other handlers)
+  1. Bundled app API calls → EndpointDataExtractor → Pub/Sub
+  2. Pub/Sub topics → OdooCustomerSync (and other handlers)
 
 Usage:
   python manage.py setup_crossapp_sync
@@ -24,7 +24,7 @@ EXTRACTOR_INSTRUCTIONS = [
         "requestpath": "/admin/dolibarr/api/index.php",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "EndpointDataExtractorService",
+        "executescript": "EndpointDataExtractor",
         "description": "Extract entity data from Dolibarr API POST and publish to Pub/Sub",
         "save_callbackdata": True,
     },
@@ -33,7 +33,7 @@ EXTRACTOR_INSTRUCTIONS = [
         "requestpath": "/admin/odoo/web/dataset/call_kw",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "EndpointDataExtractorService",
+        "executescript": "EndpointDataExtractor",
         "description": "Extract entity data from Odoo API POST and publish to Pub/Sub",
         "save_callbackdata": True,
     },
@@ -42,7 +42,7 @@ EXTRACTOR_INSTRUCTIONS = [
         "requestpath": "/admin/nextcloud/ocs",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "EndpointDataExtractorService",
+        "executescript": "EndpointDataExtractor",
         "description": "Extract entity data from Nextcloud API POST and publish to Pub/Sub",
         "save_callbackdata": True,
     },
@@ -51,7 +51,7 @@ EXTRACTOR_INSTRUCTIONS = [
         "requestpath": "/admin/mattermost/api/v4",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "EndpointDataExtractorService",
+        "executescript": "EndpointDataExtractor",
         "description": "Extract entity data from Mattermost API POST and publish to Pub/Sub",
         "save_callbackdata": True,
     },
@@ -60,7 +60,7 @@ EXTRACTOR_INSTRUCTIONS = [
         "requestpath": "/admin/wordpress/wp-json/wp/v2",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "EndpointDataExtractorService",
+        "executescript": "EndpointDataExtractor",
         "description": "Extract entity data from WordPress API POST and publish to Pub/Sub",
         "save_callbackdata": True,
     },
@@ -69,7 +69,7 @@ EXTRACTOR_INSTRUCTIONS = [
         "requestpath": "/admin/liferay/o/headless",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "EndpointDataExtractorService",
+        "executescript": "EndpointDataExtractor",
         "description": "Extract entity data from Liferay API POST and publish to Pub/Sub",
         "save_callbackdata": True,
     },
@@ -82,7 +82,7 @@ HANDLER_INSTRUCTIONS = [
         "requestpath": "/mq/polysaas.dolibarr.customer",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "OdooCustomerSyncService",
+        "executescript": "OdooCustomerSync",
         "description": "Sync Dolibarr customer → Odoo partner (create/update)",
         "save_callbackdata": True,
     },
@@ -91,7 +91,7 @@ HANDLER_INSTRUCTIONS = [
         "requestpath": "/mq/polysaas.dolibarr.contact",
         "requestmethod": "POST",
         "direction": "REQ",
-        "executescript": "OdooCustomerSyncService",
+        "executescript": "OdooCustomerSync",
         "description": "Sync Dolibarr contact → Odoo partner (create/update)",
         "save_callbackdata": True,
     },
@@ -116,7 +116,7 @@ class Command(BaseCommand):
 
         if options['clear']:
             deleted, _ = Instruction.objects.filter(
-                executescript__in=['EndpointDataExtractorService', 'OdooCustomerSyncService']
+                executescript__in=['EndpointDataExtractor', 'OdooCustomerSync']
             ).delete()
             self.stdout.write(f"Cleared {deleted} existing cross-app sync instructions")
 
@@ -155,6 +155,6 @@ class Command(BaseCommand):
         if not options['dry_run']:
             self.stdout.write(self.style.SUCCESS("\nCross-app sync instructions are ready."))
             self.stdout.write(
-                "\nFlow: Bundled app POST → EndpointDataExtractorService → Pub/Sub → "
-                "OdooCustomerSyncService → Odoo partner created/updated"
+                "\nFlow: Bundled app POST → EndpointDataExtractor → Pub/Sub → "
+                "OdooCustomerSync → Odoo partner created/updated"
             )

@@ -2,7 +2,12 @@
 
 from dose.models import Instruction
 from dose.api.methods.dosebase import DoseBase
-from dose.services.atomic_services_registry import ATOMIC_SERVICE_REGISTRY, init_atomic_services_registry
+from dose.services.atomic_services_registry import (
+    ATOMIC_SERVICE_REGISTRY,
+    get_atomic_service,
+    init_atomic_services_registry,
+    matching_keys_for_service,
+)
 from django.contrib import messages
 import urllib.parse
 import validators
@@ -169,12 +174,16 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
             atomic_result = None
             # Attach parameters to request before atomic service execution
             if Parameter is not None:
-                # Only use executescript_name as the parameter key (no eventKey or matchingKey from instruction)
-                matching_key = executescript_name
-                if matching_key:
-                    params_qs = Parameter.objects.filter(matchingKey=matching_key).order_by('sequence')
+                # executescript + legacy *Service matchingKey aliases
+                matching_keys = matching_keys_for_service(executescript_name)
+                if matching_keys:
+                    params_qs = Parameter.objects.filter(matchingKey__in=matching_keys).order_by('sequence')
                     request.atomic_parameters = list(params_qs)
-                    logger.info(f"[PARAM-ATTACH] Attached {len(request.atomic_parameters)} parameters for key '{matching_key}' to request.")
+                    logger.info(
+                        "[PARAM-ATTACH] Attached %s parameters for keys %s to request.",
+                        len(request.atomic_parameters),
+                        sorted(matching_keys),
+                    )
                 else:
                     request.atomic_parameters = []
                     logger.info("[PARAM-ATTACH] No matchingKey found; attached empty parameter list to request.")
@@ -183,7 +192,8 @@ class DoseRequestController(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST
                 logger.warning("[PARAM-ATTACH] Parameter model not available; attached empty parameter list to request.")
 
             if executescript_name:
-                cls = ATOMIC_SERVICE_REGISTRY.get(executescript_name)
+                tenant_name = getattr(getattr(request, 'tenant', None), 'schema_name', None)
+                cls = get_atomic_service(executescript_name, tenant_name=tenant_name)
                 logger.info("[DEBUG] DoseRequestController: executescript_name=%s, cls=%s", executescript_name, cls)
                 if cls and hasattr(cls, 'execute_and_save'):
                     logger.info("[DEBUG] DoseRequestController: Executing atomic service %s", executescript_name)

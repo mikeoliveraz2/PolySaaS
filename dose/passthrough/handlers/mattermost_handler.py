@@ -667,7 +667,7 @@ window.location.replace('/');
             params = list(Parameter.objects.all())
             for p in params:
                 key = getattr(p, 'matchingKey', '') if hasattr(p, 'matchingKey') else ''
-                if key != 'MattermostProvisioningService':
+                if key != 'MattermostProvisioning':
                     continue
                 secrets = {}
                 if hasattr(p, 'get_decrypted_secrets'):
@@ -2641,7 +2641,7 @@ try {{
         except Exception as exc:
             logger.warning("[MattermostPassthroughHandler] Credentials lookup failed: %s", exc)
 
-        # TEAMS NOT USED (Michael) — mm_team_name intentionally not injected into shim.
+        # Passthrough landing target: shared collaboration team first, then company team.
         mm_user_id = ''
         mm_username = ''
         mm_team_name = ''
@@ -2654,7 +2654,10 @@ try {{
                 or extra_for_team.get('mattermost_login_id')
                 or ''
             )
-            mm_team_name = extra_for_team.get('mm_team_name') or extra_for_team.get('team_name') or ''
+            mm_team_name = (
+                (extra_for_team.get('mm_shared_team_name') or extra_for_team.get('shared_team_name') or '').strip()
+                or (extra_for_team.get('mm_team_name') or extra_for_team.get('team_name') or '').strip()
+            )
         except Exception:
             pass
         token_js = json.dumps(token)

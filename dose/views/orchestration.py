@@ -124,7 +124,7 @@ def demo_view_invoices(request):
                 'eventKey': 'polysaas.odoo.invoice.viewed',
                 'description': 'Demo: Odoo View Invoices orchestration',
                 'direction': 'REQ',
-                'executescript': 'EndpointDataExtractorService',
+                'executescript': 'EndpointDataExtractor',
                 'appusername': 'demo',
                 'save_callbackdata': True,
             },

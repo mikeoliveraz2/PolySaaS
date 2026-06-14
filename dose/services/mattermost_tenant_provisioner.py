@@ -20,7 +20,7 @@ import secrets as _secrets
 
 import requests
 
-from dose.services.email_service import GmailEmailService
+from dose.services.email_to import GmailEmail
 from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
 
 logger = logging.getLogger(__name__)
@@ -432,8 +432,11 @@ def _store_credentials(
     if not tenant_app_id:
         return
     try:
+        from django.db import connection
         from dose.models import TenantApp
-        ta = TenantApp.objects.filter(id=tenant_app_id).first()
+        ta = TenantApp.public_bundles.filter(id=tenant_app_id).first()
+        if not ta:
+            ta = TenantApp.objects.filter(id=tenant_app_id).first()
         if not ta:
             return
         cfg = ta.extra_config or {}
@@ -459,6 +462,8 @@ def _store_credentials(
             cfg['mm_shared_team_id'] = shared_team_id
         if shared_team_name:
             cfg['mm_shared_team_name'] = shared_team_name
+        with connection.cursor() as cursor:
+            cursor.execute('SET search_path TO public,pg_catalog')
         ta.extra_config = cfg
         ta.save(update_fields=['extra_config'])
         mark_tenant_app_active(ta, app_url=mm_url)
@@ -484,7 +489,7 @@ def resolve_shared_mattermost_team_id(mm_url: str, headers: dict) -> Optional[st
 
 def _send_welcome_email(admin_email: str, mm_url: str, display_name: str) -> None:
     try:
-        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+        email_svc = GmailEmail(credentials_file='gmail_creds.json')
         body = f"""
         <h2>Your PolySaaS tenant is live, and Mattermost is ready!</h2>
         <p><strong>Chat URL:</strong> <a href="{mm_url}">{mm_url}</a></p>
@@ -672,10 +677,11 @@ def ensure_dual_mattermost_teams(
             result['error'] = f'Tenant not found: {tenant_schema}'
             return result
 
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
-
-        ta = TenantApp.objects.filter(tenant=tenant, app_name='mattermost').first()
+        ta = TenantApp.public_bundles.filter(tenant=tenant, app_name='mattermost').first()
+        if not ta:
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
+            ta = TenantApp.objects.filter(tenant=tenant, app_name='mattermost').first()
         if not ta:
             result['error'] = 'No Mattermost TenantApp'
             return result
@@ -735,6 +741,8 @@ def ensure_dual_mattermost_teams(
             extra['mm_team_id'] = company_team_id
         if company_team_name:
             extra['mm_team_name'] = company_team_name
+        with connection.cursor() as cursor:
+            cursor.execute('SET search_path TO public,pg_catalog')
         ta.extra_config = extra
         ta.save(update_fields=['extra_config'])
 

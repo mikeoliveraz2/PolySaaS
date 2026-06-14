@@ -20,7 +20,7 @@ from django.test import RequestFactory
 from django.contrib.auth.models import User
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.contrib.auth.middleware import AuthenticationMiddleware
-from dose.services.gmail_proxy_service import GmailProxyService
+from dose.services.gmail_proxy import GmailProxy
 
 def test_oauth_redirect():
     """Test that expired OAuth token triggers proper redirect"""
@@ -54,7 +54,7 @@ def test_oauth_redirect():
 
         # Try to call Gmail API proxy
         print("📧 Testing Gmail API call with expired token...")
-        response = GmailProxyService.execute_and_save(request, None)
+        response = GmailProxy.execute_and_save(request, None)
 
         print(f"📊 Response status: {response.status_code}")
         if response.status_code == 401:

@@ -360,8 +360,8 @@ This page documents a live demonstration of PolySaaS cross-application sync: cre
 <div class="caption">Three Instructions in the olient tenant &mdash; the two new entries route Dolibarr POST and MQ messages to their respective services</div>
 <table class="cas-table">
 <tr><th>Request Path</th><th>Method</th><th>Service</th><th>Purpose</th></tr>
-<tr><td><code>/societe/card.php</code></td><td>POST</td><td>EndpointDataExtractorService</td><td>Captures Dolibarr form POST, extracts &amp; publishes to RabbitMQ</td></tr>
-<tr><td><code>/mq/polysaas.crossapp.customer.created</code></td><td>POST</td><td>OdooCustomerSyncService</td><td>Picks up MQ message, maps to Odoo partner, syncs via XML-RPC</td></tr>
+<tr><td><code>/societe/card.php</code></td><td>POST</td><td>EndpointDataExtractor</td><td>Captures Dolibarr form POST, extracts &amp; publishes to RabbitMQ</td></tr>
+<tr><td><code>/mq/polysaas.crossapp.customer.created</code></td><td>POST</td><td>OdooCustomerSync</td><td>Picks up MQ message, maps to Odoo partner, syncs via XML-RPC</td></tr>
 </table>
 </div>
 
@@ -370,7 +370,7 @@ This page documents a live demonstration of PolySaaS cross-application sync: cre
 <p>Each Instruction defines a <strong>requestpath</strong> (substring match), <strong>method</strong>, <strong>direction</strong>, and an <strong>eventKey</strong> for tracking. The <strong>Instruction Mappings</strong> tab links it to one or more Mapping records that define the field extraction logic.</p>
 <img src="{img_instr_detail}" alt="Instruction detail for Dolibarr POST capture">
 <div class="caption">Instruction detail: requestpath <code>/societe/card.php</code>, eventKey <code>dolibarr.customer.created</code>, method POST, direction REQUEST</div>
-<p>When any POST request passes through the proxy and its URL contains <code>/societe/card.php</code>, this Instruction fires the <strong>EndpointDataExtractorService</strong>, which uses the attached Mapping to extract and normalize the form fields.</p>
+<p>When any POST request passes through the proxy and its URL contains <code>/societe/card.php</code>, this Instruction fires the <strong>EndpointDataExtractor</strong>, which uses the attached Mapping to extract and normalize the form fields.</p>
 </div>
 
 <!-- MAPPING ENGINE SECTION -->
@@ -420,7 +420,7 @@ This page documents a live demonstration of PolySaaS cross-application sync: cre
 <tr><td><strong>PolySniffer</strong></td><td>Passive traffic capture to discover form fields and POST paths</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>Mapping Engine</strong></td><td>Database-driven field extraction and transformation with pipe expressions</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>RabbitMQ</strong></td><td>Message broker between source extraction and target sync services</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
-<tr><td><strong>Atomic Services</strong></td><td>EndpointDataExtractorService + OdooCustomerSyncService</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
+<tr><td><strong>Atomic Services</strong></td><td>EndpointDataExtractor + OdooCustomerSync</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>Instructions</strong></td><td>Path-based routing: <code>/societe/card.php</code> and <code>/mq/...</code></td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>Passthrough Proxy</strong></td><td>Transparent proxy for accessing Dolibarr through PolySaaS</td><td><span class="cas-badge cas-badge-amber">Handler Pending</span></td></tr>
 <tr><td><strong>Odoo XML-RPC</strong></td><td>Creates/updates res.partner records in Odoo CRM</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>

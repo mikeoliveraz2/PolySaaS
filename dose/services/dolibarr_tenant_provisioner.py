@@ -5,7 +5,7 @@ from celery import shared_task
 import requests
 import secrets
 import string
-from dose.services.email_service import GmailEmailService
+from dose.services.email_to import GmailEmail
 from dose.models import PassThroughEndpoint
 
 DOLIBARR_API_BASE = "http://localhost:8083"  # Local Docker service
@@ -47,7 +47,7 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
 
     # 4. Send welcome email via Gmail API
     try:
-        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+        email_svc = GmailEmail(credentials_file='gmail_creds.json')
         welcome_subject = f"Welcome to PolySaaS + Dolibarr – Your ERP/CRM is Ready"
         welcome_body = f"""
         <h2>Your PolySaaS tenant is live, and your Dolibarr ERP/CRM is ready!</h2>

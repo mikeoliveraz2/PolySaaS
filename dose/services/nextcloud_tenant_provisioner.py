@@ -204,8 +204,8 @@ def provision_nextcloud_tenant(
 
     # ── Step 5: Welcome email (best-effort) ───────────────────────────────
     try:
-        from dose.services.email_service import GmailEmailService
-        email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+        from dose.services.email_to import GmailEmail
+        email_svc = GmailEmail(credentials_file='gmail_creds.json')
         email_svc.send_email(
             to_email=admin_email,
             subject="Welcome to PolySaaS + NextCloud – Your File Storage is Ready",

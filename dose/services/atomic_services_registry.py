@@ -14,8 +14,69 @@ TENANT_SPECIFIC_SERVICES = {}  # tenant_name -> {service_name: service_class}
 
 CUSTOM_ENDPOINT_LABEL = 'Custom Endpoint URL'
 
+# Old Instruction.executescript / Parameter.matchingKey values → current class __name__
+LEGACY_ATOMIC_SERVICE_ALIASES = {
+    'DifferentialEquationService': 'Calculus',
+    'AddToMLDatasetService': 'AddToMLDataset',
+    'CopilotQueryService': 'CopilotQuery',
+    'CreateCeleryTaskService': 'CreateCeleryTask',
+    'CreateGitHubIssueService': 'CreateGitHubIssue',
+    'EmailToSelfService': 'EmailToSelf',
+    'EndpointDataExtractorService': 'EndpointDataExtractor',
+    'ExportToRESTAPIService': 'ExportToRESTAPI',
+    'GenerateImageAndExportService': 'GenerateImageAndExport',
+    'GmailProxyService': 'GmailProxy',
+    'MattermostProvisioningService': 'MattermostProvisioning',
+    'NotifyAIPeersService': 'NotifyAIPeers',
+    'OdooCustomerSyncService': 'OdooCustomerSync',
+    'OdooInvoiceNotifierService': 'OdooInvoiceNotifier',
+    'PublishToPubSubService': 'PublishToPubSub',
+    'WriteToBigQueryService': 'WriteToBigQuery',
+    'CustomOlientService': 'CustomOlient',
+}
+
 SERVICES_PATH = os.path.dirname(__file__)
 MODULE_PREFIX = __name__.rsplit('.', 1)[0] + '.' if '.' in __name__ else ''
+
+
+def resolve_atomic_service_name(service_name):
+    """Map legacy *Service executescript values to current registry class names."""
+    name = (service_name or '').strip()
+    if not name:
+        return name
+    return LEGACY_ATOMIC_SERVICE_ALIASES.get(name, name)
+
+
+def matching_keys_for_service(service_key):
+    """All Parameter.matchingKey values that belong to a service (current + legacy)."""
+    key = (service_key or '').strip()
+    if not key:
+        return set()
+    canonical = resolve_atomic_service_name(key)
+    keys = {key, canonical}
+    for legacy, current in LEGACY_ATOMIC_SERVICE_ALIASES.items():
+        if current == canonical:
+            keys.add(legacy)
+    return {k for k in keys if k}
+
+
+def filter_parameters_for_service(parameters, service_key):
+    """Resolve Parameter rows by current or legacy matchingKey."""
+    from dose.services.atomic_service_utils import filter_parameters
+
+    canonical = resolve_atomic_service_name(service_key)
+    for key in (canonical, service_key):
+        if not key:
+            continue
+        result = filter_parameters(parameters, key)
+        if result:
+            return result
+    for legacy, current in LEGACY_ATOMIC_SERVICE_ALIASES.items():
+        if current == canonical and legacy != service_key:
+            result = filter_parameters(parameters, legacy)
+            if result:
+                return result
+    return None
 
 
 def normalize_executescript_value(value):
@@ -124,18 +185,25 @@ def _scan_services_directory(directory_path, tenant_name=''):
 def get_atomic_service(service_name, tenant_name=None):
     """
     Get an atomic service class by name, checking tenant-specific services first.
+    Accepts legacy *Service executescript values via resolve_atomic_service_name().
     """
-    # Check tenant-specific services first
-    if tenant_name and tenant_name in TENANT_SPECIFIC_SERVICES:
-        if service_name in TENANT_SPECIFIC_SERVICES[tenant_name]:
-            return TENANT_SPECIFIC_SERVICES[tenant_name][service_name]
+    if not service_name:
+        return None
+    init_atomic_services_registry()
+    canonical = resolve_atomic_service_name(service_name)
 
-    # Fall back to global services
-    return ATOMIC_SERVICE_REGISTRY.get(service_name)
+    if tenant_name and tenant_name in TENANT_SPECIFIC_SERVICES:
+        tenant_registry = TENANT_SPECIFIC_SERVICES[tenant_name]
+        if canonical in tenant_registry:
+            return tenant_registry[canonical]
+        if service_name in tenant_registry:
+            return tenant_registry[service_name]
+
+    return ATOMIC_SERVICE_REGISTRY.get(canonical) or ATOMIC_SERVICE_REGISTRY.get(service_name)
 
 
 # Usage:
 # from dose.services.atomic_services_registry import init_atomic_services_registry, get_atomic_service
 # init_atomic_services_registry()
-# cls = get_atomic_service('CopilotQueryService', tenant_name='olient')
+# cls = get_atomic_service('CopilotQuery', tenant_name='olient')
 # if cls: cls.execute_and_save(request, instruction_row)

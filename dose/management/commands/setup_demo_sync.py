@@ -150,7 +150,7 @@ class Command(BaseCommand):
         # 4. Instructions for extraction (Dolibarr API POST -> extract -> publish)
         instr_extract, created = Instruction.objects.update_or_create(
             eventKey='dolibarr.api.post',
-            executescript='EndpointDataExtractorService',
+            executescript='EndpointDataExtractor',
             defaults={
                 'requestpath': '/admin/dolibarr/api/index.php',
                 'requestmethod': 'POST',
@@ -160,13 +160,13 @@ class Command(BaseCommand):
             }
         )
         self.stdout.write(self.style.SUCCESS(
-            f"  {'Created' if created else 'Updated'} Instruction: Dolibarr POST -> EndpointDataExtractorService"
+            f"  {'Created' if created else 'Updated'} Instruction: Dolibarr POST -> EndpointDataExtractor"
         ))
 
         # 5. Instructions for sync (RabbitMQ -> Odoo)
         instr_sync, created = Instruction.objects.update_or_create(
             eventKey='sync.dolibarr.customer.to.odoo',
-            executescript='OdooCustomerSyncService',
+            executescript='OdooCustomerSync',
             defaults={
                 'requestpath': '/mq/polysaas.dolibarr.customer',
                 'requestmethod': 'POST',
@@ -176,7 +176,7 @@ class Command(BaseCommand):
             }
         )
         self.stdout.write(self.style.SUCCESS(
-            f"  {'Created' if created else 'Updated'} Instruction: MQ customer -> OdooCustomerSyncService"
+            f"  {'Created' if created else 'Updated'} Instruction: MQ customer -> OdooCustomerSync"
         ))
 
         self.stdout.write(self.style.SUCCESS("\n=== Demo setup complete ==="))
@@ -184,10 +184,10 @@ class Command(BaseCommand):
 Flow:
   1. User creates customer in Dolibarr (http://localhost:8889)
   2. POST intercepted by DoseRequestController
-  3. EndpointDataExtractorService extracts & normalizes customer data
+  3. EndpointDataExtractor extracts & normalizes customer data
   4. Published to RabbitMQ topic: polysaas.dolibarr.customer.created
   5. MQQueueMonitor picks up message
-  6. OdooCustomerSyncService creates/updates partner in Odoo
+  6. OdooCustomerSync creates/updates partner in Odoo
 
 Management UI:
   - RabbitMQ: http://localhost:15672 (polysaas / polysaas123)

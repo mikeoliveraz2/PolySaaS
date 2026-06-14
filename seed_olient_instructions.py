@@ -40,7 +40,7 @@ instr_a, created_a = Instruction.objects.get_or_create(
     requestmethod='POST',
     defaults={
         'direction': 'REQ',
-        'executescript': 'EndpointDataExtractorService',
+        'executescript': 'EndpointDataExtractor',
         'eventKey': 'dolibarr.customer.created',
         'save_callbackdata': True,
         'description': 'Captures Dolibarr new third-party form POST, extracts fields via Mapping, publishes to RabbitMQ.',
@@ -54,7 +54,7 @@ instr_b, created_b = Instruction.objects.get_or_create(
     requestmethod='POST',
     defaults={
         'direction': 'REQ',
-        'executescript': 'OdooCustomerSyncService',
+        'executescript': 'OdooCustomerSync',
         'eventKey': 'sync.customer.dolibarr.to.odoo',
         'save_callbackdata': True,
         'description': 'Triggered by MQQueueMonitor when a customer message arrives. Maps normalized data to Odoo partner fields and syncs via XML-RPC.',

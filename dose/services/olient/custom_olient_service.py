@@ -6,7 +6,7 @@ This service extends or overrides global services for the olient tenant specific
 from dose.services.atomic_service_base import AtomicServiceBase
 
 
-class CustomOlientService(AtomicServiceBase):
+class CustomOlient(AtomicServiceBase):
     """
     Example custom service for olient tenant.
     This demonstrates how tenant-specific services can extend or override global services.

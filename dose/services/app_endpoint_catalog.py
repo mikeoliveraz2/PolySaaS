@@ -1,6 +1,6 @@
 """
 Catalog of bundled application API endpoints and entity mappings.
-Used by EndpointDataExtractorService to identify what entity is being
+Used by EndpointDataExtractor to identify what entity is being
 created/updated and how to normalize the data for cross-app sync.
 
 Topic naming convention: polysaas.{app}.{entity}.{action}

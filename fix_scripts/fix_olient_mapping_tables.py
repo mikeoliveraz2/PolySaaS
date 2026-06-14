@@ -94,7 +94,7 @@ instr_a, ca = Instruction.objects.get_or_create(
     requestpath='/societe/card.php', requestmethod='POST',
     defaults={
         'direction': 'REQ',
-        'executescript': 'EndpointDataExtractorService',
+        'executescript': 'EndpointDataExtractor',
         'eventKey': 'dolibarr.customer.created',
         'save_callbackdata': True,
         'description': 'Captures Dolibarr new third-party form POST, extracts fields via Mapping, publishes to RabbitMQ.',
@@ -107,7 +107,7 @@ instr_b, cb = Instruction.objects.get_or_create(
     requestpath='/mq/polysaas.crossapp.customer.created', requestmethod='POST',
     defaults={
         'direction': 'REQ',
-        'executescript': 'OdooCustomerSyncService',
+        'executescript': 'OdooCustomerSync',
         'eventKey': 'sync.customer.dolibarr.to.odoo',
         'save_callbackdata': True,
         'description': 'Triggered by MQQueueMonitor when a customer message arrives. Maps normalized data to Odoo partner fields and syncs via XML-RPC.',

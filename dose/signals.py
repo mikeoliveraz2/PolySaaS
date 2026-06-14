@@ -183,7 +183,7 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
     When a new POST TrafficLog is saved, immediately create (or ensure) the
     matching Instruction + MQOutput for that path.
 
-    The Instruction's executescript is set to EndpointDataExtractorService so
+    The Instruction's executescript is set to EndpointDataExtractor so
     DoseRequestController triggers Pub/Sub publishing on live passthrough POSTs.
     """
     if not created or instance.method != "POST":
@@ -242,7 +242,7 @@ def _on_trafficlog_created(sender, instance, created, **kwargs):
                     "eventKey": topic,
                     "description": f"Auto-generated from sniffer: {ep.get_menu_title()} POST {path}",
                     "direction": "REQ",
-                    "executescript": "EndpointDataExtractorService",
+                    "executescript": "EndpointDataExtractor",
                     "appusername": "sniffer",
                     "urllist": ep.endpoint_url,
                     "save_callbackdata": True,

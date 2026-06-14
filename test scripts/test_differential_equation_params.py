@@ -1,8 +1,8 @@
 # Test script to demonstrate the new parameter resolution hierarchy
-# in DifferentialEquationService
+# in Calculus
 
 """
-This script demonstrates the new 3-tier parameter resolution in DifferentialEquationService:
+This script demonstrates the new 3-tier parameter resolution in Calculus:
 
 1. Parameters table (highest priority)
 2. Instruction JSON (medium priority) 
@@ -26,12 +26,12 @@ django.setup()
 from django.contrib.auth.models import User
 from dose.models import Tenant, Instruction
 from parameters.models import Parameter
-from dose.services.differential_equation_service import DifferentialEquationService
+from dose.services.differential_equation import Calculus
 
 def test_parameter_resolution():
     """Test the 3-tier parameter resolution hierarchy"""
     
-    print("=== Testing DifferentialEquationService Parameter Resolution ===\n")
+    print("=== Testing Calculus Parameter Resolution ===\n")
     
     # Get or create test user and tenant
     try:
@@ -65,7 +65,7 @@ def test_parameter_resolution():
     mock_request = MockRequest(user)
     
     try:
-        result1 = DifferentialEquationService.execute_and_save(mock_request, instruction1)
+        result1 = Calculus.execute_and_save(mock_request, instruction1)
         print("✅ Test 1 passed - Used static defaults")
         print(f"   Callback ID: {result1.id}")
         print(f"   Source: {result1.parameters_json['input_parameters']['_source']}")
@@ -88,7 +88,7 @@ def test_parameter_resolution():
     )
     
     try:
-        result2 = DifferentialEquationService.execute_and_save(mock_request, instruction2)
+        result2 = Calculus.execute_and_save(mock_request, instruction2)
         print("✅ Test 2 passed - Used instruction JSON parameters")
         print(f"   Callback ID: {result2.id}")
         print(f"   Source: {result2.parameters_json['input_parameters']['_source']}")
@@ -110,7 +110,7 @@ def test_parameter_resolution():
     
     try:
         # Use the same instruction2 which has JSON parameters
-        result3 = DifferentialEquationService.execute_and_save(mock_request, instruction2)
+        result3 = Calculus.execute_and_save(mock_request, instruction2)
         print("✅ Test 3 passed - Parameters table overrode instruction JSON where available")
         print(f"   Callback ID: {result3.id}")
         print(f"   Source: {result3.parameters_json['input_parameters']['_source']}")

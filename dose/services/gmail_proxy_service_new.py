@@ -6,7 +6,7 @@ import json
 
 logger = logging.getLogger(__name__)
 
-class GmailProxyService(AtomicServiceBase):
+class GmailProxy(AtomicServiceBase):
     """
     Gmail Proxy Service with Gmail-like UI Interface
     Provides a complete Gmail experience using Gmail API
@@ -23,7 +23,7 @@ class GmailProxyService(AtomicServiceBase):
     @staticmethod
     def execute_and_save(request, instruction_row):
         """Main entry point for Gmail proxy service."""
-        logger.info("[GMAIL PROXY] Calling GmailProxyService for user")
+        logger.info("[GMAIL PROXY] Calling GmailProxy for user")
 
         # Check if user is authenticated
         if not request.user.is_authenticated:
@@ -70,14 +70,14 @@ class GmailProxyService(AtomicServiceBase):
                 """, status=401, content_type="text/html")
 
         # Determine what Gmail action to perform based on request path
-        gmail_action = GmailProxyService._determine_gmail_action(request)
+        gmail_action = GmailProxy._determine_gmail_action(request)
 
         if gmail_action == 'inbox':
-            return GmailProxyService._handle_inbox(request, oauth_token)
+            return GmailProxy._handle_inbox(request, oauth_token)
         elif gmail_action == 'compose':
-            return GmailProxyService._handle_compose(request, oauth_token)
+            return GmailProxy._handle_compose(request, oauth_token)
         else:
-            return GmailProxyService._handle_default_gmail(request, oauth_token)
+            return GmailProxy._handle_default_gmail(request, oauth_token)
 
     @staticmethod
     def _determine_gmail_action(request):
@@ -106,7 +106,7 @@ class GmailProxyService(AtomicServiceBase):
             if profile_response.status_code != 200:
                 logger.error(f"[GMAIL PROXY] Profile API failed: {profile_response.status_code}")
                 logger.error(f"[GMAIL PROXY] Profile API response: {profile_response.text}")
-                return GmailProxyService._handle_api_error(profile_response)
+                return GmailProxy._handle_api_error(profile_response)
 
             # Get inbox messages
             messages_response = requests.get(
@@ -118,7 +118,7 @@ class GmailProxyService(AtomicServiceBase):
             if messages_response.status_code != 200:
                 logger.error(f"[GMAIL PROXY] Messages API failed: {messages_response.status_code}")
                 logger.error(f"[GMAIL PROXY] Messages API response: {messages_response.text}")
-                return GmailProxyService._handle_api_error(messages_response)
+                return GmailProxy._handle_api_error(messages_response)
 
             # Get user labels
             labels_response = requests.get(
@@ -146,16 +146,16 @@ class GmailProxyService(AtomicServiceBase):
                     detailed_messages.append(msg_response.json())
 
             # Generate Gmail-like UI
-            return GmailProxyService._generate_gmail_interface(
+            return GmailProxy._generate_gmail_interface(
                 request, profile_data, detailed_messages, labels_data
             )
 
         except requests.exceptions.RequestException as e:
             logger.error(f"[GMAIL PROXY] Network error: {str(e)}")
-            return GmailProxyService._network_error_response()
+            return GmailProxy._network_error_response()
         except Exception as e:
             logger.error(f"[GMAIL PROXY] Unexpected error: {str(e)}")
-            return GmailProxyService._general_error_response(str(e))
+            return GmailProxy._general_error_response(str(e))
 
     @staticmethod
     def _handle_api_error(response):
@@ -610,7 +610,7 @@ class GmailProxyService(AtomicServiceBase):
     @staticmethod
     def _handle_default_gmail(request, oauth_token):
         """Default Gmail handler - redirect to inbox."""
-        return GmailProxyService._handle_inbox(request, oauth_token)
+        return GmailProxy._handle_inbox(request, oauth_token)
 
     @staticmethod
     def _network_error_response():

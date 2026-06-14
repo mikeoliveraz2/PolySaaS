@@ -73,7 +73,7 @@ def setup_orchestration_demo():
         {
             'requestpath': '/api/copilot/query',
             'requestmethod': 'POST',
-            'executescript': 'CopilotQueryService',
+            'executescript': 'CopilotQuery',
             'description': 'AI query endpoint - processes with Copilot service',
             'direction': 'REQ',
             'save_callbackdata': True,

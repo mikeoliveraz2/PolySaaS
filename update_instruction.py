@@ -38,7 +38,7 @@ upsert(
     match_type='contains',
     direction='REQ',
     requestmethod='GET',
-    executescript='OdooInvoiceNotifierService',
+    executescript='OdooInvoiceNotifier',
     eventKey='odoo_invoicing_viewed',
     description='Odoo Invoicing page navigation — display shell GET trigger',
 )
@@ -49,7 +49,7 @@ upsert(
     match_type='contains',
     direction='REQ',
     requestmethod='POST',
-    executescript='OdooInvoiceNotifierService',
+    executescript='OdooInvoiceNotifier',
     eventKey='odoo_invoicing_viewed',
     description='Odoo invoice data load — forwarding.py POST trigger',
 )

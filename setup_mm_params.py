@@ -1,4 +1,4 @@
-"""One-shot script to create MattermostProvisioningService parameters in olient schema."""
+"""One-shot script to create MattermostProvisioning parameters in olient schema."""
 import os, sys, django
 sys.path.insert(0, os.path.dirname(__file__))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
@@ -10,7 +10,7 @@ connection.cursor().execute('SET search_path TO olient,public')
 from parameters.models import Parameter
 
 p, created = Parameter.objects.update_or_create(
-    matchingKey='MattermostProvisioningService',
+    matchingKey='MattermostProvisioning',
     sequence=1,
     defaults={
         'param1': 'http://localhost:8065',

@@ -2,25 +2,25 @@
 
 from dose.models import Instruction
 
-# CopilotQueryService instruction
+# CopilotQuery instruction
 """
 Instruction.objects.create(
     requestpath='/api/copilot_query/',
     requestmethod='POST',
     direction='REQ',
-    executescript='CopilotQueryService',
+    executescript='CopilotQuery',
     matchingEventKey='copilot_query',
     description='Test Copilot atomic service',
 )
 """
 
-# DifferentialEquationService instruction
+# Calculus instruction
 """
 Instruction.objects.create(
     requestpath='/api/differential_equation/',
     requestmethod='POST',
     direction='REQ',
-    executescript='DifferentialEquationService',
+    executescript='Calculus',
     matchingEventKey='differential_equation',
     description='Test Differential Equation atomic service',
 )

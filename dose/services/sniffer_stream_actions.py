@@ -7,11 +7,11 @@ creates an Instruction + MQOutput for each unique POST path discovered.
 Pub/Sub Flow (GCP — primary broker):
   1. PolySniffer captures POST traffic → TrafficLog row.
   2. This service (or signal) creates:
-     - an Instruction (POST, path, executescript=EndpointDataExtractorService)
+     - an Instruction (POST, path, executescript=EndpointDataExtractor)
      - an MQOutput (provider=google_pubsub, topic="{trigger}-{path_slug}")
   3. On a live passthrough POST, DoseRequestController matches the Instruction
-     (substring match on requestpath) and runs EndpointDataExtractorService.
-  4. EndpointDataExtractorService._publish_to_pubsub reads the active MQConfig
+     (substring match on requestpath) and runs EndpointDataExtractor.
+  4. EndpointDataExtractor._publish_to_pubsub reads the active MQConfig
      with provider=google_pubsub and publishes the POST body to the topic.
   5. Any number of subscribers on that Pub/Sub topic receive the message
      for parallel processing.
@@ -146,7 +146,7 @@ def create_stream_actions_for_endpoint(endpoint, tenant, dry_run=False):
                     "eventKey": topic,
                     "description": f"Auto-generated from sniffer: {endpoint.get_menu_title()} POST {path}",
                     "direction": "REQ",
-                    "executescript": "EndpointDataExtractorService",
+                    "executescript": "EndpointDataExtractor",
                     "appusername": "sniffer",
                     "urllist": endpoint.endpoint_url,
                     "save_callbackdata": True,

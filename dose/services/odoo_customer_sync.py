@@ -1,5 +1,5 @@
 """
-OdooCustomerSyncService - Atomic service that receives customer data
+OdooCustomerSync - Atomic service that receives customer data
 from Pub/Sub (originating from another bundled app like Dolibarr) and
 creates or updates the corresponding partner record in Odoo.
 
@@ -11,13 +11,14 @@ Triggered by MQQueueMonitor when a message arrives on topic:
 The Instruction for this service should match:
   requestpath: /mq/polysaas.dolibarr.customer
   requestmethod: POST
-  executescript: OdooCustomerSyncService
+  executescript: OdooCustomerSync
 """
 import json
 import logging
 import datetime
 import xmlrpc.client
 from dose.services.atomic_service_base import AtomicServiceBase
+from dose.services.atomic_services_registry import filter_parameters_for_service
 
 logger = logging.getLogger(__name__)
 
@@ -29,20 +30,11 @@ ODOO_DEFAULTS = {
 }
 
 
-class OdooCustomerSyncService(AtomicServiceBase):
+class OdooCustomerSync(AtomicServiceBase):
 
     @staticmethod
     def get_parameters(parameters):
-        key = 'OdooCustomerSyncService'
-        if isinstance(parameters, dict):
-            return parameters if parameters.get('MatchingKey') == key else None
-        elif isinstance(parameters, list):
-            return [
-                p for p in parameters
-                if (isinstance(p, dict) and p.get('MatchingKey') == key)
-                or (hasattr(p, 'matchingKey') and getattr(p, 'matchingKey', None) == key)
-            ]
-        return None
+        return filter_parameters_for_service(parameters, 'OdooCustomerSync')
 
     @staticmethod
     def execute_and_save(request, instruction_row):
@@ -64,7 +56,7 @@ class OdooCustomerSyncService(AtomicServiceBase):
             logger.warning("[OdooCustomerSync] No message data received")
             return {"status": "error", "reason": "no_message_data"}
 
-        # The message from EndpointDataExtractorService contains:
+        # The message from EndpointDataExtractor contains:
         # { "source_app": "dolibarr", "entity": "customer", "action": "created",
         #   "normalized_data": { "name": "...", "email": "...", ... },
         #   "raw_data": { ... original fields ... } }
@@ -84,17 +76,17 @@ class OdooCustomerSyncService(AtomicServiceBase):
             return {"status": "skipped", "reason": "missing_name", "data": normalized}
 
         # Get Odoo connection config from parameters or defaults
-        odoo_config = OdooCustomerSyncService._get_odoo_config(request)
+        odoo_config = OdooCustomerSync._get_odoo_config(request)
 
         # Map normalized data to Odoo partner fields (Mapping engine or hard-coded)
-        partner_vals = OdooCustomerSyncService._map_with_engine_or_fallback(
+        partner_vals = OdooCustomerSync._map_with_engine_or_fallback(
             instruction_row, normalized, raw_data
         )
 
-        result = OdooCustomerSyncService._sync_to_odoo(odoo_config, partner_vals, action)
+        result = OdooCustomerSync._sync_to_odoo(odoo_config, partner_vals, action)
 
         callback_data = {
-            "service_name": "OdooCustomerSyncService",
+            "service_name": "OdooCustomerSync",
             "execution_timestamp": timestamp,
             "source_app": source_app,
             "entity": entity,
@@ -200,7 +192,7 @@ class OdooCustomerSyncService(AtomicServiceBase):
             except Exception as e:
                 logger.warning(f"[OdooCustomerSync] Mapping engine error, falling back: {e}")
 
-        return OdooCustomerSyncService._map_to_odoo_partner(normalized)
+        return OdooCustomerSync._map_to_odoo_partner(normalized)
 
     @staticmethod
     def _map_to_odoo_partner(normalized):

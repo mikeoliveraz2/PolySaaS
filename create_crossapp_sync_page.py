@@ -425,7 +425,7 @@ This page documents a live demonstration of PolySaaS cross-application sync: cre
 <tr><td><strong>PolySniffer</strong></td><td>Passive traffic capture to discover form fields and POST paths</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>Mapping Engine</strong></td><td>Database-driven field extraction and transformation with pipe expressions</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>RabbitMQ</strong></td><td>Message broker between source extraction and target sync services</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
-<tr><td><strong>Atomic Services</strong></td><td>EndpointDataExtractorService + OdooCustomerSyncService</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
+<tr><td><strong>Atomic Services</strong></td><td>EndpointDataExtractor + OdooCustomerSync</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>Instructions</strong></td><td>Path-based routing: <code>/societe/card.php</code> and <code>/mq/...</code></td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>
 <tr><td><strong>Passthrough Proxy</strong></td><td>Transparent proxy for accessing Dolibarr through PolySaaS</td><td><span class="cas-badge cas-badge-amber">Handler Pending</span></td></tr>
 <tr><td><strong>Odoo XML-RPC</strong></td><td>Creates/updates res.partner records in Odoo CRM</td><td><span class="cas-badge cas-badge-green">Active</span></td></tr>

@@ -10,7 +10,7 @@ new PolySaaS tenant subscription.
 Architecture:
   • A single shared Odoo instance serves all tenants (multi-company model).
   • Each new tenant gets a `res.users` record with a `res.company` in Odoo.
-  • Communication is via XML-RPC (same as OdooCustomerSyncService).
+  • Communication is via XML-RPC (same as OdooCustomerSync).
   • Odoo URL and admin credentials come from Django settings (env vars).
   • The provisioner also creates a PassThroughEndpoint in the tenant schema
     so the sidebar "Odoo" link appears immediately.
@@ -223,8 +223,8 @@ def provision_odoo_tenant(
         # ── Step 5: Welcome email (best-effort, success only) ─────────────────
         if user_created:
             try:
-                from dose.services.email_service import GmailEmailService
-                email_svc = GmailEmailService(credentials_file='gmail_creds.json')
+                from dose.services.email_to import GmailEmail
+                email_svc = GmailEmail(credentials_file='gmail_creds.json')
                 email_svc.send_email(
                     to_email=admin_email,
                     subject="Welcome to PolySaaS + Odoo – Your ERP Access is Ready",

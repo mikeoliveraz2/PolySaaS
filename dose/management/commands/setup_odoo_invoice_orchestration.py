@@ -13,7 +13,7 @@ Instructions created:
 
   1. DETECTOR — matches Odoo invoice create POST in the passthrough:
        requestpath: /web/dataset/call_kw/account.move/create
-       executescript: EndpointDataExtractorService
+       executescript: EndpointDataExtractor
        → publishes to GCP Pub/Sub topic 'odoo-invoices'
 
 Usage:
@@ -48,7 +48,7 @@ class Command(BaseCommand):
                 'requestmethod': 'POST',
                 'direction': 'REQ',
                 'eventKey': 'polysaas.odoo.invoice.created',
-                'executescript': 'EndpointDataExtractorService',
+                'executescript': 'EndpointDataExtractor',
                 'description': 'Detect Odoo invoice create via passthrough -> extract & publish to GCP Pub/Sub odoo-invoices',
                 'save_callbackdata': True,
             },
@@ -78,7 +78,7 @@ class Command(BaseCommand):
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(
                 '\nDone. Global default Instructions are now active in public schema.\n'
-                '  Flow: Odoo invoice save -> PolySniffer -> EndpointDataExtractorService\n'
+                '  Flow: Odoo invoice save -> PolySniffer -> EndpointDataExtractor\n'
                 '        -> GCP Pub/Sub topic: odoo-invoices\n'
                 '\n'
                 '  All tenants inherit this by default.\n'
