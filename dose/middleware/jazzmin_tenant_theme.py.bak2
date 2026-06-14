@@ -35,12 +35,6 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
     This example changes the site_brand and primary_color based on the tenant name.
     UPDATED: Now also dynamically injects PassThroughEndpoint records into topmenu_links.
     """
-
-    def __call__(self, request):
-        # DebugStackMiddleware.__call__ skips MiddlewareMixin.process_request â€” run it here.
-        self.process_request(request)
-        return super().__call__(request)
-
     def process_request(self, request):
         # Jazzmin admin templates (e.g. base_site.html extrahead) assume these exist.
         request.jazzmin_settings = dict(getattr(settings, "JAZZMIN_SETTINGS", None) or {})
