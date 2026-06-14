@@ -62,9 +62,16 @@ def maybe_save_callback(request, instruction_row, payload, description=None):
     """Persist CallBackData when instruction.save_callbackdata is True."""
     if not instruction_row or not getattr(instruction_row, 'save_callbackdata', False):
         return None
+    tenant = tenant_from_request(request)
+    if not tenant or not getattr(tenant, 'schema_name', None):
+        logger.warning('[AtomicService] CallBackData skipped — no tenant on request')
+        return None
     try:
         from dose.models import CallBackData
-        tenant = tenant_from_request(request)
+        from dose.passthrough.orchestration_log import ensure_tenant_search_path
+
+        if not ensure_tenant_search_path(tenant, 'atomic_service_callback'):
+            return None
         cb = CallBackData.objects.create(
             tenant=tenant,
             matchingEventKey=getattr(instruction_row, 'eventKey', None) or '',
