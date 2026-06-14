@@ -121,6 +121,7 @@
         color: #999;
         font-style: italic;
     }
+    }
 
     /* ── Slot advisory messages ── */
     #slot-advisory {
@@ -248,21 +249,21 @@
             <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox">
             <label for="enable-mattermost">Mattermost Team Chat <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div class="app-checkbox-row app-unavailable">
-            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
-            <label for="enable-wordpress">WordPress CMS <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2">
+            <label for="enable-wordpress">WordPress CMS <span class="app-slot-label">(2 slots)</span></label>
         </div>
-        <div class="app-checkbox-row app-unavailable">
-            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" disabled aria-disabled="true">
-            <label for="enable-liferay">Liferay <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox">
+            <label for="enable-liferay">Liferay <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div class="app-checkbox-row app-unavailable">
-            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" disabled aria-disabled="true">
-            <label for="enable-monitor-logger">Monitor Logger <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox">
+            <label for="enable-monitor-logger">Monitor Logger <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div class="app-checkbox-row app-unavailable">
-            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
-            <label for="enable-polysysmon">PolySysMon <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2">
+            <label for="enable-polysysmon">PolySysMon <span class="app-slot-label">(2 slots)</span></label>
         </div>
         <div id="slot-advisory"></div>
     </div>

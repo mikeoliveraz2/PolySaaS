@@ -234,18 +234,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             'enable_mattermost', 'enable_wordpress',
             'enable_liferay', 'enable_monitor_logger', 'enable_polysysmon',
         ]
-        enabled_apps = set(getattr(settings, 'SUBSCRIBE_ENABLED_BUNDLED_APPS', app_keys))
-        selected_apps = [k for k in app_keys if data.get(k) and k in enabled_apps]
-        rejected_apps = [k for k in app_keys if data.get(k) and k not in enabled_apps]
-        if rejected_apps:
-            labels = [_BUNDLED_APP_LABELS.get(k, k) for k in rejected_apps]
-            return Response(
-                {'error': (
-                    f'These bundled applications are not available at signup yet: '
-                    f'{", ".join(labels)}. Please choose from Odoo, Nextcloud, Dolibarr, or Mattermost.'
-                )},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        selected_apps = [k for k in app_keys if data.get(k)]
         max_apps = getattr(settings, 'PLAN_MAX_APPS', {}).get(plan_tier)
         slot_weights = getattr(settings, 'PLAN_BUNDLED_APP_SLOTS', {})
         slot_count = sum(slot_weights.get(k, 1) for k in selected_apps)
