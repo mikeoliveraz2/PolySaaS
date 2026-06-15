@@ -164,89 +164,6 @@ def _instruction_passes_requestmethod(instr, method):
     return req_method.upper() == method.upper()
 
 
-def _collapse_overlapping_matches(matched):
-    """
-    When several Instructions match one passthrough request (e.g. /odoo/accounting/119
-    and /odoo/accounting), keep the most specific rule per eventKey + HTTP method.
-    """
-    if len(matched) <= 1:
-        return matched
-    best = {}
-    for instr in matched:
-        event_key = (getattr(instr, 'eventKey', None) or f'id:{instr.pk}').strip()
-        method = (getattr(instr, 'requestmethod', None) or 'GET').upper()
-        bucket = f'{event_key}|{method}'
-        path_len = len((instr.requestpath or '').strip())
-        prev = best.get(bucket)
-        if not prev or path_len > len((prev.requestpath or '').strip()):
-            best[bucket] = instr
-    return list(best.values())
-
-
-def _normalize_upstream_path(path):
-    return ((path or '').split('?')[0].split('#')[0].rstrip('/') or '').lower()
-
-
-_ORCH_CALLBACK_GATE_KEY = 'orch_callback_gate'
-
-
-def _tenant_gate_key(tenant):
-    return (
-        getattr(tenant, 'schema_name', None)
-        or getattr(tenant, 'slug', None)
-        or str(getattr(tenant, 'pk', '') or '')
-    )
-
-
-def _sync_callback_path_gate(request, tenant, upstream_path):
-    """
-    Reset per-instruction callback dedupe when the upstream action path changes.
-
-    While the user stays on one path (Odoo/React may fire many passthrough requests),
-    each Instruction may persist CallBackData at most once until navigation moves elsewhere.
-    """
-    if not hasattr(request, 'session'):
-        return
-    norm_path = _normalize_upstream_path(upstream_path)
-    tenant_key = _tenant_gate_key(tenant)
-    gate = request.session.get(_ORCH_CALLBACK_GATE_KEY) or {}
-    if gate.get('tenant') != tenant_key or gate.get('path') != norm_path:
-        request.session[_ORCH_CALLBACK_GATE_KEY] = {
-            'tenant': tenant_key,
-            'path': norm_path,
-            'saved_instruction_ids': [],
-        }
-        request.session.modified = True
-        orch_log(
-            'callback_gate_reset',
-            tenant=tenant_key,
-            path=norm_path,
-        )
-
-
-def _instruction_already_saved_at_current_path(request, instruction_row):
-    """True if this Instruction already wrote CallBackData at the current action path."""
-    if not hasattr(request, 'session'):
-        return False
-    gate = request.session.get(_ORCH_CALLBACK_GATE_KEY) or {}
-    saved = gate.get('saved_instruction_ids') or []
-    instr_id = instruction_row.id
-    return instr_id in saved or str(instr_id) in [str(x) for x in saved]
-
-
-def _mark_instruction_saved_at_current_path(request, instruction_row):
-    if not hasattr(request, 'session'):
-        return
-    gate = request.session.get(_ORCH_CALLBACK_GATE_KEY) or {}
-    saved = list(gate.get('saved_instruction_ids') or [])
-    instr_id = instruction_row.id
-    if instr_id not in saved and str(instr_id) not in [str(x) for x in saved]:
-        saved.append(instr_id)
-    gate['saved_instruction_ids'] = saved
-    request.session[_ORCH_CALLBACK_GATE_KEY] = gate
-    request.session.modified = True
-
-
 def check_orchestration_trigger(request, upstream_path, app_name, tenant,
                                direction='REQ', upstream_response=None):
     """Check if upstream_path matches any Instruction and fire orchestration."""
@@ -255,7 +172,6 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
         return {'matched': 0, 'saved': 0}
 
     method = request.method.upper()
-    _sync_callback_path_gate(request, tenant, upstream_path)
     log_request_trace(request, tenant, upstream_path, app_name, direction)
 
     instructions = _load_instructions_for_direction(tenant, direction)
@@ -292,9 +208,6 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
 
     orch_log('match_result', direction=direction, matched=len(matched), path=upstream_path, method=method)
 
-    matched = _collapse_overlapping_matches(matched)
-    orch_log('match_collapsed', direction=direction, matched=len(matched), path=upstream_path, method=method)
-
     if not matched:
         write_request_log(
             request, tenant, upstream_path,
@@ -312,15 +225,6 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
     saved_count = 0
 
     for instruction_row in matched:
-        if getattr(instruction_row, 'save_callbackdata', False):
-            if _instruction_already_saved_at_current_path(request, instruction_row):
-                orch_log(
-                    'orch_skipped_repeat_at_path',
-                    instruction_id=instruction_row.id,
-                    path=_normalize_upstream_path(upstream_path),
-                )
-                continue
-
         executescript_name = normalize_executescript_value(
             getattr(instruction_row, 'executescript', None) or ''
         )
@@ -385,17 +289,6 @@ def _save_callback_data(request, instruction_row, atomic_result, tenant):
         if not ensure_tenant_search_path(tenant, 'callback_data'):
             return False
 
-        if _instruction_already_saved_at_current_path(request, instruction_row):
-            gate = getattr(request, 'session', {}).get(_ORCH_CALLBACK_GATE_KEY) or {}
-            orch_log(
-                'callback_skipped_same_path',
-                instruction_id=instruction_row.id,
-                eventKey=getattr(instruction_row, 'eventKey', None),
-                path=gate.get('path'),
-                hint='CallBackData already saved for this instruction at current action path',
-            )
-            return False
-
         description = getattr(instruction_row, 'description', '') or ''
         if not description or description.strip().lower() == 'description':
             description = f"{instruction_row.executescript or 'orchestration'} @ {atomic_result.get('path', '?')}"
@@ -426,7 +319,6 @@ def _save_callback_data(request, instruction_row, atomic_result, tenant):
             eventKey=instruction_row.eventKey,
             instruction_id=instruction_row.id,
         )
-        _mark_instruction_saved_at_current_path(request, instruction_row)
         return True
     except Exception as exc:
         orch_log_exception('callback_save_failed', exc, instruction_id=instruction_row.id)

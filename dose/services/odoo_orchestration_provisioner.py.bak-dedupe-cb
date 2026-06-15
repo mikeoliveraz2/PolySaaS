@@ -163,7 +163,21 @@ def provision_odoo_invoicing_orchestration(tenant, *, menu_id: Optional[int] = N
     )
     created_ids.append(obj.pk)
 
-    # Invoice list data load through passthrough (POST web_search_read).
+    # 2) Broader path fallback for Odoo 18 routes without menu suffix in the bar.
+    obj2, _ = _upsert_instruction(
+        tenant,
+        requestpath='/odoo/accounting',
+        match_type='path',
+        direction='REQ',
+        requestmethod='GET',
+        executescript='HelloWorld',
+        event_key='odoo_invoicing_viewed',
+        description='User viewed Odoo Accounting/Invoicing (path fallback)',
+        match_extra={},
+    )
+    created_ids.append(obj2.pk)
+
+    # 3) Invoice list data load through passthrough (POST web_search_read).
     obj3, _ = _upsert_instruction(
         tenant,
         requestpath='account.move/web_search_read',
