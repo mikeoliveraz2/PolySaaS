@@ -1,5 +1,5 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f
+﻿# THIS CODE IS FROZEN -- NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Composer via Roles Hydration -- 2026-06-11 -- commit 8293f54f
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # PolySaaS Run All Services
 # Activates venv, starts Waitress WSGI server (Windows), syncs AI peers, starts Mattermost bot
@@ -99,7 +99,7 @@ function Stop-PolySaaSServiceProcesses {
         $left = @(Get-PolySaaSServiceProcesses -Root $Root)
         if ($onPort.Count -eq 0 -and $left.Count -eq 0) { break }
         if ($round -lt 3) {
-            Write-Host "  Round $round — port/listeners still present, retrying..." -ForegroundColor DarkYellow
+            Write-Host "  Round $round -- port/listeners still present, retrying..." -ForegroundColor DarkYellow
         }
     }
 
@@ -118,7 +118,7 @@ function Wait-PortFree {
         $owners = @(Get-WaitressPortOwnerPids -Port $Port)
         if ($owners.Count -eq 0) { return $true }
         foreach ($procId in $owners) {
-            Write-Host "  Port $Port still held by PID $procId — killing..." -ForegroundColor DarkYellow
+            Write-Host "  Port $Port still held by PID $procId -- killing..." -ForegroundColor DarkYellow
             Stop-ProcessTree -ProcessId $procId
         }
         Start-Sleep -Seconds 2
@@ -136,7 +136,7 @@ function Wait-ForPortListener {
         $owners = @(Get-WaitressPortOwnerPids -Port $Port)
         if ($owners.Count -eq 1) { return $owners[0] }
         if ($owners.Count -gt 1) {
-            Write-Host "  Multiple PIDs on port $Port ($($owners -join ', ')) — cleaning..." -ForegroundColor DarkYellow
+            Write-Host "  Multiple PIDs on port $Port ($($owners -join ', ')) -- cleaning..." -ForegroundColor DarkYellow
             foreach ($procId in $owners) { Stop-ProcessTree -ProcessId $procId }
             Start-Sleep -Seconds 2
         } else {
@@ -154,7 +154,7 @@ function Start-PolySaaSWaitress {
 
     Write-Host "Starting Waitress on http://$WaitressListen (threads=$WaitressThreads)..." -ForegroundColor Green
     if (-not (Wait-PortFree -Port $WaitressPort -TimeoutSec 20)) {
-        throw "Port $WaitressPort is still in use — close other Waitress/Django processes and retry"
+        throw "Port $WaitressPort is still in use -- close other Waitress/Django processes and retry"
     }
 
     Start-Process -FilePath $WaitressExe `
@@ -218,7 +218,7 @@ function Start-PolySaaSAIPeersBot {
         Pop-Location
     }
 
-    Write-Host "Starting AI Peers bot (@copilot @grok @gemini demo roster)..." -ForegroundColor Green
+    Write-Host 'Starting AI Peers bot (@copilot @grok @gemini demo roster)...' -ForegroundColor Green
     Start-Process -FilePath $PythonExe `
         -ArgumentList "manage.py", "run_mattermost_bot" `
         -WorkingDirectory $Root `
@@ -227,7 +227,7 @@ function Start-PolySaaSAIPeersBot {
 
     $botRoots = @(Get-AIPeersBotProcessRoots)
     if ($botRoots.Count -gt 1) {
-        Write-Host "Found $($botRoots.Count) bot trees — keeping newest, stopping others..." -ForegroundColor Red
+        Write-Host "Found $($botRoots.Count) bot trees -- keeping newest, stopping others..." -ForegroundColor Red
         $keep = $botRoots | Sort-Object CreationDate -Descending | Select-Object -First 1
         $botRoots | Where-Object { $_.ProcessId -ne $keep.ProcessId } | ForEach-Object {
             Stop-ProcessTree -ProcessId $_.ProcessId
@@ -237,7 +237,7 @@ function Start-PolySaaSAIPeersBot {
     }
 
     if ($botRoots.Count -eq 0) {
-        Write-Host "  Bot not running after start — retrying once..." -ForegroundColor DarkYellow
+        Write-Host "  Bot not running after start -- retrying once..." -ForegroundColor DarkYellow
         Start-Process -FilePath $PythonExe `
             -ArgumentList "manage.py", "run_mattermost_bot" `
             -WorkingDirectory $Root `
@@ -248,10 +248,10 @@ function Start-PolySaaSAIPeersBot {
 
     $botPids = @(Get-AIPeersBotProcesses | ForEach-Object { $_.ProcessId })
     if ($botRoots.Count -eq 0) {
-        Write-Host "WARNING: AI Peers bot did not start — check .env (MATTERMOST_ADMIN_TOKEN, API keys)" -ForegroundColor Red
+        Write-Host "WARNING: AI Peers bot did not start -- check .env (MATTERMOST_ADMIN_TOKEN, API keys)" -ForegroundColor Red
     } elseif ($botRoots.Count -eq 1) {
         $rootPid = $botRoots[0].ProcessId
-        $procNote = if ($botPids.Count -gt 1) { " ($($botPids.Count) PIDs — normal on Windows)" } else { "" }
+        $procNote = if ($botPids.Count -gt 1) { " ($($botPids.Count) PIDs -- normal on Windows)" } else { "" }
         Write-Host "AI Peers bot running (root PID $rootPid$procNote)" -ForegroundColor Green
     } else {
         Write-Host "WARNING: $($botRoots.Count) bot trees still running" -ForegroundColor Red
@@ -278,7 +278,7 @@ function Show-PolySaaSRunAllSummary {
 
     Write-Host ""
     Write-Host $line -ForegroundColor Cyan
-    Write-Host "  PolySaaS runall — complete" -ForegroundColor Cyan
+    Write-Host "  PolySaaS runall -- complete" -ForegroundColor Cyan
     Write-Host $line -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Deployment (current phase):" -ForegroundColor White
@@ -294,9 +294,9 @@ function Show-PolySaaSRunAllSummary {
     }
 
     if ($botOk) {
-        Write-Host "    [OK]   AI Peers bot          PID $($BotStatus.Pid)  (@grok @gemini @copilot)" -ForegroundColor Green
+        Write-Host ('    [OK]   AI Peers bot          PID ' + $BotStatus.Pid + '  (@grok @gemini @copilot)') -ForegroundColor Green
     } elseif ($BotStatus.Count -gt 1) {
-        Write-Host "    [WARN] AI Peers bot          $($BotStatus.Count) bot trees — expect exactly 1" -ForegroundColor Red
+        Write-Host "    [WARN] AI Peers bot          $($BotStatus.Count) bot trees -- expect exactly 1" -ForegroundColor Red
     } else {
         Write-Host "    [FAIL] AI Peers bot          not running" -ForegroundColor Red
     }
@@ -304,9 +304,9 @@ function Show-PolySaaSRunAllSummary {
     Write-Host ""
     if ($allOk) {
         Write-Host "  READY FOR DEMO / VIDEO SESSION" -ForegroundColor Green
-        Write-Host "  Pre-flight: open Mattermost Town Square and post  @grok ping" -ForegroundColor Green
+        Write-Host '  Pre-flight: open Mattermost Town Square and post  @grok ping' -ForegroundColor Green
     } else {
-        Write-Host "  NOT READY — fix the [FAIL]/[WARN] items above, then run .\runall again" -ForegroundColor Red
+        Write-Host "  NOT READY -- fix the [FAIL]/[WARN] items above, then run .\runall again" -ForegroundColor Red
     }
     Write-Host ""
     Write-Host $line -ForegroundColor Cyan
@@ -316,7 +316,7 @@ function Show-PolySaaSRunAllSummary {
 Stop-PolySaaSServiceProcesses -Root $ProjectRoot
 
 Write-Host ""
-Write-Host "PolySaaS runall — starting local services (Django is local-only for now)..." -ForegroundColor Cyan
+Write-Host "PolySaaS runall -- starting local services (Django is local-only for now)..." -ForegroundColor Cyan
 Write-Host ""
 
 Write-Host "Activating virtual environment..." -ForegroundColor Cyan

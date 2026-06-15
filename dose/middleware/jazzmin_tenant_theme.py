@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import connection
 from django.utils.deprecation import MiddlewareMixin
 from dose.middleware.debug import DebugStackMiddleware   # ‚Üê ADD THIS
 
@@ -34,6 +35,12 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ‚Ü
     This example changes the site_brand and primary_color based on the tenant name.
     UPDATED: Now also dynamically injects PassThroughEndpoint records into topmenu_links.
     """
+
+    def __call__(self, request):
+        # DebugStackMiddleware.__call__ skips MiddlewareMixin.process_request ‚Äî run it here.
+        self.process_request(request)
+        return super().__call__(request)
+
     def process_request(self, request):
         # Jazzmin admin templates (e.g. base_site.html extrahead) assume these exist.
         request.jazzmin_settings = dict(getattr(settings, "JAZZMIN_SETTINGS", None) or {})
@@ -41,8 +48,20 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ‚Ü
 
         print(f"[MIDDLEWARE ENTRY] JazzminTenantThemeMiddleware process_request called for {request.path}")
 
-        # SCHEMA-PER-TENANT: Get current schema from session (no tenant table lookup needed)
+        # SCHEMA-PER-TENANT: resolve active tenant schema for sidebar passthrough links
         current_schema = request.session.get('schema_name') or getattr(request, 'schema_name', None)
+        if not current_schema:
+            tenant_slug = request.session.get('tenant_slug')
+            if tenant_slug:
+                try:
+                    from dose.models import Tenant
+                    with connection.cursor() as cursor:
+                        cursor.execute('SET LOCAL search_path TO public;')
+                    _t = Tenant.objects.filter(slug=tenant_slug, is_active=True).first()
+                    if _t and _t.schema_name:
+                        current_schema = _t.schema_name
+                except Exception:
+                    pass
 
         # DEBUG: Log schema status
         print(f"[JAZZMIN DEBUG] Request path: {request.path}")
@@ -67,54 +86,53 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ‚Ü
                 with connection.cursor() as cursor:
                     cursor.execute(f'SET search_path TO "{current_schema}",public;')
 
-                    # Get all PassThroughEndpoint records for this schema that should show in menu
-                    all_endpoints = PassThroughEndpoint.objects.filter(
-                        show_in_menu=True
-                    ).exclude(menu_title__isnull=True).exclude(menu_title__exact='')
+                # Get all PassThroughEndpoint records for this schema that should show in menu
+                all_endpoints = list(
+                    PassThroughEndpoint.objects.filter(show_in_menu=True)
+                    .exclude(menu_title__isnull=True)
+                    .exclude(menu_title__exact='')
+                )
 
-                    # Filter to only those whose TenantApp is provisioned (status='active')
-                    passthrough_endpoints = []
-                    for ep in all_endpoints:
-                        app_name = _endpoint_to_app_name(ep)
-                        if app_name:
-                            # Look up TenantApp in public schema
-                            with connection.cursor() as c2:
-                                c2.execute('SET search_path TO public')
-                            try:
-                                ta = TenantApp.objects.filter(
-                                    tenant__schema_name=current_schema,
-                                    app_name=app_name
-                                ).first()
-                                if ta and ta.status == 'active':
-                                    passthrough_endpoints.append(ep)
-                                    print(f"[JAZZMIN DEBUG] + {ep.menu_title}: TenantApp is ACTIVE")
-                                elif ta:
-                                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: TenantApp status={ta.status} (skipping)")
-                                else:
-                                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: No TenantApp found (skipping)")
-                            except Exception as e:
-                                print(f"[JAZZMIN DEBUG] ? {ep.menu_title}: lookup error: {e}")
-                        else:
-                            # Unknown mapping ‚Äî show anyway for backward compat
-                            passthrough_endpoints.append(ep)
-
-                    # Convert to list while still in correct schema
-                    passthrough_endpoints = list(passthrough_endpoints)
+                # Filter to only those whose TenantApp is provisioned (status='active')
+                passthrough_endpoints = []
+                for ep in all_endpoints:
+                    app_name = _endpoint_to_app_name(ep)
+                    if app_name:
+                        try:
+                            ta = TenantApp.public_bundles.filter(
+                                tenant__schema_name=current_schema,
+                                app_name=app_name,
+                            ).first()
+                            if ta and ta.status == 'active':
+                                passthrough_endpoints.append(ep)
+                                print(f"[JAZZMIN DEBUG] + {ep.menu_title}: TenantApp is ACTIVE")
+                            elif ta:
+                                print(f"[JAZZMIN DEBUG] - {ep.menu_title}: TenantApp status={ta.status} (skipping)")
+                            else:
+                                print(f"[JAZZMIN DEBUG] - {ep.menu_title}: No TenantApp found (skipping)")
+                        except Exception as e:
+                            print(f"[JAZZMIN DEBUG] ? {ep.menu_title}: lookup error: {e}")
+                    else:
+                        # Unknown mapping ‚Äî show anyway for backward compat
+                        passthrough_endpoints.append(ep)
 
                 print(f"[JAZZMIN DEBUG] Found {len(passthrough_endpoints)} endpoints to add to menu (schema: {current_schema})")
                 for ep in passthrough_endpoints:
-                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: {ep.trigger_path} (id: {ep.id}, enabled: {ep.is_enabled})")
+                    print(f"[JAZZMIN DEBUG] - {ep.menu_title}: {ep.endpoint_url} (id: {ep.id}, enabled: {ep.is_enabled})")
 
                 # Copy existing topmenu_links and add dynamic items
                 topmenu_links = jazzmin_settings.get('topmenu_links', []).copy()
                 print(f"[JAZZMIN DEBUG] Original menu links: {len(topmenu_links)}")
 
+                from urllib.parse import urlparse as _urlparse_menu
+
                 for endpoint in passthrough_endpoints:
                     # Don't add duplicates - check if this URL already exists in static config
                     existing_urls = [link.get('url', '') for link in topmenu_links if 'url' in link]
-                    norm = endpoint.trigger_path.strip('/').lower().split('/')[-1].replace('-', '_')
-                    # Embed route keeps Jazzmin sidebar/header; iframe loads /pt/admin/{norm}/
-                    full_url = f"/admin/passthrough-embed/{norm}/"
+                    _host = _urlparse_menu(endpoint.endpoint_url or '').netloc
+                    norm = _host.lower().replace('-', '_') if _host else ''
+                    # Embed route keeps Jazzmin sidebar/header; iframe loads /pt/admin/{hostname}/
+                    full_url = f"/admin/passthrough-embed/{norm}/" if norm else endpoint.get_menu_url()
                     if full_url not in existing_urls:
                         menu_link = {
                             "name": endpoint.menu_title,

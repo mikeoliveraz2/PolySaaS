@@ -43,12 +43,6 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
     read_min_role = UserTenantMembership.Role.VIEWER
     write_min_role = UserTenantMembership.Role.MEMBER
 
-    def _set_tenant_schema(self, tenant):
-        """Route ORM queries to the active tenant schema (not public)."""
-        if tenant and getattr(tenant, 'schema_name', None):
-            from dose.management.schema_utils import set_search_path
-            set_search_path(tenant.schema_name)
-
     def _current_tenant(self):
         tenant = get_current_tenant(self.request)
         if not tenant:
@@ -90,7 +84,6 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
     def get_queryset(self):
         base_qs = super().get_queryset()
         tenant = self._current_tenant()
-        self._set_tenant_schema(tenant)
         membership = self._active_membership(tenant)
         self._require_role_for_action(membership)
 
@@ -101,7 +94,6 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         tenant = self._current_tenant()
-        self._set_tenant_schema(tenant)
         membership = self._active_membership(tenant)
         self._require_role_for_action(membership)
         model_fields = {f.name for f in serializer.Meta.model._meta.get_fields()}
@@ -112,7 +104,6 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         tenant = self._current_tenant()
-        self._set_tenant_schema(tenant)
         membership = self._active_membership(tenant)
         self._require_role_for_action(membership)
         instance = self.get_object()
@@ -122,7 +113,6 @@ class TenantScopedViewSetMixin(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         tenant = self._current_tenant()
-        self._set_tenant_schema(tenant)
         membership = self._active_membership(tenant)
         self._require_role_for_action(membership)
         if hasattr(instance, "tenant") and instance.tenant_id != tenant.id:

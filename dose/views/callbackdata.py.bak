@@ -5,18 +5,10 @@ from django.core.paginator import Paginator
 from django.utils import timezone
 from datetime import timedelta
 from dose.models.callback_data import CallBackData
-from dose.utils import get_current_tenant
-from dose.management.schema_utils import set_search_path
 
-
-@login_required
 def callbackdata_view(request, id):
-    tenant = get_current_tenant(request)
-    if not tenant or not tenant.schema_name:
-        raise Http404('Callback data not found')
-    set_search_path(tenant.schema_name)
     try:
-        cb = CallBackData.objects.get(id=id, tenant=tenant)
+        cb = CallBackData.objects.get(id=id)
         html = cb.callbackdata.get('html', '') if cb.callbackdata else ''
         return HttpResponse(html, content_type='text/html')
     except CallBackData.DoesNotExist:
@@ -30,29 +22,11 @@ def callback_log_viewer(request):
     entries with filtering, pagination, and AI-powered summary.
     """
     from dose.models.request_log import RequestLog, ErrorLog
+    from dose.utils import get_current_tenant
 
     tenant = get_current_tenant(request)
-    if not tenant or not tenant.schema_name:
-        return render(request, 'dose/callback_log_viewer.html', {
-            'cb_page': Paginator(CallBackData.objects.none(), 20).get_page(1),
-            'req_page': Paginator(RequestLog.objects.none(), 20).get_page(1),
-            'err_page': Paginator(ErrorLog.objects.none(), 20).get_page(1),
-            'stats': {
-                'callback_count': 0,
-                'request_count': 0,
-                'error_count': 0,
-                'days': int(request.GET.get('days', 7)),
-                'tenant_name': 'No active tenant',
-            },
-            'ai_summary': None,
-            'event_key_filter': '',
-            'days_filter': int(request.GET.get('days', 7)),
-            'tenant': None,
-            'schema_name': 'public',
-        })
-
-    set_search_path(tenant.schema_name)
-    schema_name = tenant.schema_name
+    tenant_id = tenant.id if tenant else None
+    schema_name = tenant.schema_name if tenant else 'public'
 
     # ── Filters ──
     days = int(request.GET.get('days', 7))
@@ -60,20 +34,26 @@ def callback_log_viewer(request):
     model_filter = request.GET.get('model', '').strip().lower()
     since = timezone.now() - timedelta(days=days)
 
-    # ── Query CallBackData (tenant schema only) ──
-    cb_qs = CallBackData.objects.filter(pub_date__gte=since, tenant=tenant)
+    # ── Query CallBackData ──
+    cb_qs = CallBackData.objects.filter(pub_date__gte=since)
+    if tenant_id:
+        cb_qs = cb_qs.filter(tenant_id=tenant_id)
     if event_key:
         cb_qs = cb_qs.filter(matchingEventKey__icontains=event_key)
     cb_qs = cb_qs.order_by('-pub_date')
 
     # ── Query RequestLog ──
-    req_qs = RequestLog.objects.filter(timestamp__gte=since, tenant=tenant)
+    req_qs = RequestLog.objects.filter(timestamp__gte=since)
+    if tenant_id:
+        req_qs = req_qs.filter(tenant_id=tenant_id)
     if event_key:
         req_qs = req_qs.filter(path__icontains=event_key)
     req_qs = req_qs.order_by('-timestamp')
 
     # ── Query ErrorLog ──
-    err_qs = ErrorLog.objects.filter(timestamp__gte=since, tenant=tenant)
+    err_qs = ErrorLog.objects.filter(timestamp__gte=since)
+    if tenant_id:
+        err_qs = err_qs.filter(tenant_id=tenant_id)
     err_qs = err_qs.order_by('-timestamp')
 
     # ── Paginate ──
@@ -87,7 +67,7 @@ def callback_log_viewer(request):
         'request_count': req_qs.count(),
         'error_count': err_qs.count(),
         'days': days,
-        'tenant_name': tenant.name,
+        'tenant_name': tenant.name if tenant else 'All Tenants',
     }
 
     # ── AI Summary (optional, best-effort) ──

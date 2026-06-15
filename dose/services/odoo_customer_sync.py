@@ -99,14 +99,18 @@ class OdooCustomerSync(AtomicServiceBase):
         try:
             if instruction_row and getattr(instruction_row, 'save_callbackdata', False):
                 from dose.models import CallBackData
+                from dose.passthrough.orchestration_log import ensure_tenant_search_path
                 tenant = getattr(request, 'tenant', None)
-                CallBackData.objects.create(
-                    tenant=tenant,
-                    matchingEventKey=getattr(instruction_row, 'eventKey', None),
-                    description=f"Synced {source_app} {entity} → Odoo partner: {partner_vals.get('name', 'N/A')}",
-                    parameters_json=json.dumps(callback_data),
-                    callbackdata=callback_data,
-                )
+                if not tenant or not ensure_tenant_search_path(tenant, 'odoo_customer_sync_callback'):
+                    logger.warning('[OdooCustomerSync] CallBackData skipped — no tenant context')
+                else:
+                    CallBackData.objects.create(
+                        tenant=tenant,
+                        matchingEventKey=getattr(instruction_row, 'eventKey', None),
+                        description=f"Synced {source_app} {entity} → Odoo partner: {partner_vals.get('name', 'N/A')}",
+                        parameters_json=json.dumps(callback_data),
+                        callbackdata=callback_data,
+                    )
         except Exception as e:
             logger.error(f"[OdooCustomerSync] Error saving CallBackData: {e}")
 
