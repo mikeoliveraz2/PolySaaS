@@ -164,3 +164,11 @@ Office commit `5239b078` deduped CallBackData by **raw** upstream URL. Odoo issu
 - **`_derive_action_path()`** — coarse bucket (e.g. all Odoo accounting nav + invoice RPC → `odoo:accounting` or `odoo:accounting:119`).
 - **Session `orch_action_gate`** — `executed_instruction_ids` per tenant + action_path.
 - Each **Instruction runs at most once** per action path (atomic service + CallBackData + DoseMessage); gate resets when user navigates to a new action path.
+
+### Odoo invoicing GET instruction — menu id only (2026-06-15)
+
+Only **`/odoo/accounting/{menu_id}`** (e.g. `/odoo/accounting/119`) — no `/odoo/accounting` fallback. Provisioner deletes legacy fallback on subscribe; `cleanup_odoo_invoicing_instructions <slug>` for existing tenants.
+
+```powershell
+python manage.py cleanup_odoo_invoicing_instructions polysaasppd
+```

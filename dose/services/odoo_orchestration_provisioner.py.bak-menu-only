@@ -114,31 +114,6 @@ def _upsert_instruction(tenant, *, requestpath, match_type, direction, requestme
     return obj, created
 
 
-def _remove_invoicing_path_fallback(tenant) -> int:
-    """Drop legacy GET /odoo/accounting rule when menu-specific rule exists."""
-    from dose.models import Instruction
-
-    if not Instruction.objects.filter(
-        tenant=tenant,
-        eventKey='odoo_invoicing_viewed',
-        requestpath__startswith='/odoo/accounting/',
-        requestmethod='GET',
-        direction='REQ',
-    ).exists():
-        return 0
-    deleted, _ = Instruction.objects.filter(
-        tenant=tenant,
-        eventKey='odoo_invoicing_viewed',
-        requestpath='/odoo/accounting',
-        requestmethod='GET',
-        direction='REQ',
-        match_type='path',
-    ).delete()
-    if deleted:
-        logger.info('[OdooOrchProvision] removed %s legacy /odoo/accounting fallback', deleted)
-    return deleted
-
-
 def provision_odoo_invoicing_orchestration(tenant, *, menu_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Create/update Invoicing orchestration Instructions in the tenant schema.
@@ -173,10 +148,8 @@ def provision_odoo_invoicing_orchestration(tenant, *, menu_id: Optional[int] = N
 
     created_ids = []
 
-    # 1) Green bar / SPA navigation — menu-specific path only (no /odoo/accounting fallback).
-    if not menu_id:
-        return {'success': False, 'error': 'invoicing menu_id required'}
-    nav_path = f'/odoo/accounting/{menu_id}'
+    # 1) Green bar / SPA navigation — matches /odoo/accounting (with or without /menu_id suffix).
+    nav_path = f'/odoo/accounting/{menu_id}' if menu_id else '/odoo/accounting'
     obj, _ = _upsert_instruction(
         tenant,
         requestpath=nav_path,
@@ -189,7 +162,6 @@ def provision_odoo_invoicing_orchestration(tenant, *, menu_id: Optional[int] = N
         match_extra={},
     )
     created_ids.append(obj.pk)
-    _remove_invoicing_path_fallback(tenant)
 
     # Invoice list data load through passthrough (POST web_search_read).
     obj3, _ = _upsert_instruction(
