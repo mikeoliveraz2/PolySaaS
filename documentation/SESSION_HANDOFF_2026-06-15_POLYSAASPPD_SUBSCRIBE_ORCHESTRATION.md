@@ -149,3 +149,18 @@ Should complete with `PolySaaS runall -- complete` and no parser errors.
 
 ### Cursor workspace launcher
 - `runwt.ps1` / `runwt.bat` — starts Waitress from workspace root with venv + PYTHONPATH (for F: laptop / Cursor).
+
+---
+
+## Addendum — Orchestration execute-once per action path (2026-06-15)
+
+### Symptom
+New tenant opens Odoo Invoicing; orchestration fires repeatedly (HelloWorld / OdooInvoiceNotifier, CallBackData, DoseMessage) on SPA/RPC bursts — looks like canned duplicate events.
+
+### Cause
+Office commit `5239b078` deduped CallBackData by **raw** upstream URL. Odoo issues many URLs per screen (`/odoo/accounting/119`, `account.move/web_search_read`, etc.), resetting the gate. Skip only applied when `save_callbackdata` was true, not to atomic service execution uniformly.
+
+### Fix (`orchestration_hook.py`)
+- **`_derive_action_path()`** — coarse bucket (e.g. all Odoo accounting nav + invoice RPC → `odoo:accounting` or `odoo:accounting:119`).
+- **Session `orch_action_gate`** — `executed_instruction_ids` per tenant + action_path.
+- Each **Instruction runs at most once** per action path (atomic service + CallBackData + DoseMessage); gate resets when user navigates to a new action path.

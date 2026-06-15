@@ -449,6 +449,17 @@ def _save_callback_data(request, instruction_row, atomic_result, tenant):
         if not ensure_tenant_search_path(tenant, 'callback_data'):
             return False
 
+        if _instruction_executed_at_action(request, instruction_row):
+            gate = _get_action_gate(request)
+            orch_log(
+                'callback_skipped_same_action',
+                instruction_id=instruction_row.id,
+                eventKey=getattr(instruction_row, 'eventKey', None),
+                action_path=gate.get('action_path'),
+                hint='CallBackData already saved for this instruction at current action path',
+            )
+            return False
+
         description = getattr(instruction_row, 'description', '') or ''
         if not description or description.strip().lower() == 'description':
             description = f"{instruction_row.executescript or 'orchestration'} @ {atomic_result.get('path', '?')}"
@@ -479,6 +490,7 @@ def _save_callback_data(request, instruction_row, atomic_result, tenant):
             eventKey=instruction_row.eventKey,
             instruction_id=instruction_row.id,
         )
+        _mark_instruction_saved_at_current_path(request, instruction_row)
         return True
     except Exception as exc:
         orch_log_exception('callback_save_failed', exc, instruction_id=instruction_row.id)
