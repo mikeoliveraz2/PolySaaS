@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-15  
 **Declared by:** Michael  
-**Commit:** *(hash in git log for message `BINGO: Production Preview demo`)*  
+**Commit:** `55ce3402`  
 **Baseline:** `783f7fbe` — Odoo invoicing menu-id-only GET instruction  
 **Demo tenants:** `polysaasppy`, `polysaasppx`, `polysaasppv2`, `polysaasppd`  
 **Services:** `.\runall.ps1` (Waitress + `run_mattermost_bot`)
