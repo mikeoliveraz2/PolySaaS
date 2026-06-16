@@ -1,7 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Odoo invoicing orchestration on subscribe — commit 7d05920e
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
-# BINGO: Production Preview demo — provisioning_results API — 2026-06-15
 
 """
 Subscription / Stripe signup API — saga pattern.
@@ -72,12 +71,11 @@ _BUNDLED_APP_LABELS = {
 }
 
 
-def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_started=True, provisioning_results=None):
+def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_started=True):
     """
     Short copy returned on successful subscribe so the UI can show what new subscribers should expect.
-    When synchronous provisioning ran, reflect actual per-app outcomes (not generic 'queued').
+    Bundled apps are provisioned asynchronously (Celery); set expectations accordingly.
     """
-    provisioning_results = provisioning_results or {}
     org = (tenant_name or '').strip()
     org_bit = f' to {org}' if org else ''
 
@@ -93,31 +91,12 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
         )
 
     labels = [_BUNDLED_APP_LABELS[k] for k in selected_apps if k in _BUNDLED_APP_LABELS]
-    if labels and provisioning_results:
-        ok_apps = []
-        failed = []
-        for app_key in selected_apps:
-            label = _BUNDLED_APP_LABELS.get(app_key, app_key)
-            row = provisioning_results.get(app_key) or {}
-            if row.get('success'):
-                ok_apps.append(label)
-            elif row:
-                err = (row.get('error') or 'setup failed').strip()
-                failed.append(f'{label}: {err}')
-        parts = []
-        if ok_apps:
-            parts.append(f'Ready now: {", ".join(ok_apps)}.')
-        if failed:
-            parts.append('Setup failed: ' + '; '.join(failed) + '.')
-        if not ok_apps and not failed:
-            parts.append(
-                f'You selected: {", ".join(labels)}. Setup did not complete — check PolySaaS admin for status.'
-            )
-        provisioning_notice = ' '.join(parts)
-    elif labels:
+    if labels:
         provisioning_notice = (
             f'You selected these bundled applications: {", ".join(labels)}. '
-            'They are being set up now; check your PolySaaS admin for status if anything is missing.'
+            'They are queued for setup after signup (not instant) and may take some time. '
+            'We will email you at the address you provided when each environment is ready; '
+            'you can also check status from your PolySaaS admin.'
         )
     else:
         provisioning_notice = (
@@ -131,32 +110,25 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
     }
 
 
-def _subscription_response_payload(subscription, selected_apps, *, tenant_name='', stripe_trial_started=True, user_obj=None, provisioning_results=None):
+def _subscription_response_payload(subscription, selected_apps, *, tenant_name='', stripe_trial_started=True, user_obj=None):
     body = dict(SubscriptionSerializer(subscription).data)
     body.update(_subscriber_facing_messages(
         selected_apps, tenant_name=tenant_name, stripe_trial_started=stripe_trial_started,
-        provisioning_results=provisioning_results or {},
     ))
-    body['provisioning_results'] = provisioning_results or {}
     # Add Mattermost credentials to response for sessionStorage preservation across login (without team name)
     if subscription.tenant and 'enable_mattermost' in selected_apps:
-        mm_row = (provisioning_results or {}).get('enable_mattermost') or {}
-        if mm_row.get('success'):
-            try:
-                from dose.models import TenantApp
-                tapp = TenantApp.objects.filter(
-                    tenant=subscription.tenant, app_name='mattermost'
-                ).first()
-                extra = (tapp.extra_config or {}) if tapp else {}
-            except Exception:
-                extra = {}
-            body['mm_username'] = extra.get('mm_login_id') or extra.get('mm_username') or extra.get('mattermost_username') or ''
-            body['mm_password'] = extra.get('mm_password') or extra.get('mattermost_password') or ''
-            body['mm_email'] = (user_obj.email if user_obj else '') or ''
-            body['mm_token'] = extra.get('mm_token') or extra.get('mmauthtoken') or ''
-        else:
-            body['mm_provisioning_failed'] = True
-            body['mm_provisioning_error'] = mm_row.get('error') or 'Mattermost setup did not complete'
+        try:
+            from dose.models import TenantApp
+            tapp = TenantApp.objects.filter(
+                tenant=subscription.tenant, app_name='mattermost'
+            ).first()
+            extra = (tapp.extra_config or {}) if tapp else {}
+        except Exception:
+            extra = {}
+        body['mm_username'] = extra.get('mm_login_id') or extra.get('mm_username') or ''
+        body['mm_password'] = extra.get('mm_password') or extra.get('mattermost_password') or ''
+        body['mm_email'] = (user_obj.email if user_obj else '') or ''
+        body['mm_token'] = extra.get('mm_token') or extra.get('mmauthtoken') or ''
     return body
 
 
@@ -418,11 +390,19 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         # ── Phase 4: Provision synchronously AFTER transaction commits
         # so the tenant schema exists, but BEFORE the response returns
         # so the user sees sidebar entries immediately.
-        provisioning_results = {}
         if tenant_slug:
-            provisioning_results = self._register_provisioning_synchronous(
-                request, data, tenant_slug, user_obj,
-            )
+            self._register_provisioning_synchronous(request, data, tenant_slug, user_obj)
+
+        # ── Phase 5: (Demo flow: do NOT auto-login so user sees prefilled login page)
+        # Credentials are passed via sessionStorage by the subscribe page JS.
+        # if user_obj:
+        #     login(request, user_obj)
+        #     if tenant_obj:
+        #         from dose.tenant_session import apply_tenant_to_session
+        #         membership = UserTenantMembership.objects.filter(
+        #             user=user_obj, tenant=tenant_obj,
+        #         ).first()
+        #         apply_tenant_to_session(request, tenant_obj, membership)
 
         return Response(
             _subscription_response_payload(
@@ -430,7 +410,6 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 tenant_name=tenant_name or '',
                 stripe_trial_started=not test_bypass,
                 user_obj=user_obj,
-                provisioning_results=provisioning_results,
             ),
             status=status.HTTP_201_CREATED,
         )
@@ -442,12 +421,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _register_provisioning_synchronous(request, data, tenant_slug, user_obj):
-        """Run provisioners inline after transaction commit; return per-app results for API/UI."""
+        """Run provisioners inline after transaction commit; emit Django messages for user feedback."""
         from django.contrib import messages
         from dose.management.schema_utils import set_search_path_for_migrations
         from dose.models import TenantApp
-
-        results = {}
 
         tenant = Tenant.objects.get(slug=tenant_slug)
         tenant_pk = tenant.pk
@@ -550,8 +527,6 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             print(f"[PROVISION-START] {app_key} for tenant_schema={kwargs['tenant_schema']}")
             print(f"{'='*60}")
             result = None
-            provision_ok = False
-            err = ''
             try:
                 result = provisioner(**kwargs)
                 print(f"[PROVISION-DONE] {app_key}: success={result.get('success')} error={result.get('error')}")
@@ -595,19 +570,10 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             except Exception as exc:
                 print(f"[PROVISION-CRASH] {app_key}: {exc}")
                 logger.error("[PROVISION] %s crashed: %s", app_key, exc, exc_info=True)
-                err = str(exc)
                 messages.error(request, f"{app_display} provisioning crashed: {exc}")
-            results[app_key] = {
-                'app': app_display,
-                'success': provision_ok,
-                'error': err if not provision_ok else '',
-                'status': tapp.status,
-            }
             import time
             time.sleep(5)
             print(f"{'='*60}\n")
-
-        return results
 
     @staticmethod
     def _store_passthrough_credentials_in_session(request, app_key, tapp, result, user_obj, admin_email, kwargs):

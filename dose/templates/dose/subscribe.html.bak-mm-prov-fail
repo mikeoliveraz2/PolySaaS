@@ -1,6 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Subscribe Behavior Enhanced — commit c9339777 -->
-<!-- BINGO: Production Preview demo — provisioning failure feedback — 2026-06-15 -->
 {% extends "dose/dosebase.html" %}
 {% load static %}
 {% block content %}
@@ -913,33 +912,11 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         } catch(e) {}
         var loginUrl = '/dose/login/?next=/admin/';
         hideProvisioningModal();
-        var feedbackParts = ['Subscription saved!'];
-        if (data.trial_welcome) {
-            feedbackParts.push(data.trial_welcome);
-        }
-        if (data.provisioning_notice) {
-            feedbackParts.push(data.provisioning_notice);
-        }
-        var hasProvFailure = false;
-        if (data.provisioning_results && typeof data.provisioning_results === 'object') {
-            Object.keys(data.provisioning_results).forEach(function(k) {
-                var row = data.provisioning_results[k];
-                if (row && row.success === false) {
-                    hasProvFailure = true;
-                }
-            });
-        }
-        if (data.mm_provisioning_failed) {
-            hasProvFailure = true;
-        }
-        feedbackParts.push(
-            '<a href="' + loginUrl + '" style="color:#1565c0;font-weight:700;text-decoration:underline;">Click here to log in</a> \u2014 redirecting in 6 seconds\u2026'
-        );
         showSubscribeFeedback(
-            feedbackParts.join(' '),
-            { isError: hasProvFailure, html: true }
+            'Subscription saved! <a href="' + loginUrl + '" style="color:#1565c0;font-weight:700;text-decoration:underline;">Click here to log in</a> \u2014 redirecting in 4 seconds\u2026',
+            { isError: false, html: true }
         );
-        setTimeout(function() { window.location.assign(loginUrl); }, 6000);
+        setTimeout(function() { window.location.assign(loginUrl); }, 4000);
     }).catch(function(err) {
         showSubscribeFeedback('Network error: ' + (err && err.message ? err.message : String(err)), { isError: true });
         resetSubscribeButton(); if (card) card.clear();

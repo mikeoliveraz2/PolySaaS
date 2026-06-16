@@ -1,6 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Demo Tenant Odoo invoicing orchestration — commit 7d05920e
-# BINGO: Production Preview demo — prune duplicate Instructions — 2026-06-15
 
 """
 Provision Odoo Invoicing orchestration Instructions when a tenant subscribes to Odoo.
@@ -115,59 +114,12 @@ def _upsert_instruction(tenant, *, requestpath, match_type, direction, requestme
     return obj, created
 
 
-def _prune_duplicate_invoicing_instructions(tenant) -> int:
-    """
-    Keep at most one GET menu rule + one POST web_search_read in this tenant schema.
-    Removes legacy /odoo/accounting fallback, duplicate rows, and wrong-tenant bleed.
-    """
-    from dose.models import Instruction
-
-    tenant_key = str(getattr(tenant, 'pk', None) or getattr(tenant, 'slug', None) or '')
-    removed = 0
-
-    if tenant_key:
-        bleed_qs = Instruction.objects.filter(eventKey='odoo_invoicing_viewed').exclude(
-            tenant_id=tenant_key,
-        )
-        bleed_count, _ = bleed_qs.delete()
-        removed += bleed_count
-
-    removed += _remove_invoicing_path_fallback(tenant)
-
-    get_rows = list(
-        Instruction.objects.filter(
-            eventKey='odoo_invoicing_viewed',
-            requestmethod='GET',
-            direction='REQ',
-            requestpath__startswith='/odoo/accounting/',
-        ).order_by('-pk')
-    )
-    for dup in get_rows[1:]:
-        dup.delete()
-        removed += 1
-
-    post_rows = list(
-        Instruction.objects.filter(
-            eventKey='odoo_invoicing_viewed',
-            requestmethod='POST',
-            direction='REQ',
-            requestpath__icontains='web_search_read',
-        ).order_by('-pk')
-    )
-    for dup in post_rows[1:]:
-        dup.delete()
-        removed += 1
-
-    if removed:
-        logger.info('[OdooOrchProvision] pruned %s duplicate invoicing instruction(s)', removed)
-    return removed
-
-
 def _remove_invoicing_path_fallback(tenant) -> int:
     """Drop legacy GET /odoo/accounting rule when menu-specific rule exists."""
     from dose.models import Instruction
 
     if not Instruction.objects.filter(
+        tenant=tenant,
         eventKey='odoo_invoicing_viewed',
         requestpath__startswith='/odoo/accounting/',
         requestmethod='GET',
@@ -175,6 +127,7 @@ def _remove_invoicing_path_fallback(tenant) -> int:
     ).exists():
         return 0
     deleted, _ = Instruction.objects.filter(
+        tenant=tenant,
         eventKey='odoo_invoicing_viewed',
         requestpath='/odoo/accounting',
         requestmethod='GET',
@@ -251,8 +204,6 @@ def provision_odoo_invoicing_orchestration(tenant, *, menu_id: Optional[int] = N
         match_extra={},
     )
     created_ids.append(obj3.pk)
-
-    _prune_duplicate_invoicing_instructions(tenant)
 
     logger.info(
         '[OdooOrchProvision] Done for %s (%s) menu_id=%s instruction_ids=%s',

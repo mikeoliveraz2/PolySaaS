@@ -1,6 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Demo Tenant instruction filter — commit 7d05920e
-# BINGO: Production Preview demo — CallBackData eventKey dedupe — 2026-06-15
 
 """
 Orchestration Hook — bridges PolySniffer traffic capture and dynamic orchestration.

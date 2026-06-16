@@ -186,6 +186,23 @@ def _create_user(mm_url: str, headers: dict, admin_email: str, username: str, pa
             result['user_existed'] = True
             logger.info("[MM-PROV] User %s already exists (id=%s)", username, mm_user['id'])
             return mm_user['id']
+        if admin_email and 'email_exists' in resp.text.lower():
+            by_email = requests.get(
+                f"{mm_url}/api/v4/users/email/{admin_email}",
+                headers=headers,
+                timeout=15,
+            )
+            if by_email.status_code == 200:
+                mm_user = by_email.json()
+                result['mm_user_id'] = mm_user['id']
+                result['mm_username'] = mm_user['username']
+                result['user_existed'] = True
+                result['user_linked_by_email'] = True
+                logger.info(
+                    "[MM-PROV] Linked existing MM user @%s by email %s (id=%s)",
+                    mm_user.get('username'), admin_email, mm_user['id'],
+                )
+                return mm_user['id']
     logger.error("[MM-PROV] User creation failed: %s %s", resp.status_code, resp.text[:300])
     result['user_error'] = resp.text[:300]
     return None
@@ -207,6 +224,119 @@ def _add_user_to_team(mm_url: str, headers: dict, team_id: str, user_id: str, re
     else:
         logger.warning("[MM-PROV] Team membership failed: %s", resp.text[:200])
         result['team_member_error'] = resp.text[:200]
+
+
+def _town_square_channel_id(mm_url: str, headers: dict, team_id: str) -> Optional[str]:
+    """Return town-square channel id for a team, or None."""
+    try:
+        resp = requests.get(
+            f"{mm_url.rstrip('/')}/api/v4/teams/{team_id}/channels/name/town-square",
+            headers=headers,
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            return resp.json().get('id') or None
+    except Exception as exc:
+        logger.warning("[MM-PROV] town-square lookup failed for team %s: %s", team_id, exc)
+    return None
+
+
+def set_mattermost_shared_team_landing(
+    mm_url: str,
+    headers: dict,
+    user_id: str,
+    shared_team_id: str,
+    result: Optional[dict] = None,
+) -> bool:
+    """
+    Set Mattermost user preferences so the SPA opens the shared team's Town Square
+    (where AI peers live). Uses preference category 'last' / names 'team' and 'channel'.
+    """
+    if not user_id or not shared_team_id:
+        return False
+    channel_id = _town_square_channel_id(mm_url, headers, shared_team_id)
+    if not channel_id:
+        if result is not None:
+            result['shared_landing_error'] = 'town-square not found on shared team'
+        return False
+
+    prefs = [
+        {'user_id': user_id, 'category': 'last', 'name': 'team', 'value': shared_team_id},
+        {'user_id': user_id, 'category': 'last', 'name': 'channel', 'value': channel_id},
+    ]
+    try:
+        resp = requests.put(
+            f"{mm_url.rstrip('/')}/api/v4/users/{user_id}/preferences",
+            headers=headers,
+            json=prefs,
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            logger.info(
+                "[MM-PROV] Shared Town Square landing set for user %s (team=%s channel=%s)",
+                user_id, shared_team_id, channel_id,
+            )
+            if result is not None:
+                result['shared_landing_set'] = True
+            return True
+        logger.warning(
+            "[MM-PROV] Shared landing preferences failed HTTP %s: %s",
+            resp.status_code, resp.text[:200],
+        )
+        if result is not None:
+            result['shared_landing_error'] = resp.text[:200]
+    except Exception as exc:
+        logger.warning("[MM-PROV] Shared landing preferences exception: %s", exc)
+        if result is not None:
+            result['shared_landing_error'] = str(exc)
+    return False
+
+
+def sync_mattermost_users_shared_team_landing(
+    mm_url: str,
+    headers: dict,
+    shared_team_id: str,
+    *,
+    tenant_schemas: Optional[list] = None,
+    log=None,
+) -> dict:
+    """
+    Set shared-team Town Square as the MM landing for all provisioned tenant users.
+    Pass tenant_schemas to limit scope (e.g. demo tenants only).
+    """
+    from dose.models import TenantApp
+
+    mm_url = mm_url.rstrip('/')
+    stats = {'updated': 0, 'skipped': 0, 'errors': 0}
+    seen_users: set = set()
+
+    qs = TenantApp.public_bundles.filter(app_name__icontains='mattermost')
+    if tenant_schemas:
+        qs = qs.filter(tenant__schema_name__in=tenant_schemas)
+
+    for ta in qs.select_related('tenant'):
+        uid = ((ta.extra_config or {}).get('mm_user_id') or '').strip()
+        if not uid:
+            stats['skipped'] += 1
+            continue
+        if uid in seen_users:
+            stats['skipped'] += 1
+            continue
+        seen_users.add(uid)
+        try:
+            ok = set_mattermost_shared_team_landing(mm_url, headers, uid, shared_team_id)
+            if ok:
+                stats['updated'] += 1
+                schema = getattr(ta.tenant, 'schema_name', '?')
+                if log:
+                    log(f"  landing -> shared Town Square for MM user {uid} ({schema})")
+            else:
+                stats['errors'] += 1
+        except Exception as exc:
+            stats['errors'] += 1
+            logger.warning("[MM-PROV] Landing sync failed for user %s: %s", uid, exc)
+
+    return stats
 
 
 def _create_user_token(mm_url: str, headers: dict, user_id: str, result: dict) -> Optional[str]:
@@ -591,6 +721,7 @@ def provision_mattermost_tenant(
         if user_id:
             _add_user_to_team(mm_url, headers, company_team_id, user_id, result)
             _add_user_to_team(mm_url, headers, shared_team_id, user_id, result)
+            set_mattermost_shared_team_landing(mm_url, headers, user_id, shared_team_id, result)
             token = _create_user_token(mm_url, headers, user_id, result) or ''
 
         oidc_enabled = False
@@ -698,6 +829,7 @@ def ensure_dual_mattermost_teams(
             return result
 
         _add_user_to_team(mm_url, headers, shared_team_id, user_id, result)
+        set_mattermost_shared_team_landing(mm_url, headers, user_id, shared_team_id, result)
 
         existing_team_id = (extra.get('mm_team_id') or '').strip()
         existing_team_name = (extra.get('mm_team_name') or '').strip()

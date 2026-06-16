@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Production Preview demo — shared Town Square landing sync — 2026-06-15
 """
 Management command: Sync demo AI Peer bots to the shared Mattermost collaboration team.
 
@@ -65,6 +67,20 @@ class Command(BaseCommand):
                 )
 
         self._add_bots_to_team(mm_url, headers, team_id)
+        from dose.services.mattermost_tenant_provisioner import (
+            sync_mattermost_users_shared_team_landing,
+        )
+
+        self.stdout.write('Setting shared Town Square as default landing for MM users...')
+        landing_stats = sync_mattermost_users_shared_team_landing(
+            mm_url, headers, team_id, log=lambda m: self.stdout.write(m),
+        )
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'Landing prefs: {landing_stats["updated"]} updated, '
+                f'{landing_stats["skipped"]} skipped, {landing_stats["errors"]} errors'
+            )
+        )
         self.stdout.write(
             self.style.SUCCESS(f'OK Demo bots synced for shared team {team_id} at {mm_url}')
         )
