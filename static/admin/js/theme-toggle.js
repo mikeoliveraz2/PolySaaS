@@ -96,6 +96,122 @@ function ensureThemeModeBadge() {
     });
 }
 
+let themeToggleInFlight = false;
+
+function ensureThemeToggleOverlayStyle() {
+    if (document.getElementById('ps-theme-toggle-overlay-style')) {
+        return;
+    }
+    const style = document.createElement('style');
+    style.id = 'ps-theme-toggle-overlay-style';
+    style.textContent = [
+        '.ps-theme-toggle-overlay {',
+        '  position: fixed;',
+        '  inset: 0;',
+        '  z-index: 2147483646;',
+        '  background: rgba(15, 23, 42, 0.18);',
+        '  display: none;',
+        '  align-items: center;',
+        '  justify-content: center;',
+        '}',
+        '.ps-theme-toggle-overlay.is-visible {',
+        '  display: flex;',
+        '}',
+        '.ps-theme-toggle-spinner {',
+        '  width: 58px;',
+        '  height: 58px;',
+        '  border: 5px solid rgba(148, 163, 184, 0.45);',
+        '  border-top-color: #2563eb;',
+        '  border-radius: 999px;',
+        '  animation: ps-theme-spin 0.9s linear infinite;',
+        '  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);',
+        '}',
+        '@keyframes ps-theme-spin {',
+        '  to { transform: rotate(360deg); }',
+        '}'
+    ].join('\n');
+    document.head.appendChild(style);
+}
+
+function getThemeToggleOverlay() {
+    ensureThemeToggleOverlayStyle();
+    let overlay = document.getElementById('ps-theme-toggle-overlay');
+    if (overlay) {
+        return overlay;
+    }
+    overlay = document.createElement('div');
+    overlay.id = 'ps-theme-toggle-overlay';
+    overlay.className = 'ps-theme-toggle-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+
+    const spinner = document.createElement('div');
+    spinner.className = 'ps-theme-toggle-spinner';
+    spinner.setAttribute('aria-label', 'Switching theme');
+    overlay.appendChild(spinner);
+
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+function setThemeToggleOverlayVisible(isVisible) {
+    const overlay = getThemeToggleOverlay();
+    overlay.classList.toggle('is-visible', !!isVisible);
+    overlay.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+}
+
+function getThemeToggleControls() {
+    const allAnchors = Array.from(document.querySelectorAll('a, #ps-theme-toggle-btn, #theme-toggle-btn'));
+    return allAnchors.filter(function(node) {
+        if (!node) return false;
+        if (node.id === 'ps-theme-toggle-btn' || node.id === 'theme-toggle-btn') return true;
+        return isToggleMenuLink(node);
+    });
+}
+
+function setThemeToggleBusyState(isBusy) {
+    const controls = getThemeToggleControls();
+    controls.forEach(function(control) {
+        if (!control) return;
+        control.style.pointerEvents = isBusy ? 'none' : '';
+        control.style.opacity = isBusy ? '0.7' : '';
+        if (isBusy) {
+            control.setAttribute('aria-disabled', 'true');
+            control.setAttribute('aria-busy', 'true');
+        } else {
+            control.removeAttribute('aria-disabled');
+            control.removeAttribute('aria-busy');
+        }
+
+        const badge = control.querySelector('.ps-theme-mode-badge');
+        if (badge && isBusy) {
+            badge.textContent = 'Switching...';
+            badge.classList.remove('ps-theme-dark', 'ps-theme-light');
+        }
+    });
+    document.body.style.cursor = isBusy ? 'progress' : '';
+    setThemeToggleOverlayVisible(isBusy);
+}
+
+function executeThemeToggle() {
+    if (themeToggleInFlight) {
+        return;
+    }
+    themeToggleInFlight = true;
+    setThemeToggleBusyState(true);
+    requestThemeToggle()
+        .then(function() {
+            ensureThemeModeBadge();
+            window.location.reload();
+        })
+        .catch(function(err) {
+            themeToggleInFlight = false;
+            setThemeToggleBusyState(false);
+            ensureThemeModeBadge();
+            console.error('Failed to toggle theme:', err);
+            alert('Failed to toggle theme. Please try again.');
+        });
+}
+
 function bindThemeToggleControl(control) {
     if (!control || control.dataset.psThemeToggleBound === '1') {
         return;
@@ -103,15 +219,7 @@ function bindThemeToggleControl(control) {
     control.dataset.psThemeToggleBound = '1';
     control.addEventListener('click', function(e) {
         e.preventDefault();
-        requestThemeToggle()
-            .then(function() {
-                ensureThemeModeBadge();
-                window.location.reload();
-            })
-            .catch(function(err) {
-                console.error('Failed to toggle theme:', err);
-                alert('Failed to toggle theme. Please try again.');
-            });
+        executeThemeToggle();
     });
 }
 
@@ -120,9 +228,19 @@ function isToggleMenuLink(anchor) {
     const href = (anchor.getAttribute('href') || '').toLowerCase();
     const text = (anchor.textContent || '').toLowerCase();
     if (href === '#ps-theme-toggle') return true;
+    if (href.indexOf('#ps-theme-toggle') !== -1) return true;
     if (href.indexOf('select-theme') !== -1 && text.indexOf('toggle') !== -1) return true;
     if (text.indexOf('toggle light') !== -1 || text.indexOf('toggle theme') !== -1) return true;
     return false;
+}
+
+function findToggleAnchorFromEventTarget(target) {
+    if (!target) return null;
+    if (target.tagName === 'A') return target;
+    if (typeof target.closest === 'function') {
+        return target.closest('a');
+    }
+    return null;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -147,4 +265,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     bindThemeToggleControl(document.getElementById('theme-toggle-btn'));
     bindThemeToggleControl(document.getElementById('ps-theme-toggle-btn'));
+
+    // Delegate clicks so dynamically rendered/replaced navbar links keep working.
+    document.addEventListener('click', function(e) {
+        const anchor = findToggleAnchorFromEventTarget(e.target);
+        if (!isToggleMenuLink(anchor)) {
+            return;
+        }
+        // First click on dynamically rendered links should toggle immediately.
+        if (anchor.dataset.psThemeToggleBound !== '1') {
+            e.preventDefault();
+            bindThemeToggleControl(anchor);
+            executeThemeToggle();
+            return;
+        }
+    }, true);
 });

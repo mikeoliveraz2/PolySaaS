@@ -109,26 +109,8 @@
         }
     });
 
-    // After successful login, restore Mattermost credentials from sessionStorage (without team name)
-    if (sessionStorage.getItem('polysaas_mm_creds')) {
-        var mmCreds = JSON.parse(sessionStorage.getItem('polysaas_mm_creds'));
-        sessionStorage.removeItem('polysaas_mm_creds');
-        console.log('[AUTO-LOGIN] Restoring Mattermost credentials to session:', mmCreds);
-        // Call API to restore Mattermost credentials to Django session
-        fetch('/dose/api/restore-mm-credentials/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
-            },
-            body: JSON.stringify(mmCreds),
-            credentials: 'same-origin'
-        }).then(function(resp) {
-            console.log('[AUTO-LOGIN] Restore credentials response:', resp.status);
-        }).catch(function(e) {
-            console.error('[AUTO-LOGIN] Failed to restore Mattermost credentials:', e);
-        });
-    }
+    // Intentionally do not POST anything from this anonymous login page.
+    // A background POST can rotate CSRF state and invalidate the form token.
 })();
 </script>
 {% endblock %}
