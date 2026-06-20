@@ -181,8 +181,9 @@ PLAN_MAX_APPS = {
     'polysaas-unlimited': None,
 }
 
-# Subscribe form keys: WordPress & PolySysMon each consume 2 slots toward PLAN_MAX_APPS
+# Subscribe form keys: Odoo, WordPress & PolySysMon each consume 2 slots toward PLAN_MAX_APPS
 PLAN_BUNDLED_APP_SLOTS = {
+    'enable_odoo': 2,
     'enable_wordpress': 2,
     'enable_polysysmon': 2,
 }
@@ -197,6 +198,7 @@ SUBSCRIBE_ENABLED_BUNDLED_APPS = (
 
 # TenantApp.app_name values: same weights for in-product limits
 TENANT_APP_BUNDLED_SLOTS = {
+    'odoo': 2,
     'wordpress': 2,
     'polysysmon': 2,
 }

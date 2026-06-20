@@ -3,6 +3,8 @@
 <!-- BINGO: Production Preview demo — provisioning failure feedback — 2026-06-15 -->
 {% extends "dose/dosebase.html" %}
 {% load static %}
+{% block title %}PolySaaS Online{% endblock %}
+{% block header_title %}PolySaaS Online{% endblock %}
 {% block content %}
 
 <style>
@@ -234,8 +236,8 @@
             Bundled apps are queued after subscribe; you will get email when each is ready.
         </small>
         <div class="app-checkbox-row">
-            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox">
-            <label for="enable-odoo">Odoo ERP <span class="app-slot-label">(1 slot)</span></label>
+            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" data-app-slots="2">
+            <label for="enable-odoo">Odoo ERP <span class="app-slot-label">(2 slots)</span></label>
         </div>
         <div class="app-checkbox-row">
             <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox">
