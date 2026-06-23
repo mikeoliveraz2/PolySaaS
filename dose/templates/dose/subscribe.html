@@ -231,7 +231,7 @@
             <span id="slot-count-label" style="font-size:0.82em; color:#888; margin-left:0.5em;"></span>
         </h4>
         <small style="display: block; color: #666; margin-bottom: 0.75em;">
-            Pick the applications you need. WordPress and PolySysMon each count as <strong>2 slots</strong>; all others count as 1.
+            Pick the applications you need. Odoo, WordPress and PolySysMon each count as <strong>2 slots</strong>; all others count as 1.
             A plan that fits will be recommended below.
             Bundled apps are queued after subscribe; you will get email when each is ready.
         </small>
@@ -250,6 +250,10 @@
         <div class="app-checkbox-row">
             <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox">
             <label for="enable-mattermost">Mattermost Team Chat <span class="app-slot-label">(1 slot)</span></label>
+        </div>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-hubspot" name="enable_hubspot" class="app-checkbox">
+            <label for="enable-hubspot">HubSpot CRM <span class="app-slot-label">(1 slot)</span></label>
         </div>
         <div class="app-checkbox-row app-unavailable">
             <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
@@ -838,6 +842,7 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_nextcloud: !!document.getElementById('enable-nextcloud').checked,
         enable_dolibarr: !!document.getElementById('enable-dolibarr').checked,
         enable_mattermost: !!document.getElementById('enable-mattermost').checked,
+        enable_hubspot: !!document.getElementById('enable-hubspot').checked,
         enable_wordpress: !!document.getElementById('enable-wordpress').checked,
         enable_liferay: !!document.getElementById('enable-liferay').checked,
         enable_monitor_logger: !!document.getElementById('enable-monitor-logger').checked,

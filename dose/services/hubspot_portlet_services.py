@@ -1,0 +1,98 @@
+"""
+HubSpot portlet atomic services — orchestration + UCM data loaders.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List
+
+from dose.services.atomic_service_base import AtomicServiceBase
+from dose.services.atomic_services_registry import filter_parameters_for_service
+from dose.services.atomic_service_utils import maybe_save_callback, service_result, tenant_from_request
+from dose.services.hubspot_api import HubspotApiError, HubspotApiService, HubspotNotConnected
+
+logger = logging.getLogger(__name__)
+
+_PORTLET_LOADERS = {
+    'contacts': 'list_contacts',
+    'companies': 'list_companies',
+    'deals': 'list_deals',
+    'tickets': 'list_tickets',
+    'tasks': 'list_tasks',
+}
+
+
+def _load_portlet_rows(request, object_key: str, *, limit: int = 10) -> Dict[str, Any]:
+    tenant = tenant_from_request(request)
+    if not tenant:
+        return service_result('HubSpotPortlet', status='error', error='no tenant')
+    try:
+        api = HubspotApiService.for_tenant(tenant)
+        method = getattr(api, _PORTLET_LOADERS[object_key])
+        rows = method(limit=limit)
+        return service_result(
+            'HubSpotPortlet',
+            status='success',
+            object_type=object_key,
+            count=len(rows),
+            rows=rows,
+        )
+    except HubspotNotConnected as exc:
+        return service_result('HubSpotPortlet', status='error', error=str(exc), connect_url='/dose/hubspot/oauth/start/')
+    except HubspotApiError as exc:
+        return service_result('HubSpotPortlet', status='error', error=str(exc))
+
+
+class _HubSpotPortletBase(AtomicServiceBase):
+    OBJECT_KEY = 'contacts'
+    SERVICE_NAME = 'HubSpotContactsPortlet'
+
+    @classmethod
+    def get_parameters(cls, parameters):
+        return filter_parameters_for_service(parameters, cls.SERVICE_NAME)
+
+    @classmethod
+    def execute_and_save(cls, request, instruction_row):
+        limit = 10
+        if instruction_row and isinstance(getattr(instruction_row, 'parameters_json', None), dict):
+            limit = int(instruction_row.parameters_json.get('limit') or limit)
+        payload = _load_portlet_rows(request, cls.OBJECT_KEY, limit=limit)
+        maybe_save_callback(
+            request,
+            instruction_row,
+            payload,
+            description=f'HubSpot {cls.OBJECT_KEY} portlet load',
+        )
+        return payload
+
+
+class HubSpotContactsPortlet(_HubSpotPortletBase):
+    OBJECT_KEY = 'contacts'
+    SERVICE_NAME = 'HubSpotContactsPortlet'
+
+
+class HubSpotCompaniesPortlet(_HubSpotPortletBase):
+    OBJECT_KEY = 'companies'
+    SERVICE_NAME = 'HubSpotCompaniesPortlet'
+
+
+class HubSpotDealsPortlet(_HubSpotPortletBase):
+    OBJECT_KEY = 'deals'
+    SERVICE_NAME = 'HubSpotDealsPortlet'
+
+
+class HubSpotTicketsPortlet(_HubSpotPortletBase):
+    OBJECT_KEY = 'tickets'
+    SERVICE_NAME = 'HubSpotTicketsPortlet'
+
+
+class HubSpotTasksPortlet(_HubSpotPortletBase):
+    OBJECT_KEY = 'tasks'
+    SERVICE_NAME = 'HubSpotTasksPortlet'
+
+
+def load_portlet_by_slug(request, slug: str, *, limit: int = 10) -> Dict[str, Any]:
+    key = (slug or '').strip().lower()
+    if key not in _PORTLET_LOADERS:
+        return service_result('HubSpotPortlet', status='error', error=f'unknown portlet {slug!r}')
+    return _load_portlet_rows(request, key, limit=limit)

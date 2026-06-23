@@ -1,0 +1,62 @@
+"""HubSpot integration — tenant isolation and handler discovery."""
+from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+
+from dose.passthrough.handlers.hubspot_handler import HubspotPassthroughHandler
+from dose.services.hubspot_oauth import persist_tokens_on_tenant_app
+from dose.services.hubspot_portlet_services import load_portlet_by_slug
+
+
+class HubspotHandlerDiscoveryTests(SimpleTestCase):
+    def test_matches_hubspot_endpoint(self):
+        ep = MagicMock()
+        ep.endpoint_url = 'https://app.hubspot.com'
+        ep.slug = 'hubspot'
+        ep.description = 'HubSpot CRM'
+        self.assertTrue(HubspotPassthroughHandler.matches_endpoint(ep))
+
+    def test_rejects_unrelated_endpoint(self):
+        ep = MagicMock()
+        ep.endpoint_url = 'https://polysaas-odoo2.onrender.com'
+        ep.slug = 'odoo'
+        ep.description = 'Odoo'
+        self.assertFalse(HubspotPassthroughHandler.matches_endpoint(ep))
+
+    def test_bypasses_api_paths_for_admin_wrap(self):
+        handler = HubspotPassthroughHandler()
+        self.assertFalse(handler.should_wrap_in_admin_template(MagicMock(), '/api/crm/v3/objects/contacts'))
+
+
+class HubspotOAuthPersistenceTests(SimpleTestCase):
+    def test_persist_tokens_merges_extra_config(self):
+        ta = MagicMock()
+        ta.extra_config = {}
+        with patch('dose.services.hubspot_oauth.fetch_token_metadata', return_value={'hub_id': 12345}):
+            persist_tokens_on_tenant_app(ta, {
+                'access_token': 'acc',
+                'refresh_token': 'ref',
+                'expires_in': 3600,
+            })
+        self.assertEqual(ta.extra_config.get('hs_access_token'), 'acc')
+        self.assertEqual(ta.extra_config.get('hs_refresh_token'), 'ref')
+        self.assertEqual(ta.extra_config.get('hs_portal_id'), '12345')
+        ta.save.assert_called_once()
+
+
+class HubspotPortletLoaderTests(SimpleTestCase):
+    def test_unknown_portlet_slug_errors(self):
+        request = MagicMock()
+        request.tenant = MagicMock()
+        out = load_portlet_by_slug(request, 'not-a-portlet')
+        self.assertEqual(out.get('status'), 'error')
+
+    @patch('dose.services.hubspot_portlet_services.HubspotApiService')
+    def test_contacts_portlet_returns_rows(self, mock_svc):
+        api = mock_svc.for_tenant.return_value
+        api.list_contacts.return_value = [{'id': '1', 'email': 'a@b.com'}]
+        request = MagicMock()
+        request.tenant = MagicMock()
+        out = load_portlet_by_slug(request, 'contacts')
+        self.assertEqual(out.get('status'), 'success')
+        self.assertEqual(out.get('count'), 1)

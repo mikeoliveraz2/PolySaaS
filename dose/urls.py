@@ -15,6 +15,13 @@ except ImportError:
         return redirect('/admin/')
 
 from dose.views import subscribe_view, connect_social_after_subscribe, restore_mm_credentials, login_view, DisplaySettingsView, UnreadDoseMessagesView
+from dose.views.hubspot_context import (
+    hubspot_user_context_view,
+    hubspot_portlet_data_api,
+    hubspot_portlet_layout_api,
+    hubspot_oauth_start,
+    hubspot_oauth_callback,
+)
 from dose.orchestration_navigate_api import orchestration_navigate_api
 from dose.views.atomic_service_names import atomic_service_names
 from dose.views.atomic_service_param_sample import atomic_service_param_sample
@@ -55,4 +62,9 @@ urlpatterns = [
     path('toggle-theme/', toggle_theme, name='toggle_theme'),
     path('set-display-mode/', set_display_mode, name='set_display_mode'),
     path('set-theme/', set_theme, name='set_theme'),
+    path('hubspot/context/', hubspot_user_context_view, name='hubspot_user_context'),
+    path('api/hubspot/portlets/<slug>/', hubspot_portlet_data_api, name='hubspot_portlet_data'),
+    path('api/hubspot/portlets/layout/', hubspot_portlet_layout_api, name='hubspot_portlet_layout'),
+    path('hubspot/oauth/start/', hubspot_oauth_start, name='hubspot_oauth_start'),
+    path('hubspot/oauth/callback/', hubspot_oauth_callback, name='hubspot_oauth_callback'),
 ]

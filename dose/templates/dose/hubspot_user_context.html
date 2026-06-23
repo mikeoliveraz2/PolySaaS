@@ -1,0 +1,120 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block title %}HubSpot User Context Manager{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .hcm-wrap { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+    .hcm-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: .75rem; }
+    .hcm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+    .hcm-portlet { background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.06); padding: 1rem; cursor: grab; }
+    .hcm-portlet h3 { margin: 0 0 .5rem; font-size: 1.05rem; display: flex; align-items: center; gap: .5rem; }
+    .hcm-portlet .hcm-body { min-height: 80px; font-size: .9rem; color: #444; }
+    .hcm-portlet table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .hcm-portlet th, .hcm-portlet td { text-align: left; padding: .25rem .35rem; border-bottom: 1px solid #eee; }
+    .hcm-banner { padding: .75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .hcm-banner.warn { background: #fff3cd; border: 1px solid #ffc107; }
+    .hcm-banner.error { background: #f8d7da; border: 1px solid #f5c2c7; }
+    .hcm-toolbar a { margin-right: .75rem; }
+    .hcm-loading { color: #888; font-style: italic; }
+    .hcm-sortable-ghost { opacity: .5; background: #e3f2fd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hcm-wrap">
+    <div class="hcm-header">
+        <div>
+            <h1 style="margin:0;">HubSpot User Context Manager</h1>
+            <p style="margin:.25rem 0 0;color:#666;">Prioritized portlets — drag to reorder</p>
+        </div>
+        <div class="hcm-toolbar">
+            {% if not connected %}
+            <a href="{{ connect_url }}" class="button default">Connect HubSpot</a>
+            {% endif %}
+            <a href="{{ passthrough_url }}" class="button">Open HubSpot (passthrough)</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="hcm-banner error">{{ error }}</div>
+    {% elif not connected %}
+    <div class="hcm-banner warn">HubSpot API not connected. Connect OAuth to load live CRM data in portlets.</div>
+    {% endif %}
+
+    <div id="hcm-grid" class="hcm-grid">
+        {% for p in portlets %}
+        <div class="hcm-portlet" data-slug="{{ p.slug }}" draggable="true">
+            <h3><span>{{ p.icon }}</span> {{ p.title }}</h3>
+            <div class="hcm-body" id="portlet-{{ p.slug }}"><span class="hcm-loading">Loading…</span></div>
+        </div>
+        {% empty %}
+        <p>No portlets configured.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+<script>
+(function() {
+    const grid = document.getElementById('hcm-grid');
+    if (!grid) return;
+
+    function csrf() {
+        const c = document.cookie.match(/csrftoken=([^;]+)/);
+        return c ? c[1] : '';
+    }
+
+    function loadPortlet(slug) {
+        const el = document.getElementById('portlet-' + slug);
+        if (!el) return;
+        fetch('/dose/api/hubspot/portlets/' + encodeURIComponent(slug) + '/', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'success' || !data.rows || !data.rows.length) {
+                    el.textContent = data.error || 'No records';
+                    return;
+                }
+                const keys = Object.keys(data.rows[0]).filter(k => k !== 'id');
+                let html = '<table><thead><tr>' + keys.map(k => '<th>' + k + '</th>').join('') + '</tr></thead><tbody>';
+                data.rows.forEach(row => {
+                    html += '<tr>' + keys.map(k => '<td>' + (row[k] || '') + '</td>').join('') + '</tr>';
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            })
+            .catch(() => { el.textContent = 'Load failed'; });
+    }
+
+    grid.querySelectorAll('.hcm-portlet').forEach(card => {
+        loadPortlet(card.dataset.slug);
+    });
+
+    let dragEl = null;
+    grid.addEventListener('dragstart', e => {
+        const card = e.target.closest('.hcm-portlet');
+        if (!card) return;
+        dragEl = card;
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    grid.addEventListener('dragover', e => {
+        e.preventDefault();
+        const card = e.target.closest('.hcm-portlet');
+        if (!card || card === dragEl) return;
+        const rect = card.getBoundingClientRect();
+        const after = (e.clientY - rect.top) > rect.height / 2;
+        grid.insertBefore(dragEl, after ? card.nextSibling : card);
+    });
+    grid.addEventListener('dragend', () => {
+        const order = Array.from(grid.querySelectorAll('.hcm-portlet')).map(c => c.dataset.slug);
+        fetch('/dose/api/hubspot/portlets/layout/', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+            body: JSON.stringify({ order: order })
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -31,3 +31,4 @@ from .polysniffer_run import PolySnifferRun
 from .tenant_app import TenantApp
 from .mapping import Mapping, InstructionMapping
 from .app_credential import AppCredential
+from .hubspot_portlet import HubSpotPortletDefinition, UserHubSpotPortlet

@@ -194,6 +194,7 @@ SUBSCRIBE_ENABLED_BUNDLED_APPS = (
     'enable_nextcloud',
     'enable_dolibarr',
     'enable_mattermost',
+    'enable_hubspot',
 )
 
 # TenantApp.app_name values: same weights for in-product limits
@@ -201,6 +202,7 @@ TENANT_APP_BUNDLED_SLOTS = {
     'odoo': 2,
     'wordpress': 2,
     'polysysmon': 2,
+    'hubspot': 1,
 }
 
 # Usage-based storage pricing (NextCloud / WordPress) — metered in Stripe
@@ -236,6 +238,16 @@ ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
 NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='ncadmin')
+
+# --- HubSpot (per-tenant OAuth + passthrough) ---
+HUBSPOT_APP_URL = env('HUBSPOT_APP_URL', default='https://app.hubspot.com')
+HUBSPOT_CLIENT_ID = sm('hubspot-client-id', 'HUBSPOT_CLIENT_ID', '')
+HUBSPOT_CLIENT_SECRET = sm('hubspot-client-secret', 'HUBSPOT_CLIENT_SECRET', '')
+HUBSPOT_REDIRECT_URI = env('HUBSPOT_REDIRECT_URI', default='')
+HUBSPOT_SCOPES = env(
+    'HUBSPOT_SCOPES',
+    default='crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read tickets',
+)
 
 # Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
 # If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).

@@ -45,6 +45,7 @@ from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
 from dose.services.mattermost_tenant_provisioner import provision_mattermost_tenant
+from dose.services.hubspot_tenant_provisioner import provision_hubspot_tenant
 from dose.services.liferay_tenant_provisioner import provision_liferay_tenant
 try:
     from dose.services.wordpress_tenant_provisioner import provision_wordpress_tenant
@@ -69,6 +70,7 @@ _BUNDLED_APP_LABELS = {
     'enable_liferay': 'Liferay',
     'enable_monitor_logger': 'Monitor Logger',
     'enable_polysysmon': 'PolySysMon',
+    'enable_hubspot': 'HubSpot',
 }
 
 
@@ -261,6 +263,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             'enable_odoo', 'enable_nextcloud', 'enable_dolibarr',
             'enable_mattermost', 'enable_wordpress',
             'enable_liferay', 'enable_monitor_logger', 'enable_polysysmon',
+            'enable_hubspot',
         ]
         enabled_apps = set(getattr(settings, 'SUBSCRIBE_ENABLED_BUNDLED_APPS', app_keys))
         selected_apps = [k for k in app_keys if data.get(k) and k in enabled_apps]
@@ -501,6 +504,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             ('enable_liferay', provision_liferay_tenant),
             ('enable_monitor_logger', provision_monitor_logger_tenant),
             ('enable_polysysmon', provision_polysysmon_tenant),
+            ('enable_hubspot', provision_hubspot_tenant),
         ])
 
         for app_key, provisioner in provisioners:

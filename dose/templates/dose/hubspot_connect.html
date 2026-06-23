@@ -1,0 +1,14 @@
+{% extends "dose/dosebase.html" %}
+{% block title %}HubSpot Connect{% endblock %}
+{% block content %}
+<div style="max-width:520px;margin:3rem auto;padding:2rem;background:#fff;border-radius:8px;">
+    <h2>HubSpot connection</h2>
+    {% if error %}
+    <p style="color:#c62828;">{{ error }}</p>
+    {% if detail %}<pre style="white-space:pre-wrap;font-size:.9rem;">{{ detail }}</pre>{% endif %}
+  {% else %}
+    <p>HubSpot connected successfully.</p>
+    {% endif %}
+    <p><a href="{% url 'dose:hubspot_user_context' %}">Back to User Context Manager</a></p>
+</div>
+{% endblock %}
