@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-23  
 **Declared by:** Michael  
-**Commit:** *(see git log — `documentation/BINGO_HUBSPOT_UCM_INTEGRATION_2026-06-23.md`)*  
+**Commit:** `28cc1155`  
 **Tenancy model:** Each tenant connects **their own** HubSpot portal (OAuth per tenant)  
 **API library:** Official `hubspot-api-client` (not immature `dj-hubspot` PyPI package)
 
