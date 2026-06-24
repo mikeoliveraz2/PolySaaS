@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-24  
 **Declared by:** Michael  
-**Commit:** _(filled after push)_  
+**Commit:** `e93f9c23`  
 **Replaces:** Chrome extension as primary capture path; legacy `/admin/polysniffer/proxy/` HTML rewrite
 
 ---
