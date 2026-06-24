@@ -1,7 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Remove stray Odoo /web urlconf — commit 7d05920e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
-# BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 
 # BINGO: PolySaaS AI Context-Aware Chat — commit fd9febb8
 
@@ -25,8 +24,6 @@ from llm_router.admin_chat import (
 )
 
 urlpatterns = [
-    # PolySniffer passthrough browse (iframe-safe; rewrites away from /pt/admin/).
-    path('pt/polysniff/', include('dose.polysniffer.pt_polysniff_urls')),
     # Mattermost static assets must bypass generic passthrough/login flow.
     path('pt/admin/<str:trigger>/static/<path:path>', mattermost_static_proxy, name='mattermost_static_proxy'),
     # FORCE PASSTHROUGH FIRST - highest priority

@@ -3,7 +3,6 @@ PolySniffer 2.0 — dual-mode sniff views (native + passthrough).
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
-# BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 from __future__ import annotations
 
 import json
@@ -53,7 +52,7 @@ def mode_picker(request, endpoint_id: int):
         'endpoint_id': endpoint_id,
         'active_session': active,
         'native_url': f'/dose/sniff/{endpoint_id}/native/',
-        'passthrough_url': f'/pt/polysniff/{endpoint_id}/',
+        'passthrough_url': f'/dose/sniff/{endpoint_id}/passthrough/',
         'diff_url': f'/dose/sniff/{endpoint_id}/diff/',
         'export_url': f'/dose/sniff/{endpoint_id}/export-har/',
     }
@@ -114,14 +113,31 @@ def native_sniff_proxy(request, endpoint_id: int, path: str = ''):
 @staff_member_required
 @csrf_exempt
 def passthrough_sniff_proxy(request, endpoint_id: int, path: str = ''):
-    from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough, legacy_sniff_prefix
+    if not request.user.is_staff:
+        return HttpResponseForbidden('Staff only')
+    endpoint = get_endpoint_any_schema(endpoint_id, request)
+    request._polysniffer_endpoint_id = endpoint_id
+    request._polysniffer_sniff_mode = 'passthrough'
+    cap = get_active_capture_session(request, endpoint_id)
+    if cap:
+        request._polysniffer_capture = cap
 
-    return dispatch_polysniff_passthrough(
-        request,
-        endpoint_id,
-        path,
-        public_prefix=legacy_sniff_prefix(endpoint_id),
-    )
+    trigger = _endpoint_trigger(endpoint)
+    subpath = path or ''
+    if subpath and not subpath.startswith('/'):
+        subpath = '/' + subpath
+
+    # Dispatch through production passthrough view (handlers + orchestration).
+    from dose.admin_views import pt_admin_generic_passthrough_view
+
+    sniff_prefix = f'/dose/sniff/{endpoint_id}/passthrough'
+    pt_path = f'/pt/admin/{trigger}{subpath}'
+    request.path_info = pt_path
+    request.path = pt_path
+    request.META['PATH_INFO'] = pt_path
+    request._polysniffer_client_path = f'{sniff_prefix}{subpath or "/"}'
+
+    return pt_admin_generic_passthrough_view(request, endpoint=trigger, subpath=subpath.lstrip('/') or None)
 
 
 @staff_member_required

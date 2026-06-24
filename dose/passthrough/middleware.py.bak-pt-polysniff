@@ -1,6 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f
-# BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
@@ -35,9 +34,6 @@ def run_pt_admin_passthrough_core(request):
         return None
     if path.startswith("/pt/admin/passthrough/"):
         print(f"[PT-CORE] Delegate PolySniffer passthrough: {path}")
-        return None
-    if path.startswith("/pt/polysniff/"):
-        print(f"[PT-CORE] Delegate PolySniffer pt/polysniff URLconf: {path}")
         return None
 
     parts = path.strip("/").split("/")
@@ -200,9 +196,6 @@ class ExternalPassthroughMiddleware(MiddlewareMixin):
 
         if request.path_info.startswith('/pt/dose/') and _is_initial_page_load(request):
             print(f"[PT-MW] Delegate landing passthrough shell to URLconf: {request.path_info}")
-            return self.get_response(request)
-
-        if request.path_info.startswith("/pt/polysniff/"):
             return self.get_response(request)
 
         if request.path_info.startswith("/pt/"):

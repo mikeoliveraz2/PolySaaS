@@ -1,6 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24 -->
-<!-- BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -155,9 +154,6 @@
         if (mode === 'native') {
             return '/dose/sniff/' + epId + '/native/login/';
         }
-        if (mode === 'passthrough') {
-            return '/pt/polysniff/' + epId + '/';
-        }
         return '/dose/sniff/' + epId + '/' + mode + '/';
     }
 
@@ -225,13 +221,9 @@
         if (!currentMode) return;
         const statusEl = document.getElementById('session-status');
         const isRecording = statusEl && statusEl.textContent.indexOf('Recording') >= 0;
-        if (isRecording) {
-            // Session already active — still point iframe at the current browse URL
-            // (server-rendered src may be stale after proxy path changes).
-            setModeUI(currentMode);
-            return;
+        if (!isRecording) {
+            startSession(currentMode);
         }
-        startSession(currentMode);
     });
 })();
 </script>

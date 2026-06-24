@@ -4,7 +4,6 @@ right iframe is the green-screen live capture panel.
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
-# BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 from __future__ import annotations
 
 from django.contrib.admin.views.decorators import staff_member_required
@@ -46,11 +45,7 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None):
     if active_mode not in ("native", "passthrough"):
         active_mode = ""
 
-    proxy_url = ""
-    if active_mode == "passthrough":
-        proxy_url = f"/pt/polysniff/{endpoint_id}/"
-    elif active_mode == "native":
-        proxy_url = f"/dose/sniff/{endpoint_id}/native/"
+    proxy_url = f"/dose/sniff/{endpoint_id}/{active_mode}/" if active_mode else ""
     upstream_url = (getattr(endpoint, "endpoint_url", None) or "").strip().rstrip("/")
     upstream_browse_url = f"{upstream_url}/login" if upstream_url else ""
     active_session = get_sniff_capture_session(request, endpoint_id)

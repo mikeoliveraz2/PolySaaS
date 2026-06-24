@@ -1,7 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Remove odoo_stray_web_request_view — commit 7d05920e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
-# BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
@@ -175,10 +174,9 @@ def mattermost_error_recover_view(request):
 @csrf_exempt
 def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
     """Main clean passthrough view - CSRF EXEMPT"""
-    logger.info(
-        "[PASSTHROUGH VIEW CSRF_EXEMPT] endpoint=%s, subpath=%s, path=%s, method=%s",
-        endpoint, subpath, request.path, request.method,
-    )
+    print(f"🔥🔥🔥 [PASSTHROUGH VIEW CSRF_EXEMPT] endpoint={endpoint}, subpath={subpath}, path={request.path}, method={request.method}")
+    with open('/tmp/odoo_view_debug.log', 'a') as f:
+        f.write(f"[VIEW CSRF_EXEMPT] Called with endpoint={endpoint}, subpath={subpath}, method={request.method}\n")
 
     from dose.utils import get_current_tenant
     from dose.models import UserTenantMembership, PassThroughEndpoint
