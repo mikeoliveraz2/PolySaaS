@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-24  
 **Declared by:** Michael  
-**Commit:** `TBD`  
+**Commit:** `24ce8dfa`  
 **Builds on:** `e93f9c23` (PolySniffer 2.0 dual-mode sniff)
 
 ---
