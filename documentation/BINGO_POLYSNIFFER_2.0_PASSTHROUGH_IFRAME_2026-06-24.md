@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-24  
 **Declared by:** Michael  
-**Commit:** *(recorded in follow-up doc commit after push)*  
+**Commit:** `04e0a381`  
 **Builds on:** PolySniffer 2.0 native login workspace (`24ce8dfa`)
 
 ---
