@@ -1,0 +1,82 @@
+# PolySaaS bundled apps on GCP Compute Engine
+# Cloud SQL (external) + GCS for Odoo filestore / Mattermost S3-compatible storage.
+#
+# Prerequisites:
+#   - deploy/gcp/config.env populated
+#   - Cloud SQL databases odoo_prod + mattermost_prod created
+#   - VM with Docker; /mnt/gcs/odoo-filestore mounted (gcsfuse)
+#
+# Usage on VM:
+#   cp deploy/gcp/config.env /opt/polysaas/config.env
+#   cd /opt/polysaas && docker compose -f docker-compose.gcp.yml --env-file config.env up -d
+
+services:
+  odoo:
+    build:
+      context: ../odoo-render
+      dockerfile: Dockerfile
+    image: polysaas/odoo-gcp:latest
+    restart: unless-stopped
+    ports:
+      - "8069:8069"
+    environment:
+      ODOO_DB_HOST: ${CLOUDSQL_HOST}
+      ODOO_DB_PORT: ${CLOUDSQL_PORT:-5432}
+      ODOO_DB_USER: ${ODOO_DB_USER}
+      ODOO_DB_PASSWORD: ${ODOO_DB_PASSWORD}
+      ODOO_DB_NAME: ${ODOO_DB_NAME}
+      PORT: "8069"
+      ODOO_AUTO_INIT: ${ODOO_AUTO_INIT:-0}
+      ADMIN_PASSWORD: ${ODOO_ADMIN_PASSWORD:-admin}
+      ODOO_MASTER_PASSWORD: ${ODOO_MASTER_PASSWORD:-}
+    volumes:
+      - /mnt/gcs/odoo-filestore:/var/lib/odoo
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  mattermost:
+    build:
+      context: ../mattermost-render
+      dockerfile: Dockerfile
+    image: polysaas/mattermost-gcp:latest
+    restart: unless-stopped
+    ports:
+      - "8065:8065"
+    environment:
+      PORT: "8065"
+      DB_HOST: ${CLOUDSQL_HOST}
+      DB_PORT: ${CLOUDSQL_PORT:-5432}
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://${MATTERMOST_DB_USER}:${MATTERMOST_DB_PASSWORD}@${CLOUDSQL_HOST}:${CLOUDSQL_PORT:-5432}/${MATTERMOST_DB_NAME}?sslmode=disable&connect_timeout=10
+      MM_SERVICESETTINGS_SITEURL: ${MATTERMOST_PUBLIC_URL}
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      # GCS via S3 interoperability (create HMAC keys in GCP console)
+      MM_FILESETTINGS_DRIVERNAME: ${MM_FILESETTINGS_DRIVERNAME:-local}
+      MM_FILESETTINGS_DIRECTORY: /var/lib/mattermost/data/
+      MM_FILESETTINGS_AMAZONS3ACCESSKEYID: ${GCS_S3_ACCESS_KEY_ID:-}
+      MM_FILESETTINGS_AMAZONS3SECRETACCESSKEY: ${GCS_S3_SECRET_ACCESS_KEY:-}
+      MM_FILESETTINGS_AMAZONS3BUCKET: ${GCS_MATTERMOST_FILES_BUCKET:-}
+      MM_FILESETTINGS_AMAZONS3ENDPOINT: storage.googleapis.com
+      MM_FILESETTINGS_AMAZONS3SSL: "true"
+      MM_FILESETTINGS_AMAZONS3SIGNV2: "false"
+      MM_FILESETTINGS_AMAZONS3PATHPREFIX: ""
+      MM_FILESETTINGS_AMAZONS3REGION: auto
+    volumes:
+      - mm_data:/var/lib/mattermost/data
+      - mm_plugins:/var/lib/mattermost/plugins
+      - mm_client_plugins:/var/lib/mattermost/client/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8065/api/v4/system/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  mm_data:
+  mm_plugins:
+  mm_client_plugins:

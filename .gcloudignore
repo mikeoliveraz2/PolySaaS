@@ -1,0 +1,27 @@
+# Google Cloud Build — exclude from upload context (extends .dockerignore patterns)
+
+.git
+.github
+.cursor
+venv/
+.venv/
+env/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+htmlcov/
+.tox/
+*.log
+tmp/
+media/
+.env
+.env.*
+!.env.example
+deploy/gcp/config.env
+documentation/
+test scripts/
+sanitized-only/
+var/static_root/
+**/*.bak
+**/*.bak-*

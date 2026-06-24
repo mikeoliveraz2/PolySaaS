@@ -1,0 +1,48 @@
+# PolySaaS Django (DOSE) — GCP Cloud Run deploy
+# Build: docker build -f Dockerfile.gcp -t polysaas-django .
+# Run:   docker run -e DJANGO_SECRET_KEY=... -e DATABASE_URL=... -p 8080:8080 polysaas-django
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DJANGO_SETTINGS_MODULE=mysite.settings_gcp \
+    PORT=8080
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY manage.py test_decompression_view.py ./
+COPY mysite ./mysite
+COPY dose ./dose
+COPY llm_router ./llm_router
+COPY parameters ./parameters
+COPY alerts ./alerts
+COPY ml_studio ./ml_studio
+COPY active_urls ./active_urls
+COPY middleware ./middleware
+COPY static ./static
+COPY templates ./templates
+
+RUN mkdir -p /app/var/static_root /app/var/media_root \
+    && adduser --disabled-password --gecos '' --uid 1000 django \
+    && chown -R django:django /app/var
+
+COPY scripts/gcp-entrypoint.sh /entrypoint.sh
+COPY scripts/gcp-predeploy.sh /app/gcp-predeploy.sh
+RUN chmod +x /entrypoint.sh /app/gcp-predeploy.sh
+
+USER django
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["sh", "-c", "exec python -m gunicorn --bind 0.0.0.0:${PORT:-8080} --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-60} --access-logfile - --error-logfile - mysite.wsgi:application"]
