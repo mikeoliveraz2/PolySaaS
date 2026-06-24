@@ -2,7 +2,7 @@
 PolySniffer 2.0 — dual-mode sniff views (native + passthrough).
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: PolySniffer 2.0 — 2026-06-24
+# BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
 from __future__ import annotations
 
 import json
@@ -34,7 +34,8 @@ def _endpoint_trigger(endpoint) -> str:
 
 def _session_name(endpoint_id: int, mode: str) -> str:
     ts = timezone.now().strftime('%Y%m%d-%H%M')
-    return f'ep{endpoint_id}-{mode}-{ts}'
+    safe_mode = mode if mode in ('native', 'passthrough', 'workspace') else 'workspace'
+    return f'ep{endpoint_id}-{safe_mode}-{ts}'
 
 
 @staff_member_required

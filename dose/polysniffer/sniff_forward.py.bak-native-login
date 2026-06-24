@@ -6,7 +6,7 @@ PolySniffer 2.0 — native (transparent) sniff forwarder.
 
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 
-# BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
+# BINGO: PolySniffer 2.0 — 2026-06-24
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 
 
@@ -32,8 +32,6 @@ from dose.polysniffer.sniff_handler_bridge import apply_native_sniff_rewrites
 from dose.polysniffer.sniff_native_rewrite import (
 
     filter_native_response_headers,
-
-    prepare_native_upstream_url,
 
     sniff_native_proxy_prefix,
 
@@ -159,9 +157,7 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
         sep = '&' if '?' in target_url else '?'
 
-        target_url += sep + request.GET.urlencode()
-
-    target_url = prepare_native_upstream_url(target_url, upstream_path)
+        target_url += sep + urlencode(request.META.get('QUERY_STRING', ''))
 
 
 

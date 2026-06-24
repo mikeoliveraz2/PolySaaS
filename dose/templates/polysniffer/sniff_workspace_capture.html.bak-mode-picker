@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Capture</title>
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+        .bar { padding: 6px 10px; font-size: 0.75rem; color: #94a3b8; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; }
+        .bar strong { color: #60a5fa; }
+        #captures { height: calc(100vh - 30px); overflow-y: auto; padding: 8px; }
+        .capture-item { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; font-size: 0.8rem; }
+        .capture-item:hover { border-color: #34d399; }
+        .capture-item.new { animation: flash 0.4s ease; }
+        @keyframes flash { from { background: #064e3b; } to { background: #1e293b; } }
+        .row { display: flex; gap: 6px; align-items: center; }
+        .method { font-weight: 700; font-size: 0.7rem; padding: 2px 5px; border-radius: 3px; background: #1e3a8a; color: #bfdbfe; }
+        .src { font-size: 0.65rem; padding: 2px 5px; border-radius: 3px; background: #374151; color: #d1d5db; }
+        .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd5e1; }
+        .code { font-weight: 700; }
+        .s2xx { color: #34d399; } .s3xx { color: #fbbf24; } .s4xx { color: #f87171; } .s5xx { color: #fb7185; }
+        .time { color: #64748b; font-size: 0.68rem; }
+        .detail { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #334155; }
+        .capture-item.open .detail { display: block; }
+        .detail pre { margin: 0; font-size: 0.68rem; white-space: pre-wrap; word-break: break-all; color: #94a3b8; }
+        .empty { text-align: center; color: #64748b; padding: 32px 12px; line-height: 1.5; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+<div class="bar">
+    <strong>Captured traffic</strong>
+    <span><span id="count">0</span> · <span id="last-update">waiting</span></span>
+</div>
+<div id="captures">
+    <div class="empty">Browse in the left pane.<br>Requests from native and passthrough appear here.</div>
+</div>
+<script>
+(function() {
+    const pollUrl = '{{ poll_url }}';
+    let lastId = 0, count = 0;
+    const capturesEl = document.getElementById('captures');
+    const countEl = document.getElementById('count');
+    const updateEl = document.getElementById('last-update');
+
+    function sc(code) {
+        if (!code) return 's0';
+        if (code < 300) return 's2xx';
+        if (code < 400) return 's3xx';
+        if (code < 500) return 's4xx';
+        return 's5xx';
+    }
+
+    function add(c) {
+        if (capturesEl.querySelector('.empty')) capturesEl.innerHTML = '';
+        const div = document.createElement('div');
+        div.className = 'capture-item new';
+        div.innerHTML =
+            '<div class="row">' +
+            '<span class="method">' + (c.method || 'GET') + '</span>' +
+            '<span class="src">' + (c.capture_source || '?') + '</span>' +
+            '<span class="path" title="' + (c.url || '') + '">' + (c.path || c.client_path || '-') + '</span>' +
+            '<span class="code ' + sc(c.status_code) + '">' + (c.status_code || '-') + '</span>' +
+            '<span class="time">' + (c.captured_at || '') + '</span>' +
+            '</div><div class="detail"><pre>' + (c.url || '') + '</pre></div>';
+        div.onclick = function() { div.classList.toggle('open'); };
+        capturesEl.prepend(div);
+        count += 1;
+        countEl.textContent = String(count);
+    }
+
+    function poll() {
+        fetch(pollUrl + '?since_id=' + lastId, { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success) return;
+                updateEl.textContent = new Date().toLocaleTimeString();
+                (data.captures || []).forEach(function(c) {
+                    if (c.id > lastId) lastId = c.id;
+                    add(c);
+                });
+            })
+            .catch(function(e) { console.error(e); });
+    }
+    setInterval(poll, 1500);
+    poll();
+})();
+</script>
+</body>
+</html>

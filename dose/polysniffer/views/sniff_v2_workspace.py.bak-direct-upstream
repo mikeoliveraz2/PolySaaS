@@ -1,0 +1,168 @@
+"""
+PolySniffer 2.0 — split workspace: mode picker drives left proxy iframe;
+right iframe is the green-screen live capture panel.
+"""
+from __future__ import annotations
+
+from django.contrib.admin.views.decorators import staff_member_required
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.http import require_GET
+
+from dose.polysniffer.har_capture import _ensure_tenant_schema
+from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
+from dose.polysniffer.models import TrafficLog
+from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
+from dose.polysniffer.views.core import get_endpoint_any_schema
+
+
+def _endpoint_label(endpoint) -> str:
+    return endpoint.menu_title or endpoint.endpoint_url or f"Endpoint {endpoint.pk}"
+
+
+def _session_mode(request, endpoint_id: int) -> str:
+    mode = (request.session.get(f"polysniffer_ep{endpoint_id}_mode") or "").strip().lower()
+    return mode if mode in ("native", "passthrough") else ""
+
+
+@staff_member_required
+def sniff_shell(request, endpoint_id: int, mode: str | None = None):
+    """Entry page: mode picker (left header) + proxy iframe + capture iframe."""
+    try:
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+    except Exception as exc:
+        return render(
+            request,
+            "polysniffer/sniff_workspace.html",
+            {"error": str(exc), "endpoint_id": endpoint_id},
+            status=404,
+        )
+
+    active_mode = (mode or _session_mode(request, endpoint_id)).strip().lower()
+    if active_mode not in ("native", "passthrough"):
+        active_mode = ""
+
+    proxy_url = f"/dose/sniff/{endpoint_id}/{active_mode}/" if active_mode else ""
+    active_session = get_sniff_capture_session(request, endpoint_id)
+
+    return render(
+        request,
+        "polysniffer/sniff_workspace.html",
+        {
+            "endpoint": endpoint,
+            "endpoint_id": endpoint_id,
+            "endpoint_label": _endpoint_label(endpoint),
+            "mode": active_mode,
+            "proxy_url": proxy_url,
+            "active_session": active_session,
+            "diff_url": f"/dose/sniff/{endpoint_id}/diff/",
+            "export_url": f"/dose/sniff/{endpoint_id}/export-har/",
+            "capture_frame_url": f"/dose/sniff/{endpoint_id}/workspace/capture/",
+        },
+    )
+
+
+# Alias kept for older links
+sniff_workspace = sniff_shell
+
+
+@staff_member_required
+@xframe_options_exempt
+def workspace_capture_frame(request, endpoint_id: int):
+    """Green-screen capture panel for the right iframe."""
+    try:
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+    except Exception as exc:
+        return render(
+            request,
+            "polysniffer/sniff_workspace_capture.html",
+            {"error": str(exc), "endpoint_id": endpoint_id},
+            status=404,
+        )
+
+    active_session = get_sniff_capture_session(request, endpoint_id)
+    mode = (request.GET.get("mode") or _session_mode(request, endpoint_id) or "native").strip().lower()
+    if mode not in ("native", "passthrough"):
+        mode = "native"
+
+    return render(
+        request,
+        "polysniffer/sniff_workspace_capture.html",
+        {
+            "endpoint_id": endpoint_id,
+            "endpoint_label": _endpoint_label(endpoint),
+            "active_session": active_session,
+            "mode": mode,
+            "poll_url": f"/dose/sniff/{endpoint_id}/workspace/poll/",
+        },
+    )
+
+
+@staff_member_required
+@require_GET
+def workspace_poll(request, endpoint_id: int):
+    tenant = bind_request_tenant(request)
+    if not tenant:
+        return JsonResponse({"success": False, "error": "no tenant context"}, status=400)
+
+    ensure_trafficlog_capture_columns(request)
+    _ensure_tenant_schema(tenant)
+
+    mode = (request.GET.get("mode") or _session_mode(request, endpoint_id) or "native").strip().lower()
+    if mode not in ("native", "passthrough"):
+        mode = "native"
+
+    try:
+        since_id = int(request.GET.get("since_id", 0))
+    except (TypeError, ValueError):
+        since_id = 0
+
+    session = get_sniff_capture_session(request, endpoint_id)
+    qs = TrafficLog.objects.all()
+    if session:
+        qs = qs.filter(capture_session=session)
+    else:
+        qs = qs.filter(client_path__contains=f"/sniff/{endpoint_id}/{mode}")
+
+    qs = qs.filter(capture_source=mode)
+    if since_id:
+        qs = qs.filter(id__gt=since_id)
+
+    try:
+        logs = qs.order_by("id")[:100]
+        captures = [
+            {
+                "id": log.id,
+                "method": log.method,
+                "url": log.url,
+                "path": log.path,
+                "client_path": log.client_path,
+                "status_code": log.status_code,
+                "capture_source": log.capture_source,
+                "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
+                "duration_ms": log.duration_ms,
+            }
+            for log in logs
+        ]
+    except Exception as exc:
+        return JsonResponse(
+            {
+                "success": True,
+                "captures": [],
+                "session_active": bool(session),
+                "session_name": session.capture_name if session else "",
+                "mode": mode,
+                "warning": str(exc),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "captures": captures,
+            "session_active": bool(session),
+            "session_name": session.capture_name if session else "",
+            "mode": mode,
+        }
+    )

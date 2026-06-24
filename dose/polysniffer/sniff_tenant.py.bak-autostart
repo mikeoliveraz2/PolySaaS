@@ -1,0 +1,35 @@
+"""PolySniffer 2.0 — tenant binding for capture session lookup."""
+from __future__ import annotations
+
+from dose.polysniffer.har_capture import _ensure_tenant_schema, get_active_capture_session
+from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
+from dose.utils import get_current_tenant
+
+
+def bind_request_tenant(request):
+    """har_capture uses request.tenant; middleware sets current_tenant_slug instead."""
+    tenant = getattr(request, "tenant", None)
+    if tenant:
+        return tenant
+    tenant = get_current_tenant(request)
+    if tenant:
+        request.tenant = tenant
+    return tenant
+
+
+def get_sniff_capture_session(request, endpoint_id: int | None = None):
+    tenant = bind_request_tenant(request)
+    if tenant:
+        ensure_trafficlog_capture_columns(request)
+        _ensure_tenant_schema(tenant)
+
+    if endpoint_id is not None:
+        cap_id = request.session.get(f"polysniffer_ep{endpoint_id}_capture_id")
+        if cap_id:
+            from dose.polysniffer.models import TrafficCapture
+
+            cap = TrafficCapture.objects.filter(pk=cap_id, is_active=True).first()
+            if cap:
+                return cap
+
+    return get_active_capture_session(request, endpoint_id)

@@ -1,10 +1,10 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24 -->
+<!-- BINGO: PolySniffer 2.0 — 2026-06-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>PolySniffer 2.0 — {% firstof endpoint.menu_title endpoint.endpoint_url %}</title>
+    <title>PolySniffer 2.0 — {{ endpoint.menu_title|default:endpoint.trigger_path }}</title>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1f2937; }
         h1 { font-size: 1.5rem; }
@@ -23,7 +23,7 @@
 </head>
 <body>
     <h1>PolySniffer 2.0</h1>
-    <p><strong>{% firstof endpoint.menu_title endpoint.endpoint_url %}</strong> — {{ endpoint.endpoint_url }}</p>
+    <p><strong>{{ endpoint.menu_title|default:endpoint.trigger_path }}</strong> — {{ endpoint.endpoint_url }}</p>
 
     {% if active_session %}
     <div class="session">
@@ -40,14 +40,12 @@
             <p>Transparent proxy — no handler rewrite, no orchestration. Best for native HAR baseline and parity diffs.</p>
             <button class="btn btn-native" onclick="startSession('native')">Start native session</button>
             <a class="btn btn-secondary" href="{{ native_url }}" target="_blank" rel="noopener">Open native proxy</a>
-            <a class="btn btn-secondary" href="/dose/sniff/{{ endpoint_id }}/workspace/native/">Native split workspace</a>
         </div>
         <div class="card">
             <h2>Passthrough mode</h2>
             <p>Full production passthrough chain (handlers, shim, orchestration). Captures subscriber-like traffic.</p>
             <button class="btn btn-pt" onclick="startSession('passthrough')">Start passthrough session</button>
             <a class="btn btn-secondary" href="{{ passthrough_url }}" target="_blank" rel="noopener">Open passthrough proxy</a>
-            <a class="btn btn-secondary" href="/dose/sniff/{{ endpoint_id }}/workspace/passthrough/">Passthrough split workspace</a>
         </div>
     </div>
 

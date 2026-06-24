@@ -1,6 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 
-# BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
+# BINGO: PolySniffer 2.0 — 2026-06-24
 
 """PolySniffer 2.0 URL routes — mounted at /dose/sniff/."""
 
@@ -10,7 +10,6 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 
 
 
-from dose.polysniffer.sniff_session import session_start, session_stop
 from dose.polysniffer.views.sniff_v2 import (
 
     export_session_har,
@@ -20,6 +19,10 @@ from dose.polysniffer.views.sniff_v2 import (
     native_sniff_proxy as _native_sniff_proxy,
 
     passthrough_sniff_proxy as _passthrough_sniff_proxy,
+
+    session_start,
+
+    session_stop,
 
     sniff_diff,
 
