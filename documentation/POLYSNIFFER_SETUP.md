@@ -1,4 +1,9 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: PolySniffer 2.0 — 2026-06-24 -->
+
 # PolySniffer - HTTP MITM Logger Setup Guide
+
+> **Deprecated (2026-06):** The Chrome extension and legacy `/admin/polysniffer/proxy/` flow are superseded by **PolySniffer 2.0** — see [POLYSNIFFER_2.0_DESIGN.md](deployment/polysniffer/POLYSNIFFER_2.0_DESIGN.md). Use `/dose/sniff/<endpoint_id>/` (Native + Passthrough modes).
 
 ## Overview
 

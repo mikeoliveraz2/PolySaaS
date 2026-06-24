@@ -1,0 +1,50 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: PolySniffer 2.0 — 2026-06-24 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>PolySniffer diff — endpoint {{ endpoint_id }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 24px; color: #1f2937; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; font-size: 0.9rem; }
+        th { background: #f9fafb; }
+        .match { color: #059669; }
+        .mismatch { color: #dc2626; }
+        .missing { color: #d97706; }
+        a { color: #2563eb; }
+    </style>
+</head>
+<body>
+    <h1>Native vs passthrough diff</h1>
+    <p>Endpoint {{ endpoint_id }}
+        {% if session %} — session <strong>{{ session.capture_name }}</strong>{% endif %}
+        — <strong>{{ mismatch_count }}</strong> mismatches</p>
+    <p><a href="/dose/sniff/{{ endpoint_id }}/">← Mode picker</a></p>
+
+    <table>
+        <thead>
+            <tr><th>Path</th><th>Status</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+        {% for d in diffs %}
+            <tr>
+                <td><code>{{ d.path }}</code></td>
+                <td class="{% if d.status == 'match' %}match{% elif d.status == 'mismatch' %}mismatch{% else %}missing{% endif %}">
+                    {{ d.status }}
+                </td>
+                <td>
+                    {% if d.issues %}{{ d.issues|join:"; " }}{% endif %}
+                    {% if d.native_id %}<a href="/admin/dose/trafficlog/{{ d.native_id }}/change/">native log</a>{% endif %}
+                    {% if d.pt_id %} · <a href="/admin/dose/trafficlog/{{ d.pt_id }}/change/">pt log</a>{% endif %}
+                    {% if d.status == 'missing_side' %}native={{ d.native|yesno:"yes,no" }} pt={{ d.passthrough|yesno:"yes,no" }}{% endif %}
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">No paired captures yet — run native and passthrough sessions first.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

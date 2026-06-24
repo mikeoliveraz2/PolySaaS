@@ -3,6 +3,8 @@ PolySniffer Middleware — Server-side traffic capture for native/direct flows.
 Works alongside the passthrough forwarder (which logs passthrough traffic).
 No Chrome extension required.
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: PolySniffer 2.0 — 2026-06-24
 import time
 import uuid
 from django.utils import timezone
@@ -16,6 +18,10 @@ class PolySnifferMiddleware:
         # Passthrough paths are already logged by the forwarder;
         # skip them here to avoid duplicate noisy capture.
         if '/pt/admin/' in request.path:
+            return self.get_response(request)
+
+        # PolySniffer 2.0 sniff paths are logged by sniff_forward / forwarder.
+        if '/dose/sniff/' in request.path:
             return self.get_response(request)
 
         # Only capture when an active TrafficCapture session exists for this tenant.
@@ -46,53 +52,18 @@ class PolySnifferMiddleware:
         ).first()
 
     def _log_traffic(self, request, response, capture, start):
-        from .models import TrafficLog
-
-        duration = (time.time() - start) * 1000
-
-        def truncate(text, max_len=8000):
-            if not text:
-                return ''
-            text = str(text)
-            return text[:max_len] + " [TRUNCATED]" if len(text) > max_len else text
-
-        try:
-            body = request.body.decode('utf-8', errors='ignore') if request.body else ''
-        except Exception:
-            body = ''
-
-        try:
-            resp_body = (
-                response.content.decode('utf-8', errors='ignore')
-                if hasattr(response, 'content') and response.content else ''
-            )
-        except Exception:
-            resp_body = ''
+        from dose.polysniffer.har_capture import log_django_response
 
         service = self._guess_service(request.path)
-        correlation_id = getattr(request, '_polysniffer_correlation_id', '')
-
-        TrafficLog.objects.create(
-            capture_session=capture,
-            capture_source=TrafficLog.CAPTURE_NATIVE,
-            method=request.method,
-            url=request.build_absolute_uri(),
-            path=request.path,
-            client_path=request.path,
-            headers=dict(request.headers),
-            cookies=dict(request.COOKIES),
-            query_params=dict(request.GET),
-            body=truncate(body),
-            status_code=response.status_code,
-            response_headers=dict(response.items()),
-            response_body=truncate(resp_body),
-            response_size=len(response.content) if hasattr(response, 'content') and response.content else 0,
-            endpoint_name=f"{service}_native",
+        log_django_response(
+            request,
+            response,
+            capture_source='native',
+            target_url=request.build_absolute_uri(),
+            endpoint_name=f'{service}_native',
             service=service,
-            correlation_id=correlation_id,
-            user=request.user if request.user.is_authenticated else None,
-            captured_at=timezone.now(),
-            duration_ms=round(duration, 2),
+            sniff_mode='native',
+            start_time=start,
         )
 
     def _guess_service(self, path):

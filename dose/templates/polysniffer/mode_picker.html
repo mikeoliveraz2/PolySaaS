@@ -1,0 +1,86 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: PolySniffer 2.0 — 2026-06-24 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>PolySniffer 2.0 — {{ endpoint.menu_title|default:endpoint.trigger_path }}</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #1f2937; }
+        h1 { font-size: 1.5rem; }
+        .modes { display: grid; gap: 16px; margin: 24px 0; }
+        .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; }
+        .card h2 { margin: 0 0 8px; font-size: 1.1rem; }
+        .card p { margin: 0 0 16px; color: #6b7280; font-size: 0.95rem; line-height: 1.5; }
+        .btn { display: inline-block; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 600; border: none; cursor: pointer; }
+        .btn-native { background: #059669; color: #fff; }
+        .btn-pt { background: #2563eb; color: #fff; }
+        .btn-secondary { background: #f3f4f6; color: #374151; }
+        .session { background: #fef3c7; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; }
+        .toolbar { margin-top: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .deprecated { font-size: 0.85rem; color: #9ca3af; margin-top: 32px; }
+    </style>
+</head>
+<body>
+    <h1>PolySniffer 2.0</h1>
+    <p><strong>{{ endpoint.menu_title|default:endpoint.trigger_path }}</strong> — {{ endpoint.endpoint_url }}</p>
+
+    {% if active_session %}
+    <div class="session">
+        Active capture: <strong>{{ active_session.capture_name }}</strong>
+        (expires {{ active_session.expires_at }})
+    </div>
+    {% else %}
+    <div class="session">No active capture — start a session before browsing.</div>
+    {% endif %}
+
+    <div class="modes">
+        <div class="card">
+            <h2>Native mode</h2>
+            <p>Transparent proxy — no handler rewrite, no orchestration. Best for native HAR baseline and parity diffs.</p>
+            <button class="btn btn-native" onclick="startSession('native')">Start native session</button>
+            <a class="btn btn-secondary" href="{{ native_url }}" target="_blank" rel="noopener">Open native proxy</a>
+        </div>
+        <div class="card">
+            <h2>Passthrough mode</h2>
+            <p>Full production passthrough chain (handlers, shim, orchestration). Captures subscriber-like traffic.</p>
+            <button class="btn btn-pt" onclick="startSession('passthrough')">Start passthrough session</button>
+            <a class="btn btn-secondary" href="{{ passthrough_url }}" target="_blank" rel="noopener">Open passthrough proxy</a>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <button class="btn btn-secondary" onclick="stopSession()">Stop capture</button>
+        <a class="btn btn-secondary" href="{{ diff_url }}">Native vs passthrough diff</a>
+        <a class="btn btn-secondary" href="{{ export_url }}">Export HAR</a>
+        <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Back to endpoints</a>
+    </div>
+
+    <p class="deprecated">Chrome extension capture is deprecated. Use server-side sniff modes above.</p>
+
+    <script>
+    const csrf = '{{ csrf_token }}';
+    const epId = {{ endpoint_id }};
+
+    async function startSession(mode) {
+        const fd = new FormData();
+        fd.append('mode', mode);
+        const r = await fetch(`/dose/sniff/${epId}/session/start/`, {
+            method: 'POST', body: fd, headers: {'X-CSRFToken': csrf}
+        });
+        const j = await r.json();
+        alert(j.ok ? `Capture started: ${j.capture_name}` : (j.error || 'Failed'));
+        if (j.ok) location.reload();
+    }
+
+    async function stopSession() {
+        const r = await fetch(`/dose/sniff/${epId}/session/stop/`, {
+            method: 'POST', headers: {'X-CSRFToken': csrf}
+        });
+        const j = await r.json();
+        alert(j.ok ? 'Capture stopped' : (j.error || 'Failed'));
+        if (j.ok) location.reload();
+    }
+    </script>
+</body>
+</html>

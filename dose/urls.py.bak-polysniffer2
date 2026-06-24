@@ -1,4 +1,3 @@
-# BINGO: PolySniffer 2.0 sniff routes — 2026-06-24
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 # dose/urls.py
@@ -68,5 +67,4 @@ urlpatterns = [
     path('api/hubspot/portlets/layout/', hubspot_portlet_layout_api, name='hubspot_portlet_layout'),
     path('hubspot/oauth/start/', hubspot_oauth_start, name='hubspot_oauth_start'),
     path('hubspot/oauth/callback/', hubspot_oauth_callback, name='hubspot_oauth_callback'),
-    path('sniff/', include('dose.polysniffer.sniff_urls')),
 ]

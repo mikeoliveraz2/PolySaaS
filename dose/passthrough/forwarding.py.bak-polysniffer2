@@ -3,7 +3,6 @@
 # BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
 # BINGO: Demo Tenant apply_browser_response_cookies hook — commit 7d05920e
 # BINGO: Mattermost SSO Passthrough Working — 2026-06-07
-# BINGO: PolySniffer 2.0 har_capture passthrough logging — 2026-06-24
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
 # Certification: documentation/BINGO_MATTERMOST_SSO_PASSTHROUGH_WORKING_2026-06-07.md
 # Mattermost-specific behavior MUST stay in MattermostPassthroughHandler hooks only.
@@ -731,24 +730,8 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             #     print(f"[PASSTHROUGH] ensure_trafficlog_capture_columns: {_patch_exc}")
             #
             # TrafficLog.objects.create(...)
-            from dose.polysniffer.har_capture import get_active_capture_session, log_requests_response
-            _cap = getattr(request, '_polysniffer_capture', None) or get_active_capture_session(
-                request, getattr(request, '_polysniffer_endpoint_id', None)
-            )
-            if _cap:
-                _sniff_mode = getattr(request, '_polysniffer_sniff_mode', 'passthrough') or 'passthrough'
-                log_requests_response(
-                    request,
-                    resp,
-                    capture_source='passthrough',
-                    target_url=target_url,
-                    upstream_path=upstream_path,
-                    endpoint_name=app_name,
-                    service=app_name,
-                    sniff_mode=_sniff_mode,
-                    duration_ms=0,
-                )
-                print(f"POLY SNIFFER 2.0 — Captured {request.method} {upstream_path} ({_sniff_mode})")
+            # print(f"POLY SNIFFER — Captured {request.method} {upstream_path} for {app_name} in schema {tenant.schema_name if tenant else 'public'}")
+            pass
         except Exception as ps_exc:
             print(f"POLY SNIFFER — Capture failed (non-blocking): {ps_exc}")
 

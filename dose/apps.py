@@ -2,6 +2,7 @@
 """
 App configuration for dose
 """
+# BINGO: PolySniffer 2.0 admin polysniffer URLs — 2026-06-24
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 from django.apps import AppConfig
@@ -58,7 +59,7 @@ class DoseConfig(AppConfig):
     def _register_admin_theme_urls():
         """Register /admin/select-theme/ on AdminSite (palette save API + legacy page)."""
         from django.contrib import admin
-        from django.urls import path
+        from django.urls import path, include
         from dose.admin_views import select_theme, select_theme_api
 
         if getattr(admin.site, '_ps_theme_urls_registered', False):
@@ -69,6 +70,7 @@ class DoseConfig(AppConfig):
             custom = [
                 path('select-theme/api/', admin.site.admin_view(select_theme_api), name='select_theme_api'),
                 path('select-theme/', admin.site.admin_view(select_theme), name='select_theme'),
+                path('polysniffer/', include('dose.polysniffer.urls')),
             ]
             return custom + original_get_urls()
 

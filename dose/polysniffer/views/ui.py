@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: PolySniffer 2.0 — 2026-06-24
 # dose/polysniffer/views/ui.py - 2026-01-17 22:35 PST
 
 from django.shortcuts import render, redirect
@@ -39,7 +41,7 @@ def open_sniffer(request, endpoint_id):
         </body></html>
         """
         return HttpResponse(error_html, status=400)
-    return redirect('polysniffer:live_capture', endpoint_id=endpoint_id)
+    return redirect('polysniffer_v2:mode_picker', endpoint_id=endpoint_id)
 
 @staff_member_required
 def navigate_with_toolbar(request, endpoint_id):
