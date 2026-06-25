@@ -37,9 +37,9 @@
         <div class="nav-panel" data-panel-type="admin_home">
             <h4 class="nav-panel-title">HOME</h4>
             <div class="nav-panel-items">
-                <a href="/dose/home/" class="nav-item" title="Dose tenant home">
+                <a href="/admin/" class="nav-item" title="Jazzmin model dashboard">
                     <span class="nav-icon"><i class="fas fa-tachometer-alt" aria-hidden="true"></i></span>
-                    <span class="nav-text">Home</span>
+                    <span class="nav-text">Dashboard</span>
                 </a>
                 <a href="/admin/polysaas-ai/" class="nav-item" title="PolySaaS AI chat (full page)">
                     <span class="nav-icon"><i class="fas fa-comments" aria-hidden="true"></i></span>

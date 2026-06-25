@@ -503,7 +503,7 @@ def admin_navigation(request):
 
         if is_admin_context:
             top_navigation_items = [
-                {'name': 'Home', 'url': '/dose/home/', 'icon': '🏠'},
+                {'name': 'Home', 'url': '/dose/', 'icon': '🏠'},
                 {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
                 {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
             ]
@@ -511,7 +511,7 @@ def admin_navigation(request):
                 top_navigation_items.insert(1, {'name': 'Admin Panel', 'url': '/admin/', 'icon': '⚙️'})
         else:
             top_navigation_items = [
-                {'name': 'Home', 'url': '/dose/home/', 'icon': '🏠'},
+                {'name': 'Home', 'url': '/dose/', 'icon': '🏠'},
                 {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '📊'},
                 {'name': 'About', 'url': '/dose/about/', 'icon': 'ℹ️'},
                 {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},

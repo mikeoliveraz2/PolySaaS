@@ -4,13 +4,13 @@
 
 {% block navbar_left %}
     <!-- PolySaaS Logo with Brand Text -->
-    <a href="/dose/home/" style="display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: 30px; padding-right: 30px; border-right: 1px solid rgba(255,255,255,0.3);">
+    <a href="/dose/" style="display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: 30px; padding-right: 30px; border-right: 1px solid rgba(255,255,255,0.3);">
         <img src="{% static 'img/PolySaaS-Logo.png' %}" style="height: 40px; width: auto; filter: brightness(1.2);" alt="PolySaaS">
         <span style="color: white; font-weight: 700; font-size: 15px; letter-spacing: 0.5px;">PolySaaS</span>
     </a>
     <!-- Home and Support Links -->
     <li class="nav-item">
-        <a href="/dose/home/" class="nav-link" style="color: white;">Home</a>
+        <a href="/dose/" class="nav-link" style="color: white;">Home</a>
     </li>
     <li class="nav-item">
         <a href="/admin/" class="nav-link" style="color: white;">Support</a>

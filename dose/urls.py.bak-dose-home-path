@@ -3,7 +3,6 @@
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 # dose/urls.py
 from django.urls import path, include
-from django.views.generic import RedirectView
 
 app_name = 'dose'
 
@@ -13,7 +12,7 @@ try:
 except ImportError:
     def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
         from django.shortcuts import redirect
-        return redirect('/dose/home/')
+        return redirect('/dose/')
 
 from dose.views import (
     subscribe_view,
@@ -57,8 +56,7 @@ except ImportError:
     _subscription_urls = []
 
 urlpatterns = [
-    path('home/', index, name='home'),
-    path('', RedirectView.as_view(url='home/', permanent=False), name='landing_page'),
+    path('', index, name='landing_page'),
     path('dashboard/', dashboard, name='dashboard'),
     path('about/', about_page, name='about'),
     path('logout/', logout_view, name='logout'),

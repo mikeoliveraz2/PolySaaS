@@ -73,10 +73,10 @@ JAZZMIN_SETTINGS = {
     "SECONDARY_COLOR": "#6c757d",
      "topmenu_links": [
         # PolySaaS Logo icon - bigger with fa-lg
-        {"name": "PolySaaS", "url": "/dose/home/", "permissions": ["auth.view_user"], "icon": "fas fa-gem fa-lg"},
+        {"name": "PolySaaS", "url": "/dose/", "permissions": ["auth.view_user"], "icon": "fas fa-gem fa-lg"},
 
         # Url that gets reversed (Permissions can be added)
-        {"name": "Home",  "url": "/dose/home/", "permissions": ["auth.view_user"]},
+        {"name": "Home",  "url": "/dose/", "permissions": ["auth.view_user"]},
 
         # external url that opens in a new window (Permissions can be added)
         {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},

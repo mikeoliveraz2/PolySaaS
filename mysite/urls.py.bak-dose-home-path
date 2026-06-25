@@ -51,7 +51,7 @@ urlpatterns = [
 
     path('error', mattermost_error_recover_view, name='mattermost_error_recover'),
 
-    path('', RedirectView.as_view(url='/dose/home/'), name='home'),
+    path('', RedirectView.as_view(url='/dose/'), name='home'),
 ]
 
 # Waitress (runall.ps1) does not auto-serve static like runserver; wire static in DEBUG.

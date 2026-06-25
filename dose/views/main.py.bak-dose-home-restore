@@ -755,7 +755,7 @@ def switch_tenant(request, tenant_id):
                 user=request.user, tenant_id=tenant_id
             )
             apply_tenant_to_session(request, m.tenant, m)
-            return redirect('dose:home')
+            return redirect("dose:dashboard")
         except UserTenantMembership.DoesNotExist:
             return HttpResponseForbidden("You do not have access to this tenant")
     return redirect("dose:login")
@@ -776,15 +776,15 @@ def select_tenant_view(request):
             try:
                 m = memberships.get(tenant_id=tenant_id)
                 apply_tenant_to_session(request, m.tenant, m)
-                return redirect('dose:home')
+                return redirect("/admin/")
             except UserTenantMembership.DoesNotExist:
                 pass
     if memberships.count() == 1:
         m = memberships.first()
         apply_tenant_to_session(request, m.tenant, m)
-        return redirect('dose:home')
+        return redirect("/admin/")
     if memberships.count() == 0:
-        return redirect('dose:home')
+        return redirect("/admin/")
     return render(request, "dose/select_tenant.html", {"memberships": memberships})
 
 
@@ -886,7 +886,7 @@ def _build_landing_page_context(request):
             'id': f"pt_{endpoint.id}",
             'title': title,
             'trigger': host,
-            'url': f'/pt/dose/{host}/',
+            'url': f'/pt/admin/{host}/',
             'icon': endpoint.menu_icon or '🔗',
             'description': endpoint.description or f"Access {title}"
         })
@@ -908,15 +908,13 @@ def _build_landing_page_context(request):
     }
 
     top_navigation_items = [
-        {'name': 'Home', 'url': '/dose/home/', 'icon': '🏠'},
         {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '📊'},
         {'name': 'About', 'url': '/dose/about/', 'icon': 'ℹ️'},
+        {'name': 'Admin Panel', 'url': '/admin/', 'icon': '⚙️'},
         {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
         {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
-        {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
+        {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'}
     ]
-    if request.user.is_staff or request.user.is_superuser:
-        top_navigation_items.insert(3, {'name': 'Admin Panel', 'url': '/admin/', 'icon': '⚙️'})
 
     if current_tenant:
         try:
@@ -971,15 +969,30 @@ def _resolve_landing_passthrough_endpoint(trigger):
 
 
 def _retarget_passthrough_prefixes_for_dose(html, trigger):
-    """Rewrite /pt/admin/… links in embedded HTML to /pt/dose/… for the landing shell."""
     if not html:
-        return html
-    trigger = (trigger or '').strip('/')
-    if not trigger:
         return html
     admin_prefix = f'/pt/admin/{trigger}'
     dose_prefix = f'/pt/dose/{trigger}'
-    return html.replace(admin_prefix, dose_prefix)
+    try:
+        profile = UserProfile.objects.get(user=user)
+        profile_info = {
+            'user_id': profile.user.id,
+            'tenant_slug': profile.tenant.slug,
+            'tenant_name': profile.tenant.name,
+        }
+        tenant_info = {
+            'slug': profile.tenant.slug,
+            'name': profile.tenant.name,
+            'is_active': profile.tenant.is_active,
+        }
+    except UserProfile.DoesNotExist:
+        profile_info = 'No UserProfile found'
+    return JsonResponse({
+        'user': user.username,
+        'session_keys': session_keys,
+        'profile_info': profile_info,
+        'tenant_info': tenant_info,
+    })
 @login_required
 def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
     from dose.admin_views import _process_upstream_html_for_embed, _split_html_document_for_jazzmin_embed
@@ -1000,15 +1013,12 @@ def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
     ).exists():
         return HttpResponseForbidden('You do not have access to this tenant.')
 
-    trigger_host = (trigger or '').strip('/').lower()
-    allowed_hosts = {
-        (service.get('trigger') or '').lower()
-        for service in context.get('passthrough_services', [])
-    }
-    if trigger_host not in allowed_hosts:
+    norm = trigger.strip('/').lower().split('/')[-1].replace('-', '_')
+    allowed_triggers = {service.get('trigger') for service in context.get('passthrough_services', [])}
+    if norm not in allowed_triggers:
         raise Http404('Not found')
 
-    endpoint = _resolve_landing_passthrough_endpoint(trigger_host)
+    endpoint = _resolve_landing_passthrough_endpoint(norm)
     if endpoint is None:
         raise Http404('No enabled PassThroughEndpoint matches this URL.')
 
@@ -1024,7 +1034,7 @@ def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
         handler=handler,
     )
 
-    embed_title = endpoint.menu_title or trigger_host.replace('.', ' ').replace('-', ' ').title()
+    embed_title = endpoint.menu_title or norm.replace('_', ' ').title()
     embed_head = ''
     embed_body = ''
     if raw_html and raw_html.startswith('REDIRECT:'):
@@ -1038,11 +1048,11 @@ def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
         )
     elif raw_html:
         processed = _process_upstream_html_for_embed(handler, raw_html, request, endpoint.endpoint_url)
-        processed = _retarget_passthrough_prefixes_for_dose(processed, trigger_host)
+        processed = _retarget_passthrough_prefixes_for_dose(processed, norm)
         head_inner, body_html = _split_html_document_for_jazzmin_embed(processed)
         embed_head = mark_safe(head_inner)
         embed_body = mark_safe(
-            f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{trigger_host}">{body_html or ""}</div>'
+            f'<div class="polysaas-passthrough-scope" data-polysaas-embed-trigger="{norm}">{body_html or ""}</div>'
         )
     else:
         embed_body = mark_safe(
@@ -1056,7 +1066,7 @@ def pt_dose_generic_passthrough_view(request, trigger, subpath=None):
         'passthrough_embed_head': embed_head,
         'passthrough_embed_body': embed_body,
         'passthrough_embed_title': embed_title,
-        'passthrough_embed_trigger': trigger_host,
+        'passthrough_embed_trigger': norm,
         'passthrough_embed_path': request.path_info,
     })
     return render(request, 'dose/landing_page.html', context)
@@ -1164,7 +1174,7 @@ def login_view(request):
                 logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
             except Exception as e:
                 logger.warning(f"login_view: Exception in tenant session setup for user {user.username}: {e}")
-            next_url = request.GET.get('next') or '/dose/home/'
+            next_url = request.GET.get('next') or '/'
             return redirect(next_url)
         else:
             return render(request, 'dose/login.html', {'error': 'Invalid username or password'})

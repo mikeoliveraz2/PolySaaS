@@ -22,9 +22,10 @@ class CustomSwaggerUIView(SwaggerUIView):
 
 @login_required
 def landing_page(request):
-    """Backward-compatible alias — all users land on tenant home at /dose/."""
-    from dose.views.main import index
-    return index(request)
+    if not request.user.is_staff and not request.user.is_superuser:
+        return render(request, 'profile_landing.html')
+    # Staff/admin users go to dashboard or admin
+    return redirect('/admin/')
 
 # ...existing code for index, logout_view, RequestLogViewSet, ErrorLogViewSet, etc. can be refactored similarly...
 

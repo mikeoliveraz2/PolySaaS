@@ -13,22 +13,9 @@ try:
 except ImportError:
     def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
         from django.shortcuts import redirect
-        return redirect('/dose/home/')
+        return redirect('/admin/')
 
-from dose.views import (
-    subscribe_view,
-    connect_social_after_subscribe,
-    restore_mm_credentials,
-    login_view,
-    logout_view,
-    index,
-    dashboard,
-    about_page,
-    select_tenant_view,
-    switch_tenant,
-    DisplaySettingsView,
-    UnreadDoseMessagesView,
-)
+from dose.views import subscribe_view, connect_social_after_subscribe, restore_mm_credentials, login_view, DisplaySettingsView, UnreadDoseMessagesView
 from dose.views.hubspot_context import (
     hubspot_user_context_view,
     hubspot_portlet_data_api,
@@ -57,14 +44,7 @@ except ImportError:
     _subscription_urls = []
 
 urlpatterns = [
-    path('home/', index, name='home'),
-    path('', RedirectView.as_view(url='home/', permanent=False), name='landing_page'),
-    path('dashboard/', dashboard, name='dashboard'),
-    path('about/', about_page, name='about'),
-    path('logout/', logout_view, name='logout'),
-    path('select-tenant/', select_tenant_view, name='select_tenant'),
-    path('switch-tenant/', select_tenant_view, name='switch_tenant_page'),
-    path('tenant/switch/<int:tenant_id>/', switch_tenant, name='switch_tenant'),
+    path('', RedirectView.as_view(url='/admin/'), name='dose-home'),
     path('subscribe/', subscribe_view, name='subscribe'),
     path('connect-social-after-subscribe/', connect_social_after_subscribe, name='connect_social_after_subscribe'),
     path('login/', login_view, name='login'),

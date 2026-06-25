@@ -755,7 +755,7 @@ def switch_tenant(request, tenant_id):
                 user=request.user, tenant_id=tenant_id
             )
             apply_tenant_to_session(request, m.tenant, m)
-            return redirect('dose:home')
+            return redirect('dose:landing_page')
         except UserTenantMembership.DoesNotExist:
             return HttpResponseForbidden("You do not have access to this tenant")
     return redirect("dose:login")
@@ -776,15 +776,15 @@ def select_tenant_view(request):
             try:
                 m = memberships.get(tenant_id=tenant_id)
                 apply_tenant_to_session(request, m.tenant, m)
-                return redirect('dose:home')
+                return redirect('dose:landing_page')
             except UserTenantMembership.DoesNotExist:
                 pass
     if memberships.count() == 1:
         m = memberships.first()
         apply_tenant_to_session(request, m.tenant, m)
-        return redirect('dose:home')
+        return redirect('dose:landing_page')
     if memberships.count() == 0:
-        return redirect('dose:home')
+        return redirect('dose:landing_page')
     return render(request, "dose/select_tenant.html", {"memberships": memberships})
 
 
@@ -908,7 +908,7 @@ def _build_landing_page_context(request):
     }
 
     top_navigation_items = [
-        {'name': 'Home', 'url': '/dose/home/', 'icon': '🏠'},
+        {'name': 'Home', 'url': '/dose/', 'icon': '🏠'},
         {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '📊'},
         {'name': 'About', 'url': '/dose/about/', 'icon': 'ℹ️'},
         {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
@@ -1164,7 +1164,7 @@ def login_view(request):
                 logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
             except Exception as e:
                 logger.warning(f"login_view: Exception in tenant session setup for user {user.username}: {e}")
-            next_url = request.GET.get('next') or '/dose/home/'
+            next_url = request.GET.get('next') or '/dose/'
             return redirect(next_url)
         else:
             return render(request, 'dose/login.html', {'error': 'Invalid username or password'})

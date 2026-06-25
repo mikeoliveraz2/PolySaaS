@@ -17,7 +17,6 @@ from dose.admin_views import (
     select_theme,
     select_theme_api,
 )
-from dose.views.main import pt_dose_generic_passthrough_view
 from dose.polysniffer.views import mattermost_static_proxy
 from llm_router.admin_chat import (
     admin_llm_router_chat_api,
@@ -28,9 +27,6 @@ from llm_router.admin_chat import (
 urlpatterns = [
     # PolySniffer passthrough browse (iframe-safe; rewrites away from /pt/admin/).
     path('pt/polysniff/', include('dose.polysniffer.pt_polysniff_urls')),
-    # Dose home shell — passthrough loads in landing content column only.
-    path('pt/dose/<str:trigger>/', pt_dose_generic_passthrough_view, name='pt_dose_generic'),
-    path('pt/dose/<str:trigger>/<path:subpath>/', pt_dose_generic_passthrough_view, name='pt_dose_generic_subpath'),
     # Mattermost static assets must bypass generic passthrough/login flow.
     path('pt/admin/<str:trigger>/static/<path:path>', mattermost_static_proxy, name='mattermost_static_proxy'),
     # FORCE PASSTHROUGH FIRST - highest priority
@@ -51,7 +47,7 @@ urlpatterns = [
 
     path('error', mattermost_error_recover_view, name='mattermost_error_recover'),
 
-    path('', RedirectView.as_view(url='/dose/home/'), name='home'),
+    path('', RedirectView.as_view(url='/admin/'), name='home'),
 ]
 
 # Waitress (runall.ps1) does not auto-serve static like runserver; wire static in DEBUG.
