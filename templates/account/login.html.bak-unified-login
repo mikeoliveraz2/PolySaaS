@@ -1,19 +1,15 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: UI Cleanup — 2026-06-25 -->
 {% extends "account/base.html" %}
 {% load i18n %}
 {% load static %}
 
-{% block title %}Sign in — PolySaaS{% endblock %}
-
 {% block content %}
-<div class="login-container" style="background:white;padding:32px 28px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.18);max-width:420px;width:100%;margin:0 auto;">
-    <div style="text-align:center;margin-bottom:20px;">
-        <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS" style="height:72px;width:auto;display:block;margin:0 auto 12px;">
-        <h1 style="color:#2c3e50;font-size:1.35rem;margin:0 0 6px;font-weight:600;">PolySaaS</h1>
-        <p style="color:#5a6c7d;font-size:0.9rem;margin:0;font-style:italic;">Industrial Strength SaaS for Limitless Horizons</p>
+<div class="login-container" style="background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);max-width:400px;margin:60px auto;">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;">
+        <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS" style="height:28px;width:auto;display:block;">
+        <h1 style="text-align:center;color:#333;font-size:1.5rem;margin:0;">Login to PolySaaS</h1>
     </div>
 
+    {# New-subscriber welcome banner — shown when creds arrive from subscribe page #}
     <div id="ps-new-user-banner" style="display:none;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:.88rem;color:#2e7d32;"></div>
 
     {% if form.errors %}
@@ -28,10 +24,10 @@
         <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
 
         <div style="margin-bottom:14px;">
-            <label for="id_login" style="display:block;font-weight:600;margin-bottom:4px;color:#333;font-size:.9rem;">Username or email</label>
-            <input type="text" name="login" id="id_login" autocomplete="username"
-                style="width:100%;padding:9px 12px;border:1px solid #ccc;border-radius:6px;font-size:.95rem;box-sizing:border-box;"
-                placeholder="Your username or email">
+                 <label for="id_login" style="display:block;font-weight:600;margin-bottom:4px;color:#333;font-size:.9rem;">Username or email</label>
+                 <input type="text" name="login" id="id_login" autocomplete="username"
+                     style="width:100%;padding:9px 12px;border:1px solid #ccc;border-radius:6px;font-size:.95rem;box-sizing:border-box;"
+                     placeholder="Your username or email">
         </div>
 
         <div style="margin-bottom:18px;">
@@ -45,13 +41,10 @@
                         aria-label="Show/hide password"
                         style="position:absolute;right:8px;background:none;border:none;cursor:pointer;font-size:1.1em;padding:0;line-height:1;color:#666;">👁</button>
             </div>
-            <small style="color:#666;display:block;margin-top:6px;font-size:.8rem;">
-                Save your password — you will need it for Odoo, Mattermost, and other bundled apps.
-            </small>
         </div>
 
         <button type="submit"
-                style="width:100%;padding:11px;background:#457894;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;">
+                style="width:100%;padding:10px;background:#007bff;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;">
             Sign in
         </button>
     </form>
@@ -62,39 +55,62 @@
     <a href="/accounts/google/login/?prompt=select_account"
        style="display:block;background:#4285f4;color:#fff;padding:10px;border-radius:6px;text-align:center;font-size:.95rem;font-weight:600;text-decoration:none;">
         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="height:18px;vertical-align:middle;margin-right:8px;" alt="">
-        Sign in with Google
+        Login with Google
     </a>
 
     <div style="text-align:center;margin-top:16px;">
         <a href="/dose/subscribe/" style="color:#1976d2;font-size:.88rem;">Subscribe</a>
     </div>
+
+    <hr style="margin:20px 0;border-color:#eee;">
+    <div style="background:#1976d2;color:#fff;border-radius:6px;padding:12px 16px;font-size:.82rem;line-height:1.6;">
+        <strong>Demo Credentials:</strong><br>
+        User: demouser / demouser_123<br>
+        Admin: adminuser / adminuser_123<br>
+        <small style="opacity:.8;">Use <a href="/dose/setup-demo/" style="color:#fff;">setup demo</a> to create these accounts if they don't exist.</small>
+    </div>
 </div>
 
-<script>
+        <script>
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         try {
+            console.log('[AUTO-LOGIN] Checking for sessionStorage credentials...');
             var raw = sessionStorage.getItem('polysaas_new_user_creds');
-            if (!raw) return;
+            console.log('[AUTO-LOGIN] sessionStorage raw:', raw);
+            if (!raw) {
+                console.log('[AUTO-LOGIN] No credentials found in sessionStorage');
+                return;
+            }
             var creds = JSON.parse(raw);
+            console.log('[AUTO-LOGIN] Parsed creds:', creds);
             sessionStorage.removeItem('polysaas_new_user_creds');
             if (creds.u) {
                 var uField = document.getElementById('id_login');
-                if (uField) uField.value = creds.u;
+                if (uField) {
+                    uField.value = creds.u;
+                    console.log('[AUTO-LOGIN] Set username field');
+                }
             }
             if (creds.p) {
                 var pField = document.getElementById('id_password');
-                if (pField) pField.value = creds.p;
+                if (pField) {
+                    pField.value = creds.p;
+                    console.log('[AUTO-LOGIN] Set password field');
+                }
             }
             var banner = document.getElementById('ps-new-user-banner');
             if (banner) {
-                banner.textContent = 'Your new account "' + (creds.u || '') + '" has been pre-filled. Please review and click Sign in.';
+                banner.textContent = '✅ Your new account "' + (creds.u || '') + '" has been pre-filled. Please review and click Sign in.';
                 banner.style.display = 'block';
             }
-        } catch (e) {
+        } catch(e) {
             console.error('[AUTO-LOGIN] Error:', e);
         }
     });
+
+    // Intentionally do not POST anything from this anonymous login page.
+    // A background POST can rotate CSRF state and invalidate the form token.
 })();
 </script>
 {% endblock %}

@@ -2,14 +2,10 @@
 django-allauth account adapter: post-login redirect for staff.
 If the user belongs to multiple tenants, redirect to a picker page.
 """
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
 from django.conf import settings
 from django.shortcuts import resolve_url
 
 from allauth.account.adapter import DefaultAccountAdapter
-
-DOSE_HOME = '/dose/home/'
 
 
 class CustomAccountAdapter(DefaultAccountAdapter):
@@ -35,10 +31,11 @@ class CustomAccountAdapter(DefaultAccountAdapter):
 
             apply_tenant_to_session(request, memberships[0].tenant, memberships[0])
 
+        if not (user.is_staff or user.is_superuser):
+            return url
         default_target = resolve_url(
-            getattr(settings, "LOGIN_REDIRECT_URL", DOSE_HOME) or DOSE_HOME
+            getattr(settings, "LOGIN_REDIRECT_URL", "/") or "/"
         )
-        generic_targets = {default_target, "/", DOSE_HOME}
-        if url in generic_targets:
-            return DOSE_HOME
+        if url == default_target or url == "/":
+            return "/admin/"
         return url

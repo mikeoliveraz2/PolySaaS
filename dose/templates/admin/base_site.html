@@ -6,6 +6,7 @@
   block spans newlines, so the banner was rendered as visible text at the top of every admin page.
 
   THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+  BINGO: UI Cleanup — 2026-06-25
   BINGO: Font and Theme Toggle — commit 1dcca3bd
 
   ╔══════════════════════════════════════════════════════════════════════╗
@@ -27,6 +28,7 @@
 
 {% block extrahead %}
   {{ block.super }}
+  {% include "admin/includes/custom_sidebar_head.html" %}
   <!-- DEBUG: dose/templates/admin/base_site.html loaded at {% now "H:i:s" %} -->
 
   {# ── Per-user theme override ───────────────────────────────────────────── #}
@@ -387,7 +389,7 @@
 {% block sidebar %}{# custom sidebar renders inside page_content via custom_sidebar.html — AdminLTE sidebar hidden by CSS #}{% endblock %}
 
 {% block page_content %}
-<div class="admin-main-wrapper">
+<div class="admin-main-wrapper admin-content-grid">
     {% include "admin/includes/custom_sidebar.html" %}
     <div class="dose-content-col">
         {{ block.super }}

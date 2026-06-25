@@ -1,6 +1,5 @@
 # BINGO: PolySniffer 2.0 sniff routes — 2026-06-24
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 # dose/urls.py
 from django.urls import path, include
@@ -27,7 +26,6 @@ from dose.views import (
     about_page,
     select_tenant_view,
     switch_tenant,
-    tenant_settings,
     DisplaySettingsView,
     UnreadDoseMessagesView,
 )
@@ -67,7 +65,6 @@ urlpatterns = [
     path('select-tenant/', select_tenant_view, name='select_tenant'),
     path('switch-tenant/', select_tenant_view, name='switch_tenant_page'),
     path('tenant/switch/<int:tenant_id>/', switch_tenant, name='switch_tenant'),
-    path('tenantsettings/', tenant_settings, name='tenantsettings'),
     path('subscribe/', subscribe_view, name='subscribe'),
     path('connect-social-after-subscribe/', connect_social_after_subscribe, name='connect_social_after_subscribe'),
     path('login/', login_view, name='login'),

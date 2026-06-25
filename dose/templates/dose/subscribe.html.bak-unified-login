@@ -1,5 +1,4 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: UI Cleanup — 2026-06-25 -->
 <!-- BINGO: Subscribe Behavior Enhanced — commit c9339777 -->
 <!-- BINGO: Production Preview demo — provisioning failure feedback — 2026-06-15 -->
 {% extends "dose/dosebase.html" %}
@@ -919,7 +918,7 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
                 }));
             }
         } catch(e) {}
-        var loginUrl = '/accounts/login/?next=/dose/home/';
+        var loginUrl = '/dose/login/?next=/admin/';
         hideProvisioningModal();
         var feedbackParts = ['Subscription saved!'];
         if (data.trial_welcome) {

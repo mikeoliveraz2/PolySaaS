@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
 # BINGO: Waitress WhiteNoise static / orchestration button — commit 7d05920e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
 
@@ -397,11 +396,10 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
 ]
 
-LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/dose/home/'
-ACCOUNT_LOGOUT_REDIRECT_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
-# Staff and subscribers share one login; CustomAccountAdapter lands everyone on /dose/home/ by default.
+# Staff default redirect: / would go to dose landing; CustomAccountAdapter sends staff to /admin/
 ACCOUNT_ADAPTER = 'dose.account_adapter.CustomAccountAdapter'
 
 # Comma-separated emails (e.g. you@domain.com): Google sign-in sets is_staff + is_superuser. Empty = off.

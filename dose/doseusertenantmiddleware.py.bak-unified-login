@@ -1,5 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
 # DO NOT MODIFY: Critical system file. Ask before making changes.
 from django.http import HttpResponseForbidden
 from django.urls import reverse, NoReverseMatch
@@ -26,7 +24,6 @@ class TenantSessionMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIR
             '/admin/',
             '/static/',
             '/media/',
-            '/accounts/login/',
             '/dose/login/',
             '/dose/setup-demo/',
             '/dose/debug/',

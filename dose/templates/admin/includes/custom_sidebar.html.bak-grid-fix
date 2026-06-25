@@ -1,6 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
-<!-- BINGO: UI Cleanup — 2026-06-25 -->
 <!-- BINGO: Sidebar Alerts Dose Messages — commit d8a02538 -->
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
 {% load i18n static custom_menu_tags %}
@@ -374,23 +373,26 @@ document.addEventListener('DOMContentLoaded', function() {
     applyActiveSidebarLink();
     window.setTimeout(applyActiveSidebarLink, 150);
 
-    // Create right sidebar column for Recent Actions (only when Jazzmin index has the module)
+    // Create right sidebar column for Recent Actions
     let rightSidebar = document.getElementById('recent-actions-sidebar');
-    const recentActions = document.querySelector('#recent-actions-module');
-    if (recentActions && !rightSidebar) {
+    if (!rightSidebar) {
         rightSidebar = document.createElement('div');
         rightSidebar.id = 'recent-actions-sidebar';
         rightSidebar.style.position = 'sticky';
-        rightSidebar.style.top = '0';
+        rightSidebar.style.top = 'var(--pss-header-h, 57px)';
         rightSidebar.style.height = 'fit-content';
         rightSidebar.style.padding = '0 15px';
-        console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
-        rightSidebar.appendChild(recentActions);
+
+        const recentActions = document.querySelector('#recent-actions-module');
+        if (recentActions) {
+            console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
+            rightSidebar.appendChild(recentActions);
+        } else {
+            console.log('[ADMIN SIDEBAR] No #recent-actions-module (Jazzmin index); skip Recent Actions reparent');
+        }
+
         mainWrapper.appendChild(rightSidebar);
-        mainWrapper.classList.add('has-recent-actions');
         console.log('[ADMIN SIDEBAR] Right sidebar added to main wrapper');
-    } else if (!recentActions) {
-        console.log('[ADMIN SIDEBAR] No #recent-actions-module; using 2-column grid');
     }
 
     // Move footer after main wrapper if it exists

@@ -1,5 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: UI Cleanup — 2026-06-25 -->
 {% extends "dose/dosebase.html" %}
 {% block content %}
 <h2>Connect Your Social Account</h2>
@@ -13,6 +11,6 @@
     </a>
 </div>
 <div style="text-align:center;">
-    <a href="/accounts/login/?next=/dose/home/" style="color:#1976d2;">Skip for now and go to login</a>
+    <a href="/dose/login/?next=/admin/" style="color:#1976d2;">Skip for now and go to login</a>
 </div>
 {% endblock %}

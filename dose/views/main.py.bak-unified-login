@@ -1,5 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
 # --- RESTORED ENDPOINTS FOR ADMIN UI ---
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -134,10 +132,7 @@ def debug_tenant_session(request):
 
 def index(request):
     if not request.user.is_authenticated:
-        from urllib.parse import urlencode
-        from django.conf import settings
-        login_base = settings.LOGIN_URL or '/accounts/login/'
-        login_url = f"{login_base}?{urlencode({'next': request.path})}"
+        login_url = f"/dose/login/?next={request.path}"
         return redirect(login_url)
     context, response = _build_landing_page_context(request)
     if response is not None:
@@ -825,10 +820,7 @@ def _build_landing_page_context(request):
             'page_title': 'PolySaaS Industrial Strength SaaS for Limitless Horizons'
         }
         if not request.user.is_authenticated:
-            from urllib.parse import urlencode
-            from django.conf import settings
-            login_base = settings.LOGIN_URL or '/accounts/login/'
-            login_url = f"{login_base}?{urlencode({'next': request.path})}"
+            login_url = f"/dose/login/?next={request.path}"
             return None, redirect(login_url)
         context['tenant_prompt'] = True
         return context, None
@@ -1122,17 +1114,61 @@ def logout_view(request):
     logout(request)
     logger.info(f"logout_view: Session keys after logout: {list(request.session.keys())}")
     return redirect('/')
-# Login view — legacy /dose/login/ redirects to unified PolySaaS allauth login.
-from django.shortcuts import redirect
-from urllib.parse import urlencode
-from django.conf import settings
+# Login view
+from django.contrib.auth import authenticate, login
+from django.shortcuts import render, redirect
+import logging
+from dose.models import UserProfile
+from dose.tenant_session import apply_tenant_to_session
 
 def login_view(request):
-    login_base = settings.LOGIN_URL or '/accounts/login/'
-    next_url = request.GET.get('next') or request.POST.get('next') or ''
-    if next_url:
-        return redirect(f"{login_base}?{urlencode({'next': next_url})}")
-    return redirect(login_base)
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[LOGIN] Attempting login for username={username}")
+        # Force search_path to public for authentication since users are created in public schema
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute('SET search_path TO public;')
+        user = authenticate(request, username=username, password=password)
+        logger.warning(f"[LOGIN] authenticate returned: {user} (type={type(user)})")
+        if user is not None:
+            login(request, user)
+            logger = logging.getLogger(__name__)
+            try:
+                # Ensure UserProfile and UserTenantMembership exist for this user/tenant
+                try:
+                    profile = UserProfile.objects.get(user=user)
+                except UserProfile.DoesNotExist:
+                    # Fallback: assign to first tenant or create a default tenant
+                    tenant = Tenant.objects.first()
+                    if not tenant:
+                        tenant = Tenant.objects.create(name="Default Tenant", slug="default-tenant", schema_name="public")
+                    profile = UserProfile.objects.create(user=user, tenant=tenant)
+                tenant = profile.tenant
+                # Always ensure UserTenantMembership exists
+                m, _ = UserTenantMembership.objects.get_or_create(
+                    user=user,
+                    tenant=tenant,
+                    defaults={"role": UserTenantMembership.Role.MEMBER},
+                )
+                from django.db import connection
+                schema_name = tenant.slug if hasattr(tenant, 'slug') else tenant.schema_name
+                with connection.cursor() as cursor:
+                    cursor.execute(f'SET search_path TO "{schema_name}",public;')
+                apply_tenant_to_session(request, tenant, m)
+                logger.info(
+                    f"login_view: Set tenant session keys for user {user.username}: tenant_slug={tenant.slug}, tenant_name={tenant.name}"
+                )
+                logger.info(f"login_view: Session keys after set: {list(request.session.keys())}")
+            except Exception as e:
+                logger.warning(f"login_view: Exception in tenant session setup for user {user.username}: {e}")
+            next_url = request.GET.get('next') or '/dose/home/'
+            return redirect(next_url)
+        else:
+            return render(request, 'dose/login.html', {'error': 'Invalid username or password'})
+    return render(request, 'dose/login.html')
 # Debug tenant session view
 def debug_tenant_session(request):
     from dose.models import UserProfile, Tenant

@@ -1,12 +1,844 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
-<!-- BINGO: UI Cleanup — 2026-06-25 -->
 <!-- BINGO: Sidebar Alerts Dose Messages — commit d8a02538 -->
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
 {% load i18n static custom_menu_tags %}
+<!-- Custom PolySaaS Sidebar - Below Menu Bar with Grid Layout -->
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+    /* Header height — tuned to the live Jazzmin navbar so the grid clears the fixed header. */
+    :root {
+        --pss-header-h: 64px;
+        --pss-sidebar-shell-bg: #1e293b;
+        --pss-sidebar-shell-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        --pss-sidebar-header-bg: #34495e;
+        --pss-sidebar-header-hover-bg: #1e293b;
+        --pss-sidebar-header-text: #ffffff;
+        --pss-sidebar-header-border: #2c3e50;
+        --pss-sidebar-surface: #f8fafc;
+        --pss-sidebar-scroll-track: #f1f1f1;
+        --pss-sidebar-scroll-thumb: #888;
+        --pss-sidebar-scroll-thumb-hover: #555;
+        --pss-sidebar-item-text: #334155;
+        --pss-sidebar-item-hover-bg: rgba(37, 99, 235, 0.08);
+        --pss-sidebar-item-active-bg: rgba(37, 99, 235, 0.18);
+        --pss-sidebar-item-active-text: #1e3a8a;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #2563eb;
+        --pss-sidebar-icon: #64748b;
+        --pss-sidebar-icon-hover: #2563eb;
+        --pss-sidebar-icon-active: #2563eb;
+        --pss-sidebar-panel-bg: #f1f5f9;
+        --pss-sidebar-panel-text: #64748b;
+        --pss-sidebar-panel-border: #e2e8f0;
+        --pss-sidebar-passthrough-bg: #eff6ff;
+        --pss-sidebar-passthrough-text: #1e40af;
+        --pss-sidebar-passthrough-border: #3b82f6;
+    }
 
+    html[data-bs-theme="dark"],
+    html[data-ps-theme="darkly"],
+    html[data-ps-theme="cyborg"],
+    html[data-ps-theme="slate"],
+    html[data-ps-theme="solar"],
+    html[data-ps-theme="superhero"] {
+        --pss-sidebar-shell-bg: #20252b;
+        --pss-sidebar-shell-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+        --pss-sidebar-header-bg: #2f353c;
+        --pss-sidebar-header-hover-bg: #252a31;
+        --pss-sidebar-header-text: #f5f7fa;
+        --pss-sidebar-header-border: #454d55;
+        --pss-sidebar-surface: #2b2b2b;
+        --pss-sidebar-scroll-track: #252525;
+        --pss-sidebar-scroll-thumb: #626b75;
+        --pss-sidebar-scroll-thumb-hover: #7a848f;
+        --pss-sidebar-item-text: #d9e2ec;
+        --pss-sidebar-item-hover-bg: rgba(41, 128, 185, 0.2);
+        --pss-sidebar-item-active-bg: rgba(77, 182, 255, 0.22);
+        --pss-sidebar-item-active-text: #f5fbff;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #4db6ff;
+        --pss-sidebar-icon: #a7b3c2;
+        --pss-sidebar-icon-hover: #4db6ff;
+        --pss-sidebar-icon-active: #8ecbff;
+        --pss-sidebar-panel-bg: #3a3a3a;
+        --pss-sidebar-panel-text: #d0d7de;
+        --pss-sidebar-panel-border: #4b525a;
+        --pss-sidebar-passthrough-bg: #16324f;
+        --pss-sidebar-passthrough-text: #8ecbff;
+        --pss-sidebar-passthrough-border: #2196f3;
+    }
 
-<!-- Sidebar column (direct child of .admin-main-wrapper from base_site.html) -->
+    /* Main content grid - sidebar + main content + right sidebar (Recent Actions) */
+    .admin-content-grid {
+        display: grid;
+        grid-template-columns: 280px 1fr 320px;
+        gap: 0;
+        margin-top: var(--pss-header-h);
+        transition: grid-template-columns 0.3s ease;
+    }
+
+    .admin-content-grid.sidebar-collapse {
+        grid-template-columns: 60px 1fr 320px;
+    }
+
+    /* Use only our own class — do not rely on AdminLTE body classes */
+    body.polysaas-collapsed .admin-content-grid {
+        grid-template-columns: 60px 1fr 320px;
+    }
+
+    /* Content column must allow shrinking for 1fr to respond */
+    .admin-content-grid > .dose-content-col,
+    .admin-content-grid > div:nth-child(2) {
+        min-width: 0;
+        /* Do not clip vertically — overflow:hidden hid Jazzmin index cards on some viewports */
+        overflow-x: hidden;
+        overflow-y: visible;
+    }
+
+    /* Jazzmin 3 / BS5 often use col-md-* / row — do not force col-lg-* to 100% (breaks index layout) */
+
+    /* Make container-fluid truly full width */
+    .dose-content-col .container-fluid {
+        max-width: 100% !important;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    .dose-content-col .row {
+        margin: 0 !important;
+    }
+
+    /* col-md-6 is Jazzmin's two-column card split — let Bootstrap handle it at >=900px.
+       At <900px we override it back to full width (see @media block below). */
+
+    /* Sidebar Container - positioned in grid, not fixed */
+    .collapsible-nav {
+        background: var(--pss-sidebar-shell-bg);
+        border-radius: 0;
+        overflow: hidden;
+        box-shadow: var(--pss-sidebar-shell-shadow);
+        height: calc(100vh - var(--pss-header-h));
+        position: sticky;
+        top: var(--pss-header-h); /* stick just below the fixed header */
+        transition: width 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        width: 280px;
+    }
+
+    .collapsible-nav.collapsed {
+        width: 60px;
+    }
+
+    .nav-header {
+        background: var(--pss-sidebar-header-bg);
+        color: var(--pss-sidebar-header-text);
+        padding: 12px 15px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid var(--pss-sidebar-header-border);
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .collapsible-nav.collapsed .nav-header {
+        justify-content: center;
+        padding: 8px 5px;
+        background: #2563eb !important;   /* bright blue — unmistakably a button */
+        border-bottom: 2px solid #1d4ed8;
+        min-height: 48px;
+    }
+
+    .collapsible-nav.collapsed .nav-header > span:first-child {
+        display: none;
+    }
+
+    /* Make the fa-bars icon look like a proper restore button when collapsed */
+    .collapsible-nav.collapsed .nav-toggle {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        font-size: 1.3rem !important;
+        transition: background 0.2s ease;
+        cursor: pointer;
+    }
+
+    .collapsible-nav.collapsed .nav-toggle i {
+        font-size: 1.2rem;
+        color: #fff;
+    }
+
+    .collapsible-nav.collapsed .nav-header:hover .nav-toggle {
+        background: rgba(255,255,255,0.35);
+    }
+
+    .nav-header:hover {
+        background: var(--pss-sidebar-header-hover-bg);
+    }
+
+    .nav-toggle {
+        font-size: 1.3rem;
+        transition: all 0.3s ease;
+        font-weight: normal;
+    }
+
+    /* applyFont() in base_site.html sets el.style.fontFamily on every element,
+       overriding FA's glyph font and making icons vanish.
+       These !important rules beat the JS inline-style (no !important) and restore rendering. */
+    .nav-toggle i,
+    .nav-toggle i.fas,
+    .nav-toggle i.far,
+    .nav-toggle i.fab {
+        font-family: "Font Awesome 5 Free" !important;
+        font-weight: 900 !important;
+        font-size: inherit !important;
+        display: inline-block !important;
+        color: #fff !important;
+    }
+
+    .nav-items {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: var(--pss-sidebar-surface);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .collapsible-nav.collapsed .nav-items {
+        max-height: none;
+        overflow: visible;
+        flex-grow: 0;
+        height: auto;
+        align-items: center;
+    }
+
+    /* Custom scrollbar for navigation */
+    .nav-items::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .nav-items::-webkit-scrollbar-track {
+        background: var(--pss-sidebar-scroll-track);
+    }
+
+    .nav-items::-webkit-scrollbar-thumb {
+        background: var(--pss-sidebar-scroll-thumb);
+        border-radius: 3px;
+    }
+
+    .nav-items::-webkit-scrollbar-thumb:hover {
+        background: var(--pss-sidebar-scroll-thumb-hover);
+    }
+
+    /* Admin-style compact nav items */
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 15px;
+        margin: 2px 8px;
+        color: var(--pss-sidebar-item-text);
+        text-decoration: none;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        transition: background 0.15s ease, padding-left 0.15s ease;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+
+    /* Collapsed mode - show only icons centered */
+    .collapsible-nav.collapsed .nav-item,
+    #dose-custom-sidebar.collapsed .nav-item {
+        justify-content: center;
+        padding: 10px;
+        gap: 0;
+        min-height: 40px;
+        border: none;
+        width: auto;
+    }
+
+    .collapsible-nav.collapsed .nav-panel,
+    #dose-custom-sidebar.collapsed .nav-panel {
+        border: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-items,
+    #dose-custom-sidebar.collapsed .nav-panel-items {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .collapsible-nav.collapsed .nav-text,
+    #dose-custom-sidebar.collapsed .nav-text {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        font-size: 0 !important;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-title,
+    #dose-custom-sidebar.collapsed .nav-panel-title,
+    #dose-custom-sidebar.collapsed h4.nav-panel-title {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 0 !important;
+    }
+
+    .collapsible-nav.collapsed .nav-icon,
+    #dose-custom-sidebar.collapsed .nav-icon {
+        font-size: 1.3rem;
+        min-width: auto;
+        margin: 0;
+        display: inline-flex !important;
+        flex-shrink: 0;
+    }
+
+    .collapsible-nav.collapsed .custom-icon,
+    #dose-custom-sidebar.collapsed .custom-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    /* Force hide all text content in collapsed sidebar */
+    #dose-custom-sidebar.collapsed .nav-item * {
+        font-size: inherit;
+    }
+
+    #dose-custom-sidebar.collapsed .nav-text,
+    #dose-custom-sidebar.collapsed .nav-text * {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        opacity: 0 !important;
+    }
+
+    .nav-item:hover {
+        background: var(--pss-sidebar-item-hover-bg) !important;
+        padding-left: 15px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active,
+    #dose-custom-sidebar .nav-item[aria-current="page"] {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        box-shadow: var(--pss-sidebar-item-active-shadow) !important;
+        border-left: 3px solid var(--pss-sidebar-icon-active);
+        font-weight: 600 !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active:hover,
+    #dose-custom-sidebar .nav-item[aria-current="page"]:hover {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-icon,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-icon {
+        color: var(--pss-sidebar-icon-active) !important;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-text,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-text {
+        color: inherit;
+    }
+
+    .collapsible-nav.collapsed .nav-item:hover {
+        padding-left: 10px;
+    }
+
+    .collapsible-nav.collapsed .nav-item.is-active,
+    #dose-custom-sidebar.collapsed .nav-item.is-active,
+    .collapsible-nav.collapsed .nav-item[aria-current="page"],
+    #dose-custom-sidebar.collapsed .nav-item[aria-current="page"] {
+        box-shadow: inset 0 0 0 2px var(--pss-sidebar-passthrough-border);
+        border-left: none;
+        padding-left: 10px;
+    }
+
+    .nav-icon {
+        width: 1.75rem;
+        height: 1.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        color: var(--pss-sidebar-icon);
+        border-radius: 6px;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    /* Material Icons ligature support */
+    .nav-icon.material-icon {
+        font-family: 'Material Icons';
+        font-size: 1.2rem;
+        font-style: normal;
+        line-height: 1;
+        overflow: visible;
+    }
+
+    .nav-item:hover .nav-icon {
+        color: var(--pss-sidebar-icon-hover);
+    }
+
+    /* Ensure icons from FontAwesome/Bootstrap work */
+    .nav-icon i {
+        font-size: inherit;
+    }
+
+    /* Custom image icons */
+    .custom-icon {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+    }
+
+    .nav-text {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .nav-panel-title {
+        background: var(--pss-sidebar-panel-bg);
+        padding: 8px 15px;
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--pss-sidebar-panel-text);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        border-top: 1px solid var(--pss-sidebar-panel-border);
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    /* Passthrough panel — subtle accent, not loud green */
+    .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title {
+        background: var(--pss-sidebar-passthrough-bg);
+        color: var(--pss-sidebar-passthrough-text);
+        border-left: 3px solid var(--pss-sidebar-passthrough-border);
+        padding-left: 12px;
+    }
+
+    /* CONTROLS row — labeled tiles (Themes + Alerts) */
+    .pss-sidebar-controls-row {
+        display: flex;
+        gap: 8px;
+        justify-content: stretch;
+        padding: 10px 10px 12px;
+        position: relative;
+    }
+    .pss-sidebar-control-wrap {
+        position: relative;
+        flex: 1 1 0;
+        min-width: 0;
+    }
+    .pss-sidebar-control-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 100%;
+        min-height: 58px;
+        padding: 8px 6px;
+        border-radius: 10px;
+        border: 1px solid var(--pss-sidebar-panel-border);
+        background: var(--pss-sidebar-surface);
+        cursor: pointer;
+        position: relative;
+        line-height: 1.1;
+        transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+    .pss-sidebar-control-btn:hover,
+    .pss-sidebar-control-btn:focus-visible {
+        outline: none;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+    }
+    /* SVG icons — immune to applyFont() stomping font-family on every element */
+    .pss-sidebar-control-btn .pss-control-icon {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        line-height: 1;
+        color: inherit !important;
+        flex-shrink: 0;
+    }
+    .pss-sidebar-control-btn .pss-control-icon .pss-control-svg {
+        width: 1.35rem;
+        height: 1.35rem;
+        display: block;
+    }
+    .pss-sidebar-control-btn .pss-control-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: inherit;
+        opacity: 0.95;
+    }
+    .pss-sidebar-control-btn--themes {
+        color: #5b21b6;
+        border-color: #c4b5fd;
+        background: linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%);
+    }
+    .pss-sidebar-control-btn--themes:hover,
+    .pss-sidebar-control-btn--themes:focus-visible {
+        color: #4c1d95;
+        border-color: #a78bfa;
+        background: linear-gradient(180deg, #ede9fe 0%, #ddd6fe 100%);
+    }
+    .pss-sidebar-control-btn--alerts {
+        color: #b45309;
+        border-color: #fcd34d;
+        background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+    }
+    .pss-sidebar-control-btn--alerts:hover,
+    .pss-sidebar-control-btn--alerts:focus-visible {
+        color: #92400e;
+        border-color: #fbbf24;
+        background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--themes {
+        color: #e9d5ff;
+        border-color: #7c3aed;
+        background: linear-gradient(180deg, #3b2667 0%, #2e1065 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--themes:hover {
+        color: #f5f3ff;
+        border-color: #a78bfa;
+        background: linear-gradient(180deg, #4c1d95 0%, #3b0764 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--alerts {
+        color: #fde68a;
+        border-color: #d97706;
+        background: linear-gradient(180deg, #4a3410 0%, #3f2d0f 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--alerts:hover {
+        color: #fff7ed;
+        border-color: #fbbf24;
+        background: linear-gradient(180deg, #5c4312 0%, #4a3410 100%);
+    }
+    .pss-sidebar-control-btn--alerts #sidebar-unread-count {
+        top: 4px;
+        right: 8px;
+    }
+    .collapsible-nav.collapsed .pss-control-label,
+    #dose-custom-sidebar.collapsed .pss-control-label {
+        display: none;
+    }
+    .collapsible-nav.collapsed .pss-sidebar-control-btn,
+    #dose-custom-sidebar.collapsed .pss-sidebar-control-btn {
+        min-height: 44px;
+        padding: 8px 4px;
+    }
+
+    /* Theme picker — portaled to body; fixed so sidebar overflow cannot clip it */
+    #sidebar-display-settings-popover {
+        display: none;
+        position: fixed;
+        background: #ffffff;
+        color: #222;
+        width: 310px;
+        max-height: calc(100vh - 24px);
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+        border-radius: 12px;
+        z-index: 10050;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+    #sidebar-display-settings-popover .pss-theme-popover-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 700;
+        font-size: 14px;
+        background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+        color: #4c1d95;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    #sidebar-display-settings-popover .pss-theme-popover-body {
+        padding: 16px;
+        font-size: 13px;
+        max-height: min(480px, calc(100vh - 100px));
+        overflow-y: auto;
+    }
+
+    /* Alerts dropdown — portaled to body; fixed so sidebar overflow cannot clip it */
+    #sidebar-unread-dropdown {
+        display: none;
+        position: fixed;
+        background: #ffffff;
+        color: #222;
+        width: 320px;
+        max-height: min(420px, calc(100vh - 24px));
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+        border-radius: 12px;
+        z-index: 10051;
+        border: 1px solid #e2e8f0;
+        overflow: hidden;
+    }
+    #sidebar-unread-dropdown .pss-alerts-popover-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 700;
+        font-size: 14px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    #sidebar-unread-messages-list {
+        max-height: min(350px, calc(100vh - 120px));
+        overflow-y: auto;
+        font-size: 13px;
+    }
+    html[data-bs-theme="dark"] #sidebar-unread-dropdown,
+    html[data-ps-theme="darkly"] #sidebar-unread-dropdown,
+    html[data-ps-theme="cyborg"] #sidebar-unread-dropdown,
+    html[data-ps-theme="slate"] #sidebar-unread-dropdown,
+    html[data-ps-theme="solar"] #sidebar-unread-dropdown,
+    html[data-ps-theme="superhero"] #sidebar-unread-dropdown {
+        background: #2b2b2b;
+        color: #e2e8f0;
+        border-color: #4b525a;
+    }
+    html[data-bs-theme="dark"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="darkly"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="cyborg"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="slate"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="solar"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="superhero"] #sidebar-unread-dropdown .pss-alerts-popover-header {
+        background: linear-gradient(135deg, #343a40 0%, #2b3035 100%);
+        color: #f8f9fa;
+        border-bottom-color: #4b525a;
+    }
+
+    /* ── Passthrough logo card grid ── */
+    .pss-pt-cards {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 10px 8px 12px;
+    }
+    .pss-pt-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 6px 8px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: inherit;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        transition: background 0.2s, transform 0.2s;
+    }
+    .pss-pt-card:hover {
+        background: rgba(255,255,255,0.12);
+        transform: translateY(-2px);
+        text-decoration: none;
+        color: inherit;
+    }
+    .pss-pt-card.is-active {
+        background: rgba(77,182,255,0.15);
+        border-color: rgba(77,182,255,0.35);
+    }
+    .pss-pt-logo {
+        width: 75px;
+        height: 75px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 7px;
+        overflow: hidden;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    }
+    .pss-pt-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        padding: 6px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .pss-pt-logo--odoo { background: linear-gradient(135deg, #9c5acc 0%, #714b67 100%); }
+    .pss-pt-logo--mattermost { background: linear-gradient(135deg, #1668ca 0%, #0058cc 100%); }
+    .pss-pt-logo--nextcloud { background: linear-gradient(135deg, #0082c9 0%, #006aa8 100%); }
+    .pss-pt-logo--dolibarr { background: linear-gradient(135deg, #f47b20 0%, #d66a18 100%); }
+    .pss-pt-logo--wordpress { background: linear-gradient(135deg, #21759b 0%, #1a5c7a 100%); }
+    .pss-pt-label {
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.3;
+        color: var(--pss-sidebar-item-text);
+    }
+
+    .collapsible-nav.collapsed .nav-panel-title {
+        font-size: 0;
+        padding: 4px 0;
+        min-height: 2px;
+    }
+
+    .nav-panel-items {
+        /* No padding - items handle their own spacing */
+    }
+
+    .nav-panel:first-child .nav-panel-title {
+        border-top: none;
+    }
+
+    .nav-panel-description {
+        display: none;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-description {
+        display: none;
+    }
+
+    /* Content wrapper - no left margin, handled by grid */
+    .content-wrapper,
+    .main-footer,
+    .app-footer {
+        margin-left: 0 !important;
+        transition: none;
+    }
+
+    /* Menu bar spans full width above grid */
+    .main-header,
+    .app-header {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Legacy AdminLTE2 sidebar (unused under Jazzmin 3) */
+    .main-sidebar {
+        display: none !important;
+    }
+
+    /* Wrapper for grid container */
+    .admin-main-wrapper {
+        min-height: calc(100vh - var(--pss-header-h));
+    }
+
+    /* Ensure grid and sidebar are visible */
+    .admin-content-grid {
+        display: grid !important;
+        visibility: visible !important;
+    }
+
+    #dose-custom-sidebar {
+        display: flex !important;
+        visibility: visible !important;
+    }
+
+    /* Right activity sidebar */
+    #recent-actions-sidebar {
+        background: var(--bs-body-bg, #fff);
+        border-left: 1px solid rgba(0,0,0,.08);
+        padding: 16px 14px;
+        height: calc(100vh - var(--pss-header-h));
+        position: sticky;
+        top: var(--pss-header-h);
+        overflow-y: auto;
+        font-size: .85rem;
+    }
+
+    #recent-actions-sidebar h2,
+    #recent-actions-sidebar .module h2 {
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        font-weight: 700;
+        padding: 0 0 8px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid rgba(0,0,0,.1);
+    }
+
+    /* Responsive: single column on narrow screens */
+    @media (max-width: 899px) {
+        .admin-content-grid {
+            grid-template-columns: 1fr !important;
+        }
+        .admin-content-grid.sidebar-collapse {
+            grid-template-columns: 1fr !important;
+        }
+        .collapsible-nav {
+            display: none !important;
+        }
+        #recent-actions-sidebar {
+            display: none !important;
+        }
+        /* At narrow widths collapse Jazzmin's 2-col cards to single column */
+        .dose-content-col .col-md-6 {
+            width: 100% !important;
+            max-width: 100% !important;
+            flex: 0 0 100% !important;
+        }
+    }
+</style>
+
+<!-- Grid Container Wrapper -->
+<div class="admin-content-grid">
+    <!-- Sidebar Column -->
     <div class="collapsible-nav" id="dose-custom-sidebar" style="">
     <div class="nav-header" onclick="toggleDoseSidebar()" id="dose-nav-header" title="Collapse sidebar">
         <span>Navigation Bar</span>
@@ -38,9 +870,9 @@
         <div class="nav-panel" data-panel-type="admin_home">
             <h4 class="nav-panel-title">HOME</h4>
             <div class="nav-panel-items">
-                <a href="/dose/home/" class="nav-item" title="Dose tenant home">
+                <a href="/admin/" class="nav-item" title="Jazzmin model dashboard">
                     <span class="nav-icon"><i class="fas fa-tachometer-alt" aria-hidden="true"></i></span>
-                    <span class="nav-text">Home</span>
+                    <span class="nav-text">Dashboard</span>
                 </a>
                 <a href="/admin/polysaas-ai/" class="nav-item" title="PolySaaS AI chat (full page)">
                     <span class="nav-icon"><i class="fas fa-comments" aria-hidden="true"></i></span>
@@ -274,6 +1106,12 @@
             {% endfor %}
         </div>
     </div>
+    </div>
+    <!-- End Sidebar Column -->
+
+    <!-- Content Column - will be wrapped by script below -->
+</div>
+<!-- End Grid Container - content will be moved here by script -->
 
 <script>
 function normalizeSidebarPath(value) {
@@ -347,57 +1185,92 @@ window.addEventListener('pageshow', function() {
     applyActiveSidebarLink();
 });
 
-// Layout: .admin-main-wrapper is the grid; sidebar + .dose-content-col are already siblings in base_site.
+// Move content-wrapper into grid on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('[ADMIN SIDEBAR] DOMContentLoaded - setting up grid');
-    const mainWrapper = document.querySelector('.admin-main-wrapper');
+    const grid = document.querySelector('.admin-content-grid');
     const contentWrapper = document.querySelector('.dose-content-col');
     const mainFooter = document.querySelector('.app-footer, .main-footer');
 
-    console.log('[ADMIN SIDEBAR] Main wrapper found:', !!mainWrapper);
+    console.log('[ADMIN SIDEBAR] Grid found:', !!grid);
     console.log('[ADMIN SIDEBAR] Content wrapper found:', !!contentWrapper);
     console.log('[ADMIN SIDEBAR] Footer found:', !!mainFooter);
 
-    if (!mainWrapper) {
-        console.error('[ADMIN SIDEBAR] ERROR: admin-main-wrapper not found!');
+    if (!grid) {
+        console.error('[ADMIN SIDEBAR] ERROR: admin-content-grid not found!');
         return;
     }
 
-    // Legacy embed/passthrough CSS targets .admin-content-grid — apply to the real grid host.
-    mainWrapper.classList.add('admin-content-grid');
-
     if (!contentWrapper) {
-        console.error('[ADMIN SIDEBAR] ERROR: dose-content-col not found!');
+        console.error('[ADMIN SIDEBAR] ERROR: content-wrapper not found!');
+        // Try to find it with a delay (in case it's created later)
+        setTimeout(function() {
+            const delayedWrapper = document.querySelector('.dose-content-col');
+            if (delayedWrapper && grid) {
+                console.log('[ADMIN SIDEBAR] Found content-wrapper on retry, moving into grid');
+                grid.appendChild(delayedWrapper);
+            } else {
+                console.error('[ADMIN SIDEBAR] Content-wrapper still not found after retry');
+            }
+        }, 100);
         return;
     }
 
     applyActiveSidebarLink();
     window.setTimeout(applyActiveSidebarLink, 150);
 
-    // Create right sidebar column for Recent Actions (only when Jazzmin index has the module)
+    // Ensure grid is visible
+    if (grid) {
+        grid.style.display = 'grid';
+        grid.style.visibility = 'visible';
+        console.log('[ADMIN SIDEBAR] Grid display set to grid, visibility set to visible');
+    }
+
+    // Move content-wrapper into grid as second column
+    if (grid && contentWrapper) {
+        // Check if already in grid
+        if (contentWrapper.parentNode === grid) {
+            console.log('[ADMIN SIDEBAR] Content-wrapper already in grid');
+        } else {
+            console.log('[ADMIN SIDEBAR] Moving content-wrapper into grid');
+            grid.appendChild(contentWrapper);
+        }
+    }
+
+    // Create right sidebar column for Recent Actions
     let rightSidebar = document.getElementById('recent-actions-sidebar');
-    const recentActions = document.querySelector('#recent-actions-module');
-    if (recentActions && !rightSidebar) {
+    if (!rightSidebar) {
         rightSidebar = document.createElement('div');
         rightSidebar.id = 'recent-actions-sidebar';
         rightSidebar.style.position = 'sticky';
-        rightSidebar.style.top = '0';
+        rightSidebar.style.top = 'var(--pss-header-h, 57px)';
         rightSidebar.style.height = 'fit-content';
         rightSidebar.style.padding = '0 15px';
-        console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
-        rightSidebar.appendChild(recentActions);
-        mainWrapper.appendChild(rightSidebar);
-        mainWrapper.classList.add('has-recent-actions');
-        console.log('[ADMIN SIDEBAR] Right sidebar added to main wrapper');
-    } else if (!recentActions) {
-        console.log('[ADMIN SIDEBAR] No #recent-actions-module; using 2-column grid');
+        
+        // Jazzmin index does NOT emit #recent-actions-module (Django classic only). Heuristic moves
+        // (.module / .card) matched wrong nodes on Render and emptied the center column — only
+        // reparent when the stock admin id exists.
+        const recentActions = document.querySelector('#recent-actions-module');
+        if (recentActions) {
+            console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
+            rightSidebar.appendChild(recentActions);
+        } else {
+            console.log('[ADMIN SIDEBAR] No #recent-actions-module (Jazzmin index); skip Recent Actions reparent');
+        }
+        
+        // Add to grid as third column
+        if (grid) {
+            grid.appendChild(rightSidebar);
+            console.log('[ADMIN SIDEBAR] Right sidebar added to grid');
+        }
     }
 
-    // Move footer after main wrapper if it exists
-    if (mainFooter && mainWrapper.parentNode) {
-        if (mainFooter.previousSibling !== mainWrapper && mainFooter.parentNode !== mainWrapper) {
-            console.log('[ADMIN SIDEBAR] Moving footer after main wrapper');
-            mainWrapper.parentNode.insertBefore(mainFooter, mainWrapper.nextSibling);
+    // Move footer after grid if it exists
+    if (mainFooter && grid && grid.parentNode) {
+        // Only move if not already after grid
+        if (mainFooter.previousSibling !== grid && mainFooter.parentNode !== grid.parentNode) {
+            console.log('[ADMIN SIDEBAR] Moving footer after grid');
+            grid.parentNode.insertBefore(mainFooter, grid.nextSibling);
         }
     }
 
@@ -412,7 +1285,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (localStorage.getItem('pss_sidebar_collapsed') === '1') {
             sidebar.classList.add('collapsed');
             document.body.classList.add('polysaas-collapsed');
-            mainWrapper.classList.add('sidebar-collapse');
+            if (grid) grid.classList.add('sidebar-collapse');
             // Apply blue + icon styles inline (same as toggleDoseSidebar collapsed path)
             const header = document.getElementById('dose-nav-header');
             if (header) {
@@ -1407,11 +2280,11 @@ document.addEventListener('DOMContentLoaded', function() {
 function toggleDoseSidebar() {
     const navContainer = document.getElementById('dose-custom-sidebar');
     const navToggle = document.getElementById('dose-nav-toggle');
-    const mainWrapper = document.querySelector('.admin-main-wrapper');
+    const grid = document.querySelector('.admin-content-grid');
 
     navContainer.classList.toggle('collapsed');
-    if (mainWrapper) {
-        mainWrapper.classList.toggle('sidebar-collapse');
+    if (grid) {
+        grid.classList.toggle('sidebar-collapse');
     }
 
     const isCollapsed = navContainer.classList.contains('collapsed');
@@ -1447,5 +2320,3 @@ function toggleDoseSidebar() {
     }
 }
 </script>
-    </div>
-    <!-- End sidebar column -->
