@@ -1,9 +1,9 @@
 """
 PolySniffer 2.0 — split workspace.
 
-Default UX: native browse is inlined in the left pane (no nested iframe).
-Passthrough uses a left iframe for the full orchestration shell. Capture stays
-in the right iframe.
+Default UX: twin iframes (browse proxy left, live capture right) so you see
+both panels without switching browser tabs. External browse tab is last resort
+only for endpoints that cannot embed (SSO / cookie isolation).
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
@@ -12,19 +12,14 @@ from __future__ import annotations
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import HttpResponseForbidden, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from dose.polysniffer.har_capture import _ensure_tenant_schema, log_http_exchange
 from dose.polysniffer.sniff_forward import forward_sniff_native
-from dose.polysniffer.sniff_native_embed import (
-    build_inline_native_embed_context,
-    workspace_browse_prefix,
-    workspace_shell_prefix,
-    wrap_native_sniff_for_workspace,
-)
+from dose.polysniffer.sniff_native_embed import workspace_browse_prefix, wrap_native_sniff_for_workspace
 from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
 from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
@@ -60,38 +55,34 @@ def _native_browse_subpath(endpoint) -> str:
     return "/login/"
 
 
-def _browse_subpath(endpoint) -> str:
-    """Workspace sniff embed entry path."""
-    return _native_browse_subpath(endpoint)
+# External tab only when explicitly requested — native workspace embed handles HubSpot.
+_BROWSE_EXTERNAL_BLOCKLIST: tuple[str, ...] = ()
 
 
-# Non-HTML paths served by the transparent sniff proxy (not the workspace shell).
-_FORWARD_ONLY_PREFIXES = (
-    "/api/",
-    "/hs/",
-    "/hublytics/",
-    "/static/",
-    "/notifications/",
-    "/filemanager/",
-    "/webpack/",
-    "/webhooks/",
-)
+def _endpoint_extra(endpoint) -> dict:
+    extra = getattr(endpoint, "extra_config", None) or {}
+    return extra if isinstance(extra, dict) else {}
 
 
-def _is_forward_only_browse_path(path: str) -> bool:
-    raw = (path or "").strip()
-    if not raw:
+def _browse_external_tab(endpoint) -> bool:
+    """
+    Twin iframes are the default. Return True only when browse cannot embed.
+
+    Override on PassThroughEndpoint.extra_config:
+      sniff_browse_external: true  — force external tab (last resort)
+      sniff_browse_external: false — force twin iframe even if blocklisted
+    """
+    extra = _endpoint_extra(endpoint)
+    if extra.get("sniff_browse_external") is False:
         return False
-    if raw.lower().startswith("browse/") or raw.lower() == "browse":
+    if extra.get("sniff_browse_external") is True:
         return True
-    low = raw if raw.startswith("/") else f"/{raw}"
-    low = low.lower()
-    return any(low.startswith(prefix) for prefix in _FORWARD_ONLY_PREFIXES)
+    return any(marker in _endpoint_blob(endpoint) for marker in _BROWSE_EXTERNAL_BLOCKLIST)
 
 
 @staff_member_required
-def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path: str = ""):
-    """PolySniffer workspace — native inline embed or passthrough orchestration + capture."""
+def sniff_shell(request, endpoint_id: int, mode: str | None = None):
+    """Entry page: mode picker (left header) + proxy iframe + capture iframe."""
     try:
         endpoint = get_endpoint_any_schema(endpoint_id, request)
     except Exception as exc:
@@ -106,34 +97,19 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
     if active_mode not in ("native", "passthrough"):
         active_mode = ""
 
+    proxy_url = ""
+    if active_mode == "passthrough":
+        proxy_url = f"/pt/polysniff/{endpoint_id}/"
+    elif active_mode == "native":
+        proxy_url = f"/dose/sniff/{endpoint_id}/native/"
     upstream_url = (getattr(endpoint, "endpoint_url", None) or "").strip().rstrip("/")
-    browse_subpath = _browse_subpath(endpoint)
-    upstream_browse_url = f"{upstream_url}{browse_subpath}" if upstream_url else ""
+    native_subpath = _native_browse_subpath(endpoint)
+    upstream_browse_url = f"{upstream_url}{native_subpath}" if upstream_url else ""
     active_session = get_sniff_capture_session(request, endpoint_id)
 
-    passthrough_browse_url = ""
-    native_shell_url = ""
-    native_inline = None
-    native_inline_error = ""
-    if active_session and active_mode == "native":
-        inline_subpath = (browse_path or "").strip().strip("/")
-        if not inline_subpath:
-            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{browse_subpath.strip('/')}")
-        native_shell_url = f"{workspace_shell_prefix(endpoint_id)}/{inline_subpath}"
-        native_inline = build_inline_native_embed_context(
-            request,
-            endpoint_id,
-            endpoint,
-            inline_subpath,
-            endpoint_label=_endpoint_label(endpoint),
-        )
-        if native_inline is None:
-            native_inline_error = (
-                f"Could not load native inline content for /{inline_subpath}. "
-                "Check endpoint URL and try again."
-            )
-    elif active_session and active_mode == "passthrough":
-        passthrough_browse_url = f"/pt/polysniff/{endpoint_id}/"
+    native_proxy_url = ""
+    if active_mode == "native" and active_session:
+        native_proxy_url = f"{workspace_browse_prefix(endpoint_id)}{native_subpath}"
 
     return render(
         request,
@@ -143,12 +119,11 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
             "endpoint_id": endpoint_id,
             "endpoint_label": _endpoint_label(endpoint),
             "mode": active_mode,
-            "passthrough_browse_url": passthrough_browse_url,
-            "native_shell_url": native_shell_url,
-            "native_inline": native_inline,
-            "native_inline_error": native_inline_error,
-            "browse_subpath": browse_subpath,
+            "proxy_url": proxy_url,
+            "native_proxy_url": native_proxy_url,
+            "native_browse_subpath": native_subpath,
             "upstream_browse_url": upstream_browse_url,
+            "browse_external": _browse_external_tab(endpoint),
             "active_session": active_session,
             "diff_url": f"/dose/sniff/{endpoint_id}/diff/",
             "export_url": f"/dose/sniff/{endpoint_id}/export-har/",
@@ -162,18 +137,10 @@ sniff_workspace = sniff_shell
 
 
 @staff_member_required
-def workspace_dispatch(request, endpoint_id: int, browse_path: str = ""):
-    """Route HTML page navigations to the shell; API/assets to the sniff proxy."""
-    if request.method != "GET" or _is_forward_only_browse_path(browse_path):
-        return workspace_browse(request, endpoint_id, path=browse_path)
-    return sniff_shell(request, endpoint_id, browse_path=browse_path)
-
-
-@staff_member_required
 @xframe_options_exempt
 @csrf_exempt
 def workspace_browse(request, endpoint_id: int, path: str = ""):
-    """Native sniff transparent proxy (API/assets) — optional standalone embed document."""
+    """Native sniff browse pane — minimal embed shell for workspace left iframe."""
     if not request.user.is_staff:
         return HttpResponseForbidden("Staff only")
     try:
@@ -224,6 +191,7 @@ def workspace_capture_frame(request, endpoint_id: int):
             "endpoint_label": _endpoint_label(endpoint),
             "active_session": active_session,
             "mode": mode,
+            "browse_external": _browse_external_tab(endpoint),
             "poll_url": f"/dose/sniff/{endpoint_id}/workspace/poll/",
         },
     )
@@ -253,10 +221,7 @@ def workspace_poll(request, endpoint_id: int):
     if session:
         qs = qs.filter(capture_session=session)
     else:
-        if mode == "passthrough":
-            qs = qs.filter(client_path__contains=f"/pt/polysniff/{endpoint_id}")
-        else:
-            qs = qs.filter(client_path__contains=f"/sniff/{endpoint_id}/workspace")
+        qs = qs.filter(client_path__contains=f"/sniff/{endpoint_id}/{mode}")
 
     qs = qs.filter(capture_source=mode)
     if since_id:

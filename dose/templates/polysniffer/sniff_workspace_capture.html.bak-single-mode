@@ -70,15 +70,19 @@
 </div>
 {% if mode == 'native' %}
 <div class="stats" style="border-bottom:none;color:#888;font-size:11px;">
-    Native embed: proxied pages + client-side API ingest from the lightweight sniff shell.
+    {% if browse_external %}
+    Native + separate browse tab: page loads through sniff proxy; HubSpot API calls are logged via client ingest.
+    {% else %}
+    Native: static loads direct from upstream; API traffic is logged through the sniff proxy.
+    {% endif %}
 </div>
 {% elif mode == 'passthrough' %}
 <div class="stats" style="border-bottom:none;color:#888;font-size:11px;">
-    Passthrough: production handlers, orchestration bar, plus client-side fetch/XHR from the iframe.
+    Passthrough: server-proxied pages plus client-side fetch/XHR from the iframe (direct upstream API).
 </div>
 {% endif %}
 <div class="captures" id="captures">
-    <div class="empty">Browse in the left pane.<br>Captured requests appear here — newest at the top.</div>
+    <div class="empty">{% if browse_external %}Use the sniff tab (opens when you start capture).{% else %}Browse in the left pane.{% endif %}<br>Captured requests appear here in real time.</div>
 </div>
 <script>
 (function() {

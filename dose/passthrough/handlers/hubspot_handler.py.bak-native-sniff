@@ -169,7 +169,3 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if any(low.startswith(p) for p in _BYPASS_PREFIXES):
             return False
         return any(low.startswith(p) for p in _PROXY_PATH_PREFIXES) or low in ('/', '/home', '/home/')
-
-
-# Register PolySniffer native sniff processor when handler module loads.
-import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402

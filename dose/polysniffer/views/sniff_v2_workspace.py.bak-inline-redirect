@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import HttpResponseForbidden, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
@@ -114,11 +114,10 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
     passthrough_browse_url = ""
     native_shell_url = ""
     native_inline = None
-    native_inline_error = ""
     if active_session and active_mode == "native":
         inline_subpath = (browse_path or "").strip().strip("/")
         if not inline_subpath:
-            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{browse_subpath.strip('/')}")
+            inline_subpath = browse_subpath.strip("/")
         native_shell_url = f"{workspace_shell_prefix(endpoint_id)}/{inline_subpath}"
         native_inline = build_inline_native_embed_context(
             request,
@@ -127,11 +126,6 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
             inline_subpath,
             endpoint_label=_endpoint_label(endpoint),
         )
-        if native_inline is None:
-            native_inline_error = (
-                f"Could not load native inline content for /{inline_subpath}. "
-                "Check endpoint URL and try again."
-            )
     elif active_session and active_mode == "passthrough":
         passthrough_browse_url = f"/pt/polysniff/{endpoint_id}/"
 
@@ -146,7 +140,6 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
             "passthrough_browse_url": passthrough_browse_url,
             "native_shell_url": native_shell_url,
             "native_inline": native_inline,
-            "native_inline_error": native_inline_error,
             "browse_subpath": browse_subpath,
             "upstream_browse_url": upstream_browse_url,
             "active_session": active_session,

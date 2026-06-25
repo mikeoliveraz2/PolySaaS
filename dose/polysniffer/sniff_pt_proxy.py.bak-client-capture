@@ -10,9 +10,6 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-import json
-import re
-
 from django.http import HttpResponse
 
 
@@ -42,77 +39,6 @@ def _endpoint_trigger(endpoint) -> str:
     return raw.split("/")[0]
 
 
-def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
-    """Hook fetch/XHR in passthrough iframe — shim traffic bypasses server proxy."""
-    if "data-polysniffer-pt-client-capture" in html:
-        return html
-    ingest = f"/dose/sniff/{endpoint_id}/workspace/ingest/"
-    shim = f"""
-<script data-polysniffer-pt-client-capture="1">
-(function() {{
-  var INGEST = {json.dumps(ingest)};
-  function send(payload) {{
-    try {{
-      var blob = new Blob([JSON.stringify(payload)], {{type: 'application/json'}});
-      if (navigator.sendBeacon && navigator.sendBeacon(INGEST, blob)) return;
-    }} catch (e) {{}}
-    fetch(INGEST, {{
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify(payload),
-      keepalive: true
-    }}).catch(function() {{}});
-  }}
-  function pathOf(url) {{
-    try {{ return new URL(url, window.location.origin).pathname; }} catch (e) {{ return url; }}
-  }}
-  function log(method, url, status, ms) {{
-    if (!url || url.indexOf(INGEST) !== -1) return;
-    send({{
-      method: method || 'GET',
-      url: String(url).slice(0, 500),
-      path: pathOf(url).slice(0, 500),
-      status_code: status || 0,
-      duration_ms: ms || 0
-    }});
-  }}
-  var _f = window.fetch;
-  window.fetch = function(input, init) {{
-    var method = (init && init.method) || 'GET';
-    var url = typeof input === 'string' ? input : (input && input.url) || '';
-    var t0 = performance.now();
-    return _f.apply(this, arguments).then(function(resp) {{
-      log(method, url || (resp && resp.url) || '', resp && resp.status, performance.now() - t0);
-      return resp;
-    }}, function(err) {{
-      log(method, url, 0, performance.now() - t0);
-      throw err;
-    }});
-  }};
-  var _xo = XMLHttpRequest.prototype.open;
-  var _xs = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function(method, url) {{
-    this._psMethod = method;
-    this._psUrl = url;
-    this._psT0 = performance.now();
-    return _xo.apply(this, arguments);
-  }};
-  XMLHttpRequest.prototype.send = function() {{
-    var xhr = this;
-    xhr.addEventListener('loadend', function() {{
-      log(xhr._psMethod, xhr._psUrl, xhr.status, performance.now() - (xhr._psT0 || performance.now()));
-    }});
-    return _xs.apply(this, arguments);
-  }};
-}})();
-</script>
-"""
-    if re.search(r"(?i)<head[^>]*>", html):
-        return re.sub(r"(?i)(<head[^>]*>)", r"\1" + shim, html, count=1)
-    return shim + html
-
-
 def rewrite_polysniff_response(response, *, endpoint_id: int, trigger: str, public_prefix: str):
     """Keep browser navigation on the PolySniffer public prefix (not /pt/admin/)."""
     admin_pf = admin_prefix(trigger)
@@ -133,7 +59,6 @@ def rewrite_polysniff_response(response, *, endpoint_id: int, trigger: str, publ
         body = response.content.decode("utf-8", errors="ignore")
         for old, new in replacements:
             body = body.replace(old, new)
-        body = _inject_workspace_client_capture(body, endpoint_id)
         response.content = body.encode("utf-8")
         if "Content-Length" in response:
             response["Content-Length"] = len(response.content)
@@ -143,7 +68,7 @@ def rewrite_polysniff_response(response, *, endpoint_id: int, trigger: str, publ
 
 
 def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *, public_prefix: str | None = None):
-    from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
+    from dose.polysniffer.har_capture import get_active_capture_session
     from dose.polysniffer.views.core import get_endpoint_any_schema
 
     if not request.user.is_staff:
@@ -161,8 +86,7 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
     request._polysniffer_endpoint_id = endpoint_id
     request._polysniffer_sniff_mode = "passthrough"
     request._polysniffer_proxy_prefix = pub
-    bind_request_tenant(request)
-    cap = get_sniff_capture_session(request, endpoint_id)
+    cap = get_active_capture_session(request, endpoint_id)
     if cap:
         request._polysniffer_capture = cap
 

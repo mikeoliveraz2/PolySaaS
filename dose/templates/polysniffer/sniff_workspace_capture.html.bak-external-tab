@@ -70,22 +70,21 @@
 </div>
 {% if mode == 'native' %}
 <div class="stats" style="border-bottom:none;color:#888;font-size:11px;">
-    Native embed: proxied pages + client-side API ingest from the lightweight sniff shell.
+    Native: static loads direct from upstream; API traffic is logged through the sniff proxy.
 </div>
 {% elif mode == 'passthrough' %}
 <div class="stats" style="border-bottom:none;color:#888;font-size:11px;">
-    Passthrough: production handlers, orchestration bar, plus client-side fetch/XHR from the iframe.
+    Passthrough: server-proxied pages plus client-side fetch/XHR from the iframe (direct upstream API).
 </div>
 {% endif %}
 <div class="captures" id="captures">
-    <div class="empty">Browse in the left pane.<br>Captured requests appear here — newest at the top.</div>
+    <div class="empty">Browse in the left pane.<br>Captured requests appear here in real time.</div>
 </div>
 <script>
 (function() {
     const pollUrl = '{{ poll_url }}';
     const mode = '{{ mode|escapejs }}';
     let lastId = 0, count = 0;
-    const seenIds = new Set();
     const capturesEl = document.getElementById('captures');
     const countEl = document.getElementById('count');
     const updateEl = document.getElementById('last-update');
@@ -116,17 +115,6 @@
         countEl.textContent = String(count);
     }
 
-    function addBatch(captures) {
-        const batch = (captures || [])
-            .filter(function(c) { return c && c.id && !seenIds.has(c.id); })
-            .sort(function(a, b) { return a.id - b.id; });
-        batch.forEach(function(c) {
-            seenIds.add(c.id);
-            if (c.id > lastId) lastId = c.id;
-            add(c);
-        });
-    }
-
     function poll() {
         fetch(pollUrl + '?mode=' + encodeURIComponent(mode) + '&since_id=' + lastId, { credentials: 'same-origin' })
             .then(function(r) {
@@ -141,7 +129,10 @@
                 }
                 if (data.session_name) sessionEl.textContent = data.session_name;
                 if (data.warning) console.warn('PolySniffer poll:', data.warning);
-                addBatch(data.captures);
+                (data.captures || []).forEach(function(c) {
+                    if (c.id > lastId) lastId = c.id;
+                    add(c);
+                });
             })
             .catch(function(e) {
                 console.error('PolySniffer poll error:', e);

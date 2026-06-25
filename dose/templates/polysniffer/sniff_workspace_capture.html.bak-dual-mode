@@ -59,7 +59,7 @@
 <div class="header">
     <div>
         <h1>PolySniffer Live Capture</h1>
-        <p>{{ endpoint_label }} · {{ mode|title }} mode</p>
+        <p>{{ endpoint_label }}</p>
     </div>
     <span class="status" id="status">POLLING</span>
 </div>
@@ -68,22 +68,16 @@
     Last update: <span id="last-update">-</span> &nbsp;|&nbsp;
     Session: <span id="session-name">{% if active_session %}{{ active_session.capture_name }}{% else %}none{% endif %}</span>
 </div>
-{% if mode == 'native' %}
 <div class="stats" style="border-bottom:none;color:#888;font-size:11px;">
-    Native embed: proxied pages + client-side API ingest from the lightweight sniff shell.
+    Proxied page loads plus client-side API calls from the sniff embed (left pane).
 </div>
-{% elif mode == 'passthrough' %}
-<div class="stats" style="border-bottom:none;color:#888;font-size:11px;">
-    Passthrough: production handlers, orchestration bar, plus client-side fetch/XHR from the iframe.
-</div>
-{% endif %}
 <div class="captures" id="captures">
     <div class="empty">Browse in the left pane.<br>Captured requests appear here — newest at the top.</div>
 </div>
 <script>
 (function() {
     const pollUrl = '{{ poll_url }}';
-    const mode = '{{ mode|escapejs }}';
+    const mode = 'native';
     let lastId = 0, count = 0;
     const seenIds = new Set();
     const capturesEl = document.getElementById('captures');

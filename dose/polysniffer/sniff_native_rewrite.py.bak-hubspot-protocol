@@ -24,17 +24,7 @@ _STRIP_RESPONSE_HEADERS = frozenset(
 
 
 def sniff_native_proxy_prefix(request, endpoint_id: int) -> str:
-    path = request.path_info or ""
-    m = re.match(r"^(/dose/sniff/\d+/workspace/browse)", path)
-    if m:
-        return m.group(1)
-    m = re.match(r"^(/dose/sniff/\d+/workspace)(?:/|$)", path)
-    if m and not re.match(
-        r"^/dose/sniff/\d+/workspace/(capture|poll|ingest|native|passthrough)(?:/|$)",
-        path,
-    ):
-        return m.group(1)
-    m = re.match(r"^(/dose/sniff/\d+/native)", path)
+    m = re.match(r"^(/dose/sniff/\d+/native)", request.path_info or "")
     if m:
         return m.group(1)
     return f"/dose/sniff/{endpoint_id}/native"
@@ -87,7 +77,7 @@ def rewrite_generic_native_fallback(
         flags=re.IGNORECASE,
     )
     html = re.sub(
-        r"(src|href)=(['\"])(/(?!/)[^'\"]+)",
+        r"(src|href)=(['\"])(/[^'\"]+)",
         lambda m: (
             m.group(0)
             if m.group(3).startswith(proxy_prefix)

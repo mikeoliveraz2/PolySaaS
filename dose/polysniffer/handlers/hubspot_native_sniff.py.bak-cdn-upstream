@@ -1,0 +1,140 @@
+"""
+HubSpot — PolySniffer native sniff HTML rewrites.
+
+HubSpot login loads assets from //static.hsappstatic.net/… (protocol-relative CDN).
+Generic native fallback treats //… as a root path and prefixes the sniff proxy,
+which 404s against app-na2.hubspot.com. This processor keeps CDN URLs direct (https)
+and routes app paths (/login, /api, …) through the sniff prefix for capture.
+"""
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING
+from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from dose.passthrough.handlers.hubspot_handler import HubspotPassthroughHandler
+
+_CDN_HOST_MARKERS = (
+    "static.hsappstatic.net",
+    "static2.hsappstatic.net",
+    "wt-assets/static-files",
+)
+
+
+def _base_origin(endpoint_url: str) -> str:
+    parsed = urlparse((endpoint_url or "").strip())
+    return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+
+
+def _is_html(content_type: str) -> bool:
+    ct = (content_type or "").lower()
+    return "text/html" in ct or "application/xhtml" in ct
+
+
+def _is_cdn_url(path: str) -> bool:
+    low = (path or "").lower()
+    return any(marker in low for marker in _CDN_HOST_MARKERS)
+
+
+def _rewrite_hubspot_native_html(
+    html: str,
+    *,
+    base_origin: str,
+    proxy_prefix: str,
+    handler: "HubspotPassthroughHandler",
+) -> str:
+    html = re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
+    html = re.sub(
+        r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>',
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    # Protocol-relative CDN / third-party assets → explicit https (never sniff proxy).
+    html = re.sub(
+        r"(src|href)=(['\"])(//[^'\"]+)",
+        r"\1=\2https:\3\2",
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    def _rewrite_root_path(match: re.Match) -> str:
+        attr, quote, path = match.group(1), match.group(2), match.group(3)
+        if path.startswith("//") or "://" in path[:20]:
+            return match.group(0)
+        if path.startswith(proxy_prefix) or _is_cdn_url(path):
+            return match.group(0)
+        if handler._should_proxy_path(path, proxy_prefix):
+            return f"{attr}={quote}{proxy_prefix}{path}{quote}"
+        low = path.lower()
+        if low.startswith(("/login", "/oauth", "/api", "/hs/", "/signup", "/account")):
+            return f"{attr}={quote}{proxy_prefix}{path}{quote}"
+        return match.group(0)
+
+    html = re.sub(
+        r"(src|href)=(['\"])(/[^'\"]+)",
+        _rewrite_root_path,
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    html = re.sub(
+        r"(action=)(['\"])(/[^'\"]*)",
+        lambda m: (
+            f"{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}"
+            if not m.group(3).startswith("//")
+            else m.group(0)
+        ),
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    # Repair any proxy-prefixed CDN URLs from older generic fallback.
+    broken = re.escape(proxy_prefix.rstrip("/")) + r"//static\.hsappstatic\.net"
+    html = re.sub(broken, "https://static.hsappstatic.net", html)
+
+    return html
+
+
+def process_hubspot_native_sniff(
+    handler: "HubspotPassthroughHandler",
+    body: bytes,
+    content_type: str,
+    request,
+    *,
+    endpoint_url: str,
+    upstream_path: str,
+    proxy_prefix: str,
+) -> bytes | None:
+    del request, upstream_path
+    base_origin = _base_origin(endpoint_url)
+    if not base_origin or not body or not _is_html(content_type):
+        return None
+
+    try:
+        html = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body
+
+    html = _rewrite_hubspot_native_html(
+        html,
+        base_origin=base_origin,
+        proxy_prefix=proxy_prefix,
+        handler=handler,
+    )
+    return html.encode("utf-8")
+
+
+def _register() -> None:
+    from dose.passthrough.handlers.hubspot_handler import HubspotPassthroughHandler
+    from dose.polysniffer.sniff_handler_bridge import register_native_sniff_processor
+
+    register_native_sniff_processor(
+        HubspotPassthroughHandler,
+        process_hubspot_native_sniff,
+    )
+
+
+_register()

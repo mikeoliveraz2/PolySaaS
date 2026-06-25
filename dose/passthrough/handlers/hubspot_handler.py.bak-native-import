@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 
 from dose.passthrough.handlers.handler_base import PassthroughHandlerBase, proxy_prefix_for_trigger_endpoint
 
+# Register native sniff processor + CDN upstream patch as soon as handler loads.
+import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402
+
 logger = logging.getLogger(__name__)
 
 _HUBSPOT_HOST_MARKERS = ('hubspot.com', 'hubspot.net')
@@ -171,5 +174,3 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return any(low.startswith(p) for p in _PROXY_PATH_PREFIXES) or low in ('/', '/home', '/home/')
 
 
-# Register PolySniffer native sniff processor when handler module loads.
-import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402

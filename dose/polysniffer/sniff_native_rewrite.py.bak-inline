@@ -25,18 +25,13 @@ _STRIP_RESPONSE_HEADERS = frozenset(
 
 def sniff_native_proxy_prefix(request, endpoint_id: int) -> str:
     path = request.path_info or ""
-    m = re.match(r"^(/dose/sniff/\d+/workspace/browse)", path)
-    if m:
-        return m.group(1)
-    m = re.match(r"^(/dose/sniff/\d+/workspace)(?:/|$)", path)
-    if m and not re.match(
-        r"^/dose/sniff/\d+/workspace/(capture|poll|ingest|native|passthrough)(?:/|$)",
-        path,
+    for pattern in (
+        r"^(/dose/sniff/\d+/workspace/browse)",
+        r"^(/dose/sniff/\d+/native)",
     ):
-        return m.group(1)
-    m = re.match(r"^(/dose/sniff/\d+/native)", path)
-    if m:
-        return m.group(1)
+        m = re.match(pattern, path)
+        if m:
+            return m.group(1)
     return f"/dose/sniff/{endpoint_id}/native"
 
 

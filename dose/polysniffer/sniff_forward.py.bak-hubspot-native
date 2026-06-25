@@ -41,9 +41,10 @@ from dose.polysniffer.sniff_native_rewrite import (
 
 
 
-# Register handler native-sniff processors (Mattermost, future apps)
+# Register handler native-sniff processors (Mattermost, HubSpot, future apps)
 
 import dose.polysniffer.handlers.mattermost_native_sniff  # noqa: F401
+import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401
 
 
 
@@ -277,9 +278,5 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
 
     return django_resp
-
-
-# HubSpot native CDN rewrite + upstream patch (after _resolve_upstream_url is defined).
-import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402
 
 

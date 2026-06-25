@@ -29,11 +29,7 @@ from dose.polysniffer.views.sniff_v2_workspace import (
 
     sniff_shell,
 
-    workspace_browse,
-
     workspace_capture_frame,
-
-    workspace_dispatch,
 
     workspace_ingest,
 
@@ -48,10 +44,6 @@ from dose.polysniffer.views.sniff_v2_workspace import (
 native_sniff_proxy = xframe_options_exempt(_native_sniff_proxy)
 
 passthrough_sniff_proxy = xframe_options_exempt(_passthrough_sniff_proxy)
-
-workspace_browse_proxy = xframe_options_exempt(workspace_browse)
-
-workspace_dispatch_view = xframe_options_exempt(workspace_dispatch)
 
 
 
@@ -79,20 +71,9 @@ urlpatterns = [
 
     path('<int:endpoint_id>/workspace/capture/', workspace_capture_frame, name='workspace_capture'),
 
-    path('<int:endpoint_id>/workspace/browse/', workspace_browse_proxy, {'path': ''}, name='workspace_browse_root'),
-
-    re_path(r'^(?P<endpoint_id>\d+)/workspace/browse/(?P<path>.*)$', workspace_browse_proxy, name='workspace_browse'),
-
+    path('<int:endpoint_id>/workspace/', sniff_shell, name='workspace'),
     path('<int:endpoint_id>/workspace/native/', sniff_shell, {'mode': 'native'}, name='workspace_native'),
     path('<int:endpoint_id>/workspace/passthrough/', sniff_shell, {'mode': 'passthrough'}, name='workspace_passthrough'),
-
-    path('<int:endpoint_id>/workspace/', sniff_shell, name='workspace'),
-
-    re_path(
-        r'^(?P<endpoint_id>\d+)/workspace/(?P<browse_path>.+)$',
-        workspace_dispatch_view,
-        name='workspace_dispatch',
-    ),
 
     path('<int:endpoint_id>/native/', native_sniff_proxy, {'path': ''}, name='native_proxy_root'),
 

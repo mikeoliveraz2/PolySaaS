@@ -1,6 +1,6 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24 -->
-<!-- workspace shell: native-inline-v2 -->
+<!-- BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -62,17 +62,7 @@
         .toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
         .proxy-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
         .proxy-wrap header { padding: 5px 10px; font-size: 0.72rem; color: #6b7280; background: #111827; border-bottom: 1px solid #1f2937; }
-        #browse-frame { flex: 1; width: 100%; border: 0; background: #fff; }
-        #native-inline {
-            flex: 1;
-            min-height: 0;
-            overflow: auto;
-            background: #fff;
-        }
-        #native-inline .polysniffer-native-scope {
-            min-height: 100%;
-            width: 100%;
-        }
+        #proxy-frame { flex: 1; width: 100%; border: 0; background: #fff; }
         .proxy-placeholder {
             flex: 1;
             display: flex;
@@ -85,16 +75,38 @@
             padding: 24px;
             line-height: 1.6;
         }
+        .browse-launcher {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 28px 24px;
+            background: #1f2937;
+            text-align: center;
+        }
+        .browse-launcher.visible { display: flex; }
+        .browse-launcher h3 { margin: 0; font-size: 1rem; color: #e5e7eb; }
+        .browse-launcher p { margin: 0; max-width: 420px; font-size: 0.82rem; color: #9ca3af; line-height: 1.55; }
+        .browse-launcher code {
+            display: block;
+            margin-top: 6px;
+            padding: 8px 10px;
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            color: #93c5fd;
+            word-break: break-all;
+        }
+        .browse-launcher .btn-lg { padding: 10px 18px; font-size: 0.85rem; }
         .right-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
         .right-col header { padding: 6px 10px; font-size: 0.75rem; color: #4caf50; background: #1a1a1a; border-bottom: 2px solid #0f0; }
         #capture-frame { flex: 1; width: 100%; border: 0; background: #1a1a1a; }
         .error-box { margin: 40px auto; max-width: 520px; padding: 24px; background: #1f2937; border: 1px solid #7f1d1d; border-radius: 10px; color: #fecaca; }
         a { color: #93c5fd; }
     </style>
-    {% if native_inline %}
-    <base href="{{ native_inline.native_browse_base }}/">
-    {{ native_inline.native_embed_head }}
-    {% endif %}
 </head>
 <body>
 {% if error %}
@@ -117,16 +129,16 @@
 <div class="split">
     <section class="left-col">
         <div class="mode-picker">
-            <h2>Parity triangle — native embed vs production passthrough</h2>
+            <h2>Mode picker — {% if browse_external %}last resort: new tab for browse{% else %}twin panels — browse left, capture right{% endif %}</h2>
             <div class="mode-cards">
                 <div class="mode-card{% if mode == 'native' %} selected{% endif %}" id="card-native">
                     <h3>Native</h3>
-                    <p>Lightweight sniff embed — upstream content only, no orchestration bar.</p>
+                    <p>Minimal sniff proxy in a lightweight embed — no SSO handlers or orchestration bar.</p>
                     <button type="button" class="btn btn-native" onclick="startSession('native')">Start native</button>
                 </div>
                 <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" id="card-passthrough">
                     <h3>Passthrough</h3>
-                    <p>Full production chain — handlers, shim, orchestration bar, dynamic orchestration.</p>
+                    <p>Production chain — handlers, shim, orchestration.</p>
                     <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start passthrough</button>
                 </div>
             </div>
@@ -138,35 +150,46 @@
             </div>
         </div>
         <div class="proxy-wrap">
-            <header id="browse-label">{% if native_inline %}Browse — native inline{{ browse_subpath }}{% elif mode == 'passthrough' and active_session %}Browse — passthrough (orchestration){% else %}Select a mode above{% endif %}</header>
-            <div id="native-inline" class="native-inline"{% if not native_inline %} style="display:none"{% endif %}>
-                {% if native_inline %}
-                <div class="polysniffer-native-scope" data-polysniffer-workspace-embed="1">
-                    {{ native_inline.native_embed_body }}
-                </div>
+            <header id="proxy-label">{% if mode == 'native' %}Browse — native proxy{% else %}{% if mode %}Browse — {{ mode|title }} proxy{% else %}Select a mode above{% endif %}{% endif %}</header>
+            {% if browse_external %}
+            <div class="browse-launcher{% if active_session and mode %} visible{% endif %}" id="browse-external-launcher">
+                <h3>Last resort — browse in a separate tab</h3>
+                <p>
+                    PolySniffer normally uses <strong>twin panels</strong> (browse iframe left, capture right) so you can watch traffic without switching tabs.
+                    {{ endpoint_label }} cannot run in the browse iframe (SSO and session cookies need a top-level window), so we open the sniff URL in a new tab instead.
+                    Proxied traffic still appears in the capture panel on the right.
+                </p>
+                <button type="button" class="btn btn-native btn-lg" id="browse-external-open" onclick="reopenBrowseTab()">Reopen browse tab</button>
+                <code id="browse-external-url">{% if native_proxy_url %}{{ native_proxy_url }}{% else %}Pick a mode and start capture{% endif %}</code>
+                {% if upstream_browse_url %}
+                <p style="font-size:0.75rem;margin-top:4px;">
+                    Baseline (direct, no sniff): <a href="{{ upstream_browse_url }}" target="_blank" rel="noopener">upstream{{ native_browse_subpath }}</a>
+                </p>
                 {% endif %}
             </div>
-            {% if native_inline_error %}
-            <div class="proxy-placeholder" id="native-inline-error">{{ native_inline_error }}</div>
+            <iframe id="proxy-frame" title="PolySniffer browse" style="display:none"></iframe>
+            {% else %}
+            <iframe id="proxy-frame" title="PolySniffer browse"{% if native_proxy_url %} src="{{ native_proxy_url }}"{% elif proxy_url and active_session and mode == 'passthrough' %} src="{{ proxy_url }}"{% endif %}></iframe>
             {% endif %}
-            <iframe id="browse-frame" title="PolySniffer browse"{% if passthrough_browse_url %} src="{{ passthrough_browse_url }}"{% endif %}{% if native_inline or not passthrough_browse_url %} style="display:none"{% endif %}></iframe>
-            <div class="proxy-placeholder" id="browse-placeholder"{% if active_session %} style="display:none"{% endif %}>
+            <div class="proxy-placeholder" id="proxy-placeholder"{% if active_session or browse_external %} style="display:none"{% endif %}>
                 Click <strong>Start native</strong> or <strong>Start passthrough</strong> above.<br>
-                Native = inline in this panel (no iframe); passthrough = production orchestration for HAR parity.
+                Native uses a minimal sniff proxy; passthrough uses the full production chain.
             </div>
-            {% if upstream_browse_url %}
-            <div style="padding:6px 10px;font-size:0.72rem;background:#111827;border-top:1px solid #1f2937;">
-                Browse blank or SSO stuck?
-                <a id="browse-new-tab" href="{% if native_shell_url %}{{ native_shell_url }}{% elif passthrough_browse_url %}{{ passthrough_browse_url }}{% else %}#{% endif %}" target="_blank" rel="noopener">Open in new tab</a> (last resort)
+            {% if not browse_external %}
+            <div class="proxy-direct-link" id="proxy-direct-link" style="padding:6px 10px;font-size:0.72rem;background:#111827;border-top:1px solid #1f2937;">
+                Browse iframe blank or SSO stuck?
+                <a id="native-sniff-new-tab" href="{% if native_proxy_url %}{{ native_proxy_url }}{% else %}#{% endif %}" target="_blank" rel="noopener">Open sniff in new tab</a> (last resort)
+                {% if upstream_browse_url %}
                 &nbsp;|&nbsp;
-                Baseline: <a href="{{ upstream_browse_url }}" target="_blank" rel="noopener">direct upstream{{ browse_subpath }}</a>
+                Baseline: <a href="{{ upstream_browse_url }}" target="_blank" rel="noopener">direct upstream{{ native_browse_subpath }}</a>
+                {% endif %}
             </div>
             {% endif %}
         </div>
     </section>
 
     <section class="right-col">
-        <header>Live capture</header>
+        <header>Live capture — green screen</header>
         <iframe id="capture-frame" src="{{ capture_frame_url }}" title="PolySniffer live capture"></iframe>
     </section>
 </div>
@@ -176,29 +199,31 @@
     const csrf = '{{ csrf_token }}';
     const epId = {{ endpoint_id }};
     let currentMode = '{{ mode|escapejs }}';
-    const browseSubpath = '{{ browse_subpath|escapejs }}';
-    const captureFrameUrl = '{{ capture_frame_url }}';
-    const hasNativeInline = {% if native_inline %}true{% else %}false{% endif %};
+    const nativeBrowseSubpath = '{{ native_browse_subpath|escapejs }}';
+    const upstreamBrowseUrl = '{{ upstream_browse_url|escapejs }}';
+    const browseExternal = {{ browse_external|yesno:"true,false" }};
+    let lastBrowseUrl = '';
 
-    function nativeShellUrl() {
-        var sub = browseSubpath || '';
-        if (sub.charAt(0) === '/') sub = sub.slice(1);
-        return '/dose/sniff/' + epId + '/workspace/' + sub;
-    }
-
-    function passthroughBrowseUrl() {
-        return '/pt/polysniff/' + epId + '/';
+    function browseUrl(mode) {
+        if (mode === 'native') {
+            return '/dose/sniff/' + epId + '/workspace/browse' + nativeBrowseSubpath;
+        }
+        if (mode === 'passthrough') {
+            return '/pt/polysniff/' + epId + '/';
+        }
+        return '/dose/sniff/' + epId + '/' + mode + '/';
     }
 
     function browseLabel(mode) {
-        if (mode === 'native') return 'Browse — native inline' + browseSubpath;
-        if (mode === 'passthrough') return 'Browse — passthrough (orchestration)';
-        return 'Select a mode above';
+        if (mode === 'native') return 'Browse — native embed' + nativeBrowseSubpath;
+        return 'Browse — ' + mode.charAt(0).toUpperCase() + mode.slice(1) + ' proxy';
     }
 
     function refreshCaptureFrame(mode, force) {
         const cap = document.getElementById('capture-frame');
-        const wanted = captureFrameUrl + '?mode=' + encodeURIComponent(mode);
+        const base = '{{ capture_frame_url }}';
+        let wanted = base + '?mode=' + encodeURIComponent(mode);
+        if (browseExternal) wanted += '&browse_external=1';
         if (force || cap.getAttribute('data-ps-mode') !== mode) {
             cap.setAttribute('data-ps-mode', mode);
             cap.src = wanted + '&_=' + Date.now();
@@ -207,41 +232,51 @@
 
     function setModeUI(mode, options) {
         options = options || {};
+        const autoOpenTab = !!options.autoOpenTab;
         currentMode = mode;
         document.getElementById('card-native').classList.toggle('selected', mode === 'native');
         document.getElementById('card-passthrough').classList.toggle('selected', mode === 'passthrough');
-        document.getElementById('browse-label').textContent = browseLabel(mode);
+        document.getElementById('proxy-label').textContent = browseLabel(mode);
 
-        const placeholder = document.getElementById('browse-placeholder');
-        const frame = document.getElementById('browse-frame');
-        const inline = document.getElementById('native-inline');
-        const newTab = document.getElementById('browse-new-tab');
+        const placeholder = document.getElementById('proxy-placeholder');
+        const url = browseUrl(mode);
+        lastBrowseUrl = url;
 
-        if (mode === 'native') {
+        if (browseExternal) {
+            const launcher = document.getElementById('browse-external-launcher');
+            const urlEl = document.getElementById('browse-external-url');
+            const frame = document.getElementById('proxy-frame');
             if (placeholder) placeholder.style.display = 'none';
-            if (frame) {
-                frame.style.display = 'none';
-                frame.removeAttribute('src');
-            }
-            if (inline && hasNativeInline) {
-                inline.style.display = '';
-            } else if (!options.skipNavigate) {
-                window.location.href = nativeShellUrl();
-                return;
-            }
-            if (newTab) newTab.href = nativeShellUrl();
-        } else if (mode === 'passthrough') {
-            if (inline) inline.style.display = 'none';
+            if (launcher) launcher.classList.add('visible');
+            if (urlEl) urlEl.textContent = url;
+            if (frame) frame.style.display = 'none';
+            if (autoOpenTab) window.open(url, '_blank', 'noopener');
+        } else {
+            let frame = document.getElementById('proxy-frame');
             if (placeholder) placeholder.style.display = 'none';
-            if (frame) {
-                frame.style.display = '';
-                frame.src = passthroughBrowseUrl();
+            if (!frame) {
+                const wrap = document.querySelector('.proxy-wrap');
+                frame = document.createElement('iframe');
+                frame.id = 'proxy-frame';
+                frame.title = 'PolySniffer browse';
+                wrap.appendChild(frame);
             }
-            if (newTab) newTab.href = passthroughBrowseUrl();
+            frame.style.display = '';
+            frame.src = url;
+            const newTab = document.getElementById('native-sniff-new-tab');
+            if (newTab) newTab.href = url;
         }
 
         refreshCaptureFrame(mode, !!options.forceCaptureReload);
     }
+
+    window.reopenBrowseTab = function() {
+        if (!lastBrowseUrl) {
+            alert('Start a capture session first.');
+            return;
+        }
+        window.open(lastBrowseUrl, '_blank', 'noopener');
+    };
 
     window.startSession = async function(mode) {
         const fd = new FormData();
@@ -255,11 +290,7 @@
             return;
         }
         document.getElementById('session-status').textContent = 'Recording · ' + j.capture_name;
-        if (mode === 'native') {
-            window.location.href = nativeShellUrl();
-            return;
-        }
-        setModeUI(mode, { forceCaptureReload: true });
+        setModeUI(mode, { autoOpenTab: browseExternal, forceCaptureReload: true });
     };
 
     window.stopSession = async function() {
@@ -272,16 +303,15 @@
             return;
         }
         document.getElementById('session-status').textContent = 'Capture stopped — pick a mode';
-        const frame = document.getElementById('browse-frame');
+        lastBrowseUrl = '';
+        const launcher = document.getElementById('browse-external-launcher');
+        if (launcher) launcher.classList.remove('visible');
+        const frame = document.getElementById('proxy-frame');
         if (frame) {
             frame.removeAttribute('src');
-            frame.style.display = 'none';
+            if (!browseExternal) frame.style.display = '';
         }
-        const inline = document.getElementById('native-inline');
-        if (inline) inline.style.display = 'none';
-        const cap = document.getElementById('capture-frame');
-        cap.removeAttribute('data-ps-mode');
-        const placeholder = document.getElementById('browse-placeholder');
+        const placeholder = document.getElementById('proxy-placeholder');
         if (placeholder) placeholder.style.display = '';
     };
 
@@ -290,7 +320,10 @@
         const statusEl = document.getElementById('session-status');
         const isRecording = statusEl && statusEl.textContent.indexOf('Recording') >= 0;
         if (isRecording) {
-            setModeUI(currentMode, { forceCaptureReload: false, skipNavigate: hasNativeInline });
+            setModeUI(currentMode, { autoOpenTab: false });
+            if (browseExternal && currentMode) {
+                lastBrowseUrl = browseUrl(currentMode);
+            }
             return;
         }
         startSession(currentMode);

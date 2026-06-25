@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ embed_title }}</title>
+    <base href="{{ browse_base }}/">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-height: 100%;
+            overflow: auto;
+            background: #fff;
+        }
+        .polysniffer-native-scope {
+            min-height: 100%;
+            width: 100%;
+        }
+    </style>
+    {{ embed_head }}
+</head>
+<body>
+<div class="polysniffer-native-scope" data-polysniffer-workspace-embed="1">
+{{ embed_body }}
+</div>
+</body>
+</html>
