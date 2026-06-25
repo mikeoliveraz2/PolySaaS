@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
+# BINGO: UI Cleanup — commit 748e871e
 # BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 
 # mysite/urls.py

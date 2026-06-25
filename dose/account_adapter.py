@@ -3,7 +3,7 @@ django-allauth account adapter: post-login redirect for staff.
 If the user belongs to multiple tenants, redirect to a picker page.
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
+# BINGO: UI Cleanup — commit 748e871e
 from django.conf import settings
 from django.shortcuts import resolve_url
 

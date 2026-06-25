@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: UI Cleanup — 2026-06-25
+# BINGO: UI Cleanup — commit 748e871e
 # --- RESTORED ENDPOINTS FOR ADMIN UI ---
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
