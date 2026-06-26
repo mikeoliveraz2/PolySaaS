@@ -155,8 +155,11 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return load_known_bases(request, self._endpoint_id(request), endpoint_url or '')
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
-        """Allow fetch_upstream_index_html to follow redirects internally so the final HTML (e.g., login page) is embedded."""
-        return True
+        """Follow redirects only for API calls; block HTML redirects to /login."""
+        low = (upstream_path or '').lower()
+        if '/login' in low or '/oauth' in low or '/accounts' in low:
+            return False
+        return False
 
     def postprocess_upstream_response(self, resp, request, **context):
         endpoint_url = context.get('endpoint_url') or ''
