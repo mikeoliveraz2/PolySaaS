@@ -38,6 +38,10 @@ def _default_should_wrap_in_admin_template(upstream_path, content_type, status_c
 
 
 def _handler_should_wrap_in_admin_template(handler, request, upstream_path, content_type, status_code):
+    # PolySniffer workspace iframe: raw upstream HTML only (no Jazzmin sidebar/header).
+    poly_prefix = (getattr(request, "_polysniffer_proxy_prefix", None) or "").strip()
+    if poly_prefix.startswith("/pt/polysniff"):
+        return False
     if handler and hasattr(handler, "should_wrap_in_admin_template"):
         try:
             return bool(

@@ -1,0 +1,189 @@
+(function () {
+    'use strict';
+
+    var DARK_PS_THEMES = ['darkly', 'cyborg', 'slate', 'solar', 'superhero'];
+    var PARAM_SAMPLE_URL = '/dose/api/atomic-service-param-sample/';
+    var lastSampleService = null;
+
+    function isDarkMode() {
+        if (document.body.classList.contains('ps-orch-embed-dark')) {
+            return true;
+        }
+        if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {
+            return true;
+        }
+        var psTheme = document.documentElement.getAttribute('data-ps-theme') || '';
+        return DARK_PS_THEMES.indexOf(psTheme) !== -1;
+    }
+
+    function getJQuery() {
+        return window.jQuery || (window.django && window.django.jQuery);
+    }
+
+    function getParametersJsonField() {
+        return document.getElementById('id_parameters_json');
+    }
+
+    function parametersJsonIsEmpty(value) {
+        var trimmed = (value || '').trim();
+        if (!trimmed) {
+            return true;
+        }
+        if (trimmed === '{}' || trimmed === 'null') {
+            return true;
+        }
+        return false;
+    }
+
+    function setParametersJsonText(text) {
+        var field = getParametersJsonField();
+        if (!field) {
+            return;
+        }
+        field.value = text;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function focusParametersJsonField() {
+        var field = getParametersJsonField();
+        if (field) {
+            field.focus();
+        }
+    }
+
+    function toggleUrllistField() {
+        var select = document.getElementById('id_executescript');
+        var urllistRow = document.querySelector('.field-urllist');
+        if (!select || !urllistRow) {
+            return;
+        }
+        urllistRow.style.display = !select.value ? '' : 'none';
+    }
+
+    function fillParametersJsonForService(serviceName) {
+        var field = getParametersJsonField();
+        if (!field) {
+            return;
+        }
+
+        if (!serviceName) {
+            lastSampleService = null;
+            return;
+        }
+
+        fetch(PARAM_SAMPLE_URL + '?service=' + encodeURIComponent(serviceName), {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('sample fetch failed');
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data || data.status !== 'ok' || !data.sample) {
+                    return;
+                }
+                var current = field.value || '';
+                var isSameSampleService = lastSampleService === serviceName;
+                var shouldReplace = parametersJsonIsEmpty(current) || isSameSampleService;
+                if (!shouldReplace) {
+                    var overwrite = window.confirm(
+                        'Replace parameters_json with the sample template for ' + serviceName + '?'
+                    );
+                    if (!overwrite) {
+                        return;
+                    }
+                }
+                setParametersJsonText(JSON.stringify(data.sample, null, 2));
+                lastSampleService = serviceName;
+                focusParametersJsonField();
+            })
+            .catch(function () {
+                /* non-fatal — user can still edit parameters_json manually */
+            });
+    }
+
+    function onExecutescriptChange() {
+        var select = document.getElementById('id_executescript');
+        toggleUrllistField();
+        if (!select) {
+            return;
+        }
+        fillParametersJsonForService(select.value);
+    }
+
+    function bindExecutescriptHandlers(select) {
+        if (!select || select.dataset.psAtomicServiceBound === '1') {
+            return;
+        }
+        select.dataset.psAtomicServiceBound = '1';
+        select.addEventListener('change', onExecutescriptChange);
+
+        var $ = getJQuery();
+        if ($ && $.fn.select2) {
+            $(select).on('select2:select', onExecutescriptChange);
+        }
+    }
+
+    function initInstructionSelect2() {
+        var $ = getJQuery();
+        if (!$ || !$.fn.select2) {
+            return;
+        }
+        var form = document.getElementById('instruction_form');
+        if (!form) {
+            return;
+        }
+        var dark = isDarkMode();
+        $(form).find('select').each(function () {
+            var $el = $(this);
+            if ($el.hasClass('selectfilter')) {
+                return;
+            }
+            if ($el.hasClass('select2-hidden-accessible')) {
+                if (!dark) {
+                    return;
+                }
+                try {
+                    $el.select2('destroy');
+                } catch (e) { /* ignore */ }
+            }
+            var opts = { width: '100%' };
+            if (dark) {
+                opts.dropdownCssClass = 'ps-instruction-select2-dark';
+                opts.selectionCssClass = 'ps-instruction-select2-dark';
+            }
+            try {
+                $el.select2(opts);
+            } catch (e) { /* ignore */ }
+        });
+    }
+
+    function boot() {
+        var select = document.getElementById('id_executescript');
+        if (select) {
+            bindExecutescriptHandlers(select);
+            toggleUrllistField();
+            if (select.value && parametersJsonIsEmpty((getParametersJsonField() || {}).value)) {
+                fillParametersJsonForService(select.value);
+            }
+        }
+        setTimeout(initInstructionSelect2, 50);
+        setTimeout(initInstructionSelect2, 300);
+        setTimeout(function () {
+            initInstructionSelect2();
+            var sel = document.getElementById('id_executescript');
+            if (sel) {
+                bindExecutescriptHandlers(sel);
+            }
+        }, 800);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
+    }
+})();

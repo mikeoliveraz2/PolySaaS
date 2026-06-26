@@ -1,11 +1,16 @@
 print("[DEBUG] AllauthCaseInsensitiveBackend module loaded")
 from allauth.account.auth_backends import AuthenticationBackend
-from mysite.auth_backends import CaseInsensitiveModelBackend
 from django.contrib.auth import get_user_model
+
+from mysite.admin_forms import register_admin_login_form
+
+register_admin_login_form()
+
 
 class AllauthCaseInsensitiveBackend(AuthenticationBackend):
     """
-    Allauth backend that supports case-insensitive username/email authentication.
+    Username/email lookup is case-insensitive (username__iexact / email__iexact).
+    Password verification uses check_password() and remains case-sensitive.
     """
     def authenticate(self, request, **credentials):
         print("[DEBUG] >>> ENTER AllauthCaseInsensitiveBackend.authenticate", credentials, flush=True)

@@ -1,0 +1,142 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block submit_buttons_bottom %}
+{{ block.super }}
+{% if original and original.endpoint_url %}
+<div class="submit-row" style="margin-top: 10px;">
+    <button type="button"
+            onclick="openPolySnifferCapture({{ original.id }})"
+            class="button"
+            style="background: #417ccc; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box;">
+        🔍 PolySniffer Analysis
+    </button>
+</div>
+<div class="submit-row" style="margin-top: 10px;">
+    <button type="button"
+            onclick="applyLatestCapture({{ original.id }})"
+            class="button"
+            style="background: #4caf50; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box;">
+        ✅ Auto-Login (Playwright)
+    </button>
+</div>
+<div class="submit-row" style="margin-top: 10px;">
+    <button type="button"
+            onclick="aiGenerateHandler({{ original.id }})"
+            class="button"
+            style="background: #9c27b0; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box;">
+        🤖 AI Generate Handler (No More Access Denied!)
+    </button>
+</div>
+<script>
+function openPolySnifferCapture(endpointId) {
+    window.open(`/admin/polysniffer/capture/${endpointId}/`, '_blank');
+}
+
+function applyLatestCapture(endpointId) {
+    console.log('[JS] applyLatestCapture called with endpointId:', endpointId);
+
+    if (!confirm('Use Playwright to auto-login and get fresh session cookie?\n\nThis will:\n1. Log in headlessly using Auth Username/Password\n2. Capture fresh OSTSESSID cookie\n3. Apply it to fix "Access Denied" errors\n\nMake sure Auth Username and Auth Password are set in the form above.')) {
+        console.log('[JS] User cancelled');
+        return;
+    }
+
+    const url = `/admin/polysniffer/apply-capture/${endpointId}/`;
+    console.log('[JS] Calling URL:', url);
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => {
+        console.log('[JS] Response status:', response.status);
+        return response.json();
+    })
+    .then(result => {
+        console.log('[JS] Result:', result);
+        if (result.success) {
+            alert(`✅ Success! Fresh session cookie applied.\n\nRefresh the OS Ticket widget to see the dashboard.`);
+            location.reload();
+        } else {
+            alert('Error: ' + result.error);
+        }
+    })
+    .catch(error => {
+        console.error('[JS] Fetch error:', error);
+        alert('Error: ' + error.message);
+    });
+}
+
+function aiGenerateHandler(endpointId) {
+    console.log('[JS] aiGenerateHandler called with endpointId:', endpointId);
+
+    if (!confirm('🤖 AI will analyze PolySniffer captures and generate handler code automatically!\n\nThis will:\n1. Analyze all captured traffic from PolySniffer\n2. Extract authentication flow (CSRF tokens, cookies, headers)\n3. Generate Python handler code\n4. Save it to fix "Access Denied" errors\n\nMake sure you\'ve run "🔍 Sniff" first to capture traffic.')) {
+        console.log('[JS] User cancelled');
+        return;
+    }
+
+    const url = `/admin/polysniffer/ai-generate-handler/${endpointId}/`;
+    console.log('[JS] Calling URL:', url);
+
+    // Show loading
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = '🤖 Analyzing...';
+    button.disabled = true;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => {
+        console.log('[JS] Response status:', response.status);
+        return response.json();
+    })
+    .then(result => {
+        console.log('[JS] Result:', result);
+        button.disabled = false;
+        button.textContent = originalText;
+
+        if (result.success) {
+            const summary = result.analysis_summary || {};
+            alert(`✅ Handler Generated!\n\n` +
+                  `Auth Method: ${summary.auth_method || 'Detected'}\n` +
+                  `Session Cookie: ${summary.session_cookie || 'Detected'}\n` +
+                  `CSRF Token: ${summary.csrf_token_field || 'Detected'}\n\n` +
+                  `Handler code saved to endpoint. No more "Access Denied"!`);
+            location.reload();
+        } else {
+            alert('Error: ' + (result.error || 'Unknown error') + '\n\nMake sure you\'ve run "🔍 Sniff" first to capture traffic.');
+        }
+    })
+    .catch(error => {
+        console.error('[JS] Fetch error:', error);
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('Error: ' + error.message);
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endif %}
+{% endblock %}

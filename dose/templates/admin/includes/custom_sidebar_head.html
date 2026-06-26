@@ -127,16 +127,25 @@
         display: none !important;
     }
 
-    /* Jazzmin index uses col-lg-9 + col-lg-3; recent actions hoist to grid col 3. */
-    .admin-main-wrapper .dose-content-col .col-lg-3,
-    .admin-main-wrapper .dose-content-col #content-related {
+    /* Jazzmin index uses col-lg-9 + col-lg-3; recent actions hoist to grid col 3.
+       Change/add forms put Save + #jazzy-actions in col-lg-3 — do NOT hide those. */
+    body.dashboard .admin-main-wrapper .dose-content-col .col-lg-3:has(#content-related),
+    body.dashboard .admin-main-wrapper .dose-content-col #content-related {
         display: none !important;
     }
 
-    .admin-main-wrapper .dose-content-col .col-lg-9 {
+    body.dashboard .admin-main-wrapper .dose-content-col .col-lg-9 {
         flex: 0 0 100% !important;
         max-width: 100% !important;
         width: 100% !important;
+    }
+
+    /* Change/add forms: keep Jazzmin action column visible (Save, Delete, PolySniffer). */
+    body.change-form .admin-main-wrapper .dose-content-col #jazzy-actions {
+        display: block !important;
+        position: sticky;
+        top: calc(var(--pss-header-h, 64px) + 12px);
+        z-index: 2;
     }
 
     /* Jazzmin 3 / BS5 often use col-md-* / row — do not force col-lg-* to 100% (breaks index layout) */

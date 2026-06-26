@@ -1,0 +1,75 @@
+---
+description: BINGO commit freeze — annotate every file in the commit; no edits without owner permission
+alwaysApply: true
+---
+
+# BINGO Commit Freeze
+
+When Michael (or Shela) declares a **BINGO commit**, every source file touched by that commit must carry a **freeze banner** before the commit is pushed.
+
+**Prospective only:** Do not retroactively annotate files from earlier BINGO commits unless Michael or Shela explicitly asks.
+
+## Canonical banner (exact text)
+
+```
+THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+```
+
+Optional second line (recommended): `BINGO: <short name> — commit <hash>`
+
+## Required steps at BINGO time
+
+1. Write or update the BINGO doc in `documentation/BINGO_*.md` (commit hash, date, what was verified).
+2. **Annotate every file in the commit** with the freeze banner (see formats below).
+3. Commit code + doc + annotations together (or annotations in an immediate follow-up commit before push).
+4. Pull → commit → push per process rules.
+5. **Create a BINGO ZIP** — zip the entire project folder and save it to `D:\BINGO ZIPS\BINGO_<short-name>_<YYYY-MM-DD>.zip`. This is the gold-master restore point. If git alone cannot restore exact behavior (e.g. a file outside the commit changed state), the ZIP is the authoritative source of truth.
+
+## BINGO ZIP — exact command
+
+```powershell
+$name = "BINGO_<short-name>_<YYYY-MM-DD>"
+Compress-Archive -Path "D:\PolySaaS\*" -DestinationPath "D:\BINGO ZIPS\$name.zip" -CompressionLevel Optimal
+Write-Host "BINGO ZIP created: D:\BINGO ZIPS\$name.zip"
+```
+
+Exclude `.git` if the zip would be too large — but include all source files, templates, static files, and `.bak` files.
+
+## Restoring from a BINGO ZIP
+
+```powershell
+# 1. Rename current project folder as a safety copy
+Rename-Item "D:\PolySaaS" "D:\PolySaaS_pre_restore"
+# 2. Create fresh folder and extract
+New-Item -ItemType Directory "D:\PolySaaS"
+Expand-Archive -Path "D:\BINGO ZIPS\BINGO_<name>.zip" -DestinationPath "D:\PolySaaS"
+# 3. Restart server
+```
+
+## How to find files in the BINGO commit
+
+```powershell
+git diff-tree --no-commit-id --name-only -r <commit-hash>
+```
+
+Or for the latest commit: `git show --name-only --pretty=format: HEAD`
+
+## Banner format by file type
+
+| Type | Placement |
+|------|-----------|
+| `.py` | First line(s) after shebang/docstring block: `# THIS CODE IS FROZEN — ...` |
+| `.js` / `.ts` | First line: `// THIS CODE IS FROZEN — ...` |
+| `.html` / `.htm` | First line: `<!-- THIS CODE IS FROZEN — ... -->` |
+| `.css` | First line: `/* THIS CODE IS FROZEN — ... */` |
+| `.md` / `.mdc` | First line after frontmatter (if any): `<!-- THIS CODE IS FROZEN — ... -->` or HTML comment in body |
+| `.json` | Do **not** break JSON validity — use a `"_freeze_notice"` key at top level only if the file is config, not consumed strictly; otherwise list the file in the BINGO doc only |
+
+Do not duplicate the banner if the file is already frozen from a prior BINGO (update the BINGO commit line only).
+
+## Agent behavior
+
+- If a file contains the freeze banner, **do not edit it** without explicit permission from Michael or Shela.
+- Propose changes in chat first; wait for approval.
+- Do not remove or weaken freeze banners without owner permission.
+- A BINGO doc plus freeze banners together certify the code as tested and locked (see `process-rules.mdc` Rule 2).

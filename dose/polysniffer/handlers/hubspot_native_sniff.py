@@ -15,6 +15,13 @@ import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from dose.polysniffer.handlers.hubspot_bases import (
+    discover_origins_from_text,
+    is_hubspot_app_host,
+    load_known_bases,
+    remember_bases,
+)
+
 if TYPE_CHECKING:
     from dose.passthrough.handlers.hubspot_handler import HubspotPassthroughHandler
 
@@ -61,10 +68,55 @@ def _cdn_https_url(path: str) -> str | None:
     return None
 
 
+def _rewrite_protocol_relative_app_hosts(html: str, proxy_prefix: str) -> str:
+    """//app-na2.hubspot.com/… → proxy prefix (before generic // → https)."""
+    prefix = proxy_prefix.rstrip("/")
+
+    def _repl(match: re.Match) -> str:
+        attr, quote, host, rest = match.group(1), match.group(2), match.group(3), match.group(4)
+        if not is_hubspot_app_host(host):
+            return match.group(0)
+        path = rest or "/"
+        if not path.startswith("/"):
+            path = "/" + path
+        return f"{attr}={quote}{prefix}{path}{quote}"
+
+    html = re.sub(
+        r"(src|href)=(['\"])//((?:app(?:-[a-z0-9]+)?|local)\.hubspot\.com)(/[^'\"]*)?",
+        _repl,
+        html,
+        flags=re.IGNORECASE,
+    )
+    html = re.sub(
+        r'(["\'])//((?:app(?:-[a-z0-9]+)?|local)\.hubspot\.com)(/[^"\']*)?\1',
+        lambda m: (
+            f'{m.group(1)}{prefix}{(m.group(3) or "/")}{m.group(1)}'
+            if is_hubspot_app_host(m.group(2))
+            else m.group(0)
+        ),
+        html,
+        flags=re.IGNORECASE,
+    )
+    return html
+
+
+def _rewrite_absolute_app_bases(html: str, known_bases: set[str], proxy_prefix: str) -> str:
+    prefix = proxy_prefix.rstrip("/")
+    for origin in sorted(known_bases, key=len, reverse=True):
+        base = origin.rstrip("/")
+        if not base:
+            continue
+        html = html.replace(f'"{base}/', f'"{prefix}/')
+        html = html.replace(f"'{base}/", f"'{prefix}/")
+        html = html.replace(f'"{base}"', f'"{prefix}"')
+        html = html.replace(f"'{base}'", f"'{prefix}'")
+    return html
+
+
 def _rewrite_protocol_relative_cdn(html: str) -> str:
     """//static.hsappstatic.net/… → https://static.hsappstatic.net/…"""
     html = re.sub(
-        r"(src|href)=(['\"])(//[^'\"]+)",
+        r"(src|href)=(['\"])(//(?:static(?:2)?\.hsappstatic\.net|wt-assets)[^'\"]*)",
         r"\1=\2https:\3\2",
         html,
         flags=re.IGNORECASE,
@@ -115,8 +167,18 @@ def _rewrite_hubspot_native_html(
     base_origin: str,
     proxy_prefix: str,
     handler: "HubspotPassthroughHandler",
+    known_bases: set[str] | None = None,
+    request=None,
+    endpoint_id: int | None = None,
 ) -> str:
-    del base_origin
+    bases = set(known_bases or [])
+    if base_origin:
+        bases.add(base_origin.rstrip("/"))
+    discovered = discover_origins_from_text(html)
+    bases.update(discovered)
+    if request is not None and endpoint_id is not None:
+        remember_bases(request, endpoint_id, bases)
+
     html = re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
     html = re.sub(
         r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>',
@@ -125,8 +187,10 @@ def _rewrite_hubspot_native_html(
         flags=re.IGNORECASE,
     )
 
+    html = _rewrite_protocol_relative_app_hosts(html, proxy_prefix)
     html = _rewrite_protocol_relative_cdn(html)
     html = _rewrite_root_relative_cdn(html)
+    html = _rewrite_absolute_app_bases(html, bases, proxy_prefix)
 
     def _rewrite_root_path(match: re.Match) -> str:
         attr, quote, path = match.group(1), match.group(2), match.group(3)
@@ -198,6 +262,13 @@ def process_hubspot_native_sniff(
         base_origin=base_origin,
         proxy_prefix=proxy_prefix,
         handler=handler,
+        known_bases=load_known_bases(
+            request,
+            getattr(request, "_polysniffer_endpoint_id", None),
+            endpoint_url,
+        ),
+        request=request,
+        endpoint_id=getattr(request, "_polysniffer_endpoint_id", None),
     )
     endpoint_id = getattr(request, "_polysniffer_endpoint_id", None) or _endpoint_id_from_proxy_prefix(
         proxy_prefix

@@ -1,9 +1,8 @@
 """
 PolySniffer 2.0 — split workspace.
 
-Default UX: native browse is inlined in the left pane (no nested iframe).
-Passthrough uses a left iframe for the full orchestration shell. Capture stays
-in the right iframe.
+Native and passthrough browse render inline in the left pane (admin-style div embed).
+Only the live capture panel uses an iframe on the right.
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
@@ -25,6 +24,9 @@ from dose.polysniffer.sniff_native_embed import (
     workspace_shell_prefix,
     wrap_native_sniff_for_workspace,
 )
+from dose.polysniffer.handler_hooks import path_looks_like_non_page, workspace_browse_subpath
+from dose.polysniffer.sniff_pt_embed import build_inline_passthrough_embed_context
+from dose.polysniffer.workspace_pt_redirect import workspace_redirect_for_pt_response
 from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
 from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
@@ -40,53 +42,32 @@ def _session_mode(request, endpoint_id: int) -> str:
     return mode if mode in ("native", "passthrough") else ""
 
 
-def _endpoint_blob(endpoint) -> str:
-    return " ".join(
-        [
-            str(getattr(endpoint, "endpoint_url", "") or ""),
-            str(getattr(endpoint, "menu_title", "") or ""),
-            str(getattr(endpoint, "slug", "") or ""),
-        ]
-    ).lower()
+def _resolve_pt_handler(endpoint):
+    from urllib.parse import urlparse
+
+    from dose.passthrough.registry import resolve_handler_for_pt_admin_trigger
+
+    trigger = urlparse((getattr(endpoint, "endpoint_url", None) or "").strip()).netloc
+    if not trigger:
+        return None, ""
+    handler = resolve_handler_for_pt_admin_trigger(trigger)
+    if handler is not None:
+        handler.endpoint = endpoint
+    return handler, trigger
 
 
-def _native_browse_subpath(endpoint) -> str:
-    """Native sniff browse entry — endpoint starting_uri, else HubSpot global-home, else /login/."""
-    uri = (getattr(endpoint, "starting_uri", None) or "").strip()
-    if uri:
-        return uri if uri.startswith("/") else f"/{uri}"
-    if "hubspot" in _endpoint_blob(endpoint):
-        return "/global-home/246571499"
-    return "/login/"
+def _browse_subpath(endpoint, handler=None) -> str:
+    """Workspace sniff embed entry path — endpoint.starting_uri, then handler hook (HAR baseline)."""
+    return workspace_browse_subpath(handler, endpoint)
 
 
-def _browse_subpath(endpoint) -> str:
-    """Workspace sniff embed entry path."""
-    return _native_browse_subpath(endpoint)
-
-
-# Non-HTML paths served by the transparent sniff proxy (not the workspace shell).
-_FORWARD_ONLY_PREFIXES = (
-    "/api/",
-    "/hs/",
-    "/hublytics/",
-    "/static/",
-    "/notifications/",
-    "/filemanager/",
-    "/webpack/",
-    "/webhooks/",
-)
-
-
-def _is_forward_only_browse_path(path: str) -> bool:
+def _is_forward_only_browse_path(path: str, handler=None, request=None) -> bool:
     raw = (path or "").strip()
     if not raw:
         return False
     if raw.lower().startswith("browse/") or raw.lower() == "browse":
         return True
-    low = raw if raw.startswith("/") else f"/{raw}"
-    low = low.lower()
-    return any(low.startswith(prefix) for prefix in _FORWARD_ONLY_PREFIXES)
+    return path_looks_like_non_page(raw, handler=handler, request=request)
 
 
 @staff_member_required
@@ -107,7 +88,8 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
         active_mode = ""
 
     upstream_url = (getattr(endpoint, "endpoint_url", None) or "").strip().rstrip("/")
-    browse_subpath = _browse_subpath(endpoint)
+    pt_handler, _pt_trigger = _resolve_pt_handler(endpoint)
+    browse_subpath = _browse_subpath(endpoint, pt_handler)
     upstream_browse_url = f"{upstream_url}{browse_subpath}" if upstream_url else ""
     active_session = get_sniff_capture_session(request, endpoint_id)
 
@@ -115,6 +97,8 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
     native_shell_url = ""
     native_inline = None
     native_inline_error = ""
+    passthrough_inline = None
+    passthrough_inline_error = ""
     if active_session and active_mode == "native":
         inline_subpath = (browse_path or "").strip().strip("/")
         if not inline_subpath:
@@ -133,7 +117,25 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
                 "Check endpoint URL and try again."
             )
     elif active_session and active_mode == "passthrough":
-        passthrough_browse_url = f"/pt/polysniff/{endpoint_id}/"
+        inline_subpath = (browse_path or "").strip().strip("/")
+        if not inline_subpath:
+            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{browse_subpath.strip('/')}")
+        pt_ctx = build_inline_passthrough_embed_context(
+            request,
+            endpoint_id,
+            endpoint,
+            inline_subpath,
+            endpoint_label=_endpoint_label(endpoint),
+        )
+        if pt_ctx and pt_ctx.get("redirect"):
+            return redirect(pt_ctx["redirect"])
+        if pt_ctx:
+            passthrough_inline = pt_ctx
+        else:
+            passthrough_inline_error = (
+                f"Could not load passthrough inline content for /{inline_subpath}. "
+                "Check endpoint URL and try again."
+            )
 
     return render(
         request,
@@ -144,6 +146,8 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
             "endpoint_label": _endpoint_label(endpoint),
             "mode": active_mode,
             "passthrough_browse_url": passthrough_browse_url,
+            "passthrough_inline": passthrough_inline,
+            "passthrough_inline_error": passthrough_inline_error,
             "native_shell_url": native_shell_url,
             "native_inline": native_inline,
             "native_inline_error": native_inline_error,
@@ -164,9 +168,60 @@ sniff_workspace = sniff_shell
 @staff_member_required
 def workspace_dispatch(request, endpoint_id: int, browse_path: str = ""):
     """Route HTML page navigations to the shell; API/assets to the sniff proxy."""
-    if request.method != "GET" or _is_forward_only_browse_path(browse_path):
+    try:
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+    except Exception:
+        endpoint = None
+    handler, _trigger = _resolve_pt_handler(endpoint) if endpoint else (None, "")
+    mode = _session_mode(request, endpoint_id)
+    if request.method != "GET" or _is_forward_only_browse_path(browse_path, handler=handler, request=request):
+        if mode == "passthrough":
+            return workspace_pt_browse(request, endpoint_id, path=browse_path)
         return workspace_browse(request, endpoint_id, path=browse_path)
     return sniff_shell(request, endpoint_id, browse_path=browse_path)
+
+
+@staff_member_required
+@xframe_options_exempt
+@csrf_exempt
+def workspace_pt_proxy(request, endpoint_id: int, path: str = ""):
+    """Forms/login via /pt/polysniff/ dispatch; return to workspace shell."""
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Staff only")
+    from urllib.parse import urlparse
+
+    from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough
+
+    try:
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+    except Exception as exc:
+        return HttpResponseForbidden(str(exc))
+
+    trigger = urlparse((endpoint.endpoint_url or "").strip()).netloc
+    handler, _ = _resolve_pt_handler(endpoint)
+
+    response = dispatch_polysniff_passthrough(request, endpoint_id, path or "")
+    wrapped = workspace_redirect_for_pt_response(
+        request, endpoint_id, path, response, trigger=trigger, handler=handler,
+    )
+    return wrapped if wrapped is not None else response
+
+
+@staff_member_required
+@xframe_options_exempt
+@csrf_exempt
+def workspace_pt_browse(request, endpoint_id: int, path: str = ""):
+    """Passthrough API/assets via /pt/polysniff/ dispatch."""
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Staff only")
+    from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough
+
+    try:
+        get_endpoint_any_schema(endpoint_id, request)
+    except Exception as exc:
+        return HttpResponseForbidden(str(exc))
+
+    return dispatch_polysniff_passthrough(request, endpoint_id, path or "")
 
 
 @staff_member_required

@@ -1,0 +1,127 @@
+"""
+Inline passthrough embed for PolySniffer workspace.
+
+Uses the same production chain as Odoo/Mattermost admin passthrough:
+fetch_upstream_index_html → handler.process_html_response → scoped embed fragments.
+"""
+from __future__ import annotations
+
+from urllib.parse import urlparse
+
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
+
+from dose.passthrough.embed_fragments import build_scoped_embed_fragments
+from dose.passthrough.forwarding import fetch_upstream_index_html
+from dose.passthrough.registry import resolve_handler_for_pt_admin_trigger
+from dose.polysniffer.sniff_native_embed import (
+    _split_head_for_inline,
+    workspace_shell_prefix,
+)
+from dose.polysniffer.workspace_pt_redirect import (
+    rewrite_pt_form_actions_to_workspace,
+    subpath_from_passthrough_location,
+    workspace_shell_url,
+)
+
+
+def admin_proxy_prefix(endpoint) -> str:
+    """Production passthrough prefix — /pt/admin/<hostname>/ (Odoo/Mattermost pattern)."""
+    host = urlparse((getattr(endpoint, "endpoint_url", None) or "").strip()).netloc
+    return f"/pt/admin/{host}/" if host else "/pt/admin/"
+
+
+def _trigger_host(endpoint) -> str:
+    return urlparse((getattr(endpoint, "endpoint_url", None) or "").strip()).netloc or ""
+
+
+def _upstream_subpath(path: str) -> str:
+    sub = (path or "").strip()
+    if not sub:
+        return "/"
+    return sub if sub.startswith("/") else f"/{sub}"
+
+
+def _redirect_target_from_fetch(raw: str, endpoint_id: int, endpoint) -> str | None:
+    if not raw or not raw.startswith("REDIRECT:"):
+        return None
+    parts = raw.split(":", 2)
+    location = parts[2] if len(parts) > 2 else "/"
+    rel = subpath_from_passthrough_location(location, endpoint_id, _trigger_host(endpoint))
+    return workspace_shell_url(endpoint_id, rel)
+
+
+def build_inline_passthrough_embed_context(
+    request,
+    endpoint_id: int,
+    endpoint,
+    path: str,
+    *,
+    endpoint_label: str = "",
+) -> dict | None:
+    """
+    Production passthrough HTML as inline embed fragments (orchestration bar + scope div).
+    """
+    from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
+
+    trigger = _trigger_host(endpoint)
+    if not trigger:
+        return None
+
+    bind_request_tenant(request)
+    session = get_sniff_capture_session(request, endpoint_id)
+    request._polysniffer_endpoint_id = endpoint_id
+    request._polysniffer_sniff_mode = "passthrough"
+    if session:
+        request._polysniffer_capture = session
+
+    handler = resolve_handler_for_pt_admin_trigger(trigger)
+    if handler is not None:
+        handler.endpoint = endpoint
+
+    upstream_subpath = _upstream_subpath(path)
+    raw_html = fetch_upstream_index_html(
+        request,
+        endpoint.endpoint_url,
+        upstream_subpath=upstream_subpath,
+        handler=handler,
+    )
+
+    redirect_target = _redirect_target_from_fetch(raw_html, endpoint_id, endpoint)
+    if redirect_target:
+        return {"redirect": redirect_target}
+
+    if not raw_html:
+        return None
+
+    if handler and hasattr(handler, "process_html_response"):
+        try:
+            raw_html = handler.process_html_response(
+                raw_html,
+                request,
+                endpoint_url=endpoint.endpoint_url,
+            )
+        except Exception:
+            pass
+
+    embed_head, scoped_body = build_scoped_embed_fragments(
+        raw_html,
+        trigger,
+        handler=handler,
+        request=request,
+    )
+
+    head_html = rewrite_pt_form_actions_to_workspace(str(embed_head), endpoint_id, trigger)
+    body_html = rewrite_pt_form_actions_to_workspace(str(scoped_body), endpoint_id, trigger)
+    head_static, head_scripts = _split_head_for_inline(head_html)
+    orch_bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html", request=request)
+    embed_body = mark_safe(f"{orch_bar}{head_scripts}{body_html}")
+
+    return {
+        "passthrough_embed_title": endpoint_label or f"PolySniffer passthrough — ep{endpoint_id}",
+        "passthrough_embed_head": mark_safe(head_static),
+        "passthrough_embed_body": embed_body,
+        "passthrough_browse_base": admin_proxy_prefix(endpoint).rstrip("/"),
+        "passthrough_shell_base": workspace_shell_prefix(endpoint_id),
+        "passthrough_trigger": trigger,
+    }

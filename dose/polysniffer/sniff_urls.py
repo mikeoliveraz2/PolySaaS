@@ -39,6 +39,8 @@ from dose.polysniffer.views.sniff_v2_workspace import (
 
     workspace_poll,
 
+    workspace_pt_proxy,
+
 )
 
 
@@ -78,6 +80,10 @@ urlpatterns = [
     path('<int:endpoint_id>/workspace/ingest/', workspace_ingest, name='workspace_ingest'),
 
     path('<int:endpoint_id>/workspace/capture/', workspace_capture_frame, name='workspace_capture'),
+
+    path('<int:endpoint_id>/workspace/pt/', workspace_pt_proxy, {'path': ''}, name='workspace_pt_root'),
+
+    re_path(r'^(?P<endpoint_id>\d+)/workspace/pt/(?P<path>.*)$', workspace_pt_proxy, name='workspace_pt'),
 
     path('<int:endpoint_id>/workspace/browse/', workspace_browse_proxy, {'path': ''}, name='workspace_browse_root'),
 

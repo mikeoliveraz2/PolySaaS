@@ -3,14 +3,21 @@
 
 {% block submit_buttons_bottom %}
 {{ block.super }}
-{% if original and original.endpoint_url %}
+{% if add %}
 <div class="submit-row" style="margin-top: 10px;">
-    <button type="button"
-            onclick="openPolySnifferCapture({{ original.id }})"
-            class="button"
-            style="background: #417ccc; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box;">
-        🔍 PolySniffer Analysis
-    </button>
+    <p class="help" style="width: 100%; margin: 0; padding: 10px 12px; background: #f0f4f8; border-radius: 4px; color: #334155;">
+        Save this endpoint first — then <strong>PolySniffer 2.0</strong> and auto-login tools appear here.
+    </p>
+</div>
+{% elif original and original.endpoint_url %}
+<div class="submit-row" style="margin-top: 10px;">
+    <a href="/dose/sniff/{{ original.id }}/"
+       target="_blank"
+       rel="noopener"
+       class="button"
+       style="background: #417ccc; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box; display: inline-block; text-decoration: none;">
+        🔍 PolySniffer 2.0
+    </a>
 </div>
 <div class="submit-row" style="margin-top: 10px;">
     <button type="button"
@@ -29,10 +36,6 @@
     </button>
 </div>
 <script>
-function openPolySnifferCapture(endpointId) {
-    window.open(`/admin/polysniffer/capture/${endpointId}/`, '_blank');
-}
-
 function applyLatestCapture(endpointId) {
     console.log('[JS] applyLatestCapture called with endpointId:', endpointId);
 

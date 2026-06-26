@@ -1,0 +1,36 @@
+Invalid line:   
+Loaded DJANGO_SECRET_KEY: SET (from env var)
+Now logging in admin
+Now logging in admin
+[Django] DoseConfig.ready() starting
+[Django] Importing dose.adapters
+[Django] dose.adapters imported
+[Django] Importing dose.signals
+[Django] dose.signals imported
+[Django] Importing dose.polysniffer.admin
+[Django] dose.polysniffer.admin imported
+[admin_registry_diag] ready() registry_len=85
+[Django] DoseConfig.ready() completed
+Now Logging in doserequestcontroller
+Now Logging in doserequestcontroller
+Now logging in DoseResponseController
+Now logging in DoseResponseController
+[MM Bot] Listener connected as @mikeoliveraz
+[MM Bot] Listener connected as @mikeoliveraz
+[MM Bot] Active peers: ['github', 'copilot', 'grok', 'gemini']
+[MM Bot] Active peers: ['github', 'copilot', 'grok', 'gemini']
+[MM Bot] Listening — @github | @copilot | @grok | @gemini | @anyone
+[MM Bot] Listening — @github | @copilot | @grok | @gemini | @anyone
+Websocket authentification OK
+[MM Bot] '@channel who is listening' -> ['github', 'copilot', 'grok', 'gemini']
+[MM Bot] '@channel who is listening' -> ['github', 'copilot', 'grok', 'gemini']
+[Grok] xAI returned 403 -- credits or spend limit hit
+[Grok] xAI returned 403 -- credits or spend limit hit
+[MM Bot] Post failed for grok: HTTPSConnectionPool(host='polysaas-mattermost.onrender.com', port=443): Read timed out. (read timeout=15)
+[MM Bot] Post failed for grok: HTTPSConnectionPool(host='polysaas-mattermost.onrender.com', port=443): Read timed out. (read timeout=15)
+[MM Bot] Post failed for copilot: HTTPSConnectionPool(host='polysaas-mattermost.onrender.com', port=443): Read timed out. (read timeout=15)
+[MM Bot] Post failed for copilot: HTTPSConnectionPool(host='polysaas-mattermost.onrender.com', port=443): Read timed out. (read timeout=15)
+[MM Bot] Post failed for gemini: HTTPSConnectionPool(host='polysaas-mattermost.onrender.com', port=443): Read timed out. (read timeout=15)
+[MM Bot] Post failed for gemini: HTTPSConnectionPool(host='polysaas-mattermost.onrender.com', port=443): Read timed out. (read timeout=15)
+[MM Bot] github posted (296 chars)
+[MM Bot] github posted (296 chars)

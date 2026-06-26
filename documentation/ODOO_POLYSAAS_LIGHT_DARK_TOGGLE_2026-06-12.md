@@ -2,6 +2,7 @@
 
 **Date:** 2026-06-12  
 **Declared by:** Michael  
+**Commit:** `04c5ec2e`  
 **Test tenant:** PolySaaS Test 152 (`polysast152`)  
 **Test URL:** `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/web`
 

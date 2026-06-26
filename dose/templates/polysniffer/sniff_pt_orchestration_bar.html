@@ -1,0 +1,16 @@
+<div id="polysaas-orchestration-bar" class="polysniffer-pt-orchestration-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;background:#1a1a1a;color:#0f0;padding:8px 12px;border-bottom:3px solid #0f0;font-family:monospace;font-size:13px;margin:0;">
+    <div>
+        ● POLYSAAS ORCHESTRATION ACTIVE — PASSTHROUGH WORKSPACE<br>
+        <span style="color:#86efac;font-size:12px;">Action Path: <code id="pss-action-path" style="background:rgba(255,255,255,0.15);color:#86efac;padding:2px 6px;border-radius:3px;font-size:12px;">loading…</code></span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">menu_id: <span id="pss-orch-menu" style="color:#fde68a;">—</span></span>
+        &nbsp;|&nbsp;
+        <span style="font-size:12px;color:#aaa;">orch: <span id="pss-orch-status" style="color:#93c5fd;">waiting…</span></span>
+        <span id="pss-orch-event" style="display:none;margin-left:8px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
+    </div>
+    <button type="button" id="pss-insert-instruction-btn"
+        onclick="if(window.PolySaaSOrchBar){PolySaaSOrchBar.openFromButton(event);}"
+        style="background:#22c55e;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+        + Insert Orchestration Instruction
+    </button>
+</div>
