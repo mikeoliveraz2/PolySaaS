@@ -56,9 +56,9 @@ def _resolve_pt_handler(endpoint):
     return handler, trigger
 
 
-def _browse_subpath(endpoint, handler=None) -> str:
-    """Workspace sniff embed entry path — endpoint.starting_uri, then handler hook (HAR baseline)."""
-    return workspace_browse_subpath(handler, endpoint)
+def _browse_subpath(endpoint, handler=None, request=None) -> str:
+    """Workspace sniff embed entry path — session landing or global handler entry."""
+    return workspace_browse_subpath(handler, endpoint, request=request)
 
 
 def _is_forward_only_browse_path(path: str, handler=None, request=None) -> bool:
@@ -68,6 +68,16 @@ def _is_forward_only_browse_path(path: str, handler=None, request=None) -> bool:
     if raw.lower().startswith("browse/") or raw.lower() == "browse":
         return True
     return path_looks_like_non_page(raw, handler=handler, request=request)
+
+
+def _workspace_browse_redirect_path(browse_subpath: str) -> str:
+    """Preserve trailing slash (HubSpot expects /login/ not /login)."""
+    sub = (browse_subpath or "").strip()
+    if sub.startswith("/"):
+        sub = sub[1:]
+    if (browse_subpath or "").rstrip().endswith("/") and sub and not sub.endswith("/"):
+        sub = sub + "/"
+    return sub
 
 
 @staff_member_required
@@ -84,12 +94,17 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
         )
 
     active_mode = (mode or _session_mode(request, endpoint_id)).strip().lower()
-    if active_mode not in ("native", "passthrough"):
+    if mode in ("native", "passthrough"):
+        from dose.polysniffer.sniff_session_utils import ensure_capture_session
+
+        ensure_capture_session(request, endpoint_id, mode)
+        active_mode = mode
+    elif active_mode not in ("native", "passthrough"):
         active_mode = ""
 
     upstream_url = (getattr(endpoint, "endpoint_url", None) or "").strip().rstrip("/")
     pt_handler, _pt_trigger = _resolve_pt_handler(endpoint)
-    browse_subpath = _browse_subpath(endpoint, pt_handler)
+    browse_subpath = _browse_subpath(endpoint, pt_handler, request)
     upstream_browse_url = f"{upstream_url}{browse_subpath}" if upstream_url else ""
     active_session = get_sniff_capture_session(request, endpoint_id)
 
@@ -102,7 +117,7 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
     if active_session and active_mode == "native":
         inline_subpath = (browse_path or "").strip().strip("/")
         if not inline_subpath:
-            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{browse_subpath.strip('/')}")
+            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{_workspace_browse_redirect_path(browse_subpath)}")
         native_shell_url = f"{workspace_shell_prefix(endpoint_id)}/{inline_subpath}"
         native_inline = build_inline_native_embed_context(
             request,
@@ -119,7 +134,7 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
     elif active_session and active_mode == "passthrough":
         inline_subpath = (browse_path or "").strip().strip("/")
         if not inline_subpath:
-            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{browse_subpath.strip('/')}")
+            return redirect(f"{workspace_shell_prefix(endpoint_id)}/{_workspace_browse_redirect_path(browse_subpath)}")
         pt_ctx = build_inline_passthrough_embed_context(
             request,
             endpoint_id,
@@ -136,6 +151,10 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
                 f"Could not load passthrough inline content for /{inline_subpath}. "
                 "Check endpoint URL and try again."
             )
+
+    capture_frame_url = f"/dose/sniff/{endpoint_id}/workspace/capture/"
+    if active_mode in ("native", "passthrough"):
+        capture_frame_url = f"{capture_frame_url}?mode={active_mode}"
 
     return render(
         request,
@@ -156,7 +175,7 @@ def sniff_shell(request, endpoint_id: int, mode: str | None = None, browse_path:
             "active_session": active_session,
             "diff_url": f"/dose/sniff/{endpoint_id}/diff/",
             "export_url": f"/dose/sniff/{endpoint_id}/export-har/",
-            "capture_frame_url": f"/dose/sniff/{endpoint_id}/workspace/capture/",
+            "capture_frame_url": capture_frame_url,
         },
     )
 
@@ -366,6 +385,10 @@ def workspace_poll(request, endpoint_id: int):
 def workspace_ingest(request, endpoint_id: int):
     """Accept client-side fetch/XHR logs from browse tab or passthrough iframe."""
     import json
+    import traceback
+    import logging
+
+    logger = logging.getLogger(__name__)
 
     tenant = bind_request_tenant(request)
     if not tenant:
@@ -393,25 +416,36 @@ def workspace_ingest(request, endpoint_id: int):
     if mode not in ("native", "passthrough"):
         mode = "native"
 
-    row_id = log_http_exchange(
-        request,
-        method=method,
-        url=url,
-        path=path,
-        client_path=path,
-        capture_source=mode,
-        headers={},
-        cookies={},
-        query_params={},
-        body="",
-        status_code=status_code,
-        response_headers={},
-        response_body="",
-        response_size=0,
-        duration_ms=duration_ms,
-        endpoint_name=f"ep{endpoint_id}",
-        service="client",
-        capture_session=session,
-        sniff_mode=mode,
-    )
-    return JsonResponse({"ok": True, "id": row_id})
+    try:
+        row_id = log_http_exchange(
+            request,
+            method=method,
+            url=url,
+            path=path,
+            client_path=path,
+            capture_source=mode,
+            headers={},
+            cookies={},
+            query_params={},
+            body="",
+            status_code=status_code,
+            response_headers={},
+            response_body="",
+            response_size=0,
+            duration_ms=duration_ms,
+            endpoint_name=f"ep{endpoint_id}",
+            service="client",
+            capture_session=session,
+            sniff_mode=mode,
+        )
+        return JsonResponse({"ok": True, "id": row_id})
+    except Exception as e:
+        logger.error(f"workspace_ingest error: {e}\n{traceback.format_exc()}")
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": f"log_http_exchange failed: {str(e)}",
+                "traceback": traceback.format_exc(),
+            },
+            status=500,
+        )
