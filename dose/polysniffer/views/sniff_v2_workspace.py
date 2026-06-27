@@ -390,33 +390,38 @@ def workspace_ingest(request, endpoint_id: int):
 
     logger = logging.getLogger(__name__)
 
-    tenant = bind_request_tenant(request)
-    if not tenant:
-        return JsonResponse({"ok": False, "error": "no tenant context"}, status=400)
-
-    session = get_sniff_capture_session(request, endpoint_id)
-    if not session:
-        return JsonResponse({"ok": False, "error": "no active capture session"}, status=400)
-
-    ensure_trafficlog_capture_columns(request)
-    _ensure_tenant_schema(tenant)
-
     try:
-        data = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+        tenant = bind_request_tenant(request)
+        if not tenant:
+            return JsonResponse({"ok": False, "error": "no tenant context"}, status=400)
 
-    method = (data.get("method") or "GET").upper()[:10]
-    url = (data.get("url") or "")[:500]
-    path = (data.get("path") or url)[:500]
-    status_code = int(data.get("status_code") or 0)
-    duration_ms = float(data.get("duration_ms") or 0)
+        session = get_sniff_capture_session(request, endpoint_id)
+        if not session:
+            logger.warning(
+                f"workspace_ingest: no active session for ep{endpoint_id}. "
+                f"session_id={request.session.get(f'polysniffer_ep{endpoint_id}_capture_id')} "
+                f"user={request.user}"
+            )
+            return JsonResponse({"ok": False, "error": "no active capture session"}, status=400)
 
-    mode = (_session_mode(request, endpoint_id) or "native").strip().lower()
-    if mode not in ("native", "passthrough"):
-        mode = "native"
+        ensure_trafficlog_capture_columns(request)
+        _ensure_tenant_schema(tenant)
 
-    try:
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+        method = (data.get("method") or "GET").upper()[:10]
+        url = (data.get("url") or "")[:500]
+        path = (data.get("path") or url)[:500]
+        status_code = int(data.get("status_code") or 0)
+        duration_ms = float(data.get("duration_ms") or 0)
+
+        mode = (_session_mode(request, endpoint_id) or "native").strip().lower()
+        if mode not in ("native", "passthrough"):
+            mode = "native"
+
         row_id = log_http_exchange(
             request,
             method=method,
@@ -444,7 +449,7 @@ def workspace_ingest(request, endpoint_id: int):
         return JsonResponse(
             {
                 "ok": False,
-                "error": f"log_http_exchange failed: {str(e)}",
+                "error": f"server error: {str(e)}",
                 "traceback": traceback.format_exc(),
             },
             status=500,
