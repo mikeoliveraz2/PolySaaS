@@ -476,15 +476,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     def get_client_side_shim(self, proxy_prefix: str, known_bases: list[str]) -> str:
         bases_js = json.dumps(known_bases)
-        # Inject location spoof IIFE early so it patches location/document.URL before HubSpot bundles load
-        spoof = self._hubspot_location_spoof_iife(
-            proxy_prefix=proxy_prefix,
-            shell_prefix="",
-            canonical_host="app.hubspot.com"
-        )
         return f"""
 <script data-hubspot-pt-shim="1">
-{spoof}
 (function() {{
   var PROXY_PREFIX = {json.dumps(proxy_prefix.rstrip('/'))};
   var KNOWN_BASES = {bases_js};
