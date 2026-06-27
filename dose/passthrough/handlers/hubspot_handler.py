@@ -286,7 +286,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         proxy = json.dumps((proxy_prefix or "").rstrip("/"))
         shell = json.dumps((shell_prefix or "").rstrip("/"))
         host = json.dumps((canonical_host or "app.hubspot.com").split(":")[0])
-        return f"""(function() {{
+        return fr"""(function() {{
   var PROXY_PREFIX = {proxy};
   var SHELL_PREFIX = {shell};
   var CANONICAL_HOST = {host};
@@ -305,19 +305,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       p = p.slice(SHELL_PREFIX.length) || '/';
       if (!p || p.charAt(0) !== '/') p = '/' + p;
     }}
-    var shellMatch = p.match(/^\\/dose\\/sniff\\/\\d+\\/workspace(\\/.*)?$/);
+    var shellMatch = p.match(/^\/dose\/sniff\/\d+\/workspace(\/.*)?$/);
     if (shellMatch) {{
       p = shellMatch[1] || '/';
       if (!p || p.charAt(0) !== '/') p = '/' + p;
     }}
-    if (/^\\/(passthrough|native)(\\/|$)/.test(p)) {{
-      p = p.replace(/^\\/(passthrough|native)/, '') || '/';
+    if (/^\/(passthrough|native)(\/|$)/.test(p)) {{
+      p = p.replace(/^\/(passthrough|native)/, '') || '/';
       if (!p || p.charAt(0) !== '/') p = '/' + p;
     }}
     if (PROXY_PREFIX && p.indexOf(PROXY_PREFIX) === 0) {{
       p = p.slice(PROXY_PREFIX.length) || '/';
     }}
-    var adminMatch = p.match(/^\\/pt\\/admin\\/[^/]+(\\/.*)?$/);
+    var adminMatch = p.match(/^\/pt\/admin\/[^/]+(\/.*)?$/);
     if (adminMatch) {{
       p = adminMatch[1] || '/';
     }}
