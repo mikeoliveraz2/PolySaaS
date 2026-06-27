@@ -292,30 +292,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   var CANONICAL_HOST = {host};
   var CANONICAL_ORIGIN = 'https://' + CANONICAL_HOST;
   window.__PS_HUBSPOT_LOCATION_SPOOF = true;
-  // Cache the real href BEFORE any getter patching — used as fallback
-  // when Location.prototype descriptors are not accessible.
-  var _cachedRealHref = null;
-  try {{
-    var _proto = window.Location && window.Location.prototype;
-    var _tmpDesc = _proto && Object.getOwnPropertyDescriptor(_proto, 'href');
-    if (_tmpDesc && _tmpDesc.get) {{
-      _cachedRealHref = _tmpDesc.get.call(window.location);
-    }}
-  }} catch (_ce) {{}}
-  if (!_cachedRealHref) {{
-    try {{ _cachedRealHref = window.location.href; }} catch (_ce2) {{}}
-  }}
   if (!window.__PS_REAL_ORIGIN) {{
-    try {{
-      var _proto2 = window.Location && window.Location.prototype;
-      var _hostDesc = _proto2 && Object.getOwnPropertyDescriptor(_proto2, 'host');
-      var _protDesc = _proto2 && Object.getOwnPropertyDescriptor(_proto2, 'protocol');
-      var _realHost = (_hostDesc && _hostDesc.get) ? _hostDesc.get.call(window.location) : window.location.host;
-      var _realProt = (_protDesc && _protDesc.get) ? _protDesc.get.call(window.location) : window.location.protocol;
-      window.__PS_REAL_ORIGIN = _realProt + '//' + _realHost;
-    }} catch (_oe) {{
-      window.__PS_REAL_ORIGIN = window.location.protocol + '//' + window.location.host;
-    }}
+    window.__PS_REAL_ORIGIN = window.location.protocol + '//' + window.location.host;
   }}
   var _realPathname = null;
   var _realHref = null;
@@ -357,8 +335,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   function upstreamHref(rawHref) {{
     try {{
       var actual = rawHref;
-      if (actual == null) actual = _realHref ? _realHref() : (_cachedRealHref || '/login/');
-      var u = new URL(String(actual || '/'), window.__PS_REAL_ORIGIN || _cachedRealHref || window.location.href);
+      if (actual == null) actual = _realHref ? _realHref() : '/login/';
+      var u = new URL(String(actual || '/'), window.__PS_REAL_ORIGIN || window.location.href);
       u.protocol = 'https:';
       u.hostname = CANONICAL_HOST;
       u.port = '';
@@ -381,20 +359,12 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }}
   function applyHubspotLocationSpoof() {{
     try {{
-      // Try Location.prototype first, then fall back to the actual prototype chain
-      var _locProto = window.Location && window.Location.prototype;
-      var _locActualProto = Object.getPrototypeOf && Object.getPrototypeOf(window.location);
-      function _getDesc(prop) {{
-        var d = _locProto && Object.getOwnPropertyDescriptor(_locProto, prop);
-        if (!d) d = _locActualProto && Object.getOwnPropertyDescriptor(_locActualProto, prop);
-        return d || null;
-      }}
-      var hrefDesc = _getDesc('href');
-      var pathnameDesc = _getDesc('pathname');
-      var hostnameDesc = _getDesc('hostname');
-      var hostDesc = _getDesc('host');
-      var originDesc = _getDesc('origin');
-      var protocolDesc = _getDesc('protocol');
+      var hrefDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href');
+      var pathnameDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'pathname');
+      var hostnameDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'hostname');
+      var hostDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'host');
+      var originDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'origin');
+      var protocolDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'protocol');
       if (!_realPathname && pathnameDesc && pathnameDesc.get) {{
         _realPathname = pathnameDesc.get.bind(window.location);
       }}
@@ -405,96 +375,67 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         _setHref = hrefDesc.set.bind(window.location);
       }}
       if (pathnameDesc && pathnameDesc.get) {{
-        var _pTarget = _locProto || _locActualProto;
-        if (_pTarget) {{ try {{ Object.defineProperty(_pTarget, 'pathname', {{
+        Object.defineProperty(window.Location.prototype, 'pathname', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return upstreamPathname(); }},
           set: pathnameDesc.set
-        }}); }} catch(_pe) {{}} }}
+        }});
       }}
       if (hostnameDesc && hostnameDesc.get) {{
-        var _hnTarget = _locProto || _locActualProto;
-        if (_hnTarget) {{ try {{ Object.defineProperty(_hnTarget, 'hostname', {{
+        Object.defineProperty(window.Location.prototype, 'hostname', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return CANONICAL_HOST; }},
           set: hostnameDesc.set
-        }}); }} catch(_hne) {{}} }}
+        }});
       }}
       if (hostDesc && hostDesc.get) {{
-        var _htTarget = _locProto || _locActualProto;
-        if (_htTarget) {{ try {{ Object.defineProperty(_htTarget, 'host', {{
+        Object.defineProperty(window.Location.prototype, 'host', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return CANONICAL_HOST; }},
           set: hostDesc.set
-        }}); }} catch(_hte) {{}} }}
+        }});
       }}
       if (originDesc && originDesc.get) {{
-        var _orTarget = _locProto || _locActualProto;
-        if (_orTarget) {{ try {{ Object.defineProperty(_orTarget, 'origin', {{
+        Object.defineProperty(window.Location.prototype, 'origin', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return CANONICAL_ORIGIN; }},
           set: originDesc.set
-        }}); }} catch(_ore) {{}} }}
-      }}
-      // Always patch window.location.origin directly as a belt-and-suspenders measure
-      try {{
-        Object.defineProperty(window.location, 'origin', {{
-          configurable: true,
-          enumerable: true,
-          get: function() {{ return CANONICAL_ORIGIN; }}
         }});
-      }} catch (_ode) {{}}
+      }}
       if (protocolDesc && protocolDesc.get) {{
-        var _prTarget = _locProto || _locActualProto;
-        if (_prTarget) {{ try {{ Object.defineProperty(_prTarget, 'protocol', {{
+        Object.defineProperty(window.Location.prototype, 'protocol', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return 'https:'; }},
           set: protocolDesc.set
-        }}); }} catch(_pre) {{}} }}
+        }});
       }}
       if (hrefDesc && hrefDesc.get && _setHref) {{
-        var _hrTarget = _locProto || _locActualProto;
-        if (_hrTarget) {{ try {{ Object.defineProperty(_hrTarget, 'href', {{
+        Object.defineProperty(window.Location.prototype, 'href', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return upstreamHref(); }},
           set: function(v) {{ return _setHref(proxyHrefFromUpstream(v)); }}
-        }}); }} catch(_hre) {{}} }}
-        try {{ Object.defineProperty(window.location, 'href', {{
+        }});
+        Object.defineProperty(window.location, 'href', {{
           configurable: true,
           enumerable: true,
           get: function() {{ return upstreamHref(); }},
           set: function(v) {{ return _setHref(proxyHrefFromUpstream(v)); }}
-        }}); }} catch(_hre2) {{}}
-      }} else {{
-        // Fallback: Location.prototype.href getter unavailable (can happen when
-        // the browser denies prototype access or another script already stripped it).
-        // Define href directly on window.location using _cachedRealHref for the getter.
-        try {{
-          Object.defineProperty(window.location, 'href', {{
-            configurable: true,
-            enumerable: true,
-            get: function() {{ return upstreamHref(_cachedRealHref); }},
-            set: function(v) {{ window.location.assign(proxyHrefFromUpstream(v)); }}
-          }});
-        }} catch (_fb) {{}}
+        }});
       }}
-      // Always ensure Location.prototype toString returns the spoofed value
-      if (window.Location && window.Location.prototype) {{
-        try {{ window.Location.prototype.toString = function() {{ return upstreamHref(_cachedRealHref); }}; }} catch(_ts) {{}}
-      }}
+      window.Location.prototype.toString = function() {{ return upstreamHref(); }};
       try {{
         var docUrlDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'URL');
         if (docUrlDesc && docUrlDesc.get) {{
           Object.defineProperty(document, 'URL', {{
             configurable: true,
             enumerable: true,
-            get: function() {{ return upstreamHref(_cachedRealHref); }}
+            get: function() {{ return upstreamHref(); }}
           }});
         }}
       }} catch (eDoc) {{}}
@@ -504,11 +445,11 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           Object.defineProperty(document, 'documentURI', {{
             configurable: true,
             enumerable: true,
-            get: function() {{ return upstreamHref(_cachedRealHref); }}
+            get: function() {{ return upstreamHref(); }}
           }});
         }}
       }} catch (eUri) {{}}
-      console.log('[PolySaaS HS] location spoof', upstreamHref(_cachedRealHref), 'real=', _cachedRealHref || '?', 'hrefDesc=', !!hrefDesc);
+      console.log('[PolySaaS HS] location spoof', upstreamHref(), 'real=', _realHref ? _realHref() : '?');
     }} catch (e) {{
       console.warn('[PolySaaS HS] location spoof failed', e);
     }}

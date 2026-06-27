@@ -27,6 +27,11 @@ class TrafficCapture(models.Model):
         return f"{self.capture_name} ({'ACTIVE' if self.is_active else 'inactive'})"
 
     def save(self, *args, **kwargs):
+        if self.tenant_id:
+            from dose.polysniffer.tenant_schema_fk import ensure_tenant_fk_row
+
+            schema = getattr(self.tenant, "schema_name", None) if self.tenant else None
+            ensure_tenant_fk_row(str(self.tenant_id), schema)
         if not self.expires_at or self.expires_at <= timezone.now():
             self.expires_at = timezone.now() + timezone.timedelta(hours=8)
         super().save(*args, **kwargs)
@@ -109,6 +114,42 @@ class TrafficLog(models.Model):
 
     def __str__(self):
         return f"{self.method} {self.path} - {self.status_code} ({self.captured_at})"
+
+    def save(self, *args, **kwargs):
+        # Mirror the request user into the tenant schema so the FK resolves.
+        # PolySaaS users live in public.auth_user; each tenant schema has its own
+        # auth_user table (from migrations) but those rows are absent → FK violation.
+        if self.user_id:
+            try:
+                from django.db import connection as _conn
+                from dose.polysniffer.tenant_schema_fk import ensure_auth_user_fk_row
+
+                with _conn.cursor() as _cur:
+                    _cur.execute("SHOW search_path")
+                    sp = (_cur.fetchone() or [""])[0]
+                for part in sp.replace('"', "").split(","):
+                    part = part.strip().strip("$").strip()
+                    if part and part != "public" and not part.startswith("$"):
+                        ensure_auth_user_fk_row(self.user, part)
+                        break
+            except Exception:
+                pass
+        try:
+            super().save(*args, **kwargs)
+        except Exception as exc:
+            # If a FK / IntegrityError still fires (e.g. auth_user mirror failed),
+            # retry without the user reference rather than surfacing a 500 to the browser.
+            if self.user_id is not None and (
+                "IntegrityError" in type(exc).__name__
+                or "ForeignKey" in str(exc)
+                or "auth_user" in str(exc)
+                or "violates foreign key" in str(exc).lower()
+            ):
+                self.user = None
+                self.user_id = None
+                super().save(*args, **kwargs)
+            else:
+                raise
 
     def to_har_entry(self):
         """Convert to HAR format entry"""
@@ -293,6 +334,14 @@ class TrafficEntry(models.Model):
     def __str__(self):
         status = f"{self.status_code}" if self.status_code else "N/A"
         return f"[{self.entry_type}] {self.method} {self.url[:50]} - {status} @ {self.timestamp}"
+
+    def save(self, *args, **kwargs):
+        if self.tenant_id:
+            from dose.polysniffer.tenant_schema_fk import ensure_tenant_fk_row
+
+            schema = getattr(self.tenant, "schema_name", None) if self.tenant else None
+            ensure_tenant_fk_row(str(self.tenant_id), schema)
+        super().save(*args, **kwargs)
     
     def get_entry_type_display_icon(self):
         """Return an icon/emoji for the entry type"""
