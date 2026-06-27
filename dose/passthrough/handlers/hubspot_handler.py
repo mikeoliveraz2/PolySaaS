@@ -508,7 +508,36 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           }});
         }}
       }} catch (eUri) {{}}
-      console.log('[PolySaaS HS] location spoof', upstreamHref(_cachedRealHref), 'real=', _cachedRealHref || '?', 'hrefDesc=', !!hrefDesc);
+      // Proxy document.location so reads like document.location.hostname return the
+      // spoofed value. window.location cannot be overridden (configurable:false in all
+      // modern browsers), but document.location can be replaced on the instance.
+      try {{
+        var _realLoc = window.location;
+        var _spoofedLocProxy = new Proxy(_realLoc, {{
+          get: function(target, prop) {{
+            if (prop === 'href')     return upstreamHref(_cachedRealHref);
+            if (prop === 'hostname') return CANONICAL_HOST;
+            if (prop === 'host')     return CANONICAL_HOST;
+            if (prop === 'origin')   return CANONICAL_ORIGIN;
+            if (prop === 'protocol') return 'https:';
+            if (prop === 'pathname') return upstreamPathname();
+            if (prop === 'toString') return function() {{ return upstreamHref(_cachedRealHref); }};
+            var v = target[prop];
+            return (typeof v === 'function') ? v.bind(target) : v;
+          }},
+          set: function(target, prop, value) {{
+            if (prop === 'href') {{ target.assign(proxyHrefFromUpstream(String(value))); return true; }}
+            try {{ target[prop] = value; }} catch(_sl) {{}}
+            return true;
+          }}
+        }});
+        Object.defineProperty(document, 'location', {{
+          configurable: true, enumerable: true,
+          get: function() {{ return _spoofedLocProxy; }},
+          set: function(v) {{ window.location.assign(proxyHrefFromUpstream(String(v))); }}
+        }});
+      }} catch (_prloc) {{}}
+      console.log('[PolySaaS HS] location spoof', upstreamHref(_cachedRealHref), 'real=', _cachedRealHref || '?', 'hrefDesc=', !!hrefDesc, 'docLocProxy=', (function() {{ try {{ return document.location.hostname; }} catch(_) {{ return '?'; }} }}()));
     }} catch (e) {{
       console.warn('[PolySaaS HS] location spoof failed', e);
     }}
