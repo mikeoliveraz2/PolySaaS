@@ -689,14 +689,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         shim = self.get_client_side_shim(prefix, sorted(known))
         if 'data-hubspot-pt-shim="1"' not in html:
             if re.search(r'(?i)<head[^>]*>', html):
-                # Use a lambda so re.sub never interprets backslashes inside
-                # the shim JS (e.g. \d in regexes) as replacement backreferences.
-                html = re.sub(
-                    r'(?i)(<head[^>]*>)',
-                    lambda m: m.group(1) + shim,
-                    html,
-                    count=1,
-                )
+                html = re.sub(r'(?i)(<head[^>]*>)', r'\1' + shim, html, count=1)
             else:
                 html = shim + html
         return html
