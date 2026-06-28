@@ -42,6 +42,7 @@ from dose.orchestration_navigate_api import orchestration_navigate_api
 from dose.views.atomic_service_names import atomic_service_names
 from dose.views.atomic_service_param_sample import atomic_service_param_sample
 from dose.views.ai_peers_webhook import ai_peers_webhook
+from dose.views.generic_inbound_webhook import generic_inbound_webhook
 from dose.subscription_views import SubscriptionApiViewSet
 from dose.theme_views import toggle_theme, set_theme, set_display_mode
 from dose.views.orchestration import get_orchestration_instruction
@@ -49,6 +50,7 @@ from dose.views.orchestration_instruction_embed import (
     orchestration_instruction_embed_add,
     orchestration_instruction_embed_change,
 )
+from dose.views.hs_asset_proxy import hs_asset_proxy
 
 try:
     from rest_framework.routers import DefaultRouter
@@ -74,6 +76,7 @@ urlpatterns = [
     path('api/restore-mm-credentials/', restore_mm_credentials, name='restore_mm_credentials'),
     path('', include(_subscription_urls)),
     path('webhook/ai-peers/', ai_peers_webhook, name='ai_peers_webhook'),
+    path('webhook/<str:source>/<slug:tenant_slug>/', generic_inbound_webhook, name='generic_inbound_webhook'),
     # --- RESTORED ENDPOINTS FOR ADMIN UI ---
     path('api/display-settings/', DisplaySettingsView.as_view(), name='display_settings'),
     path('api/unread-dosemessages/', UnreadDoseMessagesView.as_view(), name='unread_dosemessages'),
@@ -92,4 +95,5 @@ urlpatterns = [
     path('hubspot/oauth/start/', hubspot_oauth_start, name='hubspot_oauth_start'),
     path('hubspot/oauth/callback/', hubspot_oauth_callback, name='hubspot_oauth_callback'),
     path('sniff/', include('dose.polysniffer.sniff_urls')),
+    path('hs-asset-proxy/', hs_asset_proxy, name='hs_asset_proxy'),
 ]

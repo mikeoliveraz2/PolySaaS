@@ -90,17 +90,19 @@ class Command(BaseCommand):
         # These are attached to each Instruction so the Mapping engine can
         # translate HubSpot API fields to Odoo res.partner fields.
         mapping_spec = [
-            # HubSpot v3 contact properties → Odoo partner fields
-            ("properties.firstname + ' ' + properties.lastname", "name"),
-            ("properties.email", "email"),
-            ("properties.phone or properties.mobilephone", "phone"),
-            ("properties.address", "street"),
-            ("properties.city", "city"),
-            ("properties.zip", "zip"),
-            ("properties.website", "website"),
-            ("properties.jobtitle", "function"),
-            ("properties.company", "_company_name"),
-            ("properties.country", "_country_name"),
+            # Expressions use payload.* — context is {'payload': contact_props}
+            # contact_props is already normalised by _extract_contact_props:
+            #   name, email, phone, address, city, zip, website, jobtitle, company, country
+            ("payload.name", "name"),
+            ("payload.email", "email"),
+            ("payload.phone", "phone"),
+            ("payload.address", "street"),
+            ("payload.city", "city"),
+            ("payload.zip", "zip"),
+            ("payload.website", "website"),
+            ("payload.jobtitle", "function"),
+            ("payload.company", "_company_name"),
+            ("payload.country", "_country_name"),
         ]
 
         created_count = 0
@@ -133,7 +135,6 @@ class Command(BaseCommand):
                     "description": spec["description"],
                     "executescript": spec["executescript"],
                     "save_callbackdata": spec["save_callbackdata"],
-                    "is_enabled": True,
                 },
             )
 
@@ -166,29 +167,44 @@ class Command(BaseCommand):
             )
 
     def _seed_mappings(self, instruction, mapping_spec: list[tuple[str, str]]) -> None:
-        """Create or update InstructionMapping rows for this instruction."""
+        """Create or update a Mapping object and link it to the instruction."""
         try:
             from dose.models import InstructionMapping
+            from dose.models.mapping import Mapping, MappingDirection
 
-            for order, (source_expr, target_field) in enumerate(mapping_spec, start=1):
-                obj, created = InstructionMapping.objects.update_or_create(
-                    instruction=instruction,
-                    target_field=target_field,
-                    defaults={
-                        "source_expression": source_expr,
-                        "direction": "NORMALIZED_TO_TARGET",
-                        "enabled": True,
-                        "order": order,
-                    },
-                )
-                action = "Created" if created else "Updated"
-                self.stdout.write(
-                    f"    {action} Mapping: {source_expr} → {target_field}"
-                )
+            # Build field_mappings dict: {target_field: source_expression}
+            field_mappings = {target: source for source, target in mapping_spec}
+
+            slug = f"hs-contact-to-odoo-partner"
+
+            mapping, m_created = Mapping.objects.update_or_create(
+                slug=slug,
+                direction=MappingDirection.NORMALIZED_TO_TARGET,
+                defaults={
+                    "name": "HubSpot Contact → Odoo Partner",
+                    "description": "Maps HubSpot CRM contact properties to Odoo res.partner fields.",
+                    "field_mappings": field_mappings,
+                    "is_active": True,
+                    "tenant": instruction.tenant,
+                },
+            )
+            action = "Created" if m_created else "Updated"
+            self.stdout.write(f"    {action} Mapping '{slug}' with {len(field_mappings)} field(s)")
+
+            im, im_created = InstructionMapping.objects.get_or_create(
+                instruction=instruction,
+                mapping=mapping,
+                defaults={"order": 1, "enabled": True},
+            )
+            if im_created:
+                self.stdout.write(f"    Linked InstructionMapping (instruction pk={instruction.pk})")
+            else:
+                self.stdout.write(f"    InstructionMapping already linked (pk={im.pk})")
+
         except Exception as exc:
             self.stderr.write(
                 self.style.WARNING(
-                    f"  Could not seed Mappings (may need to run migrations): {exc}"
+                    f"  Could not seed Mappings: {exc}"
                 )
             )
 

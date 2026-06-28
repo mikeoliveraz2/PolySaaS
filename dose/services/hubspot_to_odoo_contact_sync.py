@@ -132,15 +132,25 @@ class HubSpotToOdooContactSync(AtomicServiceBase):
     @staticmethod
     def _extract_contact_props(request) -> dict:
         """
-        Extract contact properties from the intercepted request body.
+        Extract contact properties from a request body.
 
-        HubSpot CRM API v3 shape:
-          POST /crm/v3/objects/contacts
-          { "properties": { "email": "...", "firstname": "...", ... } }
+        Handles all HubSpot payload shapes — both passthrough-intercepted API
+        calls and inbound workflow webhook payloads.
 
-        Legacy v1 shape:
-          POST /contacts/v1/contact
-          { "properties": [{"property": "email", "value": "..."}, ...] }
+        Shape 1 — v3 flat (CRM API and most workflow webhooks):
+            {"properties": {"email": "a@b.com", "firstname": "Ann", ...}}
+
+        Shape 2 — v3 nested (older workflow webhooks, properties with history):
+            {"properties": {"email": {"value": "a@b.com", "versions": [...]}, ...}}
+
+        Shape 3 — v1 list (legacy CRM API):
+            {"properties": [{"property": "email", "value": "a@b.com"}, ...]}
+
+        Shape 4 — flat root (some workflow "Send HTTP request" configs):
+            {"email": "a@b.com", "firstname": "Ann", ...}
+
+        Shape 5 — CRM event array (HubSpot webhook subscription API):
+            [{"subscriptionType": "contact.creation", "objectId": 123, ...}]
         """
         try:
             body_bytes = getattr(request, "body", None) or b""
@@ -150,27 +160,16 @@ class HubSpotToOdooContactSync(AtomicServiceBase):
         except Exception:
             data = {}
 
-        props: dict = {}
+        # Shape 5 — unwrap single-item CRM event array
+        if isinstance(data, list):
+            data = data[0] if data else {}
 
-        # v3 shape — properties is a dict
-        if isinstance(data.get("properties"), dict):
-            raw = data["properties"]
-            props["email"] = raw.get("email", "")
-            firstname = raw.get("firstname", "")
-            lastname = raw.get("lastname", "")
-            props["name"] = f"{firstname} {lastname}".strip() or raw.get("name", "")
-            props["phone"] = raw.get("phone", raw.get("mobilephone", ""))
-            props["company"] = raw.get("company", "")
-            props["jobtitle"] = raw.get("jobtitle", "")
-            props["website"] = raw.get("website", "")
-            props["address"] = raw.get("address", "")
-            props["city"] = raw.get("city", "")
-            props["zip"] = raw.get("zip", "")
-            props["country"] = raw.get("country", "")
+        raw_props = data.get("properties")
 
-        # v1 shape — properties is a list of {property, value} dicts
-        elif isinstance(data.get("properties"), list):
-            for item in data["properties"]:
+        # Shape 3 — v1 list
+        if isinstance(raw_props, list):
+            props: dict = {}
+            for item in raw_props:
                 key = item.get("property", "")
                 val = item.get("value", "")
                 if key == "email":
@@ -183,12 +182,42 @@ class HubSpotToOdooContactSync(AtomicServiceBase):
                     props["phone"] = val
                 elif key == "company":
                     props["company"] = val
-            # Build name from first+last
             fn = props.pop("_firstname", "")
             ln = props.pop("_lastname", "")
             props["name"] = f"{fn} {ln}".strip()
+            if not props.get("email") and not props.get("name"):
+                return {}
+            return props
 
-        # Discard if nothing useful
+        # Shape 1 / 2 — properties is a dict (flat or nested {value:...})
+        if isinstance(raw_props, dict):
+            def _val(v):
+                """Unwrap nested {value: ...} objects from older workflow format."""
+                return v["value"] if isinstance(v, dict) and "value" in v else v
+
+            raw = {k: _val(v) for k, v in raw_props.items()}
+
+        # Shape 4 — flat root (wrap and treat as v3 flat)
+        elif any(k in data for k in ("email", "firstname", "lastname", "phone")):
+            raw = data
+
+        else:
+            return {}
+
+        props = {}
+        props["email"] = raw.get("email", "")
+        firstname = raw.get("firstname", "")
+        lastname = raw.get("lastname", "")
+        props["name"] = f"{firstname} {lastname}".strip() or raw.get("name", "")
+        props["phone"] = raw.get("phone", raw.get("mobilephone", ""))
+        props["company"] = raw.get("company", "")
+        props["jobtitle"] = raw.get("jobtitle", "")
+        props["website"] = raw.get("website", "")
+        props["address"] = raw.get("address", "")
+        props["city"] = raw.get("city", "")
+        props["zip"] = raw.get("zip", "")
+        props["country"] = raw.get("country", "")
+
         if not props.get("email") and not props.get("name"):
             return {}
         return props
@@ -209,8 +238,8 @@ class HubSpotToOdooContactSync(AtomicServiceBase):
                 ).exists():
                     ctx = build_context_from_payload(contact_props)
                     mapped = apply_mappings_for_instruction(instruction_row, ctx)
-                    if mapped:
-                        logger.info("[HS→Odoo] Used Mapping engine: %d fields", len(mapped))
+                    if mapped and mapped.get("name"):
+                        logger.info("[HS\u2192Odoo] Used Mapping engine: %d fields", len(mapped))
                         return mapped
             except Exception as exc:
                 logger.warning("[HS→Odoo] Mapping engine error, falling back: %s", exc)
