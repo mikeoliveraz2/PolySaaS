@@ -17,6 +17,23 @@
         }
     }
 
+    function isProxyPath(path) {
+        var p = (path || '').toLowerCase();
+        return p.indexOf('/pt/polysniff/') === 0 || p.indexOf('/pt/admin/') === 0;
+    }
+
+    function getUpstreamActionPathHint() {
+        try {
+            if (typeof global.__PS_GET_UPSTREAM_PATH === 'function') {
+                return normalizeActionPath(global.__PS_GET_UPSTREAM_PATH());
+            }
+            if (typeof global.__PS_ORCH_ACTION_PATH === 'string' && global.__PS_ORCH_ACTION_PATH) {
+                return normalizeActionPath(global.__PS_ORCH_ACTION_PATH);
+            }
+        } catch (e) {}
+        return '';
+    }
+
     function getCsrfToken() {
         var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
         if (m) return decodeURIComponent(m[1]);
@@ -154,6 +171,13 @@
         var search = global.location.search || '';
         var m = browserPath.match(/\/pt\/admin\/[^/]+(\/.*)$/);
         var path = m ? m[1].replace(/\/$/, '') || '/' : spaPath;
+        var hintedPath = getUpstreamActionPathHint();
+        if (hintedPath && !isProxyPath(hintedPath)) {
+            path = hintedPath;
+        }
+        if (!m && !isProxyPath(browserPath) && isProxyPath(path)) {
+            path = browserPath;
+        }
         if (!m && path.indexOf('/pt/admin/') === 0) path = '/';
 
         var menuId = '';

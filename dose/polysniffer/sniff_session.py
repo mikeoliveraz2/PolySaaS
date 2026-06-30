@@ -64,4 +64,5 @@ def session_stop(request, endpoint_id: int):
     _ensure_tenant_schema(tenant)
     updated = TrafficCapture.objects.filter(tenant=tenant, is_active=True).update(is_active=False)
     request.session.pop(f"polysniffer_ep{endpoint_id}_capture_id", None)
+    request.session.pop(f"polysniffer_ep{endpoint_id}_mode", None)
     return JsonResponse({"ok": True, "stopped": updated})

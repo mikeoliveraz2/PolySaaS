@@ -8,9 +8,23 @@ for HTML + client-side rewrites in the same sniff session.
 """
 from __future__ import annotations
 
+import contextvars
 import re
 from typing import Iterable
 from urllib.parse import urlparse
+
+_hubspot_pt_request: contextvars.ContextVar = contextvars.ContextVar(
+    "hubspot_pt_request", default=None
+)
+
+
+def bind_hubspot_passthrough_request(request) -> None:
+    if request is not None:
+        _hubspot_pt_request.set(request)
+
+
+def get_hubspot_passthrough_request():
+    return _hubspot_pt_request.get()
 
 _HUBSPOT_APP_HOST_RE = re.compile(
     r"(?:https?:)?//((?:app(?:-[a-z0-9]+)?|local)\.hubspot\.com)",
@@ -29,6 +43,33 @@ _CDN_HOST_MARKERS = (
 
 _DEFAULT_APP_ORIGINS = (
     "https://app.hubspot.com",
+)
+
+# Global DB entry paths — never persisted as session landing (ephemeral auth hops).
+_GLOBAL_ENTRY_PATH_PREFIXES = (
+    "/login",
+    "/oauth",
+    "/signin",
+    "/signup",
+)
+
+# App workspace paths worth remembering after login (session-only floating endpoint).
+_LANDING_PATH_PREFIXES = (
+    "/user-guide/",
+    "/global-home/",
+    "/home-beta/",
+    "/home/",
+    "/contacts/",
+    "/companies/",
+    "/deals/",
+    "/service/",
+    "/reports/",
+    "/settings/",
+    "/marketing/",
+    "/sales/",
+    "/cms/",
+    "/dashboard/",
+    "/objects/",
 )
 
 
@@ -67,6 +108,117 @@ def is_hubspot_app_origin(origin: str) -> bool:
 
 def session_bases_key(endpoint_id: int) -> str:
     return f"hubspot_pt_bases_{endpoint_id}"
+
+
+def session_landing_key(endpoint_id: int) -> str:
+    return f"hubspot_pt_landing_{endpoint_id}"
+
+
+def global_entry_path(endpoint) -> str:
+    """Canonical pre-auth entry from DB (global startpoint only)."""
+    uri = (getattr(endpoint, "starting_uri", None) or "").strip()
+    if uri:
+        return uri if uri.startswith("/") else f"/{uri}"
+    return "/login/"
+
+
+def _normalize_landing_path(path: str) -> str:
+    p = (path or "").strip()
+    if not p:
+        return ""
+    if not p.startswith("/"):
+        p = "/" + p
+    if "?" in p:
+        p = p.split("?", 1)[0]
+    if "#" in p:
+        p = p.split("#", 1)[0]
+    return p.rstrip("/") or "/"
+
+
+def is_ephemeral_entry_path(path: str) -> bool:
+    """True for login/oauth hops — do not store as session landing."""
+    norm = _normalize_landing_path(path).lower()
+    if norm in ("", "/"):
+        return True
+    for prefix in _GLOBAL_ENTRY_PATH_PREFIXES:
+        if norm == prefix or norm.startswith(prefix + "/"):
+            return True
+    return False
+
+
+def is_persistable_landing_path(path: str) -> bool:
+    norm = _normalize_landing_path(path)
+    if not norm or is_ephemeral_entry_path(norm):
+        return False
+    low = norm.lower()
+    if any(low.startswith(p) for p in _LANDING_PATH_PREFIXES):
+        return True
+    # Portal-scoped paths: /something/<digits>
+    parts = [x for x in norm.split("/") if x]
+    if len(parts) >= 2 and parts[-1].isdigit():
+        return True
+    return False
+
+
+def load_session_landing_path(request, endpoint_id: int | None) -> str:
+    if request is None or endpoint_id is None:
+        return ""
+    try:
+        raw = request.session.get(session_landing_key(endpoint_id), "")
+        path = _normalize_landing_path(str(raw or ""))
+        return path if path and is_persistable_landing_path(path) else ""
+    except Exception:
+        return ""
+
+
+def remember_landing_path(request, endpoint_id: int | None, path: str) -> bool:
+    if request is None or endpoint_id is None:
+        return False
+    norm = _normalize_landing_path(path)
+    if not is_persistable_landing_path(norm):
+        return False
+    try:
+        request.session[session_landing_key(endpoint_id)] = norm
+        request.session.modified = True
+        return True
+    except Exception:
+        return False
+
+
+def remember_landing_from_location(request, endpoint_id: int | None, location: str) -> None:
+    if not location:
+        return
+    loc = location.strip()
+    if loc.startswith("/"):
+        remember_landing_path(request, endpoint_id, loc)
+        return
+    parsed = urlparse(loc)
+    if parsed.scheme and parsed.netloc:
+        remember_bases(request, endpoint_id, [f"{parsed.scheme}://{parsed.netloc}"])
+        if parsed.path:
+            remember_landing_path(request, endpoint_id, parsed.path)
+
+
+def preferred_upstream_origin(request, endpoint_id: int | None, endpoint_url: str) -> str:
+    """Prefer regional app host from session (app-na2…) over generic app.hubspot.com."""
+    bases = load_known_bases(request, endpoint_id, endpoint_url)
+    regional = sorted(
+        (b for b in bases if b.rstrip("/") != "https://app.hubspot.com"),
+        key=len,
+        reverse=True,
+    )
+    if regional:
+        return regional[0].rstrip("/")
+    configured = origin_from_url(endpoint_url)
+    return configured.rstrip("/") if configured else "https://app.hubspot.com"
+
+
+def resolve_hubspot_browse_subpath(request, endpoint, endpoint_id: int | None) -> str:
+    """Session landing first, then global DB entry (/login/)."""
+    landing = load_session_landing_path(request, endpoint_id)
+    if landing:
+        return landing
+    return global_entry_path(endpoint)
 
 
 def load_known_bases(request, endpoint_id: int | None, endpoint_url: str) -> set[str]:
@@ -124,14 +276,7 @@ def discover_origins_from_text(text: str) -> set[str]:
 
 
 def remember_from_location(request, endpoint_id: int | None, location: str) -> None:
-    if not location:
-        return
-    loc = location.strip()
-    if loc.startswith("/"):
-        return
-    origin = origin_from_url(loc)
-    if origin:
-        remember_bases(request, endpoint_id, [origin])
+    remember_landing_from_location(request, endpoint_id, location)
 
 
 def rewrite_location_through_proxy(location: str, proxy_prefix: str, known_bases: set[str]) -> str:

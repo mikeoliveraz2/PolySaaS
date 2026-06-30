@@ -142,12 +142,12 @@
                 <div class="mode-card{% if mode == 'native' %} selected{% endif %}" id="card-native">
                     <h3>Native</h3>
                     <p>Lightweight sniff embed — upstream content only, no orchestration bar.</p>
-                    <button type="button" class="btn btn-native" onclick="startSession('native')">Start native</button>
+                    <a class="btn btn-native" href="/dose/sniff/{{ endpoint_id }}/workspace/native/">Start native</a>
                 </div>
                 <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" id="card-passthrough">
                     <h3>Passthrough</h3>
                     <p>Full production chain — handlers, shim, orchestration bar, dynamic orchestration.</p>
-                    <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start passthrough</button>
+                    <a class="btn btn-pt" href="/dose/sniff/{{ endpoint_id }}/workspace/passthrough/">Start passthrough</a>
                 </div>
             </div>
             <div class="toolbar">
@@ -184,7 +184,7 @@
             {% if upstream_browse_url %}
             <div style="padding:6px 10px;font-size:0.72rem;background:#111827;border-top:1px solid #1f2937;">
                 Browse blank or SSO stuck?
-                <a id="browse-new-tab" href="{% if native_shell_url %}{{ native_shell_url }}{% elif passthrough_inline %}{{ passthrough_inline.passthrough_shell_base }}{{ browse_subpath }}{% else %}#{% endif %}" target="_blank" rel="noopener">Open in new tab</a> (last resort)
+                <a id="browse-new-tab" href="{% if passthrough_inline %}{{ passthrough_inline.passthrough_browse_base }}{{ browse_subpath }}{% elif native_shell_url %}{{ native_shell_url }}{% else %}#{% endif %}" target="_blank" rel="noopener">Open in new tab</a> (last resort)
                 &nbsp;|&nbsp;
                 Baseline: <a href="{{ upstream_browse_url }}" target="_blank" rel="noopener">direct upstream{{ browse_subpath }}</a>
             </div>
@@ -208,7 +208,12 @@
     const hasNativeInline = {% if native_inline %}true{% else %}false{% endif %};
     const hasPassthroughInline = {% if passthrough_inline %}true{% else %}false{% endif %};
     const ptBrowsePrefix = {% if passthrough_inline %}'{{ passthrough_inline.passthrough_browse_base|escapejs }}'{% else %}''{% endif %};
+    const ptBrowseUrl = {% if passthrough_inline %}'{{ passthrough_inline.passthrough_browse_base|escapejs }}{{ browse_subpath|escapejs }}'{% else %}''{% endif %};
     const nonPagePrefixes = {% if passthrough_inline %}{{ passthrough_inline.passthrough_non_page_prefixes_json|safe }}{% else %}[]{% endif %};
+
+    function shellUrlForMode(mode) {
+        return '/dose/sniff/' + epId + '/workspace/' + mode + '/';
+    }
 
     function workspaceShellUrl() {
         var sub = browseSubpath || '';
@@ -217,11 +222,16 @@
     }
 
     function nativeShellUrl() {
-        return workspaceShellUrl();
+        return shellUrlForMode('native');
     }
 
     function passthroughShellUrl() {
-        return workspaceShellUrl();
+        return shellUrlForMode('passthrough');
+    }
+
+    function navigateToShell(url) {
+        var sep = url.indexOf('?') >= 0 ? '&' : '?';
+        window.location.replace(url + sep + '_=' + Date.now());
     }
 
     function browseLabel(mode) {
@@ -232,10 +242,12 @@
 
     function refreshCaptureFrame(mode, force) {
         const cap = document.getElementById('capture-frame');
-        const wanted = captureFrameUrl + '?mode=' + encodeURIComponent(mode);
-        if (force || cap.getAttribute('data-ps-mode') !== mode) {
-            cap.setAttribute('data-ps-mode', mode);
-            cap.src = wanted + '&_=' + Date.now();
+        if (!cap) return;
+        const base = captureFrameUrl.split('?')[0];
+        const wanted = mode ? base + '?mode=' + encodeURIComponent(mode) : base;
+        if (force || cap.getAttribute('data-ps-mode') !== (mode || '')) {
+            cap.setAttribute('data-ps-mode', mode || '');
+            cap.src = wanted + (wanted.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now();
         }
     }
 
@@ -257,7 +269,7 @@
             if (nativeInline && hasNativeInline) {
                 nativeInline.style.display = '';
             } else if (!options.skipNavigate) {
-                window.location.href = nativeShellUrl();
+                navigateToShell(nativeShellUrl());
                 return;
             }
             if (newTab) newTab.href = nativeShellUrl();
@@ -267,10 +279,12 @@
             if (ptInline && hasPassthroughInline) {
                 ptInline.style.display = '';
             } else if (!options.skipNavigate) {
-                window.location.href = passthroughShellUrl();
+                navigateToShell(passthroughShellUrl());
                 return;
             }
-            if (newTab) newTab.href = passthroughShellUrl();
+            if (newTab) {
+                newTab.href = ptBrowseUrl || passthroughShellUrl();
+            }
         }
 
         refreshCaptureFrame(mode, !!options.forceCaptureReload);
@@ -279,58 +293,102 @@
     window.startSession = async function(mode) {
         const fd = new FormData();
         fd.append('mode', mode);
-        const r = await fetch('/dose/sniff/' + epId + '/session/start/', {
-            method: 'POST', body: fd, headers: {'X-CSRFToken': csrf}
-        });
-        const j = await r.json();
+        let r, j;
+        try {
+            r = await fetch('/dose/sniff/' + epId + '/session/start/', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: {'X-CSRFToken': csrf}
+            });
+            j = await r.json();
+        } catch (err) {
+            alert('Failed to start capture: ' + (err && err.message ? err.message : err));
+            return;
+        }
         if (!j.ok) {
             alert(j.error || 'Failed to start capture');
             return;
         }
         document.getElementById('session-status').textContent = 'Recording · ' + j.capture_name;
         if (mode === 'native') {
-            window.location.href = nativeShellUrl();
+            navigateToShell(nativeShellUrl());
             return;
         }
         if (mode === 'passthrough') {
-            window.location.href = passthroughShellUrl();
+            navigateToShell(passthroughShellUrl());
             return;
         }
         setModeUI(mode, { forceCaptureReload: true });
     };
 
     window.stopSession = async function() {
-        const r = await fetch('/dose/sniff/' + epId + '/session/stop/', {
-            method: 'POST', headers: {'X-CSRFToken': csrf}
-        });
-        const j = await r.json();
+        let r, j;
+        try {
+            r = await fetch('/dose/sniff/' + epId + '/session/stop/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'X-CSRFToken': csrf}
+            });
+            j = await r.json();
+        } catch (err) {
+            alert('Failed to stop: ' + (err && err.message ? err.message : err));
+            return;
+        }
         if (!j.ok) {
             alert(j.error || 'Failed to stop');
             return;
         }
-        document.getElementById('session-status').textContent = 'Capture stopped — pick a mode';
-        const nativeInline = document.getElementById('native-inline');
-        if (nativeInline) nativeInline.style.display = 'none';
-        const ptInline = document.getElementById('passthrough-inline');
-        if (ptInline) ptInline.style.display = 'none';
-        const cap = document.getElementById('capture-frame');
-        cap.removeAttribute('data-ps-mode');
-        const placeholder = document.getElementById('browse-placeholder');
-        if (placeholder) placeholder.style.display = '';
+        currentMode = '';
+        document.getElementById('session-status').textContent = 'Capture stopped — pick a mode above';
+        var ph = document.getElementById('browse-placeholder');
+        if (ph) ph.style.display = '';
+        var ni = document.getElementById('native-inline');
+        if (ni) ni.style.display = 'none';
+        var pt = document.getElementById('passthrough-inline');
+        if (pt) pt.style.display = 'none';
+        document.getElementById('card-native').classList.remove('selected');
+        document.getElementById('card-passthrough').classList.remove('selected');
+        document.getElementById('browse-label').textContent = 'Select a mode above';
+        refreshCaptureFrame('', true);
     };
 
     document.addEventListener('DOMContentLoaded', function() {
-        if (!currentMode) return;
+        if (hasPassthroughInline) {
+            var ph = document.getElementById('browse-placeholder');
+            if (ph) ph.style.display = 'none';
+            var pt = document.getElementById('passthrough-inline');
+            if (pt) pt.style.display = '';
+        } else if (hasNativeInline) {
+            var ph2 = document.getElementById('browse-placeholder');
+            if (ph2) ph2.style.display = 'none';
+            var ni = document.getElementById('native-inline');
+            if (ni) ni.style.display = '';
+        }
         const statusEl = document.getElementById('session-status');
         const isRecording = statusEl && statusEl.textContent.indexOf('Recording') >= 0;
-        if (isRecording) {
+        if (!currentMode && isRecording) {
+            currentMode = captureFrameUrl.indexOf('mode=passthrough') >= 0 ? 'passthrough' : 'native';
+        }
+        if (currentMode && isRecording) {
             setModeUI(currentMode, {
-                forceCaptureReload: false,
+                forceCaptureReload: true,
                 skipNavigate: hasNativeInline || hasPassthroughInline
             });
             return;
         }
-        startSession(currentMode);
+        if (!currentMode) return;
+        if (isRecording) {
+            setModeUI(currentMode, {
+                forceCaptureReload: true,
+                skipNavigate: hasNativeInline || hasPassthroughInline
+            });
+            return;
+        }
+        var path = window.location.pathname || '';
+        if (/\/workspace\/(native|passthrough)\/?$/.test(path)) {
+            startSession(currentMode);
+        }
     });
 
     function isPassthroughAssetPath(path) {
@@ -351,8 +409,10 @@
 
     document.addEventListener('click', function(ev) {
         if (currentMode !== 'passthrough') return;
+        if (!ptBrowsePrefix) return;
         var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
         if (!a) return;
+        if (a.id === 'browse-new-tab' || (a.getAttribute('target') || '').toLowerCase() === '_blank') return;
         try {
             var url = new URL(a.getAttribute('href'), window.location.origin);
             if (url.origin !== window.location.origin) return;
@@ -368,7 +428,7 @@
 </script>
 {% if passthrough_inline %}
 {% load static %}
-<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260611-8"></script>
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260629-2"></script>
 <script>if (window.PolySaaSOrchBar) { PolySaaSOrchBar.initEmbed(); }</script>
 {% endif %}
 {% endif %}

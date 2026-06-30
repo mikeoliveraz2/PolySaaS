@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import urlparse
 
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
@@ -51,6 +52,17 @@ def build_workspace_shell_guard_script(
   var PROXY = {proxy};
   var EP = {ep};
   var NON_PAGE = {prefixes};
+  // HubSpot login SPA treats /dose/sniff/.../workspace/login as an invalid magic-link path.
+  // Present /pt/polysniff/<id>/login/ to the browser before upstream scripts boot.
+  try {{
+    var p = window.location.pathname || '';
+    if (PROXY && p.indexOf('/dose/sniff/') >= 0 && p.indexOf('/workspace/') >= 0) {{
+      var tail = p.split('/workspace/')[1] || 'login/';
+      if (tail.charAt(0) === '/') tail = tail.slice(1);
+      if (tail.toLowerCase().indexOf('login') === 0 && tail.slice(-1) !== '/') tail += '/';
+      history.replaceState(null, '', PROXY + '/' + tail + window.location.search + window.location.hash);
+    }}
+  }} catch (e) {{}}
   function isNonPage(sub) {{
     var low = (sub || '').toLowerCase();
     if (!low || low.charAt(0) !== '/') low = '/' + (low || '');
@@ -193,6 +205,20 @@ def build_inline_passthrough_embed_context(
         endpoint_id,
         non_page_prefixes=np_prefixes,
     )
+    if handler is not None and hasattr(handler, "polysniffer_workspace_location_spoof_script"):
+        try:
+            canonical_host = urlparse(
+                getattr(endpoint, "endpoint_url", "") or "",
+            ).netloc.split(":")[0]
+            spoof = handler.polysniffer_workspace_location_spoof_script(
+                proxy_base,
+                shell_base,
+                canonical_host=canonical_host,
+            )
+            if spoof:
+                guard = mark_safe(f"{guard}{spoof}")
+        except Exception:
+            pass
     scoped_base = f'<base href="{proxy_base}/">'
     body_html = re.sub(
         r'(<div class="polysaas-passthrough-scope[^"]*"[^>]*>)',

@@ -161,6 +161,28 @@ def _repair_broken_proxy_cdn(html: str, proxy_prefix: str) -> str:
     return html
 
 
+def _rewrite_firealarm_scripts(html: str) -> str:
+    """
+    Rewrite FireAlarmUI script src tags to route through hs-asset-proxy.
+    The proxy patches window.location.hostname checks so HubSpot's LoginUI
+    validator sees app.hubspot.com instead of localhost.
+    Only FireAlarmUI bundles are proxied — all other CDN assets load directly.
+    """
+    from urllib.parse import quote as _quote
+
+    def _repl(m: re.Match) -> str:
+        src = m.group(1)
+        proxied = "/dose/hs-asset-proxy/?src=" + _quote(src, safe="")
+        return f'src="{proxied}"'
+
+    return re.sub(
+        r'src="(https://static(?:2)?\.hsappstatic\.net/FireAlarmUI/[^"]+\.js[^"]*)"',
+        _repl,
+        html,
+        flags=re.IGNORECASE,
+    )
+
+
 def _rewrite_hubspot_native_html(
     html: str,
     *,
@@ -221,15 +243,18 @@ def _rewrite_hubspot_native_html(
     html = re.sub(
         r"(action=)(['\"])(/[^'\"]*)",
         lambda m: (
-            f"{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}"
-            if not m.group(3).startswith("//") and not _is_cdn_url(m.group(3))
-            else m.group(0)
+        f"{m.group(1)}{m.group(2)}{proxy_prefix}{m.group(3)}{m.group(2)}"
+        if not m.group(3).startswith("//")
+        and not _is_cdn_url(m.group(3))
+        and not m.group(3).lower().startswith("/login")
+        else m.group(0)
         ),
         html,
         flags=re.IGNORECASE,
     )
 
     html = _repair_broken_proxy_cdn(html, proxy_prefix)
+    html = _rewrite_firealarm_scripts(html)
     return html
 
 
