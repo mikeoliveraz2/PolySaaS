@@ -85,16 +85,35 @@ def build_workspace_shell_guard_script(
     if (isNonPage(sub)) return null;
     return SHELL + sub + (search || '') + (hash || '');
   }}
+  function isBadPath(pathname) {{
+    // Catch undefined/null/empty paths that HubSpot SPA emits before routing is initialized.
+    var s = (pathname || '').replace(/\\/+/g, '/');
+    if (!s || s === '/') return false;
+    var parts = s.split('/');
+    for (var i = 0; i < parts.length; i++) {{
+      var seg = parts[i].toLowerCase();
+      if (seg === 'undefined' || seg === 'null' || seg === 'nan') return true;
+    }}
+    return false;
+  }}
   function guard(url) {{
     try {{
       var u = new URL(String(url || ''), window.location.origin);
       if (u.origin !== window.location.origin) return url;
+      // Normalize bad paths (undefined/null segments from uninitialized HubSpot routing)
+      // back to the workspace home rather than letting them escape to admin passthrough.
+      if (isBadPath(u.pathname)) {{
+        console.warn('[PS Guard] bad path segment in', u.pathname, '— redirecting to workspace home');
+        return SHELL + '/home/' + (u.search || '');
+      }}
       var target = shellUrl(u.pathname, u.search, u.hash);
       if (target) return target;
       if (u.pathname.indexOf('/dose/sniff/' + EP + '/workspace') === 0) return url;
       if (u.pathname.indexOf('/pt/admin/') === 0) {{
         var rest = u.pathname.replace(/^\\/pt\\/admin\\/[^/]+/, '') || '/';
         if (!rest || rest.charAt(0) !== '/') rest = '/' + rest;
+        // If admin passthrough rest is also bad/root, go to workspace home explicitly.
+        if (isBadPath(rest) || rest === '/') return SHELL + '/home/';
         if (!isNonPage(rest)) return SHELL + rest + (u.search || '') + (u.hash || '');
       }}
       var p = u.pathname || '/';
@@ -205,6 +224,27 @@ def build_inline_passthrough_embed_context(
         endpoint_id,
         non_page_prefixes=np_prefixes,
     )
+    
+    # Inject direct login flow detector (no more popup)
+    # This script detects when login succeeds and reloads the workspace
+    direct_login_script = f'''<script data-ps-direct-login="1">
+(function() {{
+  var ENDPOINT_ID = {endpoint_id};
+  var PROXY_PREFIX = "{proxy_base}";
+  
+  // Monitor for successful login redirect to dashboard
+  if (window.location.pathname.indexOf('/home/') >= 0 && 
+      PROXY_PREFIX && window.location.pathname.indexOf(PROXY_PREFIX) === 0) {{
+    console.log('[DirectLogin] Detected dashboard load, login successful');
+    // Reload to ensure all cookies are applied
+    setTimeout(function() {{
+      window.location.reload();
+    }}, 500);
+  }}
+}})();
+</script>'''
+    guard = mark_safe(f"{guard}{direct_login_script}")
+    
     if handler is not None and hasattr(handler, "polysniffer_workspace_location_spoof_script"):
         try:
             canonical_host = urlparse(

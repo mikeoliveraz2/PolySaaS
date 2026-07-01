@@ -209,6 +209,11 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
     in multi-tenant setups.
     """
 
+    def get_login_redirect_url(self, request):
+        from dose.account_adapter import CustomAccountAdapter
+
+        return CustomAccountAdapter().get_login_redirect_url(request)
+
     def pre_social_login(self, request, sociallogin):
         super().pre_social_login(request, sociallogin)
         u = sociallogin.user

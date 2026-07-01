@@ -69,8 +69,35 @@
 
 <script>
 (function() {
+    function getCookie(name) {
+        var value = '; ' + document.cookie;
+        var parts = value.split('; ' + name + '=');
+        if (parts.length === 2) {
+            return decodeURIComponent(parts.pop().split(';').shift());
+        }
+        return '';
+    }
+
+    function syncCsrfTokenToLoginForm() {
+        var form = document.querySelector('form[method="post"]');
+        if (!form) return;
+        var token = getCookie('csrftoken');
+        if (!token) return;
+
+        var input = form.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (!input) {
+            input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'csrfmiddlewaretoken';
+            form.prepend(input);
+        }
+        input.value = token;
+    }
+
     // Prefill credentials from sessionStorage if set by subscribe flow
     try {
+        syncCsrfTokenToLoginForm();
+
         var raw = sessionStorage.getItem('polysaas_new_user_creds');
         console.log('[AUTO-LOGIN] Checking for sessionStorage credentials...');
         console.log('[AUTO-LOGIN] sessionStorage raw:', raw);
@@ -107,6 +134,13 @@
             pwField.type = isHidden ? 'text' : 'password';
             eyeIcon.style.display = isHidden ? 'none' : 'block';
             eyeOffIcon.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    var loginForm = document.querySelector('form[method="post"]');
+    if (loginForm) {
+        loginForm.addEventListener('submit', function() {
+            syncCsrfTokenToLoginForm();
         });
     }
 

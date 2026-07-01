@@ -1,3 +1,7 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Waitress WhiteNoise static / orchestration button — commit 7d05920e
+# BINGO: Font and Theme Toggle — commit 1dcca3bd
+
 # Force import of AllauthCaseInsensitiveBackend to ensure module is loaded at startup (debugging)
 # Debug logging for Allauth authentication troubleshooting
 LOGGING = {
@@ -77,7 +81,7 @@ JAZZMIN_SETTINGS = {
         # external url that opens in a new window (Permissions can be added)
         {"name": "Support", "url": "https://github.com/farridav/django-jazzmin/issues", "new_window": True},
 
-        {"name": "Toggle light/dark", "url": "/admin/select-theme/", "permissions": ["auth.view_user"]},
+        {"name": "Toggle light/dark", "url": "#ps-theme-toggle", "permissions": ["auth.view_user"]},
 
         {"name": "API Docs", "url": "/swagger/", "new_window": True, "icon": "fas fa-book"},
         {"name": "Platform help", "url": "/help/", "permissions": ["auth.view_user"], "icon": "fas fa-life-ring"},
@@ -177,14 +181,24 @@ PLAN_MAX_APPS = {
     'polysaas-unlimited': None,
 }
 
-# Subscribe form keys: WordPress & PolySysMon each consume 2 slots toward PLAN_MAX_APPS
+# Subscribe form keys: Odoo, WordPress & PolySysMon each consume 2 slots toward PLAN_MAX_APPS
 PLAN_BUNDLED_APP_SLOTS = {
+    'enable_odoo': 2,
     'enable_wordpress': 2,
     'enable_polysysmon': 2,
 }
 
+# Subscribe page: only these bundled apps can be selected at signup (others shown disabled).
+SUBSCRIBE_ENABLED_BUNDLED_APPS = (
+    'enable_odoo',
+    'enable_nextcloud',
+    'enable_dolibarr',
+    'enable_mattermost',
+)
+
 # TenantApp.app_name values: same weights for in-product limits
 TENANT_APP_BUNDLED_SLOTS = {
+    'odoo': 2,
     'wordpress': 2,
     'polysysmon': 2,
 }
@@ -213,10 +227,11 @@ MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
 ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
-ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoodb')
+ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'polysaas_odoo')
 ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'pst13@me.com')
-# XML-RPC provisioning requires Administration/Access Rights — odooAdmin, not passthrough login
-ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin')
+# XML-RPC provisioning requires Administration/Access Rights.
+# Default changed from 'odooAdmin' to 'admin' (Odoo default). Override via ODOO_XMLRPC_ADMIN_LOGIN env var.
+ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'admin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
@@ -266,6 +281,10 @@ LLM_ROUTER_HEAVY_PROVIDER = env("LLM_ROUTER_HEAVY_PROVIDER", default="anthropic"
 LLM_ROUTER_HEAVY_MODEL = env("LLM_ROUTER_HEAVY_MODEL", default="claude-sonnet-4-6")
 # Phase 1: extra system text for staff PolySaaS AI admin chat (after platform link block).
 LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT = env.str("LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT", default="").strip()
+# BINGO: PolySaaS AI Context-Aware Chat — commit fd9febb8
+# PolySaaS AI chat (Geronimo) — default Gemini for context-aware co-pilot demo
+LLM_ROUTER_ADMIN_CHAT_PROVIDER = env("LLM_ROUTER_ADMIN_CHAT_PROVIDER", default="gemini")
+LLM_ROUTER_ADMIN_CHAT_MODEL = env("LLM_ROUTER_ADMIN_CHAT_MODEL", default="gemini-2.5-flash")
 # Phase 2: tenant MLPrompt.key — refine (two-step LLM) or inject (single-call) for admin chat.
 LLM_ROUTER_ML_STUDIO_REFINE_KEY = env("LLM_ROUTER_ML_STUDIO_REFINE_KEY", default="polysaas_admin_chat_refine")
 LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM = env.bool("LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM", default=True)
@@ -496,6 +515,7 @@ import os
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'mysite.debug_session_middleware.DebugSessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'mysite.csrf_exemption_middleware.CSRFExemptionMiddleware',
@@ -659,6 +679,9 @@ CSRF_TRUSTED_ORIGINS = [
 STATIC_URL = '/static/'
 STATIC_ROOT = 'var/static_root/'
 STATICFILES_DIRS = ['static']
+# Waitress (runall.ps1) does not serve static like runserver; WhiteNoise serves /static/.
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_KEEP_ONLY_HASHED_FILES = False
 
 # Media files for tenant logos
 MEDIA_URL = '/media/'

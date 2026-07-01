@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
+
 from dose.utils import get_current_tenant, get_current_tenant_role
 from dose.models import UserProfile, Tenant
 from django.db.models import Count, Max, Q
@@ -356,7 +359,16 @@ def admin_navigation(request):
             if not _hostname:
                 print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.endpoint_url}' — endpoint_url missing or invalid")
                 continue
-            url = f'/pt/admin/{_hostname}/'
+            url = f'/pt/dose/{_hostname}/'
+            try:
+                from dose.passthrough.registry import resolve_handler_for_endpoint
+                _nav_handler = resolve_handler_for_endpoint(endpoint)
+                if _nav_handler and hasattr(_nav_handler, 'passthrough_menu_url'):
+                    _menu_url = _nav_handler.passthrough_menu_url(request, endpoint)
+                    if _menu_url:
+                        url = _menu_url
+            except Exception as _nav_exc:
+                print(f"[ADMIN_NAV] passthrough_menu_url hook failed: {_nav_exc}")
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")
 
@@ -490,20 +502,24 @@ def admin_navigation(request):
         is_admin_context = _admin_path == '/admin' or _admin_path.startswith('/admin/')
 
         if is_admin_context:
-            # No /admin/ “dashboard” link and no DoseAI/AI URLs in the admin sidebar.
             top_navigation_items = [
-                {'name': 'Dose workspace', 'url': '/dose/dashboard/', 'icon': '📋'},
+                {'name': 'Home', 'url': '/dose/home/', 'icon': '🏠'},
                 {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
                 {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
             ]
+            if request.user.is_staff or request.user.is_superuser:
+                top_navigation_items.insert(1, {'name': 'Admin Panel', 'url': '/admin/', 'icon': '⚙️'})
         else:
             top_navigation_items = [
-                {'name': 'Dose workspace', 'url': '/dose/dashboard/', 'icon': '📊'},
-                {'name': 'Admin home (models)', 'url': '/admin/', 'icon': '📋'},
+                {'name': 'Home', 'url': '/dose/home/', 'icon': '🏠'},
+                {'name': 'Dashboard', 'url': '/dose/dashboard/', 'icon': '📊'},
+                {'name': 'About', 'url': '/dose/about/', 'icon': 'ℹ️'},
                 {'name': 'DoseAI Prompt & History', 'url': '/dose/doseai/', 'icon': '🤖'},
                 {'name': 'Switch Tenant', 'url': '/dose/switch-tenant/', 'icon': '🔄'},
                 {'name': 'Logout', 'url': '/dose/logout/', 'icon': '🚪'},
             ]
+            if request.user.is_staff or request.user.is_superuser:
+                top_navigation_items.insert(3, {'name': 'Admin Panel', 'url': '/admin/', 'icon': '⚙️'})
 
         # Add external services from 'External Services' NavigationPanel
         # Search across ALL schemas (schema-aware like PassThroughEndpoint)

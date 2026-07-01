@@ -1,5 +1,10 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Subscribe Behavior Enhanced — commit c9339777 -->
+<!-- BINGO: Production Preview demo — provisioning failure feedback — 2026-06-15 -->
 {% extends "dose/dosebase.html" %}
 {% load static %}
+{% block title %}PolySaaS Online{% endblock %}
+{% block header_title %}PolySaaS Online{% endblock %}
 {% block content %}
 
 <style>
@@ -79,6 +84,47 @@
     .plan-select-btn:hover { background: #e3f2fd; }
     .plan-card.selected .plan-select-btn:hover { background: #1565c0; }
 
+    /* ── App checkbox rows ── */
+    .app-checkbox-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5em;
+        gap: 0.5em;
+    }
+    .app-checkbox-row input[type="checkbox"] {
+        margin: 0;
+        flex-shrink: 0;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    .app-checkbox-row label {
+        font-weight: normal;
+        color: #555;
+        margin: 0;
+        cursor: pointer;
+        line-height: 1.4;
+    }
+    .app-slot-label {
+        color: #1976d2;
+        font-size: 0.85em;
+    }
+    .app-checkbox-row.app-unavailable {
+        opacity: 0.7;
+    }
+    .app-checkbox-row.app-unavailable input[type="checkbox"] {
+        cursor: not-allowed;
+    }
+    .app-checkbox-row.app-unavailable label {
+        cursor: not-allowed;
+        color: #888;
+    }
+    .app-coming-soon {
+        font-size: 0.82em;
+        color: #999;
+        font-style: italic;
+    }
+
     /* ── Slot advisory messages ── */
     #slot-advisory {
         margin: 0.5em 0; padding: 0.75em 1em; border-radius: 6px;
@@ -86,6 +132,54 @@
     }
     #slot-advisory.info { background: #e3f2fd; border: 1px solid #90caf9; color: #1565c0; }
     #slot-advisory.warn { background: #fff3e0; border: 1px solid #ffb74d; color: #e65100; }
+
+    /* Provisioning wait modal */
+    #subscribe-provisioning-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        background: rgba(15, 23, 42, 0.55);
+        align-items: center;
+        justify-content: center;
+        padding: 1.25rem;
+    }
+    #subscribe-provisioning-modal.is-visible {
+        display: flex;
+    }
+    #subscribe-provisioning-modal .spm-dialog {
+        max-width: 420px;
+        width: 100%;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+        padding: 1.75rem 1.5rem 1.5rem;
+        text-align: center;
+    }
+    #subscribe-provisioning-modal .spm-spinner {
+        width: 44px;
+        height: 44px;
+        margin: 0 auto 1rem;
+        border: 4px solid #e3f2fd;
+        border-top-color: #1976d2;
+        border-radius: 50%;
+        animation: spm-spin 0.85s linear infinite;
+    }
+    @keyframes spm-spin {
+        to { transform: rotate(360deg); }
+    }
+    #subscribe-provisioning-modal .spm-title {
+        margin: 0 0 0.65rem;
+        font-size: 1.15em;
+        font-weight: 700;
+        color: #1565c0;
+    }
+    #subscribe-provisioning-modal .spm-body {
+        margin: 0;
+        font-size: 0.98em;
+        line-height: 1.5;
+        color: #455a64;
+    }
 </style>
 
 <h2 style="text-align:center; margin-bottom:0.25em;">Subscribe to PolySaaS</h2>
@@ -137,41 +231,41 @@
             <span id="slot-count-label" style="font-size:0.82em; color:#888; margin-left:0.5em;"></span>
         </h4>
         <small style="display: block; color: #666; margin-bottom: 0.75em;">
-            Pick the applications you need. WordPress and PolySysMon each count as <strong>2 slots</strong>; all others count as 1.
+            Pick the applications you need. Odoo, WordPress and PolySysMon each count as <strong>2 slots</strong>; all others count as 1.
             A plan that fits will be recommended below.
             Bundled apps are queued after subscribe; you will get email when each is ready.
         </small>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-odoo" style="font-weight: normal; color: #555;">Odoo ERP <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" data-app-slots="2">
+            <label for="enable-odoo">Odoo ERP <span class="app-slot-label">(2 slots)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-nextcloud" style="font-weight: normal; color: #555;">Nextcloud File Storage <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox">
+            <label for="enable-nextcloud">Nextcloud File Storage <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-dolibarr" style="font-weight: normal; color: #555;">Dolibarr ERP/CRM <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox">
+            <label for="enable-dolibarr">Dolibarr ERP/CRM <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-mattermost" style="font-weight: normal; color: #555;">Mattermost Team Chat <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row">
+            <input type="checkbox" id="enable-mattermost" name="enable_mattermost" class="app-checkbox">
+            <label for="enable-mattermost">Mattermost Team Chat <span class="app-slot-label">(1 slot)</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
-            <label for="enable-wordpress" style="font-weight: normal; color: #555;">WordPress CMS <span style="color:#1976d2; font-size:0.85em;">(2 slots)</span></label>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
+            <label for="enable-wordpress">WordPress CMS <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-liferay" style="font-weight: normal; color: #555;">Liferay <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-liferay">Liferay <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" style="margin-right: 0.5em;">
-            <label for="enable-monitor-logger" style="font-weight: normal; color: #555;">Monitor Logger <span style="color:#1976d2; font-size:0.85em;">(1 slot)</span></label>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-monitor-logger" name="enable_monitor_logger" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-monitor-logger">Monitor Logger <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
         </div>
-        <div style="margin-bottom: 0.5em;">
-            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" style="margin-right: 0.5em;">
-            <label for="enable-polysysmon" style="font-weight: normal; color: #555;">PolySysMon <span style="color:#1976d2; font-size:0.85em;">(2 slots)</span></label>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
+            <label for="enable-polysysmon">PolySysMon <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
         </div>
         <div id="slot-advisory"></div>
     </div>
@@ -248,6 +342,17 @@
     <button type="submit" id="subscribe-btn" class="subscription-btn" disabled>Subscribe &amp; Pay</button>
     <div id="subscribe-hint" aria-live="polite"></div>
 </form>
+
+<div id="subscribe-provisioning-modal" role="dialog" aria-modal="true" aria-labelledby="subscribe-provisioning-title" aria-describedby="subscribe-provisioning-body" aria-hidden="true">
+    <div class="spm-dialog">
+        <div class="spm-spinner" aria-hidden="true"></div>
+        <h3 id="subscribe-provisioning-title" class="spm-title">Setting up your account</h3>
+        <p id="subscribe-provisioning-body" class="spm-body">
+            We are provisioning your accounts and bundled applications.
+            Please be patient — just a few moments longer.
+        </p>
+    </div>
+</div>
 
 {{ plan_max_apps|json_script:"ps-plan-max-apps" }}
 {{ plan_prices|json_script:"ps-plan-prices" }}
@@ -427,7 +532,21 @@ document.addEventListener('DOMContentLoaded', function() {
     checkFormFields();
 });
 
-/* ── Feedback helpers ─────────────────────────────────────────── */
+function showProvisioningModal() {
+    var modal = document.getElementById('subscribe-provisioning-modal');
+    if (!modal) return;
+    modal.classList.add('is-visible');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+
+function hideProvisioningModal() {
+    var modal = document.getElementById('subscribe-provisioning-modal');
+    if (!modal) return;
+    modal.classList.remove('is-visible');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+}
 
 function showSubscribeFeedback(message, options) {
     options = options || {};
@@ -444,9 +563,13 @@ function showSubscribeFeedback(message, options) {
         if (message) shown = true;
     }
     if (cardErr) {
-        if (useHtml) { cardErr.innerHTML = message || ''; } else { cardErr.textContent = message || ''; }
-        cardErr.style.color = message ? c : '';
-        if (message) shown = true;
+        if (isError) {
+            if (useHtml) { cardErr.innerHTML = message || ''; } else { cardErr.textContent = message || ''; }
+            cardErr.style.color = message ? c : '';
+        } else {
+            cardErr.innerHTML = '';
+            cardErr.textContent = '';
+        }
     }
     if (message && !shown) {
         var toast = document.getElementById('subscribe-fallback-toast');
@@ -594,7 +717,6 @@ document.addEventListener('input', function(e) {
     checkFormFields();
 });
 document.addEventListener('DOMContentLoaded', function() {
-    fieldIds.forEach(function(id) { validateField(id); });
     checkFormFields();
 });
 
@@ -602,16 +724,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 var stripeLoaded = false;
 var stripe, elements, card;
-try {
-    stripe = Stripe('{{ STRIPE_PUBLISHABLE_KEY }}');
-    elements = stripe.elements();
-    stripeLoaded = true;
-    card = elements.create('card', { hidePostalCode: true });
-    card.mount('#card-element');
-    card.on('change', function(event) {
-        document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
-    });
-} catch (e) {
+var _spk = '{{ STRIPE_PUBLISHABLE_KEY }}';
+if (_spk && _spk.indexOf('pk_') === 0) {
+    try {
+        stripe = Stripe(_spk);
+        elements = stripe.elements();
+        stripeLoaded = true;
+        card = elements.create('card', { hidePostalCode: true });
+        card.mount('#card-element');
+        card.on('change', function(event) {
+            document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
+        });
+    } catch (e) {
+        console.error('Stripe init error:', e);
+        document.getElementById('stripe-load-error').style.display = 'block';
+    }
+} else {
+    document.getElementById('stripe-load-error').textContent = 'Stripe is not configured. Card payment is unavailable (STRIPE_PUBLISHABLE_KEY missing).';
     document.getElementById('stripe-load-error').style.display = 'block';
 }
 
@@ -620,8 +749,12 @@ try {
 var subscribeSubmitInFlight = false;
 function resetSubscribeButton() {
     subscribeSubmitInFlight = false;
+    hideProvisioningModal();
     var b = document.getElementById('subscribe-btn');
-    if (b) b.disabled = false;
+    if (b) {
+        b.disabled = false;
+        b.textContent = 'Subscribe & Pay';
+    }
 }
 
 document.getElementById('subscription-form').addEventListener('submit', async function(e) {
@@ -660,7 +793,11 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
 
     showSubscribeFeedback('', {});
     subscribeSubmitInFlight = true;
-    if (btn) btn.disabled = true;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Processing…';
+    }
+    showProvisioningModal();
 
     var cardholderName = document.getElementById('card-name').value;
     var tenantName = document.getElementById('tenant-name').value;
@@ -707,6 +844,10 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_polysysmon: !!document.getElementById('enable-polysysmon').checked,
     };
 
+    try {
+        console.log('[subscribe] POST /dose/api/subscriptions/ payload:', payload);
+    } catch (e) {}
+
     var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
     if (!csrfInput || !csrfInput.value) {
         showSubscribeFeedback('Security token missing \u2014 refresh the page and try again.', { isError: true });
@@ -726,7 +867,16 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
             resetSubscribeButton(); if (card) card.clear(); return;
         }
         var data = null;
-        if (rawText) { try { data = JSON.parse(rawText); } catch (e) {} }
+        if (rawText) {
+            try {
+                data = JSON.parse(rawText);
+            } catch (e) {
+                try {
+                    console.warn('[subscribe] Non-JSON response (likely HTML error). status=' + response.status);
+                    console.warn(rawText.slice(0, 800));
+                } catch (e2) {}
+            }
+        }
 
         if (!response.ok) {
             var errMsg = data ? payloadErrorMessage(data) : null;
@@ -753,14 +903,45 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         var newPassword = document.getElementById('password') ? document.getElementById('password').value : '';
         try {
             sessionStorage.setItem('polysaas_new_user_creds', JSON.stringify({ u: newUsername, p: newPassword }));
+            // Store Mattermost credentials to restore after login (without team name)
+            if (data.mm_username && data.mm_password) {
+                sessionStorage.setItem('polysaas_mm_creds', JSON.stringify({
+                    username: data.mm_username,
+                    password: data.mm_password,
+                    email: data.mm_email || newUsername,
+                    mattermost_token: data.mm_token || ''
+                }));
+            }
         } catch(e) {}
-        var loginUrl = '/accounts/login/?next=/admin/';
-        var logoutThenLogin = '/accounts/logout/?next=' + encodeURIComponent(loginUrl);
-        showSubscribeFeedback(
-            'Subscription saved! <a href="' + logoutThenLogin + '" style="color:#1565c0;font-weight:700;text-decoration:underline;">Click here to log in</a> \u2014 redirecting in 4 seconds\u2026',
-            { isError: false, html: true }
+        var loginUrl = '/dose/login/?next=/admin/';
+        hideProvisioningModal();
+        var feedbackParts = ['Subscription saved!'];
+        if (data.trial_welcome) {
+            feedbackParts.push(data.trial_welcome);
+        }
+        if (data.provisioning_notice) {
+            feedbackParts.push(data.provisioning_notice);
+        }
+        var hasProvFailure = false;
+        if (data.provisioning_results && typeof data.provisioning_results === 'object') {
+            Object.keys(data.provisioning_results).forEach(function(k) {
+                var row = data.provisioning_results[k];
+                if (row && row.success === false) {
+                    hasProvFailure = true;
+                }
+            });
+        }
+        if (data.mm_provisioning_failed) {
+            hasProvFailure = true;
+        }
+        feedbackParts.push(
+            '<a href="' + loginUrl + '" style="color:#1565c0;font-weight:700;text-decoration:underline;">Click here to log in</a> \u2014 redirecting in 6 seconds\u2026'
         );
-        setTimeout(function() { window.location.assign(logoutThenLogin); }, 4000);
+        showSubscribeFeedback(
+            feedbackParts.join(' '),
+            { isError: hasProvFailure, html: true }
+        );
+        setTimeout(function() { window.location.assign(loginUrl); }, 6000);
     }).catch(function(err) {
         showSubscribeFeedback('Network error: ' + (err && err.message ? err.message : String(err)), { isError: true });
         resetSubscribeButton(); if (card) card.clear();

@@ -2670,6 +2670,12 @@ try {{
         base_js = json.dumps(base_origin.rstrip("/"))
         ps_display_mode = self._polysaas_display_mode(request)
         ps_display_mode_js = json.dumps(ps_display_mode)
+        from dose.passthrough.handlers.mm_theme_presets import (
+            MM_THEME_DARK_JSON,
+            MM_THEME_LIGHT_JSON,
+        )
+        mm_theme_dark_js = json.dumps(MM_THEME_DARK_JSON)
+        mm_theme_light_js = json.dumps(MM_THEME_LIGHT_JSON)
         print(
             f"[MM SHIM INJECT] token_len={len(token)} token_preview={token[:20] if token else 'NONE'} "
             f"user_id={mm_user_id!r} ps_display_mode={ps_display_mode}"
@@ -2682,6 +2688,8 @@ try {{
     var B = {base_js};
     var PROXY = {proxy_js};
     var PS_DISPLAY_MODE = {ps_display_mode_js};
+    var PS_MM_THEME_DARK_JSON = {mm_theme_dark_js};
+    var PS_MM_THEME_LIGHT_JSON = {mm_theme_light_js};
     console.log('[PolySaaS MM] PolySaaS display_mode (one-way theme sync):', PS_DISPLAY_MODE);
 
     // Error capture to diagnose composer crash
@@ -2945,6 +2953,129 @@ try {{
             }} catch(_e5) {{}}
         }}
         return tok;
+    }}
+
+    function _psEnsureMattermostThemeClientSide() {{
+        // Apply PolySaaS display mode theme to Mattermost
+        console.log('[PolySaaS MM] Theme sync starting...');
+        try {{
+            var mode = PS_DISPLAY_MODE || 'light';
+            var themePreset = (mode === 'dark') ? PS_MM_THEME_DARK_JSON : PS_MM_THEME_LIGHT_JSON;
+            
+            console.log('[PolySaaS MM] Display mode: ' + mode + ', Theme preset available: ' + (!!themePreset));
+            
+            if (!themePreset) {{
+                console.log('[PolySaaS MM] Theme preset not available');
+                return;
+            }}
+            
+            // Small delay to ensure Mattermost is fully loaded
+            setTimeout(function() {{
+                var applyTheme = function() {{
+                    // First attempt: use MM_USER_ID if available
+                    var userId = window.MM_USER_ID;
+                    console.log('[PolySaaS MM] MM_USER_ID from window: ' + userId);
+                    
+                    if (!userId && window.MM_REDUX && window.MM_REDUX.getState) {{
+                        try {{
+                            var state = window.MM_REDUX.getState();
+                            if (state.entities && state.entities.users && state.entities.users.currentUserId) {{
+                                userId = state.entities.users.currentUserId;
+                                console.log('[PolySaaS MM] MM_USER_ID from Redux: ' + userId);
+                            }}
+                        }} catch(_re) {{
+                            console.log('[PolySaaS MM] Redux access failed');
+                        }}
+                    }}
+                    
+                    if (!userId) {{
+                        console.log('[PolySaaS MM] Fetching user ID from API...');
+                        // Fallback: fetch user ID from API
+                        fetch(PROXY + '/api/v4/users/me', {{
+                            method: 'GET',
+                            credentials: 'include'
+                        }}).then(function(r) {{
+                            console.log('[PolySaaS MM] /users/me returned ' + r.status);
+                            if (r.ok) return r.json();
+                            throw new Error('Failed to fetch user');
+                        }}).then(function(user) {{
+                            userId = user.id;
+                            console.log('[PolySaaS MM] Got user ID from API: ' + userId);
+                            _applyThemeToUser(userId, themePreset);
+                        }}).catch(function(e) {{
+                            console.log('[PolySaaS MM] Could not fetch user ID:', e.message);
+                        }});
+                    }} else {{
+                        _applyThemeToUser(userId, themePreset);
+                    }}
+                }};
+                
+                var _applyThemeToUser = function(uid, preset) {{
+                    console.log('[PolySaaS MM] >>> _applyThemeToUser v2.2 (direct CSS override + localStorage)');
+                    var themeJson = JSON.stringify(preset);
+                    
+                    // CRITICAL: Set theme in localStorage FIRST
+                    try {{
+                        localStorage.setItem('storage:theme', themeJson);
+                        console.log('[PolySaaS MM] Theme set in localStorage (immediate)');
+                    }} catch(_lse) {{
+                        console.log('[PolySaaS MM] localStorage write failed:', _lse.message);
+                    }}
+                    
+                    // Also set sessionStorage (some Mattermost versions use this)
+                    try {{
+                        sessionStorage.setItem('storage:theme', themeJson);
+                        console.log('[PolySaaS MM] Theme set in sessionStorage');
+                    }} catch(_sse) {{
+                        console.log('[PolySaaS MM] sessionStorage write failed');
+                    }}
+                    
+                    // Directly inject CSS override for dark theme
+                    if (mode === 'dark') {{
+                        var darkCss = document.createElement('style');
+                        darkCss.id = 'ps-dark-theme-override';
+                        darkCss.innerHTML = `
+                            body {{ background-color: #1e1e1e !important; color: #ffffff !important; }}
+                            .app__body {{ background-color: #1e1e1e !important; }}
+                            .post-list {{ background-color: #1e1e1e !important; }}
+                            .sidebar {{ background-color: #2c2c2c !important; }}
+                            .post {{ background-color: #2c2c2c !important; color: #ffffff !important; }}
+                            .btn-tertiary {{ background-color: #3c3c3c !important; color: #ffffff !important; }}
+                            input, textarea {{ background-color: #2c2c2c !important; color: #ffffff !important; border-color: #444444 !important; }}
+                        `;
+                        document.head.appendChild(darkCss);
+                        console.log('[PolySaaS MM] Direct dark CSS override injected');
+                    }}
+                    
+                    // Set via API to persist to server
+                    var prefs = [
+                        {{'user_id': uid, 'category': 'theme', 'name': 'theme', 'value': themeJson}}
+                    ];
+                    
+                    fetch(PROXY + '/api/v4/users/' + uid + '/preferences', {{
+                        method: 'PUT',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify(prefs),
+                        credentials: 'include'
+                    }}).then(function(r) {{
+                        console.log('[PolySaaS MM] Preferences API returned status ' + r.status);
+                        if (r.ok) {{
+                            console.log('[PolySaaS MM] Theme persisted to server (' + mode + ')');
+                        }} else {{
+                            return r.text().then(function(txt) {{
+                                console.log('[PolySaaS MM] API error response: ' + txt.substring(0, 200));
+                            }});
+                        }}
+                    }}).catch(function(e) {{
+                        console.log('[PolySaaS MM] Theme API call failed:', e.message);
+                    }});
+                }};
+                
+                applyTheme();
+            }}, 500);
+        }} catch(_te) {{
+            console.log('[PolySaaS MM] Theme sync exception:', _te.message);
+        }}
     }}
     // Prevent bare Mattermost paths (e.g. /team/channels/town-square) escaping the proxy prefix.
     function _mmIsPolySaaSPath(p) {{
@@ -4696,7 +4827,21 @@ try {{
     window.addEventListener('unhandledrejection', function(e) {{
         console.error('[PolySaaS MM] Unhandled promise rejection:', e.reason);
     }});
+    
     console.log('[PolySaaS Mattermost] Full shim loaded, proxy=', PROXY);
+    console.log('[PolySaaS MM] TEST: Code reached after Full shim loaded');
+    
+    if (typeof _psEnsureMattermostThemeClientSide === 'function') {{
+        console.log('[PolySaaS MM] Theme function exists, calling it now');
+        try {{
+            _psEnsureMattermostThemeClientSide();
+            console.log('[PolySaaS MM] Theme function executed successfully');
+        }} catch(e) {{
+            console.log('[PolySaaS MM] Exception in theme function:', e.message);
+        }}
+    }} else {{
+        console.log('[PolySaaS MM] ERROR: Theme function not found. Type=', typeof _psEnsureMattermostThemeClientSide);
+    }}
 }})();
 </script>
 """
@@ -4710,18 +4855,24 @@ try {{
             return 'light'
 
         display_mode = 'light'
+        session_mode = 'light'
         if hasattr(request, 'session'):
-            display_mode = request.session.get('display_mode', 'light')
-        if request.COOKIES.get('display_mode'):
-            display_mode = request.COOKIES.get('display_mode', display_mode)
+            session_mode = str(request.session.get('display_mode', 'light') or 'light').strip().lower()
+            display_mode = session_mode
+
+        cookie_mode = str(request.COOKIES.get('display_mode', '') or '').strip().lower()
+        if cookie_mode and cookie_mode != 'system':
+            display_mode = cookie_mode
 
         display_mode = str(display_mode or 'light').strip().lower()
-        if display_mode == 'system':
-            display_mode = (
-                request.COOKIES.get('ps_theme_effective')
-                or request.COOKIES.get('display_mode')
-                or 'light'
-            ).strip().lower()
+        if cookie_mode == 'system' or display_mode == 'system':
+            effective = str(request.COOKIES.get('ps_theme_effective', '') or '').strip().lower()
+            if effective in ('light', 'dark'):
+                display_mode = effective
+            elif session_mode in ('light', 'dark'):
+                display_mode = session_mode
+            else:
+                display_mode = 'light'
         if display_mode not in ('light', 'dark'):
             display_mode = 'light'
 
@@ -4750,75 +4901,8 @@ try {{
         return display_mode
 
     def _sync_polysaas_theme_to_mattermost(self, request, endpoint_url: str, token: str) -> None:
-        """One-way sync: PolySaaS display_mode → Mattermost user theme on passthrough open."""
-        if not token or not endpoint_url:
-            return
-        try:
-            import requests as _req
-
-            from dose.passthrough.handlers.mm_theme_presets import (
-                MM_THEME_DARK_JSON,
-                MM_THEME_LIGHT_JSON,
-            )
-
-            mode = self._polysaas_display_mode(request)
-            sync_key = 'polysaas_mm_theme_sync_mode'
-            if request.session.get(sync_key) == mode:
-                print(f'[MM THEME] skip — already synced mode={mode}')
-                return
-
-            base = endpoint_url.rstrip('/')
-            headers = {
-                'Authorization': f'Bearer {token}',
-                'Content-Type': 'application/json',
-            }
-            extra = self._get_tenantapp_extra_config(request) or {}
-            user_id = (extra.get('mm_user_id') or '').strip()
-            if not user_id:
-                me = _req.get(f'{base}/api/v4/users/me', headers=headers, timeout=15)
-                if me.status_code != 200:
-                    print(f'[MM THEME] users/me failed HTTP {me.status_code}')
-                    return
-                user_id = (me.json() or {}).get('id') or ''
-            if not user_id:
-                print('[MM THEME] no Mattermost user_id — skip')
-                return
-
-            theme_json = MM_THEME_DARK_JSON if mode == 'dark' else MM_THEME_LIGHT_JSON
-            prefs = [
-                {
-                    'user_id': user_id,
-                    'category': 'theme',
-                    'name': 'enable_theme_sync',
-                    'value': 'false',
-                },
-                {
-                    'user_id': user_id,
-                    'category': 'theme',
-                    'name': '',
-                    'value': theme_json,
-                },
-            ]
-            resp = _req.put(
-                f'{base}/api/v4/users/{user_id}/preferences',
-                headers=headers,
-                json=prefs,
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                request.session[sync_key] = mode
-                try:
-                    request.session.modified = True
-                except Exception:
-                    pass
-                print(f'[MM THEME] synced Mattermost theme to PolySaaS mode={mode}')
-            else:
-                print(
-                    f'[MM THEME] preferences PUT HTTP {resp.status_code}: '
-                    f'{resp.text[:120]}'
-                )
-        except Exception as exc:
-            print(f'[MM THEME] sync error: {exc}')
+        """DISABLED: Server-side theme sync was causing regression. Reverting to Mattermost native theme behavior."""
+        return
 
     def _inject_client_shim(self, html, base_origin, request, proxy_prefix):
         """Inject early fetch guard then full Mattermost shim first in <head>."""

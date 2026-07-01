@@ -4,9 +4,6 @@ If the user belongs to multiple tenants, redirect to a picker page.
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: UI Cleanup — commit 748e871e
-from django.conf import settings
-from django.shortcuts import resolve_url
-
 from allauth.account.adapter import DefaultAccountAdapter
 
 DOSE_HOME = '/dose/home/'
@@ -14,10 +11,10 @@ DOSE_HOME = '/dose/home/'
 
 class CustomAccountAdapter(DefaultAccountAdapter):
     def get_login_redirect_url(self, request):
-        url = super().get_login_redirect_url(request)
+        """Unified login always lands on dose/home (ignore ?next= from legacy entry points)."""
         user = request.user
         if not user.is_authenticated:
-            return url
+            return DOSE_HOME
 
         from dose.models import UserTenantMembership
 
@@ -35,10 +32,4 @@ class CustomAccountAdapter(DefaultAccountAdapter):
 
             apply_tenant_to_session(request, memberships[0].tenant, memberships[0])
 
-        default_target = resolve_url(
-            getattr(settings, "LOGIN_REDIRECT_URL", DOSE_HOME) or DOSE_HOME
-        )
-        generic_targets = {default_target, "/", DOSE_HOME}
-        if url in generic_targets:
-            return DOSE_HOME
-        return url
+        return DOSE_HOME

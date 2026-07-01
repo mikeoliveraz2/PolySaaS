@@ -38,18 +38,25 @@ def non_page_path_prefixes(handler, request, upstream_path: str = "/") -> tuple[
     return tuple(ordered)
 
 
-def workspace_browse_subpath(handler, endpoint) -> str:
-    """First HTML page for PolySniffer workspace embed (endpoint.starting_uri, then handler hook)."""
-    uri = (getattr(endpoint, "starting_uri", None) or "").strip()
-    if uri:
-        return uri if uri.startswith("/") else f"/{uri}"
-    if handler is not None and hasattr(handler, "polysniffer_workspace_browse_subpath"):
+def workspace_browse_subpath(handler, endpoint, request=None) -> str:
+    """First HTML page for PolySniffer workspace embed."""
+    if handler is not None and hasattr(handler, "resolve_workspace_browse_subpath"):
         try:
-            sub = handler.polysniffer_workspace_browse_subpath(endpoint)
+            sub = handler.resolve_workspace_browse_subpath(request, endpoint)
             if sub:
                 return sub if sub.startswith("/") else f"/{sub}"
         except Exception:
             pass
+    if handler is not None and hasattr(handler, "polysniffer_workspace_browse_subpath"):
+        try:
+            sub = handler.polysniffer_workspace_browse_subpath(endpoint, request=request)
+            if sub:
+                return sub if sub.startswith("/") else f"/{sub}"
+        except Exception:
+            pass
+    uri = (getattr(endpoint, "starting_uri", None) or "").strip()
+    if uri:
+        return uri if uri.startswith("/") else f"/{uri}"
     return "/login/"
 
 

@@ -113,6 +113,8 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     return shim + html
 
 
+
+
 def rewrite_polysniff_response(response, *, endpoint_id: int, trigger: str, public_prefix: str):
     """Keep browser navigation on the PolySniffer public prefix (not /pt/admin/)."""
     admin_pf = admin_prefix(trigger)
@@ -156,6 +158,14 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
     subpath = path or ""
     if subpath and not subpath.startswith("/"):
         subpath = "/" + subpath
+
+    # Catch bad paths (undefined/null/nan) emitted by HubSpot SPA before routing is
+    # initialized — redirect to workspace home rather than falling through to admin passthrough.
+    _bad_segs = {"undefined", "null", "nan"}
+    if any(seg.lower() in _bad_segs for seg in (subpath or "").strip("/").split("/") if seg):
+        from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
+        from django.shortcuts import redirect as _redirect
+        return _redirect(f"{workspace_shell_prefix(endpoint_id)}/home/")
 
     pub = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
     request._polysniffer_endpoint_id = endpoint_id

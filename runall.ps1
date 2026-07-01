@@ -264,15 +264,92 @@ function Start-PolySaaSAIPeersBot {
     }
 }
 
+$CursorWorkerName = "PolySaaS-office"
+
+function Get-CursorWorkerProcesses {
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -match 'cursor-agent' -and $_.CommandLine -match 'worker'
+    }
+}
+
+function Resolve-CursorAgentCommand {
+    $cmd = Get-Command agent -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $default = Join-Path $env:LOCALAPPDATA "cursor-agent\agent.ps1"
+    if (Test-Path $default) { return $default }
+    return $null
+}
+
+function Start-PolySaaSCursorWorker {
+    param(
+        [string]$Root,
+        [string]$Name = $CursorWorkerName
+    )
+
+    $existing = @(Get-CursorWorkerProcesses)
+    if ($existing.Count -gt 0) {
+        $workerPid = $existing[0].ProcessId
+        Write-Host "Cursor worker already running (PID $workerPid, name $Name)" -ForegroundColor Green
+        return @{
+            Ok             = $true
+            Pid            = $workerPid
+            AlreadyRunning = $true
+            Name           = $Name
+        }
+    }
+
+    $agentCmd = Resolve-CursorAgentCommand
+    if (-not $agentCmd) {
+        Write-Host "WARNING: Cursor agent CLI not found -- tablet remote access unavailable" -ForegroundColor Red
+        Write-Host "  Install: irm 'https://cursor.com/install?win32=true' | iex" -ForegroundColor DarkYellow
+        return @{
+            Ok             = $false
+            Pid            = 0
+            AlreadyRunning = $false
+            Name           = $Name
+        }
+    }
+
+    Write-Host "Starting Cursor worker ($Name) for tablet remote access..." -ForegroundColor Green
+    Start-Process -FilePath "powershell.exe" `
+        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $agentCmd, "worker", "start", "--name", $Name `
+        -WorkingDirectory $Root `
+        -WindowStyle Hidden
+
+    Start-Sleep -Seconds 5
+    $running = @(Get-CursorWorkerProcesses)
+    if ($running.Count -ge 1) {
+        $workerPid = $running[0].ProcessId
+        Write-Host "Cursor worker running (PID $workerPid)" -ForegroundColor Green
+        Write-Host "  Tablet: https://cursor.com/agents (choose $Name)" -ForegroundColor Gray
+        return @{
+            Ok             = $true
+            Pid            = $workerPid
+            AlreadyRunning = $false
+            Name           = $Name
+        }
+    }
+
+    Write-Host "WARNING: Cursor worker did not start -- run: agent worker start --name `"$Name`"" -ForegroundColor Red
+    return @{
+        Ok             = $false
+        Pid            = 0
+        AlreadyRunning = $false
+        Name           = $Name
+    }
+}
+
 function Show-PolySaaSRunAllSummary {
     param(
         [int]$WaitressPid,
         [bool]$WaitressOk,
         [hashtable]$BotStatus,
+        [hashtable]$WorkerStatus,
         [int]$Port = 8000
     )
 
     $botOk = [bool]$BotStatus.Ok
+    $workerOk = [bool]$WorkerStatus.Ok
     $allOk = $WaitressOk -and $botOk
     $line = ('=' * 62)
 
@@ -299,6 +376,12 @@ function Show-PolySaaSRunAllSummary {
         Write-Host "    [WARN] AI Peers bot          $($BotStatus.Count) bot trees -- expect exactly 1" -ForegroundColor Red
     } else {
         Write-Host "    [FAIL] AI Peers bot          not running" -ForegroundColor Red
+    }
+
+    if ($workerOk) {
+        Write-Host ('    [OK]   Cursor worker         PID ' + $WorkerStatus.Pid + '  (' + $WorkerStatus.Name + ' -- tablet @ cursor.com/agents)') -ForegroundColor Green
+    } else {
+        Write-Host "    [WARN] Cursor worker         not running (tablet remote access unavailable)" -ForegroundColor DarkYellow
     }
 
     Write-Host ""
@@ -336,8 +419,9 @@ if (-not (Test-Path $WaitressExe)) {
 
 $waitressPid = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
 $botStatus = Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
+$workerStatus = Start-PolySaaSCursorWorker -Root $ProjectRoot -Name $CursorWorkerName
 
 $portOwners = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
 $waitressOk = ($portOwners.Count -eq 1)
 
-Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -Port $WaitressPort
+Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -WorkerStatus $workerStatus -Port $WaitressPort

@@ -7,6 +7,7 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 
 from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough
+from dose.polysniffer.views.sync_session import sync_hubspot_session
 
 
 @staff_member_required
@@ -19,6 +20,7 @@ def pt_polysniff_passthrough(request, endpoint_id: int, path: str = ""):
 app_name = "pt_polysniff"
 
 urlpatterns = [
+    path("<int:endpoint_id>/api/sync-session/", sync_hubspot_session, name="sync_session"),
     path("<int:endpoint_id>/", pt_polysniff_passthrough, {"path": ""}, name="root"),
     re_path(r"^(?P<endpoint_id>\d+)/(?P<path>.*)$", pt_polysniff_passthrough, name="subpath"),
 ]

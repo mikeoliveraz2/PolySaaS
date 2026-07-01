@@ -42,8 +42,8 @@ urlpatterns = [
     path('admin/polysaas-ai/', polysaas_ai_chat_page, name='admin_polysaas_ai'),
     path('admin/llm-router/chat-api/', admin_llm_router_chat_api, name='admin_llm_router_chat_api'),
     path('tenant/llm-router/chat-api/', tenant_llm_router_chat_api, name='tenant_llm_router_chat_api'),
-    # Single PolySaaS login — admin login redirects to allauth (preserves ?next=).
-    path('admin/login/', RedirectView.as_view(url='/accounts/login/', query_string=True)),
+    # Single PolySaaS login — admin login redirects to allauth (post-login → /dose/home/).
+    path('admin/login/', RedirectView.as_view(url='/accounts/login/', query_string=False)),
     path('admin/', admin.site.urls),
     path('dose/', include('dose.urls')),
     path('accounts/', include('allauth.urls')),

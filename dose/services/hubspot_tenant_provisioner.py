@@ -30,7 +30,7 @@ def _hubspot_endpoint_defaults(company_name: str) -> Dict[str, Any]:
         'menu_title': 'HubSpot',
         'menu_icon': 'hubspot',
         'menu_sort_order': 35,
-        'starting_uri': '/contacts/',
+        'starting_uri': '/login/',
     }
 
 

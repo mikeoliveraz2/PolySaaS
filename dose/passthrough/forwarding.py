@@ -364,6 +364,24 @@ def fetch_upstream_index_html(
             upstream_cookies = handler.filter_cookies_for_upstream(request, upstream_cookies)
         except Exception as _fc_exc:
             logger.warning("filter_cookies_for_upstream (fetch_upstream) failed: %s", _fc_exc)
+    
+    # Add stored HubSpot cookies from popup login (if available)
+    try:
+        # Extract endpoint_id from request
+        endpoint_id = getattr(request, '_polysniffer_endpoint_id', None) or getattr(request, '_endpoint_id', None)
+        
+        if endpoint_id:
+            session_key = f'hubspot_cookies_{endpoint_id}'
+            stored_hs_cookies = request.session.get(session_key, {})
+            if stored_hs_cookies and isinstance(stored_hs_cookies, dict):
+                # Merge stored cookies (they supplement but don't overwrite)
+                for k, v in stored_hs_cookies.items():
+                    if k not in upstream_cookies:
+                        upstream_cookies[k] = v
+                logger.debug('[COOKIE FORWARDING] Added %d stored HubSpot cookies for endpoint %s', len(stored_hs_cookies), endpoint_id)
+    except Exception as exc:
+        logger.debug('[COOKIE FORWARDING] Could not load stored HubSpot cookies: %s', exc)
+    
     if handler and hasattr(handler, "get_upstream_cookies"):
         try:
             extra = handler.get_upstream_cookies(request) or {}

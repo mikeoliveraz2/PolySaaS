@@ -204,39 +204,32 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
         if response is not None:
             return response
 
-    # Construct the upstream endpoint URL from the endpoint parameter
-    endpoint_url = f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint
-    print(f"[VIEW] Using generic forwarder for {endpoint} -> {endpoint_url}")
-    
-    # Lookup the actual PassThroughEndpoint ORM object to pass to handler.
-    # The handler needs self.endpoint to be set so proxy_prefix property works.
-    endpoint_obj = None
-    try:
-        # Try to find by endpoint_url (full URL) or by hostname match
-        host = urlparse(endpoint_url).netloc.lower()
-        print(f"[VIEW] Looking up PassThroughEndpoint by host: {host}")
-        endpoint_obj = PassThroughEndpoint.objects.filter(
-            endpoint_url__icontains=host
-        ).first()
-        if endpoint_obj:
-            print(f"[VIEW] Resolved endpoint_obj: {endpoint_obj.endpoint_url}")
-            # SET the endpoint on the handler so proxy_prefix works
-            if handler and hasattr(handler, 'endpoint'):
-                handler.endpoint = endpoint_obj
-                print(f"[VIEW] Set handler.endpoint to PassThroughEndpoint object")
-                if hasattr(handler, 'proxy_prefix'):
-                    print(f"[VIEW] Handler proxy_prefix is now: {handler.proxy_prefix}")
-            else:
-                print(f"[VIEW] Handler has no endpoint attr or handler is None")
-        else:
-            print(f"[VIEW] No PassThroughEndpoint found for host: {host}")
-            # List what we have for debugging
-            all_eps = PassThroughEndpoint.objects.all().values_list('endpoint_url', flat=True)
-            print(f"[VIEW] Available endpoints: {list(all_eps)}")
-    except Exception as e:
-        print(f"[VIEW] Could not resolve PassThroughEndpoint: {e}")
-        import traceback
-        traceback.print_exc()
+    # Look up PassThroughEndpoint by slug first — the slug IS the endpoint parameter.
+    # This gives us the real upstream URL stored at provisioning time.
+    from dose.models import PassThroughEndpoint as _PTE
+    endpoint_obj = _PTE.objects.filter(slug=endpoint, is_enabled=True).first()
+    if endpoint_obj:
+        endpoint_url = endpoint_obj.endpoint_url
+        print(f"[VIEW] Resolved by slug '{endpoint}' -> {endpoint_url}")
+        if handler and hasattr(handler, 'endpoint'):
+            handler.endpoint = endpoint_obj
+    else:
+        # Slug not found — fall back to treating endpoint as a hostname
+        endpoint_url = f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint
+        print(f"[VIEW] No slug match for '{endpoint}', falling back to {endpoint_url}")
+        try:
+            from urllib.parse import urlparse as _urlparse
+            host = _urlparse(endpoint_url).netloc.lower()
+            endpoint_obj = _PTE.objects.filter(endpoint_url__icontains=host).first()
+            if endpoint_obj:
+                endpoint_url = endpoint_obj.endpoint_url
+                if handler and hasattr(handler, 'endpoint'):
+                    handler.endpoint = endpoint_obj
+                print(f"[VIEW] Resolved by hostname '{host}' -> {endpoint_url}")
+        except Exception as _e:
+            print(f"[VIEW] Hostname fallback failed: {_e}")
+
+    print(f"[VIEW] Using generic forwarder for '{endpoint}' -> {endpoint_url}")
     
     return forward_request_standardized(request, endpoint_url, handler=handler, endpoint=endpoint_obj, trigger=endpoint)
 

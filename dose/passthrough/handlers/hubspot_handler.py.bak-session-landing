@@ -1,0 +1,406 @@
+# dose/passthrough/handlers/hubspot_handler.py
+"""
+HubSpot passthrough — proxy app.hubspot.com inside PolySaaS admin shell.
+
+Track A of HubSpot integration. API/OAuth for User Context Manager is separate.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from urllib.parse import urlparse
+
+from django.http import HttpResponse
+
+from dose.passthrough.handlers.handler_base import PassthroughHandlerBase, proxy_prefix_for_trigger_endpoint
+from dose.polysniffer.handlers.hubspot_bases import (
+    discover_origins_from_text,
+    load_known_bases,
+    remember_bases,
+    remember_from_location,
+    rewrite_location_through_proxy,
+)
+
+logger = logging.getLogger(__name__)
+
+_HUBSPOT_HOST_MARKERS = ('hubspot.com', 'hubspot.net')
+
+_BYPASS_PREFIXES = (
+    '/api/',
+    '/hs/',
+    '/hublytics/',
+    '/static/',
+    '/notifications/',
+    '/filemanager/',
+    '/webpack/',
+    '/webhooks/',
+)
+
+_PROXY_PATH_PREFIXES = (
+    '/contacts/',
+    '/companies/',
+    '/deals/',
+    '/service/',
+    '/tickets/',
+    '/reports/',
+    '/settings/',
+    '/marketing/',
+    '/sales/',
+    '/cms/',
+    '/preferences/',
+    '/home/',
+    '/login/',
+    '/oauth/',
+    '/account/',
+    '/user-guide/',
+    '/notifications/',
+    '/calling/',
+    '/payments/',
+    '/commerce/',
+    '/social/',
+    '/ads/',
+    '/email/',
+    '/automation/',
+    '/workflows/',
+    '/lists/',
+    '/sequences/',
+    '/forecasting/',
+    '/dashboard/',
+    '/global-home/',
+    '/objects/',
+)
+
+
+class HubspotPassthroughHandler(PassthroughHandlerBase):
+    """HubSpot web UI passthrough."""
+
+    _DJANGO_COOKIE_NAMES = frozenset({
+        'sessionid', 'csrftoken', 'messages', 'django_language',
+    })
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        blob = ' '.join([
+            str(getattr(endpoint, 'endpoint_url', '') or ''),
+            str(getattr(endpoint, 'slug', '') or ''),
+            str(getattr(endpoint, 'description', '') or ''),
+        ]).lower()
+        return 'hubspot' in blob or any(m in blob for m in _HUBSPOT_HOST_MARKERS)
+
+    def should_wrap_in_admin_template(self, request, upstream_path, **kwargs) -> bool:
+        low = (upstream_path or '').lower()
+        if any(low.startswith(p) for p in _BYPASS_PREFIXES):
+            return False
+        if self._is_static_asset(low):
+            return False
+        return True
+
+    def should_process_html_response(self, request, upstream_path, **kwargs) -> bool:
+        low = (upstream_path or '').lower()
+        if any(low.startswith(p) for p in _BYPASS_PREFIXES):
+            return False
+        if self._is_static_asset(low):
+            return False
+        return True
+
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        return {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+
+    def get_upstream_cookies(self, request) -> dict:
+        """Return HubSpot session cookies if available from browser (Track A passthrough)."""
+        try:
+            cookies = self.filter_cookies_for_upstream(request, dict(request.COOKIES))
+            if cookies:
+                return cookies
+        except Exception:
+            pass
+        return {}
+
+    def augment_outbound_headers(self, request, headers, target_url: str) -> None:
+        """Attach API token for proxied api.hubapi.com calls when tenant is connected."""
+        if 'api.hubapi.com' not in (target_url or ''):
+            return
+        try:
+            from dose.utils import get_current_tenant
+            from dose.services.hubspot_oauth import get_tenant_hubspot_app
+
+            tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+            ta = get_tenant_hubspot_app(tenant) if tenant else None
+            token = (ta.extra_config or {}).get('hs_access_token') if ta else None
+            if token:
+                headers['Authorization'] = f'Bearer {token}'
+        except Exception as exc:
+            logger.debug('[HubSpotHandler] augment_outbound_headers: %s', exc)
+
+    def _endpoint_id(self, request) -> int | None:
+        eid = getattr(request, '_polysniffer_endpoint_id', None)
+        if eid is not None:
+            try:
+                return int(eid)
+            except (TypeError, ValueError):
+                pass
+        endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
+        return int(endpoint.pk) if endpoint is not None and getattr(endpoint, 'pk', None) else None
+
+    def _effective_proxy_prefix(self, request, endpoint, endpoint_url: str | None = None) -> str:
+        pub = (getattr(request, '_polysniffer_proxy_prefix', None) or '').strip()
+        if pub:
+            return pub.rstrip('/')
+        if endpoint is not None:
+            return proxy_prefix_for_trigger_endpoint(endpoint).rstrip('/')
+        return self._proxy_prefix_from_url(endpoint_url or '').rstrip('/')
+
+    def _known_bases(self, request, endpoint_url: str) -> set[str]:
+        return load_known_bases(request, self._endpoint_id(request), endpoint_url or '')
+
+    def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
+        """Allow fetch_upstream_index_html to follow redirects internally so the final HTML (e.g., login page) is embedded."""
+        return True
+
+    def postprocess_upstream_response(self, resp, request, **context):
+        endpoint_url = context.get('endpoint_url') or ''
+        endpoint_id = self._endpoint_id(request)
+        proxy_prefix = self._effective_proxy_prefix(
+            request,
+            getattr(request, '_passthrough_endpoint', None) or self.endpoint,
+            endpoint_url,
+        )
+        known = self._known_bases(request, endpoint_url)
+
+        for hop in getattr(resp, 'history', None) or ():
+            remember_from_location(request, endpoint_id, hop.headers.get('Location', ''))
+            if hop.url:
+                remember_bases(request, endpoint_id, discover_origins_from_text(hop.url))
+
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get('Location', '')
+            remember_from_location(request, endpoint_id, location)
+            rewritten = rewrite_location_through_proxy(location, proxy_prefix, known)
+            if rewritten != location:
+                logger.info('[HubSpot] redirect %s -> %s', location, rewritten)
+                redirect = HttpResponse(status=resp.status_code)
+                redirect['Location'] = rewritten
+                for name, value in resp.headers.items():
+                    if name.lower() == 'set-cookie':
+                        redirect[name] = value
+                return redirect
+        return resp
+
+    def polysniffer_non_page_path_prefixes(self, request):
+        """HAR-derived API/asset families — see direct HAR and _BYPASS_PREFIXES."""
+        return _BYPASS_PREFIXES
+
+    def polysniffer_workspace_browse_subpath(self, endpoint):
+        """
+        PolySniffer workspace HTML entry (direct HAR baseline: /global-home/<portal_id>).
+        Prefer endpoint.starting_uri; else path on endpoint_url; else certified ep4 baseline.
+        """
+        uri = (getattr(endpoint, "starting_uri", None) or "").strip()
+        if uri:
+            return uri if uri.startswith("/") else f"/{uri}"
+        p = urlparse(getattr(endpoint, "endpoint_url", "") or "")
+        if p.path and p.path not in ("", "/"):
+            return p.path
+        return "/global-home/246571499"
+
+    def get_client_side_shim(self, proxy_prefix: str, known_bases: list[str]) -> str:
+        bases_js = json.dumps(known_bases)
+        return f"""
+<script data-hubspot-pt-shim="1">
+(function() {{
+  var PROXY_PREFIX = {json.dumps(proxy_prefix.rstrip('/'))};
+  var KNOWN_BASES = {bases_js};
+  function isAppHost(host) {{
+    if (!host) return false;
+    host = host.toLowerCase().split(':')[0];
+    if (host.indexOf('static.hsappstatic.net') >= 0) return false;
+    return host === 'app.hubspot.com' || host.indexOf('app-') === 0 || host === 'local.hubspot.com';
+  }}
+  function rememberOrigin(origin) {{
+    if (!origin || KNOWN_BASES.indexOf(origin) >= 0) return;
+    if (isAppHost(origin.replace(/^https?:\\/\\//, ''))) KNOWN_BASES.push(origin);
+  }}
+  function isAssetPath(path) {{
+    var low = (path || '').toLowerCase();
+    return low.indexOf('/api/') === 0 || low.indexOf('/hs/') === 0 || low.indexOf('/static/') === 0 ||
+      low.indexOf('/webpack/') === 0 || low.indexOf('/hublytics/') === 0 || low.indexOf('/notifications/') === 0;
+  }}
+  function workspaceNavUrl(url) {{
+    var shell = window.__PS_WORKSPACE_SHELL_PREFIX || '';
+    if (!shell) return url;
+    try {{
+      var parsed = new URL(url, window.location.origin);
+      if (parsed.origin !== window.location.origin) return url;
+      if (parsed.pathname.indexOf(PROXY_PREFIX) !== 0) return url;
+      var sub = parsed.pathname.slice(PROXY_PREFIX.length) || '/';
+      if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+      if (isAssetPath(sub)) return url;
+      return shell + sub + (parsed.search || '') + (parsed.hash || '');
+    }} catch (e) {{}}
+    return url;
+  }}
+  function rewriteUrl(url) {{
+    if (!url || url.indexOf(PROXY_PREFIX) === 0) return url;
+    try {{
+      var parsed = new URL(url, window.location.origin);
+      if (isAppHost(parsed.hostname)) {{
+        rememberOrigin(parsed.origin);
+        return PROXY_PREFIX + parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+      }}
+      if (parsed.origin === window.location.origin) {{
+        var path = parsed.pathname + (parsed.search || '');
+        if (path.indexOf(PROXY_PREFIX) === 0) return url;
+        if (path.charAt(0) === '/' && path.indexOf('/admin/') !== 0 && path.indexOf('/dose/') !== 0) {{
+          var low = path.toLowerCase();
+          if (low.indexOf('/api/') === 0 || low.indexOf('/hs/') === 0 || low.indexOf('/global-home/') === 0 ||
+              low.indexOf('/home') === 0 || low.indexOf('/login') === 0 || low.indexOf('/oauth') === 0) {{
+            return PROXY_PREFIX + path + (parsed.hash || '');
+          }}
+        }}
+      }}
+      for (var i = 0; i < KNOWN_BASES.length; i++) {{
+        var base = KNOWN_BASES[i];
+        if (url.indexOf(base) === 0) {{
+          return PROXY_PREFIX + url.slice(base.length);
+        }}
+      }}
+    }} catch (e) {{}}
+    return url;
+  }}
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {{
+    if (typeof input === 'string') input = rewriteUrl(input);
+    else if (input && input.url) {{
+      var u = rewriteUrl(input.url);
+      if (u !== input.url) input = new Request(u, input);
+    }}
+    return _fetch.apply(this, arguments);
+  }};
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {{
+    arguments[1] = rewriteUrl(url);
+    return _open.apply(this, arguments);
+  }};
+  function navigate(url) {{
+    var u = workspaceNavUrl(rewriteUrl(String(url || '')));
+    if (u) window.location.assign(u);
+  }}
+  var _assign = window.location.assign.bind(window.location);
+  var _replace = window.location.replace.bind(window.location);
+  window.location.assign = function(url) {{ _assign(workspaceNavUrl(rewriteUrl(String(url)))); }};
+  window.location.replace = function(url) {{ _replace(workspaceNavUrl(rewriteUrl(String(url)))); }};
+  try {{
+    var _hrefDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href');
+    if (_hrefDesc && _hrefDesc.set) {{
+      Object.defineProperty(window.location, 'href', {{
+        configurable: true,
+        get: function() {{ return _hrefDesc.get.call(window.location); }},
+        set: function(v) {{ _hrefDesc.set.call(window.location, workspaceNavUrl(rewriteUrl(String(v)))); }}
+      }});
+    }}
+  }} catch (e) {{}}
+  document.addEventListener('click', function(ev) {{
+    var el = ev.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var tgt = (a.getAttribute('target') || '').toLowerCase();
+    if (tgt === '_top' || tgt === '_parent') {{
+      ev.preventDefault();
+      navigate(a.href || a.getAttribute('href'));
+    }}
+  }}, true);
+  document.addEventListener('submit', function(ev) {{
+    var form = ev.target;
+    if (!form || !form.getAttribute) return;
+    var tgt = (form.getAttribute('target') || '').toLowerCase();
+    if (tgt === '_top' || tgt === '_parent') {{
+      form.setAttribute('target', '_self');
+      if (form.action) form.action = rewriteUrl(form.action);
+    }}
+  }}, true);
+}})();
+</script>
+"""
+
+    def process_html_response(self, html_str, request, endpoint_url=None, **context):
+        if not html_str:
+            return html_str
+        from dose.polysniffer.handlers.hubspot_native_sniff import _rewrite_hubspot_native_html
+
+        endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
+        endpoint_url = endpoint_url or getattr(endpoint, 'endpoint_url', '') or ''
+        prefix = self._effective_proxy_prefix(request, endpoint, endpoint_url)
+        base = self._base_from_url(endpoint_url)
+        endpoint_id = self._endpoint_id(request)
+        known = self._known_bases(request, endpoint_url)
+        html = _rewrite_hubspot_native_html(
+            html_str,
+            base_origin=base,
+            proxy_prefix=prefix,
+            handler=self,
+            known_bases=known,
+            request=request,
+            endpoint_id=endpoint_id,
+        )
+        shim = self.get_client_side_shim(prefix, sorted(known))
+        if 'data-hubspot-pt-shim="1"' not in html:
+            if re.search(r'(?i)<head[^>]*>', html):
+                html = re.sub(r'(?i)(<head[^>]*>)', r'\1' + shim, html, count=1)
+            else:
+                html = shim + html
+        return html
+
+    @staticmethod
+    def _proxy_prefix_from_url(endpoint_url: str) -> str:
+        if not endpoint_url:
+            return '/pt/admin/app.hubspot.com/'
+        host = urlparse(endpoint_url).netloc or 'app.hubspot.com'
+        return f'/pt/admin/{host}/'
+
+    @staticmethod
+    def _base_from_url(endpoint_url: str) -> str:
+        if not endpoint_url:
+            return 'https://app.hubspot.com'
+        p = urlparse(endpoint_url)
+        return f'{p.scheme}://{p.netloc}'
+
+    @staticmethod
+    def _is_static_asset(path: str) -> bool:
+        return bool(re.search(r'\.(js|css|map|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|json)(\?|$)', path, re.I))
+
+    def _rewrite_html(self, html: str, proxy_prefix: str, base: str) -> str:
+        prefix = proxy_prefix.rstrip('/')
+        bases = {base.rstrip('/')}
+        if 'app.hubspot.com' in base:
+            bases.add('https://app.hubspot.com')
+            bases.add('http://app.hubspot.com')
+
+        for b in bases:
+            html = html.replace(f'"{b}/', f'"{prefix}/')
+            html = html.replace(f"'{b}/", f"'{prefix}/")
+
+        def _abs_repl(match):
+            path = match.group(1)
+            if path.startswith('//') or ':' in path[:12]:
+                return match.group(0)
+            if not self._should_proxy_path(path, prefix):
+                return match.group(0)
+            return f'"{prefix}{path}"'
+
+        html = re.sub(r'"(/[^"\\s#?][^"]*)"', _abs_repl, html)
+        return html
+
+    def _should_proxy_path(self, path: str, proxy_prefix: str) -> bool:
+        if not path or not path.startswith('/'):
+            return False
+        if path.startswith(proxy_prefix):
+            return False
+        low = path.lower()
+        if any(low.startswith(p) for p in _BYPASS_PREFIXES):
+            return False
+        return any(low.startswith(p) for p in _PROXY_PATH_PREFIXES) or low in ('/', '/home', '/home/')
+
+
+# Register PolySniffer native sniff processor when handler module loads.
+import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402

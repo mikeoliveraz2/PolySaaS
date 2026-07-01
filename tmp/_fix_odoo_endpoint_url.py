@@ -1,0 +1,24 @@
+import django, os, sys
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+sys.path.insert(0, 'F:/PolySaaS')
+django.setup()
+
+from django.db import connection
+from dose.models import PassThroughEndpoint
+
+RENDER_ODOO = 'https://polysaas-odoo2.onrender.com'
+schemas = ['polysaasd110', 'plysaasd100', 'polysaast110']
+
+for schema in schemas:
+    with connection.cursor() as c:
+        c.execute(f'SET search_path TO "{schema}", public')
+    p = PassThroughEndpoint.objects.filter(slug='odoo').first()
+    if not p:
+        print(f'  {schema}: no odoo endpoint found')
+    elif p.endpoint_url != RENDER_ODOO:
+        old = p.endpoint_url
+        p.endpoint_url = RENDER_ODOO
+        p.save(update_fields=['endpoint_url'])
+        print(f'  FIXED {schema}: {old} -> {RENDER_ODOO}')
+    else:
+        print(f'  {schema}: already correct ({p.endpoint_url})')

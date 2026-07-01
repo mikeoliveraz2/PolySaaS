@@ -127,25 +127,63 @@
         });
     }
 
+    function handlePollData(data) {
+        updateEl.textContent = new Date().toLocaleTimeString();
+        if (!data || !data.success) {
+            sessionEl.textContent = (data && data.error) || 'poll failed';
+            return;
+        }
+        if (data.session_name) sessionEl.textContent = data.session_name;
+        if (data.warning) console.warn('PolySniffer poll:', data.warning);
+        addBatch(data.captures);
+    }
+
+    function pollViaXhr(url) {
+        return new Promise(function(resolve, reject) {
+            try {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.withCredentials = true;
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState !== 4) return;
+                    if (xhr.status < 200 || xhr.status >= 300) {
+                        reject(new Error('poll XHR HTTP ' + xhr.status));
+                        return;
+                    }
+                    try {
+                        resolve(JSON.parse(xhr.responseText || '{}'));
+                    } catch (e) {
+                        reject(new Error('poll XHR JSON parse failed'));
+                    }
+                };
+                xhr.onerror = function() { reject(new Error('poll XHR network error')); };
+                xhr.send();
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
     function poll() {
-        fetch(pollUrl + '?mode=' + encodeURIComponent(mode) + '&since_id=' + lastId, { credentials: 'same-origin' })
+        var url = pollUrl + '?mode=' + encodeURIComponent(mode) + '&since_id=' + lastId;
+        fetch(url, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' }
+        })
             .then(function(r) {
                 if (!r.ok) throw new Error('poll HTTP ' + r.status);
                 return r.json();
             })
-            .then(function(data) {
-                updateEl.textContent = new Date().toLocaleTimeString();
-                if (!data.success) {
-                    sessionEl.textContent = data.error || 'poll failed';
-                    return;
-                }
-                if (data.session_name) sessionEl.textContent = data.session_name;
-                if (data.warning) console.warn('PolySniffer poll:', data.warning);
-                addBatch(data.captures);
-            })
-            .catch(function(e) {
-                console.error('PolySniffer poll error:', e);
-                updateEl.textContent = 'error';
+            .then(handlePollData)
+            .catch(function(fetchErr) {
+                pollViaXhr(url)
+                    .then(handlePollData)
+                    .catch(function(xhrErr) {
+                        console.error('PolySniffer poll error:', fetchErr, '| fallback:', xhrErr);
+                        updateEl.textContent = 'error';
+                    });
             });
     }
     setInterval(poll, 1500);

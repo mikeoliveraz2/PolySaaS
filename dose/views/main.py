@@ -134,11 +134,9 @@ def debug_tenant_session(request):
 
 def index(request):
     if not request.user.is_authenticated:
-        from urllib.parse import urlencode
         from django.conf import settings
         login_base = settings.LOGIN_URL or '/accounts/login/'
-        login_url = f"{login_base}?{urlencode({'next': request.path})}"
-        return redirect(login_url)
+        return redirect(login_base)
     context, response = _build_landing_page_context(request)
     if response is not None:
         return response
@@ -824,12 +822,10 @@ def _build_landing_page_context(request):
             'external_services': [],
             'page_title': 'PolySaaS Industrial Strength SaaS for Limitless Horizons'
         }
-        if not request.user.is_authenticated:
-            from urllib.parse import urlencode
-            from django.conf import settings
-            login_base = settings.LOGIN_URL or '/accounts/login/'
-            login_url = f"{login_base}?{urlencode({'next': request.path})}"
-            return None, redirect(login_url)
+    if not request.user.is_authenticated:
+        from django.conf import settings
+        login_base = settings.LOGIN_URL or '/accounts/login/'
+        return None, redirect(login_base)
         context['tenant_prompt'] = True
         return context, None
 
@@ -1124,14 +1120,10 @@ def logout_view(request):
     return redirect('/')
 # Login view — legacy /dose/login/ redirects to unified PolySaaS allauth login.
 from django.shortcuts import redirect
-from urllib.parse import urlencode
 from django.conf import settings
 
 def login_view(request):
     login_base = settings.LOGIN_URL or '/accounts/login/'
-    next_url = request.GET.get('next') or request.POST.get('next') or ''
-    if next_url:
-        return redirect(f"{login_base}?{urlencode({'next': next_url})}")
     return redirect(login_base)
 # Debug tenant session view
 def debug_tenant_session(request):
