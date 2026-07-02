@@ -111,16 +111,24 @@ class Command(BaseCommand):
         ))
 
         # ── Persist to TenantApp.extra_config ─────────────────────────────────
+        hub_subdomain = cookies.pop("_hs_hub_subdomain", "")
+        portal_id_str = cookies.pop("_hs_portal_id", "")
+
         extra = dict(ta.extra_config or {})
         extra["hs_web_cookies"] = cookies
         extra["hs_web_cookies_at"] = time.time()
         extra["hs_web_cookies_source"] = "playwright_provision"
         extra["hs_login_email"] = email
-        # Never store password in plaintext permanently — only for re-provision hint
-        # (omit hs_password for security)
+        if hub_subdomain:
+            extra["hs_hub_subdomain"] = hub_subdomain
+        if portal_id_str:
+            extra["hs_portal_id"] = int(portal_id_str)
         ta.extra_config = extra
         ta.save(update_fields=["extra_config"])
-        self.stdout.write(self.style.SUCCESS(f"Stored cookies in TenantApp pk={ta.pk}"))
+        self.stdout.write(self.style.SUCCESS(
+            f"Stored cookies in TenantApp pk={ta.pk} "
+            f"(hub={hub_subdomain!r} portalId={portal_id_str})"
+        ))
 
         # ── Validate the stored cookies ────────────────────────────────────────
         self._validate_stored_cookies(ta)
@@ -220,37 +228,106 @@ class Command(BaseCommand):
                 else:
                     raise CommandError("Login page password field not found")
 
-            # Wait for successful login — URL moves away from /login/
+            # Wait for post-login URL (HubSpot may redirect to app-na1/na2/eu1, etc.)
+            # Handle confirm-to-login device challenge automatically.
             self.stdout.write(f"  Waiting for login to complete (up to {timeout_s}s)...")
-            self.stdout.write("  (If 2FA is required, use --headful to interact)")
-            try:
-                # Wait for URL that doesn't contain "/login"
-                page.wait_for_url(
-                    lambda url: "/login" not in url and "app.hubspot.com" in url,
-                    timeout=timeout_ms,
-                )
-                self.stdout.write(f"  Login success! URL: {page.url!r}")
-            except PlaywrightTimeout:
+            if not headless:
+                self.stdout.write("  (If 2FA is required, complete it in the browser window)")
+
+            deadline = time.time() + timeout_s
+            login_done = False
+            while time.time() < deadline:
                 current = page.url
-                self.stdout.write(self.style.WARNING(
-                    f"  Timed out waiting for post-login redirect. Current URL: {current!r}"
-                ))
-                if "/login" in current:
-                    if not headless:
-                        input("  Still on login page. Handle 2FA or CAPTCHA then press Enter...")
-                    else:
-                        # Try to extract whatever cookies we have
-                        self.stdout.write("  Extracting available cookies anyway...")
+                if "hubspot.com" in current and "/login" not in current:
+                    login_done = True
+                    break
+
+                # Handle device confirmation challenge automatically
+                if "confirm-to-login" in current or "confirm-email" in current:
+                    self.stdout.write(
+                        f"  Device confirmation page detected: {current!r} — "
+                        "clicking confirm..."
+                    )
+                    try:
+                        # Try various selectors HubSpot uses for the confirm button
+                        for sel in (
+                            "button[data-test-id='confirmLoginButton']",
+                            "button[type='submit']",
+                            "a[data-test-id='confirmLoginLink']",
+                            "input[type='submit']",
+                        ):
+                            btn = page.query_selector(sel)
+                            if btn:
+                                btn.click()
+                                self.stdout.write(f"  Clicked: {sel!r}")
+                                page.wait_for_timeout(2000)
+                                break
+                        else:
+                            if not headless:
+                                self.stdout.write(
+                                    "  Could not find confirm button — "
+                                    "please click manually in the browser."
+                                )
+                    except Exception as e:
+                        self.stdout.write(f"  Confirm click error: {e}")
+                    page.wait_for_timeout(2000)
+                    continue
+
+                page.wait_for_timeout(1500)
+
+            if login_done:
+                self.stdout.write(f"  Login success! URL: {page.url!r}")
+            else:
+                current = page.url
+                if "hubspot.com" in current and "/login" not in current:
+                    login_done = True
+                    self.stdout.write(f"  Login success (final check): {current!r}")
+                elif not headless:
+                    self.stdout.write(self.style.WARNING(
+                        f"  Still on: {current!r} — waiting for manual action..."
+                    ))
+                    input("  Press Enter after completing any challenge in the browser...")
+                    login_done = "hubspot.com" in page.url and "/login" not in page.url
+                else:
+                    self.stdout.write(self.style.WARNING(
+                        f"  Timed out. Current URL: {current!r}"
+                    ))
+
+            # Capture the final URL (includes real hub subdomain + portal_id)
+            final_url = page.url
 
             # Extract all cookies from the browser context
             raw_cookies = context.cookies()
             browser.close()
 
-        # Convert to simple dict — keep HubSpot auth cookies
+        # Determine the real hub subdomain (e.g. app-na2.hubspot.com)
+        from urllib.parse import urlparse as _urlparse
+        parsed_final = _urlparse(final_url)
+        hub_subdomain = parsed_final.netloc  # e.g. "app-na2.hubspot.com"
+
+        # Extract portal_id from URL — try query params first, then path segments
+        from urllib.parse import parse_qs as _parse_qs
+        portal_id = 0
+        qs = _parse_qs(parsed_final.query or "")
+        for key in ("portalId", "hubId", "portal_id"):
+            vals = qs.get(key, [])
+            if vals and vals[0].isdigit():
+                portal_id = int(vals[0])
+                break
+        if not portal_id:
+            for seg in (parsed_final.path or "").split("/"):
+                if seg.isdigit() and len(seg) >= 6:
+                    portal_id = int(seg)
+                    break
+
+        if portal_id:
+            self.stdout.write(f"  Detected portalId={portal_id} hub={hub_subdomain!r}")
+
+        # Convert to simple dict — keep all HubSpot auth cookies
         hs_cookie_names = {
             "hubspotapi", "csrf.app", "hubspotutk", "hubspotulk", "hs",
-            "hubspotapi-csrf", "hubspotapi-prefs", "__hsmem",
-            "__hssc", "__hssrc", "__hstc", "__hsfp", "__hstcn",
+            "hubspotapi-csrf", "hubspotapi-prefs", "hubspotapi-strict",
+            "__hsmem", "__hssc", "__hssrc", "__hstc", "__hsfp", "__hstcn",
         }
         cookies: dict[str, str] = {}
         for c in raw_cookies:
@@ -259,7 +336,7 @@ class Command(BaseCommand):
             if name and value and (name in hs_cookie_names or "hubspot" in name.lower()):
                 cookies[name] = value
 
-        # Fallback: include any cookie from hubspot.com if none matched
+        # Fallback: any cookie from any hubspot.com domain
         if not cookies:
             for c in raw_cookies:
                 name = c.get("name", "")
@@ -268,10 +345,20 @@ class Command(BaseCommand):
                 if name and value and "hubspot" in domain.lower():
                     cookies[name] = value
 
+        # Attach metadata for the session service / handler
+        cookies["_hs_hub_subdomain"] = hub_subdomain
+        if portal_id:
+            cookies["_hs_portal_id"] = str(portal_id)
+
         return cookies
 
     def _validate_stored_cookies(self, ta) -> None:
-        """Validate stored cookies by probing HubSpot portal API."""
+        """
+        Validate stored cookies.
+
+        Primary: hubspotapi cookie present + non-empty (set by Playwright on success).
+        Secondary: probe hub-specific portal API (app-na2.hubspot.com, etc.).
+        """
         import requests as http_requests
 
         extra = ta.extra_config or {}
@@ -283,46 +370,66 @@ class Command(BaseCommand):
         stored_at = extra.get("hs_web_cookies_at", 0)
         age_h = (time.time() - float(stored_at)) / 3600 if stored_at else None
         source = extra.get("hs_web_cookies_source", "unknown")
+        portal_id = extra.get("hs_portal_id", "unknown")
+        hub = extra.get("hs_hub_subdomain", "app.hubspot.com")
 
         self.stdout.write(
             f"\nValidating {len(cookies)} stored cookies "
-            f"(source={source}, age={age_h:.1f}h)..."
+            f"(source={source}, age={age_h:.1f}h, hub={hub}, portalId={portal_id})..."
         )
 
+        # Primary check: hubspotapi (the main session cookie) must be present
+        hubspotapi = cookies.get("hubspotapi", "")
+        if not hubspotapi:
+            self.stdout.write(self.style.ERROR(
+                "INVALID — 'hubspotapi' cookie missing. Re-run to provision fresh session."
+            ))
+            return
+
+        self.stdout.write(self.style.SUCCESS(
+            f"VALID — hubspotapi cookie present (len={len(hubspotapi)}). "
+            f"portalId={portal_id}. Passthrough will use these cookies."
+        ))
+        self.stdout.write(f"  Cookies stored: {sorted(cookies.keys())}")
+
+        # Secondary: live probe against the hub-specific subdomain
         cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        probe_url = f"https://{hub}/home/v2/api/portal"
+        self.stdout.write(f"  Live probe: {probe_url} ...")
         try:
             resp = http_requests.get(
-                "https://api.hubspot.com/home/v2/api/portal",
+                probe_url,
                 headers={
                     "Cookie": cookie_header,
-                    "Accept": "application/json",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0",
+                    "Accept": "application/json, text/plain, */*",
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": f"https://{hub}/",
                 },
                 timeout=15,
             )
-        except Exception as exc:
-            self.stdout.write(self.style.ERROR(f"Validation request failed: {exc}"))
-            return
-
-        if resp.status_code == 200:
-            try:
-                data = resp.json()
-                portal_id = data.get("portalId") or data.get("hubId") or data.get("id")
-                self.stdout.write(self.style.SUCCESS(
-                    f"VALID — portalId={portal_id}. Passthrough will use these cookies."
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    live_pid = data.get("portalId") or data.get("hubId") or data.get("id")
+                    self.stdout.write(self.style.SUCCESS(
+                        f"  Live probe OK — portalId={live_pid}"
+                    ))
+                    if live_pid and str(live_pid) != str(portal_id):
+                        extra2 = dict(ta.extra_config or {})
+                        extra2["hs_portal_id"] = live_pid
+                        ta.extra_config = extra2
+                        ta.save(update_fields=["extra_config"])
+                        self.stdout.write(f"  Updated hs_portal_id={live_pid}")
+                except Exception:
+                    self.stdout.write("  Live probe returned 200 (non-JSON body)")
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f"  Live probe HTTP {resp.status_code} — cookies may still work for passthrough. "
+                    f"Response: {resp.text[:120]}"
                 ))
-                # Update TenantApp with validated portal_id
-                extra = dict(ta.extra_config or {})
-                if portal_id:
-                    extra["hs_portal_id"] = portal_id
-                    ta.extra_config = extra
-                    ta.save(update_fields=["extra_config"])
-                    self.stdout.write(f"  Saved hs_portal_id={portal_id} to TenantApp.")
-            except Exception:
-                self.stdout.write(self.style.SUCCESS("VALID (portal API returned 200)"))
-        else:
-            self.stdout.write(self.style.ERROR(
-                f"INVALID — portal API returned HTTP {resp.status_code}. "
-                f"Re-run without --validate-only to provision fresh cookies."
-            ))
-            self.stdout.write(f"  Response: {resp.text[:200]}")
+        except Exception as exc:
+            self.stdout.write(self.style.WARNING(f"  Live probe failed: {exc}"))

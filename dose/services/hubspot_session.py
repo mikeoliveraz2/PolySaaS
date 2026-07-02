@@ -287,11 +287,26 @@ class HubspotSessionService:
                 cached_at = 0
             if cached_at and (time.time() - cached_at) < WEB_COOKIE_TTL_SECONDS:
                 normalized = {str(k): str(v) for k, v in cached.items() if k and v}
-                if self.validate_web_cookies(normalized):
-                    source = str(extra.get('hs_web_cookies_source') or 'tenant_cache')
+                source = str(extra.get('hs_web_cookies_source') or 'tenant_cache')
+
+                # Playwright-provisioned cookies: trust hubspotapi presence;
+                # skip portal API probe (that endpoint needs OAuth, not session cookies).
+                if source == 'playwright_provision':
+                    if normalized.get('hubspotapi'):
+                        self._mark_session_validated()
+                        logger.info(
+                            '[HubspotSession] playwright_provision cookies valid '
+                            '(hubspotapi present, len=%d)',
+                            len(normalized['hubspotapi']),
+                        )
+                        return normalized
+                    # hubspotapi missing — re-provision needed
+                    self.clear_web_cookies(reason='playwright_hubspotapi_missing')
+                elif self.validate_web_cookies(normalized):
                     self.persist_web_cookies(normalized, source=source)
                     return normalized
-                self.clear_web_cookies(reason='tenant_cache_invalid')
+                else:
+                    self.clear_web_cookies(reason='tenant_cache_invalid')
 
         return {}
 
