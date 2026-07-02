@@ -46,7 +46,7 @@ class HubspotSessionService:
     def __init__(self, request, *, endpoint_id: int | None = None):
         self.request = request
         self.endpoint_id = endpoint_id
-        self.tenant = self._resolve_tenant()
+        self.tenant = self._resolve_tenant(request)
         self.tenant_app = get_tenant_hubspot_app(self.tenant) if self.tenant else None
 
     @staticmethod
@@ -141,7 +141,10 @@ class HubspotSessionService:
         key = self._django_session_key()
         if not key:
             return {}
-        raw = self.request.session.get(key, {})
+        try:
+            raw = self.request.session.get(key, {})
+        except AttributeError:
+            return {}
         if not isinstance(raw, dict):
             return {}
         return {str(k): str(v) for k, v in raw.items() if k and v}
@@ -158,9 +161,13 @@ class HubspotSessionService:
 
     def _mark_session_validated(self) -> None:
         cache_key = self._validation_cache_key()
-        if cache_key:
+        if not cache_key:
+            return
+        try:
             self.request.session[cache_key] = time.time()
             self.request.session.modified = True
+        except AttributeError:
+            pass  # request has no session (management command context)
 
     @staticmethod
     def _cookie_header(cookies: Dict[str, str]) -> str:
