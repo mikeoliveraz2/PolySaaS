@@ -204,14 +204,15 @@
       _setState('Popup opened, waiting for sign-in', 'warn');
       _showInfo('Complete sign-in in the popup, then close it. The workspace will auto-continue to the HubSpot dashboard (capture starts automatically).');
       var poll = setInterval(function() {
-        if (!popup || popup.closed) {
-          clearInterval(poll);
-          _setState('Popup closed, validating session', 'warn');
-          _markBrowserLogin();
-          document.getElementById('ps-hs-dash').style.display = 'block';
-          _showInfo('Popup closed. Continuing to HubSpot dashboard now. If needed, use "Open HubSpot dashboard".');
-          setTimeout(_openDashboard, 300);
-        }
+        try {
+          if (popup && popup.closed) {
+            clearInterval(poll);
+            _setState('Popup closed, validating session', 'warn');
+            _markBrowserLogin();
+            document.getElementById('ps-hs-dash').style.display = 'block';
+            _showInfo('Popup closed. Click "Open HubSpot dashboard" when ready — PolySaaS will not auto-navigate.');
+          }
+        } catch (_pe) {}
       }, 500);
     });
 

@@ -1,0 +1,12 @@
+HubSpot->Odoo orchestration: schema fixes + end-to-end verified
+
+- Fixed olient.dose_tenantapp missing oauth_application_id column (migration
+  0023 skipped ALTER TABLE because information_schema check lacked table_schema
+  filter; col existed in public so olient was skipped)
+- Moved Odoo TenantApp from public to olient schema (tenant-scoped per isolation
+  rules; webhook search_path=olient,public was finding empty olient table and
+  falling back to localhost:8069 defaults)
+- End-to-end test PASSED: POST /dose/webhook/hubspot/olient/ ->
+  HubSpotToOdooContactSync -> res.partner id=34 created in Odoo on Render
+- Added diagnostic and test scripts in tmp/
+- Documented in HUBSPOT_ODOO_ORCHESTRATION_READY_2026-07-03.md

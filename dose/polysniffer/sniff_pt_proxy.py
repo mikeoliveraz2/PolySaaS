@@ -115,7 +115,14 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
 
 
 
-def rewrite_polysniff_response(response, *, endpoint_id: int, trigger: str, public_prefix: str):
+def rewrite_polysniff_response(
+    response,
+    *,
+    endpoint_id: int,
+    trigger: str,
+    public_prefix: str,
+    popup_login: bool = False,
+):
     """Keep browser navigation on the PolySniffer public prefix (not /pt/admin/)."""
     admin_pf = admin_prefix(trigger)
     replacements = (
@@ -135,7 +142,8 @@ def rewrite_polysniff_response(response, *, endpoint_id: int, trigger: str, publ
         body = response.content.decode("utf-8", errors="ignore")
         for old, new in replacements:
             body = body.replace(old, new)
-        body = _inject_workspace_client_capture(body, endpoint_id)
+        if not popup_login:
+            body = _inject_workspace_client_capture(body, endpoint_id)
         response.content = body.encode("utf-8")
         if "Content-Length" in response:
             response["Content-Length"] = len(response.content)
@@ -159,13 +167,22 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
     if subpath and not subpath.startswith("/"):
         subpath = "/" + subpath
 
+    popup_login = (request.GET.get("ps_hs_popup") or "").strip() == "1"
+
     # Catch bad paths (undefined/null/nan) emitted by HubSpot SPA before routing is
     # initialized — redirect to workspace home rather than falling through to admin passthrough.
     _bad_segs = {"undefined", "null", "nan"}
     if any(seg.lower() in _bad_segs for seg in (subpath or "").strip("/").split("/") if seg):
-        from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
         from django.shortcuts import redirect as _redirect
+
+        if popup_login:
+            pub_early = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
+            return _redirect(f"{pub_early}/home/")
+        from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
         return _redirect(f"{workspace_shell_prefix(endpoint_id)}/home/")
+
+    if popup_login:
+        request._polysniffer_popup_login = True
 
     pub = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
     request._polysniffer_endpoint_id = endpoint_id
@@ -194,4 +211,5 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
         endpoint_id=endpoint_id,
         trigger=trigger,
         public_prefix=pub,
+        popup_login=popup_login,
     )

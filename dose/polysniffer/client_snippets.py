@@ -1,8 +1,8 @@
 """
 Client-side script snippet to capture HubSpot popup session cookies.
 
-This script should be injected into the PolySniffer workspace shell.
-It monitors the popup login window and captures cookies when it closes.
+Injected into the PolySniffer workspace shell (passthrough embed guard head).
+Monitors popup login and calls sync-session when the popup closes.
 """
 
 POPUP_COOKIE_CAPTURE_SCRIPT = '''
@@ -12,57 +12,7 @@ POPUP_COOKIE_CAPTURE_SCRIPT = '''
   var SYNC_URL = '/pt/polysniff/' + ENDPOINT_ID + '/api/sync-session/';
   var popup = null;
   var originalOpen = window.open;
-  
-  // Intercept window.open to monitor popup lifecycle
-  window.open = function(url, name, features) {
-    console.log('[PSC] window.open intercepted:', url);
-    popup = originalOpen.apply(this, arguments);
-    
-    if (popup && url && url.indexOf('hubspot.com') >= 0) {
-      console.log('[PSC] HubSpot popup detected, monitoring for close...');
-      
-      var checkInterval = setInterval(function() {
-        try {
-          if (popup.closed) {
-            clearInterval(checkInterval);
-            console.log('[PSC] Popup closed, syncing session...');
-            syncSession();
-          }
-        } catch (e) {}
-      }, 500);
-      
-      // Also try to read cookies from popup when it finishes loading
-      setTimeout(function() {
-        if (!popup.closed && popup.location) {
-          try {
-            // This will fail if popup is on different domain (expected)
-            var popupCookies = popup.document.cookie;
-            if (popupCookies) {
-              console.log('[PSC] Read cookies from popup directly');
-              sendCookies(popupCookies);
-            }
-          } catch (e) {
-            console.log('[PSC] Cannot read popup cookies (expected - different domain):', e.message);
-          }
-        }
-      }, 3000);
-    }
-    
-    return popup;
-  };
-  
-  // Listen for postMessage from popup
-  window.addEventListener('message', function(event) {
-    try {
-      if (event.data && event.data.type === 'hubspot-cookies') {
-        console.log('[PSC] Received cookies via postMessage from popup');
-        sendCookies(event.data.cookies);
-      }
-    } catch (e) {
-      console.log('[PSC] postMessage handler error:', e);
-    }
-  });
-  
+
   function parseCookies(cookieString) {
     var cookies = {};
     if (!cookieString) return cookies;
@@ -83,62 +33,139 @@ POPUP_COOKIE_CAPTURE_SCRIPT = '''
     } catch (e) {}
     return cookies;
   }
-  
+
   function sendCookies(cookieString) {
     var cookies = typeof cookieString === 'string' ? parseCookies(cookieString) : (cookieString || {});
     if (Object.keys(cookies).length === 0) {
       console.log('[PSC] No cookies to send');
-      return;
+      return Promise.resolve(null);
     }
-    
+
     console.log('[PSC] Sending', Object.keys(cookies).length, 'cookies to', SYNC_URL);
-    
-    fetch(SYNC_URL, {
+
+    return fetch(SYNC_URL, {
       method: 'POST',
       credentials: 'same-origin',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({cookies: cookies})
+      body: JSON.stringify({cookies: cookies, action: 'store'})
     }).then(function(resp) {
       console.log('[PSC] Sync response:', resp.status);
-      if (resp.ok) {
-        // Reload the workspace to pick up the stored cookies
-        console.log('[PSC] Reloading workspace to apply stored cookies');
-        window.location.reload();
-      }
+      return resp.json().catch(function() { return {status: resp.status}; });
     }).catch(function(err) {
       console.log('[PSC] Sync failed:', err);
+      return null;
     });
   }
-  
+
+  function sessionValidated(data) {
+    // Trust server sync-session only — passthrough shim stubs /home/v2/api/portal
+    // with tenant portalId even when no web session cookies are stored.
+    return !!(data && data.validated && (data.count > 0 || data.harvested));
+  }
+
   function syncSession() {
-    // Attempt to detect when popup login succeeds and sync cookies
-    // This runs after popup closes
-    console.log('[PSC] Attempting to sync session after popup close...');
-    
-    // Make a request to a "detect auth" endpoint that can verify
-    // if the user is now authenticated on hubspot
-    fetch('/pt/polysniff/' + ENDPOINT_ID + '/home/v2/api/portal', {
-      method: 'GET',
-      credentials: 'same-origin'
+    console.log('[PSC] Sync after popup close — harvest then probe');
+    return fetch(SYNC_URL, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'after_popup'})
     }).then(function(resp) {
-      if (resp.ok) {
-        resp.json().then(function(data) {
-          if (data.portalId && data.portalId !== 0) {
-            console.log('[PSC] Auth successful, portalId:', data.portalId);
-            window.location.reload();
-          }
-        });
+      return resp.json().catch(function() { return {validated: false}; });
+    }).then(function(data) {
+      console.log('[PSC] after_popup result:', data);
+      if (sessionValidated(data)) {
+        return data;
       }
-    }).catch(function(e) {
-      console.log('[PSC] Auth check failed:', e);
+      return fetch(SYNC_URL, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'probe'})
+      }).then(function(r) {
+        return r.json().catch(function() { return {validated: false}; });
+      }).then(function(probe) {
+        console.log('[PSC] probe fallback result:', probe);
+        if (probe && probe.validated && probe.count > 0) {
+          return {status: 'probe', validated: true, count: probe.count, harvested: false};
+        }
+        return data;
+      });
     });
   }
-  
-  // Make endpoint_id globally available if not already set
+
+  window.__psSyncHubspotSession = syncSession;
+
+  window.open = function(url, name, features) {
+    console.log('[PSC] window.open intercepted:', url);
+    popup = originalOpen.apply(this, arguments);
+
+    if (popup && url && url.indexOf('hubspot.com') >= 0) {
+      if (document.getElementById('ps-hs-ov') || window.__ps_hs_overlay_owns_popup) {
+        console.log('[PSC] HubSpot popup opened — connect card owns close/sync');
+        return popup;
+      }
+      console.log('[PSC] HubSpot popup detected, monitoring for close...');
+
+      var checkInterval = setInterval(function() {
+        try {
+          if (popup.closed) {
+            clearInterval(checkInterval);
+            console.log('[PSC] Popup closed, syncing session...');
+            syncSession().then(function(data) {
+              console.log('[PSC] Popup closed sync result:', data);
+            });
+          }
+        } catch (e) {}
+      }, 500);
+
+      setTimeout(function() {
+        if (!popup || popup.closed) return;
+        try {
+          var popupCookies = popup.document.cookie;
+          if (popupCookies) {
+            console.log('[PSC] Read cookies from popup directly');
+            sendCookies(popupCookies);
+          }
+        } catch (e) {
+          console.log('[PSC] Cannot read popup cookies (expected - different domain):', e.message);
+        }
+      }, 3000);
+    }
+
+    return popup;
+  };
+
+  window.addEventListener('message', function(event) {
+    try {
+      if (event.origin !== window.location.origin) return;
+      if (event.data && event.data.type === 'hubspot-session-ready') {
+        console.log('[PSC] Session ready handshake from popup:', event.data);
+        if (event.data.validated) {
+          return fetch(SYNC_URL, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'probe'})
+          }).then(function(r) { return r.json(); }).then(function(data) {
+            console.log('[PSC] probe after handshake:', data);
+          });
+        }
+      }
+      if (event.data && event.data.type === 'hubspot-cookies') {
+        console.log('[PSC] Received cookies via postMessage from popup');
+        sendCookies(event.data.cookies);
+      }
+    } catch (e) {
+      console.log('[PSC] postMessage handler error:', e);
+    }
+  });
+
   if (!window.__polysniffer_endpoint_id && document.currentScript) {
     var src = document.currentScript.getAttribute('data-endpoint-id');
     if (src) {
       window.__polysniffer_endpoint_id = parseInt(src, 10);
+      SYNC_URL = '/pt/polysniff/' + window.__polysniffer_endpoint_id + '/api/sync-session/';
     }
   }
 })();

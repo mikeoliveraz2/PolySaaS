@@ -29,6 +29,23 @@ from dose.polysniffer.workspace_pt_redirect import (
 )
 
 
+def _hubspot_popup_sync_script(endpoint_id: int, proxy_prefix: str = '') -> str:
+    """Inject popup sync monitor for HubSpot passthrough workspace embeds."""
+    from dose.polysniffer.client_snippets import POPUP_COOKIE_CAPTURE_SCRIPT
+
+    proxy_js = json.dumps((proxy_prefix or '').rstrip('/'))
+    ep_script = (
+        f'<script>window.__polysniffer_endpoint_id={int(endpoint_id)};'
+        f'window.__polysniffer_proxy_prefix={proxy_js};</script>'
+    )
+    tagged = POPUP_COOKIE_CAPTURE_SCRIPT.replace(
+        '<script data-ps-popup-cookie-capture="1">',
+        f'<script data-ps-popup-cookie-capture="1" data-endpoint-id="{int(endpoint_id)}">',
+        1,
+    )
+    return ep_script + tagged
+
+
 def polysniff_proxy_prefix(endpoint_id: int) -> str:
     """Public PolySniffer passthrough prefix — /pt/polysniff/<id>."""
     return public_polysniff_prefix(endpoint_id).rstrip("/")
@@ -48,19 +65,24 @@ def build_workspace_shell_guard_script(
     ep = int(endpoint_id)
     return f"""<script data-ps-workspace-guard="1">
 (function() {{
+  if (window.name && window.name.indexOf('ps_hubspot_login_') === 0) return;
+  if (/[?&]ps_hs_popup=1(?:&|$)/.test(window.location.search || '')) return;
   var SHELL = {shell};
   var PROXY = {proxy};
   var EP = {ep};
   var NON_PAGE = {prefixes};
-  // HubSpot login SPA treats /dose/sniff/.../workspace/login as an invalid magic-link path.
-  // Present /pt/polysniff/<id>/login/ to the browser before upstream scripts boot.
+  // HubSpot login SPA validates window.location.pathname — strip the workspace shell prefix
+  // so the SPA sees /login/ (or /home/ etc.) rather than /dose/sniff/4/workspace/login/ or
+  // /pt/polysniff/4/login/ (neither of which HubSpot recognises as a valid app route).
+  // The location-spoof IIFE below handles hostname → app.hubspot.com.
   try {{
     var p = window.location.pathname || '';
-    if (PROXY && p.indexOf('/dose/sniff/') >= 0 && p.indexOf('/workspace/') >= 0) {{
+    if (p.indexOf('/dose/sniff/') >= 0 && p.indexOf('/workspace/') >= 0) {{
       var tail = p.split('/workspace/')[1] || 'login/';
       if (tail.charAt(0) === '/') tail = tail.slice(1);
       if (tail.toLowerCase().indexOf('login') === 0 && tail.slice(-1) !== '/') tail += '/';
-      history.replaceState(null, '', PROXY + '/' + tail + window.location.search + window.location.hash);
+      // Use '/' + tail (no proxy prefix) so HubSpot's SPA recognises the pathname.
+      history.replaceState(null, '', '/' + tail + window.location.search + window.location.hash);
     }}
   }} catch (e) {{}}
   function isNonPage(sub) {{
@@ -77,6 +99,33 @@ def build_workspace_shell_guard_script(
       if (/^(js|css|map|png|jpg|jpeg|gif|svg|ico|woff2?|json)$/.test(ext)) return true;
     }}
     return false;
+  }}
+  function isHubspotAppHost(host) {{
+    if (!host) return false;
+    host = String(host).toLowerCase().split(':')[0];
+    if (host.indexOf('static.hsappstatic.net') >= 0) return false;
+    return host === 'app.hubspot.com' || host.indexOf('app-') === 0 ||
+      host === 'api.hubspot.com' || host === 'local.hubspot.com';
+  }}
+  function isHubspotFirstPartyLoginUrl(url) {{
+    try {{
+      var u = new URL(String(url || ''), window.location.origin);
+      if (!isHubspotAppHost(u.hostname)) return false;
+      return /^\\/(login|oauth|signin|signup)(\\/|$)/i.test(u.pathname || '');
+    }} catch (e) {{}}
+    return false;
+  }}
+  function hubspotExternalToShell(url) {{
+    try {{
+      var u = new URL(String(url || ''));
+      if (!isHubspotAppHost(u.hostname)) return null;
+      var sub = u.pathname || '/';
+      if (sub.charAt(0) !== '/') sub = '/' + sub;
+      if (isNonPage(sub)) return PROXY + sub + (u.search || '') + (u.hash || '');
+      console.warn('[PS Guard] rewrite HubSpot escape', u.href, '-> shell', sub);
+      return SHELL + sub + (u.search || '') + (u.hash || '');
+    }} catch (e) {{}}
+    return null;
   }}
   function shellUrl(pathname, search, hash) {{
     if (!PROXY || pathname.indexOf(PROXY) !== 0) return null;
@@ -99,7 +148,11 @@ def build_workspace_shell_guard_script(
   function guard(url) {{
     try {{
       var u = new URL(String(url || ''), window.location.origin);
-      if (u.origin !== window.location.origin) return url;
+      if (u.origin !== window.location.origin) {{
+        var hsTarget = hubspotExternalToShell(u.href);
+        if (hsTarget) return hsTarget;
+        return url;
+      }}
       // Normalize bad paths (undefined/null segments from uninitialized HubSpot routing)
       // back to the workspace home rather than letting them escape to admin passthrough.
       if (isBadPath(u.pathname)) {{
@@ -148,6 +201,68 @@ def build_workspace_shell_guard_script(
     if (url) {{ var g = guard(url); if (g !== url) {{ _rep(state, title, g); return; }} }}
     return _rep.apply(history, arguments);
   }};
+  // HubSpot home-redirect-ui calls Location.prototype.assign/replace directly,
+  // bypassing window.location.assign patches — block full-page escape to app.hubspot.com.
+  try {{
+    var _locProto = window.Location && window.Location.prototype;
+    if (_locProto && !window.__PS_PROTO_NAV_GUARD) {{
+      window.__PS_PROTO_NAV_GUARD = true;
+      var _nativeAssign = _locProto.assign;
+      var _nativeReplace = _locProto.replace;
+      if (typeof _nativeAssign === 'function') {{
+        _locProto.assign = function(url) {{
+          return _nativeAssign.call(this, guard(url));
+        }};
+      }}
+      if (typeof _nativeReplace === 'function') {{
+        _locProto.replace = function(url) {{
+          return _nativeReplace.call(this, guard(url));
+        }};
+      }}
+    }}
+  }} catch (_png) {{}}
+  try {{
+    if (!window.__PS_OPEN_GUARD) {{
+      window.__PS_OPEN_GUARD = true;
+      var _winOpen = window.open;
+      function isPassthroughPopupLoginOpen(url, target) {{
+        if (target && String(target).indexOf('ps_hubspot_login_') === 0) return true;
+        try {{
+          var u = new URL(String(url || ''), window.location.origin);
+          if (/[?&]ps_hs_popup=1(?:&|$)/.test(u.search || '')) return true;
+        }} catch (_pp) {{}}
+        return false;
+      }}
+      window.open = function(url, target, features) {{
+        // Passthrough popup login must stay on /pt/polysniff/ — not workspace capture shell.
+        if (isPassthroughPopupLoginOpen(url, target)) {{
+          return _winOpen.apply(window, arguments);
+        }}
+        // HubSpot login popups must stay on app.hubspot.com (csrf.app is first-party only).
+        if (url && isHubspotFirstPartyLoginUrl(url)) {{
+          return _winOpen.apply(window, arguments);
+        }}
+        if (url) {{
+          var guarded = guard(url);
+          if (guarded !== url) {{
+            return _winOpen.call(window, guarded, target || '_blank', features);
+          }}
+        }}
+        return _winOpen.apply(window, arguments);
+      }};
+    }}
+  }} catch (_pog) {{}}
+  document.addEventListener('click', function(ev) {{
+    var el = ev.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var hsTarget = hubspotExternalToShell(a.href || a.getAttribute('href') || '');
+    if (hsTarget) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+      window.location.assign(hsTarget);
+    }}
+  }}, true);
   window.__PS_WORKSPACE_SHELL_PREFIX = SHELL;
 }})();
 </script>"""
@@ -224,27 +339,10 @@ def build_inline_passthrough_embed_context(
         endpoint_id,
         non_page_prefixes=np_prefixes,
     )
-    
-    # Inject direct login flow detector (no more popup)
-    # This script detects when login succeeds and reloads the workspace
-    direct_login_script = f'''<script data-ps-direct-login="1">
-(function() {{
-  var ENDPOINT_ID = {endpoint_id};
-  var PROXY_PREFIX = "{proxy_base}";
-  
-  // Monitor for successful login redirect to dashboard
-  if (window.location.pathname.indexOf('/home/') >= 0 && 
-      PROXY_PREFIX && window.location.pathname.indexOf(PROXY_PREFIX) === 0) {{
-    console.log('[DirectLogin] Detected dashboard load, login successful');
-    // Reload to ensure all cookies are applied
-    setTimeout(function() {{
-      window.location.reload();
-    }}, 500);
-  }}
-}})();
-</script>'''
-    guard = mark_safe(f"{guard}{direct_login_script}")
-    
+
+    if handler is not None and handler.__class__.__name__ == 'HubspotPassthroughHandler':
+        guard = mark_safe(f"{guard}{_hubspot_popup_sync_script(endpoint_id, proxy_base)}")
+
     if handler is not None and hasattr(handler, "polysniffer_workspace_location_spoof_script"):
         try:
             canonical_host = urlparse(

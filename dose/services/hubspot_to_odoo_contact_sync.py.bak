@@ -282,7 +282,7 @@ class HubSpotToOdooContactSync(AtomicServiceBase):
 
             tenant = getattr(request, "tenant", None)
             if tenant:
-                ta = TenantApp.objects.filter(tenant=tenant, app_name="odoo").first()
+                ta = TenantApp.objects.filter(tenant=tenant, app_slug="odoo").first()
                 if ta and isinstance(getattr(ta, "extra_config", None), dict):
                     ec = ta.extra_config
                     if ec.get("odoo_url"):

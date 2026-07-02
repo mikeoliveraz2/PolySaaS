@@ -76,6 +76,8 @@ def workspace_redirect_for_pt_response(
     trigger: str = "",
     handler=None,
 ) -> HttpResponse | None:
+    if (request.GET.get("ps_hs_popup") or "").strip() == "1":
+        return None
     if not is_workspace_html_navigation(request, path, handler=handler):
         return None
 

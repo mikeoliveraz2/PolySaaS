@@ -572,6 +572,21 @@ def forward_request_standardized(request, endpoint_url, handler=None, endpoint=N
             if not clean.startswith("/"):
                 clean = "/" + clean
             upstream_path = clean
+            # Strip PolySaaS-internal query params (e.g. ps_hs_popup) before sending to upstream.
+            # The handler hook keeps ps_hs_* for our guards while removing them from the URL HubSpot sees.
+            if handler and hasattr(handler, 'filter_query_params_for_upstream'):
+                try:
+                    from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
+                    _scheme, _netloc, _path, _query, _frag = urlsplit(clean)
+                    if _query:
+                        _qdict = {k: v[0] if v else '' for k, v in parse_qs(_query, keep_blank_values=True).items()}
+                        _filtered = handler.filter_query_params_for_upstream(request, _qdict)
+                        _new_q = urlencode(_filtered, doseq=False) if _filtered else ''
+                        clean = urlunsplit((_scheme, _netloc, _path, _new_q, _frag)) if _new_q else urlunsplit((_scheme, _netloc, _path, '', _frag))
+                        if not clean.startswith('/'):
+                            clean = '/' + clean.lstrip('/')
+                except Exception as _qp_exc:
+                    logger.warning("filter_query_params_for_upstream failed: %s", _qp_exc)
             target_url = _resolve_upstream_target_url(endpoint_url, clean, handler=handler)
             print(f"PASSTHROUGH -> {full_path} -> {target_url}")
         else:

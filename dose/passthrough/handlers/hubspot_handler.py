@@ -33,7 +33,7 @@ from dose.polysniffer.handlers.hubspot_bases import (
 
 logger = logging.getLogger(__name__)
 
-_HS_OVERLAY_VER = "2026-06-30b"
+_HS_OVERLAY_VER = "2026-07-02-phase5-popup-d"
 
 # BINGO: HubSpot direct popup login restored on 2026-06-29.
 # Freeze rule: do not change popup open behavior unless explicitly requested.
@@ -55,6 +55,14 @@ _BYPASS_PREFIXES = (
     '/webpack/',
     '/webhooks/',
 )
+
+_PORTAL_BOOTSTRAP_MARKERS = (
+    '/home/v2/api/portal',
+    '/home/v2/api/no-intended-portal',
+)
+
+_PORTAL_PLACEHOLDER_ID = 246571499
+_HS_LOGIN_PORTAL_ID = 246571499
 
 _PROXY_PATH_PREFIXES = (
     '/contacts/',
@@ -123,45 +131,180 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             return False
         return True
 
-    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
-        return {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+    @staticmethod
+    def _portal_session_key(endpoint_id: int | None) -> str:
+        return f'hs_portal_id_{endpoint_id or 0}'
 
-    def get_upstream_cookies(self, request) -> dict:
-        """Return HubSpot session cookies if available from browser (Track A passthrough).
-        
-        Also checks for stored cookies from popup sync (sync-session endpoint).
-        Popup cookies take priority if both exist.
-        """
-        self._bind_hubspot_request(request)
-        cookies = {}
-        
-        # First, try to get stored popup session cookies from Django session
+    @classmethod
+    def _is_portal_bootstrap_path(cls, path_or_url: str) -> bool:
+        low = (path_or_url or '').lower()
+        path_only = low.split('?', 1)[0].rstrip('/')
+        if any(marker in path_only for marker in _PORTAL_BOOTSTRAP_MARKERS):
+            return True
+        # HubSpot home-redirect-ui also calls GET /home/v2/api?portalId=… (no /portal suffix).
+        return path_only.endswith('/home/v2/api')
+
+    @classmethod
+    def _extract_portal_id_from_url(cls, url: str) -> int:
+        raw = (url or '').strip()
+        if not raw:
+            return 0
         try:
-            eid = self._endpoint_id(request)
-            session_key = f'hubspot_cookies_{eid}'
-            stored_cookies = request.session.get(session_key, {})
-            if stored_cookies and isinstance(stored_cookies, dict):
-                cookies.update(stored_cookies)
-                logger.warning('[HubSpotHandler] Retrieved %d stored cookies from popup sync for eid=%s', len(stored_cookies), eid)
-        except Exception as e:
-            logger.debug('[HubSpotHandler] Failed to get stored cookies: %s', e)
-        
-        # Second, try to get cookies from browser request (may be empty due to domain scoping)
-        try:
-            browser_cookies = self.filter_cookies_for_upstream(request, dict(request.COOKIES))
-            if browser_cookies:
-                # Browser cookies supplement but don't override stored cookies
-                for k, v in browser_cookies.items():
-                    if k not in cookies:
-                        cookies[k] = v
-                logger.debug('[HubSpotHandler] Added %d browser cookies to upstream', len(browser_cookies))
+            parsed = urlparse(raw if '://' in raw else f'https://app.hubspot.com{raw}')
+            for key in ('portalId', 'hubId', 'portal_id', 'hub_id'):
+                val = (parsed.query or '')
+                for part in val.split('&'):
+                    if part.lower().startswith(f'{key.lower()}='):
+                        digits = part.split('=', 1)[-1].strip()
+                        if digits.isdigit():
+                            return int(digits)
+            for seg in (parsed.path or '').split('/'):
+                if seg.isdigit() and len(seg) >= 6:
+                    return int(seg)
         except Exception:
             pass
-        
-        if cookies:
-            logger.warning('[HubSpotHandler] Forwarding %d total upstream cookies', len(cookies))
-        
-        return cookies
+        return 0
+
+    def _remember_portal_id(self, request, endpoint_id: int | None, portal_id: int) -> None:
+        if request is None or endpoint_id is None or not portal_id:
+            return
+        try:
+            request.session[self._portal_session_key(endpoint_id)] = int(portal_id)
+            request.session.modified = True
+        except Exception:
+            pass
+
+    def _remember_portal_id_from_location(self, request, endpoint_id: int | None, location: str) -> None:
+        pid = self._extract_portal_id_from_url(location)
+        if pid:
+            self._remember_portal_id(request, endpoint_id, pid)
+
+    def _resolve_portal_id(self, request) -> int:
+        svc = self._session_service(request)
+        return svc.portal_id(placeholder=_PORTAL_PLACEHOLDER_ID)
+
+    @staticmethod
+    def _session_service(request, endpoint_id: int | None = None):
+        from dose.services.hubspot_session import HubspotSessionService
+
+        eid = endpoint_id
+        if eid is None:
+            handler = HubspotPassthroughHandler()
+            eid = handler._endpoint_id(request)
+        return HubspotSessionService(request, endpoint_id=eid)
+
+    @staticmethod
+    def _hubspot_client_path(request) -> str:
+        client_path = getattr(request, '_polysniffer_client_path', None)
+        if client_path:
+            return str(client_path)
+        return getattr(request, 'path_info', '') or ''
+
+    def _build_portal_bootstrap_payload(self, request) -> tuple[bytes, str, int]:
+        pid = self._resolve_portal_id(request)
+        effective_pid = pid if pid else _PORTAL_PLACEHOLDER_ID
+        payload = json.dumps({
+            'portalId': effective_pid,
+            'hubId': effective_pid,
+            'id': effective_pid,
+        })
+        return payload.encode(), 'application/json', 200
+
+    @staticmethod
+    def _forward_set_cookies_from_requests_resp(src_resp, dest_response) -> None:
+        """Copy all Set-Cookie values from a requests response onto a Django response."""
+        try:
+            for _c in src_resp.cookies:
+                dest_response.cookies[_c.name] = _c.value
+                dest_response.cookies[_c.name]['path'] = _c.get('path') or '/'
+                dest_response.cookies[_c.name]['samesite'] = 'Lax'
+        except Exception:
+            pass
+        try:
+            raw_sc_list = []
+            rh = getattr(src_resp.raw, 'headers', None)
+            if rh is not None:
+                if hasattr(rh, 'getlist'):
+                    raw_sc_list = rh.getlist('Set-Cookie')
+                elif hasattr(rh, 'items'):
+                    raw_sc_list = [v for k, v in rh.items() if k.lower() == 'set-cookie']
+            for sc in raw_sc_list:
+                if '=' not in sc:
+                    continue
+                name, value = sc.split('=', 1)[0].strip(), sc.split('=', 1)[1].split(';', 1)[0].strip()
+                if name and name not in dest_response.cookies:
+                    dest_response.cookies[name] = value
+                    dest_response.cookies[name]['path'] = '/'
+                    dest_response.cookies[name]['samesite'] = 'Lax'
+        except Exception:
+            pass
+
+    def handle_request(self, request, subpath=None):
+        """
+        Short-circuit HubSpot home bootstrap portal APIs before the upstream proxy.
+        api.hubspot.com/home/v2/api/portal can block ~60s; home-redirect-ui times out first.
+        """
+        self._bind_hubspot_request(request)
+        if request.method != 'GET':
+            return None
+        path = (subpath or '').strip()
+        if path and not path.startswith('/'):
+            path = '/' + path
+        if not self._is_portal_bootstrap_path(path):
+            return None
+        body, content_type, status = self._build_portal_bootstrap_payload(request)
+        eid = self._endpoint_id(request)
+        pid = self._resolve_portal_id(request)
+        logger.warning(
+            '[HS PORTAL SHORT-CIRCUIT] %s -> immediate %s portalId=%s (eid=%s)',
+            path,
+            status,
+            pid or _PORTAL_PLACEHOLDER_ID,
+            eid,
+        )
+        response = HttpResponse(body, status=status, content_type=content_type)
+        response['X-Frame-Options'] = 'ALLOWALL'
+        response['Cache-Control'] = 'private, max-age=300'
+        return response
+
+    def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
+        filtered = {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+        # Never forward the client-side bootstrap placeholder — HubSpot rejects login POSTs.
+        if filtered.get('hubspotapi-csrf') == 'ps_local':
+            filtered.pop('hubspotapi-csrf', None)
+        return filtered
+
+    def get_upstream_cookies(self, request) -> dict:
+        """Replay validated HubSpot web session cookies (popup sync / tenant cache)."""
+        self._bind_hubspot_request(request)
+        svc = self._session_service(request)
+        client_path = self._hubspot_client_path(request)
+        cookies = svc.cookies_for_upstream(
+            client_path=client_path,
+            method=getattr(request, 'method', 'GET') or 'GET',
+        )
+        if not cookies:
+            # Fallback: use freshly captured cookies from the Django session
+            # immediately after a successful login POST (before session service cache refreshes).
+            eid = self._endpoint_id(request)
+            session_key = f'hubspot_cookies_{eid}'
+            try:
+                fresh = request.session.get(session_key) or {}
+                if fresh:
+                    logger.warning('[HubSpotHandler] Using freshly captured cookies from session (eid=%s)', eid)
+                    cookies = fresh
+            except Exception:
+                pass
+            if not cookies:
+                return {}
+        filtered = self.filter_cookies_for_upstream(request, cookies)
+        if filtered:
+            logger.warning(
+                '[HubSpotHandler] Forwarding %d validated web session cookies (eid=%s)',
+                len(filtered),
+                self._endpoint_id(request),
+            )
+        return filtered
 
     def override_upstream_cookies(self, request, target_url: str) -> dict:
         """Inject csrf.app cookie (captured on GET login page) into login POST requests."""
@@ -179,13 +322,25 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                 logger.warning('[HubSpotHandler] override_upstream_cookies: %s', exc)
         return {}
 
+    def filter_query_params_for_upstream(self, request, query_params: dict) -> dict:
+        """Remove PolySaaS-internal flags (ps_hs_*) from the URL sent to HubSpot.
+        Keeps the flags for our guards/detection while preventing "invalid login URL".
+        """
+        if not query_params:
+            return query_params
+        internal_prefix = 'ps_hs_'
+        filtered = {k: v for k, v in query_params.items() if not str(k).startswith(internal_prefix)}
+        if len(filtered) != len(query_params):
+            removed = [k for k in query_params if k not in filtered]
+            print(f'[HubSpotHandler] Stripped internal query params for upstream: {removed}')
+        return filtered
+
     def _capture_login_cookies_from_response(self, resp, request) -> None:
         """
         DIRECT LOGIN FLOW: Extract HubSpot session cookies from successful POST /login/ (302).
         Store in Django session for forwarding on all subsequent requests.
         """
         eid = self._endpoint_id(request)
-        session_key = f'hubspot_cookies_{eid}'
         captured_cookies = {}
         
         # Extract Set-Cookie headers from response
@@ -208,7 +363,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             
             # Parse raw Set-Cookie headers
             cookie_names_to_capture = {
-                'csrf.app', 'hubspotutk', 'hubspotulk', 'hs', 
+                'csrf.app', 'hubspotutk', 'hubspotulk', 'hs',
+                'hubspotapi', 'hubspotapi-csrf', 'hubspotapi-prefs',
                 '_fbp', '__hsmem', '__hssc', '__hssrc', '__hstc', '__hsfp'
             }
             
@@ -222,10 +378,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                         captured_cookies[name] = value
             
             if captured_cookies:
-                request.session[session_key] = captured_cookies
-                request.session.save()
+                svc = self._session_service(request, endpoint_id=eid)
+                svc.persist_web_cookies(captured_cookies, source='login_post')
                 logger.warning(
-                    '[DIRECT LOGIN] Captured %d cookies on successful POST /login/, stored in session (eid=%s)',
+                    '[DIRECT LOGIN] Captured %d cookies on successful POST /login/, stored via session service (eid=%s)',
                     len(captured_cookies), eid
                 )
                 print(f'[HubSpotHandler] LOGIN SUCCESS: Captured and stored {len(captured_cookies)} cookies for eid={eid}')
@@ -236,72 +392,50 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             logger.error('[DIRECT LOGIN] Failed to extract cookies: %s', e)
 
     def augment_outbound_headers(self, request, headers, target_url: str) -> None:
-        """Attach API token for api.hubapi.com calls; spoof Origin/Referer on login POSTs."""
-        # Spoof Origin/Referer for POST to /login/ so HubSpot's server
-        # treats it as a same-origin request and processes the credentials.
-        # Without this, HubSpot sees Origin: http://localhost:8000 and silently
-        # ignores the POST body, returning the login HTML with 200.
+        """Attach API Bearer token for HubSpot API paths; spoof Origin on legacy login POST."""
         if request.method == 'POST' and '/login' in (target_url or ''):
             headers['Origin'] = 'https://app.hubspot.com'
             headers['Referer'] = 'https://app.hubspot.com/login/'
-            csrf_sent = request.COOKIES.get('csrf.app', '<absent>')
+            eid = self._endpoint_id(request)
+            csrf_sent = (
+                request.COOKIES.get('csrf.app')
+                or (request.session.get(f'hs_csrf_app_{eid}') if eid else None)
+                or '<absent>'
+            )
             print(f'[HubSpotHandler] Spoofed Origin/Referer for login POST to {target_url}')
             print(f'[HubSpotHandler] LOGIN POST csrf.app value being forwarded: {csrf_sent!r}')
 
-        # FireAlarm/alarm API GET requests must reach api.hubspot.com with
-        # Content-Type: application/json — a browser XHR default of text/plain causes 415.
         if request.method == 'GET' and '/firealarm/v4/alarm/' in (target_url or ''):
             headers['Content-Type'] = 'application/json'
             headers.pop('Content-Length', None)
 
-        target = (target_url or "").lower()
-        parsed_t = urlparse(target_url or "")
-        host = (parsed_t.netloc or "").lower()
-        path = (parsed_t.path or "").lower()
-        needs_bearer = (
-            "api.hubapi.com" in target
-            or host == "api.hubspot.com"
-            or (host.endswith(".hubspot.com") and path.startswith("/api/"))
-            or path.startswith("/home/v2/api/")
-        )
-        if not needs_bearer:
+        if not self._needs_bearer_auth(target_url):
             return
+
         try:
-            from dose.utils import get_current_tenant
-            from dose.services.hubspot_oauth import (
-                get_tenant_hubspot_app,
-                persist_tokens_on_tenant_app,
-                refresh_access_token,
-            )
-
-            tenant = getattr(request, "tenant", None) or get_current_tenant(request)
-            ta = get_tenant_hubspot_app(tenant) if tenant else None
-            extra = (ta.extra_config or {}) if ta else {}
-
-            # Refresh shortly-before-expiry access tokens so home bootstrap API calls
-            # (/home/v2/api/*) don't 401 immediately after popup close.
-            try:
-                exp_raw = str(extra.get("hs_token_expires_at") or "").strip()
-                refresh_tok = str(extra.get("hs_refresh_token") or "").strip()
-                exp_dt = parse_datetime(exp_raw) if exp_raw else None
-                if exp_dt and timezone.is_naive(exp_dt):
-                    exp_dt = timezone.make_aware(exp_dt, timezone.get_current_timezone())
-                if exp_dt and refresh_tok and exp_dt <= (timezone.now() + timedelta(minutes=2)):
-                    refreshed = refresh_access_token(refresh_tok)
-                    if refreshed.get("ok") and refreshed.get("access_token"):
-                        persist_tokens_on_tenant_app(ta, refreshed)
-                        extra = (ta.extra_config or {}) if ta else extra
-            except Exception as exc:
-                logger.debug("[HubSpotHandler] token refresh preflight skipped: %s", exc)
-
-            token = extra.get("hs_access_token") if ta else None
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
-                headers["Accept"] = "application/json, text/plain, */*"
-            else:
-                logger.debug("[HubSpotHandler] no hs_access_token for %s", target_url)
+            token = self._session_service(request).ensure_api_token()
+            headers['Authorization'] = f'Bearer {token}'
+            headers['Accept'] = 'application/json, text/plain, */*'
         except Exception as exc:
-            logger.debug("[HubSpotHandler] augment_outbound_headers: %s", exc)
+            from dose.services.hubspot_api import HubspotNotConnected
+
+            if not isinstance(exc, HubspotNotConnected):
+                logger.debug('[HubSpotHandler] ensure_api_token: %s', exc)
+            else:
+                logger.debug('[HubSpotHandler] no API token for %s', target_url)
+
+    @staticmethod
+    def _needs_bearer_auth(target_url: str) -> bool:
+        target = (target_url or '').lower()
+        parsed_t = urlparse(target_url or '')
+        host = (parsed_t.netloc or '').lower()
+        path = (parsed_t.path or '').lower()
+        return (
+            'api.hubapi.com' in target
+            or host == 'api.hubspot.com'
+            or (host.endswith('.hubspot.com') and path.startswith('/api/'))
+            or path.startswith('/home/v2/api/')
+        )
 
 
     def _endpoint_id(self, request) -> int | None:
@@ -386,6 +520,82 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
         return f"{origin.rstrip('/')}{path}"
 
+    @staticmethod
+    def _hubspot_login_json_success(data) -> bool:
+        if not isinstance(data, dict):
+            return False
+        err = str(data.get('error') or data.get('errorMessage') or data.get('status') or '').lower()
+        if err in ('error', 'failed', 'invalid', 'unauthorized'):
+            return False
+        if data.get('error') or data.get('errorMessage'):
+            return False
+        return bool(
+            data.get('redirectUrl')
+            or data.get('nextUrl')
+            or data.get('portalId')
+            or data.get('portal')
+        )
+
+    def _hubspot_login_response_indicates_success(self, resp) -> bool:
+        if resp.status_code in (301, 302, 303, 307, 308):
+            return True
+        if resp.status_code != 200:
+            return False
+        ct = (resp.headers.get('Content-Type') or '').lower()
+        body = ''
+        try:
+            body = (resp.text or '').strip()
+        except Exception:
+            body = ''
+        if 'json' in ct or body.startswith('{'):
+            try:
+                return self._hubspot_login_json_success(resp.json())
+            except Exception:
+                pass
+        auth_markers = {'hubspotapi', 'csrf.app', 'hs', '__hsmem', 'hubspotutk'}
+        try:
+            names = {getattr(c, 'name', '') for c in resp.cookies}
+            if auth_markers & names:
+                return True
+        except Exception:
+            pass
+        low = body.lower()
+        if '<html' in low and ('sign in' in low or 'loginui' in low or 'firealarm' in low):
+            return False
+        return False
+
+    def _login_success_redirect_response(self, resp, request, **context):
+        """Capture auth cookies and return a proxy-local 302 to /home/ after login POST."""
+        endpoint_url = context.get('endpoint_url') or ''
+        endpoint_id = self._endpoint_id(request)
+        proxy_prefix = self._effective_proxy_prefix(
+            request,
+            getattr(request, '_passthrough_endpoint', None) or self.endpoint,
+            endpoint_url,
+        )
+        try:
+            self._capture_login_cookies_from_response(resp, request)
+        except Exception as exc:
+            logger.warning('[HubSpotHandler] login cookie capture failed: %s', exc)
+        location = resp.headers.get('Location', '')
+        if not location:
+            try:
+                data = resp.json()
+                location = str(
+                    data.get('redirectUrl') or data.get('nextUrl') or ''
+                ).strip()
+            except Exception:
+                location = ''
+        self._remember_portal_id_from_location(request, endpoint_id, location)
+        remember_landing_path(request, endpoint_id, '/home/')
+        dashboard_path = f"{proxy_prefix.rstrip('/')}/home/"
+        logger.warning('[DIRECT LOGIN REDIRECT] POST /login/ success -> %s', dashboard_path)
+        print(f'[HubSpotHandler] LOGIN SUCCESS: Redirecting to dashboard at {dashboard_path}')
+        redirect = HttpResponse(status=302)
+        redirect['Location'] = dashboard_path
+        self._forward_set_cookies_from_requests_resp(resp, redirect)
+        return redirect
+
     def postprocess_upstream_response(self, resp, request, **context):
       # Avoid stale cached HubSpot HTML/JS during rapid handler iteration.
       # Without this, browsers can keep serving an old injected overlay script.
@@ -398,13 +608,12 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       except Exception:
         pass
 
-      # DIRECT LOGIN FLOW: Capture session cookies on successful POST /login/ (302 redirect)
+      # DIRECT LOGIN FLOW: Capture session cookies on successful POST /login/
       upstream_path = context.get('upstream_path') or ''
-      if request.method == 'POST' and 'login' in upstream_path.lower() and resp.status_code == 302:
-        try:
-          self._capture_login_cookies_from_response(resp, request)
-        except Exception as e:
-          logger.warning('[HubSpotHandler] Failed to capture login cookies: %s', e)
+      upstream_path_lower = (upstream_path or '').lower()
+      if request.method == 'POST' and 'login' in upstream_path_lower:
+        if self._hubspot_login_response_indicates_success(resp):
+          return self._login_success_redirect_response(resp, request, **context)
 
       # Diagnostic: log upstream response for login requests (GET and POST)
       if 'login' in upstream_path.lower():
@@ -492,34 +701,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get('Location', '')
             
-            # DIRECT LOGIN FLOW: After successful login POST, redirect to dashboard in workspace
-            upstream_path_lower = (upstream_path or '').lower()
-            if request.method == 'POST' and 'login' in upstream_path_lower and resp.status_code == 302:
-                proxy_prefix = self._effective_proxy_prefix(
-                    request,
-                    getattr(request, '_passthrough_endpoint', None) or self.endpoint,
-                    context.get('endpoint_url') or '',
-                )
-                dashboard_path = f"{proxy_prefix}/home/"
-                logger.warning('[DIRECT LOGIN REDIRECT] POST /login/ 302 → redirecting to dashboard: %s', dashboard_path)
-                print(f'[HubSpotHandler] LOGIN SUCCESS: Redirecting to dashboard at {dashboard_path}')
-                redirect = HttpResponse(status=302)
-                redirect['Location'] = dashboard_path
-                # Preserve Set-Cookie headers so cookies are set in browser
-                for name, value in resp.headers.items():
-                    if name.lower() == 'set-cookie':
-                        redirect[name] = value
-                return redirect
-            
             remember_from_location(request, endpoint_id, location)
+            self._remember_portal_id_from_location(request, endpoint_id, location)
             rewritten = rewrite_location_through_proxy(location, proxy_prefix, known)
             if rewritten != location:
                 logger.info('[HubSpot] redirect %s -> %s', location, rewritten)
                 redirect = HttpResponse(status=resp.status_code)
                 redirect['Location'] = rewritten
-                for name, value in resp.headers.items():
-                    if name.lower() == 'set-cookie':
-                        redirect[name] = value
+                self._forward_set_cookies_from_requests_resp(resp, redirect)
                 return redirect
 
         return resp
@@ -533,28 +722,21 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if resp.status_code != 401:
             return None
         up = (upstream_path or '').lower()
-        # Also check target_url stored on resp by requests
         tgt = (getattr(resp, 'url', '') or '').lower()
         combined = f"{up} {tgt}"
-        if '/home/v2/api/portal' not in combined and '/home/v2/api/no-intended-portal' not in combined:
+        if not self._is_portal_bootstrap_path(combined):
             return None
         try:
-            from dose.utils import get_current_tenant
-            from dose.services.hubspot_oauth import get_tenant_hubspot_app
-
-            tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
-            ta = get_tenant_hubspot_app(tenant) if tenant else None
-            extra = (ta.extra_config or {}) if ta and isinstance(ta.extra_config, dict) else {}
-            portal_id = str(extra.get('hs_portal_id') or '').strip()
-            pid = int(portal_id) if portal_id.isdigit() else 0
-            import json as _json
-            # If pid is 0 (unconfigured), use a placeholder non-zero value.
-            # portalId=0 causes HubSpot's home-redirect-ui SPA to navigate to
-            # a URL built from an uninitialized variable, producing /undefined/.
-            effective_pid = pid if pid else 99999999
-            payload = _json.dumps({'portalId': effective_pid, 'hubId': effective_pid, 'id': effective_pid})
-            logger.warning('[HS PORTAL COERCE] APPLY 401->200 path=%s portalId=%s effective=%s', up, pid, effective_pid)
-            return (payload.encode(), 'application/json', 200)
+            body, content_type, status = self._build_portal_bootstrap_payload(request)
+            pid = self._resolve_portal_id(request)
+            logger.warning(
+                '[HS PORTAL COERCE] APPLY 401->%s path=%s portalId=%s effective=%s',
+                status,
+                up,
+                pid,
+                pid or _PORTAL_PLACEHOLDER_ID,
+            )
+            return body, content_type, status
         except Exception as exc:
             logger.debug('[HubSpotHandler] coerce_upstream_response_for_path skipped: %s', exc)
         return None
@@ -615,6 +797,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   if (!_cachedRealHref) {{
     try {{ _cachedRealHref = window.location.href; }} catch (_ce2) {{}}
   }}
+  var _cachedRealSearch = '';
+  try {{ _cachedRealSearch = window.location.search || ''; }} catch (_crs) {{}}
   if (!window.__PS_REAL_ORIGIN) {{
     try {{
       var _proto2 = window.Location && window.Location.prototype;
@@ -665,6 +849,28 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     if (p.toLowerCase().indexOf('/login') === 0 && p.slice(-1) !== '/') p += '/';
     return p;
   }}
+  function stripInternalQueryParams(search) {{
+    var s = String(search || '');
+    if (!s) return '';
+    try {{
+      var sp = new URLSearchParams(s.charAt(0) === '?' ? s.slice(1) : s);
+      sp.delete('ps_hs_popup');
+      sp.delete('ps_hs_reload');
+      sp.delete('ps_hs_recard');
+      var out = sp.toString();
+      return out ? ('?' + out) : '';
+    }} catch (_siq) {{
+      return s.replace(/[?&]ps_hs_(?:popup|reload|recard)=[^&]*/g, function(m, i) {{
+        return i === 0 && m.charAt(0) === '?' ? '?' : '';
+      }}).replace(/\\?&/, '?').replace(/\\?$/, '');
+    }}
+  }}
+  function realLocationSearch() {{
+    return _cachedRealSearch || '';
+  }}
+  function spoofedLocationSearch() {{
+    return stripInternalQueryParams(realLocationSearch());
+  }}
   function _hasBadSegment(p) {{
     var segs = (p || '').split('/');
     for (var i = 0; i < segs.length; i++) {{
@@ -698,6 +904,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       u.hostname = CANONICAL_HOST;
       u.port = '';
       u.pathname = upstreamPathname(u.pathname);
+      u.search = stripInternalQueryParams(u.search || realLocationSearch());
       return u.toString();
     }} catch (e2) {{ return CANONICAL_ORIGIN + upstreamPathname(window.location.pathname || '/'); }}
   }}
@@ -709,6 +916,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       if (parsed.hostname === CANONICAL_HOST || parsed.hostname.indexOf('app-') === 0 || parsed.hostname === 'local.hubspot.com') {{
         var sub = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
         if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+        var low = sub.toLowerCase();
+        var isAsset = low.indexOf('/home/v2/api/') === 0 || low.indexOf('/firealarm/') === 0 ||
+          low.indexOf('/hs/') === 0 || low.indexOf('/static/') === 0 || low.indexOf('/webpack/') === 0;
+        if (SHELL_PREFIX && !isAsset) return SHELL_PREFIX + sub;
         if (PROXY_PREFIX) return PROXY_PREFIX + sub;
       }}
     }} catch (e3) {{}}
@@ -750,6 +961,16 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           get: function() {{ return upstreamPathname(); }},
           set: pathnameDesc.set
         }}); }} catch(_pe) {{}} }}
+      }}
+      var searchDesc = _getDesc('search');
+      if (searchDesc && searchDesc.get) {{
+        var _sTarget = _locProto || _locActualProto;
+        if (_sTarget) {{ try {{ Object.defineProperty(_sTarget, 'search', {{
+          configurable: true,
+          enumerable: true,
+          get: function() {{ return spoofedLocationSearch(); }},
+          set: searchDesc.set
+        }}); }} catch(_se) {{}} }}
       }}
       if (hostnameDesc && hostnameDesc.get) {{
         var _hnTarget = _locProto || _locActualProto;
@@ -816,6 +1037,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           get: function() {{ return upstreamPathname(); }}
         }});
       }} catch (_ptde) {{}}
+      try {{
+        Object.defineProperty(window.location, 'search', {{
+          configurable: true,
+          enumerable: true,
+          get: function() {{ return spoofedLocationSearch(); }}
+        }});
+      }} catch (_sde) {{}}
       if (protocolDesc && protocolDesc.get) {{
         var _prTarget = _locProto || _locActualProto;
         if (_prTarget) {{ try {{ Object.defineProperty(_prTarget, 'protocol', {{
@@ -889,6 +1117,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             if (prop === 'origin')   return CANONICAL_ORIGIN;
             if (prop === 'protocol') return 'https:';
             if (prop === 'pathname') return upstreamPathname();
+            if (prop === 'search') return spoofedLocationSearch();
             if (prop === 'toString') return function() {{ return upstreamHref(_cachedRealHref); }};
             var v = target[prop];
             return (typeof v === 'function') ? v.bind(target) : v;
@@ -936,6 +1165,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           try {{
             var u = new URL(raw);
             if (u.pathname.indexOf(PROXY_PREFIX) === 0) {{
+              // First-party credential step for HubSpot login:
+              // Let the actual username/password POST go directly to app.hubspot.com
+              // so the browser receives csrf.app and session cookies.
+              // All other forms and navigation remain under the passthrough prefix.
+              var isLoginForm = /\/login(\/|$|\?)/i.test(u.pathname);
+              if (isLoginForm) {{
+                u.hostname = CANONICAL_HOST;
+                u.protocol = 'https:';
+                u.port = '';
+                u.pathname = u.pathname.slice(PROXY_PREFIX.length) || '/login/';
+                return u.toString();
+              }}
+
               u.hostname = CANONICAL_HOST;
               u.protocol = 'https:';
               u.port = '';
@@ -967,13 +1209,33 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         body = self._hubspot_location_spoof_iife(proxy_prefix, shell_prefix, host)
         return f'<script data-hubspot-location-spoof="1">{body}</script>'
 
-    def get_client_side_shim(self, proxy_prefix: str, known_bases: list[str]) -> str:
+    def get_client_side_shim(self, proxy_prefix: str, known_bases: list[str], request=None) -> str:
         bases_js = json.dumps(known_bases)
+        portal_json = ''
+        if request is not None:
+            try:
+                body, _, _ = self._build_portal_bootstrap_payload(request)
+                portal_json = body.decode('utf-8')
+            except Exception:
+                portal_json = ''
+        portal_json_js = json.dumps(portal_json)
         # Inject location spoof IIFE early so it patches location/document.URL before HubSpot bundles load
+        shell_prefix = ''
+        if request is not None and getattr(request, '_polysniffer_workspace_inline', False):
+            try:
+                from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
+                eid = self._endpoint_id(request)
+                if eid:
+                    shell_prefix = workspace_shell_prefix(eid)
+            except Exception:
+                shell_prefix = ''
         spoof = self._hubspot_location_spoof_iife(
             proxy_prefix=proxy_prefix,
-            shell_prefix="",
-            canonical_host="app.hubspot.com"
+            shell_prefix=shell_prefix,
+            canonical_host=self._canonical_host_from_bases(
+                getattr(self.endpoint, "endpoint_url", "") if self.endpoint else "",
+                known_bases,
+            ),
         )
         return f"""
 <script data-hubspot-pt-shim="1">
@@ -981,6 +1243,25 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 (function() {{
   var PROXY_PREFIX = {json.dumps(proxy_prefix.rstrip('/'))};
   var KNOWN_BASES = {bases_js};
+  var PORTAL_BOOTSTRAP_JSON = {portal_json_js};
+  function isPortalBootstrapUrl(url) {{
+    var s = String(url || '');
+    if (s.indexOf('/home/v2/api/portal') >= 0 || s.indexOf('/home/v2/api/no-intended-portal') >= 0) return true;
+    try {{
+      var u = new URL(s, window.__PS_REAL_ORIGIN || window.location.origin);
+      var p = (u.pathname || '').replace(/\\/+$/, '').toLowerCase();
+      return p.endsWith('/home/v2/api');
+    }} catch (_ipb) {{ return false; }}
+  }}
+  function portalBootstrapResponse() {{
+    if (!PORTAL_BOOTSTRAP_JSON) return null;
+    try {{
+      return new Response(PORTAL_BOOTSTRAP_JSON, {{
+        status: 200,
+        headers: {{'Content-Type': 'application/json'}}
+      }});
+    }} catch (_pbr) {{ return null; }}
+  }}
   function _hasCookie(name) {{
     try {{
       var raw = '; ' + (document.cookie || '');
@@ -988,20 +1269,32 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     }}
     catch (_hce) {{ return false; }}
   }}
-  function ensureBootstrapCsrfCookie() {{
-    // HubSpot login bootstrap checks for a CSRF cookie in document.cookie.
-    // On localhost passthrough this cookie may be absent even when upstream auth is fine,
-    // which can stall FireAlarm/LoginUI boot. Seed a local-scoped fallback cookie.
-    // NOTE: do NOT seed csrf.app — HubSpot's LoginUI SPA sets the real value during
-    // initialization. Pre-seeding ps_local prevents the SPA from generating a valid token
-    // and causes all login POSTs to fail with 200 (rejected).
-    try {{
-      if (!_hasCookie('hubspotapi-csrf')) {{
-        document.cookie = 'hubspotapi-csrf=ps_local; path=/; SameSite=Lax';
-      }}
-    }} catch (_ecs) {{}}
+  function _browserHsAuth() {{
+    try {{ return sessionStorage.getItem('ps_hs_browser_login') === '1'; }} catch (_bha) {{ return false; }}
   }}
-  ensureBootstrapCsrfCookie();
+  function _directHubspotUrl(url) {{
+    if (!_browserHsAuth()) return null;
+    try {{
+      var raw = String(url || '');
+      var parsed = new URL(raw, window.__PS_REAL_ORIGIN || window.location.origin);
+      if (parsed.pathname.indexOf(PROXY_PREFIX) === 0) {{
+        var sub = parsed.pathname.slice(PROXY_PREFIX.length) || '/';
+        if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+        for (var i = 0; i < KNOWN_BASES.length; i++) {{
+          var base = KNOWN_BASES[i];
+          if (base && base.indexOf('hubspot') >= 0) {{
+            return base.replace(/\\/+$/, '') + sub + (parsed.search || '') + (parsed.hash || '');
+          }}
+        }}
+        return 'https://app.hubspot.com' + sub + (parsed.search || '') + (parsed.hash || '');
+      }}
+      if (isAppHost(parsed.hostname) || parsed.hostname === 'api.hubspot.com') {{
+        return parsed.href;
+      }}
+    }} catch (_dhu) {{}}
+    return null;
+  }}
+  // Do not seed hubspotapi-csrf=ps_local — it is forwarded on login POST and causes rejection.
   function isAppHost(host) {{
     if (!host) return false;
     host = host.toLowerCase().split(':')[0];
@@ -1076,6 +1369,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }}
   var _fetch = window.fetch;
   window.fetch = function(input, init) {{
+    var reqUrl = '';
+    if (typeof input === 'string') reqUrl = input;
+    else if (input && input.url) reqUrl = input.url;
+    if (isPortalBootstrapUrl(reqUrl)) {{
+      var stub = portalBootstrapResponse();
+      if (stub) return Promise.resolve(stub);
+    }}
+    var directUrl = _directHubspotUrl(reqUrl);
+    if (directUrl) {{
+      init = init || {{}};
+      if (init.credentials === undefined) init.credentials = 'include';
+      return _fetch.call(this, directUrl, init);
+    }}
     if (typeof input === 'string') input = rewriteUrl(input);
     else if (input && input.url) {{
       var u = rewriteUrl(input.url);
@@ -1085,8 +1391,30 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }};
   var _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {{
-    arguments[1] = rewriteUrl(url);
+    var directUrl = _directHubspotUrl(url);
+    this._psUrl = directUrl || rewriteUrl(url);
+    this._psDirect = !!directUrl;
+    arguments[1] = this._psUrl;
     return _open.apply(this, arguments);
+  }};
+  var _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function(body) {{
+    if (isPortalBootstrapUrl(this._psUrl || '') && PORTAL_BOOTSTRAP_JSON) {{
+      var self = this;
+      setTimeout(function() {{
+        try {{
+          Object.defineProperty(self, 'readyState', {{value: 4, configurable: true}});
+          Object.defineProperty(self, 'status', {{value: 200, configurable: true}});
+          Object.defineProperty(self, 'responseText', {{value: PORTAL_BOOTSTRAP_JSON, configurable: true}});
+          Object.defineProperty(self, 'response', {{value: PORTAL_BOOTSTRAP_JSON, configurable: true}});
+          if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+          self.dispatchEvent(new Event('load'));
+          self.dispatchEvent(new Event('loadend'));
+        }} catch (_xse) {{}}
+      }}, 0);
+      return;
+    }}
+    return _send.apply(this, arguments);
   }};
   function navigate(url) {{
     var u = workspaceNavUrl(rewriteUrl(String(url || '')));
@@ -1094,8 +1422,31 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }}
   var _assign = window.location.assign.bind(window.location);
   var _replace = window.location.replace.bind(window.location);
-  window.location.assign = function(url) {{ _assign(workspaceNavUrl(rewriteUrl(String(url)))); }};
-  window.location.replace = function(url) {{ _replace(workspaceNavUrl(rewriteUrl(String(url)))); }};
+  function _navigateGuarded(url) {{
+    return workspaceNavUrl(rewriteUrl(String(url || '')));
+  }}
+  window.location.assign = function(url) {{ _assign(_navigateGuarded(url)); }};
+  window.location.replace = function(url) {{ _replace(_navigateGuarded(url)); }};
+  if (!window.__PS_PROTO_NAV_GUARD) {{
+    try {{
+      window.__PS_PROTO_NAV_GUARD = true;
+      var _lp = window.Location && window.Location.prototype;
+      if (_lp) {{
+        var _nativeAssign = _lp.assign;
+        var _nativeReplace = _lp.replace;
+        if (typeof _nativeAssign === 'function') {{
+          _lp.assign = function(url) {{
+            return _nativeAssign.call(this, _navigateGuarded(url));
+          }};
+        }}
+        if (typeof _nativeReplace === 'function') {{
+          _lp.replace = function(url) {{
+            return _nativeReplace.call(this, _navigateGuarded(url));
+          }};
+        }}
+      }}
+    }} catch (_hspn) {{}}
+  }}
   if (!window.__PS_HUBSPOT_LOCATION_SPOOF) {{
     try {{
       var _hrefDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href');
@@ -1169,7 +1520,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             request=request,
             endpoint_id=endpoint_id,
         )
-        shim = self.get_client_side_shim(prefix, sorted(known))
+        if self._is_popup_login_request(request):
+            canon_host = self._canonical_host_from_bases(endpoint_url, sorted(known))
+            early_spoof = self.polysniffer_workspace_location_spoof_script(
+                prefix, shell_prefix="", canonical_host=canon_host,
+            )
+            if 'data-hubspot-location-spoof="1"' not in html:
+                html = re.sub(
+                    r'(?i)(<head[^>]*>)',
+                    lambda m: m.group(1) + early_spoof,
+                    html,
+                    count=1,
+                )
+        shim = self.get_client_side_shim(prefix, sorted(known), request=request)
         if 'data-hubspot-pt-shim="1"' not in html:
             if re.search(r'(?i)<head[^>]*>', html):
                 # Use a lambda so re.sub never interprets backslashes inside
@@ -1200,18 +1563,55 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             html = re.sub(r'(?i)(</body>)', lambda m: prepop + m.group(1), html, count=1)
             if '</body>' not in html.lower():
                 html += prepop
-        # Plan E: inject login overlay for login pages — hides HubSpot's FireAlarm
-        # "invalid URL" screen and shows our own form that submits through the proxy.
+        # Phase 4 — connect card on login + unauthenticated home-redirect shell.
         req_path = getattr(request, 'path', '') or ''
-        if self._is_login_page(html, endpoint_url or '', req_path):
-            overlay = self._get_direct_login_script(
+        if self._needs_connect_card(request, html, endpoint_url or '', req_path):
+            eid = endpoint_id or self._endpoint_id(request)
+            ws_base = f'/dose/sniff/{eid}/workspace' if eid else ''
+            shell_redirect = self._get_workspace_shell_redirect_script(ws_base, prefix)
+            if shell_redirect and 'data-ps-hs-workspace-redirect="1"' not in html:
+                html = re.sub(r'(?i)(</head>)', lambda m: shell_redirect + m.group(1), html, count=1)
+                if '</head>' not in html.lower():
+                    html = shell_redirect + html
+            overlay = self._get_login_overlay_script(
                 prefix,
                 user_email,
+                upstream_origin=self._base_from_url(endpoint_url or ''),
+                workspace_base=ws_base,
                 oauth_url='/dose/hubspot/oauth/start/',
+                endpoint_id=endpoint_id or self._endpoint_id(request),
             )
             html = re.sub(r'(?i)(</head>)', lambda m: overlay + m.group(1), html, count=1)
             if '</head>' not in html.lower():
                 html = overlay + html
+        if self._is_popup_login_request(request):
+            handshake = self._get_popup_handshake_script(prefix, endpoint_id)
+            if handshake and 'data-ps-hs-popup-handshake="1"' not in html:
+                html = re.sub(r'(?i)(</head>)', lambda m: handshake + m.group(1), html, count=1)
+                if '</head>' not in html.lower():
+                    html = handshake + html
+            html = self._strip_workspace_shell_scripts_for_popup(html)
+        return html
+
+    @staticmethod
+    def _strip_workspace_shell_scripts_for_popup(html: str) -> str:
+        """Popup login must stay on bare /pt/polysniff/ — never redirect to workspace capture."""
+        if not html:
+            return html
+        html = re.sub(
+            r'<script data-ps-hs-workspace-redirect="1">.*?</script>',
+            '',
+            html,
+            count=1,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        html = re.sub(
+            r'<script data-ps-workspace-guard="1">.*?</script>',
+            '',
+            html,
+            count=1,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
         return html
 
     @staticmethod
@@ -1230,7 +1630,22 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   var PROXY = {prefix_js};
   var EMAIL = {email_js};
   var OAUTH_URL = {oauth_js};
-  console.log('[PS HS OVERLAY] direct-login overlay v2, PROXY=', PROXY);
+  console.log('[PS HS OVERLAY] direct-login overlay v3, PROXY=', PROXY);
+  function _bootstrapLoginCsrf() {{
+    console.log('[PS HS OVERLAY] bootstrapping csrf via GET', PROXY + '/login/');
+    return fetch(PROXY + '/login/', {{
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {{'Accept': 'text/html,application/json,*/*'}}
+    }}).then(function(r) {{
+      console.log('[PS HS OVERLAY] csrf bootstrap GET status=', r.status);
+      return r;
+    }}).catch(function(err) {{
+      console.warn('[PS HS OVERLAY] csrf bootstrap failed:', err);
+      return null;
+    }});
+  }}
   function _wsRoot() {{
     try {{
       var m = PROXY.match(/\/pt\/polysniff\/(\d+)/);
@@ -1256,7 +1671,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     if (w) {{ w.style.display = 'none'; }}
   }}
   function _loginPayload(email, pwd) {{
-    return JSON.stringify({{loginPortalId: 0, email: email, password: pwd, rememberMe: false, otp: '', loginSsoTokenResponse: null}});
+    return JSON.stringify({{loginPortalId: {_HS_LOGIN_PORTAL_ID}, email: email, password: pwd, rememberMe: false, otp: '', loginSsoTokenResponse: null}});
   }}
   function _submit() {{
     var emailEl = document.getElementById('ps-hs-email');
@@ -1275,26 +1690,26 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     btn.textContent = 'Signing in\u2026';
     errEl.style.display = 'none';
     _startWait();
-    fetch(PROXY + '/login/', {{
-      method: 'POST',
-      headers: {{
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/html, */*',
-        'X-Requested-With': 'XMLHttpRequest'
-      }},
-      body: _loginPayload(email, pwd),
-      credentials: 'include',
-      redirect: 'manual'
+    _bootstrapLoginCsrf().then(function() {{
+      return fetch(PROXY + '/login/', {{
+        method: 'POST',
+        headers: {{
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/html, */*',
+          'X-Requested-With': 'XMLHttpRequest'
+        }},
+        body: _loginPayload(email, pwd),
+        credentials: 'include',
+        redirect: 'manual'
+      }});
     }}).then(function(r) {{
+      if (!r) {{
+        throw new Error('Login POST did not run');
+      }}
       _stopWait();
       console.log('[PS HS OVERLAY] login response type=', r.type, 'status=', r.status);
-      if (r.type === 'opaqueredirect' || r.status === 0) {{
-        console.log('[PS HS OVERLAY] login success \u2014 navigating to workspace');
-        window.location.href = _wsRoot();
-        return;
-      }}
-      if (r.ok || r.status === 302 || r.status === 200) {{
-        console.log('[PS HS DIRECT] Login success - redirecting to workspace:', _wsRoot());
+      if (r.type === 'opaqueredirect' || r.status === 0 || r.status === 302) {{
+        console.log('[PS HS OVERLAY] login success — navigating to workspace');
         window.location.href = _wsRoot();
         return;
       }}
@@ -1302,12 +1717,21 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         var msg = '';
         try {{
           var j = JSON.parse(txt);
-          if (j && (j.redirectUrl || j.nextUrl || j.portalId)) {{
+          if (j && (j.redirectUrl || j.nextUrl || j.portalId || j.portal)) {{
+            console.log('[PS HS DIRECT] Login success (JSON) - redirecting to workspace:', _wsRoot());
             window.location.href = _wsRoot();
             return;
           }}
           msg = (j && (j.error || j.message || j.errorMessage)) || '';
-        }} catch (e) {{}}
+        }} catch (e) {{
+          if (r.status === 200 && txt && txt.indexOf('<html') >= 0) {{
+            msg = 'Sign in failed — HubSpot returned the login page. Check email/password or try OAuth.';
+          }}
+        }}
+        if (r.ok && !msg && r.status !== 200) {{
+          window.location.href = _wsRoot();
+          return;
+        }}
         errEl.textContent = msg || 'Sign in failed. Please check your email and password.';
         errEl.style.display = 'block';
         btn.disabled = false;
@@ -1357,6 +1781,70 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 </script>"""  # end _get_direct_login_script
 
     @staticmethod
+    def _is_popup_login_request(request) -> bool:
+        """Passthrough login opened in hubspot_login popup — show real form, not connect card."""
+        # Never treat workspace inline requests as popup login.
+        if getattr(request, '_polysniffer_workspace_inline', False) or (getattr(request, '_polysniffer_proxy_prefix', '') or '').startswith('/pt/polysniff'):
+            return False
+        try:
+            if (request.GET.get('ps_hs_popup') or '').strip() == '1':
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _needs_connect_card(self, request, html: str, endpoint_url: str, req_path: str = '') -> bool:
+        # Workspace inline passthrough (green orchestration bar): show the real upstream HubSpot login form directly.
+        # Use only the proxy prefix (consistent on all workspace requests).
+        if (getattr(request, '_polysniffer_proxy_prefix', '') or '').startswith('/pt/polysniff'):
+            return False
+
+        if self._is_popup_login_request(request):
+            return False
+        if self._is_login_page(html, endpoint_url, req_path):
+            return True
+        sample = (html or '')[:12000].lower()
+        if 'login url is invalid' in sample or 'this login url is invalid' in sample:
+            return True
+        if 'home-redirect-ui' in sample or 'hubspot | redirecting' in sample:
+            try:
+                svc = self._session_service(request)
+                if not svc.ensure_web_cookies():
+                    return True
+            except Exception:
+                return True
+        return False
+
+    @staticmethod
+    def _get_workspace_shell_redirect_script(workspace_base: str, proxy_prefix: str) -> str:
+        """Bare /pt/polysniff/{id}/ full-page HTML → workspace split shell (keeps capture panel)."""
+        ws_js = json.dumps((workspace_base or '').rstrip('/') + '/')
+        proxy_js = json.dumps((proxy_prefix or '').rstrip('/'))
+        return f"""<script data-ps-hs-workspace-redirect="1">
+(function() {{
+  if (window.name && window.name.indexOf('ps_hubspot_login_') === 0) return;
+  if (/[?&]ps_hs_popup=1(?:&|$)/.test(window.location.search || '')) return;
+  if (document.getElementById('passthrough-inline')) return;
+  var proxy = {proxy_js};
+  var ws = {ws_js};
+  if (!proxy || !ws) return;
+  var path = window.location.pathname || '';
+  if (path.indexOf(proxy) !== 0) return;
+  if (path.indexOf('/api/sync-session') >= 0) return;
+  var sub = path.slice(proxy.length).replace(/^\\/+/, '') || 'login/';
+  var target = ws + sub + (window.location.search || '');
+  try {{
+    var cur = window.location.pathname + (window.location.search || '');
+    var normTarget = target.split('?')[0].replace(/\\/+$/, '') || '/';
+    var normCur = cur.split('?')[0].replace(/\\/+$/, '') || '/';
+    if (normCur === normTarget) return;
+  }} catch (_e) {{}}
+  console.log('[PS HS] bare passthrough → workspace shell', target);
+  window.location.replace(target);
+}})();
+</script>"""
+
+    @staticmethod
     def _is_login_page(html: str, endpoint_url: str, req_path: str = '') -> bool:
         if '/login' in (endpoint_url or '').lower():
             return True
@@ -1383,6 +1871,79 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return hits >= 3
 
     @staticmethod
+    def _get_popup_handshake_script(proxy_prefix: str, endpoint_id: int | None) -> str:
+        """Notify opener when passthrough popup login stores a validated session."""
+        prefix_js = json.dumps((proxy_prefix or '').rstrip('/'))
+        eid_js = json.dumps(int(endpoint_id or 0))
+        return f"""<script data-ps-hs-popup-handshake="1">
+(function() {{
+  var PROXY = {prefix_js};
+  var EID = {eid_js};
+  var POPUP_NAME = 'ps_hubspot_login_' + EID;
+  function _isPopupFlow() {{
+    if (window.name && window.name.indexOf('ps_hubspot_login_') === 0) return true;
+    if (window.name === 'hubspot_login') return true;
+    try {{
+      return /(?:^|[?&])ps_hs_popup=1(?:&|$)/.test(window.location.search || '');
+    }} catch (e) {{ return false; }}
+  }}
+  if (!_isPopupFlow() || !EID) return;
+  function _onHome() {{
+    var path = (window.location.pathname || '').toLowerCase();
+    var proxyLow = String(PROXY || '').toLowerCase();
+    if (proxyLow && path.indexOf(proxyLow) === 0) {{
+      path = path.slice(proxyLow.length) || '/';
+    }}
+    return path.indexOf('/home') === 0 || path === 'home' || path.indexOf('home/') === 0;
+  }}
+  function _notifyOpener(data) {{
+    try {{
+      if (window.opener && !window.opener.closed) {{
+        window.opener.postMessage({{
+          type: 'hubspot-session-ready',
+          validated: !!(data && data.validated),
+          count: (data && data.count) || 0
+        }}, window.location.origin);
+      }}
+    }} catch (e) {{}}
+  }}
+  function _probe() {{
+    return fetch('/pt/polysniff/' + EID + '/api/sync-session/', {{
+      method: 'POST',
+      credentials: 'include',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{action: 'probe'}})
+    }}).then(function(r) {{ return r.json().catch(function() {{ return {{validated: false}}; }}); }});
+  }}
+  var _done = false;
+  function _checkSuccess() {{
+    if (_done || !_onHome()) return;
+    _probe().then(function(data) {{
+      console.log('[PS HS POPUP] probe on home:', data);
+      if (data && data.validated && (data.count > 0)) {{
+        _done = true;
+        _notifyOpener(data);
+        setTimeout(function() {{ try {{ window.close(); }} catch (e) {{}} }}, 500);
+      }}
+    }}).catch(function(err) {{
+      console.warn('[PS HS POPUP] probe failed:', err);
+    }});
+  }}
+  if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', _checkSuccess);
+  }} else {{
+    _checkSuccess();
+  }}
+  var _ticks = 0;
+  var _iv = setInterval(function() {{
+    _ticks += 1;
+    _checkSuccess();
+    if (_done || _ticks > 90) clearInterval(_iv);
+  }}, 1000);
+}})();
+</script>"""
+
+    @staticmethod
     def _get_login_overlay_script(
         proxy_prefix: str,
         user_email: str = '',
@@ -1390,17 +1951,20 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         upstream_origin: str = 'https://app.hubspot.com',
         workspace_base: str = '',
         oauth_url: str = '/dose/hubspot/oauth/start/',
+        endpoint_id: int | None = None,
     ) -> str:
         prefix_js = json.dumps(proxy_prefix.rstrip('/'))
         email_js = json.dumps(user_email or '')
         origin_js = json.dumps((upstream_origin or 'https://app.hubspot.com').rstrip('/'))
         ws_base_js = json.dumps((workspace_base or '').rstrip('/') + '/')
         oauth_js = json.dumps(oauth_url or '/dose/hubspot/oauth/start/')
+        eid_js = json.dumps(int(endpoint_id or 0))
         return f"""<script data-hs-login-overlay="1">
 (function() {{
   var OVERLAY_VER = {json.dumps(_HS_OVERLAY_VER)};
   console.log('[PS HS OVERLAY] overlay script running v' + OVERLAY_VER + ', PROXY=', {prefix_js});
   var PROXY = {prefix_js};
+  var EP_ID = {eid_js};
   var EMAIL = {email_js};
   var HS_ORIGIN = {origin_js};
   var WS_BASE = {ws_base_js};
@@ -1408,6 +1972,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   // Capture the exact subpath the user was trying to view when the overlay appeared.
   // The teal "Open HubSpot dashboard" button will navigate back to this path after popup login.
   var _cur = (window.location.pathname || '/') + (window.location.search || '') + (window.location.hash || '');
+  _cur = _cur.replace(/^\\/dose\\/sniff\\/\\d+\\/workspace\\/?/i, '/');
   if (PROXY && _cur.indexOf(PROXY) === 0) _cur = _cur.slice(PROXY.length) || '/';
   if (!_cur || _cur.charAt(0) !== '/') _cur = '/' + _cur;
   var TARGET_SUBPATH = _cur;
@@ -1430,16 +1995,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       + '<div id="ps-hs-err" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-radius:4px;color:#f2545b;font-size:13px;text-align:center"></div>'
       + '<div id="ps-hs-info" style="display:none;margin-bottom:12px;padding:10px;background:#e8f4fd;border-radius:4px;color:#33475b;font-size:13px;text-align:center;line-height:1.45"></div>'
       + '<div id="ps-hs-state" style="margin:0 0 12px;padding:8px 10px;background:#f0f7ff;border:1px solid #d0e6fb;border-radius:999px;color:#1f4e79;font-size:12px;font-weight:600;text-align:center;letter-spacing:.02em">Status: Ready to sign in</div>'
-      + '<button id="ps-hs-popup" type="button" style="width:100%;padding:12px;background:#ff7a59;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">Sign in on HubSpot.com</button>'
+      + '<button id="ps-hs-popup" type="button" style="width:100%;padding:12px;background:#ff7a59;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">Sign in to HubSpot</button>'
+      + '<button id="ps-hs-popup-ext" type="button" style="width:100%;padding:10px;background:#fff;color:#516f90;border:1px solid #cbd6e2;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:10px">Sign in on hubspot.com (fallback)</button>'
       + '<button id="ps-hs-dash" type="button" style="display:none;width:100%;padding:12px;background:#0091ae;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">Open HubSpot dashboard</button>'
-      + '<details style="margin:12px 0 0"><summary style="cursor:pointer;color:#516f90;font-size:13px">Try passthrough login (experimental)</summary>'
-      + '<div style="margin-top:14px">'
-      + '<div style="margin-bottom:14px"><input id="ps-hs-email" type="email" placeholder="Email address" value="'
-      + EMAIL.replace(/[&<>"]/g, function(c){{return{{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}}[c];}})
-      + '" required autocomplete="email" style="width:100%;padding:11px 14px;border:1px solid #cbd6e2;border-radius:4px;font-size:15px;box-sizing:border-box;color:#33475b;outline:none"/></div>'
-      + '<div style="margin-bottom:14px"><input id="ps-hs-pwd" type="password" placeholder="Password" required autocomplete="current-password" style="width:100%;padding:11px 14px;border:1px solid #cbd6e2;border-radius:4px;font-size:15px;box-sizing:border-box;color:#33475b;outline:none"/></div>'
-      + '<button id="ps-hs-btn" type="button" style="width:100%;padding:12px;background:#516f90;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer">Try passthrough sign in</button>'
-      + '</div></details>'
+      + '<p style="margin:14px 0 0;text-align:center;font-size:12px;color:#99acc2;line-height:1.5">Primary: secure login window via PolySaaS passthrough (captures session server-side). Fallback opens hubspot.com directly.</p>'
       + '<p id="ps-hs-wait" style="display:none;margin:14px 0 0;text-align:center;font-size:13px;color:#516f90;line-height:1.45"></p>'
       + '<p style="margin:18px 0 0;text-align:center;font-size:12px;color:#99acc2;line-height:1.5">API / orchestration: <a id="ps-hs-oauth" href="#" style="color:#0091ae">Connect HubSpot OAuth</a></p>'
       + '</div>';
@@ -1516,12 +2075,56 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       }}
     }}
     try {{
-      if (sessionStorage.getItem('ps_hs_browser_login')) {{
+      if (sessionStorage.getItem('ps_hs_browser_login') && sessionStorage.getItem('ps_hs_session_synced') === '1') {{
         document.getElementById('ps-hs-dash').style.display = 'block';
-        _showInfo('HubSpot browser session detected. Click "Open HubSpot dashboard" to return to the page you were viewing.');
-        _setState('Browser session detected', 'ok');
+        _showInfo('HubSpot session synced. Click "Open HubSpot dashboard" when ready.');
+        _setState('Session ready', 'ok');
       }}
     }} catch (_ss) {{}}
+    function _endpointIdFromProxy() {{
+      if (EP_ID > 0) return String(EP_ID);
+      try {{
+        var m = String(PROXY || '').match(/\\/pt\\/polysniff\\/(\\d+)/);
+        return m && m[1] ? m[1] : '';
+      }} catch (e) {{ return ''; }}
+    }}
+    function _popupLoginUrl() {{
+      var eid = _endpointIdFromProxy();
+      if (!eid) {{
+        try {{
+          var m2 = (window.location.pathname || '').match(/\\/dose\\/sniff\\/(\\d+)\\//);
+          if (m2 && m2[1]) eid = m2[1];
+        }} catch (e2) {{}}
+      }}
+      if (!eid) return PROXY + '/login/?ps_hs_popup=1';
+      return window.location.origin + '/pt/polysniff/' + eid + '/login/?ps_hs_popup=1';
+    }}
+    function _popupWindowName() {{
+      var eid = _endpointIdFromProxy() || '0';
+      return 'ps_hubspot_login_' + eid;
+    }}
+    function _syncAfterPopup() {{
+      if (typeof window.__psSyncHubspotSession === 'function') {{
+        return window.__psSyncHubspotSession();
+      }}
+      var eid = _endpointIdFromProxy();
+      if (!eid) return Promise.resolve(null);
+      return fetch('/pt/polysniff/' + eid + '/api/sync-session/', {{
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{action: 'after_popup'}})
+      }}).then(function(r) {{ return r.json(); }}).catch(function(err) {{
+        console.warn('[PS HS OVERLAY] sync after popup failed:', err);
+        return null;
+      }});
+    }}
+    function _syncOk(data) {{
+      return !!(data && data.validated && (data.count > 0 || data.harvested));
+    }}
+    function _markSessionSynced() {{
+      try {{ sessionStorage.setItem('ps_hs_session_synced', '1'); }} catch (e) {{}}
+    }}
     function _landingUrl() {{
       return WS_BASE || (function() {{
         var ep = PROXY.replace(/\\/+$/, '').split('/').pop();
@@ -1564,193 +2167,170 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       return s;
     }}
     function _openDashboard() {{
-      _markBrowserLogin();
-      // Remove the overlay so the left pane can show real HubSpot content
-      try {{
-        var ov = document.getElementById('ps-hs-ov');
-        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
-      }} catch (_) {{}}
-      // If the original path was a login entry point, go to root so HubSpot can
-      // redirect to the user's real post-login home. Otherwise use the exact path.
-      var pathOnly = (TARGET_SUBPATH || '/').split('?')[0].split('#')[0];
-      var isLoginEntry = /^\/(login|oauth|signin|signup)(\/|$)/i.test(pathOnly || '');
-      var sub = _normalizeTargetSubpath(TARGET_SUBPATH || '/', isLoginEntry);
-      var target = _workspaceRoot() + sub;
-      // Force a fresh navigation so workspace state/capture re-initializes reliably.
-      try {{
-        var tu = new URL(target, window.location.origin);
-        tu.searchParams.set('ps_hs_reload', String(Date.now()));
-        target = tu.pathname + (tu.search || '') + (tu.hash || '');
-      }} catch (e) {{
-        var sep = target.indexOf('?') >= 0 ? '&' : '?';
-        target = target + sep + 'ps_hs_reload=' + Date.now();
-      }}
-      console.log('[PS HS OVERLAY] opening dashboard at:', target, 'original=', TARGET_SUBPATH);
-      _setState('Redirecting to dashboard', 'ok');
-      window.location.assign(target);
+      _syncAfterPopup().then(function(data) {{
+        if (!_syncOk(data)) {{
+          _setState('Cannot open dashboard yet', 'warn');
+          _showInfo('No stored HubSpot session yet. Use "Sign in to HubSpot" first, then try again.');
+          console.warn('[PS HS OVERLAY] blocked dashboard open — no synced session', data);
+          return;
+        }}
+        _markSessionSynced();
+        try {{
+          var ov = document.getElementById('ps-hs-ov');
+          if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+        }} catch (_) {{}}
+        var pathOnly = (TARGET_SUBPATH || '/').split('?')[0].split('#')[0];
+        var isLoginEntry = /\\/(login|oauth|signin|signup)\\/?$/i.test(pathOnly || '') ||
+          /^\\/(login|oauth|signin|signup)(\\/|$)/i.test(pathOnly || '');
+        var sub = _normalizeTargetSubpath(TARGET_SUBPATH || '/', isLoginEntry);
+        var shell = _workspaceRoot();
+        var inWorkspace = (window.location.pathname || '').indexOf(shell) === 0;
+        var target = shell + (sub ? (sub.charAt(0) === '/' ? sub : '/' + sub) : '/');
+        if (inWorkspace) {{
+          try {{
+            var tu = new URL(target, window.location.origin);
+            tu.searchParams.set('ps_hs_reload', String(Date.now()));
+            target = tu.pathname + (tu.search || '') + (tu.hash || '');
+          }} catch (e) {{
+            var sep = target.indexOf('?') >= 0 ? '&' : '?';
+            target = target + sep + 'ps_hs_reload=' + Date.now();
+          }}
+          console.log('[PS HS OVERLAY] workspace soft-nav to:', target, 'original=', TARGET_SUBPATH);
+          _setState('Opening dashboard in workspace', 'ok');
+          window.location.assign(target);
+          return;
+        }}
+        try {{
+          var tu2 = new URL(target, window.location.origin);
+          tu2.searchParams.set('ps_hs_reload', String(Date.now()));
+          target = tu2.pathname + (tu2.search || '') + (tu2.hash || '');
+        }} catch (e) {{
+          var sep2 = target.indexOf('?') >= 0 ? '&' : '?';
+          target = target + sep2 + 'ps_hs_reload=' + Date.now();
+        }}
+        console.log('[PS HS OVERLAY] opening dashboard at:', target, 'original=', TARGET_SUBPATH);
+        _setState('Redirecting to dashboard', 'ok');
+        window.location.assign(target);
+      }});
     }}
     document.getElementById('ps-hs-oauth').addEventListener('click', function(ev) {{
       ev.preventDefault();
       window.open(OAUTH_URL, '_blank', 'noopener');
     }});
-    document.getElementById('ps-hs-dash').addEventListener('click', function() {{
-      _openDashboard();
-    }});
-    document.getElementById('ps-hs-popup').addEventListener('click', function() {{
+    function _onSessionSynced(data) {{
+      if (!_syncOk(data)) return false;
+      _markSessionSynced();
+      document.getElementById('ps-hs-dash').style.display = 'block';
+      _setState('Session synced — click dashboard', 'ok');
+      _showInfo('HubSpot session stored on PolySaaS. Click "Open HubSpot dashboard" when ready.');
+      return true;
+    }}
+    function _openHubspotPopup(usePassthrough) {{
       var errEl = document.getElementById('ps-hs-err');
       var btn = document.getElementById('ps-hs-popup');
+      var btnExt = document.getElementById('ps-hs-popup-ext');
       errEl.style.display = 'none';
-      // FROZEN: direct HubSpot popup login is the known-good behavior.
-      // Do not reroute this popup through localhost passthrough.
-      var popupTarget = HS_ORIGIN + '/login/';
+      var popupTarget = usePassthrough
+        ? _popupLoginUrl()
+        : (HS_ORIGIN + '/login/');
+      var popupName = usePassthrough ? _popupWindowName() : 'hubspot_login';
       console.log('[PS HS OVERLAY] opening popup v' + OVERLAY_VER + ' at:', popupTarget);
-      var popup = window.open(popupTarget, 'hubspot_login', 'width=520,height=720,resizable=yes,scrollbars=yes');
+      var popup = window.open(popupTarget, popupName, 'width=520,height=720,resizable=yes,scrollbars=yes');
       if (!popup) {{
         errEl.textContent = 'Popup blocked \u2014 allow popups for this site, or use Open in new tab from the workspace toolbar.';
         errEl.style.display = 'block';
         _setState('Popup blocked', 'error');
         return;
       }}
+      window.__ps_hs_popup_flow_done = false;
+      window.__ps_hs_overlay_owns_popup = true;
       btn.disabled = true;
+      if (btnExt) btnExt.disabled = true;
       btn.textContent = 'Waiting for HubSpot login\u2026';
       _setState('Popup opened, waiting for sign-in', 'warn');
-      _showInfo('Complete sign-in in the popup, then close it. The workspace will auto-continue to the HubSpot dashboard (capture starts automatically).');
-      var poll = setInterval(function() {{
-        if (!popup || popup.closed) {{
-          clearInterval(poll);
-          _setState('Popup closed, validating session', 'warn');
-          _markBrowserLogin();
-          document.getElementById('ps-hs-dash').style.display = 'block';
-          _showInfo('Popup closed. Continuing to HubSpot dashboard now. If needed, use "Open HubSpot dashboard".');
-          setTimeout(_openDashboard, 300);
+      _showInfo(usePassthrough
+        ? 'Sign in inside the popup. When HubSpot home loads, the window will close and your session syncs to PolySaaS.'
+        : 'Sign in on hubspot.com, then close the popup. Session sync may not work until cookie bridge is complete.');
+      function _finishPopupFlow() {{
+        if (window.__ps_hs_popup_flow_done) return;
+        window.__ps_hs_popup_flow_done = true;
+        if (window.__ps_hs_popup_poll) {{
+          clearInterval(window.__ps_hs_popup_poll);
+          window.__ps_hs_popup_poll = null;
+        }}
+        _setState('Popup closed, syncing session', 'warn');
+        btn.disabled = false;
+        if (btnExt) btnExt.disabled = false;
+        btn.textContent = 'Sign in to HubSpot';
+        _syncAfterPopup().then(function(data) {{
+          if (_onSessionSynced(data)) return;
+          document.getElementById('ps-hs-dash').style.display = 'none';
+          _setState('Popup closed — session not on PolySaaS', 'warn');
+          _showInfo('Login did not produce a stored HubSpot session. Try again, or use Connect HubSpot OAuth for API access.');
+        }}).catch(function() {{
+          document.getElementById('ps-hs-dash').style.display = 'none';
+          _setState('Sync failed', 'error');
+          _showInfo('Could not sync after popup close. Try signing in again.');
+        }});
+      }}
+      window.addEventListener('message', function _psHsPopupMsg(ev) {{
+        try {{
+          if (!ev || ev.origin !== window.location.origin) return;
+          var d = ev.data;
+          if (!d || d.type !== 'hubspot-session-ready') return;
+          if (window.__ps_hs_popup_flow_done) return;
+          console.log('[PS HS OVERLAY] handshake from popup:', d);
+          if (d.validated) {{
+            window.__ps_hs_popup_flow_done = true;
+            if (window.__ps_hs_popup_poll) {{
+              clearInterval(window.__ps_hs_popup_poll);
+              window.__ps_hs_popup_poll = null;
+            }}
+            btn.disabled = false;
+            if (btnExt) btnExt.disabled = false;
+            btn.textContent = 'Sign in to HubSpot';
+            _onSessionSynced(d);
+            return;
+          }}
+        }} catch (_me) {{}}
+      }});
+      window.__ps_hs_popup_poll = setInterval(function() {{
+        try {{
+          if (popup && popup.closed) {{
+            _finishPopupFlow();
+          }}
+        }} catch (_pe) {{
+          _finishPopupFlow();
         }}
       }}, 500);
+    }}
+    document.getElementById('ps-hs-popup').addEventListener('click', function() {{
+      _openHubspotPopup(true);
     }});
-    function _loginPayload(email, pwd) {{
-      return JSON.stringify({{
-        loginPortalId: 0,
-        email: email,
-        password: pwd,
-        rememberMe: false,
-        otp: '',
-        loginSsoTokenResponse: null
-      }});
-    }}
-    function _handleLoginSuccess() {{
-      _clearWaitUx();
-      _markBrowserLogin();
-      window.location.href = _landingUrl();
-    }}
-    function _tryDirectLogin(email, pwd, btn, errEl) {{
-      var payload = _loginPayload(email, pwd);
-      console.log('[PS HS OVERLAY] bootstrap csrf via', HS_ORIGIN + '/login/');
-      return fetch(HS_ORIGIN + '/login/', {{ method: 'GET', mode: 'no-cors', credentials: 'include' }})
-        .catch(function() {{ return null; }})
-        .then(function() {{
-          console.log('[PS HS OVERLAY] direct JSON POST to', HS_ORIGIN + '/login/');
-          return fetch(HS_ORIGIN + '/login/', {{
-            method: 'POST',
-            headers: {{
-              'Content-Type': 'application/json',
-              'Accept': 'application/json, text/html, */*',
-              'X-Requested-With': 'XMLHttpRequest'
-            }},
-            body: payload,
-            credentials: 'include',
-            redirect: 'manual'
-          }});
-        }})
-        .then(function(r) {{
-          if (!r) throw new Error('direct fetch failed');
-          console.log('[PS HS OVERLAY] direct login status=', r.status, 'type=', r.type);
-          if (r.type === 'opaqueredirect' || r.status === 0 || (r.status >= 300 && r.status < 400)) {{
-            _handleLoginSuccess();
-            return null;
+    document.getElementById('ps-hs-popup-ext').addEventListener('click', function() {{
+      _openHubspotPopup(false);
+    }});
+    document.getElementById('ps-hs-dash').addEventListener('click', function() {{
+      _openDashboard();
+    }});
+    function _watchLoginEscape() {{
+      if (window.__ps_hs_escape_watch) return;
+      window.__ps_hs_escape_watch = true;
+      setInterval(function() {{
+        if (document.getElementById('ps-hs-ov')) return;
+        try {{
+          var t = (document.body && document.body.innerText) || '';
+          if (!/login url is invalid/i.test(t)) return;
+          var shell = _workspaceRoot();
+          var here = window.location.pathname || '';
+          if (shell && here.indexOf(shell) === 0) {{
+            console.log('[PS HS OVERLAY] invalid login URL detected — reload connect card');
+            window.location.replace(shell + '/login/?ps_hs_recard=' + Date.now());
           }}
-          return r.text().then(function(txt) {{
-            try {{
-              var j = JSON.parse(txt);
-              if (j && (j.redirectUrl || j.nextUrl || j.portalId || j.portal)) {{
-                _handleLoginSuccess();
-                return null;
-              }}
-            }} catch (e) {{}}
-            return 'direct';
-          }});
-        }})
-        .catch(function(err) {{
-          console.log('[PS HS OVERLAY] direct login failed:', err);
-          return 'direct';
-        }});
+        }} catch (_we) {{}}
+      }}, 1500);
     }}
-    function _tryProxyLogin(email, pwd, btn, errEl) {{
-      var payload = _loginPayload(email, pwd);
-      console.log('[PS HS OVERLAY] proxy JSON POST to', PROXY + '/login/');
-      return fetch(PROXY + '/login/', {{
-        method: 'POST',
-        headers: {{
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/html, */*',
-          'X-Requested-With': 'XMLHttpRequest'
-        }},
-        body: payload,
-        credentials: 'include',
-        redirect: 'manual'
-      }}).then(function(r) {{
-        console.log('[PS HS OVERLAY] proxy login status=', r.status, 'type=', r.type);
-        if (r.type === 'opaqueredirect' || r.status === 0) {{
-          _handleLoginSuccess();
-          return;
-        }}
-        return r.text().then(function(txt) {{
-          try {{
-            var j = JSON.parse(txt);
-            if (j && (j.redirectUrl || j.nextUrl || j.portalId || j.portal)) {{
-              _handleLoginSuccess();
-              return;
-            }}
-            if (j && (j.error || j.message || j.errorType)) {{
-              errEl.textContent = 'Passthrough login failed \u2014 ' + (j.error || j.message || j.errorType);
-              errEl.style.display = 'block';
-              btn.disabled = false; btn.textContent = 'Try passthrough sign in';
-              return;
-            }}
-          }} catch (e) {{}}
-          errEl.textContent = 'Passthrough login cannot obtain csrf.app. Use \u201cSign in on HubSpot.com\u201d above.';
-          errEl.style.display = 'block';
-          btn.disabled = false; btn.textContent = 'Try passthrough sign in';
-        }});
-      }});
-    }}
-    document.getElementById('ps-hs-btn').addEventListener('click', function() {{
-      var email = document.getElementById('ps-hs-email').value.trim();
-      var pwd   = document.getElementById('ps-hs-pwd').value;
-      var errEl = document.getElementById('ps-hs-err');
-      var btn   = document.getElementById('ps-hs-btn');
-      if (!email || !pwd) {{
-        errEl.textContent = 'Please enter your email and password.';
-        errEl.style.display = 'block';
-        return;
-      }}
-      btn.disabled = true; btn.textContent = 'Signing in\u2026';
-      errEl.style.display = 'none';
-      _startWaitUx(btn);
-      _tryDirectLogin(email, pwd, btn, errEl).then(function(fallback) {{
-        if (fallback === 'direct') return _tryProxyLogin(email, pwd, btn, errEl);
-      }}).catch(function(err) {{
-        _clearWaitUx();
-        console.log('[PS HS OVERLAY] login error:', err);
-        errEl.textContent = 'Network error \u2014 try \u201cSign in on HubSpot.com\u201d instead.';
-        errEl.style.display = 'block';
-        btn.disabled = false; btn.textContent = 'Try passthrough sign in';
-      }});
-    }});
-    // Allow Enter key in both fields
-    ['ps-hs-email','ps-hs-pwd'].forEach(function(id) {{
-      document.getElementById(id).addEventListener('keydown', function(e) {{
-        if (e.key === 'Enter') document.getElementById('ps-hs-btn').click();
-      }});
-    }});
+    _watchLoginEscape();
   }}
   if (document.body) {{ _mount(); }} else {{ document.addEventListener('DOMContentLoaded', _mount); }}
 }})();
