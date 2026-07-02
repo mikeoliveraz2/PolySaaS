@@ -278,15 +278,28 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         """Replay validated HubSpot web session cookies (popup sync / tenant cache)."""
         self._bind_hubspot_request(request)
         svc = self._session_service(request)
+        eid = self._endpoint_id(request)
+
+        # ── DIAGNOSTIC (remove after confirming cookies flow) ──────────────────
+        print(f'[HS-COOKIE-DIAG] get_upstream_cookies eid={eid}')
+        print(f'[HS-COOKIE-DIAG]   svc.tenant={svc.tenant} tenant_app={svc.tenant_app}')
+        if svc.tenant_app:
+            ec = svc.tenant_app.extra_config or {}
+            print(f'[HS-COOKIE-DIAG]   extra_config keys={sorted(ec.keys())}')
+            print(f'[HS-COOKIE-DIAG]   hs_web_cookies present={bool(ec.get("hs_web_cookies"))}')
+            print(f'[HS-COOKIE-DIAG]   hs_web_cookies_source={ec.get("hs_web_cookies_source")}')
+        # ── END DIAGNOSTIC ─────────────────────────────────────────────────────
+
         client_path = self._hubspot_client_path(request)
         cookies = svc.cookies_for_upstream(
             client_path=client_path,
             method=getattr(request, 'method', 'GET') or 'GET',
         )
+        print(f'[HS-COOKIE-DIAG]   cookies_for_upstream returned {len(cookies)} cookies: {sorted(cookies.keys())}')
+
         if not cookies:
             # Fallback: use freshly captured cookies from the Django session
             # immediately after a successful login POST (before session service cache refreshes).
-            eid = self._endpoint_id(request)
             session_key = f'hubspot_cookies_{eid}'
             try:
                 fresh = request.session.get(session_key) or {}
@@ -296,14 +309,16 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             except Exception:
                 pass
             if not cookies:
+                print(f'[HS-COOKIE-DIAG]   NO COOKIES — upstream will get no auth!')
                 return {}
         filtered = self.filter_cookies_for_upstream(request, cookies)
         if filtered:
             logger.warning(
                 '[HubSpotHandler] Forwarding %d validated web session cookies (eid=%s)',
                 len(filtered),
-                self._endpoint_id(request),
+                eid,
             )
+        print(f'[HS-COOKIE-DIAG]   filtered={sorted(filtered.keys())}')
         return filtered
 
     def override_upstream_cookies(self, request, target_url: str) -> dict:

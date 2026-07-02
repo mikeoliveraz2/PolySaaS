@@ -124,15 +124,11 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
                 topmenu_links = jazzmin_settings.get('topmenu_links', []).copy()
                 print(f"[JAZZMIN DEBUG] Original menu links: {len(topmenu_links)}")
 
-                from urllib.parse import urlparse as _urlparse_menu
-
                 for endpoint in passthrough_endpoints:
                     # Don't add duplicates - check if this URL already exists in static config
                     existing_urls = [link.get('url', '') for link in topmenu_links if 'url' in link]
-                    _host = _urlparse_menu(endpoint.endpoint_url or '').netloc
-                    norm = _host.lower().replace('-', '_') if _host else ''
-                    # Embed route keeps Jazzmin sidebar/header; iframe loads /pt/admin/{hostname}/
-                    full_url = f"/admin/passthrough-embed/{norm}/" if norm else endpoint.get_menu_url()
+                    # Use slug-based passthrough URL (/pt/admin/<slug>/) â€” handler resolves upstream
+                    full_url = endpoint.get_menu_url()
                     if full_url not in existing_urls:
                         menu_link = {
                             "name": endpoint.menu_title,

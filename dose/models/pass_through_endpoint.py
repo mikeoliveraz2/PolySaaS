@@ -165,7 +165,9 @@ class PassThroughEndpoint(models.Model):
                 return "External Service"
 
     def get_menu_url(self):
-        """Get the URL to use for the menu item — derived from endpoint_url hostname"""
+        """Get the URL to use for the menu item — slug if set, else hostname."""
+        if self.slug:
+            return f"/pt/admin/{self.slug}/"
         if not self.endpoint_url:
             return "/"
         try:
