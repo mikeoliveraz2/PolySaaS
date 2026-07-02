@@ -1,12 +1,16 @@
-HubSpot->Odoo orchestration: schema fixes + end-to-end verified
+Add Playwright-based HubSpot session provisioner (bypasses bot detection)
 
-- Fixed olient.dose_tenantapp missing oauth_application_id column (migration
-  0023 skipped ALTER TABLE because information_schema check lacked table_schema
-  filter; col existed in public so olient was skipped)
-- Moved Odoo TenantApp from public to olient schema (tenant-scoped per isolation
-  rules; webhook search_path=olient,public was finding empty olient table and
-  falling back to localhost:8069 defaults)
-- End-to-end test PASSED: POST /dose/webhook/hubspot/olient/ ->
-  HubSpotToOdooContactSync -> res.partner id=34 created in Odoo on Render
-- Added diagnostic and test scripts in tmp/
-- Documented in HUBSPOT_ODOO_ORCHESTRATION_READY_2026-07-03.md
+- Install playwright==1.61.0 + greenlet + pyee into requirements.txt
+- Add provision_hubspot_session management command: launches headless
+  Chromium (real browser TLS fingerprint) to log into app.hubspot.com,
+  extracts all session cookies, persists to TenantApp.extra_config via
+  HubspotSessionService.persist_web_cookies() — same Mattermost/Odoo pattern
+- Fix WEB_COOKIE_TTL_SECONDS: 1800s (30min) -> 7 days so Playwright-
+  provisioned cookies survive server idle periods without re-login
+- HubspotSessionService already reads hs_web_cookies from TenantApp.extra_config
+  and forwards them on all proxied requests — no passthrough handler changes needed
+- Supports --headful flag for 2FA/CAPTCHA debugging
+- Supports --validate-only to probe stored cookies against HubSpot portal API
+
+Usage: python manage.py provision_hubspot_session olient --email ... --password ...
+Note: after pip install, run: python -m playwright install chromium

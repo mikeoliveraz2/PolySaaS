@@ -20,7 +20,7 @@ from dose.services.hubspot_oauth import get_tenant_hubspot_app
 logger = logging.getLogger(__name__)
 
 DEFAULT_PLACEHOLDER_PORTAL_ID = 246571499
-WEB_COOKIE_TTL_SECONDS = 7 * 24 * 3600   # 7 days — covers Playwright-provisioned sessions
+WEB_COOKIE_TTL_SECONDS = 1800
 WEB_VALIDATION_CACHE_SECONDS = 300
 PORTAL_API_VALIDATE_URL = 'https://api.hubspot.com/home/v2/api/portal'
 
