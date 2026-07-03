@@ -1188,7 +1188,7 @@ try {{
         s.textContent = msg;
     }}
     function base() {{
-        return window.location.pathname.replace(/\/login(\/.*)?$/, '') || '/';
+        return window.location.pathname.replace(/\\/login(\\/.*)?$/, '') || '/';
     }}
     function doLogin() {{
         var lid = $('lid').value.trim();
@@ -1198,7 +1198,7 @@ try {{
         $('btn').disabled = true;
         setStatus('Signing in...');
 
-        var url = base().replace(/\/$/, '') + '/api/v4/users/login';
+        var url = base().replace(/\\/$/, '') + '/api/v4/users/login';
         dbg('POST ' + url);
 
         var xhr = new XMLHttpRequest();
@@ -1299,7 +1299,7 @@ try {{
         var existingToken = '';
         try {{ existingToken = localStorage.getItem('MMAUTHTOKEN') || localStorage.getItem('mmauthtoken') || ''; }} catch(e) {{}}
         if (!existingToken) {{
-            var m = document.cookie.match(/(?:^|;\s*)mmauthtoken=([^;]+)/i);
+            var m = document.cookie.match(/(?:^|;\\s*)mmauthtoken=([^;]+)/i);
             if (m) existingToken = m[1];
         }}
         var forceLogin = window.location.search.indexOf('force=1') !== -1;
@@ -2681,7 +2681,7 @@ try {{
             f"user_id={mm_user_id!r} ps_display_mode={ps_display_mode}"
         )
 
-        return f"""
+        return fr"""
 <script data-polysaas-mattermost-shim="1">
 (function() {{
         console.log('[PolySaaS MM] shim build 2026-06-12-theme-sync');
