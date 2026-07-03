@@ -273,7 +273,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': (
                     f'These bundled applications are not available at signup yet: '
-                    f'{", ".join(labels)}. Please choose from Odoo, Nextcloud, Dolibarr, or Mattermost.'
+                    f'{", ".join(labels)}. Please choose from Odoo, Nextcloud, Dolibarr, Mattermost, or HubSpot.'
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )

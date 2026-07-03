@@ -75,15 +75,12 @@ def provision_hubspot_tenant(
         try:
             extra = tenant_app.extra_config if isinstance(tenant_app.extra_config, dict) else {}
             extra.setdefault('hs_connect_hint', 'Visit /dose/hubspot/oauth/start/ to link your HubSpot portal')
+            extra.setdefault('hs_oauth_connected', bool(extra.get('hs_access_token')))
             tenant_app.extra_config = extra
             tenant_app.save(update_fields=['extra_config'])
-            if extra.get('hs_access_token'):
-                mark_tenant_app_active(tenant_app)
-            else:
-                mark_tenant_app_error(
-                    tenant_app,
-                    'HubSpot endpoint ready — complete OAuth connect to activate API and portlets',
-                )
+            # Mark HubSpot app active once endpoint scaffolding is ready so subscribe
+            # treats it like other bundled apps (OAuth still required for API features).
+            mark_tenant_app_active(tenant_app)
         except Exception as exc:
             logger.warning('[HubSpotProvisioner] TenantApp update failed: %s', exc)
 

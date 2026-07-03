@@ -144,6 +144,7 @@ class SubscriptionCreateSerializer(serializers.Serializer):
     enable_nextcloud = serializers.BooleanField(required=False, default=False)
     enable_dolibarr = serializers.BooleanField(required=False, default=False)
     enable_mattermost = serializers.BooleanField(required=False, default=False)
+    enable_hubspot = serializers.BooleanField(required=False, default=False)
     enable_wordpress = serializers.BooleanField(required=False, default=False)
     enable_liferay = serializers.BooleanField(required=False, default=False)
     enable_monitor_logger = serializers.BooleanField(required=False, default=False)
