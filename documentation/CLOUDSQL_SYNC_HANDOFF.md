@@ -1,12 +1,50 @@
 # CloudSQL Sync Handoff — Multi-Machine Coordination
 
-**Status:** WIP — Laptop awaiting encrypted sync from office machine  
+**Status:** In Progress — Shared CloudSQL metadata synced to GCP Secret Manager; DB password update pending secure terminal entry  
 **Created:** 2026-06-27  
+**Updated:** 2026-07-03  
 **Purpose:** Synchronize CloudSQL database credentials between office machine (condo) and laptop
 
 ---
 
 ## Overview
+
+## 2026-07-03 Execution Log (Desktop)
+
+Completed actions performed in this session:
+
+1. Set active gcloud project to `application-integration-4524`.
+2. Verified database-related secrets present in project.
+3. Upserted CloudSQL metadata secrets and verified latest values:
+   - `db-host=8.230.100.97`
+   - `db-port=5432`
+   - `db-name=dosedbsaas`
+   - `db-user=dosedbadmin`
+4. Confirmed current local runtime still resolves DB from local env/defaults in `mysite.settings` and currently points at local Postgres (`localhost:5433`) unless `.env` is updated.
+
+Pending action (not completed in chat for security):
+
+1. Add a new version for `dose-db-password` in Secret Manager using direct terminal secret input.
+
+Current recommended run-time shape for both machines:
+
+1. Keep `DJANGO_SETTINGS_MODULE=mysite.settings` for local development.
+2. Set the same DB values in each machine-local `.env`:
+   - `DB_HOST=8.230.100.97`
+   - `DB_PORT=5432`
+   - `DB_NAME=dosedbsaas`
+   - `DB_USER=dosedbadmin`
+   - `DOSE_DB_PASSWORD=<shared-cloudsql-password>`
+
+Validation command on each machine:
+
+```bash
+python manage.py shell -c "from django.conf import settings; db=settings.DATABASES['default']; print(db['HOST'], db['PORT'], db['NAME'], db['USER'])"
+```
+
+Expected output values:
+
+1. `8.230.100.97 5432 dosedbsaas dosedbadmin`
 
 PolySaaS needs to run on **two machines simultaneously**, both connecting to the **same CloudSQL database instance**:
 
@@ -50,7 +88,7 @@ DOSE_DB_PASSWORD=<password>
 
 ## Sync File Format
 
-### Proposed Approach: Encrypted `.env.enc` with `gcloud secrets`
+### Proposed Approach: Shared Secret Manager + Local `.env` parity
 
 Since both machines have **GCP Secret Manager access** (authenticated via `gcloud auth`), use this pattern:
 
@@ -63,18 +101,18 @@ gcloud secrets create DB_USER --data="dosedbadmin"
 gcloud secrets create DOSE_DB_PASSWORD --data="<actual-password>"
 gcloud secrets create DB_CONN_MAX_AGE --data="0"
 
-# Laptop — retrieve secrets (already implemented in settings.py via dose.utils.secret_manager.sm())
+# Laptop — retrieve/verify secrets with gcloud and keep local .env aligned
 python manage.py runserver
-# Django settings.py automatically calls sm('DB_HOST', 'DB_HOST')
-# Falls back to env var, then Secret Manager, then default
+# Current mysite/settings.py database block reads DB_* and DOSE_DB_PASSWORD from env.
+# Keep both machines in env parity for deterministic local behavior.
 ```
 
 ### Why This Approach?
 
-1. **Already implemented** — `dose/utils/secret_manager.py` supports this
-2. **No file sync needed** — Secrets live in GCP, both machines access directly
-3. **Secure** — Uses Application Default Credentials (ADC) via `gcloud auth`
-4. **Auditable** — GCP Secret Manager logs all access
+1. **Single source of truth** — Secret values are stored centrally in GCP Secret Manager
+2. **Deterministic local startup** — local DB config comes from `.env` and is explicit
+3. **Secure** — password updates can be done with direct terminal secret input
+4. **Auditable** — GCP Secret Manager logs access and version changes
 
 ---
 
@@ -134,10 +172,13 @@ python manage.py runserver
    gcloud config set project application-integration-4524
    ```
 
-3. **Enable Secret Manager retrieval** in `.env`:
+3. **Set local `.env` DB parity**:
    ```
-   POLYSAAS_USE_GCP_SECRETS=1
-   GCP_PROJECT_ID=application-integration-4524
+   DB_HOST=8.230.100.97
+   DB_PORT=5432
+   DB_NAME=dosedbsaas
+   DB_USER=dosedbadmin
+   DOSE_DB_PASSWORD=<shared-password>
    ```
 
 4. **Test Django startup**:
@@ -259,15 +300,15 @@ Port: 5433 (should be 5432)
 
 ## Next Steps
 
-1. ✅ **Office machine (condo)**: Create GCP secrets or encrypted `.env.enc` with CloudSQL credentials
-2. ⏳ **Laptop**: Wait for sync file or Secret Manager setup
-3. ⏳ **Laptop**: Run tests to verify CloudSQL connection
-4. ✅ **Both machines**: Stay in sync going forward
+1. ✅ **Desktop**: Upserted `db-host`, `db-port`, `db-name`, `db-user` in `application-integration-4524`.
+2. ⏳ **Desktop**: Add new Secret Manager version for `dose-db-password` with secure terminal input.
+3. ⏳ **Desktop + Laptop**: Set matching `.env` DB values and restart Django.
+4. ⏳ **Desktop + Laptop**: Verify runtime DB resolves to `8.230.100.97:5432`.
 
 **Assigned to:** Cursor AI (condo) — set up secrets on office machine  
 **Awaiting:** Laptop — receive sync credentials and test connection
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2026-06-27 14:08 UTC+8
+**Document Version:** 1.1  
+**Last Updated:** 2026-07-03
