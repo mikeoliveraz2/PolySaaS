@@ -1,0 +1,346 @@
+<script data-hs-login-overlay="1">
+(function() {
+  var OVERLAY_VER = "{{ overlay_ver|escapejs }}";
+  console.log('[PS HS OVERLAY] overlay script running v' + OVERLAY_VER + ', PROXY=', "{{ proxy_prefix|escapejs }}");
+  var PROXY = "{{ proxy_prefix|escapejs }}";
+  var EMAIL = "{{ user_email|escapejs }}";
+  var HS_ORIGIN = "{{ upstream_origin|escapejs }}";
+  var WS_BASE = "{{ workspace_base|escapejs }}";
+  var OAUTH_URL = "{{ oauth_url|escapejs }}";
+  var _cur = (window.location.pathname || '/') + (window.location.search || '') + (window.location.hash || '');
+  if (PROXY && _cur.indexOf(PROXY) === 0) _cur = _cur.slice(PROXY.length) || '/';
+  if (!_cur || _cur.charAt(0) !== '/') _cur = '/' + _cur;
+  var TARGET_SUBPATH = _cur;
+
+  function _mount() {
+    if (document.getElementById('ps-hs-ov')) return;
+    var container = document.getElementById('passthrough-inline') || document.body;
+    if (container !== document.body) {
+      container.style.position = 'relative';
+    }
+    var ov = document.createElement('div');
+    ov.id = 'ps-hs-ov';
+    ov.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:9999;display:flex;align-items:center;justify-content:center;background:#f5f8fa;font-family:Lexend Deca,Helvetica Neue,Arial,sans-serif;pointer-events:all';
+    ov.innerHTML = '<div style="width:420px;padding:48px 40px;background:#fff;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.12);box-sizing:border-box">'
+      + '<div style="text-align:center;margin-bottom:28px"><span style="font-size:22px;font-weight:700;color:#ff7a59">HubSpot</span></div>'
+      + '<h2 style="margin:0 0 12px;color:#33475b;font-size:19px;font-weight:600;text-align:center">Sign in to your account</h2>'
+      + '<p style="margin:0 0 20px;color:#516f90;font-size:13px;line-height:1.45;text-align:center">HubSpot requires a browser session on <strong>hubspot.com</strong>. Passthrough proxy login cannot obtain the required <code style="font-size:12px">csrf.app</code> cookie.</p>'
+      + '<div id="ps-hs-err" style="display:none;margin-bottom:12px;padding:10px;background:#fff3f3;border-radius:4px;color:#f2545b;font-size:13px;text-align:center"></div>'
+      + '<div id="ps-hs-info" style="display:none;margin-bottom:12px;padding:10px;background:#e8f4fd;border-radius:4px;color:#33475b;font-size:13px;text-align:center;line-height:1.45"></div>'
+      + '<div id="ps-hs-state" style="margin:0 0 12px;padding:8px 10px;background:#f0f7ff;border:1px solid #d0e6fb;border-radius:999px;color:#1f4e79;font-size:12px;font-weight:600;text-align:center;letter-spacing:.02em">Status: Ready to sign in</div>'
+      + '<button id="ps-hs-popup" type="button" style="width:100%;padding:12px;background:#ff7a59;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">Sign in on HubSpot.com</button>'
+      + '<button id="ps-hs-dash" type="button" style="display:none;width:100%;padding:12px;background:#0091ae;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">Open HubSpot dashboard</button>'
+      + '<details style="margin:12px 0 0"><summary style="cursor:pointer;color:#516f90;font-size:13px">Try passthrough login (experimental)</summary>'
+      + '<div style="margin-top:14px">'
+      + '<div style="margin-bottom:14px"><input id="ps-hs-email" type="email" placeholder="Email address" value="'
+      + EMAIL.replace(/[&<>"]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];})
+      + '" required autocomplete="email" style="width:100%;padding:11px 14px;border:1px solid #cbd6e2;border-radius:4px;font-size:15px;box-sizing:border-box;color:#33475b;outline:none"/></div>'
+      + '<div style="margin-bottom:14px"><input id="ps-hs-pwd" type="password" placeholder="Password" required autocomplete="current-password" style="width:100%;padding:11px 14px;border:1px solid #cbd6e2;border-radius:4px;font-size:15px;box-sizing:border-box;color:#33475b;outline:none"/></div>'
+      + '<button id="ps-hs-btn" type="button" style="width:100%;padding:12px;background:#516f90;color:#fff;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer">Try passthrough sign in</button>'
+      + '</div></details>'
+      + '<p id="ps-hs-wait" style="display:none;margin:14px 0 0;text-align:center;font-size:13px;color:#516f90;line-height:1.45"></p>'
+      + '<p style="margin:18px 0 0;text-align:center;font-size:12px;color:#99acc2;line-height:1.5">API / orchestration: <a id="ps-hs-oauth" href="#" style="color:#0091ae">Connect HubSpot OAuth</a></p>'
+      + '</div>';
+    container.appendChild(ov);
+
+    fetch(HS_ORIGIN + '/login/', { method: 'GET', mode: 'no-cors', credentials: 'include' }).catch(function() {});
+    var _waitTimer = null;
+    var _waitStarted = 0;
+
+    function _clearWaitUx() {
+      if (_waitTimer) { clearInterval(_waitTimer); _waitTimer = null; }
+      var wEl = document.getElementById('ps-hs-wait');
+      if (wEl) { wEl.style.display = 'none'; wEl.textContent = ''; }
+    }
+    function _startWaitUx(btn) {
+      _clearWaitUx();
+      var wEl = document.getElementById('ps-hs-wait');
+      if (!wEl) return;
+      wEl.style.display = 'block';
+      wEl.textContent = 'Contacting HubSpot...';
+      _waitStarted = Date.now();
+      _waitTimer = setInterval(function() {
+        var secs = Math.floor((Date.now() - _waitStarted) / 1000);
+        if (secs >= 90) {
+          wEl.textContent = 'Still waiting (' + secs + 's) - HubSpot login via passthrough can take up to 2 minutes. Do not refresh.';
+          btn.textContent = 'Still working... (' + secs + 's)';
+        } else if (secs >= 45) {
+          wEl.textContent = 'Waiting for HubSpot (' + secs + 's) - upstream is slow; this is normal.';
+          btn.textContent = 'Waiting for HubSpot...';
+        } else if (secs >= 15) {
+          wEl.textContent = 'Waiting for HubSpot (~30s typical) - login POST is in flight.';
+          btn.textContent = 'Waiting for HubSpot...';
+        } else if (secs >= 5) {
+          wEl.textContent = 'HubSpot is processing your login...';
+        }
+      }, 1000);
+    }
+    function _showInfo(msg) {
+      var el = document.getElementById('ps-hs-info');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+    function _nowStamp() {
+      try {
+        var d = new Date();
+        var hh = String(d.getHours()).padStart(2, '0');
+        var mm = String(d.getMinutes()).padStart(2, '0');
+        var ss = String(d.getSeconds()).padStart(2, '0');
+        return hh + ':' + mm + ':' + ss;
+      } catch (e) {
+        return '';
+      }
+    }
+    function _setState(msg, mode) {
+      var el = document.getElementById('ps-hs-state');
+      if (!el) return;
+      var ts = _nowStamp();
+      el.textContent = 'Status: ' + msg + (ts ? ' [' + ts + ']' : '');
+      if (mode === 'ok') {
+        el.style.background = '#ecfdf3';
+        el.style.borderColor = '#b7e4c7';
+        el.style.color = '#1e5e37';
+      } else if (mode === 'warn') {
+        el.style.background = '#fff8e6';
+        el.style.borderColor = '#ffe0a3';
+        el.style.color = '#7a4a00';
+      } else if (mode === 'error') {
+        el.style.background = '#fff3f3';
+        el.style.borderColor = '#ffd1d1';
+        el.style.color = '#8a1f1f';
+      } else {
+        el.style.background = '#f0f7ff';
+        el.style.borderColor = '#d0e6fb';
+        el.style.color = '#1f4e79';
+      }
+    }
+
+    try {
+      if (sessionStorage.getItem('ps_hs_browser_login')) {
+        document.getElementById('ps-hs-dash').style.display = 'block';
+        _showInfo('HubSpot browser session detected. Click "Open HubSpot dashboard" to return to the page you were viewing.');
+        _setState('Browser session detected', 'ok');
+      }
+    } catch (_ss) {}
+
+    function _landingUrl() {
+      return WS_BASE || (function() {
+        var ep = PROXY.replace(/\/+$/, '').split('/').pop();
+        return '/dose/sniff/' + ep + '/workspace/';
+      })();
+    }
+    function _workspaceRoot() {
+      if (WS_BASE) return WS_BASE;
+      try {
+        var m = String(PROXY || '').match(/\/pt\/polysniff\/(\d+)(?:\/|$)/);
+        if (m && m[1]) return '/dose/sniff/' + m[1] + '/workspace/';
+      } catch (e) {}
+      return _landingUrl();
+    }
+    function _markBrowserLogin() {
+      try { sessionStorage.setItem('ps_hs_browser_login', '1'); } catch (e) {}
+    }
+    function _normalizeTargetSubpath(raw, isLoginEntry) {
+      if (isLoginEntry) return 'home/';
+      var s = String(raw || '/');
+      try {
+        if (/^https?:\/\//i.test(s)) {
+          var u = new URL(s);
+          s = (u.pathname || '/') + (u.search || '') + (u.hash || '');
+        }
+      } catch (e) {}
+      s = s.replace(/^\/pt\/polysniff\/\d+\/?/i, '');
+      s = s.replace(/^\/dose\/sniff\/\d+\/workspace\/?/i, '');
+      s = s.replace(/https?:\/\/[^/]+/ig, '');
+      s = s.replace(/^\/+/, '');
+      return s;
+    }
+    function _openDashboard() {
+      _markBrowserLogin();
+      try {
+        var ov = document.getElementById('ps-hs-ov');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+      } catch (_) {}
+      var pathOnly = (TARGET_SUBPATH || '/').split('?')[0].split('#')[0];
+      var isLoginEntry = /^\/(login|oauth|signin|signup)(\/|$)/i.test(pathOnly || '');
+      var sub = _normalizeTargetSubpath(TARGET_SUBPATH || '/', isLoginEntry);
+      var target = _workspaceRoot() + sub;
+      try {
+        var tu = new URL(target, window.location.origin);
+        tu.searchParams.set('ps_hs_reload', String(Date.now()));
+        target = tu.pathname + (tu.search || '') + (tu.hash || '');
+      } catch (e) {
+        var sep = target.indexOf('?') >= 0 ? '&' : '?';
+        target = target + sep + 'ps_hs_reload=' + Date.now();
+      }
+      console.log('[PS HS OVERLAY] opening dashboard at:', target, 'original=', TARGET_SUBPATH);
+      _setState('Redirecting to dashboard', 'ok');
+      window.location.assign(target);
+    }
+
+    document.getElementById('ps-hs-oauth').addEventListener('click', function(ev) {
+      ev.preventDefault();
+      window.open(OAUTH_URL, '_blank', 'noopener');
+    });
+    document.getElementById('ps-hs-dash').addEventListener('click', function() {
+      _openDashboard();
+    });
+    document.getElementById('ps-hs-popup').addEventListener('click', function() {
+      var errEl = document.getElementById('ps-hs-err');
+      var btn = document.getElementById('ps-hs-popup');
+      errEl.style.display = 'none';
+      var popupTarget = HS_ORIGIN + '/login/';
+      console.log('[PS HS OVERLAY] opening popup v' + OVERLAY_VER + ' at:', popupTarget);
+      var popup = window.open(popupTarget, 'hubspot_login', 'width=520,height=720,resizable=yes,scrollbars=yes');
+      if (!popup) {
+        errEl.textContent = 'Popup blocked - allow popups for this site, or use Open in new tab from the workspace toolbar.';
+        errEl.style.display = 'block';
+        _setState('Popup blocked', 'error');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Waiting for HubSpot login...';
+      _setState('Popup opened, waiting for sign-in', 'warn');
+      _showInfo('Complete sign-in in the popup, then close it. The workspace will auto-continue to the HubSpot dashboard (capture starts automatically).');
+      var poll = setInterval(function() {
+        if (!popup || popup.closed) {
+          clearInterval(poll);
+          _setState('Popup closed, validating session', 'warn');
+          _markBrowserLogin();
+          document.getElementById('ps-hs-dash').style.display = 'block';
+          _showInfo('Popup closed. Continuing to HubSpot dashboard now. If needed, use "Open HubSpot dashboard".');
+          setTimeout(_openDashboard, 300);
+        }
+      }, 500);
+    });
+
+    function _loginPayload(email, pwd) {
+      return JSON.stringify({
+        loginPortalId: 0,
+        email: email,
+        password: pwd,
+        rememberMe: false,
+        otp: '',
+        loginSsoTokenResponse: null
+      });
+    }
+    function _handleLoginSuccess() {
+      _clearWaitUx();
+      _markBrowserLogin();
+      window.location.href = _landingUrl();
+    }
+    function _tryDirectLogin(email, pwd, btn, errEl) {
+      var payload = _loginPayload(email, pwd);
+      console.log('[PS HS OVERLAY] bootstrap csrf via', HS_ORIGIN + '/login/');
+      return fetch(HS_ORIGIN + '/login/', { method: 'GET', mode: 'no-cors', credentials: 'include' })
+        .catch(function() { return null; })
+        .then(function() {
+          console.log('[PS HS OVERLAY] direct JSON POST to', HS_ORIGIN + '/login/');
+          return fetch(HS_ORIGIN + '/login/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json, text/html, */*',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: payload,
+            credentials: 'include',
+            redirect: 'manual'
+          });
+        })
+        .then(function(r) {
+          if (!r) throw new Error('direct fetch failed');
+          console.log('[PS HS OVERLAY] direct login status=', r.status, 'type=', r.type);
+          if (r.type === 'opaqueredirect' || r.status === 0 || (r.status >= 300 && r.status < 400)) {
+            _handleLoginSuccess();
+            return null;
+          }
+          return r.text().then(function(txt) {
+            try {
+              var j = JSON.parse(txt);
+              if (j && (j.redirectUrl || j.nextUrl || j.portalId || j.portal)) {
+                _handleLoginSuccess();
+                return null;
+              }
+            } catch (e) {}
+            return 'direct';
+          });
+        })
+        .catch(function(err) {
+          console.log('[PS HS OVERLAY] direct login failed:', err);
+          return 'direct';
+        });
+    }
+    function _tryProxyLogin(email, pwd, btn, errEl) {
+      var payload = _loginPayload(email, pwd);
+      console.log('[PS HS OVERLAY] proxy JSON POST to', PROXY + '/login/');
+      return fetch(PROXY + '/login/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/html, */*',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: payload,
+        credentials: 'include',
+        redirect: 'manual'
+      }).then(function(r) {
+        console.log('[PS HS OVERLAY] proxy login status=', r.status, 'type=', r.type);
+        if (r.type === 'opaqueredirect' || r.status === 0) {
+          _handleLoginSuccess();
+          return;
+        }
+        return r.text().then(function(txt) {
+          try {
+            var j = JSON.parse(txt);
+            if (j && (j.redirectUrl || j.nextUrl || j.portalId || j.portal)) {
+              _handleLoginSuccess();
+              return;
+            }
+            if (j && (j.error || j.message || j.errorType)) {
+              errEl.textContent = 'Passthrough login failed - ' + (j.error || j.message || j.errorType);
+              errEl.style.display = 'block';
+              btn.disabled = false; btn.textContent = 'Try passthrough sign in';
+              return;
+            }
+          } catch (e) {}
+          errEl.textContent = 'Passthrough login cannot obtain csrf.app. Use "Sign in on HubSpot.com" above.';
+          errEl.style.display = 'block';
+          btn.disabled = false; btn.textContent = 'Try passthrough sign in';
+        });
+      });
+    }
+    document.getElementById('ps-hs-btn').addEventListener('click', function() {
+      var email = document.getElementById('ps-hs-email').value.trim();
+      var pwd = document.getElementById('ps-hs-pwd').value;
+      var errEl = document.getElementById('ps-hs-err');
+      var btn = document.getElementById('ps-hs-btn');
+      if (!email || !pwd) {
+        errEl.textContent = 'Please enter your email and password.';
+        errEl.style.display = 'block';
+        return;
+      }
+      btn.disabled = true; btn.textContent = 'Signing in...';
+      errEl.style.display = 'none';
+      _startWaitUx(btn);
+      _tryDirectLogin(email, pwd, btn, errEl).then(function(fallback) {
+        if (fallback === 'direct') return _tryProxyLogin(email, pwd, btn, errEl);
+      }).catch(function(err) {
+        _clearWaitUx();
+        console.log('[PS HS OVERLAY] login error:', err);
+        errEl.textContent = 'Network error - try "Sign in on HubSpot.com" instead.';
+        errEl.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Try passthrough sign in';
+      });
+    });
+    ['ps-hs-email','ps-hs-pwd'].forEach(function(id) {
+      document.getElementById(id).addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') document.getElementById('ps-hs-btn').click();
+      });
+    });
+  }
+
+  if (document.body) { _mount(); } else { document.addEventListener('DOMContentLoaded', _mount); }
+})();
+</script>

@@ -1,4 +1,5 @@
-﻿"""
+# dose/passthrough/handlers/hubspot_handler.py
+"""
 HubSpot passthrough — proxy app.hubspot.com inside PolySaaS admin shell.
 
 Track A of HubSpot integration. API/OAuth for User Context Manager is separate.
@@ -32,7 +33,13 @@ from dose.polysniffer.handlers.hubspot_bases import (
 
 logger = logging.getLogger(__name__)
 
-_HS_OVERLAY_VER = "2026-07-03-anti-loop-v2"
+_HS_OVERLAY_VER = "2026-07-02-phase5-popup-d"
+
+# BINGO: HubSpot direct popup login restored on 2026-06-29.
+# Freeze rule: do not change popup open behavior unless explicitly requested.
+# Working contract:
+# - popup opens HubSpot directly
+# - left panel alone handles localhost passthrough/capture resume
 
 _HUBSPOT_HOST_MARKERS = ('hubspot.com', 'hubspot.net')
 
@@ -134,6 +141,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         path_only = low.split('?', 1)[0].rstrip('/')
         if any(marker in path_only for marker in _PORTAL_BOOTSTRAP_MARKERS):
             return True
+        # HubSpot home-redirect-ui also calls GET /home/v2/api?portalId=… (no /portal suffix).
         return path_only.endswith('/home/v2/api')
 
     @classmethod
@@ -195,6 +203,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     def _build_portal_bootstrap_payload(self, request) -> tuple[bytes, str, int]:
         pid = self._resolve_portal_id(request)
         effective_pid = pid if pid else _PORTAL_PLACEHOLDER_ID
+        # portalId in JSON only — upstream workspace lives at /home/, not /home/{id}/
         home_path = '/home/'
         payload = json.dumps({
             'portalId': effective_pid,
@@ -207,6 +216,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _forward_set_cookies_from_requests_resp(src_resp, dest_response) -> None:
+        """Copy all Set-Cookie values from a requests response onto a Django response."""
         try:
             for _c in src_resp.cookies:
                 dest_response.cookies[_c.name] = _c.value
@@ -235,11 +245,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _is_bad_hubspot_subpath(path: str) -> bool:
+        """HubSpot home-redirect-ui can navigate to /undefined/ when portal bootstrap fails."""
         parts = [seg.lower() for seg in (path or '').split('/') if seg]
         return any(seg in ('undefined', 'null', 'nan') for seg in parts)
 
     @staticmethod
     def _request_wants_portal_json(request) -> bool:
+        """XHR/fetch need JSON; full document navigations must not render raw bootstrap JSON."""
         dest = (request.META.get('HTTP_SEC_FETCH_DEST') or '').lower()
         if dest == 'document':
             return False
@@ -264,6 +276,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return HttpResponseRedirect(dest)
 
     def _respond_bad_hubspot_subpath(self, request, endpoint, sub: str):
+        """JSON for XHR (breaks /home/undefined loop); redirect document nav to /home/."""
         if self._request_wants_portal_json(request):
             body, content_type, status = self._build_portal_bootstrap_payload(request)
             logger.warning('[HubSpot] bad subpath JSON %s -> portalId bootstrap', sub)
@@ -284,18 +297,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return self._redirect_to_hubspot_home(request, endpoint)
 
     def handle_request(self, request, subpath=None):
+        """
+        Short-circuit HubSpot home bootstrap portal APIs before the upstream proxy.
+        api.hubspot.com/home/v2/api/portal can block ~60s; home-redirect-ui times out first.
+        """
         self._bind_hubspot_request(request)
         path = (subpath or '').strip()
         if path and not path.startswith('/'):
             path = '/' + path
-
-        # STRONG ANTI-LOOP - catch /undefined and /home/undefined immediately
-        low_path = path.lower()
-        if 'undefined' in low_path or 'null' in low_path or low_path.endswith('/home') or low_path == '/home/':
-            logger.warning(f"[STRONG ANTI-LOOP] Caught {path} → forcing portal bootstrap")
-            endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
-            return self._respond_portal_bootstrap(request, endpoint, path, log_label='[STRONG ANTI-LOOP]')
-
         if self._is_bad_hubspot_subpath(path):
             endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
             return self._respond_bad_hubspot_subpath(request, endpoint, path)
@@ -313,22 +322,37 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
         filtered = {k: v for k, v in cookies.items() if k not in self._DJANGO_COOKIE_NAMES}
+        # Never forward the client-side bootstrap placeholder — HubSpot rejects login POSTs.
         if filtered.get('hubspotapi-csrf') == 'ps_local':
             filtered.pop('hubspotapi-csrf', None)
         return filtered
 
     def get_upstream_cookies(self, request) -> dict:
+        """Replay validated HubSpot web session cookies (popup sync / tenant cache)."""
         self._bind_hubspot_request(request)
         svc = self._session_service(request)
         eid = self._endpoint_id(request)
+
+        # ── DIAGNOSTIC (remove after confirming cookies flow) ──────────────────
+        print(f'[HS-COOKIE-DIAG] get_upstream_cookies eid={eid}')
+        print(f'[HS-COOKIE-DIAG]   svc.tenant={svc.tenant} tenant_app={svc.tenant_app}')
+        if svc.tenant_app:
+            ec = svc.tenant_app.extra_config or {}
+            print(f'[HS-COOKIE-DIAG]   extra_config keys={sorted(ec.keys())}')
+            print(f'[HS-COOKIE-DIAG]   hs_web_cookies present={bool(ec.get("hs_web_cookies"))}')
+            print(f'[HS-COOKIE-DIAG]   hs_web_cookies_source={ec.get("hs_web_cookies_source")}')
+        # ── END DIAGNOSTIC ─────────────────────────────────────────────────────
 
         client_path = self._hubspot_client_path(request)
         cookies = svc.cookies_for_upstream(
             client_path=client_path,
             method=getattr(request, 'method', 'GET') or 'GET',
         )
+        print(f'[HS-COOKIE-DIAG]   cookies_for_upstream returned {len(cookies)} cookies: {sorted(cookies.keys())}')
 
         if not cookies:
+            # Fallback: use freshly captured cookies from the Django session
+            # immediately after a successful login POST (before session service cache refreshes).
             session_key = f'hubspot_cookies_{eid}'
             try:
                 fresh = request.session.get(session_key) or {}
@@ -338,8 +362,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             except Exception:
                 pass
             if not cookies:
+                print(f'[HS-COOKIE-DIAG]   NO COOKIES — upstream will get no auth!')
                 return {}
-
         filtered = self.filter_cookies_for_upstream(request, cookies)
         if filtered:
             logger.warning(
@@ -347,9 +371,11 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                 len(filtered),
                 eid,
             )
+        print(f'[HS-COOKIE-DIAG]   filtered={sorted(filtered.keys())}')
         return filtered
 
     def override_upstream_cookies(self, request, target_url: str) -> dict:
+        """Inject csrf.app cookie (captured on GET login page) into login POST requests."""
         if request.method == 'POST' and '/login' in (target_url or ''):
             eid = self._endpoint_id(request)
             session_key = f'hs_csrf_app_{eid}'
@@ -358,11 +384,16 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                 if csrf_app:
                     print(f'[HubSpotHandler] Injecting csrf.app into login POST: {csrf_app[:20]}...')
                     return {'csrf.app': csrf_app}
+                else:
+                    print(f'[HubSpotHandler] WARNING: no csrf.app in session (key={session_key}) — login POST may fail')
             except Exception as exc:
                 logger.warning('[HubSpotHandler] override_upstream_cookies: %s', exc)
         return {}
 
     def filter_query_params_for_upstream(self, request, query_params: dict) -> dict:
+        """Remove PolySaaS-internal flags (ps_hs_*) from the URL sent to HubSpot.
+        Keeps the flags for our guards/detection while preventing "invalid login URL".
+        """
         self._bind_hubspot_request(request)
         if not query_params:
             return query_params
@@ -374,9 +405,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return filtered
 
     def _capture_login_cookies_from_response(self, resp, request) -> None:
+        """
+        DIRECT LOGIN FLOW: Extract HubSpot session cookies from successful POST /login/ (302).
+        Store in Django session for forwarding on all subsequent requests.
+        """
         eid = self._endpoint_id(request)
         captured_cookies = {}
         
+        # Extract Set-Cookie headers from response
         try:
             raw_sc_list = []
             rh = getattr(resp.raw, 'headers', None)
@@ -386,6 +422,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                 elif hasattr(rh, 'items'):
                     raw_sc_list = [v for k, v in rh.items() if k.lower() == 'set-cookie']
             
+            # Also try resp.cookies for any cookies that were parsed
             try:
                 for _c in resp.cookies:
                     if hasattr(_c, 'name') and hasattr(_c, 'value'):
@@ -393,6 +430,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             except Exception:
                 pass
             
+            # Parse raw Set-Cookie headers
             cookie_names_to_capture = {
                 'csrf.app', 'hubspotutk', 'hubspotulk', 'hs',
                 'hubspotapi', 'hubspotapi-csrf', 'hubspotapi-prefs',
@@ -415,13 +453,26 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                     '[DIRECT LOGIN] Captured %d cookies on successful POST /login/, stored via session service (eid=%s)',
                     len(captured_cookies), eid
                 )
+                print(f'[HubSpotHandler] LOGIN SUCCESS: Captured and stored {len(captured_cookies)} cookies for eid={eid}')
+                print(f'[HubSpotHandler] Captured cookies: {list(captured_cookies.keys())}')
+            else:
+                logger.warning('[DIRECT LOGIN] No cookies captured on POST /login/ 302 response (eid=%s)', eid)
         except Exception as e:
             logger.error('[DIRECT LOGIN] Failed to extract cookies: %s', e)
 
     def augment_outbound_headers(self, request, headers, target_url: str) -> None:
+        """Attach API Bearer token for HubSpot API paths; spoof Origin on legacy login POST."""
         if request.method == 'POST' and '/login' in (target_url or ''):
             headers['Origin'] = 'https://app.hubspot.com'
             headers['Referer'] = 'https://app.hubspot.com/login/'
+            eid = self._endpoint_id(request)
+            csrf_sent = (
+                request.COOKIES.get('csrf.app')
+                or (request.session.get(f'hs_csrf_app_{eid}') if eid else None)
+                or '<absent>'
+            )
+            print(f'[HubSpotHandler] Spoofed Origin/Referer for login POST to {target_url}')
+            print(f'[HubSpotHandler] LOGIN POST csrf.app value being forwarded: {csrf_sent!r}')
 
         if request.method == 'GET' and '/firealarm/v4/alarm/' in (target_url or ''):
             headers['Content-Type'] = 'application/json'
@@ -439,6 +490,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
             if not isinstance(exc, HubspotNotConnected):
                 logger.debug('[HubSpotHandler] ensure_api_token: %s', exc)
+            else:
+                logger.debug('[HubSpotHandler] no API token for %s', target_url)
 
     @staticmethod
     def _needs_bearer_auth(target_url: str) -> bool:
@@ -452,6 +505,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             or (host.endswith('.hubspot.com') and path.startswith('/api/'))
             or path.startswith('/home/v2/api/')
         )
+
 
     def _endpoint_id(self, request) -> int | None:
         eid = getattr(request, '_polysniffer_endpoint_id', None)
@@ -475,6 +529,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return load_known_bases(request, self._endpoint_id(request), endpoint_url or '')
 
     def should_follow_upstream_redirects(self, request, target_url: str, upstream_path: str) -> bool:
+        """Follow GET redirects (e.g. unauthenticated GET / → /login/) but NOT POST redirects.
+        POST /login/ succeeds with a 302; passing it to the browser lets the overlay detect
+        opaqueredirect as a success signal. Following it server-side hides the 302 and returns
+        a 200 instead, which the overlay incorrectly treats as login failure."""
         return request.method != 'POST'
 
     def _bind_hubspot_request(self, request) -> None:
@@ -486,6 +544,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         self._seed_provisioned_hub_bases(request)
 
     def _seed_provisioned_hub_bases(self, request) -> None:
+        """Seed Playwright-provisioned regional hub (app-na2…) into session known_bases."""
         if request is None:
             return
         eid = self._endpoint_id(request)
@@ -518,18 +577,26 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if tenant is None:
             try:
                 from dose.utils import get_current_tenant
+
                 tenant = get_current_tenant(request)
             except Exception:
                 tenant = None
         if not tenant:
             return None
         from dose.services.hubspot_oauth import get_tenant_hubspot_app
+
         return self._hub_subdomain_origin_from_tenant_app(get_tenant_hubspot_app(tenant))
 
     def _provisioned_hub_origin_from_db(self, endpoint_id: int | None = None) -> str | None:
+        """
+        Resolve Playwright regional hub before request context is bound.
+
+        Uses only the active tenant schema — never public for tenant-owned rows.
+        """
         req = None
         try:
             from dose.polysniffer.handlers.hubspot_bases import get_hubspot_passthrough_request
+
             req = get_hubspot_passthrough_request()
         except Exception:
             req = None
@@ -542,16 +609,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if not schema:
             return None
         from dose.tenant_app_lookup import get_tenant_app_in_schema_by_name
+
         ta = get_tenant_app_in_schema_by_name(schema, "hubspot")
         return self._hub_subdomain_origin_from_tenant_app(ta)
 
     @staticmethod
     def _active_tenant_schema(request=None) -> str | None:
+        """First non-public schema from request tenant or current search_path."""
         if request is not None:
             tenant = getattr(request, "tenant", None)
             if tenant is None:
                 try:
                     from dose.utils import get_current_tenant
+
                     tenant = get_current_tenant(request)
                 except Exception:
                     tenant = None
@@ -561,6 +631,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                     return schema
 
         from django.db import connection
+
         try:
             with connection.cursor() as cur:
                 cur.execute("SHOW search_path")
@@ -585,10 +656,12 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return prov.rstrip("/") if prov else base
 
     def passthrough_early_shell_paths(self):
+        """Global DB entry paths — redirect to session landing when known."""
         return ("/", "/login", "/login/", "/undefined", "/undefined/", "/home")
 
     @classmethod
     def _sanitize_hubspot_upstream_path(cls, path: str) -> str:
+        """Rewrite SPA junk paths (/home/undefined/) before upstream fetch."""
         if cls._is_bad_hubspot_subpath(path):
             logger.warning('[HubSpot] sanitizing bad upstream path %s -> /home/', path)
             return '/home/'
@@ -599,6 +672,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return path
 
     def try_root_display_shell_response(self, request, endpoint, url_trigger_segment):
+        """
+        When session has a post-login landing, skip global /login/ and open the workspace directly.
+        Also redirect HubSpot SPA /undefined/ navigations to /home/.
+        """
         self._bind_hubspot_request(request)
         import re
 
@@ -660,6 +737,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         path = clean_path if (clean_path or "").startswith("/") else f"/{clean_path or ''}"
         path = self._sanitize_hubspot_upstream_path(path)
 
+        # HubSpot app boot requests certain APIs from api.hubspot.com. If these are
+        # sent to app.hubspot.com they return 404 and the UI stalls on a loading spinner.
         low = path.lower()
         if low.startswith('/home/v2/api/') or low.startswith('/firealarm/v4/alarm/'):
           return f"https://api.hubspot.com{path}"
@@ -667,6 +746,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return f"{origin.rstrip('/')}{path}"
 
     def adjust_upstream_target_url(self, target_url, upstream_path=None):
+        """Belt-and-suspenders: rewrite generic app host to provisioned regional hub."""
         try:
             from urllib.parse import urlparse, urlunparse
 
@@ -677,6 +757,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             req = None
             try:
                 from dose.polysniffer.handlers.hubspot_bases import get_hubspot_passthrough_request
+
                 req = get_hubspot_passthrough_request()
             except Exception:
                 req = None
@@ -751,6 +832,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return False
 
     def _login_success_redirect_response(self, resp, request, **context):
+        """Capture auth cookies and return a proxy-local 302 to /home/ after login POST."""
         endpoint_url = context.get('endpoint_url') or ''
         endpoint_id = self._endpoint_id(request)
         proxy_prefix = self._effective_proxy_prefix(
@@ -782,6 +864,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return redirect
 
     def postprocess_upstream_response(self, resp, request, **context):
+      # Avoid stale cached HubSpot HTML/JS during rapid handler iteration.
+      # Without this, browsers can keep serving an old injected overlay script.
       try:
         ct = (resp.headers.get('Content-Type') or '').lower()
         if 'text/html' in ct:
@@ -791,12 +875,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       except Exception:
         pass
 
+      # DIRECT LOGIN FLOW: Capture session cookies on successful POST /login/
       upstream_path = context.get('upstream_path') or ''
       upstream_path_lower = (upstream_path or '').lower()
       if request.method == 'POST' and 'login' in upstream_path_lower:
         if self._hubspot_login_response_indicates_success(resp):
           return self._login_success_redirect_response(resp, request, **context)
 
+      # Diagnostic: log upstream response for login requests (GET and POST)
       if 'login' in upstream_path.lower():
         ct = resp.headers.get('Content-Type', '?')
         loc = resp.headers.get('Location', '')
@@ -804,12 +890,23 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         try:
           body_preview = resp.text[:300]
         except Exception:
-          body_preview = ''
+          pass
         print(f'[HubSpotHandler] LOGIN {request.method} upstream response: status={resp.status_code} ct={ct} location={loc!r}')
         print(f'[HubSpotHandler] LOGIN {request.method} body preview: {body_preview!r}')
+        
+        # Log csrf.app capture attempt on GET
+        if request.method == 'GET':
+          print(f'[HubSpotHandler] GET /login/ response status={resp.status_code}, checking for csrf.app...')
 
+        # Capture csrf.app from GET login page so we can inject it on the POST.
+        # HubSpot requires this cookie for login POSTs; it lives on .hubspot.com and
+        # is not automatically present in the browser's localhost cookie jar.
         if request.method == 'GET' and 'login' in upstream_path.lower():
           csrf_app = None
+
+          # Method 1: iterate resp.cookies (RequestsCookieJar) explicitly —
+          # resp.cookies.get('csrf.app') fails because Python's http.cookiejar
+          # rejects cookie names containing a dot.
           try:
             for _c in resp.cookies:
               if _c.name == 'csrf.app':
@@ -818,6 +915,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           except Exception:
             pass
 
+          # Method 2: parse raw Set-Cookie headers via urllib3, which stores all
+          # repeated headers correctly (requests' CaseInsensitiveDict does not).
           if not csrf_app:
             raw_sc_list = []
             try:
@@ -829,6 +928,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                   raw_sc_list = [v for k, v in rh.items() if k.lower() == 'set-cookie']
             except Exception:
               pass
+            print(f'[HubSpotHandler] GET /login/ raw Set-Cookie headers: {raw_sc_list}')
             for sc in raw_sc_list:
               if sc.startswith('csrf.app='):
                 csrf_app = sc.split(';')[0].split('=', 1)[1].strip()
@@ -842,6 +942,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
               print(f'[HubSpotHandler] Stored csrf.app in session (key={session_key}): {csrf_app[:20]}...')
             except Exception as _se:
               logger.warning('[HubSpotHandler] Could not store csrf.app in session: %s', _se)
+          else:
+            print('[HubSpotHandler] WARNING: csrf.app NOT found in GET /login/ response — login POST will likely fail')
 
         self._bind_hubspot_request(request)
         endpoint_url = context.get('endpoint_url') or ''
@@ -879,6 +981,11 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return resp
 
     def coerce_upstream_response_for_path(self, resp, request, upstream_path: str):
+        """
+        Intercept HubSpot home bootstrap 401s and return a minimal portal payload so the
+        home-redirect-ui SPA can continue booting instead of bouncing back to full-screen login.
+        Called by the forwarder for all response types, right after postprocess.
+        """
         if resp.status_code != 401:
             return None
         up = (upstream_path or '').lower()
@@ -902,9 +1009,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return None
 
     def polysniffer_non_page_path_prefixes(self, request):
+        """HAR-derived API/asset families — see direct HAR and _BYPASS_PREFIXES."""
         return _BYPASS_PREFIXES
 
     def polysniffer_workspace_browse_subpath(self, endpoint, request=None):
+        """
+        PolySniffer workspace HTML entry: session landing path, else global /login/.
+        DB starting_uri is the global startpoint only — not the post-login float.
+        """
         if request is not None:
             return resolve_hubspot_browse_subpath(request, endpoint, self._endpoint_id(request))
         uri = (getattr(endpoint, "starting_uri", None) or "").strip()
@@ -914,6 +1026,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _canonical_host_from_bases(endpoint_url: str, known_bases: list[str] | None = None) -> str:
+        # Prefer regional hub (app-na2…) over generic app.hubspot.com for location spoof + SPA boot.
         regional: list[str] = []
         for origin in known_bases or []:
             parsed = urlparse(origin)
@@ -942,8 +1055,9 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                     return regional
         return host
 
-    @staticmethod
+    @classmethod
     def _hubspot_location_spoof_iife(
+        cls,
         proxy_prefix: str,
         shell_prefix: str = "",
         canonical_host: str = "app.hubspot.com",
@@ -952,30 +1066,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         shell = json.dumps((shell_prefix or "").rstrip("/"))
         host = json.dumps((canonical_host or "app.hubspot.com").split(":")[0])
         return fr"""(function() {{
-  console.log('[PolySaaS HS SPOOF v5 EARLY] Running');
-  var PROXY = {proxy};
-  var TARGET = PROXY + '/home/';
-  var PROXY_PREFIX = PROXY;
+  var PROXY_PREFIX = {proxy};
   var SHELL_PREFIX = {shell};
   var CANONICAL_HOST = {host};
   var CANONICAL_ORIGIN = 'https://' + CANONICAL_HOST;
-
-  function killUndefined() {{
-    var path = location.pathname || '';
-    if (path.indexOf('/undefined') >= 0 || path.indexOf('/null') >= 0 || (path.endsWith('/home') && !path.endsWith('/home/'))) {{
-      console.warn('[PolySaaS HS] KILLING bad path:', path);
-      location.replace(TARGET);
-      return true;
-    }}
-    return false;
-  }}
-
-  // Run immediately, on load, and poll
-  if (killUndefined()) return;
-  window.addEventListener('load', killUndefined);
-  setInterval(killUndefined, 200);
-
   window.__PS_HUBSPOT_LOCATION_SPOOF = true;
+  // Cache the real href BEFORE any getter patching — used as fallback
+  // when Location.prototype descriptors are not accessible.
   var _cachedRealHref = null;
   try {{
     var _proto = window.Location && window.Location.prototype;
@@ -1004,6 +1101,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   var _realPathname = null;
   var _realHref = null;
   var _setHref = null;
+  // Some HubSpot bundles read window.origin directly.
   try {{
     Object.defineProperty(window, 'origin', {{
       configurable: true,
@@ -1061,7 +1159,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     }} catch (_siq) {{
       return s.replace(/[?&]ps_hs_(?:popup|reload|recard)=[^&]*/g, function(m, i) {{
         return i === 0 && m.charAt(0) === '?' ? '?' : '';
-      }}).replace(/\?&/, '?').replace(/\?$/, '');
+      }}).replace(/\\?&/, '?').replace(/\\?$/, '');
     }}
   }}
   function realLocationSearch() {{
@@ -1075,6 +1173,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       var actual = raw;
       if (actual == null) actual = _realPathname ? _realPathname() : (window.location.pathname || '/');
       var normalized = normalizeSubpath(actual || '/');
+      // Guard: if HubSpot SPA emits undefined/null before routing initializes, fall back to /home/
       if (_hasBadSegment(normalized)) normalized = '/home/';
       try {{ window.__PS_ORCH_ACTION_PATH = normalized; }} catch (_psap) {{}}
       return normalized;
@@ -1121,6 +1220,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }};
   function applyHubspotLocationSpoof() {{
     try {{
+      // Try Location.prototype first, then fall back to the actual prototype chain
       var _locProto = window.Location && window.Location.prototype;
       var _locActualProto = Object.getPrototypeOf && Object.getPrototypeOf(window.location);
       function _getDesc(prop) {{
@@ -1189,6 +1289,9 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           set: originDesc.set
         }}); }} catch(_ore) {{}} }}
       }}
+      // Always patch window.location directly as a belt-and-suspenders measure.
+      // Some browser/runtime combinations expose no writable Location prototype
+      // descriptors (hrefDesc=false), but instance-level getters can still work.
       try {{
         Object.defineProperty(window.location, 'hostname', {{
           configurable: true,
@@ -1255,15 +1358,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           set: function(v) {{ return _setHref(proxyHrefFromUpstream(v)); }}
         }}); }} catch(_hre2) {{}}
       }} else {{
+        // Fallback: Location.prototype.href getter unavailable (can happen when
+        // the browser denies prototype access or another script already stripped it).
+        // Define href directly on window.location using _cachedRealHref for the getter.
         try {{
           Object.defineProperty(window.location, 'href', {{
             configurable: true,
             enumerable: true,
             get: function() {{ return upstreamHref(_cachedRealHref); }},
-            set: function(v) {{ window.location.assign(proxyHrefFromUpstream(String(v))); }}
+            set: function(v) {{ window.location.assign(proxyHrefFromUpstream(v)); }}
           }});
         }} catch (_fb) {{}}
       }}
+      // Always ensure Location.prototype toString returns the spoofed value
       if (window.Location && window.Location.prototype) {{
         try {{ window.Location.prototype.toString = function() {{ return upstreamHref(_cachedRealHref); }}; }} catch(_ts) {{}}
       }}
@@ -1287,6 +1394,9 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           }});
         }}
       }} catch (eUri) {{}}
+      // Proxy document.location so reads like document.location.hostname return the
+      // spoofed value. window.location cannot be overridden (configurable:false in all
+      // modern browsers), but document.location can be replaced on the instance.
       try {{
         var _realLoc = window.location;
         var _spoofedLocProxy = new Proxy(_realLoc, {{
@@ -1313,6 +1423,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           get: function() {{ return _spoofedLocProxy; }},
           set: function(v) {{ window.location.assign(proxyHrefFromUpstream(String(v))); }}
         }});
+
+        // If the instance-level override is ignored, try a prototype-level fallback.
         try {{
           var _docHostNow = '';
           try {{ _docHostNow = String((document.location && document.location.hostname) || ''); }} catch (_dhn) {{}}
@@ -1343,6 +1455,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
           try {{
             var u = new URL(raw);
             if (u.pathname.indexOf(PROXY_PREFIX) === 0) {{
+              // First-party credential step for HubSpot login:
+              // Let the actual username/password POST go directly to app.hubspot.com
+              // so the browser receives csrf.app and session cookies.
+              // All other forms and navigation remain under the passthrough prefix.
               var isLoginForm = /\/login(\/|$|\?)/i.test(u.pathname);
               if (isLoginForm) {{
                 u.hostname = CANONICAL_HOST;
@@ -1374,12 +1490,15 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         shell_prefix: str = "",
         canonical_host: str = "",
     ) -> str:
+        """
+        HubSpot login SPA validates window.location against app*.hubspot.com/login/.
+        PolySniffer workspace URLs must be stripped before upstream scripts boot.
+        """
         host = canonical_host or self._canonical_host_from_bases(
             getattr(self.endpoint, "endpoint_url", "") if self.endpoint else "",
         )
         body = self._hubspot_location_spoof_iife(proxy_prefix, shell_prefix, host)
-        # Inject as early as possible
-        return f'<script data-hubspot-location-spoof="v5-early">{body}</script>'
+        return f'<script data-hubspot-location-spoof="1">{body}</script>'
 
     def get_client_side_shim(self, proxy_prefix: str, known_bases: list[str], request=None) -> str:
         bases_js = json.dumps(known_bases)
@@ -1404,9 +1523,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         except Exception:
             portal_id_val = _PORTAL_PLACEHOLDER_ID
         portal_id_js = json.dumps(portal_id_val)
+        # Inject location spoof IIFE early so it patches location/document.URL before HubSpot bundles load
+        shell_prefix = ''
+        if request is not None and getattr(request, '_polysniffer_workspace_inline', False):
+            try:
+                from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
+                eid = self._endpoint_id(request)
+                if eid:
+                    shell_prefix = workspace_shell_prefix(eid)
+            except Exception:
+                shell_prefix = ''
         spoof = self._hubspot_location_spoof_iife(
             proxy_prefix=proxy_prefix,
-            shell_prefix="",
+            shell_prefix=shell_prefix,
             canonical_host=self._canonical_host_for_shim(request, known_bases),
         )
         return f"""
@@ -1491,6 +1620,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     }} catch (_dhu) {{}}
     return null;
   }}
+  // Do not seed hubspotapi-csrf=ps_local — it is forwarded on login POST and causes rejection.
+  function isAppHost(host) {{
+    if (!host) return false;
+    host = host.toLowerCase().split(':')[0];
+    if (host.indexOf('static.hsappstatic.net') >= 0) return false;
+    return host === 'app.hubspot.com' || host.indexOf('app-') === 0 || host === 'local.hubspot.com' || host === 'api.hubspot.com';
+  }}
   function rememberOrigin(origin) {{
     if (!origin || KNOWN_BASES.indexOf(origin) >= 0) return;
     if (isAppHost(origin.replace(/^https?:\\/\\//, ''))) KNOWN_BASES.push(origin);
@@ -1539,6 +1675,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if (path.indexOf(PROXY_PREFIX) === 0) return url;
         if (path.charAt(0) === '/') {{
           var low = path.toLowerCase();
+          // Keep PolySaaS workspace/admin endpoints local; route everything else
+          // through passthrough so HubSpot setup-guide/onboarding flows stay captured.
           if (low.indexOf('/admin/') !== 0 && low.indexOf('/dose/') !== 0 &&
               low.indexOf('/static/') !== 0 && low.indexOf('/media/') !== 0) {{
             var subPath = normalizeSubpath(parsed.pathname);
@@ -1714,6 +1852,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _inject_hubspot_stylesheets_into_body(html: str) -> str:
+        """
+        Duplicate HubSpot CDN stylesheet tags into <body> so they land inside the
+        passthrough embed scope div (head is split into Jazzmin extrahead).
+        """
         if not html or 'data-ps-hs-body-css="1"' in html:
             return html
         links = re.findall(
@@ -1772,6 +1914,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         shim = self.get_client_side_shim(prefix, sorted(known), request=request)
         if 'data-hubspot-pt-shim="1"' not in html:
             if re.search(r'(?i)<head[^>]*>', html):
+                # Use a lambda so re.sub never interprets backslashes inside
+                # the shim JS (e.g. \d in regexes) as replacement backreferences.
                 html = re.sub(
                     r'(?i)(<head[^>]*>)',
                     lambda m: m.group(1) + shim,
@@ -1780,6 +1924,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                 )
             else:
                 html = shim + html
+        # Pre-populate login email from the logged-in PolySaaS user
         user_email = getattr(getattr(request, 'user', None), 'email', '') or ''
         if user_email and '/login' in (endpoint_url or '').lower() or '/login' in html[:2000].lower():
             prepop = (
@@ -1797,6 +1942,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             html = re.sub(r'(?i)(</body>)', lambda m: prepop + m.group(1), html, count=1)
             if '</body>' not in html.lower():
                 html += prepop
+        # Phase 4 — connect card on login + unauthenticated home-redirect shell.
         req_path = getattr(request, 'path', '') or ''
         if self._needs_connect_card(request, html, endpoint_url or '', req_path):
             eid = endpoint_id or self._endpoint_id(request)
@@ -1828,6 +1974,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _strip_workspace_shell_scripts_for_popup(html: str) -> str:
+        """Popup login must stay on bare /pt/polysniff/ — never redirect to workspace capture."""
         if not html:
             return html
         html = re.sub(
@@ -1853,6 +2000,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         *,
         oauth_url: str = '/dose/hubspot/oauth/start/',
     ) -> str:
+        """Clean inline login form — no popup, submits directly through the passthrough proxy."""
         prefix_js = json.dumps(proxy_prefix.rstrip('/'))
         email_js = json.dumps(user_email or '')
         oauth_js = json.dumps(oauth_url or '/dose/hubspot/oauth/start/')
@@ -2009,10 +2157,12 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }}
   if (document.body) {{ _mount(); }} else {{ document.addEventListener('DOMContentLoaded', _mount); }}
 }})();
-</script>"""
+</script>"""  # end _get_direct_login_script
 
     @staticmethod
     def _is_popup_login_request(request) -> bool:
+        """Passthrough login opened in hubspot_login popup — show real form, not connect card."""
+        # Never treat workspace inline requests as popup login.
         if getattr(request, '_polysniffer_workspace_inline', False) or (getattr(request, '_polysniffer_proxy_prefix', '') or '').startswith('/pt/polysniff'):
             return False
         try:
@@ -2023,6 +2173,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return False
 
     def _needs_connect_card(self, request, html: str, endpoint_url: str, req_path: str = '') -> bool:
+        # Workspace inline passthrough (green orchestration bar): show the real upstream HubSpot login form directly.
+        # Use only the proxy prefix (consistent on all workspace requests).
         if (getattr(request, '_polysniffer_proxy_prefix', '') or '').startswith('/pt/polysniff'):
             return False
 
@@ -2043,27 +2195,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         return False
 
     @staticmethod
-    def _is_login_page(html: str, endpoint_url: str, req_path: str = '') -> bool:
-        if '/login' in (endpoint_url or '').lower():
-            return True
-        if '/login' in (req_path or '').lower():
-            return True
-        sample = html[:4000].lower()
-        if 'firealarm' in sample or 'loginui' in sample or '"login"' in sample:
-            return True
-        login_markers = (
-            'hubspot',
-            'sign in',
-            'password',
-            'remember me',
-            'forgot password',
-            'login screen for the hubspot testing environment',
-        )
-        hits = sum(1 for marker in login_markers if marker in sample)
-        return hits >= 3
-
-    @staticmethod
     def _get_workspace_shell_redirect_script(workspace_base: str, proxy_prefix: str) -> str:
+        """Bare /pt/polysniff/{id}/ full-page HTML → workspace split shell (keeps capture panel)."""
         ws_js = json.dumps((workspace_base or '').rstrip('/') + '/')
         proxy_js = json.dumps((proxy_prefix or '').rstrip('/'))
         return f"""<script data-ps-hs-workspace-redirect="1">
@@ -2091,7 +2224,34 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 </script>"""
 
     @staticmethod
+    def _is_login_page(html: str, endpoint_url: str, req_path: str = '') -> bool:
+        if '/login' in (endpoint_url or '').lower():
+            return True
+        if '/login' in (req_path or '').lower():
+            return True
+        sample = html[:4000].lower()
+        if 'firealarm' in sample or 'loginui' in sample or '"login"' in sample:
+            return True
+
+        # HubSpot sometimes returns alternate login HTML (including testing-environment login)
+        # without the classic firealarm/loginui markers.
+        login_markers = (
+            'hubspot',
+            'sign in',
+            'password',
+            'remember me',
+            'forgot password',
+            'login screen for the hubspot testing environment',
+        )
+        hits = 0
+        for marker in login_markers:
+            if marker in sample:
+                hits += 1
+        return hits >= 3
+
+    @staticmethod
     def _get_popup_handshake_script(proxy_prefix: str, endpoint_id: int | None) -> str:
+        """Notify opener when passthrough popup login stores a validated session."""
         prefix_js = json.dumps((proxy_prefix or '').rstrip('/'))
         eid_js = json.dumps(int(endpoint_id or 0))
         return f"""<script data-ps-hs-popup-handshake="1">
@@ -2188,6 +2348,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   var HS_ORIGIN = {origin_js};
   var WS_BASE = {ws_base_js};
   var OAUTH_URL = {oauth_js};
+  // Capture the exact subpath the user was trying to view when the overlay appeared.
+  // The teal "Open HubSpot dashboard" button will navigate back to this path after popup login.
   var _cur = (window.location.pathname || '/') + (window.location.search || '') + (window.location.hash || '');
   _cur = _cur.replace(/^\\/dose\\/sniff\\/\\d+\\/workspace\\/?/i, '/');
   if (PROXY && _cur.indexOf(PROXY) === 0) _cur = _cur.slice(PROXY.length) || '/';
@@ -2195,12 +2357,15 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   var TARGET_SUBPATH = _cur;
   function _mount() {{
     if (document.getElementById('ps-hs-ov')) return;
+    // Scope overlay to the passthrough panel (#passthrough-inline) so it does NOT
+    // cover the workspace chrome (sidebar, capture panel). Fall back to body if not found.
     var container = document.getElementById('passthrough-inline') || document.body;
     if (container !== document.body) {{
       container.style.position = 'relative';
     }}
     var ov = document.createElement('div');
     ov.id = 'ps-hs-ov';
+    // position:absolute fills #passthrough-inline only (not the full viewport).
     ov.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:9999;display:flex;align-items:center;justify-content:center;background:#f5f8fa;font-family:Lexend Deca,Helvetica Neue,Arial,sans-serif;pointer-events:all';
     ov.innerHTML = '<div style="width:420px;padding:48px 40px;background:#fff;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.12);box-sizing:border-box">'
       + '<div style="text-align:center;margin-bottom:28px"><span style="font-size:22px;font-weight:700;color:#ff7a59">HubSpot</span></div>'
@@ -2357,17 +2522,26 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       try {{ sessionStorage.setItem('ps_hs_browser_login', '1'); }} catch (e) {{}}
     }}
     function _normalizeTargetSubpath(raw, isLoginEntry) {{
+      // If we started from /login, resume at a real app route rather than
+      // replaying the login URL that HubSpot flags as invalid in passthrough.
       if (isLoginEntry) return 'home/';
       var s = String(raw || '/');
       try {{
+        // If an absolute URL leaked in, strip origin and keep only path+query+hash.
         if (/^https?:\/\//i.test(s)) {{
           var u = new URL(s);
           s = (u.pathname || '/') + (u.search || '') + (u.hash || '');
         }}
       }} catch (e) {{}}
+
+      // Remove known proxy/workspace prefixes if present in the captured value.
       s = s.replace(/^\/pt\/polysniff\/\d+\/?/i, '');
       s = s.replace(/^\/dose\/sniff\/\d+\/workspace\/?/i, '');
+
+      // Remove any accidental embedded absolute URL fragment.
       s = s.replace(/https?:\/\/[^/]+/ig, '');
+
+      // Keep it as a relative subpath (no leading slash) for workspace-root join.
       s = s.replace(/^\/+/, '');
       return s;
     }}
@@ -2590,6 +2764,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if any(low.startswith(p) for p in _BYPASS_PREFIXES):
             return False
         return any(low.startswith(p) for p in _PROXY_PATH_PREFIXES) or low in ('/', '/home', '/home/')
+
 
 # Register PolySniffer native sniff processor when handler module loads.
 import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402

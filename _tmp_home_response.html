@@ -1,0 +1,831 @@
+<!DOCTYPE html><html data-quartz-powered="true"><head>
+<script data-polysniffer-pt-client-capture="1">
+(function() {
+  var INGEST = "/dose/sniff/4/workspace/ingest/";
+  function send(payload) {
+    try {
+      var blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+      if (navigator.sendBeacon && navigator.sendBeacon(INGEST, blob)) return;
+    } catch (e) {}
+    fetch(INGEST, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(function() {});
+  }
+  function pathOf(url) {
+    try { return new URL(url, window.location.origin).pathname; } catch (e) { return url; }
+  }
+  function log(method, url, status, ms) {
+    if (!url || url.indexOf(INGEST) !== -1) return;
+    send({
+      method: method || 'GET',
+      url: String(url).slice(0, 500),
+      path: pathOf(url).slice(0, 500),
+      status_code: status || 0,
+      duration_ms: ms || 0
+    });
+  }
+  var _f = window.fetch;
+  window.fetch = function(input, init) {
+    var method = (init && init.method) || 'GET';
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    var t0 = performance.now();
+    return _f.apply(this, arguments).then(function(resp) {
+      log(method, url || (resp && resp.url) || '', resp && resp.status, performance.now() - t0);
+      return resp;
+    }, function(err) {
+      log(method, url, 0, performance.now() - t0);
+      throw err;
+    });
+  };
+  var _xo = XMLHttpRequest.prototype.open;
+  var _xs = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this._psMethod = method;
+    this._psUrl = url;
+    this._psT0 = performance.now();
+    return _xo.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function() {
+    var xhr = this;
+    xhr.addEventListener('loadend', function() {
+      log(xhr._psMethod, xhr._psUrl, xhr.status, performance.now() - (xhr._psT0 || performance.now()));
+    });
+    return _xs.apply(this, arguments);
+  };
+})();
+</script>
+
+<script data-hubspot-pt-shim="1">
+(function() {
+  var PROXY_PREFIX = "/pt/polysniff/4";
+  var SHELL_PREFIX = "";
+  var CANONICAL_HOST = "app.hubspot.com";
+  var CANONICAL_ORIGIN = 'https://' + CANONICAL_HOST;
+  window.__PS_HUBSPOT_LOCATION_SPOOF = true;
+  // Cache the real href BEFORE any getter patching — used as fallback
+  // when Location.prototype descriptors are not accessible.
+  var _cachedRealHref = null;
+  try {
+    var _proto = window.Location && window.Location.prototype;
+    var _tmpDesc = _proto && Object.getOwnPropertyDescriptor(_proto, 'href');
+    if (_tmpDesc && _tmpDesc.get) {
+      _cachedRealHref = _tmpDesc.get.call(window.location);
+    }
+  } catch (_ce) {}
+  if (!_cachedRealHref) {
+    try { _cachedRealHref = window.location.href; } catch (_ce2) {}
+  }
+  if (!window.__PS_REAL_ORIGIN) {
+    try {
+      var _proto2 = window.Location && window.Location.prototype;
+      var _hostDesc = _proto2 && Object.getOwnPropertyDescriptor(_proto2, 'host');
+      var _protDesc = _proto2 && Object.getOwnPropertyDescriptor(_proto2, 'protocol');
+      var _realHost = (_hostDesc && _hostDesc.get) ? _hostDesc.get.call(window.location) : window.location.host;
+      var _realProt = (_protDesc && _protDesc.get) ? _protDesc.get.call(window.location) : window.location.protocol;
+      window.__PS_REAL_ORIGIN = _realProt + '//' + _realHost;
+    } catch (_oe) {
+      window.__PS_REAL_ORIGIN = window.location.protocol + '//' + window.location.host;
+    }
+  }
+  var _realPathname = null;
+  var _realHref = null;
+  var _setHref = null;
+  // Some HubSpot bundles read window.origin directly.
+  try {
+    Object.defineProperty(window, 'origin', {
+      configurable: true,
+      enumerable: true,
+      get: function() { return CANONICAL_ORIGIN; }
+    });
+  } catch (_woe) {}
+  function normalizeSubpath(path) {
+    var p = path || '/';
+    if (!p || p.charAt(0) !== '/') p = '/' + p;
+    if (SHELL_PREFIX && p.indexOf(SHELL_PREFIX) === 0) {
+      p = p.slice(SHELL_PREFIX.length) || '/';
+      if (!p || p.charAt(0) !== '/') p = '/' + p;
+    }
+    var shellMatch = p.match(/^\/dose\/sniff\/\d+\/workspace(\/.*)?$/);
+    if (shellMatch) {
+      p = shellMatch[1] || '/';
+      if (!p || p.charAt(0) !== '/') p = '/' + p;
+    }
+    if (/^\/(passthrough|native)(\/|$)/.test(p)) {
+      p = p.replace(/^\/(passthrough|native)/, '') || '/';
+      if (!p || p.charAt(0) !== '/') p = '/' + p;
+    }
+    if (PROXY_PREFIX && p.indexOf(PROXY_PREFIX) === 0) {
+      p = p.slice(PROXY_PREFIX.length) || '/';
+    }
+    var adminMatch = p.match(/^\/pt\/admin\/[^/]+(\/.*)?$/);
+    if (adminMatch) {
+      p = adminMatch[1] || '/';
+    }
+    if (!p || p.charAt(0) !== '/') p = '/' + p;
+    if (p.toLowerCase().indexOf('/login') === 0 && p.slice(-1) !== '/') p += '/';
+    return p;
+  }
+  function _hasBadSegment(p) {
+    var segs = (p || '').split('/');
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i].toLowerCase();
+      if (s === 'undefined' || s === 'null' || s === 'nan') return true;
+    }
+    return false;
+  }
+  function upstreamPathname(raw) {
+    try {
+      var actual = raw;
+      if (actual == null) actual = _realPathname ? _realPathname() : (window.location.pathname || '/');
+      var normalized = normalizeSubpath(actual || '/');
+      // Guard: if HubSpot SPA emits undefined/null before routing initializes, fall back to /home/
+      if (_hasBadSegment(normalized)) normalized = '/home/';
+      try { window.__PS_ORCH_ACTION_PATH = normalized; } catch (_psap) {}
+      return normalized;
+    } catch (e) {
+      var fallback = normalizeSubpath(window.location.pathname || '/');
+      if (_hasBadSegment(fallback)) fallback = '/home/';
+      try { window.__PS_ORCH_ACTION_PATH = fallback; } catch (_psap2) {}
+      return fallback;
+    }
+  }
+  function upstreamHref(rawHref) {
+    try {
+      var actual = rawHref;
+      if (actual == null) actual = _realHref ? _realHref() : (_cachedRealHref || window.location.href);
+      var u = new URL(String(actual || '/'), window.__PS_REAL_ORIGIN || _cachedRealHref || window.location.href);
+      u.protocol = 'https:';
+      u.hostname = CANONICAL_HOST;
+      u.port = '';
+      u.pathname = upstreamPathname(u.pathname);
+      return u.toString();
+    } catch (e2) { return CANONICAL_ORIGIN + upstreamPathname(window.location.pathname || '/'); }
+  }
+  function proxyHrefFromUpstream(value) {
+    var raw = String(value || '');
+    if (!raw) return raw;
+    try {
+      var parsed = new URL(raw, CANONICAL_ORIGIN);
+      if (parsed.hostname === CANONICAL_HOST || parsed.hostname.indexOf('app-') === 0 || parsed.hostname === 'local.hubspot.com') {
+        var sub = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+        if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+        var low = sub.toLowerCase();
+        var isAsset = low.indexOf('/home/v2/api/') === 0 || low.indexOf('/firealarm/') === 0 ||
+          low.indexOf('/hs/') === 0 || low.indexOf('/static/') === 0 || low.indexOf('/webpack/') === 0;
+        if (SHELL_PREFIX && !isAsset) return SHELL_PREFIX + sub;
+        if (PROXY_PREFIX) return PROXY_PREFIX + sub;
+      }
+    } catch (e3) {}
+    return raw;
+  }
+  window.__PS_GET_UPSTREAM_PATH = function() {
+    try { return upstreamPathname(); } catch (_psgp) { return '/'; }
+  };
+  function applyHubspotLocationSpoof() {
+    try {
+      // Try Location.prototype first, then fall back to the actual prototype chain
+      var _locProto = window.Location && window.Location.prototype;
+      var _locActualProto = Object.getPrototypeOf && Object.getPrototypeOf(window.location);
+      function _getDesc(prop) {
+        var d = _locProto && Object.getOwnPropertyDescriptor(_locProto, prop);
+        if (!d) d = _locActualProto && Object.getOwnPropertyDescriptor(_locActualProto, prop);
+        return d || null;
+      }
+      var hrefDesc = _getDesc('href');
+      var pathnameDesc = _getDesc('pathname');
+      var hostnameDesc = _getDesc('hostname');
+      var hostDesc = _getDesc('host');
+      var originDesc = _getDesc('origin');
+      var protocolDesc = _getDesc('protocol');
+      if (!_realPathname && pathnameDesc && pathnameDesc.get) {
+        _realPathname = pathnameDesc.get.bind(window.location);
+      }
+      if (!_realHref && hrefDesc && hrefDesc.get) {
+        _realHref = hrefDesc.get.bind(window.location);
+      }
+      if (!_setHref && hrefDesc && hrefDesc.set) {
+        _setHref = hrefDesc.set.bind(window.location);
+      }
+      if (pathnameDesc && pathnameDesc.get) {
+        var _pTarget = _locProto || _locActualProto;
+        if (_pTarget) { try { Object.defineProperty(_pTarget, 'pathname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamPathname(); },
+          set: pathnameDesc.set
+        }); } catch(_pe) {} }
+      }
+      if (hostnameDesc && hostnameDesc.get) {
+        var _hnTarget = _locProto || _locActualProto;
+        if (_hnTarget) { try { Object.defineProperty(_hnTarget, 'hostname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; },
+          set: hostnameDesc.set
+        }); } catch(_hne) {} }
+      }
+      if (hostDesc && hostDesc.get) {
+        var _htTarget = _locProto || _locActualProto;
+        if (_htTarget) { try { Object.defineProperty(_htTarget, 'host', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; },
+          set: hostDesc.set
+        }); } catch(_hte) {} }
+      }
+      if (originDesc && originDesc.get) {
+        var _orTarget = _locProto || _locActualProto;
+        if (_orTarget) { try { Object.defineProperty(_orTarget, 'origin', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_ORIGIN; },
+          set: originDesc.set
+        }); } catch(_ore) {} }
+      }
+      // Always patch window.location directly as a belt-and-suspenders measure.
+      // Some browser/runtime combinations expose no writable Location prototype
+      // descriptors (hrefDesc=false), but instance-level getters can still work.
+      try {
+        Object.defineProperty(window.location, 'hostname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; }
+        });
+      } catch (_hnde) {}
+      try {
+        Object.defineProperty(window.location, 'host', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; }
+        });
+      } catch (_hde) {}
+      try {
+        Object.defineProperty(window.location, 'origin', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_ORIGIN; }
+        });
+      } catch (_ode) {}
+      try {
+        Object.defineProperty(window.location, 'protocol', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return 'https:'; }
+        });
+      } catch (_pde) {}
+      try {
+        Object.defineProperty(window.location, 'pathname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamPathname(); }
+        });
+      } catch (_ptde) {}
+      if (protocolDesc && protocolDesc.get) {
+        var _prTarget = _locProto || _locActualProto;
+        if (_prTarget) { try { Object.defineProperty(_prTarget, 'protocol', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return 'https:'; },
+          set: protocolDesc.set
+        }); } catch(_pre) {} }
+      }
+      if (hrefDesc && hrefDesc.get && _setHref) {
+        var _hrTarget = _locProto || _locActualProto;
+        if (_hrTarget) { try { Object.defineProperty(_hrTarget, 'href', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamHref(); },
+          set: function(v) { return _setHref(proxyHrefFromUpstream(v)); }
+        }); } catch(_hre) {} }
+        try { Object.defineProperty(window.location, 'href', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamHref(); },
+          set: function(v) { return _setHref(proxyHrefFromUpstream(v)); }
+        }); } catch(_hre2) {}
+      } else {
+        // Fallback: Location.prototype.href getter unavailable (can happen when
+        // the browser denies prototype access or another script already stripped it).
+        // Define href directly on window.location using _cachedRealHref for the getter.
+        try {
+          Object.defineProperty(window.location, 'href', {
+            configurable: true,
+            enumerable: true,
+            get: function() { return upstreamHref(_cachedRealHref); },
+            set: function(v) { window.location.assign(proxyHrefFromUpstream(v)); }
+          });
+        } catch (_fb) {}
+      }
+      // Always ensure Location.prototype toString returns the spoofed value
+      if (window.Location && window.Location.prototype) {
+        try { window.Location.prototype.toString = function() { return upstreamHref(_cachedRealHref); }; } catch(_ts) {}
+      }
+      try {
+        var docUrlDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'URL');
+        if (docUrlDesc && docUrlDesc.get) {
+          Object.defineProperty(document, 'URL', {
+            configurable: true,
+            enumerable: true,
+            get: function() { return upstreamHref(_cachedRealHref); }
+          });
+        }
+      } catch (eDoc) {}
+      try {
+        var docUriDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'documentURI');
+        if (docUriDesc && docUriDesc.get) {
+          Object.defineProperty(document, 'documentURI', {
+            configurable: true,
+            enumerable: true,
+            get: function() { return upstreamHref(_cachedRealHref); }
+          });
+        }
+      } catch (eUri) {}
+      // Proxy document.location so reads like document.location.hostname return the
+      // spoofed value. window.location cannot be overridden (configurable:false in all
+      // modern browsers), but document.location can be replaced on the instance.
+      try {
+        var _realLoc = window.location;
+        var _spoofedLocProxy = new Proxy(_realLoc, {
+          get: function(target, prop) {
+            if (prop === 'href')     return upstreamHref(_cachedRealHref);
+            if (prop === 'hostname') return CANONICAL_HOST;
+            if (prop === 'host')     return CANONICAL_HOST;
+            if (prop === 'origin')   return CANONICAL_ORIGIN;
+            if (prop === 'protocol') return 'https:';
+            if (prop === 'pathname') return upstreamPathname();
+            if (prop === 'toString') return function() { return upstreamHref(_cachedRealHref); };
+            var v = target[prop];
+            return (typeof v === 'function') ? v.bind(target) : v;
+          },
+          set: function(target, prop, value) {
+            if (prop === 'href') { target.assign(proxyHrefFromUpstream(String(value))); return true; }
+            try { target[prop] = value; } catch(_sl) {}
+            return true;
+          }
+        });
+        Object.defineProperty(document, 'location', {
+          configurable: true, enumerable: true,
+          get: function() { return _spoofedLocProxy; },
+          set: function(v) { window.location.assign(proxyHrefFromUpstream(String(v))); }
+        });
+
+        // If the instance-level override is ignored, try a prototype-level fallback.
+        try {
+          var _docHostNow = '';
+          try { _docHostNow = String((document.location && document.location.hostname) || ''); } catch (_dhn) {}
+          if (_docHostNow && _docHostNow !== CANONICAL_HOST) {
+            Object.defineProperty(Document.prototype, 'location', {
+              configurable: true,
+              enumerable: true,
+              get: function() { return _spoofedLocProxy; },
+              set: function(v) { window.location.assign(proxyHrefFromUpstream(String(v))); }
+            });
+          }
+        } catch (_dlpf) {}
+      } catch (_prloc) {}
+      console.log('[PolySaaS HS] location spoof', upstreamHref(_cachedRealHref), 'real=', _cachedRealHref || '?', 'hrefDesc=', !!hrefDesc, 'docLocProxy=', (function() { try { return document.location.hostname; } catch(_) { return '?'; } }()));
+    } catch (e) {
+      console.warn('[PolySaaS HS] location spoof failed', e);
+    }
+  }
+  window.__PS_HUBSPOT_REAPPLY_SPOOF = applyHubspotLocationSpoof;
+  applyHubspotLocationSpoof();
+  try {
+    var _formActDesc = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'action');
+    if (_formActDesc && _formActDesc.get) {
+      Object.defineProperty(HTMLFormElement.prototype, 'action', {
+        configurable: true, enumerable: true,
+        get: function() {
+          var raw = _formActDesc.get.call(this);
+          try {
+            var u = new URL(raw);
+            if (u.pathname.indexOf(PROXY_PREFIX) === 0) {
+              u.hostname = CANONICAL_HOST;
+              u.protocol = 'https:';
+              u.port = '';
+              u.pathname = u.pathname.slice(PROXY_PREFIX.length) || (window.location.pathname || '/');
+              return u.toString();
+            }
+          } catch(_fa) {}
+          return raw;
+        },
+        set: function(v) { _formActDesc.set.call(this, v); }
+      });
+    }
+  } catch (_fae) {}
+})();
+(function() {
+  var PROXY_PREFIX = "/pt/polysniff/4";
+  var KNOWN_BASES = ["https://app.hubspot.com"];
+  var PORTAL_BOOTSTRAP_JSON = "{\"portalId\": 246571499, \"hubId\": 246571499, \"id\": 246571499}";
+  function isPortalBootstrapUrl(url) {
+    var s = String(url || '');
+    if (s.indexOf('/home/v2/api/portal') >= 0 || s.indexOf('/home/v2/api/no-intended-portal') >= 0) return true;
+    try {
+      var u = new URL(s, window.__PS_REAL_ORIGIN || window.location.origin);
+      var p = (u.pathname || '').replace(/\/+$/, '').toLowerCase();
+      return p.endsWith('/home/v2/api');
+    } catch (_ipb) { return false; }
+  }
+  function portalBootstrapResponse() {
+    if (!PORTAL_BOOTSTRAP_JSON) return null;
+    try {
+      return new Response(PORTAL_BOOTSTRAP_JSON, {
+        status: 200,
+        headers: {'Content-Type': 'application/json'}
+      });
+    } catch (_pbr) { return null; }
+  }
+  function _hasCookie(name) {
+    try {
+      var raw = '; ' + (document.cookie || '');
+      return raw.indexOf('; ' + String(name || '') + '=') >= 0;
+    }
+    catch (_hce) { return false; }
+  }
+  function _browserHsAuth() {
+    try { return sessionStorage.getItem('ps_hs_browser_login') === '1'; } catch (_bha) { return false; }
+  }
+  function _directHubspotUrl(url) {
+    if (!_browserHsAuth()) return null;
+    try {
+      var raw = String(url || '');
+      var parsed = new URL(raw, window.__PS_REAL_ORIGIN || window.location.origin);
+      if (parsed.pathname.indexOf(PROXY_PREFIX) === 0) {
+        var sub = parsed.pathname.slice(PROXY_PREFIX.length) || '/';
+        if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+        for (var i = 0; i < KNOWN_BASES.length; i++) {
+          var base = KNOWN_BASES[i];
+          if (base && base.indexOf('hubspot') >= 0) {
+            return base.replace(/\/+$/, '') + sub + (parsed.search || '') + (parsed.hash || '');
+          }
+        }
+        return 'https://app.hubspot.com' + sub + (parsed.search || '') + (parsed.hash || '');
+      }
+      if (isAppHost(parsed.hostname) || parsed.hostname === 'api.hubspot.com') {
+        return parsed.href;
+      }
+    } catch (_dhu) {}
+    return null;
+  }
+  // Do not seed hubspotapi-csrf=ps_local — it is forwarded on login POST and causes rejection.
+  function isAppHost(host) {
+    if (!host) return false;
+    host = host.toLowerCase().split(':')[0];
+    if (host.indexOf('static.hsappstatic.net') >= 0) return false;
+    return host === 'app.hubspot.com' || host.indexOf('app-') === 0 || host === 'local.hubspot.com' || host === 'api.hubspot.com';
+  }
+  function rememberOrigin(origin) {
+    if (!origin || KNOWN_BASES.indexOf(origin) >= 0) return;
+    if (isAppHost(origin.replace(/^https?:\/\//, ''))) KNOWN_BASES.push(origin);
+  }
+  function isAssetPath(path) {
+    var low = (path || '').toLowerCase();
+    return low.indexOf('/api/') === 0 || low.indexOf('/hs/') === 0 || low.indexOf('/static/') === 0 ||
+      low.indexOf('/webpack/') === 0 || low.indexOf('/hublytics/') === 0 || low.indexOf('/notifications/') === 0;
+  }
+  function workspaceNavUrl(url) {
+    var shell = window.__PS_WORKSPACE_SHELL_PREFIX || '';
+    if (!shell) return url;
+    try {
+      var parsed = new URL(url, window.__PS_REAL_ORIGIN || window.location.origin);
+      var realOrigin = window.__PS_REAL_ORIGIN || window.location.origin;
+      if (parsed.origin !== realOrigin) return url;
+      if (parsed.pathname.indexOf(PROXY_PREFIX) !== 0) return url;
+      var sub = parsed.pathname.slice(PROXY_PREFIX.length) || '/';
+      if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+      if (isAssetPath(sub)) return url;
+      return shell + sub + (parsed.search || '') + (parsed.hash || '');
+    } catch (e) {}
+    return url;
+  }
+  function rewriteUrl(url) {
+    var raw = '';
+    try { raw = String(url || ''); } catch (_rws) { raw = ''; }
+    if (!raw) return url;
+    if (raw.indexOf(PROXY_PREFIX) === 0) return raw;
+    try {
+      var parsed = new URL(raw, window.__PS_REAL_ORIGIN || window.location.origin);
+      if (parsed.pathname.indexOf('/pt/admin/') === 0) {
+        var m = parsed.pathname.match(/^\/pt\/admin\/[^/]+(\/.*)?$/i);
+        if (m) {
+          var sub = m[1] || '/';
+          if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+          return PROXY_PREFIX + sub + (parsed.search || '') + (parsed.hash || '');
+        }
+      }
+      if (isAppHost(parsed.hostname)) {
+        rememberOrigin(parsed.origin);
+        return PROXY_PREFIX + parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+      }
+      var realOrigin = window.__PS_REAL_ORIGIN || window.location.origin;
+      if (parsed.origin === realOrigin) {
+        var path = parsed.pathname + (parsed.search || '');
+        if (path.indexOf(PROXY_PREFIX) === 0) return url;
+        if (path.charAt(0) === '/') {
+          var low = path.toLowerCase();
+          // Keep PolySaaS workspace/admin endpoints local; route everything else
+          // through passthrough so HubSpot setup-guide/onboarding flows stay captured.
+          if (low.indexOf('/admin/') !== 0 && low.indexOf('/dose/') !== 0 &&
+              low.indexOf('/static/') !== 0 && low.indexOf('/media/') !== 0) {
+            return PROXY_PREFIX + path + (parsed.hash || '');
+          }
+        }
+      }
+      for (var i = 0; i < KNOWN_BASES.length; i++) {
+        var base = KNOWN_BASES[i];
+        if (raw.indexOf(base) === 0) {
+          return PROXY_PREFIX + raw.slice(base.length);
+        }
+      }
+    } catch (e) {}
+    return raw;
+  }
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    var reqUrl = '';
+    if (typeof input === 'string') reqUrl = input;
+    else if (input && input.url) reqUrl = input.url;
+    if (isPortalBootstrapUrl(reqUrl)) {
+      var stub = portalBootstrapResponse();
+      if (stub) return Promise.resolve(stub);
+    }
+    var directUrl = _directHubspotUrl(reqUrl);
+    if (directUrl) {
+      init = init || {};
+      if (init.credentials === undefined) init.credentials = 'include';
+      return _fetch.call(this, directUrl, init);
+    }
+    if (typeof input === 'string') input = rewriteUrl(input);
+    else if (input && input.url) {
+      var u = rewriteUrl(input.url);
+      if (u !== input.url) input = new Request(u, input);
+    }
+    return _fetch.call(this, input, init);
+  };
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    var directUrl = _directHubspotUrl(url);
+    this._psUrl = directUrl || rewriteUrl(url);
+    this._psDirect = !!directUrl;
+    arguments[1] = this._psUrl;
+    return _open.apply(this, arguments);
+  };
+  var _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function(body) {
+    if (isPortalBootstrapUrl(this._psUrl || '') && PORTAL_BOOTSTRAP_JSON) {
+      var self = this;
+      setTimeout(function() {
+        try {
+          Object.defineProperty(self, 'readyState', {value: 4, configurable: true});
+          Object.defineProperty(self, 'status', {value: 200, configurable: true});
+          Object.defineProperty(self, 'responseText', {value: PORTAL_BOOTSTRAP_JSON, configurable: true});
+          Object.defineProperty(self, 'response', {value: PORTAL_BOOTSTRAP_JSON, configurable: true});
+          if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+          self.dispatchEvent(new Event('load'));
+          self.dispatchEvent(new Event('loadend'));
+        } catch (_xse) {}
+      }, 0);
+      return;
+    }
+    return _send.apply(this, arguments);
+  };
+  function navigate(url) {
+    var u = workspaceNavUrl(rewriteUrl(String(url || '')));
+    if (u) window.location.assign(u);
+  }
+  var _assign = window.location.assign.bind(window.location);
+  var _replace = window.location.replace.bind(window.location);
+  function _navigateGuarded(url) {
+    return workspaceNavUrl(rewriteUrl(String(url || '')));
+  }
+  window.location.assign = function(url) { _assign(_navigateGuarded(url)); };
+  window.location.replace = function(url) { _replace(_navigateGuarded(url)); };
+  if (!window.__PS_PROTO_NAV_GUARD) {
+    try {
+      window.__PS_PROTO_NAV_GUARD = true;
+      var _lp = window.Location && window.Location.prototype;
+      if (_lp) {
+        var _nativeAssign = _lp.assign;
+        var _nativeReplace = _lp.replace;
+        if (typeof _nativeAssign === 'function') {
+          _lp.assign = function(url) {
+            return _nativeAssign.call(this, _navigateGuarded(url));
+          };
+        }
+        if (typeof _nativeReplace === 'function') {
+          _lp.replace = function(url) {
+            return _nativeReplace.call(this, _navigateGuarded(url));
+          };
+        }
+      }
+    } catch (_hspn) {}
+  }
+  if (!window.__PS_HUBSPOT_LOCATION_SPOOF) {
+    try {
+      var _hrefDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href');
+      if (_hrefDesc && _hrefDesc.set) {
+        Object.defineProperty(window.location, 'href', {
+          configurable: true,
+          get: function() { return _hrefDesc.get.call(window.location); },
+          set: function(v) { _hrefDesc.set.call(window.location, workspaceNavUrl(rewriteUrl(String(v)))); }
+        });
+      }
+    } catch (e) {}
+  } else if (window.__PS_HUBSPOT_REAPPLY_SPOOF) {
+    window.__PS_HUBSPOT_REAPPLY_SPOOF();
+  }
+  document.addEventListener('click', function(ev) {
+    var el = ev.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var tgt = (a.getAttribute('target') || '').toLowerCase();
+    if (tgt === '_top' || tgt === '_parent') {
+      ev.preventDefault();
+      navigate(a.href || a.getAttribute('href'));
+    }
+  }, true);
+  document.addEventListener('submit', function(ev) {
+    var form = ev.target;
+    if (!form || !form.getAttribute) return;
+    var tgt = (form.getAttribute('target') || '').toLowerCase();
+    if (tgt === '_top' || tgt === '_parent') {
+      form.setAttribute('target', '_self');
+      if (form.action) form.action = rewriteUrl(form.action);
+    }
+  }, true);
+  function _fixFormActions() {
+    var forms = document.querySelectorAll('form[action]');
+    for (var _fi = 0; _fi < forms.length; _fi++) {
+      var _fa = forms[_fi].getAttribute('action') || '';
+      if (_fa.indexOf(PROXY_PREFIX) === 0) {
+        forms[_fi].setAttribute('action', _fa.slice(PROXY_PREFIX.length) || '/');
+      }
+    }
+  }
+  _fixFormActions();
+  if (window.MutationObserver) {
+    new MutationObserver(_fixFormActions).observe(document.documentElement, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ['action']
+    });
+  }
+})();
+</script>
+<script>window.__hsiplt = () => {}</script><script>window.__hssessrt = true</script><script>window.__hsipltan = "home-redirect-ui"</script><script>const IPLTEvents={TrackingStarted:"s",TrackingFinished:"f",PerformanceResourceTiming:"p",PerformanceNavigationTiming:"n",ScriptLoaded:"l",ScriptErrored:"e",BeforeScriptTag:"b",ScriptLoadTimeout:"t",DocumentReady:"c",MaxLogOverflow:"o",HitTimeBoundary:"h",VisibilityChangeHidden:"d",VisibilityChangeVisible:"v",SessionLink:"k"},ReportReasons={AlwaysSent:"a",SlowLoading:"s",VisibilityStateChanged:"v",LogsFlushed:"f",LogLimitReached:"l"};(()=>{const e=window.__hsipltan,t=5e3,n=6e4,o=3e5,i=50,r=5e3,s=window.__hssessrt;let a,c=s,l=!0,u=[],d=0,p=null,h=null;const m=()=>{a&&a.disconnect();h&&clearTimeout(h);p&&clearTimeout(p);document.removeEventListener("visibilitychange",O);c=!1;l=!1},f=(e,t=!1)=>{if(!l||P()>=o+1e4||d>=r)m();else{F(e);d+=u.length;u=[];t&&m()}},g=e=>{if(!l||u.length+d>=r-1)m();else{u.push(e);if(u.length+d!==r-2)u.length>=i&&f(ReportReasons.LogsFlushed);else{u.push([IPLTEvents.MaxLogOverflow,P()]);u.push([IPLTEvents.TrackingFinished,P()]);f(ReportReasons.LogLimitReached,!0)}}},w=["name","responseStatus","fetchStart","responseEnd","serverTiming","startTime","initiatorType","nextHopProtocol","redirectStart","redirectEnd","domainLookupStart","domainLookupEnd","connectStart","connectEnd","secureConnectionStart","requestStart","responseStart","transferSize","encodedBodySize","decodedBodySize","renderBlockingStatus"],T=[...w,"unloadEventStart","unloadEventEnd","type","redirectCount"];function v(){try{return!!localStorage.getItem("log-page-load-id")}catch(e){}return!1}function y(){try{return"10000000-1000-4000-8000-100000000000".replace(/[018]/g,(e=>{const t=0|(crypto&&crypto.getRandomValues?15&crypto.getRandomValues(new Uint8Array(1))[0]:16*Math.random());return("0"===e?t:3&t|8).toString(16)}))}catch(e){return null}}function S(e){try{return!!new URL(e)}catch(e){return!1}}const L=new Set(["access_token","token_type","expires_in","refresh_token","scope","state","error","error_description","error_uri","code","grant_type","redirect_uri","client_id","client_secret","id_token","session_state","nonce","acr_values","response_type","response_mode","display","prompt","max_age","ui_locales","claims_locales","id_token_hint","login_hint","acr_values","claims","registration","request","request_uri","code_challenge","code_challenge_method","code_verifier","token","assertion","client_assertion","client_assertion_type"]);function R(e){let t;try{t=new URL(e)}catch(t){return e}if(t.hash){const e=t.hash.slice(1).split("&").map((e=>{const[t,n]=e.split("=");return n?`${t}=*REDACTED*`:t}));t.hash=`#${e.join("&")}`}t.searchParams.forEach(((e,n)=>{(L.has(n.toLowerCase())||S(e))&&t.searchParams.set(n,"*REDACTED*")}));return t.toString()}let _;try{_=crypto.randomUUID()}catch(e){_=y()}v()&&console.log("HubSpot Page Load ID:",_);window.hubspot||(window.hubspot={});window.hubspot.sessionId=_;try{var E;const e=window.top;e&&window!==e&&null!==(E=e.hubspot)&&void 0!==E&&E.sessionId&&g([IPLTEvents.SessionLink,e.hubspot.sessionId])}catch(e){}function b(e,t,n){g([e,...t.map((e=>{if("serverTiming"===e)return I(n);const t=n[e];return"name"===e?R(t):null===t?null:"number"==typeof t?Math.round(t):t}))])}function P(){return Math.round(performance.now())}function I({serverTiming:e}){return e?e.map((e=>[e.name,e.description,e.duration])):[]}const k=new Map,B=e=>s?!(e.name&&e.name.endsWith("cartographer/v1/ipl")):"script"===e.initiatorType;try{a=new PerformanceObserver((e=>e.getEntries().filter(B).forEach((e=>b(IPLTEvents.PerformanceResourceTiming,w,e)))));a.observe({type:"resource",buffered:!0})}catch(e){console.error(e)}const C=performance.getEntriesByType("navigation")[0];C&&b(IPLTEvents.PerformanceNavigationTiming,T,C);function V(e){g([e,P()])}V(IPLTEvents.TrackingStarted);let q=1;function D(){const e=document.querySelector('meta[name="x-hs-portals-env"]');return null!=e&&e.content?"qa"===e.content:/qa.com$/.test(window.location.host)}function x(){const e=/^\/(?:[A-Za-z0-9-_]*)\/(\d+)(?:\/|$)/.exec(window.location.pathname);return e?parseInt(e[1],10):void 0}function z(){const e=document.querySelector('meta[name="x-hs-portals-hublet"]');if(null!=e&&e.content)return e.content;const t=/(?:app|tools|private|local)-([a-z]+[0-9]).(?:hubspot|hubteam)(?:qa)?.com/,n=window.location.host.match(t);return n?n[1]:"na1"}function A(e){const t=JSON.stringify(e),n=D()?"hubspotqa":"hubspot",o=`https://metrics-fe-${z()}.${n}.com/cartographer/v1/ipl`;if(navigator&&"function"==typeof navigator.sendBeacon)try{navigator.sendBeacon(o,t)}catch(e){}}function F(t){if(p){clearTimeout(p);p=null}if(0===u.length&&0===k.size)return;A({v:0,r:t,t:P(),n:q++,cru:_,pto:performance.timeOrigin,dn:Date.now(),u:R(window.location.href),l:u,pid:x(),p:[...k.entries()].map((([e,t])=>[e,t.firstSeen])),an:e})}function M(e){p||(p=window.setTimeout((()=>f(e)),1e3))}function U(){return s?Math.min(n,o-P()):null}function H(){if(!c)return;const e=U();if(null!==e)if(e<=0){V(IPLTEvents.HitTimeBoundary);V(IPLTEvents.TrackingFinished);f(ReportReasons.LogLimitReached,!0)}else{M(ReportReasons.LogsFlushed);h=setTimeout(H,e)}else console.error("scheduled a post-load report while sessionResourceTracking was disabled")}function $(){if("loading"===document.readyState||k.size>0){M(ReportReasons.SlowLoading);h=setTimeout($,t)}else{const e=U();if(e&&e>0){f(ReportReasons.AlwaysSent);h=setTimeout(H,e)}else{V(IPLTEvents.TrackingFinished);f(ReportReasons.AlwaysSent,!0)}}}function O(){if("hidden"===document.visibilityState){V(IPLTEvents.VisibilityChangeHidden);f(ReportReasons.VisibilityStateChanged)}else V(IPLTEvents.VisibilityChangeVisible)}document.addEventListener("visibilitychange",O);let N=!1;function j(){if("complete"===document.readyState&&!N){N=!0;V(IPLTEvents.DocumentReady)}}document.addEventListener("readystatechange",j);const J=5e3-P();J>0?setTimeout($,J):$();function W(...e){const t=P(),[n,o]=e;if(n===IPLTEvents.BeforeScriptTag){const n=new URL(e[2],R(window.location.href)).href;g([IPLTEvents.BeforeScriptTag,n,t]);k.set(n,{firstSeen:t,timeout:window.setTimeout((()=>{g([IPLTEvents.ScriptLoadTimeout,n,t,P()]);M(ReportReasons.SlowLoading)}),5e3)});return}const i=k.get(o.src);if(i){clearTimeout(i.timeout);k.delete(o.src);g([n,new URL(o.src,R(window.location.href)).href,i.firstSeen,t]);t-i.firstSeen>5e3&&M(ReportReasons.SlowLoading)}}window.__hsiplt=W})();</script><meta charSet="UTF-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/><link rel="preconnect" href="https://static.hsappstatic.net" crossorigin="anonymous"/><link href="https://static.hsappstatic.net/trellis-theming-assets/static-1.346/stylesheets/hubspot-theme.stable.css"" rel="stylesheet" data-hubspot-theme-asset="true" /><script src="https://static.hsappstatic.net/trellis-theming-assets/static-1.346/bundles/hubspot-theme.stable.js"" data-hubspot-theme-asset="true"></script><script>(function() {
+    const SILO_ACCESSOR=Symbol.for("silo_v1");function makeScopedState(...e){return{values:new Map(e),watchers:new Map}}function getBuildTimePropertyNames(){return{copilotLayoutType:"copilot_layout_type",copilotSidebarSide:"copilot_sidebar_side",currentPackageName:"current_package_name",currentPackageVersion:"current_package_version",rootPackageName:"root_package_name",rootPackageVersion:"root_package_version",parentPackageName:"parent_package_name",parentPackageVersion:"parent_package_version"}}function getCopilotSidebarSideFromSessionStorage(){try{return"left"===sessionStorage.getItem("copilot-sidebar-side")?"left":"right"}catch(e){return"right"}}function getGlobalState(e=window){return e[SILO_ACCESSOR]}function initialize(e,a,t){var o;if(getGlobalState())throw Error("Global state already initialized");let r=window;for(;r.parent!==r;)try{r.parent.document;r=r.parent;if(getGlobalState(r.parent))break}catch(e){break}const{copilotLayoutType:i,copilotSidebarSide:n,currentPackageName:c,currentPackageVersion:S,rootPackageName:p,rootPackageVersion:g,parentPackageName:l,parentPackageVersion:s}=getBuildTimePropertyNames();window[SILO_ACCESSOR]={TAB:(null===(o=r[SILO_ACCESSOR])||void 0===o?void 0:o.TAB)||makeScopedState([p,e],[g,a],[l,e],[s,a]),BROWSING_CONTEXT:makeScopedState([c,e],[S,a],[i,t],[n,getCopilotSidebarSideFromSessionStorage()])}}
+    initialize('home-redirect-ui','1.7054', 'undefined')})();</script><script>(function() {
+        var staticDomainPrefix='//static.hsappstatic.net';!function(){var o,t;void 0===window.hubspot&&(window.hubspot={}),void 0===window.hubspot.polyfills&&(window.hubspot.polyfills={}),window.hubspot.polyfills.__CONDITIONAL=!0,o={"intersection-observer":function(){return"IntersectionObserver"in window&&"IntersectionObserverEntry"in window&&"intersectionRatio"in window.IntersectionObserverEntry.prototype&&"isIntersecting"in window.IntersectionObserverEntry.prototype},"resize-observer":function(){return"ResizeObserver"in window},"es.array.flat":function(){return Array.prototype.flat},"es.array.flat-map":function(){return Array.prototype.flatMap},"es.object.from-entries":function(){return Object.fromEntries},"es.symbol":function(){return String(Symbol())&&Object.getOwnPropertySymbols&&Object.getOwnPropertySymbols("qwe")&&Symbol.for&&Symbol.keyFor&&"[null]"===JSON.stringify([Symbol()])&&"{}"===JSON.stringify({a:Symbol()})&&"{}"===JSON.stringify(Object(Symbol()))&&Symbol.prototype[Symbol.toPrimitive]&&Symbol.prototype[Symbol.toStringTag]},"es.promise":function(){function o(){}var t=new Promise(function(t){t(1)}),n=(t.constructor={})[Symbol.species]=function(t){t(o,o)};return t.then(o)instanceof n&&"function"==typeof PromiseRejectionEvent},"es.promise.finally":function(){return Promise.prototype.finally.call({then:function(){return this}},function(){})}},(t=Object.keys(o).find(t=>{try{return!o[t]()}catch(t){return!0}}))?(window.hubspot.polyfills.__REASON=t,(t=document.createElement("script")).src=staticDomainPrefix+"/HeadJS/static-2.768/js/polyfills/core.js",t.crossOrigin="anonymous",document.write(t.outerHTML)):window.hubspot.polyfills.__INSTALLED=!1}();
+      })();</script><script>__hsiplt('b',document.currentScript,"https://static.hsappstatic.net/head-dlb/static-1.5007/bundle.production.js")</script><script src="https://static.hsappstatic.net/head-dlb/static-1.5007/bundle.production.js"" type="text/javascript" crossOrigin="anonymous" onload="__hsiplt('l',this)" onerror="__hsiplt('e',this)" data-hsiplt></script><script>window.hubspot=window.hubspot||{},window.hubspot["__hub-http-labs"]=window.hubspot["__hub-http-labs"]||{},window.hubspot["__hub-http-labs"].HUBONEDOMAIN=!0;</script><link href="https://static.hsappstatic.net/home-redirect-ui/static-1.7054/sass/root.css"" rel="stylesheet" type="text/css" crossorigin="anonymous"/><script>
+        hns('hubspot.bender', {
+          staticDomain: '//static.hsappstatic.net' || window.location.host,
+          staticDomainPrefix: '//static.hsappstatic.net' || ('//' + window.location.host),
+
+          currentProject: 'home-redirect-ui',
+          currentProjectVersion: 'static-1.7054',
+
+          depVersions: {
+  "home-redirect-ui": "static-1.7054",
+  "head-dlb": "static-1.5007",
+  "hubspot-dlb": "static-2.1854",
+  "HubStyleTokens": "static-2.11585",
+  "I18n": "static-7.1637",
+  "react-dlb": "static-1.81",
+  "cssUtils": "static-1.823",
+  "enviro": "static-4.455",
+  "hub-http": "static-1.6332",
+  "PortalIdParser": "static-2.404",
+  "quartz": "static-1.7167",
+  "quick-fetch": "static-1.3998",
+  "raven": "static-3.5925",
+  "react": "static-7.187",
+  "StyleGuideUI": "static-3.489",
+  "ui-images": "static-2.1180",
+  "hs-promise-rejection-tracking": "static-1.5587",
+  "raven-hubspot": "static-1.6232",
+  "classnames": "static-2.10",
+  "hoist-non-react-statics": "static-3.9",
+  "hubspot-url-utils": "static-1.4132",
+  "immutable": "static-2.79",
+  "metrics-js": "static-1.9637",
+  "react-redux": "static-7.71",
+  "redux": "static-4.16",
+  "styled-components": "static-2.89",
+  "bend-plugin-trellis-migration": "static-1.3478",
+  "moment": "static-3.26",
+  "react-dom": "static-7.85",
+  "HeadJS": "static-2.768",
+  "webpack-env": "static-1.54",
+  "foundations-theming": "static-1.4539",
+  "quartz-config": "static-1.945",
+  "i18n-data": "static-1.223",
+  "moment-timezone": "static-5.84",
+  "react-utils": "static-2.5422",
+  "sassPrefix": "static-1.158",
+  "hs-locale-management": "static-1.162",
+  "jasmine": "static-4.4435",
+  "jasmine-runner": "static-1.6568",
+  "msw": "static-1.39",
+  "quartz-head": "static-1.832",
+  "quartz-test": "static-1.842",
+  "csstype": "static-1.50",
+  "bender-build-tools": "static-1.3281",
+  "bend-plugin-foundations-theming": "static-1.3022",
+  "foundations-theming-base": "static-1.3524",
+  "framer-motion": "static-1.73",
+  "hs-story-utils": "static-1.9531",
+  "stylex": "static-1.34",
+  "hs-test-utils": "static-1.8128",
+  "foundations-components": "static-1.8145",
+  "hs-test-utils-bend-plugin": "static-1.3239",
+  "testing-library": "static-1.153",
+  "bend-plugin-foundations-components": "static-1.4414",
+  "floating-ui": "static-1.57",
+  "foundations-assets": "static-1.4982",
+  "foundations-theming-specialty": "static-1.2255",
+  "react-aria": "static-1.67",
+  "react-create-root-preference": "static-1.35",
+  "react-select-plus": "static-1.106",
+  "react-virtualized": "static-2.100",
+  "tanstack-table": "static-1.56",
+  "trellis-assets": "static-1.2187",
+  "ui-fonts": "static-1.847",
+  "react-input-autosize": "static-2.17"
+},
+          depPathPrefixes: {
+  "home-redirect-ui": "/home-redirect-ui/static-1.7054",
+  "head-dlb": "/head-dlb/static-1.5007",
+  "hubspot-dlb": "/hubspot-dlb/static-2.1854",
+  "HubStyleTokens": "/HubStyleTokens/static-2.11585",
+  "I18n": "/I18n/static-7.1637",
+  "react-dlb": "/react-dlb/static-1.81",
+  "cssUtils": "/cssUtils/static-1.823",
+  "enviro": "/enviro/static-4.455",
+  "hub-http": "/hub-http/static-1.6332",
+  "PortalIdParser": "/PortalIdParser/static-2.404",
+  "quartz": "/quartz/static-1.7167",
+  "quick-fetch": "/quick-fetch/static-1.3998",
+  "raven": "/raven/static-3.5925",
+  "react": "/react/static-7.187",
+  "StyleGuideUI": "/StyleGuideUI/static-3.489",
+  "ui-images": "/ui-images/static-2.1180",
+  "hs-promise-rejection-tracking": "/hs-promise-rejection-tracking/static-1.5587",
+  "raven-hubspot": "/raven-hubspot/static-1.6232",
+  "classnames": "/classnames/static-2.10",
+  "hoist-non-react-statics": "/hoist-non-react-statics/static-3.9",
+  "hubspot-url-utils": "/hubspot-url-utils/static-1.4132",
+  "immutable": "/immutable/static-2.79",
+  "metrics-js": "/metrics-js/static-1.9637",
+  "react-redux": "/react-redux/static-7.71",
+  "redux": "/redux/static-4.16",
+  "styled-components": "/styled-components/static-2.89",
+  "bend-plugin-trellis-migration": "/bend-plugin-trellis-migration/static-1.3478",
+  "moment": "/moment/static-3.26",
+  "react-dom": "/react-dom/static-7.85",
+  "HeadJS": "/HeadJS/static-2.768",
+  "webpack-env": "/webpack-env/static-1.54",
+  "foundations-theming": "/foundations-theming/static-1.4539",
+  "quartz-config": "/quartz-config/static-1.945",
+  "i18n-data": "/i18n-data/static-1.223",
+  "moment-timezone": "/moment-timezone/static-5.84",
+  "react-utils": "/react-utils/static-2.5422",
+  "sassPrefix": "/sassPrefix/static-1.158",
+  "hs-locale-management": "/hs-locale-management/static-1.162",
+  "jasmine": "/jasmine/static-4.4435",
+  "jasmine-runner": "/jasmine-runner/static-1.6568",
+  "msw": "/msw/static-1.39",
+  "quartz-head": "/quartz-head/static-1.832",
+  "quartz-test": "/quartz-test/static-1.842",
+  "csstype": "/csstype/static-1.50",
+  "bender-build-tools": "/bender-build-tools/static-1.3281",
+  "bend-plugin-foundations-theming": "/bend-plugin-foundations-theming/static-1.3022",
+  "foundations-theming-base": "/foundations-theming-base/static-1.3524",
+  "framer-motion": "/framer-motion/static-1.73",
+  "hs-story-utils": "/hs-story-utils/static-1.9531",
+  "stylex": "/stylex/static-1.34",
+  "hs-test-utils": "/hs-test-utils/static-1.8128",
+  "foundations-components": "/foundations-components/static-1.8145",
+  "hs-test-utils-bend-plugin": "/hs-test-utils-bend-plugin/static-1.3239",
+  "testing-library": "/testing-library/static-1.153",
+  "bend-plugin-foundations-components": "/bend-plugin-foundations-components/static-1.4414",
+  "floating-ui": "/floating-ui/static-1.57",
+  "foundations-assets": "/foundations-assets/static-1.4982",
+  "foundations-theming-specialty": "/foundations-theming-specialty/static-1.2255",
+  "react-aria": "/react-aria/static-1.67",
+  "react-create-root-preference": "/react-create-root-preference/static-1.35",
+  "react-select-plus": "/react-select-plus/static-1.106",
+  "react-virtualized": "/react-virtualized/static-2.100",
+  "tanstack-table": "/tanstack-table/static-1.56",
+  "trellis-assets": "/trellis-assets/static-1.2187",
+  "ui-fonts": "/ui-fonts/static-1.847",
+  "react-input-autosize": "/react-input-autosize/static-2.17"
+},
+          templateBasename: "index.html.js"
+        });</script><script>(function() {
+          const config = {};
+          function configureLogFetchErrors(o,t){o("https://exceptions.hubspot.com/v2/js",t.options)}
+          hubspot.require(["raven-hubspot/configure"],(r=>{configureLogFetchErrors(r,config)}));
+        })();</script><title>HubSpot | Redirecting...</title><script id="whisper-core-embed" type="module" data-static-domain="//static.hsappstatic.net">window.Whisper={debug(){},shutdown(){},get:()=>null};const isDevMode=(()=>{try{return"true"===localStorage.getItem("WHISPER_CORE_DEV")}catch(e){return!1}})();function log(...e){isDevMode&&console.log(...e)}const environment=(()=>{const e=window.location.hostname;return e.startsWith("local.")?isDevMode?"LOCAL":"LOCAL-QA":e.includes("qa")?"QA":"PROD"})(),whisperCoreUrl=(()=>{let e="LOCAL"===environment?"//local.hsappstatic.net":"//static.hsappstatic.net";const t=document.getElementById("whisper-core-embed");if("LOCAL-QA"!==environment&&t&&t instanceof HTMLScriptElement&&t.dataset.staticDomain){e=t.dataset.staticDomain;t.removeAttribute("data-static-domain");delete t.dataset.staticDomain}return{LOCAL:`https:${e}/whisper-core/static/whisper-core.js`,"LOCAL-QA":`https:${e}/whisper-core/ex/whisper-core-qa.js`,QA:`https:${e}/whisper-core/ex/whisper-core-qa.js`,PROD:`https:${e}/whisper-core/ex/whisper-core.js`}[environment]})(),loadWhisperCoreScript=()=>{log("[whisper-core-embed] Start loading whisper-core from %s on %s",whisperCoreUrl,window.location.origin+window.location.pathname);return new Promise(((e,t)=>{const o=whisperCoreUrl,r=document.createElement("script");r.src=o;r.defer=!0;r.onload=()=>{log("[whisper-core-embed] Load complete");e()};r.onerror=()=>{t(new Error(`Failed to load script from ${o}.`))};document.head.appendChild(r)}))};!async function(){try{await loadWhisperCoreScript();log("[whisper-core-embed] Initialized and ready to use")}catch(e){log("[whisper-core-embed] Failed initialization with error:",e)}}();</script><meta name="author" content="HubSpot, Inc."/><link rel="apple-touch-icon" sizes="180x180" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/apple-touch-icon.png""/><link rel="icon" type="image/png" sizes="32x32" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/favicon-32x32.png""/><link rel="icon" type="image/png" sizes="16x16" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/favicon-16x16.png""/><link rel="mask-icon" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/safari-pinned-tab.svg"" color="#FF7A59"/><meta name="msapplication-TileColor" content="#2b5797"/></head><body class="hubspot"><div class="page"></div><script>__hsiplt('b',document.currentScript,"https://static.hsappstatic.net/hubspot-dlb/static-2.1854/bundle.production.js")</script><script src="https://static.hsappstatic.net/hubspot-dlb/static-2.1854/bundle.production.js"" type="text/javascript" crossOrigin="anonymous" onload="__hsiplt('l',this)" onerror="__hsiplt('e',this)" data-hsiplt></script><script>__hsiplt('b',document.currentScript,"https://static.hsappstatic.net/react-dlb/static-1.81/bundle.production.js")</script><script src="https://static.hsappstatic.net/react-dlb/static-1.81/bundle.production.js"" type="text/javascript" crossOrigin="anonymous" onload="__hsiplt('l',this)" onerror="__hsiplt('e',this)" data-hsiplt></script><script>__hsiplt('b',document.currentScript,"https://static.hsappstatic.net/home-redirect-ui/static-1.7054/bundles/project-root.js")</script><script src="https://static.hsappstatic.net/home-redirect-ui/static-1.7054/bundles/project-root.js"" type="text/javascript" crossOrigin="anonymous" onload="__hsiplt('l',this)" onerror="__hsiplt('e',this)" data-hsiplt></script></body></html>

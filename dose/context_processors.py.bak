@@ -349,17 +349,15 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
-            # Build URL from the endpoint_url hostname.
-            # The hostname encodes the upstream target directly — the middleware strips
-            # /pt/admin/ and prepends https:// to reconstruct the upstream URL, so no
-            # second DB lookup is required to know where to forward the request.
-            from urllib.parse import urlparse as _urlparse
-            _parsed = _urlparse(endpoint.endpoint_url or '')
-            _hostname = _parsed.netloc
-            if not _hostname:
-                print(f"[ADMIN_NAV] Skipping endpoint '{endpoint.endpoint_url}' — endpoint_url missing or invalid")
-                continue
-            url = f'/pt/dose/{_hostname}/'
+            # Build URL using the actual hostname from endpoint_url -> /pt/admin/<hostname>/
+            # The middleware reads the trigger segment as a hostname to build the upstream URL.
+            # Using the slug (e.g. 'odoo') instead of the hostname produces http://odoo which
+            # fails for Render-hosted services. Using the netloc (e.g.
+            # 'polysaas-odoo2.onrender.com') lets the middleware infer the correct https:// URL.
+            _pt_netloc = urlparse(endpoint.endpoint_url).netloc or endpoint.slug
+            url = f'/pt/admin/{_pt_netloc}/'
+            if endpoint.starting_uri and endpoint.starting_uri not in ('/', ''):
+                url = f'/pt/admin/{_pt_netloc}{endpoint.starting_uri}'
             try:
                 from dose.passthrough.registry import resolve_handler_for_endpoint
                 _nav_handler = resolve_handler_for_endpoint(endpoint)

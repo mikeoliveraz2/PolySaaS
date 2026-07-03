@@ -1,0 +1,3402 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
+BINGO: Demo Tenant Odoo Embed o_web_client Shell — commit 7d05920e
+BINGO: Odoo Passthrough Layout Fix — 2026-06-09
+BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0 -->
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en-us" >
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <!--  Prevent admin panel being crawled by search engines -->
+    <meta name="robots" content="none, noarchive">
+    <script>
+        (function() {
+            var mode = localStorage.getItem('jazzmin-theme-mode') || 'light';
+            if (mode === 'auto') {
+                mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-bs-theme', mode);
+        })();
+    </script>
+
+    <title>App — Django site admin</title>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="/static/vendor/fontawesome-free/css/all.min.css">
+
+    <!-- Bootstrap and adminLTE -->
+    <link rel="stylesheet" href="/static/vendor/adminlte/css/adminlte.min.css" id="adminlte-css">
+
+    <!-- Bootswatch theme -->
+    <link rel="stylesheet" href="/static/vendor/bootswatch/flatly/bootstrap.min.css" id="jazzmin-theme" data-theme-base="/static/vendor/bootswatch" />
+    
+
+    <!-- Custom fixes for django -->
+    <link rel="stylesheet" href="/static/jazzmin/css/main.css">
+
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/admin/css/theme-toggle.css">
+    
+
+    <!-- favicons -->
+    <link rel="shortcut icon" href="/static/img/PolySaaS-Industrial-Logo.png" type="image/png">
+    <link rel="icon" href="/static/img/PolySaaS-Industrial-Logo.png" sizes="32x32" type="image/png">
+
+    
+    <!-- Google Font: Source Sans Pro -->
+    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+    
+
+     
+    
+
+
+
+<!-- Upstream head first (passthrough shims, upstream scripts) -->
+
+<script data-hubspot-pt-shim="1">
+(function() {
+  var PROXY_PREFIX = "/pt/admin/app.hubspot.com";
+  var SHELL_PREFIX = "";
+  var CANONICAL_HOST = "app-na2.hubspot.com";
+  var CANONICAL_ORIGIN = 'https://' + CANONICAL_HOST;
+  window.__PS_HUBSPOT_LOCATION_SPOOF = true;
+  // Cache the real href BEFORE any getter patching — used as fallback
+  // when Location.prototype descriptors are not accessible.
+  var _cachedRealHref = null;
+  try {
+    var _proto = window.Location && window.Location.prototype;
+    var _tmpDesc = _proto && Object.getOwnPropertyDescriptor(_proto, 'href');
+    if (_tmpDesc && _tmpDesc.get) {
+      _cachedRealHref = _tmpDesc.get.call(window.location);
+    }
+  } catch (_ce) {}
+  if (!_cachedRealHref) {
+    try { _cachedRealHref = window.location.href; } catch (_ce2) {}
+  }
+  var _cachedRealSearch = '';
+  try { _cachedRealSearch = window.location.search || ''; } catch (_crs) {}
+  if (!window.__PS_REAL_ORIGIN) {
+    try {
+      var _proto2 = window.Location && window.Location.prototype;
+      var _hostDesc = _proto2 && Object.getOwnPropertyDescriptor(_proto2, 'host');
+      var _protDesc = _proto2 && Object.getOwnPropertyDescriptor(_proto2, 'protocol');
+      var _realHost = (_hostDesc && _hostDesc.get) ? _hostDesc.get.call(window.location) : window.location.host;
+      var _realProt = (_protDesc && _protDesc.get) ? _protDesc.get.call(window.location) : window.location.protocol;
+      window.__PS_REAL_ORIGIN = _realProt + '//' + _realHost;
+    } catch (_oe) {
+      window.__PS_REAL_ORIGIN = window.location.protocol + '//' + window.location.host;
+    }
+  }
+  var _realPathname = null;
+  var _realHref = null;
+  var _setHref = null;
+  // Some HubSpot bundles read window.origin directly.
+  try {
+    Object.defineProperty(window, 'origin', {
+      configurable: true,
+      enumerable: true,
+      get: function() { return CANONICAL_ORIGIN; }
+    });
+  } catch (_woe) {}
+  function _hasBadSegment(p) {
+    var segs = (p || '').split('/');
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i].toLowerCase();
+      if (s === 'undefined' || s === 'null' || s === 'nan') return true;
+    }
+    return false;
+  }
+  function normalizeSubpath(path) {
+    var p = path || '/';
+    if (!p || p.charAt(0) !== '/') p = '/' + p;
+    if (SHELL_PREFIX && p.indexOf(SHELL_PREFIX) === 0) {
+      p = p.slice(SHELL_PREFIX.length) || '/';
+      if (!p || p.charAt(0) !== '/') p = '/' + p;
+    }
+    var shellMatch = p.match(/^\/dose\/sniff\/\d+\/workspace(\/.*)?$/);
+    if (shellMatch) {
+      p = shellMatch[1] || '/';
+      if (!p || p.charAt(0) !== '/') p = '/' + p;
+    }
+    if (/^\/(passthrough|native)(\/|$)/.test(p)) {
+      p = p.replace(/^\/(passthrough|native)/, '') || '/';
+      if (!p || p.charAt(0) !== '/') p = '/' + p;
+    }
+    if (PROXY_PREFIX && p.indexOf(PROXY_PREFIX) === 0) {
+      p = p.slice(PROXY_PREFIX.length) || '/';
+    }
+    var adminMatch = p.match(/^\/pt\/admin\/[^/]+(\/.*)?$/);
+    if (adminMatch) {
+      p = adminMatch[1] || '/';
+    }
+    if (!p || p.charAt(0) !== '/') p = '/' + p;
+    if (p.toLowerCase().indexOf('/login') === 0 && p.slice(-1) !== '/') p += '/';
+    if (_hasBadSegment(p)) p = '/home/';
+    return p;
+  }
+  function stripInternalQueryParams(search) {
+    var s = String(search || '');
+    if (!s) return '';
+    try {
+      var sp = new URLSearchParams(s.charAt(0) === '?' ? s.slice(1) : s);
+      sp.delete('ps_hs_popup');
+      sp.delete('ps_hs_reload');
+      sp.delete('ps_hs_recard');
+      var out = sp.toString();
+      return out ? ('?' + out) : '';
+    } catch (_siq) {
+      return s.replace(/[?&]ps_hs_(?:popup|reload|recard)=[^&]*/g, function(m, i) {
+        return i === 0 && m.charAt(0) === '?' ? '?' : '';
+      }).replace(/\\?&/, '?').replace(/\\?$/, '');
+    }
+  }
+  function realLocationSearch() {
+    return _cachedRealSearch || '';
+  }
+  function spoofedLocationSearch() {
+    return stripInternalQueryParams(realLocationSearch());
+  }
+  function upstreamPathname(raw) {
+    try {
+      var actual = raw;
+      if (actual == null) actual = _realPathname ? _realPathname() : (window.location.pathname || '/');
+      var normalized = normalizeSubpath(actual || '/');
+      // Guard: if HubSpot SPA emits undefined/null before routing initializes, fall back to /home/
+      if (_hasBadSegment(normalized)) normalized = '/home/';
+      try { window.__PS_ORCH_ACTION_PATH = normalized; } catch (_psap) {}
+      return normalized;
+    } catch (e) {
+      var fallback = normalizeSubpath(window.location.pathname || '/');
+      if (_hasBadSegment(fallback)) fallback = '/home/';
+      try { window.__PS_ORCH_ACTION_PATH = fallback; } catch (_psap2) {}
+      return fallback;
+    }
+  }
+  function upstreamHref(rawHref) {
+    try {
+      var actual = rawHref;
+      if (actual == null) actual = _realHref ? _realHref() : (_cachedRealHref || window.location.href);
+      var u = new URL(String(actual || '/'), window.__PS_REAL_ORIGIN || _cachedRealHref || window.location.href);
+      u.protocol = 'https:';
+      u.hostname = CANONICAL_HOST;
+      u.port = '';
+      u.pathname = upstreamPathname(u.pathname);
+      u.search = stripInternalQueryParams(u.search || realLocationSearch());
+      return u.toString();
+    } catch (e2) { return CANONICAL_ORIGIN + upstreamPathname(window.location.pathname || '/'); }
+  }
+  function proxyHrefFromUpstream(value) {
+    var raw = String(value || '');
+    if (!raw) return raw;
+    try {
+      var parsed = new URL(raw, CANONICAL_ORIGIN);
+      if (parsed.hostname === CANONICAL_HOST || parsed.hostname.indexOf('app-') === 0 || parsed.hostname === 'local.hubspot.com') {
+        var sub = parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+        if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+        var low = sub.toLowerCase();
+        var isAsset = low.indexOf('/home/v2/api/') === 0 || low.indexOf('/firealarm/') === 0 ||
+          low.indexOf('/hs/') === 0 || low.indexOf('/static/') === 0 || low.indexOf('/webpack/') === 0;
+        if (SHELL_PREFIX && !isAsset) return SHELL_PREFIX + sub;
+        if (PROXY_PREFIX) return PROXY_PREFIX + sub;
+      }
+    } catch (e3) {}
+    return raw;
+  }
+  window.__PS_GET_UPSTREAM_PATH = function() {
+    try { return upstreamPathname(); } catch (_psgp) { return '/'; }
+  };
+  function applyHubspotLocationSpoof() {
+    try {
+      // Try Location.prototype first, then fall back to the actual prototype chain
+      var _locProto = window.Location && window.Location.prototype;
+      var _locActualProto = Object.getPrototypeOf && Object.getPrototypeOf(window.location);
+      function _getDesc(prop) {
+        var d = _locProto && Object.getOwnPropertyDescriptor(_locProto, prop);
+        if (!d) d = _locActualProto && Object.getOwnPropertyDescriptor(_locActualProto, prop);
+        return d || null;
+      }
+      var hrefDesc = _getDesc('href');
+      var pathnameDesc = _getDesc('pathname');
+      var hostnameDesc = _getDesc('hostname');
+      var hostDesc = _getDesc('host');
+      var originDesc = _getDesc('origin');
+      var protocolDesc = _getDesc('protocol');
+      if (!_realPathname && pathnameDesc && pathnameDesc.get) {
+        _realPathname = pathnameDesc.get.bind(window.location);
+      }
+      if (!_realHref && hrefDesc && hrefDesc.get) {
+        _realHref = hrefDesc.get.bind(window.location);
+      }
+      if (!_setHref && hrefDesc && hrefDesc.set) {
+        _setHref = hrefDesc.set.bind(window.location);
+      }
+      if (pathnameDesc && pathnameDesc.get) {
+        var _pTarget = _locProto || _locActualProto;
+        if (_pTarget) { try { Object.defineProperty(_pTarget, 'pathname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamPathname(); },
+          set: pathnameDesc.set
+        }); } catch(_pe) {} }
+      }
+      var searchDesc = _getDesc('search');
+      if (searchDesc && searchDesc.get) {
+        var _sTarget = _locProto || _locActualProto;
+        if (_sTarget) { try { Object.defineProperty(_sTarget, 'search', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return spoofedLocationSearch(); },
+          set: searchDesc.set
+        }); } catch(_se) {} }
+      }
+      if (hostnameDesc && hostnameDesc.get) {
+        var _hnTarget = _locProto || _locActualProto;
+        if (_hnTarget) { try { Object.defineProperty(_hnTarget, 'hostname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; },
+          set: hostnameDesc.set
+        }); } catch(_hne) {} }
+      }
+      if (hostDesc && hostDesc.get) {
+        var _htTarget = _locProto || _locActualProto;
+        if (_htTarget) { try { Object.defineProperty(_htTarget, 'host', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; },
+          set: hostDesc.set
+        }); } catch(_hte) {} }
+      }
+      if (originDesc && originDesc.get) {
+        var _orTarget = _locProto || _locActualProto;
+        if (_orTarget) { try { Object.defineProperty(_orTarget, 'origin', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_ORIGIN; },
+          set: originDesc.set
+        }); } catch(_ore) {} }
+      }
+      // Always patch window.location directly as a belt-and-suspenders measure.
+      // Some browser/runtime combinations expose no writable Location prototype
+      // descriptors (hrefDesc=false), but instance-level getters can still work.
+      try {
+        Object.defineProperty(window.location, 'hostname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; }
+        });
+      } catch (_hnde) {}
+      try {
+        Object.defineProperty(window.location, 'host', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_HOST; }
+        });
+      } catch (_hde) {}
+      try {
+        Object.defineProperty(window.location, 'origin', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return CANONICAL_ORIGIN; }
+        });
+      } catch (_ode) {}
+      try {
+        Object.defineProperty(window.location, 'protocol', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return 'https:'; }
+        });
+      } catch (_pde) {}
+      try {
+        Object.defineProperty(window.location, 'pathname', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamPathname(); }
+        });
+      } catch (_ptde) {}
+      try {
+        Object.defineProperty(window.location, 'search', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return spoofedLocationSearch(); }
+        });
+      } catch (_sde) {}
+      if (protocolDesc && protocolDesc.get) {
+        var _prTarget = _locProto || _locActualProto;
+        if (_prTarget) { try { Object.defineProperty(_prTarget, 'protocol', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return 'https:'; },
+          set: protocolDesc.set
+        }); } catch(_pre) {} }
+      }
+      if (hrefDesc && hrefDesc.get && _setHref) {
+        var _hrTarget = _locProto || _locActualProto;
+        if (_hrTarget) { try { Object.defineProperty(_hrTarget, 'href', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamHref(); },
+          set: function(v) { return _setHref(proxyHrefFromUpstream(v)); }
+        }); } catch(_hre) {} }
+        try { Object.defineProperty(window.location, 'href', {
+          configurable: true,
+          enumerable: true,
+          get: function() { return upstreamHref(); },
+          set: function(v) { return _setHref(proxyHrefFromUpstream(v)); }
+        }); } catch(_hre2) {}
+      } else {
+        // Fallback: Location.prototype.href getter unavailable (can happen when
+        // the browser denies prototype access or another script already stripped it).
+        // Define href directly on window.location using _cachedRealHref for the getter.
+        try {
+          Object.defineProperty(window.location, 'href', {
+            configurable: true,
+            enumerable: true,
+            get: function() { return upstreamHref(_cachedRealHref); },
+            set: function(v) { window.location.assign(proxyHrefFromUpstream(v)); }
+          });
+        } catch (_fb) {}
+      }
+      // Always ensure Location.prototype toString returns the spoofed value
+      if (window.Location && window.Location.prototype) {
+        try { window.Location.prototype.toString = function() { return upstreamHref(_cachedRealHref); }; } catch(_ts) {}
+      }
+      try {
+        var docUrlDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'URL');
+        if (docUrlDesc && docUrlDesc.get) {
+          Object.defineProperty(document, 'URL', {
+            configurable: true,
+            enumerable: true,
+            get: function() { return upstreamHref(_cachedRealHref); }
+          });
+        }
+      } catch (eDoc) {}
+      try {
+        var docUriDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'documentURI');
+        if (docUriDesc && docUriDesc.get) {
+          Object.defineProperty(document, 'documentURI', {
+            configurable: true,
+            enumerable: true,
+            get: function() { return upstreamHref(_cachedRealHref); }
+          });
+        }
+      } catch (eUri) {}
+      // Proxy document.location so reads like document.location.hostname return the
+      // spoofed value. window.location cannot be overridden (configurable:false in all
+      // modern browsers), but document.location can be replaced on the instance.
+      try {
+        var _realLoc = window.location;
+        var _spoofedLocProxy = new Proxy(_realLoc, {
+          get: function(target, prop) {
+            if (prop === 'href')     return upstreamHref(_cachedRealHref);
+            if (prop === 'hostname') return CANONICAL_HOST;
+            if (prop === 'host')     return CANONICAL_HOST;
+            if (prop === 'origin')   return CANONICAL_ORIGIN;
+            if (prop === 'protocol') return 'https:';
+            if (prop === 'pathname') return upstreamPathname();
+            if (prop === 'search') return spoofedLocationSearch();
+            if (prop === 'toString') return function() { return upstreamHref(_cachedRealHref); };
+            var v = target[prop];
+            return (typeof v === 'function') ? v.bind(target) : v;
+          },
+          set: function(target, prop, value) {
+            if (prop === 'href') { target.assign(proxyHrefFromUpstream(String(value))); return true; }
+            try { target[prop] = value; } catch(_sl) {}
+            return true;
+          }
+        });
+        Object.defineProperty(document, 'location', {
+          configurable: true, enumerable: true,
+          get: function() { return _spoofedLocProxy; },
+          set: function(v) { window.location.assign(proxyHrefFromUpstream(String(v))); }
+        });
+
+        // If the instance-level override is ignored, try a prototype-level fallback.
+        try {
+          var _docHostNow = '';
+          try { _docHostNow = String((document.location && document.location.hostname) || ''); } catch (_dhn) {}
+          if (_docHostNow && _docHostNow !== CANONICAL_HOST) {
+            Object.defineProperty(Document.prototype, 'location', {
+              configurable: true,
+              enumerable: true,
+              get: function() { return _spoofedLocProxy; },
+              set: function(v) { window.location.assign(proxyHrefFromUpstream(String(v))); }
+            });
+          }
+        } catch (_dlpf) {}
+      } catch (_prloc) {}
+      console.log('[PolySaaS HS] location spoof', upstreamHref(_cachedRealHref), 'real=', _cachedRealHref || '?', 'hrefDesc=', !!hrefDesc, 'docLocProxy=', (function() { try { return document.location.hostname; } catch(_) { return '?'; } }()));
+    } catch (e) {
+      console.warn('[PolySaaS HS] location spoof failed', e);
+    }
+  }
+  window.__PS_HUBSPOT_REAPPLY_SPOOF = applyHubspotLocationSpoof;
+  applyHubspotLocationSpoof();
+  try {
+    var _formActDesc = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'action');
+    if (_formActDesc && _formActDesc.get) {
+      Object.defineProperty(HTMLFormElement.prototype, 'action', {
+        configurable: true, enumerable: true,
+        get: function() {
+          var raw = _formActDesc.get.call(this);
+          try {
+            var u = new URL(raw);
+            if (u.pathname.indexOf(PROXY_PREFIX) === 0) {
+              // First-party credential step for HubSpot login:
+              // Let the actual username/password POST go directly to app.hubspot.com
+              // so the browser receives csrf.app and session cookies.
+              // All other forms and navigation remain under the passthrough prefix.
+              var isLoginForm = /\/login(\/|$|\?)/i.test(u.pathname);
+              if (isLoginForm) {
+                u.hostname = CANONICAL_HOST;
+                u.protocol = 'https:';
+                u.port = '';
+                u.pathname = u.pathname.slice(PROXY_PREFIX.length) || '/login/';
+                return u.toString();
+              }
+
+              u.hostname = CANONICAL_HOST;
+              u.protocol = 'https:';
+              u.port = '';
+              u.pathname = u.pathname.slice(PROXY_PREFIX.length) || (window.location.pathname || '/');
+              return u.toString();
+            }
+          } catch(_fa) {}
+          return raw;
+        },
+        set: function(v) { _formActDesc.set.call(this, v); }
+      });
+    }
+  } catch (_fae) {}
+})();
+(function() {
+  var PROXY_PREFIX = "/pt/admin/app.hubspot.com";
+  var KNOWN_BASES = ["https://app.hubspot.com"];
+  var PORTAL_BOOTSTRAP_JSON = "{\"portalId\": 246571499, \"hubId\": 246571499, \"id\": 246571499}";
+  function isPortalBootstrapUrl(url) {
+    var s = String(url || '');
+    if (s.indexOf('/home/v2/api/portal') >= 0 || s.indexOf('/home/v2/api/no-intended-portal') >= 0) return true;
+    try {
+      var u = new URL(s, window.__PS_REAL_ORIGIN || window.location.origin);
+      var p = (u.pathname || '').replace(/\/+$/, '').toLowerCase();
+      return p.endsWith('/home/v2/api');
+    } catch (_ipb) { return false; }
+  }
+  function portalBootstrapResponse() {
+    if (!PORTAL_BOOTSTRAP_JSON) return null;
+    try {
+      return new Response(PORTAL_BOOTSTRAP_JSON, {
+        status: 200,
+        headers: {'Content-Type': 'application/json'}
+      });
+    } catch (_pbr) { return null; }
+  }
+  function _hasCookie(name) {
+    try {
+      var raw = '; ' + (document.cookie || '');
+      return raw.indexOf('; ' + String(name || '') + '=') >= 0;
+    }
+    catch (_hce) { return false; }
+  }
+  function _browserHsAuth() {
+    try { return sessionStorage.getItem('ps_hs_browser_login') === '1'; } catch (_bha) { return false; }
+  }
+  function _directHubspotUrl(url) {
+    if (!_browserHsAuth()) return null;
+    try {
+      var raw = String(url || '');
+      var parsed = new URL(raw, window.__PS_REAL_ORIGIN || window.location.origin);
+      if (parsed.pathname.indexOf(PROXY_PREFIX) === 0) {
+        var sub = parsed.pathname.slice(PROXY_PREFIX.length) || '/';
+        if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+        for (var i = 0; i < KNOWN_BASES.length; i++) {
+          var base = KNOWN_BASES[i];
+          if (base && base.indexOf('hubspot') >= 0) {
+            return base.replace(/\/+$/, '') + sub + (parsed.search || '') + (parsed.hash || '');
+          }
+        }
+        return 'https://app.hubspot.com' + sub + (parsed.search || '') + (parsed.hash || '');
+      }
+      if (isAppHost(parsed.hostname) || parsed.hostname === 'api.hubspot.com') {
+        return parsed.href;
+      }
+    } catch (_dhu) {}
+    return null;
+  }
+  // Do not seed hubspotapi-csrf=ps_local — it is forwarded on login POST and causes rejection.
+  function isAppHost(host) {
+    if (!host) return false;
+    host = host.toLowerCase().split(':')[0];
+    if (host.indexOf('static.hsappstatic.net') >= 0) return false;
+    return host === 'app.hubspot.com' || host.indexOf('app-') === 0 || host === 'local.hubspot.com' || host === 'api.hubspot.com';
+  }
+  function rememberOrigin(origin) {
+    if (!origin || KNOWN_BASES.indexOf(origin) >= 0) return;
+    if (isAppHost(origin.replace(/^https?:\/\//, ''))) KNOWN_BASES.push(origin);
+  }
+  function isAssetPath(path) {
+    var low = (path || '').toLowerCase();
+    return low.indexOf('/api/') === 0 || low.indexOf('/hs/') === 0 || low.indexOf('/static/') === 0 ||
+      low.indexOf('/webpack/') === 0 || low.indexOf('/hublytics/') === 0 || low.indexOf('/notifications/') === 0;
+  }
+  function workspaceNavUrl(url) {
+    var shell = window.__PS_WORKSPACE_SHELL_PREFIX || '';
+    if (!shell) return url;
+    try {
+      var parsed = new URL(url, window.__PS_REAL_ORIGIN || window.location.origin);
+      var realOrigin = window.__PS_REAL_ORIGIN || window.location.origin;
+      if (parsed.origin !== realOrigin) return url;
+      if (parsed.pathname.indexOf(PROXY_PREFIX) !== 0) return url;
+      var sub = parsed.pathname.slice(PROXY_PREFIX.length) || '/';
+      if (!sub || sub.charAt(0) !== '/') sub = '/' + sub;
+      if (isAssetPath(sub)) return url;
+      return shell + sub + (parsed.search || '') + (parsed.hash || '');
+    } catch (e) {}
+    return url;
+  }
+  function rewriteUrl(url) {
+    var raw = '';
+    try { raw = String(url || ''); } catch (_rws) { raw = ''; }
+    if (!raw) return url;
+    if (raw.indexOf(PROXY_PREFIX) === 0) return raw;
+    try {
+      var parsed = new URL(raw, window.__PS_REAL_ORIGIN || window.location.origin);
+      if (parsed.pathname.indexOf('/pt/admin/') === 0) {
+        var m = parsed.pathname.match(/^\/pt\/admin\/[^/]+(\/.*)?$/i);
+        if (m) {
+          var sub = normalizeSubpath(m[1] || '/');
+          return PROXY_PREFIX + sub + (parsed.search || '') + (parsed.hash || '');
+        }
+      }
+      if (isAppHost(parsed.hostname)) {
+        rememberOrigin(parsed.origin);
+        return PROXY_PREFIX + normalizeSubpath(parsed.pathname) + (parsed.search || '') + (parsed.hash || '');
+      }
+      var realOrigin = window.__PS_REAL_ORIGIN || window.location.origin;
+      if (parsed.origin === realOrigin) {
+        var path = parsed.pathname + (parsed.search || '');
+        if (path.indexOf(PROXY_PREFIX) === 0) return url;
+        if (path.charAt(0) === '/') {
+          var low = path.toLowerCase();
+          // Keep PolySaaS workspace/admin endpoints local; route everything else
+          // through passthrough so HubSpot setup-guide/onboarding flows stay captured.
+          if (low.indexOf('/admin/') !== 0 && low.indexOf('/dose/') !== 0 &&
+              low.indexOf('/static/') !== 0 && low.indexOf('/media/') !== 0) {
+            var subPath = normalizeSubpath(parsed.pathname);
+            return PROXY_PREFIX + subPath + (parsed.search || '') + (parsed.hash || '');
+          }
+        }
+      }
+      for (var i = 0; i < KNOWN_BASES.length; i++) {
+        var base = KNOWN_BASES[i];
+        if (raw.indexOf(base) === 0) {
+          return PROXY_PREFIX + raw.slice(base.length);
+        }
+      }
+    } catch (e) {}
+    return raw;
+  }
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    var reqUrl = '';
+    if (typeof input === 'string') reqUrl = input;
+    else if (input && input.url) reqUrl = input.url;
+    if (isPortalBootstrapUrl(reqUrl)) {
+      var stub = portalBootstrapResponse();
+      if (stub) return Promise.resolve(stub);
+    }
+    var directUrl = _directHubspotUrl(reqUrl);
+    if (directUrl) {
+      init = init || {};
+      if (init.credentials === undefined) init.credentials = 'include';
+      return _fetch.call(this, directUrl, init);
+    }
+    if (typeof input === 'string') input = rewriteUrl(input);
+    else if (input && input.url) {
+      var u = rewriteUrl(input.url);
+      if (u !== input.url) input = new Request(u, input);
+    }
+    return _fetch.call(this, input, init);
+  };
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    var directUrl = _directHubspotUrl(url);
+    this._psUrl = directUrl || rewriteUrl(url);
+    this._psDirect = !!directUrl;
+    arguments[1] = this._psUrl;
+    return _open.apply(this, arguments);
+  };
+  var _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function(body) {
+    if (isPortalBootstrapUrl(this._psUrl || '') && PORTAL_BOOTSTRAP_JSON) {
+      var self = this;
+      setTimeout(function() {
+        try {
+          Object.defineProperty(self, 'readyState', {value: 4, configurable: true});
+          Object.defineProperty(self, 'status', {value: 200, configurable: true});
+          Object.defineProperty(self, 'responseText', {value: PORTAL_BOOTSTRAP_JSON, configurable: true});
+          Object.defineProperty(self, 'response', {value: PORTAL_BOOTSTRAP_JSON, configurable: true});
+          if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+          self.dispatchEvent(new Event('load'));
+          self.dispatchEvent(new Event('loadend'));
+        } catch (_xse) {}
+      }, 0);
+      return;
+    }
+    return _send.apply(this, arguments);
+  };
+  function navigate(url) {
+    var u = workspaceNavUrl(rewriteUrl(String(url || '')));
+    if (u) window.location.assign(u);
+  }
+  var _assign = window.location.assign.bind(window.location);
+  var _replace = window.location.replace.bind(window.location);
+  function _navigateGuarded(url) {
+    return workspaceNavUrl(rewriteUrl(String(url || '')));
+  }
+  window.location.assign = function(url) { _assign(_navigateGuarded(url)); };
+  window.location.replace = function(url) { _replace(_navigateGuarded(url)); };
+  function _guardHistoryUrl(url) {
+    if (url == null || url === '') return url;
+    try {
+      var parsed = new URL(String(url), window.location.href);
+      var fixed = normalizeSubpath(parsed.pathname);
+      if (fixed !== parsed.pathname) {
+        parsed.pathname = fixed;
+        return parsed.pathname + (parsed.search || '') + (parsed.hash || '');
+      }
+    } catch (_ghu) {}
+    return url;
+  }
+  if (!window.__PS_HS_HISTORY_GUARD) {
+    window.__PS_HS_HISTORY_GUARD = true;
+    try {
+      var _pushState = history.pushState.bind(history);
+      var _replaceState = history.replaceState.bind(history);
+      history.pushState = function(state, title, url) {
+        return _pushState(state, title, url === undefined ? url : _guardHistoryUrl(url));
+      };
+      history.replaceState = function(state, title, url) {
+        return _replaceState(state, title, url === undefined ? url : _guardHistoryUrl(url));
+      };
+    } catch (_hsg) {}
+  }
+  (function _fixBadLocationOnLoad() {
+    try {
+      var p = window.location.pathname || '';
+      if (p.indexOf('/undefined') >= 0 || p.indexOf('/null/') >= 0 || p.endsWith('/null')) {
+        window.location.replace(PROXY_PREFIX + '/home/' + (window.location.search || ''));
+      }
+    } catch (_fblo) {}
+  })();
+  if (!window.__PS_PROTO_NAV_GUARD) {
+    try {
+      window.__PS_PROTO_NAV_GUARD = true;
+      var _lp = window.Location && window.Location.prototype;
+      if (_lp) {
+        var _nativeAssign = _lp.assign;
+        var _nativeReplace = _lp.replace;
+        if (typeof _nativeAssign === 'function') {
+          _lp.assign = function(url) {
+            return _nativeAssign.call(this, _navigateGuarded(url));
+          };
+        }
+        if (typeof _nativeReplace === 'function') {
+          _lp.replace = function(url) {
+            return _nativeReplace.call(this, _navigateGuarded(url));
+          };
+        }
+      }
+    } catch (_hspn) {}
+  }
+  if (!window.__PS_HUBSPOT_LOCATION_SPOOF) {
+    try {
+      var _hrefDesc = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href');
+      if (_hrefDesc && _hrefDesc.set) {
+        Object.defineProperty(window.location, 'href', {
+          configurable: true,
+          get: function() { return _hrefDesc.get.call(window.location); },
+          set: function(v) { _hrefDesc.set.call(window.location, workspaceNavUrl(rewriteUrl(String(v)))); }
+        });
+      }
+    } catch (e) {}
+  } else if (window.__PS_HUBSPOT_REAPPLY_SPOOF) {
+    window.__PS_HUBSPOT_REAPPLY_SPOOF();
+  }
+  document.addEventListener('click', function(ev) {
+    var el = ev.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var tgt = (a.getAttribute('target') || '').toLowerCase();
+    if (tgt === '_top' || tgt === '_parent') {
+      ev.preventDefault();
+      navigate(a.href || a.getAttribute('href'));
+    }
+  }, true);
+  document.addEventListener('submit', function(ev) {
+    var form = ev.target;
+    if (!form || !form.getAttribute) return;
+    var tgt = (form.getAttribute('target') || '').toLowerCase();
+    if (tgt === '_top' || tgt === '_parent') {
+      form.setAttribute('target', '_self');
+      if (form.action) form.action = rewriteUrl(form.action);
+    }
+  }, true);
+  function _fixFormActions() {
+    var forms = document.querySelectorAll('form[action]');
+    for (var _fi = 0; _fi < forms.length; _fi++) {
+      var _fa = forms[_fi].getAttribute('action') || '';
+      if (_fa.indexOf(PROXY_PREFIX) === 0) {
+        forms[_fi].setAttribute('action', _fa.slice(PROXY_PREFIX.length) || '/');
+      }
+    }
+  }
+  _fixFormActions();
+  if (window.MutationObserver) {
+    new MutationObserver(_fixFormActions).observe(document.documentElement, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ['action']
+    });
+  }
+})();
+</script>
+<script>window.__hsiplt = () => {}</script><script>window.__hssessrt = true</script><script>window.__hsipltan = "home-redirect-ui"</script><script>const IPLTEvents={TrackingStarted:"s",TrackingFinished:"f",PerformanceResourceTiming:"p",PerformanceNavigationTiming:"n",ScriptLoaded:"l",ScriptErrored:"e",BeforeScriptTag:"b",ScriptLoadTimeout:"t",DocumentReady:"c",MaxLogOverflow:"o",HitTimeBoundary:"h",VisibilityChangeHidden:"d",VisibilityChangeVisible:"v",SessionLink:"k"},ReportReasons={AlwaysSent:"a",SlowLoading:"s",VisibilityStateChanged:"v",LogsFlushed:"f",LogLimitReached:"l"};(()=>{const e=window.__hsipltan,t=5e3,n=6e4,o=3e5,i=50,r=5e3,s=window.__hssessrt;let a,c=s,l=!0,u=[],d=0,p=null,h=null;const m=()=>{a&&a.disconnect();h&&clearTimeout(h);p&&clearTimeout(p);document.removeEventListener("visibilitychange",O);c=!1;l=!1},f=(e,t=!1)=>{if(!l||P()>=o+1e4||d>=r)m();else{F(e);d+=u.length;u=[];t&&m()}},g=e=>{if(!l||u.length+d>=r-1)m();else{u.push(e);if(u.length+d!==r-2)u.length>=i&&f(ReportReasons.LogsFlushed);else{u.push([IPLTEvents.MaxLogOverflow,P()]);u.push([IPLTEvents.TrackingFinished,P()]);f(ReportReasons.LogLimitReached,!0)}}},w=["name","responseStatus","fetchStart","responseEnd","serverTiming","startTime","initiatorType","nextHopProtocol","redirectStart","redirectEnd","domainLookupStart","domainLookupEnd","connectStart","connectEnd","secureConnectionStart","requestStart","responseStart","transferSize","encodedBodySize","decodedBodySize","renderBlockingStatus"],T=[...w,"unloadEventStart","unloadEventEnd","type","redirectCount"];function v(){try{return!!localStorage.getItem("log-page-load-id")}catch(e){}return!1}function y(){try{return"10000000-1000-4000-8000-100000000000".replace(/[018]/g,(e=>{const t=0|(crypto&&crypto.getRandomValues?15&crypto.getRandomValues(new Uint8Array(1))[0]:16*Math.random());return("0"===e?t:3&t|8).toString(16)}))}catch(e){return null}}function S(e){try{return!!new URL(e)}catch(e){return!1}}const L=new Set(["access_token","token_type","expires_in","refresh_token","scope","state","error","error_description","error_uri","code","grant_type","redirect_uri","client_id","client_secret","id_token","session_state","nonce","acr_values","response_type","response_mode","display","prompt","max_age","ui_locales","claims_locales","id_token_hint","login_hint","acr_values","claims","registration","request","request_uri","code_challenge","code_challenge_method","code_verifier","token","assertion","client_assertion","client_assertion_type"]);function R(e){let t;try{t=new URL(e)}catch(t){return e}if(t.hash){const e=t.hash.slice(1).split("&").map((e=>{const[t,n]=e.split("=");return n?`${t}=*REDACTED*`:t}));t.hash=`#${e.join("&")}`}t.searchParams.forEach(((e,n)=>{(L.has(n.toLowerCase())||S(e))&&t.searchParams.set(n,"*REDACTED*")}));return t.toString()}let _;try{_=crypto.randomUUID()}catch(e){_=y()}v()&&console.log("HubSpot Page Load ID:",_);window.hubspot||(window.hubspot={});window.hubspot.sessionId=_;try{var E;const e=window.top;e&&window!==e&&null!==(E=e.hubspot)&&void 0!==E&&E.sessionId&&g([IPLTEvents.SessionLink,e.hubspot.sessionId])}catch(e){}function b(e,t,n){g([e,...t.map((e=>{if("serverTiming"===e)return I(n);const t=n[e];return"name"===e?R(t):null===t?null:"number"==typeof t?Math.round(t):t}))])}function P(){return Math.round(performance.now())}function I({serverTiming:e}){return e?e.map((e=>[e.name,e.description,e.duration])):[]}const k=new Map,B=e=>s?!(e.name&&e.name.endsWith("cartographer/v1/ipl")):"script"===e.initiatorType;try{a=new PerformanceObserver((e=>e.getEntries().filter(B).forEach((e=>b(IPLTEvents.PerformanceResourceTiming,w,e)))));a.observe({type:"resource",buffered:!0})}catch(e){console.error(e)}const C=performance.getEntriesByType("navigation")[0];C&&b(IPLTEvents.PerformanceNavigationTiming,T,C);function V(e){g([e,P()])}V(IPLTEvents.TrackingStarted);let q=1;function D(){const e=document.querySelector('meta[name="x-hs-portals-env"]');return null!=e&&e.content?"qa"===e.content:/qa.com$/.test(window.location.host)}function x(){const e=/^\/(?:[A-Za-z0-9-_]*)\/(\d+)(?:\/|$)/.exec(window.location.pathname);return e?parseInt(e[1],10):void 0}function z(){const e=document.querySelector('meta[name="x-hs-portals-hublet"]');if(null!=e&&e.content)return e.content;const t=/(?:app|tools|private|local)-([a-z]+[0-9]).(?:hubspot|hubteam)(?:qa)?.com/,n=window.location.host.match(t);return n?n[1]:"na1"}function A(e){const t=JSON.stringify(e),n=D()?"hubspotqa":"hubspot",o=`https://metrics-fe-${z()}.${n}.com/cartographer/v1/ipl`;if(navigator&&"function"==typeof navigator.sendBeacon)try{navigator.sendBeacon(o,t)}catch(e){}}function F(t){if(p){clearTimeout(p);p=null}if(0===u.length&&0===k.size)return;A({v:0,r:t,t:P(),n:q++,cru:_,pto:performance.timeOrigin,dn:Date.now(),u:R(window.location.href),l:u,pid:x(),p:[...k.entries()].map((([e,t])=>[e,t.firstSeen])),an:e})}function M(e){p||(p=window.setTimeout((()=>f(e)),1e3))}function U(){return s?Math.min(n,o-P()):null}function H(){if(!c)return;const e=U();if(null!==e)if(e<=0){V(IPLTEvents.HitTimeBoundary);V(IPLTEvents.TrackingFinished);f(ReportReasons.LogLimitReached,!0)}else{M(ReportReasons.LogsFlushed);h=setTimeout(H,e)}else console.error("scheduled a post-load report while sessionResourceTracking was disabled")}function $(){if("loading"===document.readyState||k.size>0){M(ReportReasons.SlowLoading);h=setTimeout($,t)}else{const e=U();if(e&&e>0){f(ReportReasons.AlwaysSent);h=setTimeout(H,e)}else{V(IPLTEvents.TrackingFinished);f(ReportReasons.AlwaysSent,!0)}}}function O(){if("hidden"===document.visibilityState){V(IPLTEvents.VisibilityChangeHidden);f(ReportReasons.VisibilityStateChanged)}else V(IPLTEvents.VisibilityChangeVisible)}document.addEventListener("visibilitychange",O);let N=!1;function j(){if("complete"===document.readyState&&!N){N=!0;V(IPLTEvents.DocumentReady)}}document.addEventListener("readystatechange",j);const J=5e3-P();J>0?setTimeout($,J):$();function W(...e){const t=P(),[n,o]=e;if(n===IPLTEvents.BeforeScriptTag){const n=new URL(e[2],R(window.location.href)).href;g([IPLTEvents.BeforeScriptTag,n,t]);k.set(n,{firstSeen:t,timeout:window.setTimeout((()=>{g([IPLTEvents.ScriptLoadTimeout,n,t,P()]);M(ReportReasons.SlowLoading)}),5e3)});return}const i=k.get(o.src);if(i){clearTimeout(i.timeout);k.delete(o.src);g([n,new URL(o.src,R(window.location.href)).href,i.firstSeen,t]);t-i.firstSeen>5e3&&M(ReportReasons.SlowLoading)}}window.__hsiplt=W})();</script><meta charSet="UTF-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/><link rel="preconnect" href="https://static.hsappstatic.net" crossorigin="anonymous"/><link href="https://static.hsappstatic.net/trellis-theming-assets/static-1.355/stylesheets/hubspot-theme.stable.css" rel="stylesheet" data-hubspot-theme-asset="true" /><script src="https://static.hsappstatic.net/trellis-theming-assets/static-1.355/bundles/hubspot-theme.stable.js" data-hubspot-theme-asset="true"></script><script>(function() {
+    const SILO_ACCESSOR=Symbol.for("silo_v1");function makeScopedState(...e){return{values:new Map(e),watchers:new Map}}function getBuildTimePropertyNames(){return{copilotLayoutType:"copilot_layout_type",copilotSidebarSide:"copilot_sidebar_side",currentPackageName:"current_package_name",currentPackageVersion:"current_package_version",rootPackageName:"root_package_name",rootPackageVersion:"root_package_version",parentPackageName:"parent_package_name",parentPackageVersion:"parent_package_version"}}function getCopilotSidebarSideFromSessionStorage(){try{return"left"===sessionStorage.getItem("copilot-sidebar-side")?"left":"right"}catch(e){return"right"}}function getGlobalState(e=window){return e[SILO_ACCESSOR]}function initialize(e,a,t){var o;if(getGlobalState())throw Error("Global state already initialized");let r=window;for(;r.parent!==r;)try{r.parent.document;r=r.parent;if(getGlobalState(r.parent))break}catch(e){break}const{copilotLayoutType:i,copilotSidebarSide:n,currentPackageName:c,currentPackageVersion:S,rootPackageName:p,rootPackageVersion:g,parentPackageName:l,parentPackageVersion:s}=getBuildTimePropertyNames();window[SILO_ACCESSOR]={TAB:(null===(o=r[SILO_ACCESSOR])||void 0===o?void 0:o.TAB)||makeScopedState([p,e],[g,a],[l,e],[s,a]),BROWSING_CONTEXT:makeScopedState([c,e],[S,a],[i,t],[n,getCopilotSidebarSideFromSessionStorage()])}}
+    initialize('home-redirect-ui','1.7054', 'undefined')})();</script><script>(function() {
+        var staticDomainPrefix='//static.hsappstatic.net';!function(){var o,t;void 0===window.hubspot&&(window.hubspot={}),void 0===window.hubspot.polyfills&&(window.hubspot.polyfills={}),window.hubspot.polyfills.__CONDITIONAL=!0,o={"intersection-observer":function(){return"IntersectionObserver"in window&&"IntersectionObserverEntry"in window&&"intersectionRatio"in window.IntersectionObserverEntry.prototype&&"isIntersecting"in window.IntersectionObserverEntry.prototype},"resize-observer":function(){return"ResizeObserver"in window},"es.array.flat":function(){return Array.prototype.flat},"es.array.flat-map":function(){return Array.prototype.flatMap},"es.object.from-entries":function(){return Object.fromEntries},"es.symbol":function(){return String(Symbol())&&Object.getOwnPropertySymbols&&Object.getOwnPropertySymbols("qwe")&&Symbol.for&&Symbol.keyFor&&"[null]"===JSON.stringify([Symbol()])&&"{}"===JSON.stringify({a:Symbol()})&&"{}"===JSON.stringify(Object(Symbol()))&&Symbol.prototype[Symbol.toPrimitive]&&Symbol.prototype[Symbol.toStringTag]},"es.promise":function(){function o(){}var t=new Promise(function(t){t(1)}),n=(t.constructor={})[Symbol.species]=function(t){t(o,o)};return t.then(o)instanceof n&&"function"==typeof PromiseRejectionEvent},"es.promise.finally":function(){return Promise.prototype.finally.call({then:function(){return this}},function(){})}},(t=Object.keys(o).find(t=>{try{return!o[t]()}catch(t){return!0}}))?(window.hubspot.polyfills.__REASON=t,(t=document.createElement("script")).src=staticDomainPrefix+"/HeadJS/static-2.768/js/polyfills/core.js",t.crossOrigin="anonymous",document.write(t.outerHTML)):window.hubspot.polyfills.__INSTALLED=!1}();
+      })();</script><script>__hsiplt('b',document.currentScript,"https://static.hsappstatic.net/head-dlb/static-1.5007/bundle.production.js")</script><script src="https://static.hsappstatic.net/head-dlb/static-1.5007/bundle.production.js" type="text/javascript" crossOrigin="anonymous" onload="__hsiplt('l',this)" onerror="__hsiplt('e',this)" data-hsiplt></script><script>window.hubspot=window.hubspot||{},window.hubspot["__hub-http-labs"]=window.hubspot["__hub-http-labs"]||{},window.hubspot["__hub-http-labs"].HUBONEDOMAIN=!0;</script><link href="https://static.hsappstatic.net/home-redirect-ui/static-1.7054/sass/root.css" rel="stylesheet" type="text/css"/><script>
+        hns('hubspot.bender', {
+          staticDomain: '//static.hsappstatic.net' || window.location.host,
+          staticDomainPrefix: '//static.hsappstatic.net' || ('//' + window.location.host),
+
+          currentProject: 'home-redirect-ui',
+          currentProjectVersion: 'static-1.7054',
+
+          depVersions: {
+  "home-redirect-ui": "static-1.7054",
+  "head-dlb": "static-1.5007",
+  "hubspot-dlb": "static-2.1854",
+  "HubStyleTokens": "static-2.11585",
+  "I18n": "static-7.1637",
+  "react-dlb": "static-1.81",
+  "cssUtils": "static-1.823",
+  "enviro": "static-4.455",
+  "hub-http": "static-1.6332",
+  "PortalIdParser": "static-2.404",
+  "quartz": "static-1.7167",
+  "quick-fetch": "static-1.3998",
+  "raven": "static-3.5925",
+  "react": "static-7.187",
+  "StyleGuideUI": "static-3.489",
+  "ui-images": "static-2.1180",
+  "hs-promise-rejection-tracking": "static-1.5587",
+  "raven-hubspot": "static-1.6232",
+  "classnames": "static-2.10",
+  "hoist-non-react-statics": "static-3.9",
+  "hubspot-url-utils": "static-1.4132",
+  "immutable": "static-2.79",
+  "metrics-js": "static-1.9637",
+  "react-redux": "static-7.71",
+  "redux": "static-4.16",
+  "styled-components": "static-2.89",
+  "bend-plugin-trellis-migration": "static-1.3478",
+  "moment": "static-3.26",
+  "react-dom": "static-7.85",
+  "HeadJS": "static-2.768",
+  "webpack-env": "static-1.54",
+  "foundations-theming": "static-1.4539",
+  "quartz-config": "static-1.945",
+  "i18n-data": "static-1.223",
+  "moment-timezone": "static-5.84",
+  "react-utils": "static-2.5422",
+  "sassPrefix": "static-1.158",
+  "hs-locale-management": "static-1.162",
+  "jasmine": "static-4.4435",
+  "jasmine-runner": "static-1.6568",
+  "msw": "static-1.39",
+  "quartz-head": "static-1.832",
+  "quartz-test": "static-1.842",
+  "csstype": "static-1.50",
+  "bender-build-tools": "static-1.3281",
+  "bend-plugin-foundations-theming": "static-1.3022",
+  "foundations-theming-base": "static-1.3524",
+  "framer-motion": "static-1.73",
+  "hs-story-utils": "static-1.9531",
+  "stylex": "static-1.34",
+  "hs-test-utils": "static-1.8128",
+  "foundations-components": "static-1.8145",
+  "hs-test-utils-bend-plugin": "static-1.3239",
+  "testing-library": "static-1.153",
+  "bend-plugin-foundations-components": "static-1.4414",
+  "floating-ui": "static-1.57",
+  "foundations-assets": "static-1.4982",
+  "foundations-theming-specialty": "static-1.2255",
+  "react-aria": "static-1.67",
+  "react-create-root-preference": "static-1.35",
+  "react-select-plus": "static-1.106",
+  "react-virtualized": "static-2.100",
+  "tanstack-table": "static-1.56",
+  "trellis-assets": "static-1.2187",
+  "ui-fonts": "static-1.847",
+  "react-input-autosize": "static-2.17"
+},
+          depPathPrefixes: {
+  "home-redirect-ui": "/home-redirect-ui/static-1.7054",
+  "head-dlb": "/head-dlb/static-1.5007",
+  "hubspot-dlb": "/hubspot-dlb/static-2.1854",
+  "HubStyleTokens": "/HubStyleTokens/static-2.11585",
+  "I18n": "/I18n/static-7.1637",
+  "react-dlb": "/react-dlb/static-1.81",
+  "cssUtils": "/cssUtils/static-1.823",
+  "enviro": "/enviro/static-4.455",
+  "hub-http": "/hub-http/static-1.6332",
+  "PortalIdParser": "/PortalIdParser/static-2.404",
+  "quartz": "/quartz/static-1.7167",
+  "quick-fetch": "/quick-fetch/static-1.3998",
+  "raven": "/raven/static-3.5925",
+  "react": "/react/static-7.187",
+  "StyleGuideUI": "/StyleGuideUI/static-3.489",
+  "ui-images": "/ui-images/static-2.1180",
+  "hs-promise-rejection-tracking": "/hs-promise-rejection-tracking/static-1.5587",
+  "raven-hubspot": "/raven-hubspot/static-1.6232",
+  "classnames": "/classnames/static-2.10",
+  "hoist-non-react-statics": "/hoist-non-react-statics/static-3.9",
+  "hubspot-url-utils": "/hubspot-url-utils/static-1.4132",
+  "immutable": "/immutable/static-2.79",
+  "metrics-js": "/metrics-js/static-1.9637",
+  "react-redux": "/react-redux/static-7.71",
+  "redux": "/redux/static-4.16",
+  "styled-components": "/styled-components/static-2.89",
+  "bend-plugin-trellis-migration": "/bend-plugin-trellis-migration/static-1.3478",
+  "moment": "/moment/static-3.26",
+  "react-dom": "/react-dom/static-7.85",
+  "HeadJS": "/HeadJS/static-2.768",
+  "webpack-env": "/webpack-env/static-1.54",
+  "foundations-theming": "/foundations-theming/static-1.4539",
+  "quartz-config": "/quartz-config/static-1.945",
+  "i18n-data": "/i18n-data/static-1.223",
+  "moment-timezone": "/moment-timezone/static-5.84",
+  "react-utils": "/react-utils/static-2.5422",
+  "sassPrefix": "/sassPrefix/static-1.158",
+  "hs-locale-management": "/hs-locale-management/static-1.162",
+  "jasmine": "/jasmine/static-4.4435",
+  "jasmine-runner": "/jasmine-runner/static-1.6568",
+  "msw": "/msw/static-1.39",
+  "quartz-head": "/quartz-head/static-1.832",
+  "quartz-test": "/quartz-test/static-1.842",
+  "csstype": "/csstype/static-1.50",
+  "bender-build-tools": "/bender-build-tools/static-1.3281",
+  "bend-plugin-foundations-theming": "/bend-plugin-foundations-theming/static-1.3022",
+  "foundations-theming-base": "/foundations-theming-base/static-1.3524",
+  "framer-motion": "/framer-motion/static-1.73",
+  "hs-story-utils": "/hs-story-utils/static-1.9531",
+  "stylex": "/stylex/static-1.34",
+  "hs-test-utils": "/hs-test-utils/static-1.8128",
+  "foundations-components": "/foundations-components/static-1.8145",
+  "hs-test-utils-bend-plugin": "/hs-test-utils-bend-plugin/static-1.3239",
+  "testing-library": "/testing-library/static-1.153",
+  "bend-plugin-foundations-components": "/bend-plugin-foundations-components/static-1.4414",
+  "floating-ui": "/floating-ui/static-1.57",
+  "foundations-assets": "/foundations-assets/static-1.4982",
+  "foundations-theming-specialty": "/foundations-theming-specialty/static-1.2255",
+  "react-aria": "/react-aria/static-1.67",
+  "react-create-root-preference": "/react-create-root-preference/static-1.35",
+  "react-select-plus": "/react-select-plus/static-1.106",
+  "react-virtualized": "/react-virtualized/static-2.100",
+  "tanstack-table": "/tanstack-table/static-1.56",
+  "trellis-assets": "/trellis-assets/static-1.2187",
+  "ui-fonts": "/ui-fonts/static-1.847",
+  "react-input-autosize": "/react-input-autosize/static-2.17"
+},
+          templateBasename: "index.html.js"
+        });</script><script>(function() {
+          const config = {};
+          function configureLogFetchErrors(o,t){o("https://exceptions.hubspot.com/v2/js",t.options)}
+          hubspot.require(["raven-hubspot/configure"],(r=>{configureLogFetchErrors(r,config)}));
+        })();</script><title>HubSpot | Redirecting...</title><script id="whisper-core-embed" type="module" data-static-domain="//static.hsappstatic.net">window.Whisper={debug(){},shutdown(){},get:()=>null};const isDevMode=(()=>{try{return"true"===localStorage.getItem("WHISPER_CORE_DEV")}catch(e){return!1}})();function log(...e){isDevMode&&console.log(...e)}const environment=(()=>{const e=window.location.hostname;return e.startsWith("local.")?isDevMode?"LOCAL":"LOCAL-QA":e.includes("qa")?"QA":"PROD"})(),whisperCoreUrl=(()=>{let e="LOCAL"===environment?"//local.hsappstatic.net":"//static.hsappstatic.net";const t=document.getElementById("whisper-core-embed");if("LOCAL-QA"!==environment&&t&&t instanceof HTMLScriptElement&&t.dataset.staticDomain){e=t.dataset.staticDomain;t.removeAttribute("data-static-domain");delete t.dataset.staticDomain}return{LOCAL:`https:${e}/whisper-core/static/whisper-core.js`,"LOCAL-QA":`https:${e}/whisper-core/ex/whisper-core-qa.js`,QA:`https:${e}/whisper-core/ex/whisper-core-qa.js`,PROD:`https:${e}/whisper-core/ex/whisper-core.js`}[environment]})(),loadWhisperCoreScript=()=>{log("[whisper-core-embed] Start loading whisper-core from %s on %s",whisperCoreUrl,window.location.origin+window.location.pathname);return new Promise(((e,t)=>{const o=whisperCoreUrl,r=document.createElement("script");r.src=o;r.defer=!0;r.onload=()=>{log("[whisper-core-embed] Load complete");e()};r.onerror=()=>{t(new Error(`Failed to load script from ${o}.`))};document.head.appendChild(r)}))};!async function(){try{await loadWhisperCoreScript();log("[whisper-core-embed] Initialized and ready to use")}catch(e){log("[whisper-core-embed] Failed initialization with error:",e)}}();</script><meta name="author" content="HubSpot, Inc."/><link rel="apple-touch-icon" sizes="180x180" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/apple-touch-icon.png"/><link rel="icon" type="image/png" sizes="32x32" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/favicon-32x32.png"/><link rel="icon" type="image/png" sizes="16x16" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/favicon-16x16.png"/><link rel="mask-icon" href="https://static.hsappstatic.net/quartz/static-1.6368/favicon/safari-pinned-tab.svg" color="#FF7A59"/><meta name="msapplication-TileColor" content="#2b5797"/>
+
+
+   
+  
+
+
+
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+    /* Header height — tuned to the live Jazzmin navbar so the grid clears the fixed header. */
+    :root {
+        --pss-header-h: 64px;
+        --pss-sidebar-shell-bg: #1e293b;
+        --pss-sidebar-shell-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        --pss-sidebar-header-bg: #34495e;
+        --pss-sidebar-header-hover-bg: #1e293b;
+        --pss-sidebar-header-text: #ffffff;
+        --pss-sidebar-header-border: #2c3e50;
+        --pss-sidebar-surface: #f8fafc;
+        --pss-sidebar-scroll-track: #f1f1f1;
+        --pss-sidebar-scroll-thumb: #888;
+        --pss-sidebar-scroll-thumb-hover: #555;
+        --pss-sidebar-item-text: #334155;
+        --pss-sidebar-item-hover-bg: rgba(37, 99, 235, 0.08);
+        --pss-sidebar-item-active-bg: rgba(37, 99, 235, 0.18);
+        --pss-sidebar-item-active-text: #1e3a8a;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #2563eb;
+        --pss-sidebar-icon: #64748b;
+        --pss-sidebar-icon-hover: #2563eb;
+        --pss-sidebar-icon-active: #2563eb;
+        --pss-sidebar-panel-bg: #f1f5f9;
+        --pss-sidebar-panel-text: #64748b;
+        --pss-sidebar-panel-border: #e2e8f0;
+        --pss-sidebar-passthrough-bg: #eff6ff;
+        --pss-sidebar-passthrough-text: #1e40af;
+        --pss-sidebar-passthrough-border: #3b82f6;
+    }
+
+    html[data-bs-theme="dark"],
+    html[data-ps-theme="darkly"],
+    html[data-ps-theme="cyborg"],
+    html[data-ps-theme="slate"],
+    html[data-ps-theme="solar"],
+    html[data-ps-theme="superhero"] {
+        --pss-sidebar-shell-bg: #20252b;
+        --pss-sidebar-shell-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+        --pss-sidebar-header-bg: #2f353c;
+        --pss-sidebar-header-hover-bg: #252a31;
+        --pss-sidebar-header-text: #f5f7fa;
+        --pss-sidebar-header-border: #454d55;
+        --pss-sidebar-surface: #2b2b2b;
+        --pss-sidebar-scroll-track: #252525;
+        --pss-sidebar-scroll-thumb: #626b75;
+        --pss-sidebar-scroll-thumb-hover: #7a848f;
+        --pss-sidebar-item-text: #d9e2ec;
+        --pss-sidebar-item-hover-bg: rgba(41, 128, 185, 0.2);
+        --pss-sidebar-item-active-bg: rgba(77, 182, 255, 0.22);
+        --pss-sidebar-item-active-text: #f5fbff;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #4db6ff;
+        --pss-sidebar-icon: #a7b3c2;
+        --pss-sidebar-icon-hover: #4db6ff;
+        --pss-sidebar-icon-active: #8ecbff;
+        --pss-sidebar-panel-bg: #3a3a3a;
+        --pss-sidebar-panel-text: #d0d7de;
+        --pss-sidebar-panel-border: #4b525a;
+        --pss-sidebar-passthrough-bg: #16324f;
+        --pss-sidebar-passthrough-text: #8ecbff;
+        --pss-sidebar-passthrough-border: #2196f3;
+    }
+
+    /* Main layout grid — two columns by default (sidebar | content).
+       Third column only when JS moves #recent-actions-module (.has-recent-actions). */
+    .admin-main-wrapper,
+    .admin-main-wrapper.admin-content-grid {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 0;
+        margin-top: var(--pss-header-h);
+        align-items: start;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        min-height: calc(100vh - var(--pss-header-h));
+        transition: grid-template-columns 0.3s ease;
+    }
+
+    .admin-main-wrapper.has-recent-actions,
+    .admin-main-wrapper.admin-content-grid.has-recent-actions {
+        grid-template-columns: 280px minmax(0, 1fr) minmax(220px, 280px);
+    }
+
+    body.polysaas-collapsed .admin-main-wrapper,
+    .admin-main-wrapper.sidebar-collapse,
+    body.polysaas-collapsed .admin-main-wrapper.admin-content-grid,
+    .admin-main-wrapper.admin-content-grid.sidebar-collapse {
+        grid-template-columns: 60px minmax(0, 1fr);
+    }
+
+    body.polysaas-collapsed .admin-main-wrapper.has-recent-actions,
+    .admin-main-wrapper.sidebar-collapse.has-recent-actions {
+        grid-template-columns: 60px minmax(0, 1fr) minmax(220px, 280px);
+    }
+
+    /* Content column must allow shrinking for 1fr to respond */
+    .admin-main-wrapper > .dose-content-col {
+        min-width: 0;
+        grid-column: 2;
+        grid-row: 1;
+        overflow-x: hidden;
+        overflow-y: visible;
+    }
+
+    .admin-main-wrapper > #dose-custom-sidebar,
+    .admin-main-wrapper > .collapsible-nav {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        z-index: 5;
+    }
+
+    .admin-main-wrapper > #recent-actions-sidebar {
+        grid-column: 3;
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .admin-main-wrapper:not(.has-recent-actions) > #recent-actions-sidebar {
+        display: none !important;
+    }
+
+    /* Jazzmin index uses col-lg-9 + col-lg-3; recent actions hoist to grid col 3.
+       Change/add forms put Save + #jazzy-actions in col-lg-3 — do NOT hide those. */
+    body.dashboard .admin-main-wrapper .dose-content-col .col-lg-3:has(#content-related),
+    body.dashboard .admin-main-wrapper .dose-content-col #content-related {
+        display: none !important;
+    }
+
+    body.dashboard .admin-main-wrapper .dose-content-col .col-lg-9 {
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    /* Change/add forms: keep Jazzmin action column visible (Save, Delete, PolySniffer). */
+    body.change-form .admin-main-wrapper .dose-content-col #jazzy-actions {
+        display: block !important;
+        position: sticky;
+        top: calc(var(--pss-header-h, 64px) + 12px);
+        z-index: 2;
+    }
+
+    /* Jazzmin 3 / BS5 often use col-md-* / row — do not force col-lg-* to 100% (breaks index layout) */
+
+    /* Make container-fluid truly full width */
+    .dose-content-col .container-fluid {
+        max-width: 100% !important;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    .dose-content-col .row {
+        margin: 0 !important;
+    }
+
+    /* col-md-6 is Jazzmin's two-column card split — let Bootstrap handle it at >=900px.
+       At <900px we override it back to full width (see @media block below). */
+
+    /* Sidebar — natural height (grows with nav panels; no viewport cap). */
+    .collapsible-nav {
+        background: var(--pss-sidebar-shell-bg);
+        border-radius: 0;
+        overflow-x: hidden;
+        overflow-y: visible;
+        box-shadow: var(--pss-sidebar-shell-shadow);
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        align-self: start;
+        transition: max-width 0.3s ease, width 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 280px;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .collapsible-nav.collapsed,
+    #dose-custom-sidebar.collapsed {
+        width: 60px;
+        min-width: 60px;
+        max-width: 60px;
+    }
+
+    .nav-header {
+        background: var(--pss-sidebar-header-bg);
+        color: var(--pss-sidebar-header-text);
+        padding: 12px 15px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid var(--pss-sidebar-header-border);
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .collapsible-nav.collapsed .nav-header {
+        justify-content: center;
+        padding: 8px 5px;
+        background: #2563eb !important;   /* bright blue — unmistakably a button */
+        border-bottom: 2px solid #1d4ed8;
+        min-height: 48px;
+    }
+
+    .collapsible-nav.collapsed .nav-header > span:first-child {
+        display: none;
+    }
+
+    /* Make the fa-bars icon look like a proper restore button when collapsed */
+    .collapsible-nav.collapsed .nav-toggle {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        font-size: 1.3rem !important;
+        transition: background 0.2s ease;
+        cursor: pointer;
+    }
+
+    .collapsible-nav.collapsed .nav-toggle i {
+        font-size: 1.2rem;
+        color: #fff;
+    }
+
+    .collapsible-nav.collapsed .nav-header:hover .nav-toggle {
+        background: rgba(255,255,255,0.35);
+    }
+
+    .nav-header:hover {
+        background: var(--pss-sidebar-header-hover-bg);
+    }
+
+    .nav-toggle {
+        font-size: 1.3rem;
+        transition: all 0.3s ease;
+        font-weight: normal;
+    }
+
+    /* applyFont() in base_site.html sets el.style.fontFamily on every element,
+       overriding FA's glyph font and making icons vanish.
+       These !important rules beat the JS inline-style (no !important) and restore rendering. */
+    .nav-toggle i,
+    .nav-toggle i.fas,
+    .nav-toggle i.far,
+    .nav-toggle i.fab {
+        font-family: "Font Awesome 5 Free" !important;
+        font-weight: 900 !important;
+        font-size: inherit !important;
+        display: inline-block !important;
+        color: #fff !important;
+    }
+
+    .nav-items {
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: visible;
+        background: var(--pss-sidebar-surface);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .nav-items::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    .collapsible-nav.collapsed .nav-items,
+    #dose-custom-sidebar.collapsed .nav-items {
+        overflow-x: hidden;
+        overflow-y: visible;
+        flex: 0 1 auto;
+        min-height: 0;
+        max-height: none;
+        width: 100%;
+        align-items: center;
+        padding: 0;
+    }
+
+    /* Custom scrollbar for navigation */
+    .nav-items::-webkit-scrollbar-track {
+        background: var(--pss-sidebar-scroll-track);
+    }
+
+    .nav-items::-webkit-scrollbar-thumb {
+        background: var(--pss-sidebar-scroll-thumb);
+        border-radius: 3px;
+    }
+
+    .nav-items::-webkit-scrollbar-thumb:hover {
+        background: var(--pss-sidebar-scroll-thumb-hover);
+    }
+
+    /* Admin-style compact nav items */
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 15px;
+        margin: 2px 8px;
+        color: var(--pss-sidebar-item-text);
+        text-decoration: none;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        transition: background 0.15s ease, padding-left 0.15s ease;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+
+    /* Collapsed mode - show only icons centered */
+    .collapsible-nav.collapsed .nav-item,
+    #dose-custom-sidebar.collapsed .nav-item {
+        justify-content: center;
+        padding: 10px;
+        gap: 0;
+        min-height: 40px;
+        border: none;
+        width: auto;
+    }
+
+    .collapsible-nav.collapsed .nav-panel,
+    #dose-custom-sidebar.collapsed .nav-panel {
+        border: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-items,
+    #dose-custom-sidebar.collapsed .nav-panel-items {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .collapsible-nav.collapsed .nav-text,
+    #dose-custom-sidebar.collapsed .nav-text {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        font-size: 0 !important;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-title,
+    #dose-custom-sidebar.collapsed .nav-panel-title,
+    #dose-custom-sidebar.collapsed h4.nav-panel-title {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 0 !important;
+    }
+
+    .collapsible-nav.collapsed .nav-icon,
+    #dose-custom-sidebar.collapsed .nav-icon {
+        font-size: 1.3rem;
+        min-width: auto;
+        margin: 0;
+        display: inline-flex !important;
+        flex-shrink: 0;
+    }
+
+    .collapsible-nav.collapsed .custom-icon,
+    #dose-custom-sidebar.collapsed .custom-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    /* Force hide all text content in collapsed sidebar */
+    #dose-custom-sidebar.collapsed .nav-item * {
+        font-size: inherit;
+    }
+
+    #dose-custom-sidebar.collapsed .nav-text,
+    #dose-custom-sidebar.collapsed .nav-text * {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        opacity: 0 !important;
+    }
+
+    .nav-item:hover {
+        background: var(--pss-sidebar-item-hover-bg) !important;
+        padding-left: 15px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active,
+    #dose-custom-sidebar .nav-item[aria-current="page"] {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        box-shadow: var(--pss-sidebar-item-active-shadow) !important;
+        border-left: 3px solid var(--pss-sidebar-icon-active);
+        font-weight: 600 !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active:hover,
+    #dose-custom-sidebar .nav-item[aria-current="page"]:hover {
+        background: var(--pss-sidebar-item-active-bg) !important;
+        color: var(--pss-sidebar-item-active-text) !important;
+        padding-left: 12px;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-icon,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-icon {
+        color: var(--pss-sidebar-icon-active) !important;
+    }
+
+    #dose-custom-sidebar .nav-item.is-active .nav-text,
+    #dose-custom-sidebar .nav-item[aria-current="page"] .nav-text {
+        color: inherit;
+    }
+
+    .collapsible-nav.collapsed .nav-item:hover {
+        padding-left: 10px;
+    }
+
+    .collapsible-nav.collapsed .nav-item.is-active,
+    #dose-custom-sidebar.collapsed .nav-item.is-active,
+    .collapsible-nav.collapsed .nav-item[aria-current="page"],
+    #dose-custom-sidebar.collapsed .nav-item[aria-current="page"] {
+        box-shadow: inset 0 0 0 2px var(--pss-sidebar-passthrough-border);
+        border-left: none;
+        padding-left: 10px;
+    }
+
+    .nav-icon {
+        width: 1.75rem;
+        height: 1.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        color: var(--pss-sidebar-icon);
+        border-radius: 6px;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    /* Material Icons ligature support */
+    .nav-icon.material-icon {
+        font-family: 'Material Icons';
+        font-size: 1.2rem;
+        font-style: normal;
+        line-height: 1;
+        overflow: visible;
+    }
+
+    .nav-item:hover .nav-icon {
+        color: var(--pss-sidebar-icon-hover);
+    }
+
+    /* Ensure icons from FontAwesome/Bootstrap work */
+    .nav-icon i {
+        font-size: inherit;
+    }
+
+    /* Custom image icons */
+    .custom-icon {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+    }
+
+    .nav-text {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .nav-panel-title {
+        background: var(--pss-sidebar-panel-bg);
+        padding: 8px 15px;
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--pss-sidebar-panel-text);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        border-top: 1px solid var(--pss-sidebar-panel-border);
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    /* Passthrough panel — subtle accent, not loud green */
+    .nav-panel[data-panel-type="passthrough_services"] .nav-panel-title {
+        background: var(--pss-sidebar-passthrough-bg);
+        color: var(--pss-sidebar-passthrough-text);
+        border-left: 3px solid var(--pss-sidebar-passthrough-border);
+        padding-left: 12px;
+    }
+
+    /* CONTROLS row — labeled tiles (Themes + Alerts) */
+    .pss-sidebar-controls-row {
+        display: flex;
+        gap: 8px;
+        justify-content: stretch;
+        padding: 10px 10px 12px;
+        position: relative;
+    }
+    .pss-sidebar-control-wrap {
+        position: relative;
+        flex: 1 1 0;
+        min-width: 0;
+    }
+    .pss-sidebar-control-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 100%;
+        min-height: 58px;
+        padding: 8px 6px;
+        border-radius: 10px;
+        border: 1px solid var(--pss-sidebar-panel-border);
+        background: var(--pss-sidebar-surface);
+        cursor: pointer;
+        position: relative;
+        line-height: 1.1;
+        transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+    .pss-sidebar-control-btn:hover,
+    .pss-sidebar-control-btn:focus-visible {
+        outline: none;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+    }
+    /* SVG icons — immune to applyFont() stomping font-family on every element */
+    .pss-sidebar-control-btn .pss-control-icon {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        line-height: 1;
+        color: inherit !important;
+        flex-shrink: 0;
+    }
+    .pss-sidebar-control-btn .pss-control-icon .pss-control-svg {
+        width: 1.35rem;
+        height: 1.35rem;
+        display: block;
+    }
+    .pss-sidebar-control-btn .pss-control-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: inherit;
+        opacity: 0.95;
+    }
+    .pss-sidebar-control-btn--themes {
+        color: #5b21b6;
+        border-color: #c4b5fd;
+        background: linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%);
+    }
+    .pss-sidebar-control-btn--themes:hover,
+    .pss-sidebar-control-btn--themes:focus-visible {
+        color: #4c1d95;
+        border-color: #a78bfa;
+        background: linear-gradient(180deg, #ede9fe 0%, #ddd6fe 100%);
+    }
+    .pss-sidebar-control-btn--alerts {
+        color: #b45309;
+        border-color: #fcd34d;
+        background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+    }
+    .pss-sidebar-control-btn--alerts:hover,
+    .pss-sidebar-control-btn--alerts:focus-visible {
+        color: #92400e;
+        border-color: #fbbf24;
+        background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--themes,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--themes {
+        color: #e9d5ff;
+        border-color: #7c3aed;
+        background: linear-gradient(180deg, #3b2667 0%, #2e1065 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--themes:hover,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--themes:hover {
+        color: #f5f3ff;
+        border-color: #a78bfa;
+        background: linear-gradient(180deg, #4c1d95 0%, #3b0764 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--alerts,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--alerts {
+        color: #fde68a;
+        border-color: #d97706;
+        background: linear-gradient(180deg, #4a3410 0%, #3f2d0f 100%);
+    }
+    html[data-bs-theme="dark"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="darkly"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="cyborg"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="slate"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="solar"] .pss-sidebar-control-btn--alerts:hover,
+    html[data-ps-theme="superhero"] .pss-sidebar-control-btn--alerts:hover {
+        color: #fff7ed;
+        border-color: #fbbf24;
+        background: linear-gradient(180deg, #5c4312 0%, #4a3410 100%);
+    }
+    .pss-sidebar-control-btn--alerts #sidebar-unread-count {
+        top: 4px;
+        right: 8px;
+    }
+    .collapsible-nav.collapsed .pss-control-label,
+    #dose-custom-sidebar.collapsed .pss-control-label {
+        display: none;
+    }
+    .collapsible-nav.collapsed .pss-sidebar-control-btn,
+    #dose-custom-sidebar.collapsed .pss-sidebar-control-btn {
+        min-height: 44px;
+        padding: 8px 4px;
+    }
+
+    /* Theme picker — portaled to body; fixed so sidebar overflow cannot clip it */
+    #sidebar-display-settings-popover {
+        display: none;
+        position: fixed;
+        background: #ffffff;
+        color: #222;
+        width: 310px;
+        max-height: calc(100vh - 24px);
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+        border-radius: 12px;
+        z-index: 10050;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+    #sidebar-display-settings-popover .pss-theme-popover-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 700;
+        font-size: 14px;
+        background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+        color: #4c1d95;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    #sidebar-display-settings-popover .pss-theme-popover-body {
+        padding: 16px;
+        font-size: 13px;
+        max-height: min(480px, calc(100vh - 100px));
+        overflow-y: auto;
+    }
+
+    /* Alerts dropdown — portaled to body; fixed so sidebar overflow cannot clip it */
+    #sidebar-unread-dropdown {
+        display: none;
+        position: fixed;
+        background: #ffffff;
+        color: #222;
+        width: 320px;
+        max-height: min(420px, calc(100vh - 24px));
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+        border-radius: 12px;
+        z-index: 10051;
+        border: 1px solid #e2e8f0;
+        overflow: hidden;
+    }
+    #sidebar-unread-dropdown .pss-alerts-popover-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        font-weight: 700;
+        font-size: 14px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    #sidebar-unread-messages-list {
+        max-height: min(350px, calc(100vh - 120px));
+        overflow-y: auto;
+        font-size: 13px;
+    }
+    html[data-bs-theme="dark"] #sidebar-unread-dropdown,
+    html[data-ps-theme="darkly"] #sidebar-unread-dropdown,
+    html[data-ps-theme="cyborg"] #sidebar-unread-dropdown,
+    html[data-ps-theme="slate"] #sidebar-unread-dropdown,
+    html[data-ps-theme="solar"] #sidebar-unread-dropdown,
+    html[data-ps-theme="superhero"] #sidebar-unread-dropdown {
+        background: #2b2b2b;
+        color: #e2e8f0;
+        border-color: #4b525a;
+    }
+    html[data-bs-theme="dark"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="darkly"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="cyborg"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="slate"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="solar"] #sidebar-unread-dropdown .pss-alerts-popover-header,
+    html[data-ps-theme="superhero"] #sidebar-unread-dropdown .pss-alerts-popover-header {
+        background: linear-gradient(135deg, #343a40 0%, #2b3035 100%);
+        color: #f8f9fa;
+        border-bottom-color: #4b525a;
+    }
+
+    /* ── Passthrough logo card grid ── */
+    .pss-pt-cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 10px 8px 12px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .pss-pt-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 6px 8px;
+        border-radius: 12px;
+        text-decoration: none;
+        color: inherit;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        transition: background 0.2s, transform 0.2s;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .pss-pt-card:hover {
+        background: rgba(255,255,255,0.12);
+        transform: translateY(-2px);
+        text-decoration: none;
+        color: inherit;
+    }
+    .pss-pt-card.is-active {
+        background: rgba(77,182,255,0.15);
+        border-color: rgba(77,182,255,0.35);
+    }
+    .pss-pt-logo {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 7px;
+        overflow: hidden;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    }
+    .pss-pt-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        padding: 6px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .pss-pt-logo--odoo { background: linear-gradient(135deg, #9c5acc 0%, #714b67 100%); }
+    .pss-pt-logo--mattermost { background: linear-gradient(135deg, #1668ca 0%, #0058cc 100%); }
+    .pss-pt-logo--nextcloud { background: linear-gradient(135deg, #0082c9 0%, #006aa8 100%); }
+    .pss-pt-logo--dolibarr { background: linear-gradient(135deg, #f47b20 0%, #d66a18 100%); }
+    .pss-pt-logo--wordpress { background: linear-gradient(135deg, #21759b 0%, #1a5c7a 100%); }
+    .pss-pt-label {
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.3;
+        color: var(--pss-sidebar-item-text);
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Collapsed sidebar — single column passthrough icons, scaled to 60px rail */
+    .collapsible-nav.collapsed .nav-panel[data-panel-type="passthrough_services"],
+    #dose-custom-sidebar.collapsed .nav-panel[data-panel-type="passthrough_services"] {
+        width: 100%;
+        max-width: 60px;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .collapsible-nav.collapsed .pss-pt-cards,
+    #dose-custom-sidebar.collapsed .pss-pt-cards {
+        grid-template-columns: 1fr !important;
+        gap: 6px;
+        padding: 6px 4px 8px;
+        width: 100%;
+        max-width: 60px;
+    }
+
+    .collapsible-nav.collapsed .pss-pt-card,
+    #dose-custom-sidebar.collapsed .pss-pt-card {
+        padding: 4px 2px;
+        width: 52px;
+        max-width: 52px;
+        margin: 0 auto;
+        border-radius: 8px;
+    }
+
+    .collapsible-nav.collapsed .pss-pt-card:hover,
+    #dose-custom-sidebar.collapsed .pss-pt-card:hover {
+        transform: none;
+    }
+
+    .collapsible-nav.collapsed .pss-pt-logo,
+    #dose-custom-sidebar.collapsed .pss-pt-logo {
+        width: 32px;
+        height: 32px;
+        margin-bottom: 0;
+        border-radius: 8px;
+    }
+
+    .collapsible-nav.collapsed .pss-pt-logo img,
+    #dose-custom-sidebar.collapsed .pss-pt-logo img {
+        padding: 3px;
+    }
+
+    .collapsible-nav.collapsed .pss-pt-label,
+    #dose-custom-sidebar.collapsed .pss-pt-label {
+        display: none !important;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-title {
+        font-size: 0;
+        padding: 4px 0;
+        min-height: 2px;
+    }
+
+    .nav-panel-items {
+        /* No padding - items handle their own spacing */
+    }
+
+    .nav-panel:first-child .nav-panel-title {
+        border-top: none;
+    }
+
+    .nav-panel-description {
+        display: none;
+    }
+
+    .collapsible-nav.collapsed .nav-panel-description {
+        display: none;
+    }
+
+    /* Content wrapper - no left margin, handled by grid */
+    .content-wrapper,
+    .main-footer,
+    .app-footer {
+        margin-left: 0 !important;
+        transition: none;
+    }
+
+    /* Menu bar spans full width above grid */
+    .main-header,
+    .app-header {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Legacy AdminLTE2 sidebar (unused under Jazzmin 3) */
+    .main-sidebar {
+        display: none !important;
+    }
+
+    /* Wrapper for grid container */
+    .admin-main-wrapper,
+    .admin-main-wrapper.admin-content-grid {
+        display: grid !important;
+        visibility: visible !important;
+    }
+
+    #dose-custom-sidebar {
+        display: flex !important;
+        visibility: visible !important;
+    }
+
+    /* Right activity sidebar — natural height on index only */
+    #recent-actions-sidebar {
+        background: var(--bs-body-bg, #fff);
+        border-left: 1px solid rgba(0,0,0,.08);
+        padding: 16px 14px;
+        height: auto;
+        max-height: none;
+        align-self: start;
+        overflow-y: visible;
+        font-size: .85rem;
+    }
+
+    #recent-actions-sidebar h2,
+    #recent-actions-sidebar .module h2 {
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        font-weight: 700;
+        padding: 0 0 8px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid rgba(0,0,0,.1);
+    }
+
+    /* Responsive: single column on narrow screens */
+    @media (max-width: 899px) {
+        .admin-main-wrapper {
+            grid-template-columns: 1fr !important;
+        }
+        body.polysaas-collapsed .admin-main-wrapper,
+        .admin-main-wrapper.sidebar-collapse {
+            grid-template-columns: 1fr !important;
+        }
+        .collapsible-nav {
+            display: none !important;
+        }
+        #recent-actions-sidebar {
+            display: none !important;
+        }
+        /* At narrow widths collapse Jazzmin's 2-col cards to single column */
+        .dose-content-col .col-md-6 {
+            width: 100% !important;
+            max-width: 100% !important;
+            flex: 0 0 100% !important;
+        }
+    }
+    .collapsible-nav > script { display: none !important; }
+</style>
+
+  <!-- DEBUG: dose/templates/admin/base_site.html loaded at 08:30:48 -->
+
+  
+  
+  
+  <script>
+  (function() {
+    var BOOTSWATCH = {
+      'cerulean':  '/static/vendor/bootswatch/cerulean/bootstrap.min.css',
+      'cosmo':     '/static/vendor/bootswatch/cosmo/bootstrap.min.css',
+      'cyborg':    '/static/vendor/bootswatch/cyborg/bootstrap.min.css',
+      'darkly':    '/static/vendor/bootswatch/darkly/bootstrap.min.css',
+      'flatly':    '/static/vendor/bootswatch/flatly/bootstrap.min.css',
+      'journal':   '/static/vendor/bootswatch/journal/bootstrap.min.css',
+      'litera':    '/static/vendor/bootswatch/litera/bootstrap.min.css',
+      'lumen':     '/static/vendor/bootswatch/lumen/bootstrap.min.css',
+      'lux':       '/static/vendor/bootswatch/lux/bootstrap.min.css',
+      'materia':   '/static/vendor/bootswatch/materia/bootstrap.min.css',
+      'minty':     '/static/vendor/bootswatch/minty/bootstrap.min.css',
+      'pulse':     '/static/vendor/bootswatch/pulse/bootstrap.min.css',
+      'sandstone': '/static/vendor/bootswatch/sandstone/bootstrap.min.css',
+      'simplex':   '/static/vendor/bootswatch/simplex/bootstrap.min.css',
+      'sketchy':   '/static/vendor/bootswatch/sketchy/bootstrap.min.css',
+      'slate':     '/static/vendor/bootswatch/slate/bootstrap.min.css',
+      'solar':     '/static/vendor/bootswatch/solar/bootstrap.min.css',
+      'spacelab':  '/static/vendor/bootswatch/spacelab/bootstrap.min.css',
+      'superhero': '/static/vendor/bootswatch/superhero/bootstrap.min.css',
+      'united':    '/static/vendor/bootswatch/united/bootstrap.min.css',
+      'yeti':      '/static/vendor/bootswatch/yeti/bootstrap.min.css'
+    };
+    var DARK_THEMES = ['darkly','cyborg','slate','solar','superhero'];
+    var want = 'flatly';
+    var src  = BOOTSWATCH[want];
+    if (!src) return;
+    var el = document.getElementById('jazzmin-theme');
+    if (el) {
+      el.href = src;
+    } else {
+      var l = document.createElement('link');
+      l.rel = 'stylesheet'; l.id = 'jazzmin-theme'; l.href = src;
+      document.head.appendChild(l);
+    }
+    // Fix navbar readability for dark themes
+    if (DARK_THEMES.indexOf(want) !== -1) {
+      document.documentElement.setAttribute('data-ps-theme', want);
+      var style = document.createElement('style');
+      style.id = 'ps-dark-navbar';
+      style.textContent = [
+        '#jazzy-navbar { background-color: #343a40 !important; border-color: #454d55 !important; }',
+        /* all text/icons in the navbar */
+        '#jazzy-navbar *,',
+        '#jazzy-navbar .nav-link,',
+        '#jazzy-navbar .nav-item a,',
+        '#jazzy-navbar span,',
+        '#jazzy-navbar .breadcrumb-item,',
+        '#jazzy-navbar .breadcrumb-item a,',
+        '#jazzy-navbar .breadcrumb-item.active,',
+        /* user dropdown button and its children */
+        '#jazzy-navbar .usermenu,',
+        '#jazzy-navbar .usermenu *,',
+        '#jazzy-navbar .user-panel,',
+        '#jazzy-navbar .user-panel *,',
+        '.navbar-nav .nav-item .nav-link { color: #f8f9fa !important; }',
+        '#jazzy-navbar .nav-link:hover,',
+        '#jazzy-navbar .nav-item a:hover { color: #ffffff !important; background-color: rgba(255,255,255,0.1) !important; }',
+        /* dropdown menus spawned from navbar */
+        '#jazzy-navbar .dropdown-menu { background-color: #3d4349 !important; border-color: #555 !important; }',
+        '#jazzy-navbar .dropdown-menu .dropdown-item { color: #f8f9fa !important; }',
+        '#jazzy-navbar .dropdown-menu .dropdown-item:hover { background-color: rgba(255,255,255,0.1) !important; }'
+      ].join('\n');
+      document.head.appendChild(style);
+    }
+  })();
+  </script>
+  
+
+  <style>
+    /* CRITICAL FIX: Override ALL AdminLTE wrapper positioning */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow-x: hidden !important;
+      min-height: 100vh !important;
+      display: block !important;
+      align-items: initial !important;
+      justify-content: initial !important;
+    }
+
+    /* Force app-wrapper to NOT use flex column */
+    .wrapper, .app-wrapper {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100vh !important;
+      display: block !important;
+      position: relative !important;
+      flex-direction: initial !important;
+      align-items: initial !important;
+      justify-content: initial !important;
+    }
+
+    /* AdminLTE 4 specific - remove layout margins */
+    .layout-fixed .app-wrapper,
+    .layout-navbar-fixed .app-wrapper,
+    .layout-fixed .wrapper,
+    .layout-navbar-fixed .wrapper {
+      margin: 0 !important;
+      padding: 0 !important;
+      display: block !important;
+    }
+
+    .custom-passthrough-menu {
+      display: inline-block;
+      margin-left: 15px;
+    }
+    .custom-passthrough-menu a {
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 12px;
+      margin: 0 5px;
+      border-radius: 4px;
+      background-color: rgba(255,255,255,0.1);
+      transition: background-color 0.3s;
+    }
+    .custom-passthrough-menu a:hover {
+      background-color: rgba(255,255,255,0.2);
+      text-decoration: none;
+      color: #fff;
+    }
+    .passthrough-menu-separator {
+      color: rgba(255,255,255,0.3);
+      margin: 0 8px;
+    }
+
+    /* PolySaaS menu item - enlarge */
+    .navbar .nav-item:has(> a:contains("PolySaaS")) > a,
+    .navbar a[href="/admin/"]:contains("PolySaaS") {
+      font-size: 1.2em !important;
+      font-weight: bold !important;
+      padding: 12px 15px !important;
+    }
+
+    .navbar a[href="/admin/"] {
+      font-size: 1.2em !important;
+      font-weight: bold !important;
+    }
+
+    /* Hamburger menu button in navbar - HIDDEN (use sidebar's own toggle instead) */
+    [data-widget="pushmenu"],
+    [data-lte-toggle="sidebar"],
+    .navbar .nav-link[data-widget="pushmenu"],
+    .navbar .nav-link[data-lte-toggle="sidebar"] {
+      display: none !important;
+    }
+
+    /* Navbar brand logo — constrain to header text height */
+    .navbar .brand-link .brand-image,
+    .navbar .brand-link img,
+    .app-header .brand-image,
+    .app-header .brand-link img {
+      height: 32px !important;
+      width: auto !important;
+      max-height: 32px !important;
+      vertical-align: middle !important;
+    }
+
+    /* Force body to start at 0 */
+    body.layout-fixed {
+      margin-left: 0 !important;
+      padding-left: 0 !important;
+    }
+
+    /* AdminLTE 4: HIDE native .app-sidebar completely
+       The custom sidebar lives inside .app-main via custom_sidebar.html grid */
+    aside.app-sidebar,
+    .app-sidebar {
+      display: none !important;
+      width: 0 !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+    }
+
+    /* AdminLTE 4: Main content area - display:contents kills the white overlay;
+       children flow into the grid normally (from BINGO commit 7fc4a0f) */
+    .app-main {
+      display: contents !important;
+    }
+
+    /* AdminLTE 4: Top navbar fixed - full width */
+    .app-header {
+      margin-left: 0 !important;
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+      position: fixed !important;
+      top: 0 !important;
+      right: 0 !important;
+      left: 0 !important;
+      z-index: 1037 !important;
+    }
+
+    .sidebar-overlay {
+      display: none !important;
+    }
+
+    /* Dashboard content area - minimal spacing */
+    .app-content-header {
+      padding: 8px 0 !important;
+      margin: 0 !important;
+    }
+
+    .app-content {
+      padding-top: 5px !important;
+      margin-top: 0 !important;
+    }
+
+    .content-header {
+      padding: 5px 0 !important;
+      margin: 0 !important;
+    }
+
+    .app-footer,
+    .main-footer {
+      margin-left: 0 !important;
+    }
+
+    /* Hide breadcrumbs */
+    .breadcrumb,
+    .jazzmin-breadcrumbs,
+    nav[aria-label="breadcrumb"],
+    .page-header .breadcrumb {
+      display: none !important;
+    }
+
+    /* Font Control Panel */
+    .font-control-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      border: 2px solid #007bff;
+      border-radius: 8px;
+      padding: 15px;
+      z-index: 9999;
+      min-width: 250px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .font-control-panel .control-label {
+      font-weight: 600;
+      font-size: 12px;
+      color: #333;
+      display: block;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .font-control-panel select,
+    .font-control-panel input {
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .font-control-panel input[type="range"] {
+      padding: 0;
+    }
+
+    .font-control-value {
+      font-weight: 600;
+      color: #007bff;
+      font-size: 13px;
+    }
+  </style>
+
+  <script>
+    // Simple debug logging to confirm middleware is working
+    console.log('TENANT DEBUG: Passthrough endpoints count:', 3);
+    
+    console.log('TENANT DEBUG: Current tenant:', 'Oliver Enterprises');
+    
+    console.log('TENANT DEBUG: User authenticated:', true);
+    console.log('TENANT DEBUG: About to check injection condition...');
+
+    // Inject tenant services directly here since nav-global block isn't working
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('TENANT INJECT: Script starting from extrahead');
+      // Find the navbar and add our tenant block
+      const navbar = document.querySelector('.navbar-nav');
+      console.log('TENANT INJECT: Navbar found:', !!navbar);
+      if (navbar) {
+        console.log('TENANT INJECT: Creating tenant container');
+        // Create tenant services container
+        const tenantContainer = document.createElement('li');
+        tenantContainer.className = 'nav-item tenant-services';
+        tenantContainer.style.marginLeft = '20px';
+        tenantContainer.style.paddingLeft = '20px';
+        tenantContainer.style.borderLeft = '2px solid rgba(255,255,255,0.3)';
+
+        // Add PolySaaS logo
+        const logoImg = document.createElement('img');
+        logoImg.src = '/static/img/PolySaaS-Industrial-Logo.png';
+        logoImg.style.height = '30px';
+        logoImg.style.width = 'auto';
+        logoImg.style.marginRight = '8px';
+        logoImg.style.verticalAlign = 'middle';
+        tenantContainer.appendChild(logoImg);
+
+        // Add tenant name and username
+        const tenantName = document.createElement('span');
+        tenantName.style.color = 'rgba(255,255,255,0.7)';
+        tenantName.style.fontSize = '11px';
+        tenantName.style.textTransform = 'uppercase';
+        tenantName.style.letterSpacing = '0.5px';
+        tenantName.style.marginRight = '10px';
+        tenantName.textContent = 'Oliver Enterprises - olientAdmin';
+        tenantContainer.appendChild(tenantName);
+
+        // NO PASSTHROUGH LINKS - They're in the sidebar
+
+        navbar.appendChild(tenantContainer);
+        console.log('TENANT INJECT: Tenant services block added to navbar');
+        console.log('TENANT INJECT: Container dimensions:', tenantContainer.offsetWidth, 'x', tenantContainer.offsetHeight);
+        console.log('TENANT INJECT: Container visible:', tenantContainer.offsetParent !== null);
+        console.log('TENANT INJECT: Navbar children count:', navbar.children.length);
+        console.log('TENANT INJECT: Container position:', tenantContainer.offsetLeft, tenantContainer.offsetTop);
+        console.log('TENANT INJECT: Navbar width:', navbar.offsetWidth);
+
+        // Professional styling — theme-aware
+        var isDark = ['darkly','cyborg','slate','solar','superhero'].indexOf('flatly') !== -1;
+        tenantContainer.style.backgroundColor = isDark ? '#3d4349' : '#f5f5f5';
+        tenantContainer.style.border = isDark ? '1px solid #555' : '1px solid #666';
+        tenantContainer.style.borderRadius = '4px';
+        tenantContainer.style.padding = '5px 10px';
+        tenantContainer.style.display = 'flex';
+        tenantContainer.style.flexWrap = 'wrap';
+        tenantContainer.style.alignItems = 'center';
+        tenantContainer.style.minWidth = 'max-content';
+        tenantContainer.style.maxWidth = '400px';
+
+        // Fix tenant name styling
+        const tenantNameSpan = tenantContainer.querySelector('span');
+        if (tenantNameSpan) {
+          tenantNameSpan.style.color = isDark ? '#f8f9fa' : '#000';
+          tenantNameSpan.style.fontWeight = 'bold';
+          tenantNameSpan.style.fontSize = '16px';
+          tenantNameSpan.style.whiteSpace = 'nowrap';
+        }
+      }
+    });
+  </script>
+
+<style id="polysaas-passthrough-embed-shield">
+/* Drop the right-sidebar column — content takes the full available width */
+body.polysaas-passthrough-embed-page .admin-content-grid {
+    grid-template-columns: 280px 1fr !important;
+    margin-top: var(--pss-header-h, 64px) !important;
+    margin-right: 0 !important;
+    margin-bottom: 0 !important;
+    margin-left: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 60px 1fr !important;
+}
+body.polysaas-passthrough-embed-page #recent-actions-sidebar {
+    display: none !important;
+}
+/* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
+body.polysaas-passthrough-embed-page .content .container-fluid {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: none !important;
+}
+body.polysaas-passthrough-embed-page .content .row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
+    padding: 0 !important;
+}
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
+    top: var(--pss-header-h, 64px) !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
+}
+#polysaas-orchestration-bar {
+    background-color: #1a1a1a;
+    color: #0f0;
+    padding: 8px 15px;
+    border-bottom: 3px solid #0f0;
+    font-family: monospace;
+    font-size: 14px;
+    margin: 0 0 6px 0;
+    flex: 0 0 auto !important;
+    position: relative;
+    z-index: 1060;
+    pointer-events: auto;
+}
+#pss-insert-instruction-btn {
+    position: relative;
+    z-index: 1061;
+    pointer-events: auto;
+}
+/* PolySaaS sidebar — always on top, never overridden */
+.admin-content-grid > .collapsible-nav {
+    z-index: 1040 !important;
+    position: sticky !important;
+}
+/* Jazzmin top navbar */
+#jazzy-navbar,
+.app-header {
+    z-index: 1050 !important;
+}
+
+
+/* Mattermost / generic passthrough — bingo layout (overflow visible, full SPA height) */
+body.polysaas-passthrough-embed-page {
+    overflow: visible !important;
+    height: auto !important;
+}
+
+.polysaas-passthrough-scope {
+    position: relative !important;
+    width: 100% !important;
+    height: calc(100vh - 170px) !important;
+    min-height: 400px !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    contain: layout paint !important;
+}
+
+
+.polysaas-passthrough-embed-wrap details {
+    display: none !important;
+}
+</style>
+
+</head>
+<body class="layout-fixed sidebar-expand-lg sidebar-open bg-body-tertiary  polysaas-passthrough-embed-page accent-primary theme-flatly" data-admin-utc-offset="28800">
+
+    <div class="app-wrapper">
+
+    
+        <nav class="app-header navbar navbar-expand bg-body navbar-white border-bottom" id="jazzy-navbar">
+        <div class="container-fluid">
+            <ul class="navbar-nav">
+
+                
+                    <li class="nav-item">
+                        <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button"><i class="fas fa-bars"></i></a>
+                    </li>
+                
+
+                
+                
+                    <li class="nav-item d-none d-sm-inline-block">
+                        
+                            <a href="/dose/home/" class="nav-link" >PolySaaS</a>
+                        
+                    </li>
+                
+                    <li class="nav-item d-none d-sm-inline-block">
+                        
+                            <a href="/dose/home/" class="nav-link" >Home</a>
+                        
+                    </li>
+                
+                    <li class="nav-item d-none d-sm-inline-block">
+                        
+                            <a href="https://github.com/farridav/django-jazzmin/issues" class="nav-link" target="_blank">Support</a>
+                        
+                    </li>
+                
+                    <li class="nav-item d-none d-sm-inline-block">
+                        
+                            <a href="##ps-theme-toggle" class="nav-link" >Toggle light/dark</a>
+                        
+                    </li>
+                
+                    <li class="nav-item d-none d-sm-inline-block">
+                        
+                            <a href="/swagger/" class="nav-link" target="_blank">API Docs</a>
+                        
+                    </li>
+                
+                    <li class="nav-item d-none d-sm-inline-block">
+                        
+                            <a href="/help/" class="nav-link" >Platform help</a>
+                        
+                    </li>
+                
+            </ul>
+
+            
+
+            <ul class="navbar-nav ms-auto">
+
+                
+                
+
+                
+
+                
+
+                <li class="nav-item dropdown">
+                    <a class="nav-link btn" data-bs-toggle="dropdown" href="#" title="olientAdmin">
+                        <i class="far fa-user" aria-hidden="true"></i>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end" id="jazzy-usermenu">
+                        <span class="dropdown-header">Account</span>
+                        <div class="dropdown-divider"></div>
+                        <a href="/admin/password_change/" class="dropdown-item">
+                            <i class="fas fa-key me-2"></i> Change password
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <form id="logout-form" method="post" action="/admin/logout/">
+                            <input type="hidden" name="csrfmiddlewaretoken" value="VgonwhVoWCVDOX0MB95vZX77Uo9TG0Z7PC3RfgyfZbr4juffB8lxfcm4IXZa4yxz">
+                            <button type="submit" class="dropdown-item"><i class="fas fa-users me-2"></i> Log out</button>
+                        </form>
+                        
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="/profile/" class="dropdown-item" >
+                                <i class="fas fa-user me-2"></i> My Profile
+                            </a>
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="#javascript:void(0)" class="dropdown-item" >
+                                <i class="fas fa-moon me-2"></i> Toggle Theme
+                            </a>
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="/settings/" class="dropdown-item" >
+                                <i class="fas fa-cog me-2"></i> Settings
+                            </a>
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="/accounts/logout/" class="dropdown-item" >
+                                <i class="fas fa-sign-out-alt me-2"></i> Logout
+                            </a>
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="/help/" class="dropdown-item" >
+                                <i class="fas fa-question-circle me-2"></i> Help
+                            </a>
+                        
+                        <div class="dropdown-divider"></div>
+                        
+                            <a href="/admin/auth/user/66/change/" class="dropdown-item dropdown-footer">See Profile</a>
+                        
+                    </div>
+                </li>
+            </ul>
+        </div>
+        </nav>
+        
+    
+
+    <main class="app-main" >
+        
+<div class="admin-main-wrapper admin-content-grid">
+    <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
+<!-- BINGO: UI Cleanup — commit 748e871e -->
+<!-- BINGO: Sidebar Alerts Dose Messages — commit d8a02538 -->
+
+
+
+
+<!-- Sidebar column (direct child of .admin-main-wrapper from base_site.html) -->
+    <div class="collapsible-nav" id="dose-custom-sidebar" style="">
+    <div class="nav-header" onclick="toggleDoseSidebar()" id="dose-nav-header" title="Collapse sidebar">
+        <span>Navigation Bar</span>
+        <span class="nav-toggle" id="dose-nav-toggle"><i class="fas fa-bars"></i></span>
+    </div>
+    <div class="nav-items" id="dose-nav-items">
+        <!-- DEBUG: Log context data for admin sidebar -->
+        <script>
+        console.log('=== ADMIN SIDEBAR CONTEXT DATA ===');
+        console.log('passthrough_services count:', 3);
+        console.log('external_services count:', 0);
+        
+        console.log('external_services is EMPTY or FALSE');
+        
+        console.log('navigation_panels count:', 0);
+        
+        console.log('top_navigation_items count:', 7);
+        console.log('===============================');
+        </script>
+
+        
+        <div class="nav-panel" data-panel-type="admin_home">
+            <h4 class="nav-panel-title">HOME</h4>
+            <div class="nav-panel-items">
+                <a href="/dose/home/" class="nav-item" title="Dose tenant home">
+                    <span class="nav-icon"><i class="fas fa-tachometer-alt" aria-hidden="true"></i></span>
+                    <span class="nav-text">Home</span>
+                </a>
+                <a href="/admin/polysaas-ai/" class="nav-item" title="PolySaaS AI chat (full page)">
+                    <span class="nav-icon"><i class="fas fa-comments" aria-hidden="true"></i></span>
+                    <span class="nav-text">PolySaaS AI</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Passthrough Services — logo card grid -->
+        
+            <div class="nav-panel" data-panel-type="passthrough_services">
+                <h4 class="nav-panel-title">PASSTHROUGH SERVICES</h4>
+                <div class="pss-pt-cards">
+                    
+                        
+                        <a href="/pt/admin/polysaas-odoo2.onrender.com/web"
+                           class="pss-pt-card"
+                           
+                           title="Odoo ERP for PolySaaS Production Preview 6">
+                            <div class="pss-pt-logo pss-pt-logo--odoo">
+                                
+                                    <img src="/static/img/apps/odoo-logo.svg" alt="Odoo">
+                                
+                            </div>
+                            <span class="pss-pt-label">Odoo</span>
+                        </a>
+                        
+                    
+                        
+                        <a href="/pt/admin/polysaas-mattermost.onrender.com/polysaas-dev-team/channels/town-square"
+                           class="pss-pt-card"
+                           
+                           title="Mattermost Team Chat - tenant-specific team">
+                            <div class="pss-pt-logo pss-pt-logo--mattermost">
+                                
+                                    <img src="/static/img/apps/mattermost-logo.svg" alt="Mattermost">
+                                
+                            </div>
+                            <span class="pss-pt-label">Mattermost</span>
+                        </a>
+                        
+                    
+                        
+                        <a href="/pt/admin/app.hubspot.com/"
+                           class="pss-pt-card is-active"
+                           aria-current="page"
+                           title="hubspot external endpoint">
+                            <div class="pss-pt-logo pss-pt-logo--hubsot">
+                                
+                                    H
+                                
+                            </div>
+                            <span class="pss-pt-label">Hubsot</span>
+                        </a>
+                        
+                    
+                </div>
+            </div>
+        
+
+        <!-- External Services (Other integrations) -->
+        
+
+        <!-- Controls Panel (Display Settings + Bell Icon) -->
+        <div class="nav-panel">
+            <h4 class="nav-panel-title">CONTROLS</h4>
+            <div class="nav-panel-items pss-sidebar-controls-row">
+                <!-- Themes — Bootswatch picker -->
+                <div class="pss-sidebar-control-wrap">
+                    <button type="button" id="sidebarDisplaySettingsBtn" class="pss-sidebar-control-btn pss-sidebar-control-btn--themes" title="Theme picker — colors, fonts, display" aria-label="Open theme picker">
+                        <span class="pss-control-icon" aria-hidden="true">
+                            <svg class="pss-control-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="13.5" cy="6.5" r="2.5" fill="currentColor" stroke="none"/>
+                                <circle cx="17.5" cy="10.5" r="2.5" fill="currentColor" stroke="none"/>
+                                <circle cx="8.5" cy="7.5" r="2.5" fill="currentColor" stroke="none"/>
+                                <circle cx="6.5" cy="12.5" r="2.5" fill="currentColor" stroke="none"/>
+                                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.672 0-.437-.18-.835-.437-1.123-.29-.289-.438-.652-.438-1.123 0-.87.695-1.562 1.565-1.562H16.5c2.485 0 4.5-2.015 4.5-4.5C21 6.015 16.985 2 12 2z"/>
+                            </svg>
+                        </span>
+                        <span class="pss-control-label">Themes</span>
+                    </button>
+                    <div id="sidebar-display-settings-popover" role="dialog" aria-modal="true" aria-label="Theme picker">
+                        <div class="pss-theme-popover-header">
+                            <span>🎨 Theme Picker</span>
+                            <button type="button" id="display-settings-close" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; padding: 0 4px;" title="Close">✕</button>
+                        </div>
+                        <div class="pss-theme-popover-body">
+                            <!-- Theme Mode -->
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Display Mode</label>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="theme-mode-btn" data-mode="light" style="flex: 1; padding: 8px 4px; border: 2px solid #cbd5e1; border-radius: 6px; background: #f8fafc; cursor: pointer; font-size: 12px; font-weight: 500; color: #475569; transition: all 0.15s;">☀️ Light</button>
+                                    <button type="button" class="theme-mode-btn" data-mode="dark" style="flex: 1; padding: 8px 4px; border: 2px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; cursor: pointer; font-size: 12px; font-weight: 500; color: #475569; transition: all 0.15s;">🌙 Dark</button>
+                                    <button type="button" class="theme-mode-btn" data-mode="system" style="flex: 1; padding: 8px 4px; border: 2px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; cursor: pointer; font-size: 12px; font-weight: 500; color: #475569; transition: all 0.15s;">💻 System</button>
+                                </div>
+                            </div>
+
+                            <!-- Bootswatch theme picks (light + dark favorites) -->
+                            <div style="margin-bottom: 14px;">
+                                <label for="ps-sidebar-light-theme" style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Light Bootswatch Theme</label>
+                                <select id="ps-sidebar-light-theme" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; color: #1e293b; background: #fff;"></select>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label for="ps-sidebar-dark-theme" style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Dark Bootswatch Theme</label>
+                                <select id="ps-sidebar-dark-theme" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; color: #1e293b; background: #fff;"></select>
+                            </div>
+                            <p style="font-size: 11px; color: #64748b; margin: 0 0 10px; line-height: 1.4;">Pick Bootswatch styles for each mode, then <strong>Save Themes</strong>. Use Light/Dark/System above only to switch mode. Try <strong>Sandstone</strong>, <strong>Journal</strong>, or <strong>United</strong> if Flatly feels too bright.</p>
+                            <button type="button" id="ps-sidebar-save-themes" style="width: 100%; padding: 8px; margin-bottom: 16px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">Save Themes</button>
+
+                            <!-- Font Size -->
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Font Size</label>
+                                <div style="display: flex; gap: 6px;">
+                                    <button type="button" class="font-size-btn" data-size="small" style="flex: 1; padding: 8px 4px; border: 2px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; cursor: pointer; font-size: 11px; font-weight: 500; color: #475569; transition: all 0.15s;">A<small>Small</small></button>
+                                    <button type="button" class="font-size-btn" data-size="medium" style="flex: 1; padding: 8px 4px; border: 2px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; transition: all 0.15s;">A Medium</button>
+                                    <button type="button" class="font-size-btn" data-size="large" style="flex: 1; padding: 8px 4px; border: 2px solid #cbd5e1; border-radius: 6px; background: #f1f5f9; cursor: pointer; font-size: 15px; font-weight: 500; color: #475569; transition: all 0.15s;">A<big>Large</big></button>
+                                </div>
+                            </div>
+
+                            <!-- Toggles -->
+                            <div style="margin-bottom: 4px;">
+                                <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Accessibility</label>
+
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                                    <span style="font-size: 12px; color: #64748b;">Bold Text</span>
+                                    <label style="position: relative; display: inline-block; width: 40px; height: 22px; cursor: pointer;">
+                                        <input type="checkbox" id="bold-text-toggle" style="opacity: 0; width: 0; height: 0;">
+                                        <span style="position: absolute; inset: 0; background-color: #cbd5e1; border-radius: 22px; transition: 0.2s;"></span>
+                                        <span style="position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background-color: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></span>
+                                    </label>
+                                </div>
+
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                                    <span style="font-size: 12px; color: #64748b;">High Contrast</span>
+                                    <label style="position: relative; display: inline-block; width: 40px; height: 22px; cursor: pointer;">
+                                        <input type="checkbox" id="high-contrast-toggle" style="opacity: 0; width: 0; height: 0;">
+                                        <span style="position: absolute; inset: 0; background-color: #cbd5e1; border-radius: 22px; transition: 0.2s;"></span>
+                                        <span style="position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background-color: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></span>
+                                    </label>
+                                </div>
+
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0;">
+                                    <span style="font-size: 12px; color: #64748b;">Reduce Motion</span>
+                                    <label style="position: relative; display: inline-block; width: 40px; height: 22px; cursor: pointer;">
+                                        <input type="checkbox" id="reduce-motion-toggle" style="opacity: 0; width: 0; height: 0;">
+                                        <span style="position: absolute; inset: 0; background-color: #cbd5e1; border-radius: 22px; transition: 0.2s;"></span>
+                                        <span style="position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background-color: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Reset Button -->
+                            <button id="display-settings-reset-btn" style="width: 100%; padding: 8px; margin-top: 12px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s;">Reset to Defaults</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Alerts — unread messages -->
+                <div class="pss-sidebar-control-wrap">
+                    <button type="button" id="sidebarBellBtn" class="pss-sidebar-control-btn pss-sidebar-control-btn--alerts" title="Unread messages and alerts" aria-label="Open unread messages">
+                        <span class="pss-control-icon" aria-hidden="true">
+                            <svg class="pss-control-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                            </svg>
+                        </span>
+                        <span class="pss-control-label">Alerts</span>
+                        <span id="sidebar-unread-count" style="position: absolute; top: 4px; right: 8px; background: #e74c3c; color: #fff; border-radius: 50%; padding: 2px 5px; font-size: 0.7rem; display: none; min-width: 18px; text-align: center; font-weight: 700;">0</span>
+                    </button>
+                    <div id="sidebar-unread-dropdown" role="dialog" aria-labelledby="sidebar-alerts-title" aria-hidden="true">
+                        <div class="pss-alerts-popover-header">
+                            <span id="sidebar-alerts-title">🔔 Unread Messages</span>
+                            <button type="button" id="mark-all-read-btn" style="background: none; border: none; font-size: 12px; cursor: pointer; color: #2563eb; font-weight: 600; padding: 2px 8px; border-radius: 4px; transition: background 0.15s;" title="Mark all as read">Mark all read</button>
+                        </div>
+                        <div id="sidebar-unread-messages-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Navigation Items (from database) -->
+        
+
+        <!-- Static top navigation items -->
+        <div class="nav-panel static-nav" data-panel-type="system">
+            <h4 class="nav-panel-title">SYSTEM NAVIGATION</h4>
+            <a href="/admin/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" title="Jazzmin model dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Dashboard</span>
+            </a>
+            <a href="/admin/polysaas-ai/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" title="PolySaaS AI chat (full page)">
+                <span class="nav-icon">💬</span>
+                <span class="nav-text">PolySaaS AI</span>
+            </a>
+            
+                <a href="/dose/home/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-text">Home</span>
+                </a>
+            
+                <a href="/dose/dashboard/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+            
+                <a href="/dose/about/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">ℹ️</span>
+                    <span class="nav-text">About</span>
+                </a>
+            
+                <a href="/admin/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Admin Panel</span>
+                </a>
+            
+                <a href="/dose/doseai/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">🤖</span>
+                    <span class="nav-text">DoseAI Prompt &amp; History</span>
+                </a>
+            
+                <a href="/dose/switch-tenant/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">🔄</span>
+                    <span class="nav-text">Switch Tenant</span>
+                </a>
+            
+                <a href="/dose/logout/" class="nav-item system-nav-item" style="max-width: 100%; white-space: normal;" >
+                    <span class="nav-icon">🚪</span>
+                    <span class="nav-text">Logout</span>
+                </a>
+            
+        </div>
+    </div>
+
+<script>
+function normalizeSidebarPath(value) {
+    if (!value) {
+        return '';
+    }
+
+    try {
+        const parsedUrl = new URL(value, window.location.origin);
+        let normalizedPath = parsedUrl.pathname || '';
+        normalizedPath = normalizedPath.replace(/\/+$/, '');
+        return normalizedPath || '/';
+    } catch (error) {
+        return '';
+    }
+}
+
+function applyActiveSidebarLink() {
+    const currentPath = normalizeSidebarPath(window.location.pathname);
+    const sidebarLinks = Array.from(document.querySelectorAll('#dose-custom-sidebar a.nav-item[href]'));
+    let bestMatch = null;
+    let bestScore = -1;
+
+    sidebarLinks.forEach(function(link) {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) {
+            return;
+        }
+
+        const targetUrl = new URL(href, window.location.origin);
+        if (targetUrl.origin !== window.location.origin) {
+            return;
+        }
+
+        const linkPath = normalizeSidebarPath(targetUrl.pathname);
+        if (!linkPath) {
+            return;
+        }
+
+        const exactOnly = link.getAttribute('data-sidebar-exact') === '1';
+        const isExactMatch = currentPath === linkPath;
+        const isSubpathMatch =
+            !exactOnly && linkPath !== '/' && currentPath.startsWith(linkPath + '/');
+
+        if (exactOnly) {
+            if (!isExactMatch) {
+                return;
+            }
+        } else if (!isExactMatch && !isSubpathMatch) {
+            return;
+        }
+
+        const matchScore = linkPath.length;
+        if (matchScore > bestScore) {
+            bestMatch = link;
+            bestScore = matchScore;
+        }
+    });
+
+    if (bestMatch) {
+        sidebarLinks.forEach(function(link) {
+            link.classList.remove('is-active');
+            link.removeAttribute('aria-current');
+        });
+        bestMatch.classList.add('is-active');
+        bestMatch.setAttribute('aria-current', 'page');
+    }
+}
+
+window.addEventListener('pageshow', function() {
+    applyActiveSidebarLink();
+});
+
+// Layout: .admin-main-wrapper is the grid; sidebar + .dose-content-col are already siblings in base_site.
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[ADMIN SIDEBAR] DOMContentLoaded - setting up grid');
+    const mainWrapper = document.querySelector('.admin-main-wrapper');
+    const contentWrapper = document.querySelector('.dose-content-col');
+    const mainFooter = document.querySelector('.app-footer, .main-footer');
+
+    console.log('[ADMIN SIDEBAR] Main wrapper found:', !!mainWrapper);
+    console.log('[ADMIN SIDEBAR] Content wrapper found:', !!contentWrapper);
+    console.log('[ADMIN SIDEBAR] Footer found:', !!mainFooter);
+
+    if (!mainWrapper) {
+        console.error('[ADMIN SIDEBAR] ERROR: admin-main-wrapper not found!');
+        return;
+    }
+
+    // Legacy embed/passthrough CSS targets .admin-content-grid — apply to the real grid host.
+    mainWrapper.classList.add('admin-content-grid');
+
+    if (!contentWrapper) {
+        console.error('[ADMIN SIDEBAR] ERROR: dose-content-col not found!');
+        return;
+    }
+
+    applyActiveSidebarLink();
+    window.setTimeout(applyActiveSidebarLink, 150);
+
+    // Create right sidebar column for Recent Actions (only when Jazzmin index has the module)
+    let rightSidebar = document.getElementById('recent-actions-sidebar');
+    const recentActions = document.querySelector('#recent-actions-module');
+    if (recentActions && !rightSidebar) {
+        rightSidebar = document.createElement('div');
+        rightSidebar.id = 'recent-actions-sidebar';
+        rightSidebar.style.position = 'sticky';
+        rightSidebar.style.top = '0';
+        rightSidebar.style.height = 'fit-content';
+        rightSidebar.style.padding = '0 15px';
+        console.log('[ADMIN SIDEBAR] Found #recent-actions-module, moving to right sidebar');
+        rightSidebar.appendChild(recentActions);
+        mainWrapper.appendChild(rightSidebar);
+        mainWrapper.classList.add('has-recent-actions');
+        console.log('[ADMIN SIDEBAR] Right sidebar added to main wrapper');
+    } else if (!recentActions) {
+        console.log('[ADMIN SIDEBAR] No #recent-actions-module; using 2-column grid');
+    }
+
+    // Move footer after main wrapper if it exists
+    if (mainFooter && mainWrapper.parentNode) {
+        if (mainFooter.previousSibling !== mainWrapper && mainFooter.parentNode !== mainWrapper) {
+            console.log('[ADMIN SIDEBAR] Moving footer after main wrapper');
+            mainWrapper.parentNode.insertBefore(mainFooter, mainWrapper.nextSibling);
+        }
+    }
+
+    // Ensure sidebar is visible
+    const sidebar = document.getElementById('dose-custom-sidebar');
+    if (sidebar) {
+        sidebar.style.display = 'flex';
+        sidebar.style.visibility = 'visible';
+        console.log('[ADMIN SIDEBAR] Sidebar display set to flex, visibility set to visible');
+
+        // Restore collapsed state from localStorage
+        if (localStorage.getItem('pss_sidebar_collapsed') === '1') {
+            sidebar.classList.add('collapsed');
+            document.body.classList.add('polysaas-collapsed');
+            mainWrapper.classList.add('sidebar-collapse');
+            // Apply blue + icon styles inline (same as toggleDoseSidebar collapsed path)
+            const header = document.getElementById('dose-nav-header');
+            if (header) {
+                header.title = 'Expand sidebar';
+                header.style.background = '#2563eb';
+                header.style.borderBottom = '2px solid #1d4ed8';
+                header.style.justifyContent = 'center';
+            }
+            const toggle = document.getElementById('dose-nav-toggle');
+            if (toggle) {
+                toggle.style.transform = '';
+                toggle.style.display = 'inline-flex';
+                toggle.style.alignItems = 'center';
+                toggle.style.justifyContent = 'center';
+                toggle.style.width = '40px';
+                toggle.style.height = '40px';
+                toggle.style.fontSize = '1.3rem';
+                toggle.style.color = '#fff';
+                toggle.style.background = 'rgba(255,255,255,0.2)';
+                toggle.style.borderRadius = '8px';
+            }
+        }
+    } else {
+        console.error('[ADMIN SIDEBAR] ERROR: dose-custom-sidebar not found!');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DISPLAY SETTINGS POPOVER - Comprehensive accessibility controls
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const displaySettingsBtn = document.getElementById('sidebarDisplaySettingsBtn');
+    const displaySettingsPopover = document.getElementById('sidebar-display-settings-popover');
+    const displaySettingsClose = document.getElementById('display-settings-close');
+    const displaySettingsResetBtn = document.getElementById('display-settings-reset-btn');
+
+    // Font size to pixel mapping
+    const FONT_SIZE_MAP = {
+        'small': '12px',
+        'medium': '14px',
+        'large': '16px'
+    };
+
+    // Get CSRF token helper
+    function getCSRFToken() {
+        const cookie = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+        return cookie ? cookie.split('=')[1] : '';
+    }
+
+    var PS_LIGHT_THEME_OPTIONS = [
+        {v: 'sandstone', l: 'Sandstone — warm, easy on the eyes'},
+        {v: 'journal', l: 'Journal — classic editorial'},
+        {v: 'united', l: 'United — bold orange accent'},
+        {v: 'cerulean', l: 'Cerulean — calm sky blue'},
+        {v: 'cosmo', l: 'Cosmo — modern metro'},
+        {v: 'flatly', l: 'Flatly — minimal flat (bright)'},
+        {v: 'litera', l: 'Litera — book-readable'},
+        {v: 'lumen', l: 'Lumen — sharp light'},
+        {v: 'lux', l: 'Lux — elegant light'},
+        {v: 'materia', l: 'Materia — material design'},
+        {v: 'minty', l: 'Minty — fresh green'},
+        {v: 'pulse', l: 'Pulse — vivid magenta'},
+        {v: 'simplex', l: 'Simplex — clean red accent'},
+        {v: 'sketchy', l: 'Sketchy — hand-drawn'},
+        {v: 'spacelab', l: 'Spacelab — retro NASA'},
+        {v: 'yeti', l: 'Yeti — cool gray'}
+    ];
+    var PS_DARK_THEME_OPTIONS = [
+        {v: 'darkly', l: 'Darkly — classic navy dark'},
+        {v: 'cyborg', l: 'Cyborg — neon cyber'},
+        {v: 'slate', l: 'Slate — professional gray'},
+        {v: 'solar', l: 'Solar — solarized dark'},
+        {v: 'superhero', l: 'Superhero — comic bold'}
+    ];
+
+    function buildBootswatchSelect(el, options, current) {
+        if (!el) return;
+        el.innerHTML = '';
+        options.forEach(function(opt) {
+            var o = document.createElement('option');
+            o.value = opt.v;
+            o.textContent = opt.l;
+            if (opt.v === current) o.selected = true;
+            el.appendChild(o);
+        });
+    }
+
+    function loadBootswatchThemeSelects() {
+        var lightEl = document.getElementById('ps-sidebar-light-theme');
+        var darkEl = document.getElementById('ps-sidebar-dark-theme');
+        if (!lightEl || !darkEl) return;
+        fetch('/admin/select-theme/api/', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                buildBootswatchSelect(lightEl, PS_LIGHT_THEME_OPTIONS, d.light_theme || 'sandstone');
+                buildBootswatchSelect(darkEl, PS_DARK_THEME_OPTIONS, d.dark_theme || 'darkly');
+                localStorage.setItem('ps_light_theme', d.light_theme || 'sandstone');
+                localStorage.setItem('ps_dark_theme', d.dark_theme || 'darkly');
+            })
+            .catch(function() {
+                buildBootswatchSelect(lightEl, PS_LIGHT_THEME_OPTIONS, localStorage.getItem('ps_light_theme') || 'sandstone');
+                buildBootswatchSelect(darkEl, PS_DARK_THEME_OPTIONS, localStorage.getItem('ps_dark_theme') || 'darkly');
+            });
+    }
+
+    function saveBootswatchThemePicks(reloadAfter) {
+        var light = (document.getElementById('ps-sidebar-light-theme') || {}).value;
+        var dark = (document.getElementById('ps-sidebar-dark-theme') || {}).value;
+        if (!light || !dark) return;
+        localStorage.setItem('ps_light_theme', light);
+        localStorage.setItem('ps_dark_theme', dark);
+        fetch('/admin/select-theme/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCSRFToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: 'light_theme=' + encodeURIComponent(light) + '&dark_theme=' + encodeURIComponent(dark)
+        })
+        .then(function() {
+            if (reloadAfter) window.location.reload();
+        })
+        .catch(function() {
+            if (reloadAfter) window.location.reload();
+        });
+    }
+
+    function positionDisplaySettingsPopover() {
+        if (!displaySettingsBtn || !displaySettingsPopover) return;
+        var rect = displaySettingsBtn.getBoundingClientRect();
+        var popW = 310;
+        var gap = 10;
+        var left = rect.right + gap;
+        var top = rect.top;
+        if (left + popW > window.innerWidth - 12) {
+            left = Math.max(12, rect.left - popW - gap);
+        }
+        if (left < 12) {
+            left = 12;
+        }
+        displaySettingsPopover.style.left = left + 'px';
+        displaySettingsPopover.style.top = top + 'px';
+        var popH = displaySettingsPopover.offsetHeight;
+        if (top + popH > window.innerHeight - 12) {
+            top = Math.max(12, window.innerHeight - popH - 12);
+            displaySettingsPopover.style.top = top + 'px';
+        }
+    }
+
+    // Open display settings popover (portal to body — escapes sidebar overflow:hidden)
+    function openDisplaySettings() {
+        if (displaySettingsPopover) {
+            if (displaySettingsPopover.parentNode !== document.body) {
+                document.body.appendChild(displaySettingsPopover);
+            }
+            loadDisplaySettings();
+            loadBootswatchThemeSelects();
+            displaySettingsPopover.style.display = 'block';
+            positionDisplaySettingsPopover();
+            requestAnimationFrame(positionDisplaySettingsPopover);
+        }
+    }
+
+    // Close display settings popover
+    function closeDisplaySettings() {
+        if (displaySettingsPopover) {
+            displaySettingsPopover.style.display = 'none';
+        }
+    }
+
+    // Toggle popover
+    function toggleDisplaySettings() {
+        if (displaySettingsPopover && displaySettingsPopover.style.display === 'block') {
+            closeDisplaySettings();
+        } else {
+            openDisplaySettings();
+        }
+    }
+
+    // Load display settings from API
+    function loadDisplaySettings() {
+        fetch('/dose/api/display-settings/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to load settings');
+            return response.json();
+        })
+        .then(settings => {
+            applyDisplaySettingsToUI(settings);
+            applyDisplaySettingsToPage(settings);
+        })
+        .catch(err => {
+            console.log('[Display Settings] Using localStorage fallback:', err.message);
+            loadDisplaySettingsFromLocalStorage();
+        });
+    }
+
+    // Load from localStorage as fallback
+    function loadDisplaySettingsFromLocalStorage() {
+        const settings = {
+            theme_mode: localStorage.getItem('ps_theme_mode') || 'light',
+            font_size: localStorage.getItem('ps_font_size') || 'medium',
+            bold_text: localStorage.getItem('ps_bold_text') === 'true',
+            high_contrast: localStorage.getItem('ps_high_contrast') === 'true',
+            reduce_motion: localStorage.getItem('ps_reduce_motion') === 'true',
+            light_theme: localStorage.getItem('ps_light_theme') || 'flatly',
+            dark_theme: localStorage.getItem('ps_dark_theme') || 'darkly'
+        };
+        applyDisplaySettingsToUI(settings);
+        applyDisplaySettingsToPage(settings);
+    }
+
+    // Apply settings to UI controls
+    function applyDisplaySettingsToUI(settings) {
+        // Theme mode buttons
+        document.querySelectorAll('.theme-mode-btn').forEach(btn => {
+            const isActive = btn.dataset.mode === settings.theme_mode;
+            btn.style.borderColor = isActive ? '#2563eb' : '#cbd5e1';
+            btn.style.background = isActive ? '#dbeafe' : '#f1f5f9';
+            btn.style.color = isActive ? '#1e40af' : '#475569';
+        });
+
+        // Font size buttons
+        document.querySelectorAll('.font-size-btn').forEach(btn => {
+            const isActive = btn.dataset.size === settings.font_size;
+            btn.style.borderColor = isActive ? '#2563eb' : '#cbd5e1';
+            btn.style.background = isActive ? '#dbeafe' : '#f1f5f9';
+            btn.style.color = isActive ? '#1e40af' : '#475569';
+        });
+
+        // Toggle switches
+        const boldToggle = document.getElementById('bold-text-toggle');
+        const highContrastToggle = document.getElementById('high-contrast-toggle');
+        const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
+
+        if (boldToggle) setToggleState(boldToggle, settings.bold_text);
+        if (highContrastToggle) setToggleState(highContrastToggle, settings.high_contrast);
+        if (reduceMotionToggle) setToggleState(reduceMotionToggle, settings.reduce_motion);
+    }
+
+    // Set toggle switch visual state
+    function setToggleState(checkbox, checked) {
+        checkbox.checked = checked;
+        const track = checkbox.nextElementSibling;
+        const thumb = track.nextElementSibling;
+        if (track && thumb) {
+            track.style.backgroundColor = checked ? '#2563eb' : '#cbd5e1';
+            thumb.style.transform = checked ? 'translateX(18px)' : 'translateX(0)';
+        }
+    }
+
+    // Apply settings to page
+    function applyDisplaySettingsToPage(settings) {
+        // Font size
+        const fontSize = FONT_SIZE_MAP[settings.font_size] || '14px';
+        document.documentElement.style.fontSize = fontSize;
+        document.body.style.fontSize = fontSize;
+
+        // Bold text
+        if (settings.bold_text) {
+            document.documentElement.style.fontWeight = '600';
+            document.body.style.fontWeight = '600';
+        } else {
+            document.documentElement.style.fontWeight = '';
+            document.body.style.fontWeight = '';
+        }
+
+        // High contrast
+        if (settings.high_contrast) {
+            document.documentElement.setAttribute('data-high-contrast', 'true');
+            document.body.setAttribute('data-high-contrast', 'true');
+        } else {
+            document.documentElement.removeAttribute('data-high-contrast');
+            document.body.removeAttribute('data-high-contrast');
+        }
+
+        // Reduce motion
+        if (settings.reduce_motion) {
+            document.documentElement.setAttribute('data-reduce-motion', 'true');
+            document.body.setAttribute('data-reduce-motion', 'true');
+        } else {
+            document.documentElement.removeAttribute('data-reduce-motion');
+            document.body.removeAttribute('data-reduce-motion');
+        }
+
+        // Theme mode - store for reference
+        localStorage.setItem('ps_theme_mode', settings.theme_mode || 'light');
+    }
+
+    // Save display settings to API
+    function saveDisplaySettings(settings) {
+        fetch('/dose/api/save-display-settings/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(settings)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('[Display Settings] Saved to server');
+            }
+        })
+        .catch(err => {
+            console.log('[Display Settings] Save failed, using localStorage:', err.message);
+        });
+
+        // Always save to localStorage as well for instant persistence
+        if (settings.font_size !== undefined) localStorage.setItem('ps_font_size', settings.font_size);
+        if (settings.bold_text !== undefined) localStorage.setItem('ps_bold_text', settings.bold_text);
+        if (settings.high_contrast !== undefined) localStorage.setItem('ps_high_contrast', settings.high_contrast);
+        if (settings.reduce_motion !== undefined) localStorage.setItem('ps_reduce_motion', settings.reduce_motion);
+        if (settings.light_theme !== undefined) localStorage.setItem('ps_light_theme', settings.light_theme);
+        if (settings.dark_theme !== undefined) localStorage.setItem('ps_dark_theme', settings.dark_theme);
+    }
+
+    var saveThemesBtn = document.getElementById('ps-sidebar-save-themes');
+    if (saveThemesBtn) {
+        saveThemesBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            saveBootswatchThemePicks(true);
+        });
+    }
+    function applyThemeMode(mode) {
+        var url = '/dose/set-display-mode/?mode=' + encodeURIComponent(mode);
+        if (mode === 'system') {
+            var effective = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark' : 'light';
+            url += '&effective=' + effective;
+        }
+        return fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCSRFToken() }
+        });
+    }
+
+    // Reset to defaults
+    function resetDisplaySettings() {
+        const defaults = {
+            font_size: 'medium',
+            bold_text: false,
+            high_contrast: false,
+            reduce_motion: false
+        };
+
+        // Clear localStorage
+        localStorage.removeItem('ps_font_size');
+        localStorage.removeItem('ps_bold_text');
+        localStorage.removeItem('ps_high_contrast');
+        localStorage.removeItem('ps_reduce_motion');
+
+        applyDisplaySettingsToUI(defaults);
+        applyDisplaySettingsToPage(defaults);
+        saveDisplaySettings(defaults);
+    }
+
+    // Event listeners for display settings
+    if (displaySettingsBtn && displaySettingsPopover) {
+        displaySettingsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDisplaySettings();
+        });
+
+        if (displaySettingsClose) {
+            displaySettingsClose.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeDisplaySettings();
+            });
+        }
+
+        // Close on outside click
+        document.addEventListener('click', function(e) {
+            if (displaySettingsBtn && displaySettingsPopover) {
+                if (!displaySettingsBtn.contains(e.target) && !displaySettingsPopover.contains(e.target)) {
+                    closeDisplaySettings();
+                }
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && displaySettingsPopover && displaySettingsPopover.style.display === 'block') {
+                closeDisplaySettings();
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            if (displaySettingsPopover && displaySettingsPopover.style.display === 'block') {
+                positionDisplaySettingsPopover();
+            }
+        });
+    }
+
+    // Theme mode buttons
+    document.querySelectorAll('.theme-mode-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const mode = this.dataset.mode;
+
+            // Update button states
+            document.querySelectorAll('.theme-mode-btn').forEach(b => {
+                const isActive = b === this;
+                b.style.borderColor = isActive ? '#2563eb' : '#cbd5e1';
+                b.style.background = isActive ? '#dbeafe' : '#f1f5f9';
+                b.style.color = isActive ? '#1e40af' : '#475569';
+            });
+
+            saveDisplaySettings({ theme_mode: mode });
+            localStorage.setItem('ps_theme_mode', mode);
+            applyThemeMode(mode)
+                .then(function() { window.location.reload(); })
+                .catch(function() { window.location.reload(); });
+        });
+    });
+
+    // Font size buttons
+    document.querySelectorAll('.font-size-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const size = this.dataset.size;
+
+            // Update button states
+            document.querySelectorAll('.font-size-btn').forEach(b => {
+                const isActive = b === this;
+                b.style.borderColor = isActive ? '#2563eb' : '#cbd5e1';
+                b.style.background = isActive ? '#dbeafe' : '#f1f5f9';
+                b.style.color = isActive ? '#1e40af' : '#475569';
+            });
+
+            // Apply and save
+            const pxSize = FONT_SIZE_MAP[size] || '14px';
+            document.documentElement.style.fontSize = pxSize;
+            document.body.style.fontSize = pxSize;
+            saveDisplaySettings({ font_size: size });
+        });
+    });
+
+    // Toggle switches
+    const boldToggle = document.getElementById('bold-text-toggle');
+    const highContrastToggle = document.getElementById('high-contrast-toggle');
+    const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
+
+    if (boldToggle) {
+        boldToggle.addEventListener('change', function() {
+            const checked = this.checked;
+            setToggleState(this, checked);
+            document.documentElement.style.fontWeight = checked ? '600' : '';
+            document.body.style.fontWeight = checked ? '600' : '';
+            saveDisplaySettings({ bold_text: checked });
+        });
+    }
+
+    if (highContrastToggle) {
+        highContrastToggle.addEventListener('change', function() {
+            const checked = this.checked;
+            setToggleState(this, checked);
+            if (checked) {
+                document.documentElement.setAttribute('data-high-contrast', 'true');
+                document.body.setAttribute('data-high-contrast', 'true');
+            } else {
+                document.documentElement.removeAttribute('data-high-contrast');
+                document.body.removeAttribute('data-high-contrast');
+            }
+            saveDisplaySettings({ high_contrast: checked });
+        });
+    }
+
+    if (reduceMotionToggle) {
+        reduceMotionToggle.addEventListener('change', function() {
+            const checked = this.checked;
+            setToggleState(this, checked);
+            if (checked) {
+                document.documentElement.setAttribute('data-reduce-motion', 'true');
+                document.body.setAttribute('data-reduce-motion', 'true');
+            } else {
+                document.documentElement.removeAttribute('data-reduce-motion');
+                document.body.removeAttribute('data-reduce-motion');
+            }
+            saveDisplaySettings({ reduce_motion: checked });
+        });
+    }
+
+    // Reset button
+    if (displaySettingsResetBtn) {
+        displaySettingsResetBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            resetDisplaySettings();
+        });
+    }
+
+    // Load display settings on page load
+    loadDisplaySettings();
+
+    // Attach Font Controls button handler (legacy - kept for compatibility)
+    const sidebarFontControlsBtn = document.getElementById('sidebarFontControlsBtn');
+    const sidebarFontControlsDropdown = document.getElementById('sidebar-font-controls-dropdown');
+
+    if (sidebarFontControlsBtn && sidebarFontControlsDropdown) {
+        sidebarFontControlsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isVisible = sidebarFontControlsDropdown.style.display === 'block';
+            if (!isVisible) {
+                sidebarFontControlsDropdown.style.display = 'block';
+            } else {
+                sidebarFontControlsDropdown.style.display = 'none';
+            }
+        });
+
+    // Font controls event handlers (outside Font Controls if block since they need to run anyway)
+    const fontFamilySelect = document.getElementById('sidebar-font-family-select');
+    const fontSizeSlider = document.getElementById('sidebar-font-size-slider');
+    const fontWeightSlider = document.getElementById('sidebar-font-weight-slider');
+    const fontSizeValue = document.getElementById('sidebar-font-size-value');
+    const fontWeightValue = document.getElementById('sidebar-font-weight-value');
+    const fontResetBtn = document.getElementById('sidebar-font-reset-btn');
+
+    const weightLabels = {
+        300: 'Light',
+        400: 'Normal',
+        500: 'Medium',
+        600: 'Semi-Bold',
+        700: 'Bold'
+    };
+
+    // Load saved font settings from localStorage
+    function loadFontSettings() {
+        const family = localStorage.getItem('d
