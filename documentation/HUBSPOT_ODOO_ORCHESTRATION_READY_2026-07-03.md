@@ -51,6 +51,20 @@ Script: `tmp/move_odoo_tenantapp_to_olient.py`
 
 ---
 
+### 4. TenantApp Placement Fix — moved HubSpot record to olient schema
+
+**Root cause:** HubSpot `TenantApp` (Playwright cookies, `hs_hub_subdomain`, OAuth
+tokens) lived in `public.dose_tenantapp` while passthrough and session code must
+read tenant-owned rows from the tenant schema (`olient`).
+
+**Fix applied (2026-07-03):**
+- Shared helper: `dose/tenant_app_lookup.py` — all tenant-schema TenantApp reads/writes
+- `get_tenant_hubspot_app()` → tenant schema (not `public_bundles`)
+- `provision_hubspot_session`, `store_hubspot_token` → write to `{schema}.dose_tenantapp`
+- Data copy: `tmp/move_hubspot_tenantapp_to_olient.py`
+
+---
+
 ### 3. End-to-End Test — PASSED
 
 Webhook fired at:

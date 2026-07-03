@@ -523,35 +523,21 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         except Exception:
             pass
 
-    @staticmethod
-    def _hub_subdomain_origin_from_tenant_app(ta) -> str | None:
-        if not ta:
-            return None
-        hub = ((ta.extra_config or {}).get("hs_hub_subdomain") or "").strip()
-        return f"https://{hub}" if hub else None
-
     def _provisioned_hub_origin(self, request) -> str | None:
         if request is None:
             return None
-        tenant = getattr(request, "tenant", None)
-        if tenant is None:
-            try:
-                from dose.utils import get_current_tenant
-
-                tenant = get_current_tenant(request)
-            except Exception:
-                tenant = None
-        if not tenant:
+        svc = self._session_service(request)
+        if not svc.tenant_app:
             return None
-        from dose.services.hubspot_oauth import get_tenant_hubspot_app
-
-        return self._hub_subdomain_origin_from_tenant_app(get_tenant_hubspot_app(tenant))
+        hub = ((svc.tenant_app.extra_config or {}).get('hs_hub_subdomain') or '').strip()
+        return f'https://{hub}' if hub else None
 
     def _provisioned_hub_origin_from_db(self, endpoint_id: int | None = None) -> str | None:
         """
         Resolve Playwright regional hub before request context is bound.
 
-        Uses only the active tenant schema — never public for tenant-owned rows.
+        forward_request_standardized resolves the upstream URL before
+        get_upstream_cookies() calls bind_hubspot_passthrough_request().
         """
         req = None
         try:
@@ -564,47 +550,35 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             prov = self._provisioned_hub_origin(req)
             if prov:
                 return prov
-
-        schema = self._active_tenant_schema(req)
-        if not schema:
-            return None
-        from dose.tenant_app_lookup import get_tenant_app_in_schema_by_name
-
-        ta = get_tenant_app_in_schema_by_name(schema, "hubspot")
-        return self._hub_subdomain_origin_from_tenant_app(ta)
-
-    @staticmethod
-    def _active_tenant_schema(request=None) -> str | None:
-        """First non-public schema from request tenant or current search_path."""
-        if request is not None:
-            tenant = getattr(request, "tenant", None)
-            if tenant is None:
-                try:
-                    from dose.utils import get_current_tenant
-
-                    tenant = get_current_tenant(request)
-                except Exception:
-                    tenant = None
-            if tenant is not None:
-                schema = getattr(tenant, "schema_name", None)
-                if schema and schema != "public":
-                    return schema
-
-        from django.db import connection
-
+        eid = endpoint_id
+        if eid is None and self.endpoint is not None:
+            eid = getattr(self.endpoint, "pk", None)
         try:
+            from django.db import connection
+
+            from dose.models import Tenant
+            from dose.services.hubspot_oauth import get_tenant_hubspot_app
+
+            schema = ""
             with connection.cursor() as cur:
                 cur.execute("SHOW search_path")
                 row = cur.fetchone()
-            if not row or not row[0]:
+                if row and row[0]:
+                    schema = str(row[0]).split(",")[0].strip().strip('"')
+            if not schema or schema == "public":
                 return None
-            for part in str(row[0]).split(","):
-                candidate = part.strip().strip('"')
-                if candidate and candidate not in ("public", "pg_catalog"):
-                    return candidate
+            with connection.cursor() as cur:
+                cur.execute("SET search_path TO public;")
+            tenant = Tenant.objects.filter(schema_name=schema, is_active=True).first()
+            if not tenant:
+                return None
+            ta = get_tenant_hubspot_app(tenant)
+            if not ta:
+                return None
+            hub = ((ta.extra_config or {}).get("hs_hub_subdomain") or "").strip()
+            return f"https://{hub}" if hub else None
         except Exception:
             return None
-        return None
 
     def _apply_provisioned_hub_origin(self, origin: str, endpoint_id: int | None, request=None) -> str:
         base = (origin or "").rstrip("/")
@@ -659,16 +633,10 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         except Exception:
             req = None
         if req is not None:
-            self._bind_hubspot_request(req)
             self._seed_provisioned_hub_bases(req)
         endpoint_id = self._endpoint_id(req) if req else None
         if endpoint_id is None and self.endpoint is not None:
             endpoint_id = getattr(self.endpoint, "pk", None)
-        if endpoint_id is None and req is not None:
-            ep = getattr(req, "_passthrough_endpoint", None)
-            if ep is not None and getattr(ep, "pk", None):
-                endpoint_id = int(ep.pk)
-                self.endpoint = ep
         origin = preferred_upstream_origin(req, endpoint_id, endpoint_url or "")
         origin = self._apply_provisioned_hub_origin(origin, endpoint_id, req)
         if not origin:
@@ -699,15 +667,9 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
                 req = get_hubspot_passthrough_request()
             except Exception:
                 req = None
-            if req is not None:
-                self._bind_hubspot_request(req)
             eid = self._endpoint_id(req) if req else None
             if eid is None and self.endpoint is not None:
                 eid = getattr(self.endpoint, "pk", None)
-            if eid is None and req is not None:
-                ep = getattr(req, "_passthrough_endpoint", None)
-                if ep is not None and getattr(ep, "pk", None):
-                    eid = int(ep.pk)
             prov = self._apply_provisioned_hub_origin("https://app.hubspot.com", eid, req)
             if not prov or prov.rstrip("/") == "https://app.hubspot.com":
                 return target_url
@@ -1755,33 +1717,6 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
 </script>
 """
 
-    @staticmethod
-    def _inject_hubspot_stylesheets_into_body(html: str) -> str:
-        """
-        Duplicate HubSpot CDN stylesheet tags into <body> so they land inside the
-        passthrough embed scope div (head is split into Jazzmin extrahead).
-        """
-        if not html or 'data-ps-hs-body-css="1"' in html:
-            return html
-        links = re.findall(
-            r'<link\b[^>]*href=["\']https://static(?:2)?\.hsappstatic\.net[^"\']+\.css["\'][^>]*>',
-            html,
-            flags=re.IGNORECASE,
-        )
-        loader_css = (
-            '<style data-ps-hs-loader="1">'
-            '.polysaas-passthrough-scope .page svg,'
-            '.polysaas-passthrough-scope svg {'
-            'max-width:48px!important;max-height:48px!important;width:48px!important;height:48px!important;'
-            '}'
-            '.polysaas-passthrough-scope .page{display:flex;align-items:center;justify-content:center;min-height:120px;}'
-            '</style>'
-        )
-        bundle = '<!-- data-ps-hs-body-css="1" -->' + loader_css + ''.join(dict.fromkeys(links))
-        if re.search(r'(?i)<body[^>]*>', html):
-            return re.sub(r'(?i)(<body[^>]*>)', lambda m: m.group(1) + bundle, html, count=1)
-        return bundle + html
-
     def process_html_response(self, html_str, request, endpoint_url=None, **context):
         self._bind_hubspot_request(request)
         if not html_str:
@@ -1803,7 +1738,6 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             request=request,
             endpoint_id=endpoint_id,
         )
-        html = self._inject_hubspot_stylesheets_into_body(html)
         if self._is_popup_login_request(request):
             canon_host = self._canonical_host_from_bases(endpoint_url, sorted(known))
             early_spoof = self.polysniffer_workspace_location_spoof_script(

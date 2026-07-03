@@ -523,29 +523,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         except Exception:
             pass
 
-    @staticmethod
-    def _hub_subdomain_origin_from_tenant_app(ta) -> str | None:
-        if not ta:
-            return None
-        hub = ((ta.extra_config or {}).get("hs_hub_subdomain") or "").strip()
-        return f"https://{hub}" if hub else None
-
     def _provisioned_hub_origin(self, request) -> str | None:
         if request is None:
             return None
-        tenant = getattr(request, "tenant", None)
-        if tenant is None:
-            try:
-                from dose.utils import get_current_tenant
-
-                tenant = get_current_tenant(request)
-            except Exception:
-                tenant = None
-        if not tenant:
+        schema = self._active_tenant_schema(request)
+        if not schema:
             return None
-        from dose.services.hubspot_oauth import get_tenant_hubspot_app
-
-        return self._hub_subdomain_origin_from_tenant_app(get_tenant_hubspot_app(tenant))
+        return self._hub_origin_from_tenant_schema(schema)
 
     def _provisioned_hub_origin_from_db(self, endpoint_id: int | None = None) -> str | None:
         """
@@ -568,10 +552,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         schema = self._active_tenant_schema(req)
         if not schema:
             return None
-        from dose.tenant_app_lookup import get_tenant_app_in_schema_by_name
-
-        ta = get_tenant_app_in_schema_by_name(schema, "hubspot")
-        return self._hub_subdomain_origin_from_tenant_app(ta)
+        return self._hub_origin_from_tenant_schema(schema)
 
     @staticmethod
     def _active_tenant_schema(request=None) -> str | None:
@@ -605,6 +586,40 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         except Exception:
             return None
         return None
+
+    @classmethod
+    def _hub_origin_from_tenant_schema(cls, schema: str) -> str | None:
+        """Read hs_hub_subdomain from TenantApp in the tenant schema only."""
+        if not schema or schema == "public":
+            return None
+        from django.db import connection
+
+        from dose.models import TenantApp
+
+        original_sp = None
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SHOW search_path")
+                row = cur.fetchone()
+                original_sp = row[0] if row else None
+                cur.execute(f"SET search_path TO {schema},public;")
+            ta = (
+                TenantApp.objects.filter(app_name="hubspot", status="active").first()
+                or TenantApp.objects.filter(app_name__icontains="hubspot").first()
+            )
+            if not ta:
+                return None
+            hub = ((ta.extra_config or {}).get("hs_hub_subdomain") or "").strip()
+            return f"https://{hub}" if hub else None
+        except Exception:
+            return None
+        finally:
+            if original_sp:
+                try:
+                    with connection.cursor() as cur:
+                        cur.execute(f"SET search_path TO {original_sp}")
+                except Exception:
+                    pass
 
     def _apply_provisioned_hub_origin(self, origin: str, endpoint_id: int | None, request=None) -> str:
         base = (origin or "").rstrip("/")

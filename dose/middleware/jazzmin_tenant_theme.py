@@ -25,6 +25,8 @@ def _endpoint_to_app_name(endpoint):
         return 'monitor_logger'
     if 'polysysmon' in title or 'polysysmon' in url:
         return 'polysysmon'
+    if 'hubspot' in title or 'hubspot' in url or 'hubsot' in title:
+        return 'hubspot'
     return None
 
 
@@ -79,42 +81,21 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # �
             passthrough_endpoints = []
             try:
                 from dose.models.pass_through_endpoint import PassThroughEndpoint
-                from dose.models import TenantApp
                 from django.db import connection
 
-                # Set search_path to current tenant schema
+                # Tenant schema only — PassThroughEndpoint rows are tenant-owned, not public.
                 with connection.cursor() as cursor:
-                    cursor.execute(f'SET search_path TO "{current_schema}",public;')
+                    cursor.execute(f'SET search_path TO "{current_schema}"')
 
-                # Get all PassThroughEndpoint records for this schema that should show in menu
-                all_endpoints = list(
-                    PassThroughEndpoint.objects.filter(show_in_menu=True)
+                passthrough_endpoints = list(
+                    PassThroughEndpoint.objects.filter(
+                        is_enabled=True,
+                        show_in_menu=True,
+                    )
                     .exclude(menu_title__isnull=True)
                     .exclude(menu_title__exact='')
+                    .order_by('menu_sort_order', 'id')
                 )
-
-                # Filter to only those whose TenantApp is provisioned (status='active')
-                passthrough_endpoints = []
-                for ep in all_endpoints:
-                    app_name = _endpoint_to_app_name(ep)
-                    if app_name:
-                        try:
-                            ta = TenantApp.public_bundles.filter(
-                                tenant__schema_name=current_schema,
-                                app_name=app_name,
-                            ).first()
-                            if ta and ta.status == 'active':
-                                passthrough_endpoints.append(ep)
-                                print(f"[JAZZMIN DEBUG] + {ep.menu_title}: TenantApp is ACTIVE")
-                            elif ta:
-                                print(f"[JAZZMIN DEBUG] - {ep.menu_title}: TenantApp status={ta.status} (skipping)")
-                            else:
-                                print(f"[JAZZMIN DEBUG] - {ep.menu_title}: No TenantApp found (skipping)")
-                        except Exception as e:
-                            print(f"[JAZZMIN DEBUG] ? {ep.menu_title}: lookup error: {e}")
-                    else:
-                        # Unknown mapping — show anyway for backward compat
-                        passthrough_endpoints.append(ep)
 
                 print(f"[JAZZMIN DEBUG] Found {len(passthrough_endpoints)} endpoints to add to menu (schema: {current_schema})")
                 for ep in passthrough_endpoints:

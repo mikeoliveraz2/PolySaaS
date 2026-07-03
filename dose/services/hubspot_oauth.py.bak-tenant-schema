@@ -131,9 +131,9 @@ def persist_tokens_on_tenant_app(tenant_app, token_payload: Dict[str, Any]) -> N
 
 
 def get_tenant_hubspot_app(tenant):
-    from dose.tenant_app_lookup import get_tenant_app_in_schema
+    from dose.models import TenantApp
 
-    return get_tenant_app_in_schema(tenant, "hubspot")
+    return TenantApp.public_bundles.filter(tenant=tenant, app_name='hubspot').first()
 
 
 def tenant_has_hubspot_connection(tenant) -> bool:

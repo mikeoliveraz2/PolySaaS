@@ -82,7 +82,7 @@ def _rewrite_protocol_relative_app_hosts(html: str, proxy_prefix: str) -> str:
         return f"{attr}={quote}{prefix}{path}{quote}"
 
     html = re.sub(
-        r"(src|href)=(['\"])//((?:app(?:-[a-z0-9]+)?|local)\.hubspot\.com)(/[^'\"]*)?\2",
+        r"(src|href)=(['\"])//((?:app(?:-[a-z0-9]+)?|local)\.hubspot\.com)(/[^'\"]*)?",
         _repl,
         html,
         flags=re.IGNORECASE,
@@ -116,7 +116,7 @@ def _rewrite_absolute_app_bases(html: str, known_bases: set[str], proxy_prefix: 
 def _rewrite_protocol_relative_cdn(html: str) -> str:
     """//static.hsappstatic.net/… → https://static.hsappstatic.net/…"""
     html = re.sub(
-        r"(src|href)=(['\"])(//(?:static(?:2)?\.hsappstatic\.net|wt-assets)[^'\"]*)\2",
+        r"(src|href)=(['\"])(//(?:static(?:2)?\.hsappstatic\.net|wt-assets)[^'\"]*)",
         r"\1=\2https:\3\2",
         html,
         flags=re.IGNORECASE,
@@ -135,7 +135,7 @@ def _rewrite_root_relative_cdn(html: str) -> str:
     """/static.hsappstatic.net/… → https://static.hsappstatic.net/…"""
     for host in _CDN_HOSTS:
         html = re.sub(
-            rf'((?:src|href)=)(["\'])/{re.escape(host)}([^"\']*)\2',
+            rf'((?:src|href)=)(["\'])/{re.escape(host)}([^"\']*)',
             rf"\1\2https://{host}\3\2",
             html,
             flags=re.IGNORECASE,
@@ -234,7 +234,7 @@ def _rewrite_hubspot_native_html(
         return match.group(0)
 
     html = re.sub(
-        r"(src|href)=(['\"])(/[^'\"]+)\2",
+        r"(src|href)=(['\"])(/[^'\"]+)",
         _rewrite_root_path,
         html,
         flags=re.IGNORECASE,
@@ -255,20 +255,6 @@ def _rewrite_hubspot_native_html(
 
     html = _repair_broken_proxy_cdn(html, proxy_prefix)
     html = _rewrite_firealarm_scripts(html)
-    # crossorigin="anonymous" on CDN stylesheets requires CORS headers HubSpot CDN
-    # does not send — browser blocks the sheet and the SPA stays unstyled.
-    html = re.sub(
-        r'(<link\b[^>]*href=["\']https://static(?:2)?\.hsappstatic\.net[^"\']+["\'][^>]*)\s+crossorigin=["\']anonymous["\']',
-        r"\1",
-        html,
-        flags=re.IGNORECASE,
-    )
-    html = re.sub(
-        r'(<link\b[^>]*)\s+crossorigin=["\']anonymous["\']([^>]*href=["\']https://static(?:2)?\.hsappstatic\.net[^"\']+["\'][^>]*>)',
-        r"\1\2",
-        html,
-        flags=re.IGNORECASE,
-    )
     return html
 
 

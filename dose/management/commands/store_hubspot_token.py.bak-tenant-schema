@@ -47,12 +47,11 @@ class Command(BaseCommand):
         portal_id = (options["portal_id"] or "").strip()
         show_mode = options["show"]
 
-        # Tenant registry lives in public (system table)
+        # Always resolve Tenant from public schema
         with connection.cursor() as cur:
             cur.execute("SET search_path TO public")
 
-        from dose.models import Tenant
-        from dose.tenant_app_lookup import ensure_tenant_app_in_schema, get_tenant_app_in_schema, tenant_schema_search_path
+        from dose.models import Tenant, TenantApp
 
         tenant = Tenant.objects.filter(slug=slug).first()
         if not tenant:
@@ -60,7 +59,8 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Tenant: {tenant.name}  (schema={tenant.schema_name})")
 
-        ta = get_tenant_app_in_schema(tenant, "hubspot")
+        # TenantApp rows for HubSpot live in public (PublicTenantAppBundleManager)
+        ta = TenantApp.public_bundles.filter(tenant=tenant, app_name="hubspot").first()
 
         if show_mode:
             if not ta:
@@ -88,19 +88,17 @@ class Command(BaseCommand):
                 )
             )
 
-        # Create TenantApp row in tenant schema if it does not exist
+        # Create TenantApp row if it does not exist
         if ta is None:
-            ta, _ = ensure_tenant_app_in_schema(
-                tenant,
-                "hubspot",
+            ta = TenantApp(
+                tenant=tenant,
+                app_name="hubspot",
                 status="active",
                 extra_config={},
             )
-            self.stdout.write(f"  Creating new HubSpot TenantApp in {tenant.schema_name}.")
+            self.stdout.write("  Creating new HubSpot TenantApp record.")
         else:
-            self.stdout.write(
-                f"  Updating existing HubSpot TenantApp (pk={ta.pk}, status={ta.status}, schema={tenant.schema_name})."
-            )
+            self.stdout.write(f"  Updating existing HubSpot TenantApp (pk={ta.pk}, status={ta.status}).")
             ta.status = "active"
 
         extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
@@ -143,10 +141,12 @@ class Command(BaseCommand):
         })
         ta.extra_config = extra
 
-        with tenant_schema_search_path(tenant):
-            ta.save(update_fields=["extra_config", "status"])
+        with connection.cursor() as cur:
+            cur.execute("SET search_path TO public")
+
+        ta.save()
         self.stdout.write(self.style.SUCCESS(
-            f"\n  Stored hs_access_token in {tenant.schema_name}.dose_tenantapp for tenant '{slug}'."
+            f"\n  Stored hs_access_token for tenant '{slug}'."
         ))
         self.stdout.write(
             f"  Run a quick API test:\n"

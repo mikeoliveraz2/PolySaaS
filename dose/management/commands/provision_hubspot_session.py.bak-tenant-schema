@@ -67,29 +67,17 @@ class Command(BaseCommand):
         timeout_s = options["timeout"]
         validate_only = options["validate_only"]
 
-        # Resolve Tenant registry row (public system table only)
+        # ── Resolve tenant ────────────────────────────────────────────────────
         with connection.cursor() as cur:
             cur.execute("SET search_path TO public")
-
         from dose.models import Tenant
-        from dose.tenant_app_lookup import ensure_tenant_app_in_schema, tenant_schema_search_path
-
         tenant = Tenant.objects.filter(slug=slug).first()
         if not tenant:
             raise CommandError(f"Tenant not found: {slug!r}")
         self.stdout.write(f"Tenant: {tenant.name} (slug={slug})")
 
-        # ── Ensure HubSpot TenantApp in tenant schema ─────────────────────────
-        ta, created = ensure_tenant_app_in_schema(
-            tenant,
-            "hubspot",
-            status="active",
-            extra_config={"hs_login_email": email} if email else {},
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"Created HubSpot TenantApp pk={ta.pk} in {tenant.schema_name}"))
-        else:
-            self.stdout.write(f"HubSpot TenantApp: pk={ta.pk} status={ta.status} (schema={tenant.schema_name})")
+        # ── Ensure HubSpot TenantApp exists in public ─────────────────────────
+        ta = self._ensure_hubspot_tenant_app(tenant, email)
 
         # ── Validate-only mode ────────────────────────────────────────────────
         if validate_only:
@@ -136,10 +124,9 @@ class Command(BaseCommand):
         if portal_id_str:
             extra["hs_portal_id"] = int(portal_id_str)
         ta.extra_config = extra
-        with tenant_schema_search_path(tenant):
-            ta.save(update_fields=["extra_config"])
+        ta.save(update_fields=["extra_config"])
         self.stdout.write(self.style.SUCCESS(
-            f"Stored cookies in {tenant.schema_name}.dose_tenantapp pk={ta.pk} "
+            f"Stored cookies in TenantApp pk={ta.pk} "
             f"(hub={hub_subdomain!r} portalId={portal_id_str})"
         ))
 
@@ -149,6 +136,26 @@ class Command(BaseCommand):
     # ──────────────────────────────────────────────────────────────────────────
     # Helpers
     # ──────────────────────────────────────────────────────────────────────────
+
+    def _ensure_hubspot_tenant_app(self, tenant, email: str):
+        """Get or create the HubSpot TenantApp in the public schema."""
+        from dose.models import TenantApp
+
+        ta = TenantApp.public_bundles.filter(tenant=tenant, app_name="hubspot").first()
+        if ta:
+            self.stdout.write(f"HubSpot TenantApp: pk={ta.pk} status={ta.status}")
+            return ta
+
+        self.stdout.write("No HubSpot TenantApp found — creating one...")
+        ta = TenantApp(
+            tenant=tenant,
+            app_name="hubspot",
+            status="active",
+            extra_config={"hs_login_email": email} if email else {},
+        )
+        ta.save()
+        self.stdout.write(self.style.SUCCESS(f"Created HubSpot TenantApp pk={ta.pk}"))
+        return ta
 
     def _playwright_login(
         self,

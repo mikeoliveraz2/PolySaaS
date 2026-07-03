@@ -235,9 +235,13 @@ def admin_navigation(request):
         external_services = []     # Other external integrations (from NavigationPanel if added later)
 
         try:
-            from dose.tenant_app_lookup import subscribed_app_names
-
-            _subscribed = subscribed_app_names(tenant) if tenant else set()
+            from .models import TenantApp
+            _subscribed = set(
+                TenantApp.public_bundles.filter(
+                    tenant=tenant,
+                    status__in=['active', 'provisioning'],
+                ).values_list('app_name', flat=True)
+            ) if tenant else set()
         except Exception:
             _subscribed = set()
 
