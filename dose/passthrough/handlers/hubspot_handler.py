@@ -289,26 +289,52 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         if path and not path.startswith('/'):
             path = '/' + path
 
-        # STRONG ANTI-LOOP - catch /undefined and /home/undefined immediately
-        low_path = path.lower()
-        if 'undefined' in low_path or 'null' in low_path or low_path.endswith('/home') or low_path == '/home/':
-            logger.warning(f"[STRONG ANTI-LOOP] Caught {path} → forcing portal bootstrap")
-            endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
-            return self._respond_portal_bootstrap(request, endpoint, path, log_label='[STRONG ANTI-LOOP]')
-
+        # === ANTI-LOOP: only intercept genuinely malformed paths (undefined/null/nan       ===
+        # segments). Do NOT match plain /home or /home/ here — that is the legitimate
+        # HubSpot landing page after a successful login, and blanket-matching it caused
+        # an infinite reload loop (this handler kept re-intercepting its own redirect).
         if self._is_bad_hubspot_subpath(path):
+            logger.warning(f"[HubSpot] Caught bad path: {subpath} \u2192 minimal bootstrap")
             endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
-            return self._respond_bad_hubspot_subpath(request, endpoint, path)
+            endpoint_url = getattr(endpoint, 'endpoint_url', None) or 'https://app.hubspot.com'
+            proxy_prefix = self._effective_proxy_prefix(request, endpoint, endpoint_url)
+            target = request.build_absolute_uri(proxy_prefix.rstrip('/') + '/home/')
+
+            # Return a minimal page that forces correct path and disables bad scripts
+            html = f'''<!DOCTYPE html>
+<html>
+<head><title>PolySaaS HubSpot Passthrough</title>
+<meta http-equiv="refresh" content="0;url={target}">
+<script>window.location.replace("{target}");</script>
+</head>
+<body><h1>Loading HubSpot...</h1></body>
+</html>'''
+
+            response = HttpResponse(html, content_type='text/html')
+            response['X-Frame-Options'] = 'ALLOWALL'
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Pragma'] = 'no-cache'
+            return response
+
         if request.method != 'GET':
             return None
+
         if not self._is_portal_bootstrap_path(path):
             return None
+
+        # Once the web session is actually validated, let this call reach the real
+        # HubSpot upstream API instead of the static placeholder JSON. Serving the
+        # fake stub forever after a successful login is what left /home/ stuck
+        # endlessly polling a response that never changes.
+        try:
+            if self._session_service(request).ensure_web_cookies():
+                return None
+        except Exception:
+            pass
+
         endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
         return self._respond_portal_bootstrap(
-            request,
-            endpoint,
-            path,
-            log_label='[HS PORTAL SHORT-CIRCUIT]',
+            request, endpoint, path, log_label='[HS PORTAL]'
         )
 
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
@@ -613,6 +639,11 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             logger.info('[HubSpot] redirect portal-id home path %s -> /home/', sub)
             return self._redirect_to_hubspot_home(request, endpoint)
         if self._is_portal_bootstrap_path(sub):
+            try:
+                if self._session_service(request).ensure_web_cookies():
+                    return None
+            except Exception:
+                pass
             return self._respond_portal_bootstrap(
                 request,
                 endpoint,
@@ -1404,6 +1435,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         except Exception:
             portal_id_val = _PORTAL_PLACEHOLDER_ID
         portal_id_js = json.dumps(portal_id_val)
+        has_valid_session = False
+        if request is not None:
+            try:
+                has_valid_session = bool(self._session_service(request).ensure_web_cookies())
+            except Exception:
+                has_valid_session = False
+        has_valid_session_js = json.dumps(has_valid_session)
         spoof = self._hubspot_location_spoof_iife(
             proxy_prefix=proxy_prefix,
             shell_prefix="",
@@ -1417,11 +1455,31 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   var KNOWN_BASES = {bases_js};
   var PORTAL_BOOTSTRAP_JSON = {portal_json_js};
   var PORTAL_ID = {portal_id_js};
+  // Once the real session is validated, stop faking portal-bootstrap responses so
+  // HubSpot's SPA can get genuine data instead of polling a static stub forever.
+  var HAS_VALID_SESSION = {has_valid_session_js};
   var normalizeSubpath = window.__PS_normalizeSubpath || function(path) {{
     var p = path || '/';
     if (!p || p.charAt(0) !== '/') p = '/' + p;
     return p;
   }};
+  // NOTE: previously referenced but never defined here — every call silently threw
+  // inside a try/catch and rewriteUrl() fell through to returning the URL unchanged,
+  // so absolute api.hubspot.com/app.hubspot.com XHR calls never got routed through
+  // our proxy and hit real CORS failures once the portal-bootstrap stub stopped
+  // intercepting them post-login.
+  function isAppHost(hostname) {{
+    var h = String(hostname || '').toLowerCase();
+    if (!h) return false;
+    if (h.indexOf('hubspot.com') >= 0 || h.indexOf('hubspot.net') >= 0) return true;
+    for (var i = 0; i < KNOWN_BASES.length; i++) {{
+      try {{
+        var kb = new URL(KNOWN_BASES[i], window.location.origin);
+        if (kb.hostname && kb.hostname.toLowerCase() === h) return true;
+      }} catch (_ah) {{}}
+    }}
+    return false;
+  }}
   (function _fixBadLocationOnLoad() {{
     try {{
       var p = window.location.pathname || '';
@@ -1560,7 +1618,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     var reqUrl = '';
     if (typeof input === 'string') reqUrl = input;
     else if (input && input.url) reqUrl = input.url;
-    if (isBadSubpathUrl(reqUrl) || isPortalBootstrapUrl(reqUrl)) {{
+    if (isBadSubpathUrl(reqUrl) || (isPortalBootstrapUrl(reqUrl) && !HAS_VALID_SESSION)) {{
       var stub = portalBootstrapResponse();
       if (stub) return Promise.resolve(stub);
     }}
@@ -1587,7 +1645,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
   }};
   var _send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function(body) {{
-    if ((isBadSubpathUrl(this._psUrl || '') || isPortalBootstrapUrl(this._psUrl || '')) && PORTAL_BOOTSTRAP_JSON) {{
+    if ((isBadSubpathUrl(this._psUrl || '') || (isPortalBootstrapUrl(this._psUrl || '') && !HAS_VALID_SESSION)) && PORTAL_BOOTSTRAP_JSON) {{
       var self = this;
       setTimeout(function() {{
         try {{
@@ -1735,11 +1793,246 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             return re.sub(r'(?i)(<body[^>]*>)', lambda m: m.group(1) + bundle, html, count=1)
         return bundle + html
 
+    @staticmethod
+    def _simplified_home_panel_html(portal_id: int | None, upstream_origin: str, *, connect_url: str = '') -> str:
+        """
+        Static fallback for the HubSpot home landing page when the CRM API isn't
+        connected (or a data fetch fails). See _build_hubspot_crm_dashboard_html for
+        the live-data view used once a Private App / OAuth token is stored.
+
+        Returns a content FRAGMENT (no <html>/<head>/<body>) — the passthrough embed
+        wraps this directly into its own content column div, so a full document here
+        causes nested-body layout breakage (content floats outside the column).
+        """
+        origin = (upstream_origin or 'https://app.hubspot.com').rstrip('/')
+        pid_display = str(portal_id) if portal_id else 'unknown'
+        connect_block = ''
+        if connect_url:
+            connect_block = (
+                f'<a href="{connect_url}" target="_blank" rel="noopener" '
+                'style="display:inline-block;margin-top:12px;font-size:13px;color:#0091ae;">'
+                'Connect HubSpot API (Private App / OAuth)</a>'
+            )
+        return f"""
+<div class="polysaas-hs-panel" style="display:flex;align-items:center;justify-content:center;min-height:70vh;font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;background:#f5f8fa;">
+  <div style="width:420px;padding:40px 36px;background:#fff;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;">
+    <div style="font-size:22px;font-weight:700;color:#ff7a59;margin-bottom:18px;">HubSpot</div>
+    <div style="font-size:16px;font-weight:600;color:#33475b;margin-bottom:8px;">Connected</div>
+    <div style="font-size:13px;color:#516f90;margin-bottom:24px;">Portal ID: {pid_display}</div>
+    <a href="{origin}/home/" target="_blank" rel="noopener"
+       style="display:inline-block;width:100%;box-sizing:border-box;padding:12px;background:#ff7a59;color:#fff;
+              text-decoration:none;border-radius:4px;font-size:15px;font-weight:600;">
+      Open HubSpot Dashboard&nbsp;&#8599;
+    </a>
+    <p style="margin:20px 0 0;font-size:12px;color:#99acc2;line-height:1.5;">
+      The embedded HubSpot dashboard view is temporarily unavailable. Use the button
+      above to open your HubSpot account in a new tab.
+    </p>
+    {connect_block}
+  </div>
+</div>"""
+
+    @staticmethod
+    def _hs_dashboard_table(title: str, rows: list[dict], columns: list[tuple[str, str]]) -> str:
+        """columns: list of (field_key, display_label)."""
+        head_cells = ''.join(f'<th style="text-align:left;padding:8px 12px;font-size:12px;color:#516f90;border-bottom:1px solid #e5e9ee;">{label}</th>' for _key, label in columns)
+        if not rows:
+            body = (
+                f'<tr><td colspan="{len(columns)}" '
+                'style="padding:16px 12px;font-size:13px;color:#99acc2;">No records found.</td></tr>'
+            )
+        else:
+            body_rows = []
+            for row in rows:
+                cells = ''.join(
+                    f'<td style="padding:8px 12px;font-size:13px;color:#33475b;border-bottom:1px solid #f0f3f5;">{row.get(key) if row.get(key) not in (None, "") else "&mdash;"}</td>'
+                    for key, _label in columns
+                )
+                body_rows.append(f'<tr>{cells}</tr>')
+            body = ''.join(body_rows)
+        return f"""
+<div style="margin-bottom:28px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;">
+  <div style="padding:14px 16px;border-bottom:1px solid #e5e9ee;font-size:14px;font-weight:600;color:#33475b;">{title}</div>
+  <table style="width:100%;border-collapse:collapse;">
+    <thead><tr>{head_cells}</tr></thead>
+    <tbody>{body}</tbody>
+  </table>
+</div>"""
+
+    def _build_hubspot_crm_dashboard_html(self, request, portal_id: int | None, upstream_origin: str) -> str:
+        """
+        Live HubSpot data rendered via the official CRM REST API (Private App / OAuth
+        token), instead of trying to natively render HubSpot's own web app (which
+        cannot bootstrap through a server-side session-cookie proxy — see notes on
+        _simplified_home_panel_html / repo memory). This keeps everything inside our
+        own passthrough response, so PolySniffer capture + orchestration hooks on the
+        /home/ request still apply normally.
+        """
+        from dose.services.hubspot_api import HubspotApiService, HubspotNotConnected, HubspotApiError
+        from dose.utils import get_current_tenant
+
+        origin = (upstream_origin or 'https://app.hubspot.com').rstrip('/')
+        tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+        if not tenant:
+            return self._simplified_home_panel_html(portal_id, origin, connect_url='/dose/hubspot/oauth/start/')
+
+        try:
+            api = HubspotApiService.for_tenant(tenant)
+            contacts = api.list_contacts(limit=5)
+            companies = api.list_companies(limit=5)
+            deals = api.list_deals(limit=5)
+            tickets = api.list_tickets(limit=5)
+            tasks = api.list_tasks(limit=5)
+        except HubspotNotConnected:
+            return self._simplified_home_panel_html(portal_id, origin, connect_url='/dose/hubspot/oauth/start/')
+        except HubspotApiError as exc:
+            logger.warning('[HubSpot] CRM dashboard fetch failed: %s', exc)
+            return self._simplified_home_panel_html(portal_id, origin)
+
+        contacts_html = self._hs_dashboard_table(
+            f'Contacts ({len(contacts)})', contacts,
+            [('firstname', 'First name'), ('lastname', 'Last name'), ('email', 'Email'), ('phone', 'Phone')],
+        )
+        companies_html = self._hs_dashboard_table(
+            f'Companies ({len(companies)})', companies,
+            [('name', 'Name'), ('domain', 'Domain'), ('city', 'City'), ('industry', 'Industry')],
+        )
+        deals_html = self._hs_dashboard_table(
+            f'Deals ({len(deals)})', deals,
+            [('dealname', 'Deal'), ('amount', 'Amount'), ('dealstage', 'Stage'), ('closedate', 'Close date')],
+        )
+        tickets_html = self._hs_dashboard_table(
+            f'Tickets ({len(tickets)})', tickets,
+            [('subject', 'Subject'), ('hs_pipeline_stage', 'Stage'), ('hs_ticket_priority', 'Priority')],
+        )
+        tasks_html = self._hs_dashboard_table(
+            f'Tasks ({len(tasks)})', tasks,
+            [('hs_task_subject', 'Task'), ('hs_task_status', 'Status'), ('hs_task_priority', 'Priority')],
+        )
+
+        return f"""
+<div class="polysaas-hs-dashboard" style="background:#f5f8fa;padding:0;margin:0;">
+<div style="max-width:960px;margin:0 auto;padding:28px 20px;font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <div>
+      <div style="font-size:20px;font-weight:700;color:#ff7a59;">HubSpot</div>
+      <div style="font-size:12px;color:#516f90;">Portal ID: {portal_id or 'unknown'} &middot; live CRM data</div>
+    </div>
+    <button type="button" onclick="{self._open_hubspot_split_js(origin)}"
+            style="padding:9px 16px;background:#ff7a59;color:#fff;border:0;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;font-family:inherit;">
+      Open HubSpot (split screen)&nbsp;&#8599;
+    </button>
+  </div>
+  {contacts_html}
+  {companies_html}
+  {deals_html}
+  {tickets_html}
+  {tasks_html}
+</div>
+</div>
+{self._orchestration_polling_script_html()}"""
+
+    @staticmethod
+    def _open_hubspot_split_js(origin: str) -> str:
+        """
+        Inline onclick handler: opens real HubSpot in a genuine separate top-level
+        popup window sized/positioned to the right half of the screen, and tries
+        to resize/move OUR OWN window to the left half (only works if the browser
+        permits it for a script-opened context; harmless no-op otherwise \u2014 the
+        user can always snap manually with Win+Left / Win+Right). This is a real
+        second browsing context (NOT an iframe), so it is completely unaffected
+        by HubSpot's `frame-ancestors` CSP header, which only blocks embedding.
+        """
+        url = f'{origin}/home/'
+        return (
+            "(function(){"
+            "var w=Math.round(screen.availWidth/2);"
+            "var h=screen.availHeight;"
+            "var left=screen.availWidth-w;"
+            "try{window.resizeTo(w,h);window.moveTo(0,0);}catch(e){}"
+            f"var p=window.open('{url}','hubspot_split','width='+w+',height='+h+',left='+left+',top=0');"
+            "if(p){try{p.opener=null;}catch(e){}}"
+            "})()"
+        )
+
+    @staticmethod
+    def _orchestration_polling_script_html() -> str:
+        """
+        Same-origin poller that calls the existing (frozen) orchestration bar's
+        public `showEvent()` API whenever a new HubSpot-webhook-driven
+        orchestration event (e.g. HubSpotToOdooContactSync) appears, via
+        /dose/api/hubspot/recent-events/. Makes the green bar reflect real
+        backend events regardless of what home-page view is being shown.
+        """
+        return """
+<script>
+(function() {
+  var lastEventId = 0;
+  function poll() {
+    var url = '/dose/api/hubspot/recent-events/' + (lastEventId ? ('?since_id=' + lastEventId) : '');
+    fetch(url, {credentials: 'same-origin'})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data || !data.events || !data.events.length) return;
+        var events = data.events.slice().reverse();
+        events.forEach(function(evt) {
+          if (evt.id > lastEventId) {
+            lastEventId = evt.id;
+            if (window.__psOrchBarInstance && typeof window.__psOrchBarInstance.showEvent === 'function') {
+              window.__psOrchBarInstance.showEvent(evt.description || 'HubSpot orchestration event');
+            }
+          }
+        });
+      })
+      .catch(function() {});
+  }
+  poll();
+  setInterval(poll, 4000);
+})();
+</script>"""
+
+    @staticmethod
+    def _build_hubspot_iframe_view_html(portal_id: int | None, upstream_origin: str) -> str:
+        """
+        DEAD CODE — kept for reference only, DO NOT wire this back into
+        process_html_response(). CONFIRMED IMPOSSIBLE 2026-07-04: HubSpot's own
+        /home/ response sends a `frame-ancestors 'self' app.hubspot.com` CSP
+        header, so the browser hard-blocks framing it from our origin
+        ("Framing 'https://app.hubspot.com/' violates the following Content
+        Security Policy directive..." in console). This is enforced by the
+        browser reading HubSpot's OWN headers and cannot be bypassed from our
+        proxy. See repo memory hubspot-passthrough-client-shim-notes.md.
+        """
+        origin = (upstream_origin or 'https://app.hubspot.com').rstrip('/')
+        return f"""
+<div style="height:78vh;min-height:520px;">
+  <iframe src="{origin}/home/" title="HubSpot"
+          style="width:100%;height:100%;border:0;display:block;"
+          referrerpolicy="no-referrer-when-downgrade"></iframe>
+</div>
+{HubspotPassthroughHandler._orchestration_polling_script_html()}"""
+
     def process_html_response(self, html_str, request, endpoint_url=None, **context):
         self._bind_hubspot_request(request)
         if not html_str:
             return html_str
+        req_path_raw = getattr(request, 'path', '') or ''
+        req_path_norm = req_path_raw.split('?', 1)[0].rstrip('/')
+        is_home_landing = req_path_norm.endswith('/home')
+        if is_home_landing and not self._is_popup_login_request(request):
+            try:
+                authenticated = bool(self._session_service(request).ensure_web_cookies())
+            except Exception:
+                authenticated = False
+            if authenticated:
+                endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
+                endpoint_url_eff = endpoint_url or getattr(endpoint, 'endpoint_url', '') or ''
+                origin = self._base_from_url(endpoint_url_eff)
+                pid = self._resolve_portal_id(request)
+                logger.info('[HubSpot] serving CRM API dashboard + webhook-driven orchestration polling')
+                return self._build_hubspot_crm_dashboard_html(request, pid, origin)
         from dose.polysniffer.handlers.hubspot_native_sniff import _rewrite_hubspot_native_html
+
 
         endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
         endpoint_url = endpoint_url or getattr(endpoint, 'endpoint_url', '') or ''

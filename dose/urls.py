@@ -39,6 +39,7 @@ from dose.views.hubspot_context import (
     hubspot_oauth_callback,
 )
 from dose.orchestration_navigate_api import orchestration_navigate_api
+from dose.hubspot_recent_events_api import hubspot_recent_events_api
 from dose.views.atomic_service_names import atomic_service_names
 from dose.views.atomic_service_param_sample import atomic_service_param_sample
 from dose.views.ai_peers_webhook import ai_peers_webhook
@@ -81,6 +82,7 @@ urlpatterns = [
     path('api/display-settings/', DisplaySettingsView.as_view(), name='display_settings'),
     path('api/unread-dosemessages/', UnreadDoseMessagesView.as_view(), name='unread_dosemessages'),
     path('api/orchestration-navigate/', orchestration_navigate_api, name='api_orchestration_navigate'),
+    path('api/hubspot/recent-events/', hubspot_recent_events_api, name='api_hubspot_recent_events'),
     path('api/atomic-service-names/', atomic_service_names, name='atomic_service_names'),
     path('api/atomic-service-param-sample/', atomic_service_param_sample, name='atomic_service_param_sample'),
     path('api/orchestration-instruction/<path:action_path>/', get_orchestration_instruction, name='get_orchestration_instruction'),

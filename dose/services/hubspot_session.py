@@ -320,6 +320,19 @@ class HubspotSessionService:
     @staticmethod
     def is_api_upstream_path(path: str) -> bool:
         low = (path or '').lower()
+        # Portal-bootstrap calls (/home/v2/api/portal, /home/v2/api/no-intended-portal,
+        # bare /home/v2/api) are part of the web UI's own bootstrap sequence — they need
+        # the same session cookies as any other page request, not Bearer/OAuth auth.
+        # Excluding them here left them going upstream with no auth at all (no cookies,
+        # no bearer token when OAuth isn't connected), so HubSpot always 401'd and the
+        # SPA got stuck spinning on the static bootstrap stub forever.
+        path_only = low.split('?', 1)[0].rstrip('/')
+        if (
+            path_only.endswith('/home/v2/api')
+            or '/home/v2/api/portal' in low
+            or '/home/v2/api/no-intended-portal' in low
+        ):
+            return False
         return '/home/v2/api/' in low or '/firealarm/v4/alarm/' in low
 
     def cookies_for_upstream(self, *, client_path: str = '', method: str = 'GET') -> Dict[str, str]:
