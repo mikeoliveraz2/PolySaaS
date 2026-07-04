@@ -1911,24 +1911,37 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         )
 
         return f"""
-<div class="polysaas-hs-dashboard" style="background:#f5f8fa;padding:0;margin:0;">
-<div style="max-width:960px;margin:0 auto;padding:28px 20px;font-family:Segoe UI,Helvetica Neue,Arial,sans-serif;">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-    <div>
-      <div style="font-size:20px;font-weight:700;color:#ff7a59;">HubSpot</div>
-      <div style="font-size:12px;color:#516f90;">Portal ID: {portal_id or 'unknown'} &middot; live CRM data</div>
+<div class="polysaas-hs-dashboard" style="background:#f5f8fa;padding:0;margin:0;font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;">
+  <div style="background:#33475b;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="width:30px;height:30px;border-radius:6px;background:#ff7a59;display:flex;align-items:center;justify-content:center;
+                  color:#fff;font-weight:700;font-size:16px;">H</div>
+      <span style="color:#fff;font-size:15px;font-weight:600;letter-spacing:.2px;">HubSpot</span>
+      <div style="display:flex;gap:18px;margin-left:22px;">
+        {"".join(f'<span style="color:{"#fff" if n=="CRM" else "#cbd6e2"};font-size:13px;font-weight:{"600" if n=="CRM" else "500"};padding:8px 2px;border-bottom:{"2px solid #ff7a59" if n=="CRM" else "2px solid transparent"};">{n}</span>' for n in ("CRM", "Marketing", "Sales", "Service", "Automation", "Reporting"))}
+      </div>
     </div>
-    <button type="button" onclick="{self._open_hubspot_split_js(origin)}"
-            style="padding:9px 16px;background:#ff7a59;color:#fff;border:0;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;font-family:inherit;">
-      Open HubSpot (split screen)&nbsp;&#8599;
-    </button>
+    <div style="width:30px;height:30px;border-radius:50%;background:#516f90;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;">
+      {(portal_id and str(portal_id)[:1]) or '?'}
+    </div>
   </div>
+  <div style="max-width:1040px;margin:0 auto;padding:28px 24px 40px;">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:24px;font-weight:700;color:#33475b;">Welcome back</div>
+        <div style="font-size:13px;color:#516f90;margin-top:4px;">Portal ID: {portal_id or 'unknown'} &middot; live CRM data via PolySaaS passthrough</div>
+      </div>
+      <button type="button" onclick="{self._open_hubspot_split_js(origin)}"
+              style="padding:10px 18px;background:#ff7a59;color:#fff;border:0;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;font-family:inherit;box-shadow:0 1px 2px rgba(0,0,0,.15);">
+        Open HubSpot (split screen)&nbsp;&#8599;
+      </button>
+    </div>
   {contacts_html}
   {companies_html}
   {deals_html}
   {tickets_html}
   {tasks_html}
-</div>
+  </div>
 </div>
 {self._orchestration_polling_script_html()}"""
 
@@ -1942,6 +1955,19 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         user can always snap manually with Win+Left / Win+Right). This is a real
         second browsing context (NOT an iframe), so it is completely unaffected
         by HubSpot's `frame-ancestors` CSP header, which only blocks embedding.
+
+        IMPORTANT LIMITATION (do not try to "fix" this further): we cannot read
+        `popup.location.href`/pathname \u2014 it is a cross-origin real hubspot.com
+        window, and the browser's Same-Origin Policy throws a SecurityError on
+        any attempt to read its URL/DOM. This is a hard, unbypassable browser
+        security boundary (same category as HubSpot's own frame-ancestors CSP
+        block on iframes) \u2014 there is no API, header, or trick that lets a page
+        inspect another origin's location. The ONLY cross-origin-readable signal
+        on a popup handle is `.closed`, so that's all we track here: open/close
+        presence, surfaced via the frozen bar's public showEvent() API. Real
+        in-app HubSpot navigation is NOT and cannot be reflected here \u2014 only
+        real backend webhook-driven orchestration events (see
+        _orchestration_polling_script_html) can be genuinely tracked.
         """
         url = f'{origin}/home/'
         return (
@@ -1952,6 +1978,13 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             "try{window.resizeTo(w,h);window.moveTo(0,0);}catch(e){}"
             f"var p=window.open('{url}','hubspot_split','width='+w+',height='+h+',left='+left+',top=0');"
             "if(p){try{p.opener=null;}catch(e){}}"
+            "var bar=window.__psOrchBarInstance;"
+            "if(bar&&typeof bar.showEvent==='function'){"
+            "bar.showEvent('HubSpot window opened');"
+            "var chk=setInterval(function(){"
+            "if(!p||p.closed){clearInterval(chk);bar.showEvent('HubSpot window closed');}"
+            "},1000);"
+            "}"
             "})()"
         )
 
