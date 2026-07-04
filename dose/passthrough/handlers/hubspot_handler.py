@@ -1909,40 +1909,95 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             f'Tasks ({len(tasks)})', tasks,
             [('hs_task_subject', 'Task'), ('hs_task_status', 'Status'), ('hs_task_priority', 'Priority')],
         )
+        tenant_slug = (getattr(tenant, 'slug', None) or '').strip()
+        tenant_logo_url = ''
+        logo_field = getattr(tenant, 'logo', None)
+        if logo_field and getattr(logo_field, 'name', ''):
+          try:
+            tenant_logo_url = (logo_field.url or '').strip()
+          except Exception:
+            tenant_logo_url = ''
+        tenant_logo_url = (
+          tenant_logo_url
+          or (getattr(request, 'session', {}).get('tenant_logo_url', '') or '').strip()
+          or '/static/img/PolySaaS-Industrial-Logo.png'
+        )
 
         return f"""
-<div class="polysaas-hs-dashboard" style="background:#f5f8fa;padding:0;margin:0;font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;">
-  <div style="background:#33475b;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <div style="width:30px;height:30px;border-radius:6px;background:#ff7a59;display:flex;align-items:center;justify-content:center;
-                  color:#fff;font-weight:700;font-size:16px;">H</div>
-      <span style="color:#fff;font-size:15px;font-weight:600;letter-spacing:.2px;">HubSpot</span>
-      <div style="display:flex;gap:18px;margin-left:22px;">
-        {"".join(f'<span style="color:{"#fff" if n=="CRM" else "#cbd6e2"};font-size:13px;font-weight:{"600" if n=="CRM" else "500"};padding:8px 2px;border-bottom:{"2px solid #ff7a59" if n=="CRM" else "2px solid transparent"};">{n}</span>' for n in ("CRM", "Marketing", "Sales", "Service", "Automation", "Reporting"))}
+<div class="polysaas-hs-dashboard" style="background:linear-gradient(180deg,#f3f7fb 0%,#eef4f9 100%);padding:0;margin:0;font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;">
+  <div style="max-width:1060px;margin:0 auto;padding:26px 20px 38px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:center;padding:8px 10px;background:#fff;border:1px solid #d8e2ee;border-radius:10px;box-shadow:0 1px 2px rgba(27,39,51,.06);min-width:108px;min-height:108px;">
+        <img src="{tenant_logo_url}" alt="PolySaaS" style="height:96px;width:96px;display:block;object-fit:contain;">
+      </div>
+      <div style="color:#7a8ca0;font-size:14px;">&times;</div>
+      <div style="display:flex;align-items:center;justify-content:center;padding:8px 10px;background:#fff;border:1px solid #d8e2ee;border-radius:10px;box-shadow:0 1px 2px rgba(27,39,51,.06);">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/3/3f/HubSpot_Logo.svg" alt="HubSpot" style="height:30px;width:auto;display:block;">
+      </div>
+      <div style="margin-left:auto;font-size:12px;color:#516f90;">Portal ID: {portal_id or 'unknown'}</div>
+    </div>
+
+    <h2 style="all:unset;display:block;margin:12px 0 20px;font-size:96px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.6px !important;color:#1f3a56 !important;text-transform:none !important;text-shadow:0 2px 0 rgba(255,255,255,.55);font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;">Connected</h2>
+
+    <div style="background:#fff;border:1px solid #d8e2ee;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(36,52,67,.08);">
+      <div style="padding:14px 24px 14px;background:radial-gradient(circle at 82% 8%,rgba(255,122,89,.15),transparent 52%),linear-gradient(130deg,#243443 0%,#33475b 65%,#3f5971 100%);">
+        <div style="margin-top:2px;font-size:14px;color:#d4e1ef;max-width:760px;">PolySaaS and HubSpot are linked. Use the actions below to launch HubSpot, trigger sync operations, and surface integration events back to this page.</div>
+      </div>
+
+      <div style="padding:14px 16px 6px;background:#f9fbfd;border-top:1px solid #d8e2ee;">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 188px;gap:10px;align-items:center;padding:11px 10px;border-bottom:1px solid #e5edf5;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#243443;">Open HubSpot</div>
+            <div style="margin-top:2px;font-size:12px;color:#62788f;">Launch the full native HubSpot experience in a separate window.</div>
+          </div>
+          <div style="text-align:right;">
+            <button type="button" onclick="{self._open_hubspot_split_js(origin)}" style="min-width:170px;padding:9px 12px;background:#22c55e;color:#000;border:0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Open HubSpot&nbsp;&#8599;</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 188px;gap:10px;align-items:center;padding:11px 10px;border-bottom:1px solid #e5edf5;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#243443;">Open HubSpot (new tab)</div>
+            <div style="margin-top:2px;font-size:12px;color:#62788f;">Open HubSpot in a standard browser tab (without split-screen sizing).</div>
+          </div>
+          <div style="text-align:right;">
+            <button type="button" onclick="window.open('{origin}/home/','_blank','noopener')" style="min-width:170px;padding:9px 12px;background:#425b76;color:#fff;border:0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Open in Tab</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 188px;gap:10px;align-items:center;padding:11px 10px;border-bottom:1px solid #e5edf5;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#243443;">Sync Contacts Now</div>
+            <div style="margin-top:2px;font-size:12px;color:#62788f;">Trigger a contact sync event through the integration path and report the result to the orchestration bar.</div>
+          </div>
+          <div style="text-align:right;">
+            <button type="button" onclick="window.__psHubspotActions && window.__psHubspotActions.triggerSampleSync()" style="min-width:170px;padding:9px 12px;background:#00a4bd;color:#fff;border:0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Start Sync</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 188px;gap:10px;align-items:center;padding:11px 10px;border-bottom:1px solid #e5edf5;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#243443;">Check Latest Integration Event</div>
+            <div style="margin-top:2px;font-size:12px;color:#62788f;">Pull the latest event from PolySaaS and post it to the green orchestration bar.</div>
+          </div>
+          <div style="text-align:right;">
+            <button type="button" onclick="window.__psHubspotActions && window.__psHubspotActions.showLatestEvent()" style="min-width:170px;padding:9px 12px;background:#516f90;color:#fff;border:0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Check Event</button>
+          </div>
+        </div>
       </div>
     </div>
-    <div style="width:30px;height:30px;border-radius:50%;background:#516f90;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;">
-      {(portal_id and str(portal_id)[:1]) or '?'}
+
+    <div style="margin-top:22px;font-size:12px;color:#6a8097;font-weight:600;letter-spacing:.25px;text-transform:uppercase;">Live HubSpot Snapshot</div>
+    <div style="margin-top:8px;">
+      {contacts_html}
+      {companies_html}
+      {deals_html}
+      {tickets_html}
+      {tasks_html}
     </div>
-  </div>
-  <div style="max-width:1040px;margin:0 auto;padding:28px 24px 40px;">
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
-      <div>
-        <div style="font-size:24px;font-weight:700;color:#33475b;">Welcome back</div>
-        <div style="font-size:13px;color:#516f90;margin-top:4px;">Portal ID: {portal_id or 'unknown'} &middot; live CRM data via PolySaaS passthrough</div>
-      </div>
-      <button type="button" onclick="{self._open_hubspot_split_js(origin)}"
-              style="padding:10px 18px;background:#ff7a59;color:#fff;border:0;cursor:pointer;border-radius:4px;font-size:13px;font-weight:600;font-family:inherit;box-shadow:0 1px 2px rgba(0,0,0,.15);">
-        Open HubSpot (split screen)&nbsp;&#8599;
-      </button>
-    </div>
-  {contacts_html}
-  {companies_html}
-  {deals_html}
-  {tickets_html}
-  {tasks_html}
   </div>
 </div>
+{self._hubspot_action_helpers_script_html(tenant_slug)}
 {self._orchestration_polling_script_html()}"""
 
     @staticmethod
@@ -1987,6 +2042,75 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             "}"
             "})()"
         )
+
+    @staticmethod
+    def _hubspot_action_helpers_script_html(tenant_slug: str) -> str:
+        safe_slug = tenant_slug or 'olient'
+        return f"""
+<script>
+(function() {{
+  var tenantSlug = '{safe_slug}';
+
+  function showOrchEvent(message) {{
+    if (window.__psOrchBarInstance && typeof window.__psOrchBarInstance.showEvent === 'function') {{
+      window.__psOrchBarInstance.showEvent(message);
+    }}
+  }}
+
+  function setOrchActionPath(pathOnly) {{
+    var path = pathOnly || '/contacts';
+    var bar = window.__psOrchBarInstance;
+    var pathEl = document.getElementById('pss-action-path');
+    if (pathEl) pathEl.textContent = path;
+    try {{ window.__PS_ORCH_ACTION_PATH = path; }} catch (_psp) {{}}
+    if (bar && typeof bar.notifyOrchestration === 'function') {{
+      bar.notifyOrchestration(path, path);
+    }}
+  }}
+
+  function triggerSampleSync() {{
+    setOrchActionPath('/contacts');
+    showOrchEvent('Synching Contacts');
+    var unique = Date.now();
+    var payload = {{
+      properties: {{
+        email: 'demo+' + unique + '@polysaas.online',
+        firstname: 'PolySaaS',
+        lastname: 'Sync Demo',
+        phone: '+1-555-0100'
+      }}
+    }};
+    fetch('/dose/webhook/hubspot/' + tenantSlug + '/', {{
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify(payload)
+    }})
+      .then(function(r) {{ return r.ok ? r.json() : Promise.reject(); }})
+      .then(function() {{ showOrchEvent('HubSpot contacts sync submitted'); }})
+      .catch(function() {{ showOrchEvent('HubSpot contact sync failed'); }});
+  }}
+
+  function showLatestEvent() {{
+    fetch('/dose/api/hubspot/recent-events/', {{credentials: 'same-origin'}})
+      .then(function(r) {{ return r.ok ? r.json() : null; }})
+      .then(function(data) {{
+        if (!data || !data.events || !data.events.length) {{
+          showOrchEvent('No HubSpot events yet');
+          return;
+        }}
+        var evt = data.events[0];
+        showOrchEvent(evt.description || 'HubSpot orchestration event');
+      }})
+      .catch(function() {{ showOrchEvent('Could not fetch latest HubSpot event'); }});
+  }}
+
+  window.__psHubspotActions = {{
+    triggerSampleSync: triggerSampleSync,
+    showLatestEvent: showLatestEvent
+  }};
+}})();
+</script>"""
 
     @staticmethod
     def _orchestration_polling_script_html() -> str:
