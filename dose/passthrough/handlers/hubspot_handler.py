@@ -1924,8 +1924,26 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         )
 
         return f"""
-<div class="polysaas-hs-dashboard" style="background:linear-gradient(180deg,#f3f7fb 0%,#eef4f9 100%);padding:0;margin:0;font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;">
-  <div style="max-width:1060px;margin:0 auto;padding:26px 20px 38px;">
+<style>
+  .polysaas-hs-dashboard .polysaas-hs-connected-heading {{
+    all: unset !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 66px !important;
+    line-height: 0.95 !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.8px !important;
+    color: #1f3a56 !important;
+    text-transform: none !important;
+    font-family: 'Lexend Deca', Segoe UI, Helvetica Neue, Arial, sans-serif !important;
+    text-shadow: 0 3px 0 rgba(255, 255, 255, 0.6) !important;
+  }}
+</style>
+<div class="polysaas-hs-dashboard" style="background:linear-gradient(180deg,#f3f7fb 0%,#eef4f9 100%);padding:0;margin:0;font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;display:flex;height:100vh;overflow:hidden;">
+  <!-- Left Pane: Main Dashboard -->
+  <div class="polysaas-hs-left-pane" style="flex:0 0 50%;margin-left:10px;overflow-y:auto;overflow-x:hidden;">
+    <div style="max-width:1060px;margin:0 auto;padding:26px 20px 38px;">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       <div style="display:flex;align-items:center;justify-content:center;padding:8px 10px;background:#fff;border:1px solid #d8e2ee;border-radius:10px;box-shadow:0 1px 2px rgba(27,39,51,.06);min-width:108px;min-height:108px;">
         <img src="{tenant_logo_url}" alt="PolySaaS" style="height:96px;width:96px;display:block;object-fit:contain;">
@@ -1937,7 +1955,9 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       <div style="margin-left:auto;font-size:12px;color:#516f90;">Portal ID: {portal_id or 'unknown'}</div>
     </div>
 
-    <h2 style="all:unset;display:block;margin:12px 0 20px;font-size:96px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.6px !important;color:#1f3a56 !important;text-transform:none !important;text-shadow:0 2px 0 rgba(255,255,255,.55);font-family:'Lexend Deca',Segoe UI,Helvetica Neue,Arial,sans-serif;">Connected</h2>
+    <div style="margin:20px 0 30px;padding:18px 24px;background:linear-gradient(135deg,rgba(34,197,94,.12) 0%,rgba(34,197,94,.05) 100%);border-left:6px solid #22c55e;border-radius:8px;">
+      <h2 class="polysaas-hs-connected-heading">Connected</h2>
+    </div>
 
     <div style="background:#fff;border:1px solid #d8e2ee;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(36,52,67,.08);">
       <div style="padding:14px 24px 14px;background:radial-gradient(circle at 82% 8%,rgba(255,122,89,.15),transparent 52%),linear-gradient(130deg,#243443 0%,#33475b 65%,#3f5971 100%);">
@@ -1996,49 +2016,50 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       {tasks_html}
     </div>
   </div>
+  </div>
 </div>
 {self._hubspot_action_helpers_script_html(tenant_slug)}
-{self._orchestration_polling_script_html()}"""
+{self._orchestration_polling_script_html()}
+<script>
+(function() {{
+  window.__psHubspotSplitPopup = null;
+  function hideOrchInstructionButton() {{
+    try {{
+      var buttons = document.querySelectorAll('button');
+      for (var i = 0; i < buttons.length; i++) {{
+        if (buttons[i].textContent.indexOf('Insert Orchestration') >= 0) {{
+          buttons[i].style.display = 'none';
+        }}
+      }}
+    }} catch(_) {{}}
+  }}
+  if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', hideOrchInstructionButton);
+  }} else {{
+    hideOrchInstructionButton();
+  }}
+}})();
+</script>"""
 
     @staticmethod
     def _open_hubspot_split_js(origin: str) -> str:
         """
         Inline onclick handler: opens real HubSpot in a genuine separate top-level
-        popup window sized/positioned to the right half of the screen, and tries
-        to resize/move OUR OWN window to the left half (only works if the browser
-        permits it for a script-opened context; harmless no-op otherwise \u2014 the
-        user can always snap manually with Win+Left / Win+Right). This is a real
-        second browsing context (NOT an iframe), so it is completely unaffected
-        by HubSpot's `frame-ancestors` CSP header, which only blocks embedding.
-
-        IMPORTANT LIMITATION (do not try to "fix" this further): we cannot read
-        `popup.location.href`/pathname \u2014 it is a cross-origin real hubspot.com
-        window, and the browser's Same-Origin Policy throws a SecurityError on
-        any attempt to read its URL/DOM. This is a hard, unbypassable browser
-        security boundary (same category as HubSpot's own frame-ancestors CSP
-        block on iframes) \u2014 there is no API, header, or trick that lets a page
-        inspect another origin's location. The ONLY cross-origin-readable signal
-        on a popup handle is `.closed`, so that's all we track here: open/close
-        presence, surfaced via the frozen bar's public showEvent() API. Real
-        in-app HubSpot navigation is NOT and cannot be reflected here \u2014 only
-        real backend webhook-driven orchestration events (see
-        _orchestration_polling_script_html) can be genuinely tracked.
+        popup window (not through proxy, direct connection). Dashboard is permanently
+        set to 50% width with left margin for split-screen layout.
         """
         url = f'{origin}/home/'
         return (
             "(function(){"
             "var w=Math.round(screen.availWidth/2);"
             "var h=screen.availHeight;"
-            "var left=screen.availWidth-w;"
-            "try{window.resizeTo(w,h);window.moveTo(0,0);}catch(e){}"
-            f"var p=window.open('{url}','hubspot_split','width='+w+',height='+h+',left='+left+',top=0');"
-            "if(p){try{p.opener=null;}catch(e){}}"
+            "var x=Math.round(screen.availWidth/2);"
+            "var y=0;"
+            f"var p=window.open('{url}','hubspot_split','width='+w+',height='+h+',left='+x+',top='+y+',resizable,scrollbars');"
+            "window.__psHubspotSplitPopup=p;"
             "var bar=window.__psOrchBarInstance;"
             "if(bar&&typeof bar.showEvent==='function'){"
-            "bar.showEvent('HubSpot window opened');"
-            "var chk=setInterval(function(){"
-            "if(!p||p.closed){clearInterval(chk);bar.showEvent('HubSpot window closed');}"
-            "},1000);"
+            "bar.showEvent('Opening HubSpot in split-screen');"
             "}"
             "})()"
         )
