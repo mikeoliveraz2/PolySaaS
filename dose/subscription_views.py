@@ -41,6 +41,11 @@ except Exception:
 from dose.models import Subscription, Tenant, UserProfile, UserTenantMembership
 from dose.serializers import SubscriptionSerializer
 from dose.passthrough.credential_container import PassthroughCredentialContainer
+from dose.services.subscription_pricing import (
+    build_subscription_pricing,
+    normalize_user_count,
+    pricing_payload,
+)
 from dose.services.odoo_tenant_provisioner import provision_odoo_tenant
 from dose.services.nextcloud_tenant_provisioner import provision_nextcloud_tenant
 from dose.services.dolibarr_tenant_provisioner import provision_dolibarr_tenant
@@ -72,6 +77,57 @@ _BUNDLED_APP_LABELS = {
     'enable_polysysmon': 'PolySysMon',
     'enable_hubspot': 'HubSpot',
 }
+
+
+def _validate_and_apply_promo_code(promo_code_input, plan_tier, user_count):
+    """
+    Validate a promo code and return discount information.
+    
+    Args:
+        promo_code_input: Promo code string from user input
+        plan_tier: Current subscription plan tier
+        user_count: Number of paid seats
+    
+    Returns:
+        Tuple of (is_valid, promo_obj or error_message, pricing)
+    """
+    if not promo_code_input:
+        return True, None, build_subscription_pricing(plan_tier, user_count=user_count)
+    
+    from dose.models import PromoCode
+    
+    try:
+        promo = PromoCode.objects.get(code=promo_code_input.strip().upper())
+    except PromoCode.DoesNotExist:
+        return False, f'Promo code "{promo_code_input}" not found', None
+    
+    # Check if promo code is valid
+    is_valid, message = promo.is_valid_now()
+    if not is_valid:
+        return False, message, None
+    
+    # Check if promo code applies to this plan
+    if not promo.can_apply_to_plan(plan_tier):
+        return False, f'Promo code does not apply to plan "{plan_tier}"', None
+    
+    pricing = build_subscription_pricing(plan_tier, user_count=user_count, promo_code=promo)
+    
+    logger.info(
+        'Promo code applied: %s for plan %s (%s users), discount: $%s',
+        promo.code, plan_tier, user_count, pricing['promo_discount_amount']
+    )
+    
+    return True, promo, pricing
+
+
+def _ensure_stripe_coupon(promo):
+    coupon_id = promo.stripe_coupon_id or promo.code.upper()
+    try:
+        stripe.Coupon.retrieve(coupon_id)
+    except Exception:
+        params = promo.get_stripe_coupon_create_params()
+        stripe.Coupon.create(**params)
+    return coupon_id
 
 
 def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_started=True, provisioning_results=None):
@@ -135,6 +191,7 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
 
 def _subscription_response_payload(subscription, selected_apps, *, tenant_name='', stripe_trial_started=True, user_obj=None, provisioning_results=None):
     body = dict(SubscriptionSerializer(subscription).data)
+    body['pricing'] = pricing_payload(subscription.get_pricing_breakdown())
     body.update(_subscriber_facing_messages(
         selected_apps, tenant_name=tenant_name, stripe_trial_started=stripe_trial_started,
         provisioning_results=provisioning_results or {},
@@ -228,6 +285,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         username = data.get('username')
         email = data.get('email')
         password = data.get('password')
+        pay_by_invoice_raw = data.get('pay_by_invoice', False)
+        if isinstance(pay_by_invoice_raw, str):
+            pay_by_invoice = pay_by_invoice_raw.strip().lower() in ('1', 'true', 'yes', 'on')
+        else:
+            pay_by_invoice = bool(pay_by_invoice_raw)
 
         needs_new_user = bool(username and email and password)
         needs_new_tenant = bool(tenant_name and tenant_shortname)
@@ -258,6 +320,40 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         plan_tier = data.get('plan_tier', 'polysaas-1')
         if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited'):
             plan_tier = 'polysaas-1'
+        user_count = normalize_user_count(data.get('user_count', 1))
+
+        # ── Promo code handling (new feature) ────────────────────────
+        promo_code_input = data.get('promo_code', '').strip()
+        promo_code_obj = None
+        pricing = build_subscription_pricing(plan_tier, user_count=user_count)
+        
+        if promo_code_input:
+            is_valid, promo_result, promo_pricing = _validate_and_apply_promo_code(
+                promo_code_input, plan_tier, user_count
+            )
+            if not is_valid:
+                return Response(
+                    {'error': f'Invalid promo code: {promo_result}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            promo_code_obj = promo_result
+            pricing = promo_pricing
+
+        submitted_amount = None
+        if data.get('amount') not in (None, ''):
+            try:
+                submitted_amount = pricing['estimated_monthly_total'].__class__(str(data.get('amount')))
+            except Exception:
+                return Response({'error': 'Invalid amount submitted.'}, status=status.HTTP_400_BAD_REQUEST)
+            expected_amount = pricing['estimated_monthly_total']
+            if abs(submitted_amount - expected_amount) > expected_amount.__class__('0.01'):
+                return Response(
+                    {
+                        'error': 'Subscription amount is out of date. Please review the pricing summary and try again.',
+                        'expected_amount': float(expected_amount),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         app_keys = [
             'enable_odoo', 'enable_nextcloud', 'enable_dolibarr',
@@ -299,7 +395,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
         test_bypass = tenant_name and tenant_name.lower().startswith('a')
 
-        if not test_bypass:
+        if not test_bypass and not pay_by_invoice:
             if not tenant_slug and not needs_new_tenant:
                 return Response({'error': 'Missing tenant or stripe_token'}, status=status.HTTP_400_BAD_REQUEST)
             if not token:
@@ -310,7 +406,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         stripe_subscription_id = None
         active = False
 
-        if not test_bypass:
+        if not test_bypass and not pay_by_invoice:
             try:
                 price_ids = getattr(settings, 'STRIPE_PRICE_IDS', {})
                 stripe_price = price_ids.get(plan_tier) or getattr(settings, 'STRIPE_PRICE_ID', '')
@@ -318,28 +414,37 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 customer = stripe.Customer.create(source=token, name=card_name, email=email)
                 stripe_customer_id = customer.id
 
-                sub_items = [{'price': stripe_price}]
+                sub_items = [{'price': stripe_price, 'quantity': user_count}]
                 needs_storage = data.get('enable_nextcloud') or data.get('enable_wordpress')
                 storage_price_id = getattr(settings, 'STRIPE_PRICE_ID_STORAGE', '')
                 if needs_storage and storage_price_id:
                     sub_items.append({'price': storage_price_id})
 
-                stripe_sub = stripe.Subscription.create(
-                    customer=customer.id,
-                    items=sub_items,
-                    trial_period_days=getattr(settings, 'STRIPE_TRIAL_PERIOD_DAYS', 14),
-                    metadata={
+                stripe_kwargs = {
+                    'customer': customer.id,
+                    'items': sub_items,
+                    'trial_period_days': getattr(settings, 'STRIPE_TRIAL_PERIOD_DAYS', 14),
+                    'metadata': {
                         'plan_tier': plan_tier,
                         'tenant_name': tenant_name or '',
                         'selected_apps': ','.join(selected_apps),
+                        'user_count': str(user_count),
+                        'estimated_monthly_total': str(pricing['estimated_monthly_total']),
                     },
-                )
+                }
+                if promo_code_obj:
+                    stripe_kwargs['discounts'] = [{'coupon': _ensure_stripe_coupon(promo_code_obj)}]
+
+                stripe_sub = stripe.Subscription.create(**stripe_kwargs)
                 stripe_subscription_id = stripe_sub.id
                 active = True
             except Exception as e:
                 _compensate_stripe(stripe_subscription_id, stripe_customer_id)
                 logger.error("Stripe error: %s", e)
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        elif pay_by_invoice:
+            # Invoice flow intentionally skips Stripe customer/subscription creation.
+            active = True
 
         # ── Phase 3: all DB writes in one atomic block ───────────────
         try:
@@ -408,10 +513,19 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                     plan_tier=plan_tier,
                     stripe_customer_id=stripe_customer_id,
                     stripe_subscription_id=stripe_subscription_id,
+                    billing_method='invoice' if pay_by_invoice else 'card',
+                    user_count=user_count,
                     card_name=card_name,
                     active=active,
                     selected_apps=selected_apps,
+                    promo_code=promo_code_obj,
+                    discount_amount=pricing['promo_discount_amount'],
                 )
+                
+                # Increment promo code usage if one was applied
+                if promo_code_obj:
+                    promo_code_obj.increment_uses()
+                    logger.info(f'Promo code usage incremented: {promo_code_obj.code}')
 
         except Exception:
             if not test_bypass:
@@ -431,7 +545,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             _subscription_response_payload(
                 sub, selected_apps,
                 tenant_name=tenant_name or '',
-                stripe_trial_started=not test_bypass,
+                stripe_trial_started=not (test_bypass or pay_by_invoice),
                 user_obj=user_obj,
                 provisioning_results=provisioning_results,
             ),

@@ -11,6 +11,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views import View
 from django.shortcuts import render
+from django.core.exceptions import ValidationError
 from functools import wraps
 
 
@@ -110,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -939,15 +940,15 @@ if NEW_MODELS_AVAILABLE:
 
     @admin.register(Subscription)
     class SubscriptionAdmin(TenantAwareModelAdmin):
-        list_display = ('tenant', 'active', 'stripe_customer_id', 'card_name', 'created_at', 'updated_at')
-        list_filter = ('active', 'created_at', 'updated_at')
-        search_fields = ('tenant__name', 'tenant__slug', 'stripe_customer_id', 'stripe_subscription_id', 'card_name')
+        list_display = ('tenant', 'plan_tier', 'user_count', 'billing_method', 'active', 'stripe_customer_id', 'card_name', 'created_at', 'updated_at')
+        list_filter = ('billing_method', 'active', 'created_at', 'updated_at')
+        search_fields = ('tenant__name', 'tenant__slug', 'stripe_customer_id', 'stripe_subscription_id', 'card_name', 'billing_method')
         readonly_fields = ('created_at', 'updated_at')
         ordering = ('-created_at',)
 
         fieldsets = [
             (None, {
-                'fields': ['tenant', 'stripe_customer_id', 'stripe_subscription_id', 'card_name', 'active', 'created_at', 'updated_at']
+                'fields': ['tenant', 'plan_tier', 'user_count', 'billing_method', 'stripe_customer_id', 'stripe_subscription_id', 'card_name', 'selected_apps', 'promo_code', 'discount_amount', 'active', 'created_at', 'updated_at']
             }),
         ]
 
@@ -955,6 +956,105 @@ if NEW_MODELS_AVAILABLE:
             """Optimize queryset to include tenant information."""
             queryset = super().get_queryset(request)
             return queryset.select_related('tenant')
+
+    @admin.register(PromoCode)
+    class PromoCodeAdmin(admin.ModelAdmin):
+        """Admin interface for managing promo codes and discount codes."""
+        list_display = (
+            'code',
+            'description',
+            'discount_display',
+            'uses_display',
+            'is_active',
+            'valid_from',
+            'valid_until',
+            'created_at',
+        )
+        list_filter = (
+            'is_active',
+            'discount_type',
+            'created_at',
+            'valid_from',
+        )
+        search_fields = (
+            'code',
+            'description',
+            'stripe_coupon_id',
+        )
+        readonly_fields = (
+            'created_at',
+            'updated_at',
+            'current_uses',
+        )
+        ordering = ('-created_at',)
+
+        fieldsets = (
+            ('Promo Code Details', {
+                'fields': ('code', 'description', 'is_active'),
+            }),
+            ('Discount Configuration', {
+                'fields': (
+                    'discount_type',
+                    'discount_value',
+                    'stripe_coupon_id',
+                ),
+                'description': 'Configure the discount amount and Stripe integration.',
+            }),
+            ('Usage Limits', {
+                'fields': (
+                    'max_uses',
+                    'current_uses',
+                ),
+                'description': 'Leave max_uses blank for unlimited uses.',
+            }),
+            ('Validity Period', {
+                'fields': (
+                    'valid_from',
+                    'valid_until',
+                ),
+                'description': 'Leave valid_until blank for no expiration.',
+            }),
+            ('Plan Restrictions', {
+                'fields': ('applicable_plans',),
+                'description': 'Leave empty to apply to all plans. Enter plan tier IDs: ["polysaas-1", "polysaas-3", "polysaas-unlimited"]',
+                'classes': ('collapse',),
+            }),
+            ('Timestamps', {
+                'fields': ('created_at', 'updated_at'),
+                'classes': ('collapse',),
+            }),
+        )
+
+        def discount_display(self, obj):
+            """Display discount in human-readable format."""
+            if obj.discount_type == 'percentage':
+                return f"{obj.discount_value}% off"
+            else:
+                return f"${obj.discount_value} off"
+        discount_display.short_description = "Discount"
+
+        def uses_display(self, obj):
+            """Display usage stats."""
+            if obj.max_uses is None:
+                return f"{obj.current_uses} / ∞"
+            return f"{obj.current_uses} / {obj.max_uses}"
+        uses_display.short_description = "Uses"
+
+        def get_readonly_fields(self, request, obj=None):
+            """Make current_uses always read-only, even for new objects."""
+            readonly = list(super().get_readonly_fields(request, obj))
+            return readonly
+
+        def save_model(self, request, obj, form, change):
+            """Save with validation."""
+            from django.contrib import messages
+            try:
+                obj.clean()
+                super().save_model(request, obj, form, change)
+                messages.success(request, f'Promo code "{obj.code}" saved successfully.')
+            except ValidationError as e:
+                messages.error(request, f'Error saving promo code: {e.message}')
+                return
 
     @admin.register(TenantApp)
     class TenantAppAdmin(admin.ModelAdmin):

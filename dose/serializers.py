@@ -1,14 +1,43 @@
 from rest_framework import serializers
-from dose.models import Subscription, AtomicService
+from dose.models import Subscription, AtomicService, PromoCode
+
 class AtomicServiceSerializer(serializers.ModelSerializer):
     config_json = serializers.JSONField(default={'name': 'value'})
     class Meta:
         model = AtomicService
         fields = '__all__'
+
 class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         fields = '__all__'
+
+class PromoCodeSerializer(serializers.ModelSerializer):
+    """Serializer for PromoCode model - public fields only."""
+    discount_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PromoCode
+        fields = (
+            'id',
+            'code',
+            'description',
+            'discount_type',
+            'discount_value',
+            'discount_display',
+            'is_active',
+            'valid_from',
+            'valid_until',
+            'applicable_plans',
+        )
+        read_only_fields = fields
+    
+    def get_discount_display(self, obj):
+        """Format discount for display."""
+        if obj.discount_type == 'percentage':
+            return f"{obj.discount_value}% off"
+        else:
+            return f"${obj.discount_value} off"
 from .models import (
     Tenant, UserProfile, MLEngine, MLTaxonomy, MLDataset, MLPrompt, CallBackData, Instruction, Task,
     NavigationPanel, NavigationItem, DashboardButton, IgnorePath, RequestLog, ErrorLog
@@ -131,10 +160,13 @@ class SubscriptionCreateSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     password = serializers.CharField(max_length=128)
     email = serializers.EmailField()
+    user_count = serializers.IntegerField(min_value=1, required=False, default=1)
     zip = serializers.CharField(max_length=10)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
-    card_name = serializers.CharField(max_length=255)
-    stripe_token = serializers.CharField(max_length=255)
+    card_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    stripe_token = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    pay_by_invoice = serializers.BooleanField(required=False, default=False)
+    promo_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
     plan_tier = serializers.ChoiceField(
         choices=['polysaas-1', 'polysaas-3', 'polysaas-unlimited'],
         default='polysaas-1',

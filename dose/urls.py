@@ -45,6 +45,7 @@ from dose.views.atomic_service_param_sample import atomic_service_param_sample
 from dose.views.ai_peers_webhook import ai_peers_webhook
 from dose.views.generic_inbound_webhook import generic_inbound_webhook
 from dose.subscription_views import SubscriptionApiViewSet
+from dose.views.promo_code_views import PromoCodeViewSet, validate_promo_code
 from dose.theme_views import toggle_theme, set_theme, set_display_mode
 from dose.views.orchestration import get_orchestration_instruction
 from dose.views.orchestration_instruction_embed import (
@@ -57,6 +58,7 @@ try:
     from rest_framework.routers import DefaultRouter
     router = DefaultRouter()
     router.register(r'api/subscriptions', SubscriptionApiViewSet, basename='subscription')
+    router.register(r'api/promo-codes', PromoCodeViewSet, basename='promo-code')
     _subscription_urls = router.urls
 except ImportError:
     _subscription_urls = []
@@ -85,6 +87,7 @@ urlpatterns = [
     path('api/hubspot/recent-events/', hubspot_recent_events_api, name='api_hubspot_recent_events'),
     path('api/atomic-service-names/', atomic_service_names, name='atomic_service_names'),
     path('api/atomic-service-param-sample/', atomic_service_param_sample, name='atomic_service_param_sample'),
+    path('api/promo-codes/validate/', validate_promo_code, name='validate_promo_code'),
     path('api/orchestration-instruction/<path:action_path>/', get_orchestration_instruction, name='get_orchestration_instruction'),
     path('orchestration/instruction/add/', orchestration_instruction_embed_add, name='orchestration_instruction_embed_add'),
     path('orchestration/instruction/<int:object_id>/change/', orchestration_instruction_embed_change, name='orchestration_instruction_embed_change'),

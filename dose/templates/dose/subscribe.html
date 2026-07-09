@@ -181,6 +181,52 @@
         line-height: 1.5;
         color: #455a64;
     }
+    #promo-explainer-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 2147483645;
+        background: rgba(15, 23, 42, 0.45);
+        align-items: center;
+        justify-content: center;
+        padding: 1.25rem;
+    }
+    #promo-explainer-modal.is-visible {
+        display: flex;
+    }
+    #promo-explainer-modal .pem-dialog {
+        max-width: 520px;
+        width: 100%;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
+        padding: 1.5rem;
+    }
+    #promo-explainer-modal .pem-title {
+        margin: 0 0 0.5rem;
+        color: #1565c0;
+        font-size: 1.12em;
+        font-weight: 700;
+    }
+    #promo-explainer-modal .pem-lines {
+        margin: 0 0 1rem;
+        padding-left: 1.2rem;
+        color: #455a64;
+        line-height: 1.5;
+    }
+    #promo-explainer-modal .pem-actions {
+        display: flex;
+        justify-content: flex-end;
+    }
+    #promo-explainer-modal .pem-close {
+        padding: 0.55rem 0.95rem;
+        border: none;
+        border-radius: 6px;
+        background: #1976d2;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+    }
 </style>
 
 <h2 style="text-align:center; margin-bottom:0.25em;">Subscribe to PolySaaS</h2>
@@ -320,6 +366,13 @@
         <small style="display: block; color: #666; margin-bottom: 0.5em;">Storage for Nextcloud and WordPress files is billed at <strong>$0.12/GB per month</strong> based on actual usage. No charge if you don't use file storage.</small>
     </div>
 
+    <div class="form-group">
+        <label for="user-count" class="form-label">Users To Include Now</label>
+        <input type="number" id="user-count" name="user_count" class="form-input" min="1" step="1" value="1" required>
+        <small style="display:block;color:#666;margin-top:0.45em;">Volume pricing is automatic: 1-10 users get 10% off, 11-20 users get 20% off, and 21+ users get 30% off. Tenant admins can add more seats later.</small>
+        <div class="field-error" id="user-count-error" style="color:#d32f2f;font-size:0.95em;"></div>
+    </div>
+
     <!-- ═══ Section 4: Payment ═══ -->
     <div class="form-group">
         <label for="zip" class="form-label">ZIP Code</label>
@@ -328,16 +381,40 @@
         <div class="field-error" id="zip-error" style="color:#d32f2f;font-size:0.95em;"></div>
     </div>
     <div class="form-group">
-        <label for="amount" class="form-label">Amount (USD)</label>
-        <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="" required readonly style="background:#eee;cursor:not-allowed;">
-        <div class="field-error" id="amount-error" style="color:#d32f2f;font-size:0.95em;"></div>
+        <label for="promo-code" class="form-label">Promo Code (Optional)</label>
+        <div style="display:flex;gap:0.5em;align-items:flex-start;">
+            <div style="flex:1;">
+                <input type="text" id="promo-code" name="promo_code" class="form-input" placeholder="Enter promo code (e.g., EARLY, BUILDER)" value="" style="text-transform:uppercase;">
+                <div class="field-error" id="promo-code-error" style="color:#d32f2f;font-size:0.95em;margin-top:0.25em;"></div>
+                <div id="promo-code-success" style="color:#2e7d32;font-size:0.95em;margin-top:0.25em;font-weight:500;"></div>
+                <button type="button" id="promo-details-btn" style="display:none;margin-top:0.5em;padding:0;border:none;background:none;color:#1976d2;font-weight:600;cursor:pointer;">View promo details</button>
+            </div>
+        </div>
     </div>
     <div class="form-group">
+        <label for="amount" class="form-label">Amount (USD)</label>
+        <div id="amount-display" style="display:flex;align-items:center;gap:1em;">
+            <div>
+                <input type="number" id="amount" name="amount" class="form-input" min="1" step="0.01" value="" required readonly style="background:#eee;cursor:not-allowed;">
+            </div>
+            <div id="discount-badge" style="display:none;padding:0.5em 0.75em;background:#e8f5e9;border-radius:4px;font-weight:600;color:#2e7d32;font-size:0.9em;white-space:nowrap;"></div>
+        </div>
+        <div class="field-error" id="amount-error" style="color:#d32f2f;font-size:0.95em;"></div>
+        <div id="pricing-summary" style="margin-top:0.6em;color:#455a64;font-size:0.94em;line-height:1.5;"></div>
+    </div>
+    <div class="form-group" style="padding:0.75em;border:1px solid #e0e0e0;border-radius:4px;background:#f8f9fa;">
+        <label style="display:flex;align-items:center;gap:0.6em;margin:0;cursor:pointer;">
+            <input type="checkbox" id="pay-by-invoice" name="pay_by_invoice" style="width:auto;">
+            <span style="font-weight:600;">Pay by Invoice</span>
+        </label>
+        <small style="display:block;color:#666;margin-top:0.45em;">If checked, card payment is skipped and your subscription will be invoiced manually.</small>
+    </div>
+    <div class="form-group" id="card-name-group">
         <label for="card-name" class="form-label">Name on Card</label>
         <input type="text" id="card-name" name="card_name" class="form-input" required placeholder="Name as it appears on card" value="">
         <div class="field-error" id="card-name-error" style="color:#d32f2f;font-size:0.95em;"></div>
     </div>
-    <div class="form-group">
+    <div class="form-group" id="card-element-group">
         <label for="card-element" class="form-label">Credit/Debit Card</label>
         <div id="card-element"></div>
     </div>
@@ -356,6 +433,16 @@
             We are provisioning your accounts and bundled applications.
             Please be patient — just a few moments longer.
         </p>
+    </div>
+</div>
+
+<div id="promo-explainer-modal" role="dialog" aria-modal="true" aria-labelledby="promo-explainer-title" aria-hidden="true">
+    <div class="pem-dialog">
+        <h3 id="promo-explainer-title" class="pem-title">Promo details</h3>
+        <ul id="promo-explainer-lines" class="pem-lines"></ul>
+        <div class="pem-actions">
+            <button type="button" class="pem-close" onclick="hidePromoExplainer()">Close</button>
+        </div>
     </div>
 </div>
 
@@ -510,7 +597,206 @@ function selectPlan(tier) {
     card.classList.add('selected');
     card.querySelector('.plan-select-btn').textContent = 'Selected';
 
+    clearPromoCode();
     checkFormFields();
+}
+
+/* ── Promo code validation ──────────────────────────────────── */
+
+var lastValidatedPromo = null;
+var currentAppliedDiscount = 0;
+var currentPromoDetails = null;
+var lastPromoExplainerKey = null;
+
+function isPayByInvoiceSelected() {
+    var cb = document.getElementById('pay-by-invoice');
+    return !!(cb && cb.checked);
+}
+
+function togglePaymentMethodUi() {
+    var invoiceMode = isPayByInvoiceSelected();
+    var cardNameGroup = document.getElementById('card-name-group');
+    var cardElementGroup = document.getElementById('card-element-group');
+    var cardNameInput = document.getElementById('card-name');
+    var cardErrors = document.getElementById('card-errors');
+    var btn = document.getElementById('subscribe-btn');
+
+    if (cardNameGroup) cardNameGroup.style.display = invoiceMode ? 'none' : '';
+    if (cardElementGroup) cardElementGroup.style.display = invoiceMode ? 'none' : '';
+    if (cardNameInput) {
+        cardNameInput.required = !invoiceMode;
+        if (invoiceMode) cardNameInput.value = '';
+    }
+    if (cardErrors && invoiceMode) cardErrors.textContent = '';
+    if (btn && !subscribeSubmitInFlight) btn.textContent = invoiceMode ? 'Subscribe (Invoice)' : 'Subscribe & Pay';
+}
+
+function clearPromoCode() {
+    lastValidatedPromo = null;
+    currentAppliedDiscount = 0;
+    currentPromoDetails = null;
+    lastPromoExplainerKey = null;
+    document.getElementById('promo-code').value = '';
+    document.getElementById('promo-code-error').textContent = '';
+    document.getElementById('promo-code-success').textContent = '';
+    document.getElementById('discount-badge').style.display = 'none';
+    document.getElementById('discount-badge').textContent = '';
+    document.getElementById('promo-details-btn').style.display = 'none';
+    updatePriceDisplay();
+}
+
+function getUserCount() {
+    var el = document.getElementById('user-count');
+    if (!el) return 1;
+    var count = parseInt(el.value, 10);
+    if (!count || count < 1) return 1;
+    return count;
+}
+
+function getVolumeDiscountRate(userCount) {
+    if (userCount >= 21) return 0.30;
+    if (userCount >= 11) return 0.20;
+    return 0.10;
+}
+
+function buildLocalPricingPreview() {
+    var tier = document.getElementById('plan-tier').value;
+    var basePrice = PLAN_PRICES[tier] || 26;
+    var userCount = getUserCount();
+    var volumeRate = getVolumeDiscountRate(userCount);
+    var discountedPerUser = basePrice * (1 - volumeRate);
+    var subtotal = discountedPerUser * userCount;
+    var promoDiscount = currentPromoDetails && currentPromoDetails.pricing
+        ? (parseFloat(currentPromoDetails.pricing.promo_discount_amount) || 0)
+        : currentAppliedDiscount;
+    var total = Math.max(0, subtotal - promoDiscount);
+    return {
+        tier: tier,
+        userCount: userCount,
+        basePricePerUser: basePrice,
+        volumeDiscountPercent: Math.round(volumeRate * 100),
+        discountedPricePerUser: discountedPerUser,
+        subtotal: subtotal,
+        promoDiscount: promoDiscount,
+        total: total,
+        effectivePricePerUser: userCount > 0 ? total / userCount : total
+    };
+}
+
+function renderPricingSummary(pricing) {
+    var summary = document.getElementById('pricing-summary');
+    if (!summary) return;
+    var userWord = pricing.userCount === 1 ? 'user' : 'users';
+    summary.innerHTML =
+        '<strong>Pricing summary:</strong> ' + pricing.userCount + ' ' + userWord +
+        ' × $' + pricing.basePricePerUser.toFixed(2) + '/user' +
+        ' with a ' + pricing.volumeDiscountPercent + '% volume discount' +
+        ' = $' + pricing.subtotal.toFixed(2) + '/month before promo.' +
+        (pricing.promoDiscount > 0
+            ? ' Promo savings: $' + pricing.promoDiscount.toFixed(2) +
+              '. Estimated billed total: $' + pricing.total.toFixed(2) + '/month (' +
+              '$' + pricing.effectivePricePerUser.toFixed(2) + '/user).'
+            : ' Estimated billed total: $' + pricing.total.toFixed(2) + '/month (' +
+              '$' + pricing.effectivePricePerUser.toFixed(2) + '/user).');
+}
+
+function updatePriceDisplay() {
+    var pricing = buildLocalPricingPreview();
+    document.getElementById('amount').value = pricing.total.toFixed(2);
+    renderPricingSummary(pricing);
+    
+    if (currentAppliedDiscount > 0) {
+        document.getElementById('discount-badge').textContent = 'Save $' + currentAppliedDiscount.toFixed(2) + '/mo';
+        document.getElementById('discount-badge').style.display = '';
+    } else {
+        document.getElementById('discount-badge').style.display = 'none';
+    }
+}
+
+function showPromoExplainer(lines) {
+    var modal = document.getElementById('promo-explainer-modal');
+    var list = document.getElementById('promo-explainer-lines');
+    if (!modal || !list) return;
+    list.innerHTML = '';
+    (lines || []).forEach(function(line) {
+        var li = document.createElement('li');
+        li.textContent = line;
+        list.appendChild(li);
+    });
+    modal.classList.add('is-visible');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function hidePromoExplainer() {
+    var modal = document.getElementById('promo-explainer-modal');
+    if (!modal) return;
+    modal.classList.remove('is-visible');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function validatePromoCode() {
+    var promoInput = document.getElementById('promo-code').value.trim().toUpperCase();
+    var errorDiv = document.getElementById('promo-code-error');
+    var successDiv = document.getElementById('promo-code-success');
+    
+    errorDiv.textContent = '';
+    successDiv.textContent = '';
+    
+    if (!promoInput) {
+        lastValidatedPromo = null;
+        currentAppliedDiscount = 0;
+        updatePriceDisplay();
+        return;
+    }
+    
+    var tier = document.getElementById('plan-tier').value;
+    var userCount = getUserCount();
+    
+    var payload = {
+        code: promoInput,
+        plan_tier: tier,
+        user_count: userCount
+    };
+    
+    fetch('/dose/api/promo-codes/validate/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.valid) {
+            lastValidatedPromo = promoInput;
+            currentAppliedDiscount = parseFloat(data.discount_amount) || 0;
+            currentPromoDetails = data;
+            successDiv.textContent = (data.description || data.code) + ' — Save $' + currentAppliedDiscount.toFixed(2) + '/month';
+            errorDiv.textContent = '';
+            document.getElementById('promo-details-btn').style.display = '';
+            updatePriceDisplay();
+            var explainerKey = [data.code, tier, userCount].join('|');
+            if (lastPromoExplainerKey !== explainerKey) {
+                lastPromoExplainerKey = explainerKey;
+                showPromoExplainer(data.explanation_lines || []);
+            }
+        } else {
+            errorDiv.textContent = data.error || 'Invalid promo code.';
+            successDiv.textContent = '';
+            lastValidatedPromo = null;
+            currentAppliedDiscount = 0;
+            currentPromoDetails = null;
+            document.getElementById('promo-details-btn').style.display = 'none';
+            updatePriceDisplay();
+        }
+    }).catch(function(err) {
+        console.error('Promo code validation error:', err);
+        errorDiv.textContent = 'Error validating promo code. Please try again.';
+        successDiv.textContent = '';
+        lastValidatedPromo = null;
+        currentAppliedDiscount = 0;
+        currentPromoDetails = null;
+        document.getElementById('promo-details-btn').style.display = 'none';
+        updatePriceDisplay();
+    });
 }
 
 /* ── App checkbox change handler ─────────────────────────────── */
@@ -519,9 +805,44 @@ document.querySelectorAll('.app-checkbox').forEach(function(cb) {
     cb.addEventListener('change', function() {
         updateSlotAdvisory();
         suggestAndSelectPlan();
+        clearPromoCode();  // Reset promo when plan changes
         checkFormFields();
     });
 });
+
+/* ── Promo code input handler ──────────────────────────────── */
+(function() {
+    var promoCodeInput = document.getElementById('promo-code');
+    if (promoCodeInput) {
+        promoCodeInput.addEventListener('change', validatePromoCode);
+        promoCodeInput.addEventListener('blur', validatePromoCode);
+    }
+    var promoDetailsBtn = document.getElementById('promo-details-btn');
+    if (promoDetailsBtn) {
+        promoDetailsBtn.addEventListener('click', function() {
+            if (currentPromoDetails && currentPromoDetails.explanation_lines) {
+                showPromoExplainer(currentPromoDetails.explanation_lines);
+            }
+        });
+    }
+    var userCountInput = document.getElementById('user-count');
+    if (userCountInput) {
+        userCountInput.addEventListener('change', function() {
+            validateField('user-count');
+            if (document.getElementById('promo-code').value.trim()) {
+                validatePromoCode();
+            } else {
+                updatePriceDisplay();
+            }
+            checkFormFields();
+        });
+        userCountInput.addEventListener('input', function() {
+            validateField('user-count');
+            updatePriceDisplay();
+            checkFormFields();
+        });
+    }
+})();
 
 /* ── Plan card click handler ─────────────────────────────────── */
 
@@ -626,6 +947,7 @@ function subscribeHintForFailure(failedField) {
         'password': 'Enter a password (at least 9 characters).',
         'password (validation)': 'Password: at least 9 characters, cannot start with a number, and must include a special character.',
         'email': 'Enter a valid email address.',
+        'user-count': 'Enter how many paid users to include now.',
         'zip': 'Enter a ZIP or postal code (4 or 5 digits).',
         'amount': 'Select a plan first.',
         'card-name': 'Enter the name as it appears on the card.',
@@ -635,9 +957,8 @@ function subscribeHintForFailure(failedField) {
 }
 
 function checkFormFields() {
-    var requiredFields = [
-        'tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'card-name'
-    ];
+    var requiredFields = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'user-count', 'zip'];
+    if (!isPayByInvoiceSelected()) requiredFields.push('card-name');
     var allFilled = true;
     var failedField = null;
     for (var i = 0; i < requiredFields.length; i++) {
@@ -661,6 +982,13 @@ function checkFormFields() {
         if (!/^[a-z0-9-]+$/.test(sn) || sn.length < 3 || sn.length > 32) {
             allFilled = false;
             failedField = 'tenant-shortname (slug validation)';
+        }
+    }
+    if (allFilled) {
+        var count = getUserCount();
+        if (!count || count < 1) {
+            allFilled = false;
+            failedField = 'user-count';
         }
     }
     if (allFilled) {
@@ -701,6 +1029,9 @@ function validateField(id) {
             if (!val.trim()) error = 'Email is required.';
             else if (!/^\S+@\S+\.\S+$/.test(val)) error = 'Invalid email address.';
             break;
+        case 'user-count':
+            if (!val || isNaN(val) || Number(val) < 1 || String(Math.floor(Number(val))) !== String(Number(val))) error = 'Enter a whole number of users.';
+            break;
         case 'zip':
             if (!val.trim()) error = 'ZIP code is required.';
             else if (!/^\d{4,5}$/.test(val)) error = 'ZIP must be 4 or 5 digits.';
@@ -712,7 +1043,7 @@ function validateField(id) {
     return !error;
 }
 
-var fieldIds = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'card-name'];
+var fieldIds = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'user-count', 'zip', 'card-name'];
 fieldIds.forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('blur', function() { validateField(id); });
@@ -722,6 +1053,9 @@ document.addEventListener('input', function(e) {
     checkFormFields();
 });
 document.addEventListener('DOMContentLoaded', function() {
+    var invoiceCb = document.getElementById('pay-by-invoice');
+    if (invoiceCb) invoiceCb.addEventListener('change', function() { togglePaymentMethodUi(); checkFormFields(); });
+    togglePaymentMethodUi();
     checkFormFields();
 });
 
@@ -758,7 +1092,7 @@ function resetSubscribeButton() {
     var b = document.getElementById('subscribe-btn');
     if (b) {
         b.disabled = false;
-        b.textContent = 'Subscribe & Pay';
+        b.textContent = isPayByInvoiceSelected() ? 'Subscribe (Invoice)' : 'Subscribe & Pay';
     }
 }
 
@@ -768,7 +1102,9 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     if (subscribeSubmitInFlight) return;
 
     checkFormFields();
-    var requiredFields = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'zip', 'card-name'];
+    var payByInvoice = isPayByInvoiceSelected();
+    var requiredFields = ['tenant-name', 'tenant-shortname', 'username', 'password', 'email', 'user-count', 'zip'];
+    if (!payByInvoice) requiredFields.push('card-name');
     var fail = null;
     for (var i = 0; i < requiredFields.length; i++) {
         var el = document.getElementById(requiredFields[i]);
@@ -779,6 +1115,7 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     if (!fail && (password.length < 9 || /^[0-9]/.test(password) || !specialCharRegex.test(password))) fail = 'password (validation)';
     var shortname = document.getElementById('tenant-shortname').value;
     if (!fail && (!/^[a-z0-9-]+$/.test(shortname) || shortname.length < 3 || shortname.length > 32)) fail = 'tenant-shortname (slug validation)';
+    if (!fail && getUserCount() < 1) fail = 'user-count';
     var zipVal = document.getElementById('zip').value;
     if (!fail && !/^\d{4,5}$/.test(zipVal)) fail = 'zip';
     var planTier = document.getElementById('plan-tier').value;
@@ -791,7 +1128,7 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         return;
     }
 
-    if (typeof stripe === 'undefined' || !card) {
+    if (!payByInvoice && (typeof stripe === 'undefined' || !card)) {
         showSubscribeFeedback('Payment form did not load. Check your connection, disable blockers, refresh the page, or verify the Stripe publishable key.', { isError: true });
         return;
     }
@@ -807,38 +1144,44 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
     var cardholderName = document.getElementById('card-name').value;
     var tenantName = document.getElementById('tenant-name').value;
     var email = document.getElementById('email').value;
+    var userCount = getUserCount();
     var zip = document.getElementById('zip').value;
     var amount = document.getElementById('amount').value;
     var username = document.getElementById('username').value;
     var tenantShortname = document.getElementById('tenant-shortname').value;
 
-    var tokenResult;
-    try {
-        tokenResult = await stripe.createToken(card, { name: cardholderName });
-    } catch (err) {
-        showSubscribeFeedback('Stripe could not read the card. If you used Link or a saved card, try entering test card 4242 4242 4242 4242 manually, or refresh the page.', { isError: true });
-        resetSubscribeButton();
-        if (card) card.clear();
-        return;
-    }
-    if (tokenResult.error) {
-        showSubscribeFeedback(tokenResult.error.message || 'Card was declined or invalid.', { isError: true });
-        resetSubscribeButton();
-        if (card) card.clear();
-        return;
+    var tokenResult = null;
+    if (!payByInvoice) {
+        try {
+            tokenResult = await stripe.createToken(card, { name: cardholderName });
+        } catch (err) {
+            showSubscribeFeedback('Stripe could not read the card. If you used Link or a saved card, try entering test card 4242 4242 4242 4242 manually, or refresh the page.', { isError: true });
+            resetSubscribeButton();
+            if (card) card.clear();
+            return;
+        }
+        if (tokenResult.error) {
+            showSubscribeFeedback(tokenResult.error.message || 'Card was declined or invalid.', { isError: true });
+            resetSubscribeButton();
+            if (card) card.clear();
+            return;
+        }
     }
 
     var payload = {
-        stripe_token: tokenResult.token.id,
+        stripe_token: tokenResult && tokenResult.token ? tokenResult.token.id : '',
         tenant_name: tenantName,
         tenant_shortname: tenantShortname,
         card_name: cardholderName,
         amount: amount,
+        user_count: userCount,
         email: email,
         zip: zip,
         username: username,
         password: password,
         plan_tier: planTier,
+        pay_by_invoice: payByInvoice,
+        promo_code: lastValidatedPromo || '',
         enable_odoo: !!document.getElementById('enable-odoo').checked,
         enable_nextcloud: !!document.getElementById('enable-nextcloud').checked,
         enable_dolibarr: !!document.getElementById('enable-dolibarr').checked,
