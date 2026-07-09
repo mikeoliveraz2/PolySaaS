@@ -109,6 +109,15 @@ PRICING_HTML = '''<!-- wp:html -->
 
 </div>
 
+<div style="max-width:760px;margin:0 auto 32px;background:var(--ps-card-bg,#f8fafc);border:1px solid var(--ps-border,#e5e7eb);border-radius:16px;padding:28px 28px 24px;box-shadow:0 4px 16px rgba(15,23,42,0.04);">
+<h2 style="color:var(--ps-primary,#001F3F);font-size:1.45rem;font-weight:700;margin:0 0 14px;text-align:center;">Additional Users Per Tenant</h2>
+<ul style="margin:0;padding-left:20px;color:var(--ps-text,#374151);font-size:0.97rem;line-height:1.75;">
+<li><strong>Users 2-10</strong> - Each user gets a discount of 10%</li>
+<li><strong>Users 11-20</strong> - Each user gets a discount of 20%</li>
+<li><strong>Users 31+</strong> - Each user gets a discount of 30%</li>
+</ul>
+</div>
+
 <div style="text-align:center;max-width:700px;margin:0 auto 20px;">
 <p style="color:var(--ps-text,#374151);font-size:0.95rem;line-height:1.6;margin-bottom:8px;">All plans include core PolySaaS features: multi-tenant isolation, GCP hosting, atomic orchestration, and no hidden fees.</p>
 <p style="color:var(--ps-muted,#6B7280);font-size:0.9rem;">Annual billing saves 20%. Contact us for enterprise/custom needs.</p>

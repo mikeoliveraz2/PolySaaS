@@ -210,19 +210,20 @@ PAGES = {
     },
     "bundled-applications": {
         "title": "Bundled Applications",
-        "subtitle": "Eight Enterprise-Grade Applications, One Platform",
-        "hero": "PolySaaS bundles eight enterprise-grade applications into a single orchestrated platform. Each application is a first-class peer — sharing data, triggering workflows, and collaborating through standardized Atomic Services. One subscription, one login, unlimited integration.",
+        "subtitle": "Nine Enterprise-Grade Applications, One Platform",
+        "hero": "PolySaaS bundles nine enterprise-grade applications into a single orchestrated platform. Each application is a first-class peer — sharing data, triggering workflows, and collaborating through standardized Atomic Services. One subscription, one login, unlimited integration.",
         "capabilities": [
             ("Odoo — ERP & CRM", "Comprehensive business operations: sales, purchasing, inventory, accounting, HR, and project management at enterprise scale."),
             ("Nextcloud — Files & Collaboration", "Secure file storage, real-time document editing, and team collaboration with full data sovereignty."),
             ("Mattermost — Team Messaging", "Enterprise-grade team chat with AI Peers integration for secure, productive, AI-enhanced communications."),
             ("WordPress — Content Management", "Flexible content creation, blogging, and dynamic website management integrated with your business applications."),
+            ("HubSpot CRM — Customer Pipeline & Context", "Tenant-scoped CRM for contacts, companies, deals, tickets, and tasks, with PolySaaS orchestration and user-context integration. <a href=\"https://polysaas.online/bundled-applications/hubspot/\" style=\"color:var(--ps-accent,#2B6CB0);font-weight:600;\">Learn more about HubSpot CRM</a>."),
             ("Liferay — Enterprise Portal", "Unified portal delivering personalized content, role-based dashboards, and seamless navigation across all applications."),
             ("Dolibarr — ERP & Invoicing", "Modular invoicing, proposals, and client management for cost-effective financial operations."),
             ("Monitor Logger — System Monitoring", "Centralized logging and alerting for proactive issue detection across your entire platform."),
             ("PolySysMon — Performance Tracking", "Continuous health monitoring ensuring reliability, uptime, and optimal performance across your stack."),
         ],
-        "integration": "All eight applications share a common authentication layer, a unified data orchestration bus, and standardized OpenAPI interfaces. Add one application or use all eight — they work together seamlessly from day one.",
+        "integration": "All nine applications share a common authentication layer, a unified data orchestration bus, and standardized OpenAPI interfaces. Add one application or use all nine — they work together seamlessly from day one.",
     },
 }
 

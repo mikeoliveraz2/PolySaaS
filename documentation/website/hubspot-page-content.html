@@ -1,0 +1,470 @@
+<!--
+  PolySaaS - HubSpot CRM (Bundled Applications child page)
+  Paste into WordPress: block editor -> Custom HTML block, or classic editor Text/Code mode.
+  If your template already renders the global footer, omit the <footer class="ps-hs-footer">...</footer> block
+  to avoid a duplicate footer.
+
+  Intended page hierarchy:
+    Parent page: Bundled Applications
+    Child slug: hubspot
+    Preferred URL: /bundled-applications/hubspot/
+-->
+<div class="ps-hs-wrap">
+  <style>
+    .ps-hs-wrap {
+      --ps-hs-accent: #ff7a59;
+      --ps-hs-accent-dark: #d95f42;
+      --ps-hs-text: #0f172a;
+      --ps-hs-muted: #64748b;
+      --ps-hs-line: #e2e8f0;
+      --ps-hs-card: #ffffff;
+      --ps-hs-surface: #f8fafc;
+      max-width: 980px;
+      margin: -1.35rem auto 0;
+      padding: 0 1.25rem 3.5rem;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ps-hs-text);
+      line-height: 1.68;
+    }
+    .ps-hs-wrap * { box-sizing: border-box; }
+    .ps-hs-wrap a { color: var(--ps-hs-accent-dark); }
+
+    .ps-hs-hero { margin: 0 0 2.6rem; }
+    .ps-hs-banner {
+      position: relative;
+      overflow: hidden;
+      margin: 0 -1.25rem;
+      padding: 1.5rem 1.6rem 2.35rem;
+      border-radius: 0 0 24px 24px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-top: none;
+      background:
+        radial-gradient(circle at 85% 18%, rgba(255,122,89,0.36), transparent 24%),
+        radial-gradient(circle at 12% 88%, rgba(14,165,233,0.16), transparent 30%),
+        linear-gradient(155deg, #1f2937 0%, #132238 48%, #0f172a 100%);
+      box-shadow: 0 18px 48px rgba(15,23,42,0.38), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .ps-hs-banner::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.8), rgba(0,0,0,0.15));
+      pointer-events: none;
+    }
+    .ps-hs-banner-inner {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      max-width: 32rem;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .ps-hs-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 5.75rem;
+      height: 5.75rem;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.96);
+      box-shadow: 0 20px 56px rgba(0,0,0,0.34), 0 0 0 1px rgba(255,255,255,0.22);
+      font: 700 1.1rem/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #ff7a59;
+      letter-spacing: 0.03em;
+    }
+    .ps-hs-banner-note {
+      margin: 0;
+      max-width: 28rem;
+      color: #e2e8f0;
+      font: 600 0.82rem/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0.01em;
+    }
+    .ps-hs-intro {
+      position: relative;
+      z-index: 2;
+      margin: -1.2rem 0 0;
+      padding: 1.7rem 1.45rem 1.95rem;
+      border-radius: 16px;
+      border: 1px solid var(--ps-hs-line);
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+      box-shadow: 0 12px 36px rgba(15,23,42,0.08);
+    }
+    .ps-hs-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.95rem;
+      padding: 0.42rem 0.8rem;
+      border-radius: 999px;
+      background: #fff1ec;
+      border: 1px solid #ffd2c4;
+      color: #9a3412;
+      font: 700 0.68rem/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .ps-hs-intro h1 {
+      margin: 0 0 0.95rem;
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+    }
+    .ps-hs-lead {
+      margin: 0;
+      color: var(--ps-hs-muted);
+      font-size: 1.04rem;
+    }
+    .ps-hs-lead + .ps-hs-lead { margin-top: 0.9rem; }
+    .ps-hs-lead strong { color: var(--ps-hs-text); }
+
+    .ps-hs-grid {
+      display: grid;
+      gap: 1.25rem;
+      margin: 2.35rem 0;
+    }
+    @media (min-width: 720px) {
+      .ps-hs-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .ps-hs-card {
+      border: 1px solid var(--ps-hs-line);
+      border-radius: 15px;
+      padding: 1.3rem 1.35rem;
+      background: linear-gradient(180deg, var(--ps-hs-card) 0%, #fbfdff 100%);
+      box-shadow: 0 8px 24px rgba(15,23,42,0.04);
+    }
+    .ps-hs-card h3 {
+      margin: 0 0 0.55rem;
+      font-size: 1.08rem;
+      line-height: 1.3;
+    }
+    .ps-hs-card p {
+      margin: 0;
+      color: var(--ps-hs-muted);
+      font-size: 0.96rem;
+    }
+
+    .ps-hs-section-title {
+      margin: 2.75rem 0 1rem;
+      font-size: 1.38rem;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+    .ps-hs-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: var(--ps-hs-muted);
+    }
+    .ps-hs-list li { margin-bottom: 0.75rem; }
+    .ps-hs-list strong { color: var(--ps-hs-text); }
+
+    .ps-hs-split {
+      display: grid;
+      gap: 1rem;
+      margin: 2rem 0 2.35rem;
+    }
+    @media (min-width: 720px) {
+      .ps-hs-split { grid-template-columns: 1fr 1fr; }
+    }
+    .ps-hs-panel {
+      border: 1px solid var(--ps-hs-line);
+      border-radius: 16px;
+      padding: 1.3rem 1.35rem;
+      background: var(--ps-hs-surface);
+    }
+    .ps-hs-panel h3 {
+      margin: 0 0 0.65rem;
+      font-size: 1.02rem;
+      letter-spacing: 0.01em;
+    }
+    .ps-hs-panel p {
+      margin: 0;
+      color: var(--ps-hs-muted);
+      font-size: 0.95rem;
+    }
+
+    .ps-hs-highlight {
+      margin: 2.3rem 0;
+      padding: 1.4rem 1.45rem;
+      border-radius: 16px;
+      border: 1px solid #fed7aa;
+      background: linear-gradient(135deg, #fff7ed 0%, #fff 100%);
+      box-shadow: 0 10px 26px rgba(249,115,22,0.06);
+    }
+    .ps-hs-highlight h2 {
+      margin: 0 0 0.7rem;
+      font-size: 1.12rem;
+    }
+    .ps-hs-highlight p {
+      margin: 0;
+      color: #7c2d12;
+      font-size: 0.95rem;
+    }
+
+    .ps-hs-cta {
+      margin: 2.8rem 0 0;
+      padding: 1.5rem 1.4rem;
+      border-radius: 18px;
+      background: linear-gradient(145deg, #0f172a 0%, #172554 100%);
+      color: #e2e8f0;
+      box-shadow: 0 18px 40px rgba(15,23,42,0.2);
+    }
+    .ps-hs-cta h2 {
+      margin: 0 0 0.6rem;
+      color: #fff;
+      font-size: 1.24rem;
+    }
+    .ps-hs-cta p {
+      margin: 0 0 1rem;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+    }
+    .ps-hs-cta-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+    }
+    .ps-hs-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 11rem;
+      padding: 0.85rem 1.15rem;
+      border-radius: 999px;
+      text-decoration: none;
+      font: 700 0.92rem/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      transition: transform 0.16s ease, box-shadow 0.16s ease;
+    }
+    .ps-hs-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+    }
+    .ps-hs-btn-primary {
+      background: var(--ps-hs-accent);
+      color: #fff;
+    }
+    .ps-hs-btn-secondary {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #fff;
+    }
+
+    .ps-hs-footer {
+      margin: 3.4rem -1.25rem 0;
+      padding: 2.7rem 1.6rem 2rem;
+      border-radius: 22px 22px 0 0;
+      border: 1px solid var(--ps-hs-line);
+      border-bottom: none;
+      background: linear-gradient(180deg, #eef2f7 0%, #f8fafc 24%, #fff 72%);
+      color: var(--ps-hs-muted);
+      font-size: 0.9rem;
+    }
+    .ps-hs-footer a { color: var(--ps-hs-text); text-decoration: none; }
+    .ps-hs-footer a:hover { color: var(--ps-hs-accent-dark); text-decoration: underline; }
+    .ps-hs-footer-inner {
+      display: grid;
+      gap: 2rem;
+      margin-bottom: 1.8rem;
+    }
+    @media (min-width: 768px) {
+      .ps-hs-footer-inner { grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 1.5rem; }
+    }
+    .ps-hs-footer-brand {
+      margin: 0 0 0.35rem;
+      color: var(--ps-hs-text);
+      font: 700 1.03rem/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: -0.02em;
+    }
+    .ps-hs-footer-col h4 {
+      margin: 0 0 0.9rem;
+      color: var(--ps-hs-text);
+      font: 700 0.74rem/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .ps-hs-footer-links {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .ps-hs-footer-links li { margin-bottom: 0.42rem; }
+    .ps-hs-footer-legal {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1.3rem;
+      padding-top: 1.45rem;
+      border-top: 1px solid var(--ps-hs-line);
+      font-size: 0.84rem;
+    }
+
+    body.dark-mode .ps-hs-wrap {
+      --ps-hs-text: #e5e7eb;
+      --ps-hs-muted: #94a3b8;
+      --ps-hs-line: #334155;
+      --ps-hs-card: #0f172a;
+      --ps-hs-surface: #111827;
+    }
+    body.dark-mode .ps-hs-intro,
+    body.dark-mode .ps-hs-card,
+    body.dark-mode .ps-hs-panel {
+      background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+      box-shadow: 0 10px 28px rgba(0,0,0,0.24);
+    }
+    body.dark-mode .ps-hs-highlight {
+      background: linear-gradient(135deg, rgba(124,45,18,0.28) 0%, rgba(30,41,59,0.92) 100%);
+      border-color: rgba(251,146,60,0.32);
+    }
+    body.dark-mode .ps-hs-highlight p { color: #fdba74; }
+    body.dark-mode .ps-hs-footer {
+      background: linear-gradient(180deg, #111827 0%, #0f172a 65%, #0b1120 100%);
+    }
+
+    body.page-slug-hubspot .entry-hero-section,
+    body.page-slug-hubspot .kadence-page-hero,
+    body.page-slug-hubspot .entry-hero,
+    body.page-slug-hubspot .wp-block-post-title {
+      display: none !important;
+    }
+    body.page-slug-hubspot .content-area,
+    body.page-slug-hubspot .site-main,
+    body.page-slug-hubspot .entry-content-wrap,
+    body.page-slug-hubspot .entry-content,
+    body.page-slug-hubspot .hentry {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+  </style>
+
+  <header class="ps-hs-hero">
+    <div class="ps-hs-banner" aria-label="HubSpot CRM">
+      <div class="ps-hs-banner-inner">
+        <div class="ps-hs-logo" aria-hidden="true">HubSpot</div>
+        <p class="ps-hs-banner-note">CRM, pipeline visibility, and customer context connected to the rest of your PolySaaS platform.</p>
+      </div>
+    </div>
+    <div class="ps-hs-intro">
+      <span class="ps-hs-badge">Bundled application</span>
+      <h1>HubSpot CRM Inside PolySaaS</h1>
+      <p class="ps-hs-lead">HubSpot gives your teams a familiar CRM workspace for contacts, companies, deals, tickets, and task-driven follow-up. In PolySaaS, it becomes more than a standalone CRM: <strong>it becomes a connected peer</strong> that can share data, trigger orchestration, and feed AI-assisted workflows across your stack.</p>
+      <p class="ps-hs-lead">Each tenant connects <strong>its own HubSpot portal</strong>. PolySaaS keeps the connection tenant-scoped, surfaces live CRM context in the portal, and lets your operators work in either a direct HubSpot interface or a native PolySaaS view depending on the task.</p>
+    </div>
+  </header>
+
+  <section class="ps-hs-grid" aria-label="HubSpot capabilities">
+    <article class="ps-hs-card">
+      <h3>Sales and customer records stay visible</h3>
+      <p>Give teams one place to work with contacts, companies, deals, tickets, and tasks without losing the structure they already expect from HubSpot.</p>
+    </article>
+    <article class="ps-hs-card">
+      <h3>Tenant-scoped OAuth connection</h3>
+      <p>Every PolySaaS tenant connects its own HubSpot account, so data isolation, token storage, and app state remain tied to the tenant that owns the relationship.</p>
+    </article>
+    <article class="ps-hs-card">
+      <h3>User Context Manager portlets</h3>
+      <p>Surface live HubSpot objects in a prioritized, drag-reorderable PolySaaS dashboard so people can see the right CRM slices without opening every native screen first.</p>
+    </article>
+    <article class="ps-hs-card">
+      <h3>Cross-application orchestration</h3>
+      <p>Use HubSpot events and records as triggers for broader workflows: create follow-up tasks, notify Mattermost, align billing context, or route actions into other bundled applications.</p>
+    </article>
+  </section>
+
+  <h2 class="ps-hs-section-title">Two ways to work with HubSpot</h2>
+  <div class="ps-hs-split">
+    <section class="ps-hs-panel">
+      <h3>1. Native HubSpot experience through PolySaaS</h3>
+      <p>For users who need the full CRM interface, PolySaaS can open the HubSpot web UI inside the platform shell so navigation, surrounding context, and future orchestration hooks stay in one place.</p>
+    </section>
+    <section class="ps-hs-panel">
+      <h3>2. Focused CRM context inside PolySaaS</h3>
+      <p>For fast review and prioritization, the HubSpot User Context Manager exposes targeted CRM portlets directly in PolySaaS, reducing context switching and helping operators act from a smaller, cleaner surface.</p>
+    </section>
+  </div>
+
+  <div class="ps-hs-highlight">
+    <h2>What makes this different</h2>
+    <p>PolySaaS does not just link out to HubSpot. It treats HubSpot as a first-class bundled application that participates in shared authentication, shared tenant management, and shared orchestration design.</p>
+  </div>
+
+  <h2 class="ps-hs-section-title">What your team gets</h2>
+  <ul class="ps-hs-list">
+    <li><strong>CRM visibility without fragmentation:</strong> sales and support context can sit alongside the rest of your operational stack.</li>
+    <li><strong>Safer multi-tenant operation:</strong> each tenant owns its own HubSpot OAuth relationship and data scope.</li>
+    <li><strong>Operational flexibility:</strong> use the full HubSpot UI when needed, or smaller purpose-built context panels when that is faster.</li>
+    <li><strong>Better orchestration opportunities:</strong> customer events in HubSpot can become inputs to workflows that reach other PolySaaS applications.</li>
+  </ul>
+
+  <h2 class="ps-hs-section-title">Example use cases</h2>
+  <ul class="ps-hs-list">
+    <li><strong>Pipeline follow-up:</strong> when a deal reaches a key stage, notify the right team in Mattermost and launch a downstream workflow.</li>
+    <li><strong>Customer onboarding:</strong> align CRM status with portal setup, internal tasks, and provisioning steps across the broader platform.</li>
+    <li><strong>Support escalation:</strong> expose ticket context in PolySaaS so operators can correlate CRM records with activity in other bundled apps.</li>
+    <li><strong>Executive review:</strong> give stakeholders a lighter-weight CRM summary through PolySaaS portlets instead of full-screen navigation for every check-in.</li>
+  </ul>
+
+  <div class="ps-hs-cta">
+    <h2>Ready to include HubSpot in your bundled stack?</h2>
+    <p>Add HubSpot as part of your PolySaaS environment and connect your tenant-owned portal when you are ready for CRM visibility, orchestration, and cross-app context.</p>
+    <div class="ps-hs-cta-actions">
+      <a class="ps-hs-btn ps-hs-btn-primary" href="https://polysaas.online/schedule-demo/">Schedule a demo</a>
+      <a class="ps-hs-btn ps-hs-btn-secondary" href="https://polysaas.online/bundled-applications/">Back to Bundled Applications</a>
+    </div>
+  </div>
+
+  <footer class="ps-hs-footer">
+    <div class="ps-hs-footer-inner">
+      <div>
+        <p class="ps-hs-footer-brand">PolySaaS</p>
+        <p>Enterprise applications, orchestration, and tenant-aware operations brought together in one platform.</p>
+      </div>
+      <div class="ps-hs-footer-col">
+        <h4>Applications</h4>
+        <ul class="ps-hs-footer-links">
+          <li><a href="https://polysaas.online/bundled-applications/hubspot/">HubSpot CRM</a></li>
+          <li><a href="https://polysaas.online/odoo/">Odoo</a></li>
+          <li><a href="https://polysaas.online/nextcloud/">Nextcloud</a></li>
+          <li><a href="https://polysaas.online/mattermost/">Mattermost</a></li>
+          <li><a href="https://polysaas.online/wordpress-3/">WordPress</a></li>
+          <li><a href="https://polysaas.online/liferay-2/">Liferay</a></li>
+          <li><a href="https://polysaas.online/dolibarr-3/">Dolibarr</a></li>
+          <li><a href="https://polysaas.online/monitor-logger-4/">Monitor Logger</a></li>
+          <li><a href="https://polysaas.online/polysysmon/">PolySysMon</a></li>
+        </ul>
+      </div>
+      <div class="ps-hs-footer-col">
+        <h4>Features</h4>
+        <ul class="ps-hs-footer-links">
+          <li><a href="https://polysaas.online/bundled-applications/">Bundled Applications</a></li>
+          <li><a href="https://polysaas.online/ai-as-peers/">AI As Peers</a></li>
+          <li><a href="https://polysaas.online/apps-as-peers/">Apps As Peers</a></li>
+          <li><a href="https://polysaas.online/polysniffer/">PolySniffer</a></li>
+          <li><a href="https://polysaas.online/dynamic-orchestration/">Dynamic Orchestration</a></li>
+          <li><a href="https://polysaas.online/atomic-services/">Atomic Services</a></li>
+          <li><a href="https://polysaas.online/openapi-2/">OpenAPI</a></li>
+          <li><a href="https://polysaas.online/architecture/">Architecture</a></li>
+        </ul>
+      </div>
+      <div class="ps-hs-footer-col">
+        <h4>Company</h4>
+        <ul class="ps-hs-footer-links">
+          <li><a href="https://polysaas.online/about-us/">About Us</a></li>
+          <li><a href="https://polysaas.online/pricing/">Pricing</a></li>
+          <li><a href="https://polysaas.online/blog/">Blog</a></li>
+          <li><a href="https://polysaas.online/gallery-images/">Gallery</a></li>
+          <li><a href="https://polysaas.online/schedule-demo/">Schedule Demo</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="ps-hs-footer-legal">
+      <span>Copyright 2026 PolySaaS</span>
+      <a href="https://polysaas.online/privacy-policy/">Privacy Policy</a>
+      <a href="https://polysaas.online/terms-conditions/">Terms and Conditions</a>
+    </div>
+  </footer>
+</div>
