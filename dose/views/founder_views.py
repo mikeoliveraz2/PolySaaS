@@ -1,5 +1,6 @@
 """
 Founder Beta Circle signup and Lemon Squeezy webhook handling.
+REST API for WordPress integration.
 """
 import logging
 import hashlib
@@ -8,7 +9,6 @@ import json
 from decimal import Decimal
 
 from django.conf import settings
-from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
@@ -39,101 +39,108 @@ FOUNDERS_APPS = [
 ]
 
 
-@require_http_methods(["GET", "POST"])
-def founders_beta_circle_landing(request):
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def founders_signup_api(request):
     """
-    Founder Beta Circle landing page and signup form.
-    GET: Display form
-    POST: Validate and redirect to Lemon Squeezy checkout
-    """
-    if request.method == 'POST':
-        return handle_founder_signup(request)
+    REST API endpoint for Founder Beta Circle signup.
+    Called from WordPress form via JavaScript.
     
-    # GET: Render form
-    context = {
-        'price_usd': float(FOUNDERS_PRICE_USD),
-        'apps_included': len(FOUNDERS_APPS),
+    Request body:
+    {
+        "company_name": "Acme Corp",
+        "company_slug": "acme-corp",
+        "admin_username": "john.smith",
+        "admin_email": "john@acme.com"
     }
-    return render(request, 'dose/founders_beta_circle.html', context)
-
-
-def handle_founder_signup(request):
+    
+    Response:
+    {
+        "success": true,
+        "checkout_url": "https://lemonsqueezy.com/checkout/...",
+        "founder_id": 123
+    }
+    Or:
+    {
+        "success": false,
+        "errors": {"company_slug": "Already taken"}
+    }
     """
-    Validate founder signup form and redirect to Lemon Squeezy checkout.
-    """
-    company_name = (request.POST.get('company_name') or '').strip()
-    company_slug = (request.POST.get('company_slug') or '').strip().lower()
-    admin_username = (request.POST.get('admin_username') or '').strip()
-    admin_email = (request.POST.get('admin_email') or '').strip()
+    try:
+        data = request.data
+        company_name = (data.get('company_name') or '').strip()
+        company_slug = (data.get('company_slug') or '').strip().lower()
+        admin_username = (data.get('admin_username') or '').strip()
+        admin_email = (data.get('admin_email') or '').strip()
+        
+        # Validation
+        errors = {}
+        if not company_name:
+            errors['company_name'] = 'Company name is required.'
+        if not company_slug or not company_slug.replace('-', '').replace('_', '').isalnum():
+            errors['company_slug'] = 'Slug must be alphanumeric (hyphens/underscores allowed).'
+        if FounderSignup.objects.filter(company_slug=company_slug).exists():
+            errors['company_slug'] = 'This slug is already taken.'
+        if Tenant.objects.filter(slug=company_slug).exists():
+            errors['company_slug'] = 'This slug is already in use.'
+        if not admin_username or len(admin_username) < 3:
+            errors['admin_username'] = 'Username must be at least 3 characters.'
+        if not admin_email or '@' not in admin_email:
+            errors['admin_email'] = 'Valid email is required.'
+        
+        if errors:
+            return Response({'success': False, 'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create pending FounderSignup record
+        founder_signup, created = FounderSignup.objects.get_or_create(
+            company_slug=company_slug,
+            defaults={
+                'company_name': company_name,
+                'admin_username': admin_username,
+                'admin_email': admin_email,
+                'status': 'pending',
+            }
+        )
+        
+        if not created and founder_signup.status != 'pending':
+            return Response(
+                {'success': False, 'errors': {'company_slug': 'This company has already signed up.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Build Lemon Squeezy checkout URL
+        api_key = settings.LEMON_SQUEEZY_API_KEY
+        product_id = settings.LEMON_SQUEEZY_PRODUCT_ID
+        
+        if not api_key or not product_id:
+            logger.error('Lemon Squeezy API key or product ID not configured.')
+            return Response(
+                {'success': False, 'errors': {'_': 'Payment system not configured. Please contact support.'}},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Build checkout URL with custom metadata
+        checkout_url = (
+            f"https://lemonsqueezy.com/checkout/{product_id}"
+            f"?checkout[email]={admin_email}"
+            f"&checkout[custom][founder_id]={founder_signup.id}"
+            f"&checkout[custom][company]={company_slug}"
+        )
+        
+        logger.info(f'Founder signup API: created {founder_signup.id} ({company_slug})')
+        
+        return Response({
+            'success': True,
+            'checkout_url': checkout_url,
+            'founder_id': founder_signup.id,
+        }, status=status.HTTP_200_OK)
     
-    # Validation
-    errors = {}
-    if not company_name:
-        errors['company_name'] = 'Company name is required.'
-    if not company_slug or not company_slug.replace('-', '').replace('_', '').isalnum():
-        errors['company_slug'] = 'Slug must be alphanumeric (hyphens/underscores allowed).'
-    if FounderSignup.objects.filter(company_slug=company_slug).exists():
-        errors['company_slug'] = 'This slug is already taken.'
-    if Tenant.objects.filter(slug=company_slug).exists():
-        errors['company_slug'] = 'This slug is already in use.'
-    if not admin_username or len(admin_username) < 3:
-        errors['admin_username'] = 'Username must be at least 3 characters.'
-    if not admin_email or '@' not in admin_email:
-        errors['admin_email'] = 'Valid email is required.'
-    
-    if errors:
-        context = {
-            'price_usd': float(FOUNDERS_PRICE_USD),
-            'apps_included': len(FOUNDERS_APPS),
-            'errors': errors,
-            'form_data': request.POST,
-        }
-        return render(request, 'dose/founders_beta_circle.html', context, status=400)
-    
-    # Create pending FounderSignup record
-    founder_signup, created = FounderSignup.objects.get_or_create(
-        company_slug=company_slug,
-        defaults={
-            'company_name': company_name,
-            'admin_username': admin_username,
-            'admin_email': admin_email,
-            'status': 'pending',
-        }
-    )
-    
-    if not created and founder_signup.status != 'pending':
-        context = {
-            'price_usd': float(FOUNDERS_PRICE_USD),
-            'apps_included': len(FOUNDERS_APPS),
-            'errors': {'company_slug': 'This company has already signed up.'},
-            'form_data': request.POST,
-        }
-        return render(request, 'dose/founders_beta_circle.html', context, status=400)
-    
-    # Build Lemon Squeezy checkout URL
-    # Format: https://lemonsqueezy.com/checkout/{variant_id}?checkout[email]={email}&checkout[custom][founder_signup_id]={id}
-    api_key = settings.LEMON_SQUEEZY_API_KEY
-    product_id = settings.LEMON_SQUEEZY_PRODUCT_ID
-    
-    if not api_key or not product_id:
-        logger.error('Lemon Squeezy API key or product ID not configured.')
-        context = {
-            'price_usd': float(FOUNDERS_PRICE_USD),
-            'apps_included': len(FOUNDERS_APPS),
-            'errors': {'_': 'Payment system not configured. Please contact support.'},
-        }
-        return render(request, 'dose/founders_beta_circle.html', context, status=500)
-    
-    # Build checkout URL with custom metadata
-    checkout_url = (
-        f"https://lemonsqueezy.com/checkout/{product_id}"
-        f"?checkout[email]={admin_email}"
-        f"&checkout[custom][founder_id]={founder_signup.id}"
-        f"&checkout[custom][company]={company_slug}"
-    )
-    
-    logger.info(f'Founder signup created: {founder_signup.id} ({company_slug}), redirecting to Lemon Squeezy')
-    return redirect(checkout_url)
+    except Exception as e:
+        logger.exception(f'Founder signup API error: {e}')
+        return Response(
+            {'success': False, 'errors': {'_': 'An error occurred. Please try again.'}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @csrf_exempt
