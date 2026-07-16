@@ -53,6 +53,10 @@ from dose.views.orchestration_instruction_embed import (
     orchestration_instruction_embed_change,
 )
 from dose.views.hs_asset_proxy import hs_asset_proxy
+from dose.views.founder_views import (
+    founders_beta_circle_landing,
+    lemon_squeezy_webhook,
+)
 
 try:
     from rest_framework.routers import DefaultRouter
@@ -101,4 +105,7 @@ urlpatterns = [
     path('hubspot/oauth/callback/', hubspot_oauth_callback, name='hubspot_oauth_callback'),
     path('sniff/', include('dose.polysniffer.sniff_urls')),
     path('hs-asset-proxy/', hs_asset_proxy, name='hs_asset_proxy'),
+    # Founder Beta Circle
+    path('founders-beta-circle/', founders_beta_circle_landing, name='founders_beta_circle'),
+    path('webhook/lemon-squeezy/', lemon_squeezy_webhook, name='lemon_squeezy_webhook'),
 ]

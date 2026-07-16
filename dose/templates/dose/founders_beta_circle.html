@@ -1,0 +1,276 @@
+{% extends "dose/base.html" %}
+{% load static %}
+
+{% block title %}Founder Beta Circle - PolySaaS{% endblock %}
+
+{% block extra_css %}
+<style>
+  .founders-hero {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 60px 20px;
+    text-align: center;
+    border-radius: 8px;
+    margin-bottom: 40px;
+  }
+  .founders-hero h1 {
+    font-size: 2.5em;
+    margin: 0 0 10px 0;
+    font-weight: bold;
+  }
+  .founders-hero .tagline {
+    font-size: 1.2em;
+    opacity: 0.95;
+  }
+  .price-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.2);
+    padding: 10px 20px;
+    border-radius: 4px;
+    margin: 15px 0;
+    font-size: 1.1em;
+  }
+  .apps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 30px 0;
+  }
+  .app-card {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+    text-align: center;
+    border: 2px solid #e9ecef;
+  }
+  .app-card strong {
+    display: block;
+    margin-top: 10px;
+    color: #333;
+  }
+  .form-section {
+    background: #f8f9fa;
+    padding: 40px;
+    border-radius: 8px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .form-group {
+    margin-bottom: 20px;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #333;
+  }
+  .form-group input, .form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1em;
+    font-family: inherit;
+  }
+  .form-group input:focus, .form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+  .error {
+    color: #dc3545;
+    font-size: 0.9em;
+    margin-top: 5px;
+  }
+  .submit-btn {
+    background: #667eea;
+    color: white;
+    padding: 12px 30px;
+    border: none;
+    border-radius: 4px;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.3s;
+  }
+  .submit-btn:hover {
+    background: #5568d3;
+  }
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+    margin: 40px 0;
+  }
+  .feature {
+    padding: 20px;
+    background: white;
+    border-left: 4px solid #667eea;
+  }
+  .feature h3 {
+    color: #667eea;
+    margin-top: 0;
+  }
+  .alert {
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+  }
+  .alert-danger {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1000px; margin: 0 auto;">
+  
+  <div class="founders-hero">
+    <h1>Founder Beta Circle</h1>
+    <p class="tagline">Get lifetime access to all 9 PolySaaS apps for a one-time investment</p>
+    <div class="price-badge">💰 $100 ONE-TIME • Lifetime Access</div>
+  </div>
+
+  <div style="text-align: center; margin-bottom: 50px;">
+    <h2>What's Included?</h2>
+    <div class="apps-grid">
+      <div class="app-card">
+        <strong>🏢 Odoo ERP</strong>
+      </div>
+      <div class="app-card">
+        <strong>☁️ Nextcloud</strong>
+      </div>
+      <div class="app-card">
+        <strong>💬 Mattermost</strong>
+      </div>
+      <div class="app-card">
+        <strong>📊 Dolibarr</strong>
+      </div>
+      <div class="app-card">
+        <strong>📈 Monitor Logger</strong>
+      </div>
+      <div class="app-card">
+        <strong>🎯 Liferay</strong>
+      </div>
+      <div class="app-card">
+        <strong>📝 WordPress</strong>
+      </div>
+      <div class="app-card">
+        <strong>🔍 PolySysMon</strong>
+      </div>
+    </div>
+    <p><strong>Or substitute any app with your own BYOL SaaS</strong> (like HubSpot, Salesforce, etc.)</p>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <h3>✅ Included</h3>
+      <ul>
+        <li>All 8 core apps</li>
+        <li>1 admin user</li>
+        <li>Monthly check-ins</li>
+        <li>6-month recommendation reports</li>
+      </ul>
+    </div>
+    <div class="feature">
+      <h3>➕ Add Users</h3>
+      <ul>
+        <li>2-10 users: 10% off</li>
+        <li>11-20 users: 20% off</li>
+        <li>21+ users: 30% off</li>
+        <li>Standard storage rates apply</li>
+      </ul>
+    </div>
+    <div class="feature">
+      <h3>🚀 Get Started</h3>
+      <ul>
+        <li>Fill the form below</li>
+        <li>Proceed to payment</li>
+        <li>Your tenant is auto-provisioned</li>
+        <li>Start collaborating immediately</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h2 style="text-align: center; margin-top: 0;">Sign Up Now</h2>
+    
+    {% if errors._  %}
+      <div class="alert alert-danger">
+        {{ errors._ }}
+      </div>
+    {% endif %}
+
+    <form method="post" action="">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label for="company_name">Company Name *</label>
+        <input 
+          type="text" 
+          id="company_name" 
+          name="company_name" 
+          placeholder="e.g., Acme Corp"
+          value="{{ form_data.company_name }}"
+          required
+        >
+        {% if errors.company_name %}<div class="error">{{ errors.company_name }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="company_slug">Tenant URL Slug *</label>
+        <input 
+          type="text" 
+          id="company_slug" 
+          name="company_slug" 
+          placeholder="e.g., acme-corp (alphanumeric, hyphens OK)"
+          value="{{ form_data.company_slug }}"
+          pattern="[a-zA-Z0-9\-_]+"
+          required
+        >
+        <small>Your tenant will be accessible at: <strong>polysaas.online/{{ form_data.company_slug }}</strong></small>
+        {% if errors.company_slug %}<div class="error">{{ errors.company_slug }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="admin_username">Admin Username *</label>
+        <input 
+          type="text" 
+          id="admin_username" 
+          name="admin_username" 
+          placeholder="e.g., john.smith"
+          value="{{ form_data.admin_username }}"
+          minlength="3"
+          required
+        >
+        {% if errors.admin_username %}<div class="error">{{ errors.admin_username }}</div>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="admin_email">Admin Email *</label>
+        <input 
+          type="email" 
+          id="admin_email" 
+          name="admin_email" 
+          placeholder="e.g., john@acme.com"
+          value="{{ form_data.admin_email }}"
+          required
+        >
+        {% if errors.admin_email %}<div class="error">{{ errors.admin_email }}</div>{% endif %}
+      </div>
+
+      <button type="submit" class="submit-btn">
+        Proceed to Payment → $100
+      </button>
+    </form>
+
+    <p style="text-align: center; margin-top: 30px; color: #666;">
+      Payment processed securely via Lemon Squeezy. No additional charges.
+    </p>
+  </div>
+
+</div>
+{% endblock %}
