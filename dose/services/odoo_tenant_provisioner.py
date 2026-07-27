@@ -39,10 +39,14 @@ logger = logging.getLogger(__name__)
 def _get_odoo_shared_config() -> Dict[str, str]:
     """Return connection config for the shared Odoo instance."""
     return {
-        'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com'),
-        'db': getattr(settings, 'ODOO_SHARED_DB', 'polysaas_odoo'),
-        'admin_login': getattr(settings, 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin'),
-        'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+        'url': getattr(settings, 'ODOO_SHARED_URL', 'http://localhost:8086'),
+        'db': getattr(settings, 'ODOO_SHARED_DB', 'odoo'),
+        'admin_login': getattr(settings, 'ODOO_XMLRPC_ADMIN_LOGIN', 'admin'),
+        'admin_password': getattr(
+            settings,
+            'ODOO_XMLRPC_ADMIN_PASSWORD',
+            getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+        ),
     }
 
 

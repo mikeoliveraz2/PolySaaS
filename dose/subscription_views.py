@@ -748,6 +748,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         
         try:
             app_name = app_key.replace('enable_', '')  # 'enable_mattermost' -> 'mattermost'
+            email = admin_email
             
             # Extract credentials based on app type
             if app_name == 'mattermost':

@@ -234,12 +234,17 @@ POLYSAAS_APP_ADMIN_PASSWORD = sm('polysaas-app-admin-password', 'POLYSAAS_APP_AD
 MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_PASSTHROUGH_SECRET', '')
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
-ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'http://localhost:8069')
-ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'polysaas_odoo')
+ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'http://localhost:8086')
+ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'odoo')
 ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'pst13@me.com')
 # XML-RPC provisioning requires Administration/Access Rights.
 # Default changed from 'odooAdmin' to 'admin' (Odoo default). Override via ODOO_XMLRPC_ADMIN_LOGIN env var.
 ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'admin')
+ODOO_XMLRPC_ADMIN_PASSWORD = sm(
+    'odoo-xmlrpc-admin-password',
+    'ODOO_XMLRPC_ADMIN_PASSWORD',
+    POLYSAAS_APP_ADMIN_PASSWORD,
+)
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='http://localhost:8888')

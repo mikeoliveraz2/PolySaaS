@@ -32,10 +32,14 @@ INVOICING_MENU_XML_IDS = (
 
 def _odoo_xmlrpc_config() -> Dict[str, str]:
     return {
-        'url': getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com').rstrip('/'),
-        'db': getattr(settings, 'ODOO_SHARED_DB', 'polysaas_odoo'),
-        'admin_login': getattr(settings, 'ODOO_XMLRPC_ADMIN_LOGIN', 'odooAdmin'),
-        'admin_password': getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+        'url': getattr(settings, 'ODOO_SHARED_URL', 'http://localhost:8086').rstrip('/'),
+        'db': getattr(settings, 'ODOO_SHARED_DB', 'odoo'),
+        'admin_login': getattr(settings, 'ODOO_XMLRPC_ADMIN_LOGIN', 'admin'),
+        'admin_password': getattr(
+            settings,
+            'ODOO_XMLRPC_ADMIN_PASSWORD',
+            getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
+        ),
     }
 
 
