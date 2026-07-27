@@ -404,6 +404,8 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         # ── Phase 2: Stripe (external, before DB commit) ────────────
         stripe_customer_id = None
         stripe_subscription_id = None
+        customer = None
+        stripe_sub = None
         active = False
 
         if not test_bypass and not pay_by_invoice:
@@ -501,7 +503,13 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                         defaults={'role': UserTenantMembership.Role.OWNER},
                     )
 
-                if not test_bypass and _djstripe_models is not None:
+                if (
+                    not test_bypass
+                    and not pay_by_invoice
+                    and _djstripe_models is not None
+                    and customer is not None
+                    and stripe_sub is not None
+                ):
                     djstripe_customer = _djstripe_models.Customer.sync_from_stripe_data(customer)
                     if user_obj:
                         djstripe_customer.subscriber = user_obj
