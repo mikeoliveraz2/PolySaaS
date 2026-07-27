@@ -234,7 +234,7 @@ POLYSAAS_APP_ADMIN_PASSWORD = sm('polysaas-app-admin-password', 'POLYSAAS_APP_AD
 MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_PASSTHROUGH_SECRET', '')
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---
-ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+ODOO_SHARED_URL = sm('odoo-shared-url', 'ODOO_SHARED_URL', 'http://localhost:8069')
 ODOO_SHARED_DB = sm('odoo-shared-db', 'ODOO_SHARED_DB', 'polysaas_odoo')
 ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN', 'pst13@me.com')
 # XML-RPC provisioning requires Administration/Access Rights.
@@ -242,7 +242,7 @@ ODOO_SHARED_ADMIN_LOGIN = sm('odoo-shared-admin-login', 'ODOO_SHARED_ADMIN_LOGIN
 ODOO_XMLRPC_ADMIN_LOGIN = sm('odoo-xmlrpc-admin-login', 'ODOO_XMLRPC_ADMIN_LOGIN', 'admin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
-NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='https://polysaas-nextcloud.onrender.com')
+NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='http://localhost:8888')
 NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='ncadmin')
 
 # --- HubSpot (per-tenant OAuth + passthrough) ---
@@ -337,8 +337,6 @@ else:
         'localhost',
         '.poly-saas.local',
         'production.polysaas.online',
-        'polysaas-core.onrender.com',
-        '.onrender.com',
         '.polysaas.online',
     ]
 
@@ -687,7 +685,6 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "http://localhost:444",
     "https://production.polysaas.online",
-    "https://polysaas-core.onrender.com",
 ]
 #CSRF_COOKIE_DOMAIN = '.localhost'
 

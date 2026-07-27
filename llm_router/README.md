@@ -27,4 +27,4 @@ text = complete_chat(
 )
 ```
 
-Repo docs: `documentation/deployment/render/OPENCLAW_ROUTER_OPTION2.md`, `openclaw_router/README.md`.
+Repo docs: `openclaw_router/README.md`.

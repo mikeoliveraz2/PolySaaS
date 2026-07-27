@@ -1,7 +1,7 @@
 """
 Celery application for PolySaaS (DOSE).
 
-Worker (Render / local):
+Worker (hosted / local):
   celery -A mysite worker -l INFO
 
 Beat (optional; requires django-celery-beat in INSTALLED_APPS if using DB scheduler):
@@ -11,7 +11,7 @@ import os
 
 from celery import Celery
 
-# Respect DJANGO_SETTINGS_MODULE from environment (e.g. mysite.settings_render on Render).
+# Respect DJANGO_SETTINGS_MODULE from environment (e.g. mysite.settings_hosted in containers).
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mysite.settings")
 
 app = Celery("mysite")

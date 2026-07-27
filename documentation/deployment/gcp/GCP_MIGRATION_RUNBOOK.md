@@ -1,6 +1,6 @@
 # PolySaaS GCP Migration Runbook
 
-Step-by-step operator guide for migrating from Render to GCP.
+Step-by-step operator guide for migrating from legacy hosting to GCP.
 
 **Order:** Infrastructure → Odoo/Mattermost (Compute Engine) → local test → Django (Cloud Run) → CI/CD
 
@@ -61,7 +61,7 @@ bash deploy/gcp/deploy-bundled-apps.sh
 
 Files:
 - [`docker-compose.gcp.yml`](docker-compose.gcp.yml) — Odoo + Mattermost against Cloud SQL
-- Reuses proven Render images: [`deploy/odoo-render/`](../odoo-render/), [`deploy/mattermost-render/`](../mattermost-render/)
+- Reuses proven container images: `deploy/odoo/`, `deploy/mattermost/`
 
 **Mattermost GCS (optional):** Create [HMAC keys](https://cloud.google.com/storage/docs/authentication/hmackeys) and set in `config.env`:
 ```
@@ -74,13 +74,13 @@ GCS_S3_SECRET_ACCESS_KEY=...
 
 ---
 
-## Phase 3 — Migrate data from Render
+## Phase 3 — Migrate source data
 
-Put Render apps in maintenance mode, then:
+Put source apps in maintenance mode, then:
 
 ```bash
-# Fill RENDER_* vars in config.env
-bash deploy/gcp/migrate-from-render.sh
+# Fill SOURCE_* vars in config.env
+bash deploy/gcp/migrate-source-to-gcp.sh
 # Or: --odoo-only / --mattermost-only
 ```
 
@@ -114,7 +114,7 @@ Update `PassThroughEndpoint` rows to point at GCP URLs when ready for cutover.
 
 ## Phase 5 — Django on Cloud Run
 
-**Settings module:** `mysite.settings_gcp` (extends `settings_render` + Cloud SQL + optional GCS)
+**Settings module:** `mysite.settings_gcp` (extends `settings_hosted` + Cloud SQL + optional GCS)
 
 **Dockerfile:** [`Dockerfile.gcp`](../../Dockerfile.gcp)
 
@@ -159,7 +159,7 @@ gcloud builds triggers create github \
 
 | Component | Rollback action |
 |-----------|-----------------|
-| Odoo / Mattermost | Repoint `PassThroughEndpoint` + `.env` URLs back to Render |
+| Odoo / Mattermost | Repoint `PassThroughEndpoint` + `.env` URLs back to previous URLs |
 | Django | `gcloud run services update-traffic polysaas-core --to-revisions=PREVIOUS=100` |
 | Database | Restore Cloud SQL backup taken before migration |
 
@@ -172,7 +172,7 @@ gcloud builds triggers create github \
 | `deploy/gcp/config.env.example` | Infrastructure variables template |
 | `deploy/gcp/setup-infrastructure.sh` | Phase 1 gcloud script |
 | `deploy/gcp/docker-compose.gcp.yml` | Bundled apps stack |
-| `deploy/gcp/migrate-from-render.sh` | pg_dump/pg_restore |
+| `deploy/gcp/migrate-source-to-gcp.sh` | pg_dump/pg_restore |
 | `deploy/gcp/.env.local-gcp.example` | Local desktop test overrides |
 | `deploy/gcp/verify-integration.ps1` | Endpoint smoke test |
 | `Dockerfile.gcp` | Django Cloud Run image |

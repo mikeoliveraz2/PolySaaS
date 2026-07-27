@@ -21,8 +21,8 @@ gcloud compute scp --recurse \
   --zone="$GCP_ZONE"
 
 gcloud compute scp --recurse \
-  "$REPO_ROOT/deploy/odoo-render" \
-  "$REPO_ROOT/deploy/mattermost-render" \
+  "$REPO_ROOT/deploy/odoo" \
+  "$REPO_ROOT/deploy/mattermost" \
   "$GCE_VM_NAME:/opt/polysaas/" \
   --zone="$GCP_ZONE"
 

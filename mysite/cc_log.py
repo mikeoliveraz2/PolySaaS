@@ -1,8 +1,8 @@
 """
 Cross-cutting (CC) logger for PolySaaS (passthrough, PolySniffer, integrations).
 
-Logger name: ``polysaas.cc``. With ``DJANGO_SETTINGS_MODULE=mysite.settings_render``,
-``LOGGING`` sends ``polysaas.*`` to stdout for Render log streams.
+Logger name: ``polysaas.cc``. With ``DJANGO_SETTINGS_MODULE=mysite.settings_hosted``,
+``LOGGING`` sends ``polysaas.*`` to stdout for container log streams.
 
 Example::
 

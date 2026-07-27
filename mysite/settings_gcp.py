@@ -4,7 +4,7 @@ GCP / Cloud Run production settings for PolySaaS.
 Usage:
   export DJANGO_SETTINGS_MODULE=mysite.settings_gcp
 
-Extends settings_render.py (12-factor, Whitenoise fallback) and adds:
+Extends settings_hosted.py (12-factor, Whitenoise fallback) and adds:
   - Cloud SQL Unix socket via USE_CLOUD_SQL + CLOUDSQL_CONNECTION_NAME
   - Optional GCS static/media via USE_GCS_STATIC + django-storages
   - Bundled app URLs from env (ODOO_SHARED_URL, MATTERMOST_URL)
@@ -13,9 +13,9 @@ import os
 
 print("[Django] Loading mysite/settings_gcp.py", flush=True)
 
-from mysite.settings_render import *  # noqa: F401,F403
+from mysite.settings_hosted import *  # noqa: F401,F403
 
-print("[Django] Render base loaded; applying GCP overrides", flush=True)
+print("[Django] Hosted base loaded; applying GCP overrides", flush=True)
 
 # --- Cloud SQL (Unix socket on Cloud Run) ---
 if os.environ.get("USE_CLOUD_SQL", "").lower() in ("1", "true", "yes"):

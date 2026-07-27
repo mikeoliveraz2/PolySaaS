@@ -1,5 +1,5 @@
 # Deprecated: installing Odoo from git here is slow and often fails (OOM / timeouts).
-# Prefer Dockerfile in this folder (same odoo:18 + entrypoint as deploy/odoo-render).
+# Prefer Dockerfile in this folder (same odoo:18 + entrypoint as deploy/odoo).
 [variables]
 PYTHONUNBUFFERED = "1"
 PIP_DISABLE_PIP_VERSION_CHECK = "1"

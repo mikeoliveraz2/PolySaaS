@@ -1,4 +1,4 @@
-# PolySaaS Django (DOSE) — Render / container deploy
+# PolySaaS Django (DOSE) — container deploy
 # Build: docker build -f Dockerfile.django -t polysaas-django .
 # Run:   docker run -e DJANGO_SECRET_KEY=... -e DATABASE_URL=... -p 8000:8000 polysaas-django
 
@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DJANGO_SETTINGS_MODULE=mysite.settings_render
+    DJANGO_SETTINGS_MODULE=mysite.settings_hosted
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -36,15 +36,8 @@ RUN mkdir -p /app/var/static_root /app/var/media_root \
     && adduser --disabled-password --gecos '' --uid 1000 django \
     && chown -R django:django /app/var
 
-COPY scripts/render-entrypoint.sh /entrypoint.sh
-COPY scripts/render-celery-worker.sh /celery-worker.sh
-COPY scripts/render-celery-beat.sh /celery-beat.sh
-COPY scripts/render-predeploy.sh /app/render-predeploy.sh
-RUN chmod +x /entrypoint.sh /celery-worker.sh /celery-beat.sh /app/render-predeploy.sh
-
 USER django
 EXPOSE 8000
 
-# Render sets PORT; local default 8000.
-ENTRYPOINT ["/entrypoint.sh"]
+# Hosted runtimes may set PORT; local default 8000.
 CMD ["sh", "-c", "exec python -m gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-30} --access-logfile - --error-logfile - mysite.wsgi:application"]

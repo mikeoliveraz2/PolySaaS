@@ -2,7 +2,7 @@
 
 Small **FastAPI** service with an **OpenAI-shaped** `POST /v1/chat/completions` endpoint. It classifies the prompt (same heuristics as the Django `llm_router` app), picks **Anthropic** `model` from `config.yaml`, and returns a minimal chat completion JSON.
 
-This is intended as an **internal platform assistant** (Render private service, VPN, or authenticated mesh) — not a public anonymous API.
+This is intended as an **internal platform assistant** (private service, VPN, or authenticated mesh) — not a public anonymous API.
 
 ## Local run
 
@@ -16,9 +16,9 @@ uvicorn main:app --reload --port 8765
 
 Health: `GET http://127.0.0.1:8765/healthz`
 
-## Render
+## Hosted deployment
 
-1. New **Web Service** (Docker), context = repo subfolder `openclaw_router` (or build from root with `dockerfilePath: openclaw_router/Dockerfile`, `dockerContext: openclaw_router`).
+1. Deploy as a private Docker service with build context `openclaw_router`.
 2. Set **`ANTHROPIC_API_KEY`** (secret). Optional: **`OPENCLAW_ROUTER_CONFIG`** = path inside container if you mount a custom YAML; otherwise baked-in `config.yaml` is used.
 3. Optional: **`OPENCLAW_ROUTER_TRUST_CLIENT_MODEL=1`** to honor the client `model` field (defeats cost routing — default off).
 4. From Django or workers, call **`https://<private-host>/v1/chat/completions`** with a standard OpenAI JSON body.

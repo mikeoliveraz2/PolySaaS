@@ -1,6 +1,6 @@
 # PolySaaS GCP Deployment
 
-Operator scripts and configs for migrating from Render to GCP.
+Operator scripts and configs for migrating from legacy hosting to GCP.
 
 **Full runbook:** [`documentation/deployment/gcp/GCP_MIGRATION_RUNBOOK.md`](../../documentation/deployment/gcp/GCP_MIGRATION_RUNBOOK.md)
 
@@ -17,8 +17,8 @@ Copy-Item deploy\gcp\config.env.example deploy\gcp\config.env
 bash deploy/gcp/provision-vm.sh
 bash deploy/gcp/deploy-bundled-apps.sh
 
-# Phase 3 — migrate from Render
-bash deploy/gcp/migrate-from-render.sh
+# Phase 3 — migrate source data
+bash deploy/gcp/migrate-source-to-gcp.sh
 
 # Phase 4 — local test
 # Merge deploy/gcp/.env.local-gcp.example into .env
@@ -39,6 +39,6 @@ bash deploy/gcp/setup-cicd-trigger.sh
 | `config.env.example` | GCP variables template |
 | `docker-compose.gcp.yml` | Odoo + Mattermost on Compute Engine |
 | `setup-infrastructure.sh` | Buckets, DBs, service accounts |
-| `migrate-from-render.sh` | Database cutover |
+| `migrate-source-to-gcp.sh` | Database cutover |
 | `../../Dockerfile.gcp` | Django Cloud Run image |
 | `../../cloudbuild.yaml` | CI/CD pipeline |

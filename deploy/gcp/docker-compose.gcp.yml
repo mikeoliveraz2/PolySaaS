@@ -13,7 +13,7 @@
 services:
   odoo:
     build:
-      context: ../odoo-render
+      context: ../odoo
       dockerfile: Dockerfile
     image: polysaas/odoo-gcp:latest
     restart: unless-stopped
@@ -40,7 +40,7 @@ services:
 
   mattermost:
     build:
-      context: ../mattermost-render
+      context: ../mattermost
       dockerfile: Dockerfile
     image: polysaas/mattermost-gcp:latest
     restart: unless-stopped
