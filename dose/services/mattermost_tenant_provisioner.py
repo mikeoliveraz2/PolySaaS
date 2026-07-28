@@ -19,6 +19,7 @@ from typing import Dict, Any, Optional
 import logging
 import re
 import secrets as _secrets
+from pathlib import Path
 
 import requests
 
@@ -75,6 +76,18 @@ def _shared_team_display_name() -> str:
 
 def _get_admin_token() -> str:
     """Retrieve Mattermost admin personal access token from settings (uses sm() → Secret Manager or .env)."""
+    env_path = Path(__file__).resolve().parents[2] / '.env'
+    if env_path.exists():
+        try:
+            for raw_line in env_path.read_text(encoding='utf-8').splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                if key.strip() == 'MATTERMOST_ADMIN_TOKEN':
+                    return value.strip().strip('"').strip("'")
+        except Exception:
+            pass
     from django.conf import settings
     token = getattr(settings, 'MATTERMOST_ADMIN_TOKEN', '')
     return token.strip() if token else ''

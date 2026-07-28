@@ -7,18 +7,26 @@ import secrets
 import string
 from dose.services.email_to import GmailEmail
 from dose.models import PassThroughEndpoint
+from dose.services.oauth2_registration import mark_tenant_app_active, mark_tenant_app_error
 
 DOLIBARR_API_BASE = "http://localhost:8083"  # Local Docker service
 
 @shared_task
-def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email: str, company_name: str) -> Dict[str, Any]:
+def provision_dolibarr_tenant(
+    tenant_schema: str,
+    tenant_name: str,
+    admin_email: str,
+    company_name: str,
+    tenant_app_id: int = None,
+    **kwargs,
+) -> Dict[str, Any]:
     """
     Atomic Service: Create Dolibarr tenant + admin user on new subscription
     Triggered when "Dolibarr" is checked on subscribe form
     """
     # 1. Set tenant schema for PassThroughEndpoint creation
     with connection.cursor() as cursor:
-        cursor.execute(f'SET search_path TO "{tenant_schema}"')
+        cursor.execute(f'SET search_path TO "{tenant_schema}", public')
 
     # 2. Use standardized app-admin password (convention: [appslug]Admin / POLYSAAS_APP_ADMIN_PASSWORD)
     from django.conf import settings
@@ -26,7 +34,7 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
 
     # 3. Create PassThroughEndpoint for Dolibarr
     dolibarr_endpoint, _created = PassThroughEndpoint.objects.update_or_create(
-        trigger_path='dolibarr',
+        slug='dolibarr',
         defaults={
             'endpoint_url': DOLIBARR_API_BASE,
             'description': 'Dolibarr ERP/CRM - tenant-specific instance',
@@ -41,7 +49,21 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
             'starting_uri': '/',
         }
     )
-    print(f"Created PassThroughEndpoint for Dolibarr: {dolibarr_endpoint.trigger_path} -> {dolibarr_endpoint.endpoint_url}")
+    print(f"Created PassThroughEndpoint for Dolibarr: {dolibarr_endpoint.slug} -> {dolibarr_endpoint.endpoint_url}")
+
+    tenant_app = None
+    if tenant_app_id:
+        from dose.models import TenantApp
+        tenant_app = TenantApp.objects.filter(id=tenant_app_id).first()
+        if tenant_app:
+            extra = dict(tenant_app.extra_config or {})
+            extra.update({
+                'dolibarr_url': DOLIBARR_API_BASE,
+                'dolibarr_login': 'dolibarrAdmin',
+                'dolibarr_password': password,
+            })
+            tenant_app.extra_config = extra
+            tenant_app.save(update_fields=['extra_config'])
 
     dolibarr_url = f"http://dolibarr.polysaas.online/admin/{tenant_schema}/dolibarr/"  # Assuming hosts file maps this
 
@@ -84,6 +106,14 @@ def provision_dolibarr_tenant(tenant_schema: str, tenant_name: str, admin_email:
     except Exception as e:
         print(f"Warning: Email service error: {str(e)}")
         # Continue with provisioning even if email fails
+
+    if tenant_app:
+        try:
+            mark_tenant_app_active(tenant_app, app_url=DOLIBARR_API_BASE)
+        except Exception:
+            tenant_app.status = 'active'
+            tenant_app.last_error = ''
+            tenant_app.save(update_fields=['status', 'last_error'])
 
     return {
         "success": True,
