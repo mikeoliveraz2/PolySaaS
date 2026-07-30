@@ -24,6 +24,11 @@ class Subscription(TenantAwareModel):
     card_name = models.CharField(max_length=128, blank=True, null=True, help_text="Name on card")
     selected_apps = models.JSONField(default=list, blank=True, help_text="App keys selected at subscribe time")
     active = models.BooleanField(default=False)
+    free_period_ends_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Date/time when a promotional free access period ends",
+    )
     promo_code = models.ForeignKey(
         'PromoCode',
         on_delete=models.SET_NULL,
@@ -44,6 +49,10 @@ class Subscription(TenantAwareModel):
         return f"Subscription for {self.tenant} ({self.get_plan_tier_display()}, Active: {self.active})"
 
     def is_active(self):
+        if self.free_period_ends_at:
+            from django.utils import timezone
+            if timezone.now() >= self.free_period_ends_at:
+                return False
         return self.active
 
     def mark_active(self):

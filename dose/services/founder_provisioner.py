@@ -8,6 +8,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from celery import shared_task
 
 from dose.models import FounderSignup, Tenant, Subscription, UserProfile, UserTenantMembership
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 FOUNDERS_PLAN_TIER = 'polysaas-unlimited'
+FOUNDERS_FREE_PERIOD_MONTHS = 12
 FOUNDERS_APPS = {
     'enable_odoo': 'Odoo ERP',
     'enable_nextcloud': 'Nextcloud',
@@ -26,6 +28,14 @@ FOUNDERS_APPS = {
     'enable_monitor_logger': 'Monitor Logger',
     'enable_polysysmon': 'PolySysMon',
 }
+
+
+def get_founder_free_period_end(start=None):
+    start = start or timezone.now()
+    try:
+        return start.replace(year=start.year + 1)
+    except ValueError:
+        return start.replace(year=start.year + 1, day=28)
 
 
 @shared_task
@@ -84,6 +94,7 @@ def provision_founder_tenant(founder_id):
                 user_count=1,
                 active=True,
                 selected_apps=list(FOUNDERS_APPS.keys()),
+                free_period_ends_at=get_founder_free_period_end(),
             )
             subscription.mark_active()
             logger.info(f'Created subscription {subscription.id} (plan={FOUNDERS_PLAN_TIER})')

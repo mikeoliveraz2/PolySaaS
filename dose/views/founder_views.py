@@ -24,7 +24,7 @@ from dose.models import FounderSignup, Tenant, Subscription, UserProfile, UserTe
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-# Founder tier: $100 lifetime, includes 8 apps + 1 user
+# Founder tier: $100 for 12 months, includes 8 apps + 1 user
 FOUNDERS_PRICE_USD = Decimal('100.00')
 FOUNDERS_PLAN_TIER = 'polysaas-unlimited'
 FOUNDERS_APPS = [
