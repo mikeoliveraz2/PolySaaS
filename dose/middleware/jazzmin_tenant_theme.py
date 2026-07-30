@@ -30,6 +30,39 @@ def _endpoint_to_app_name(endpoint):
     return None
 
 
+def _load_passthrough_endpoints(schema_name):
+    from dose.models.pass_through_endpoint import PassThroughEndpoint
+
+    if not schema_name:
+        return []
+
+    search_paths = [
+        f'SET search_path TO "{schema_name}",public',
+        'SET search_path TO public,pg_catalog',
+    ]
+
+    for search_path_sql in search_paths:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(search_path_sql)
+            endpoints = list(
+                PassThroughEndpoint.objects.filter(
+                    is_enabled=True,
+                    show_in_menu=True,
+                )
+                .exclude(menu_title__isnull=True)
+                .exclude(menu_title__exact='')
+                .order_by('menu_sort_order', 'id')
+            )
+            if endpoints:
+                print(f"[JAZZMIN DEBUG] Loaded {len(endpoints)} passthrough endpoints using {search_path_sql}")
+                return endpoints
+        except Exception as exc:
+            print(f"[JAZZMIN DEBUG] Failed passthrough lookup with {search_path_sql}: {exc}")
+
+    return []
+
+
 class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST!
 
     """
@@ -80,22 +113,7 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # �
             # request.passthrough_endpoints below (avoids UnboundLocalError → 500 on /admin/).
             passthrough_endpoints = []
             try:
-                from dose.models.pass_through_endpoint import PassThroughEndpoint
-                from django.db import connection
-
-                # Tenant schema only — PassThroughEndpoint rows are tenant-owned, not public.
-                with connection.cursor() as cursor:
-                    cursor.execute(f'SET search_path TO "{current_schema}"')
-
-                passthrough_endpoints = list(
-                    PassThroughEndpoint.objects.filter(
-                        is_enabled=True,
-                        show_in_menu=True,
-                    )
-                    .exclude(menu_title__isnull=True)
-                    .exclude(menu_title__exact='')
-                    .order_by('menu_sort_order', 'id')
-                )
+                passthrough_endpoints = _load_passthrough_endpoints(current_schema)
 
                 print(f"[JAZZMIN DEBUG] Found {len(passthrough_endpoints)} endpoints to add to menu (schema: {current_schema})")
                 for ep in passthrough_endpoints:

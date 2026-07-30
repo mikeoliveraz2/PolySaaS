@@ -8,6 +8,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _load_passthrough_endpoints(schema_name):
+    from django.db import connection
+    from dose.models.pass_through_endpoint import PassThroughEndpoint
+
+    if not schema_name:
+        return []
+
+    for search_path_sql in (
+        f'SET search_path TO "{schema_name}",public',
+        'SET search_path TO public,pg_catalog',
+    ):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(search_path_sql)
+            endpoints = list(
+                PassThroughEndpoint.objects.filter(is_enabled=True, show_in_menu=True)
+                .order_by('menu_sort_order', 'id')
+            )
+            if endpoints:
+                print(f"[ADMIN_NAV] Loaded {len(endpoints)} passthrough endpoints using {search_path_sql}")
+                return endpoints
+        except Exception as exc:
+            print(f"[ADMIN_NAV] Passthrough lookup failed with {search_path_sql}: {exc}")
+
+    return []
+
 def tenant_context(request):
     """
     Req 5: expose tenant + role for templates.
@@ -247,7 +274,26 @@ def admin_navigation(request):
             # Extract hostname from endpoint_url for matching
             from urllib.parse import urlparse
             host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
-            return 'gmail' in host or any(app in host for app in _subscribed)
+            path = urlparse(endpoint_url).path.lower().replace('-', '_')
+
+            endpoint_title = ''
+            endpoint_slug = ''
+            try:
+                endpoint_obj = next(
+                    (ep for ep in endpoints if getattr(ep, 'endpoint_url', '') == endpoint_url),
+                    None,
+                )
+                if endpoint_obj:
+                    endpoint_title = (getattr(endpoint_obj, 'menu_title', '') or '').lower().replace('-', '_')
+                    endpoint_slug = (getattr(endpoint_obj, 'slug', '') or '').lower().replace('-', '_')
+            except Exception:
+                pass
+
+            visible_tokens = {host, path, endpoint_title, endpoint_slug}
+            visible_tokens.discard('')
+            visible_tokens.add('gmail')
+
+            return any(app in token for token in _subscribed for token in visible_tokens)
 
         # Use endpoints from middleware if available (already queried and filtered)
         endpoints = []
@@ -260,27 +306,18 @@ def admin_navigation(request):
 
             # Also include endpoints that might not have menu_title (like v0)
             # The middleware excludes endpoints without menu_title, but we want to show them in sidebar
-            from django.db import connection
             if tenant and tenant.schema_name:
                 try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
-                        # Get endpoints with show_in_menu=True but without menu_title (or with empty menu_title)
-                        additional_endpoints = PassThroughEndpoint.objects.filter(
-                            show_in_menu=True
-                        ).filter(
-                            Q(menu_title__isnull=True) | Q(menu_title__exact='')
-                        )
-                        additional_endpoints = list(additional_endpoints)
+                    additional_endpoints = _load_passthrough_endpoints(tenant.schema_name)
 
-                        # Add endpoints that aren't already in the list
-                        existing_urls = {ep.endpoint_url for ep in endpoints}
-                        for ep in additional_endpoints:
-                            if ep.endpoint_url not in existing_urls:
-                                endpoints.append(ep)
-                                print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.endpoint_url}")
+                    # Add endpoints that aren't already in the list
+                    existing_urls = {ep.endpoint_url for ep in endpoints}
+                    for ep in additional_endpoints:
+                        if ep.endpoint_url not in existing_urls:
+                            endpoints.append(ep)
+                            print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.endpoint_url}")
 
-                        print(f"[ADMIN_NAV] Total endpoints after adding ones without menu_title: {len(endpoints)}")
+                    print(f"[ADMIN_NAV] Total endpoints after adding ones without menu_title: {len(endpoints)}")
                 except Exception as e:
                     print(f"[ADMIN_NAV] Error querying additional endpoints: {e}")
                     import traceback
@@ -288,34 +325,10 @@ def admin_navigation(request):
         else:
             # Fallback: query endpoints ourselves if middleware didn't set them
             print(f"[ADMIN_NAV] request.passthrough_endpoints not available, querying ourselves")
-            from django.db import connection
             if tenant and tenant.schema_name:
                 try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(f'SET search_path TO "{tenant.schema_name}"')
-                        # First, check total count without filters
-                        total_count = PassThroughEndpoint.objects.count()
-                        print(f"[ADMIN_NAV] Total PassThroughEndpoints in schema {tenant.schema_name}: {total_count}")
-
-                        # Check count with is_enabled filter only
-                        enabled_count = PassThroughEndpoint.objects.filter(is_enabled=True).count()
-                        print(f"[ADMIN_NAV] Enabled PassThroughEndpoints: {enabled_count}")
-
-                        # Check count with show_in_menu filter only
-                        menu_count = PassThroughEndpoint.objects.filter(show_in_menu=True).count()
-                        print(f"[ADMIN_NAV] Show in menu PassThroughEndpoints: {menu_count}")
-
-                        # Now get the filtered list
-                        endpoints = PassThroughEndpoint.objects.filter(is_enabled=True, show_in_menu=True)
-                        endpoints = list(endpoints)  # Convert to list while still in correct schema
-                        print(f"[ADMIN_NAV] Found {len(endpoints)} enabled PassThroughEndpoints with show_in_menu=True in current tenant schema: {tenant.schema_name}")
-
-                        # If no endpoints found with show_in_menu=True, try with just is_enabled=True
-                        if len(endpoints) == 0 and enabled_count > 0:
-                            print(f"[ADMIN_NAV] No endpoints with show_in_menu=True, trying with just is_enabled=True")
-                            endpoints = PassThroughEndpoint.objects.filter(is_enabled=True)
-                            endpoints = list(endpoints)
-                            print(f"[ADMIN_NAV] Found {len(endpoints)} enabled PassThroughEndpoints (ignoring show_in_menu)")
+                    endpoints = _load_passthrough_endpoints(tenant.schema_name)
+                    print(f"[ADMIN_NAV] Found {len(endpoints)} enabled PassThroughEndpoints with show_in_menu=True for schema: {tenant.schema_name}")
                 except Exception as e:
                     print(f"[ADMIN_NAV] Error querying PassThroughEndpoint in schema {tenant.schema_name}: {e}")
                     import traceback
