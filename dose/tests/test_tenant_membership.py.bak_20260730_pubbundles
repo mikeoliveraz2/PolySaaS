@@ -189,23 +189,16 @@ class TenantMembershipAPITests(APITestCase):
             tenant=self.t2,
             role=UserTenantMembership.Role.ADMIN,
         )
-        # Schema creation is mocked in this test class, so the tenant schema doesn't
-        # physically exist; tenant_schema_search_path falls through to public in that
-        # case, same as production code would once schemas are real.
-        from dose.tenant_app_lookup import tenant_schema_search_path
-
-        with tenant_schema_search_path(self.t1):
-            TenantApp.objects.create(
-                tenant=self.t1,
-                app_name="mattermost",
-                status="active",
-            )
-        with tenant_schema_search_path(self.t2):
-            TenantApp.objects.create(
-                tenant=self.t2,
-                app_name="nextcloud",
-                status="active",
-            )
+        TenantApp.public_bundles.create(
+            tenant=self.t1,
+            app_name="mattermost",
+            status="active",
+        )
+        TenantApp.public_bundles.create(
+            tenant=self.t2,
+            app_name="nextcloud",
+            status="active",
+        )
 
         self.client = APIClient(enforce_csrf_checks=False)
         self.client.login(username="mt_api_user", password="api-pass-456")

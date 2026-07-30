@@ -206,22 +206,19 @@ def provision_odoo_invoicing_orchestration(tenant, *, menu_id: Optional[int] = N
     if menu_id is None:
         menu_id = discover_odoo_invoicing_menu_id() or DEFAULT_INVOICING_MENU_ID
 
-    # Store menu_id on TenantApp for support/debug (tenant-owned row, tenant schema only).
+    # Store menu_id on TenantApp for support/debug (public bundle row).
     try:
         from dose.models import TenantApp
-        from dose.tenant_app_lookup import tenant_schema_search_path
-        with tenant_schema_search_path(tenant):
-            ta = TenantApp.objects.filter(app_name='odoo').first()
-            if ta:
-                extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
-                extra['odoo_invoicing_menu_id'] = menu_id
-                ta.extra_config = extra
-                ta.save(update_fields=['extra_config'])
+        ta = TenantApp.public_bundles.filter(tenant=tenant, app_name='odoo').first()
+        if ta:
+            extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
+            extra['odoo_invoicing_menu_id'] = menu_id
+            ta.extra_config = extra
+            ta.save(update_fields=['extra_config'])
     except Exception as exc:
         logger.warning('[OdooOrchProvision] could not store menu_id on TenantApp: %s', exc)
 
-    # tenant_schema_search_path restores prior search_path on exit; re-assert tenant schema
-    # explicitly before Instructions since this function's remaining work must run there.
+    # public_bundles resets search_path to public; restore tenant schema before Instructions.
     with connection.cursor() as cur:
         cur.execute(f'SET search_path TO "{schema}", public')
 

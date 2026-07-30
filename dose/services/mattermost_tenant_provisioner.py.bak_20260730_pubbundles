@@ -305,50 +305,38 @@ def sync_mattermost_users_shared_team_landing(
     """
     Set shared-team Town Square as the MM landing for all provisioned tenant users.
     Pass tenant_schemas to limit scope (e.g. demo tenants only).
-
-    TenantApp is tenant-owned data and lives only in each tenant's own schema
-    (never in public), so this scans schema-by-schema rather than a single query.
     """
-    from dose.models import Tenant, TenantApp
-    from dose.tenant_app_lookup import tenant_schema_search_path_by_name
+    from dose.models import TenantApp
 
     mm_url = mm_url.rstrip('/')
     stats = {'updated': 0, 'skipped': 0, 'errors': 0}
     seen_users: set = set()
 
+    qs = TenantApp.public_bundles.filter(app_name__icontains='mattermost')
     if tenant_schemas:
-        schemas = list(tenant_schemas)
-    else:
-        from django.db import connection
-        with connection.cursor() as cur:
-            cur.execute('SET search_path TO public, pg_catalog')
-        schemas = list(
-            Tenant.objects.exclude(schema_name='public').values_list('schema_name', flat=True)
-        )
+        qs = qs.filter(tenant__schema_name__in=tenant_schemas)
 
-    for schema in schemas:
-        with tenant_schema_search_path_by_name(schema):
-            rows = list(TenantApp.objects.filter(app_name__icontains='mattermost'))
-        for ta in rows:
-            uid = ((ta.extra_config or {}).get('mm_user_id') or '').strip()
-            if not uid:
-                stats['skipped'] += 1
-                continue
-            if uid in seen_users:
-                stats['skipped'] += 1
-                continue
-            seen_users.add(uid)
-            try:
-                ok = set_mattermost_shared_team_landing(mm_url, headers, uid, shared_team_id)
-                if ok:
-                    stats['updated'] += 1
-                    if log:
-                        log(f"  landing -> shared Town Square for MM user {uid} ({schema})")
-                else:
-                    stats['errors'] += 1
-            except Exception as exc:
+    for ta in qs.select_related('tenant'):
+        uid = ((ta.extra_config or {}).get('mm_user_id') or '').strip()
+        if not uid:
+            stats['skipped'] += 1
+            continue
+        if uid in seen_users:
+            stats['skipped'] += 1
+            continue
+        seen_users.add(uid)
+        try:
+            ok = set_mattermost_shared_team_landing(mm_url, headers, uid, shared_team_id)
+            if ok:
+                stats['updated'] += 1
+                schema = getattr(ta.tenant, 'schema_name', '?')
+                if log:
+                    log(f"  landing -> shared Town Square for MM user {uid} ({schema})")
+            else:
                 stats['errors'] += 1
-                logger.warning("[MM-PROV] Landing sync failed for user %s: %s", uid, exc)
+        except Exception as exc:
+            stats['errors'] += 1
+            logger.warning("[MM-PROV] Landing sync failed for user %s: %s", uid, exc)
 
     return stats
 
@@ -572,47 +560,48 @@ def _store_credentials(
     *,
     shared_team_id: str = '',
     shared_team_name: str = '',
-    tenant_schema: str = '',
 ) -> None:
     if not tenant_app_id:
         return
     try:
+        from django.db import connection
         from dose.models import TenantApp
-        from dose.tenant_app_lookup import tenant_schema_search_path_by_name
-
-        with tenant_schema_search_path_by_name(tenant_schema):
+        ta = TenantApp.public_bundles.filter(id=tenant_app_id).first()
+        if not ta:
             ta = TenantApp.objects.filter(id=tenant_app_id).first()
-            if not ta:
-                return
-            cfg = ta.extra_config or {}
-            cfg['mattermost_url'] = mm_url
-            cfg['mattermost_oidc_enabled'] = oidc_enabled
-            if token:
-                cfg['mm_token'] = token
-                cfg['mmauthtoken'] = token
-            if mm_user_id:
-                cfg['mm_user_id'] = mm_user_id
-            if username:
-                cfg['mm_login_id'] = username
-                cfg['mattermost_login_id'] = username
-                cfg['mattermost_username'] = username
-            if password:
-                cfg['mm_password'] = password
-                cfg['mattermost_password'] = password
-            if team_id:
-                cfg['mm_team_id'] = team_id
-            if team_name:
-                cfg['mm_team_name'] = team_name
-            if shared_team_id:
-                cfg['mm_shared_team_id'] = shared_team_id
-            if shared_team_name:
-                cfg['mm_shared_team_name'] = shared_team_name
-            ta.extra_config = cfg
-            ta.save(update_fields=['extra_config'])
-            if mm_user_id:
-                mark_tenant_app_active(ta, app_url=mm_url)
-            else:
-                mark_tenant_app_error(ta, 'Mattermost user id missing after provisioning')
+        if not ta:
+            return
+        cfg = ta.extra_config or {}
+        cfg['mattermost_url'] = mm_url
+        cfg['mattermost_oidc_enabled'] = oidc_enabled
+        if token:
+            cfg['mm_token'] = token
+            cfg['mmauthtoken'] = token
+        if mm_user_id:
+            cfg['mm_user_id'] = mm_user_id
+        if username:
+            cfg['mm_login_id'] = username
+            cfg['mattermost_login_id'] = username
+            cfg['mattermost_username'] = username
+        if password:
+            cfg['mm_password'] = password
+            cfg['mattermost_password'] = password
+        if team_id:
+            cfg['mm_team_id'] = team_id
+        if team_name:
+            cfg['mm_team_name'] = team_name
+        if shared_team_id:
+            cfg['mm_shared_team_id'] = shared_team_id
+        if shared_team_name:
+            cfg['mm_shared_team_name'] = shared_team_name
+        with connection.cursor() as cursor:
+            cursor.execute('SET search_path TO public,pg_catalog')
+        ta.extra_config = cfg
+        ta.save(update_fields=['extra_config'])
+        if mm_user_id:
+            mark_tenant_app_active(ta, app_url=mm_url)
+        else:
+            mark_tenant_app_error(ta, 'Mattermost user id missing after provisioning')
     except Exception as e:
         logger.warning("[MM-PROV] Credential persist failed: %s", e)
 
@@ -765,7 +754,6 @@ def provision_mattermost_tenant(
             company_team_id, company_team_name, oidc_enabled,
             shared_team_id=shared_team_id,
             shared_team_name=shared_team_name,
-            tenant_schema=tenant_schema,
         )
 
         _send_welcome_email(admin_email, mm_url, display_name)
@@ -840,10 +828,11 @@ def ensure_dual_mattermost_teams(
             result['error'] = f'Tenant not found: {tenant_schema}'
             return result
 
-        # TenantApp is tenant-owned data; it lives only in the tenant's own schema.
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
-        ta = TenantApp.objects.filter(tenant=tenant, app_name='mattermost').first()
+        ta = TenantApp.public_bundles.filter(tenant=tenant, app_name='mattermost').first()
+        if not ta:
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
+            ta = TenantApp.objects.filter(tenant=tenant, app_name='mattermost').first()
         if not ta:
             result['error'] = 'No Mattermost TenantApp'
             return result
@@ -904,10 +893,8 @@ def ensure_dual_mattermost_teams(
             extra['mm_team_id'] = company_team_id
         if company_team_name:
             extra['mm_team_name'] = company_team_name
-        # Re-assert tenant schema before saving — the HTTP calls above don't touch the
-        # DB, but this must not drift back to public (TenantApp is tenant-owned data).
         with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
+            cursor.execute('SET search_path TO public,pg_catalog')
         ta.extra_config = extra
         ta.save(update_fields=['extra_config'])
 

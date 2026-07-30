@@ -592,10 +592,6 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             cmd = MigrateCommand(stdout=out, stderr=out, no_color=True)
             from django.db import connection as _mc
             _mc.close()
-            # _mc.close() drops the session's search_path; re-set it on the
-            # connection Django will lazily reopen, or migrate silently runs
-            # against "public" (already migrated) and no-ops for the tenant.
-            set_search_path_for_migrations(tenant.schema_name)
             parser = cmd.create_parser("manage.py", "migrate")
             _opts = vars(parser.parse_args(["--no-input", "--run-syncdb"]))
             _opts.pop("settings", None); _opts.pop("pythonpath", None)

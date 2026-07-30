@@ -43,7 +43,7 @@ def provision_dolibarr_tenant(
 
     # 3. Create PassThroughEndpoint for Dolibarr
     dolibarr_endpoint, _created = PassThroughEndpoint.objects.update_or_create(
-        slug='dolibarr',
+        trigger_path='dolibarr',
         defaults={
             'endpoint_url': dolibarr_api_base,
             'description': 'Dolibarr ERP/CRM - tenant-specific instance',
@@ -58,7 +58,7 @@ def provision_dolibarr_tenant(
             'starting_uri': '/',
         }
     )
-    print(f"Created PassThroughEndpoint for Dolibarr: {dolibarr_endpoint.slug} -> {dolibarr_endpoint.endpoint_url}")
+    print(f"Created PassThroughEndpoint for Dolibarr: {dolibarr_endpoint.trigger_path} -> {dolibarr_endpoint.endpoint_url}")
 
     dolibarr_url = f"{dolibarr_api_base}/"
 

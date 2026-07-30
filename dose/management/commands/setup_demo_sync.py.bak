@@ -86,7 +86,7 @@ class Command(BaseCommand):
 
         # 1. PassThroughEndpoint for Dolibarr
         ep_dolibarr, created = PassThroughEndpoint.objects.update_or_create(
-            slug='dolibarr',
+            trigger_path='dolibarr',
             defaults={
                 'endpoint_url': options['dolibarr_url'],
                 'description': 'Dolibarr CRM/ERP',
@@ -106,7 +106,7 @@ class Command(BaseCommand):
 
         # 2. PassThroughEndpoint for Odoo
         ep_odoo, created = PassThroughEndpoint.objects.update_or_create(
-            slug='odoo',
+            trigger_path='odoo',
             defaults={
                 'endpoint_url': options['odoo_url'],
                 'description': 'Odoo ERP',
@@ -182,7 +182,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("\n=== Demo setup complete ==="))
         self.stdout.write("""
 Flow:
-  1. User creates customer in Dolibarr (http://localhost:8083)
+  1. User creates customer in Dolibarr (http://localhost:8889)
   2. POST intercepted by DoseRequestController
   3. EndpointDataExtractor extracts & normalizes customer data
   4. Published to RabbitMQ topic: polysaas.dolibarr.customer.created
@@ -190,12 +190,12 @@ Flow:
   6. OdooCustomerSync creates/updates partner in Odoo
 
 Management UI:
-  - RabbitMQ: http://localhost:15672 (guest / guest)
-  - Dolibarr: http://localhost:8083
-  - Odoo:     http://localhost:8086
+  - RabbitMQ: http://localhost:15672 (polysaas / polysaas123)
+  - Dolibarr: http://localhost:8889 (admin / admin)
+  - Odoo:     http://localhost:8069 (admin / admin after setup)
 
 Next steps:
-  1. Start containers:  docker compose --env-file .env -f docker-compose.local.yml up -d
+  1. Start containers:  docker-compose -f docker-compose.demo-sync.yml up -d
   2. Check services:    python manage.py setup_demo_sync --check
   3. Test pipeline:     python manage.py setup_demo_sync --test
 """)
@@ -281,4 +281,4 @@ Next steps:
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"  Error publishing to RabbitMQ: {e}"))
-            self.stdout.write("  Make sure RabbitMQ is running: docker compose --env-file .env -f docker-compose.local.yml up -d rabbitmq")
+            self.stdout.write("  Make sure RabbitMQ is running: docker-compose -f docker-compose.demo-sync.yml up -d")

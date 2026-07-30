@@ -86,7 +86,7 @@ class Command(BaseCommand):
 
         # 1. PassThroughEndpoint for Dolibarr
         ep_dolibarr, created = PassThroughEndpoint.objects.update_or_create(
-            slug='dolibarr',
+            trigger_path='dolibarr',
             defaults={
                 'endpoint_url': options['dolibarr_url'],
                 'description': 'Dolibarr CRM/ERP',
@@ -106,7 +106,7 @@ class Command(BaseCommand):
 
         # 2. PassThroughEndpoint for Odoo
         ep_odoo, created = PassThroughEndpoint.objects.update_or_create(
-            slug='odoo',
+            trigger_path='odoo',
             defaults={
                 'endpoint_url': options['odoo_url'],
                 'description': 'Odoo ERP',

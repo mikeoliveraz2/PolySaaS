@@ -32,7 +32,7 @@ def provision_liferay_tenant(
 
     # 2. Create PassThroughEndpoint for Liferay
     liferay_endpoint, _created = PassThroughEndpoint.objects.update_or_create(
-        slug='liferay',
+        trigger_path='liferay',
         defaults={
             'endpoint_url': LIFERAY_API_BASE,
             'description': 'Liferay Portal - tenant-specific instance',
@@ -47,7 +47,7 @@ def provision_liferay_tenant(
             'starting_uri': '/web/guest',
         }
     )
-    print(f"Created PassThroughEndpoint for Liferay: {liferay_endpoint.slug} -> {liferay_endpoint.endpoint_url}")
+    print(f"Created PassThroughEndpoint for Liferay: {liferay_endpoint.trigger_path} -> {liferay_endpoint.endpoint_url}")
 
     return {
         "success": True,

@@ -2,17 +2,22 @@ from django.apps import apps
 from django.db import models
 
 
-class TenantApp(models.Model):
+class PublicTenantAppBundleManager(models.Manager):
     """
-    Tracks which apps are provisioned for each tenant, with their OAuth2 config.
+    TenantApp rows that define the per-tenant bundle are resolved in public
+    (global tenant_id), not in each tenant schema copy of the table.
+    """
 
-    Tenant-owned data — lives ONLY in the tenant's own schema, never in public
-    (see .cursor/rules/tenant-isolation.mdc). Always look this up with search_path
-    set to the tenant's schema, e.g. dose.tenant_app_lookup.tenant_schema_search_path.
-    A "public_bundles" manager that forced search_path=public used to exist here;
-    it was removed 2026-07-30 because it leaked tenant credentials (Odoo/Mattermost
-    passwords, tokens, session ids) across every tenant. Do not re-add it.
-    """
+    def get_queryset(self):
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("SET search_path TO public,pg_catalog")
+        return super().get_queryset()
+
+
+class TenantApp(models.Model):
+    """Tracks which apps are provisioned for each tenant, with their OAuth2 config."""
 
     APP_CHOICES = [
         ('mattermost', 'Mattermost'),
@@ -55,6 +60,7 @@ class TenantApp(models.Model):
     extra_config = models.JSONField(blank=True, default=dict, help_text='App-specific config (tokens, team IDs, etc.)')
 
     objects = models.Manager()
+    public_bundles = PublicTenantAppBundleManager()
 
     class Meta:
         unique_together = ('tenant', 'app_name')

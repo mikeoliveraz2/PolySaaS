@@ -133,22 +133,21 @@ class OdooInvoiceNotifier(AtomicServiceBase):
         }
         try:
             from dose.models import TenantApp
-            from dose.tenant_app_lookup import tenant_schema_search_path
             from dose.utils import get_current_tenant
             tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
-            # TenantApp is tenant-owned data; look it up in the tenant's own schema.
+            manager = getattr(TenantApp, 'public_bundles', TenantApp.objects)
+            # Try mattermost app first, then odoo app (credentials may be stored there)
             ta = None
-            if tenant:
-                with tenant_schema_search_path(tenant):
-                    for _app_name in ('mattermost', 'odoo'):
-                        candidate = TenantApp.objects.filter(
-                            app_name=_app_name, tenant=tenant,
-                        ).first()
-                        if candidate and isinstance(candidate.extra_config, dict):
-                            cfg = candidate.extra_config
-                            if cfg.get('mm_token') or cfg.get('mattermost_token') or cfg.get('mmauthtoken'):
-                                ta = candidate
-                                break
+            for _app_name in ('mattermost', 'odoo'):
+                qs = manager.filter(app_name=_app_name)
+                if tenant:
+                    qs = qs.filter(tenant=tenant)
+                candidate = qs.first()
+                if candidate and isinstance(candidate.extra_config, dict):
+                    cfg = candidate.extra_config
+                    if cfg.get('mm_token') or cfg.get('mattermost_token') or cfg.get('mmauthtoken'):
+                        ta = candidate
+                        break
             if ta and isinstance(ta.extra_config, dict):
                 cfg = ta.extra_config
                 if cfg.get('mm_url'):

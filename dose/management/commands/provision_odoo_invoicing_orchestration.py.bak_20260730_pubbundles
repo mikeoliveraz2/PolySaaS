@@ -1,8 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Demo Tenant Odoo invoicing orchestration backfill — commit 7d05920e
-# SECURITY FIX 2026-07-30 (owner-approved): removed TenantApp.public_bundles (forced
-# search_path=public, leaking tenant-owned TenantApp rows/credentials cross-tenant).
-# --all-odoo-active now scans tenant schemas individually instead.
 
 """
 Backfill Odoo Invoicing orchestration Instructions for existing tenants.
@@ -41,20 +38,13 @@ class Command(BaseCommand):
 
         tenants = []
         if all_active:
-            # TenantApp is tenant-owned data and lives only in each tenant's own
-            # schema (never public — see tenant-isolation.mdc), so this scans
-            # schema-by-schema rather than a single cross-tenant query.
-            from django.db import connection
-            from dose.tenant_app_lookup import tenant_schema_search_path
-            with connection.cursor() as cur:
-                cur.execute('SET search_path TO public, pg_catalog')
-            for candidate in Tenant.objects.exclude(schema_name='public'):
-                with tenant_schema_search_path(candidate):
-                    has_active_odoo = TenantApp.objects.filter(
-                        app_name='odoo', status='active',
-                    ).exists()
-                if has_active_odoo:
-                    tenants.append(candidate)
+            seen = set()
+            for ta in TenantApp.public_bundles.filter(
+                app_name='odoo', status='active',
+            ).select_related('tenant'):
+                if ta.tenant and ta.tenant.pk not in seen:
+                    seen.add(ta.tenant.pk)
+                    tenants.append(ta.tenant)
             self.stdout.write(f'Found {len(tenants)} tenant(s) with active Odoo')
         elif slug:
             try:

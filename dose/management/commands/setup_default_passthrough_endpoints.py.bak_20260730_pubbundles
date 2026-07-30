@@ -47,7 +47,7 @@ class Command(BaseCommand):
 
         # 1. Odoo PassThroughEndpoint
         odoo_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='odoo',
+            trigger_path='odoo',
             defaults={
                 'endpoint_url': odoo_url,
                 'description': 'Odoo ERP - tenant-specific instance',
@@ -76,7 +76,7 @@ class Command(BaseCommand):
 
         # 2. Mattermost PassThroughEndpoint
         mattermost_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='mattermost',
+            trigger_path='mattermost',
             defaults={
                 'endpoint_url': mattermost_url,
                 'description': 'Mattermost Team Chat - tenant-specific team',
@@ -104,7 +104,7 @@ class Command(BaseCommand):
         # 3. NextCloud PassThroughEndpoint
         nextcloud_url = options['nextcloud_url']
         nextcloud_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='nextcloud',
+            trigger_path='nextcloud',
             defaults={
                 'endpoint_url': nextcloud_url,
                 'description': 'NextCloud File Storage - tenant-specific instance',
@@ -132,7 +132,7 @@ class Command(BaseCommand):
         # 4. Dolibarr PassThroughEndpoint
         dolibarr_url = options['dolibarr_url']
         dolibarr_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='dolibarr',
+            trigger_path='dolibarr',
             defaults={
                 'endpoint_url': dolibarr_url,
                 'description': 'Dolibarr ERP/CRM - tenant-specific instance',
@@ -159,7 +159,7 @@ class Command(BaseCommand):
         # 5. Liferay PassThroughEndpoint
         liferay_url = options['liferay_url']
         liferay_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='liferay',
+            trigger_path='liferay',
             defaults={
                 'endpoint_url': liferay_url,
                 'description': 'Liferay Portal - tenant-specific instance',
@@ -186,7 +186,7 @@ class Command(BaseCommand):
         # 6. WordPress PassThroughEndpoint
         wordpress_url = options['wordpress_url']
         wordpress_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='wordpress',
+            trigger_path='wordpress',
             defaults={
                 'endpoint_url': wordpress_url,
                 'description': 'WordPress CMS - tenant-specific instance',

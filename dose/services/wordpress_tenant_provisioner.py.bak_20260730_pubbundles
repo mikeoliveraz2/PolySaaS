@@ -32,7 +32,7 @@ def provision_wordpress_tenant(
 
     # 2. Create PassThroughEndpoint for WordPress
     wordpress_endpoint, _created = PassThroughEndpoint.objects.update_or_create(
-        slug='wordpress',
+        trigger_path='wordpress',
         defaults={
             'endpoint_url': WORDPRESS_API_BASE,
             'description': 'WordPress CMS - tenant-specific instance',
@@ -47,7 +47,7 @@ def provision_wordpress_tenant(
             'starting_uri': '/wp-admin',
         }
     )
-    print(f"Created PassThroughEndpoint for WordPress: {wordpress_endpoint.slug} -> {wordpress_endpoint.endpoint_url}")
+    print(f"Created PassThroughEndpoint for WordPress: {wordpress_endpoint.trigger_path} -> {wordpress_endpoint.endpoint_url}")
 
     return {
         "success": True,

@@ -2,9 +2,6 @@
 # BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
 # BINGO: Demo Tenant Odoo SSO + public_bundles — commit 7d05920e
 # BINGO: Odoo SSO Passthrough Working — commit e739a38c
-# SECURITY FIX 2026-07-30 (owner-approved): removed TenantApp.public_bundles (forced
-# search_path=public, leaking tenant-owned TenantApp rows/credentials cross-tenant).
-# All lookups now use tenant_app_lookup.tenant_schema_search_path (tenant schema only).
 
 import logging
 import re
@@ -386,15 +383,13 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             return
         try:
             from dose.models import TenantApp
-            from dose.tenant_app_lookup import tenant_schema_search_path
 
             tenant = self._resolve_tenant(request)
             if not tenant:
                 return
-            with tenant_schema_search_path(tenant):
-                ta = TenantApp.objects.filter(
-                    app_name='odoo', status='active',
-                ).first()
+            ta = TenantApp.public_bundles.filter(
+                tenant=tenant, app_name='odoo', status='active',
+            ).first()
             if not ta:
                 return
             extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
@@ -425,9 +420,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         extra.pop('odoo_session_time', None)
         extra.pop('odoo_uid', None)
         ta.extra_config = extra
-        from dose.tenant_app_lookup import tenant_schema_search_path
-        with tenant_schema_search_path(ta.tenant):
-            ta.save(update_fields=['extra_config'])
+        ta.save(update_fields=['extra_config'])
         print('[ODOO HANDLER] Cleared stale odoo_session_id cache')
 
     @staticmethod
@@ -469,17 +462,16 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         """Return extra_config dict for this tenant's Odoo TenantApp."""
         try:
             from dose.models import TenantApp
-            from dose.tenant_app_lookup import tenant_schema_search_path
             tenant = self._resolve_tenant(request)
             tenant_id = tenant.pk if tenant else None
 
             if tenant:
                 try:
-                    with tenant_schema_search_path(tenant):
-                        ta = TenantApp.objects.filter(
-                            app_name='odoo',
-                            status='active',
-                        ).exclude(extra_config={}).first()
+                    ta = TenantApp.public_bundles.filter(
+                        tenant=tenant,
+                        app_name='odoo',
+                        status='active',
+                    ).exclude(extra_config={}).first()
                     if ta and ta.extra_config:
                         print(f"[ODOO HANDLER] extra_config found for tenant={tenant} keys={list(ta.extra_config.keys())}")
                         return ta.extra_config
@@ -802,17 +794,15 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             import requests as _req
             from django.conf import settings
             from dose.models import TenantApp
-            from dose.tenant_app_lookup import tenant_schema_search_path
 
             tenant = self._resolve_tenant(request)
             if not tenant:
                 print(f"[ODOO HANDLER] get_upstream_cookies: no tenant context")
                 return {}
 
-            with tenant_schema_search_path(tenant):
-                ta = TenantApp.objects.filter(
-                    app_name='odoo', status='active',
-                ).first()
+            ta = TenantApp.public_bundles.filter(
+                tenant=tenant, app_name='odoo', status='active',
+            ).first()
             if not ta:
                 print(f"[ODOO HANDLER] get_upstream_cookies: no active Odoo TenantApp")
                 return {}
@@ -889,8 +879,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 ta.extra_config['odoo_session_id'] = sid
                 ta.extra_config['odoo_session_time'] = time.time()
                 ta.extra_config['odoo_uid'] = uid
-                with tenant_schema_search_path(tenant):
-                    ta.save(update_fields=['extra_config'])
+                ta.save(update_fields=['extra_config'])
                 if hasattr(request, 'session'):
                     request.session[ODOO_THEME_SYNC_SESSION_KEY] = scheme
                     try:

@@ -96,21 +96,19 @@ class Command(BaseCommand):
                 cursor.execute("SET search_path TO public, pg_catalog")
 
             if tenant:
-                from dose.tenant_app_lookup import tenant_schema_search_path
-                with tenant_schema_search_path(tenant):
-                    tapps = list(TenantApp.objects.filter(tenant=tenant))
-                    self.stdout.write(f"Removing OAuth apps for {len(tapps)} TenantApp row(s)…")
-                    for tapp in tapps:
-                        oa = getattr(tapp, "oauth_application", None)
-                        if oa is not None:
-                            oa.delete()
-                        elif getattr(tapp, "oauth_application_id", None):
-                            try:
-                                from oauth2_provider.models import Application
+                tapps = list(TenantApp.public_bundles.filter(tenant=tenant))
+                self.stdout.write(f"Removing OAuth apps for {len(tapps)} TenantApp row(s)…")
+                for tapp in tapps:
+                    oa = getattr(tapp, "oauth_application", None)
+                    if oa is not None:
+                        oa.delete()
+                    elif getattr(tapp, "oauth_application_id", None):
+                        try:
+                            from oauth2_provider.models import Application
 
-                                Application.objects.filter(pk=tapp.oauth_application_id).delete()
-                            except Exception as exc:
-                                self.stdout.write(self.style.WARNING(f"OAuth app delete skipped: {exc}"))
+                            Application.objects.filter(pk=tapp.oauth_application_id).delete()
+                        except Exception as exc:
+                            self.stdout.write(self.style.WARNING(f"OAuth app delete skipped: {exc}"))
 
                 schema_to_drop = tenant.schema_name or schema_name
                 assert_safe_schema_identifier(schema_to_drop)

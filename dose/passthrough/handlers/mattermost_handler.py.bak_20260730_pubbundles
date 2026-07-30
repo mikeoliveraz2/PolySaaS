@@ -7,9 +7,6 @@
 # Prior BINGO: Mattermost SSO Passthrough Working — 2026-06-07
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
 # NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
-# SECURITY FIX 2026-07-30 (owner-approved): removed TenantApp.public_bundles and raw-SQL
-# "SET search_path TO public" writes that leaked tenant-owned TenantApp rows/credentials
-# cross-tenant. All lookups/writes now scoped to the tenant's own schema.
 # =============================================================================
 # MattermostPassthroughHandler — SSO login bridge, client shim, config rewrite.
 # Endpoint-specific logic ONLY here (see passthrough-handler-isolation.mdc).
@@ -382,18 +379,16 @@ window.location.replace('/');
             return ''
 
     def _expected_mm_username(self, request) -> str:
-        """Mattermost username for the active PolySaaS tenant (tenant schema only)."""
+        """Mattermost username for the active PolySaaS tenant (public bundle only)."""
         try:
             from dose.models import TenantApp
-            from dose.tenant_app_lookup import tenant_schema_search_path
             from dose.utils import get_current_tenant
             tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
             if not tenant:
                 return ''
-            with tenant_schema_search_path(tenant):
-                ta = TenantApp.objects.filter(
-                    app_name='mattermost', status='active',
-                ).first()
+            ta = TenantApp.public_bundles.filter(
+                tenant=tenant, app_name='mattermost', status='active',
+            ).first()
             if not ta:
                 return ''
             extra = ta.extra_config or {}
@@ -1738,12 +1733,10 @@ try {{
 
     def _get_tenantapp_extra_config(self, request=None):
         """Return extra_config dict for this tenant's Mattermost TenantApp.
-        TenantApp is tenant-owned data and lives only in the tenant's own schema
-        (never public — see tenant-isolation.mdc). SECURITY FIX 2026-07-30: removed
-        public-schema fallback branches that leaked cross-tenant credentials."""
+        Uses ORM with PublicTenantAppBundleManager (search_path=public) — the records
+        are global (public schema), not per-tenant-schema copies."""
         try:
             from dose.models import TenantApp
-            from dose.tenant_app_lookup import tenant_schema_search_path
             tenant = None
             if request is not None:
                 try:
@@ -1751,20 +1744,41 @@ try {{
                     tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
                 except Exception as _te:
                     print(f"[MM LoginBridge] tenant lookup error: {_te}")
+            # Tenant-specific first (public schema)
             if tenant:
                 try:
-                    with tenant_schema_search_path(tenant):
-                        qs = TenantApp.objects.filter(
-                            app_name='mattermost', tenant=tenant
-                        ).exclude(extra_config={})
-                        extra = self._pick_tenantapp_extra_config(qs, request)
+                    qs = TenantApp.public_bundles.filter(
+                        app_name='mattermost', tenant=tenant
+                    ).exclude(extra_config={})
+                    extra = self._pick_tenantapp_extra_config(qs, request)
+                    if extra:
+                        print(f"[MM LoginBridge] extra_config found via public tenant={tenant} keys={list(extra.keys())}")
+                        return extra
+                except Exception as _q1:
+                    print(f"[MM LoginBridge] public tenant query error: {_q1}")
+                # Fallback: tenant schema
+                try:
+                    qs = TenantApp.objects.filter(
+                        app_name='mattermost', tenant=tenant
+                    ).exclude(extra_config={})
+                    extra = self._pick_tenantapp_extra_config(qs, request)
                     if extra:
                         print(f"[MM LoginBridge] extra_config found via tenant schema tenant={tenant} keys={list(extra.keys())}")
                         return extra
                 except Exception as _q2:
                     print(f"[MM LoginBridge] tenant schema query error: {_q2}")
-            # Fallback: any active mattermost app in the ambient (already tenant-scoped
-            # by SessionTenantMiddleware) search_path — no tenant object required.
+            # Fallback: any active mattermost app with credentials (public schema)
+            try:
+                qs = TenantApp.public_bundles.filter(
+                    app_name='mattermost', status='active'
+                ).exclude(extra_config={})
+                extra = self._pick_tenantapp_extra_config(qs, request)
+                if extra:
+                    print(f"[MM LoginBridge] extra_config found via public active fallback keys={list(extra.keys())}")
+                    return extra
+            except Exception as _q3:
+                print(f"[MM LoginBridge] public active fallback error: {_q3}")
+            # Fallback: any active mattermost app (tenant schema)
             try:
                 qs = TenantApp.objects.filter(
                     app_name='mattermost', status='active'
@@ -1781,31 +1795,31 @@ try {{
         return {}
 
     def _save_tenantapp_token(self, token, request=None):
-        """Save refreshed token to TenantApp using raw SQL, in the tenant's own schema
-        (TenantApp is tenant-owned data — never public, see tenant-isolation.mdc)."""
+        """Save refreshed token to public schema TenantApp using raw SQL."""
         import json
         import time
         from django.db import connection
-        tenant = None
+        tenant_id = None
         if request is not None:
             try:
                 from dose.utils import get_current_tenant
-                tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+                t = getattr(request, 'tenant', None) or get_current_tenant(request)
+                if t:
+                    tenant_id = t.id
             except Exception:
                 pass
         with connection.cursor() as cur:
-            if tenant and getattr(tenant, 'schema_name', None):
-                cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
+            cur.execute("SET search_path TO public,pg_catalog")
             extra = self._get_tenantapp_extra_config(request) or {}
             extra['mmauthtoken'] = token
             extra['mmauthtoken_time'] = time.time()
             extra['mm_session_token'] = token
             extra['mm_session_token_time'] = time.time()
-            if tenant:
+            if tenant_id:
                 cur.execute(
                     """UPDATE dose_tenantapp SET extra_config = %s
                        WHERE app_name = 'mattermost' AND tenant_id = %s""",
-                    [json.dumps(extra), tenant.id],
+                    [json.dumps(extra), tenant_id],
                 )
             else:
                 cur.execute(
@@ -1815,25 +1829,25 @@ try {{
                 )
 
     def _save_tenantapp_config(self, request, extra_config: dict):
-        """Save extra_config to TenantApp without modifying token fields.
-        Tenant's own schema only (TenantApp is tenant-owned data — never public)."""
+        """Save extra_config to TenantApp without modifying token fields."""
         import json
         from django.db import connection
-        tenant = None
+        tenant_id = None
         if request is not None:
             try:
                 from dose.utils import get_current_tenant
-                tenant = getattr(request, 'tenant', None) or get_current_tenant(request)
+                t = getattr(request, 'tenant', None) or get_current_tenant(request)
+                if t:
+                    tenant_id = t.id
             except Exception:
                 pass
         with connection.cursor() as cur:
-            if tenant and getattr(tenant, 'schema_name', None):
-                cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
-            if tenant:
+            cur.execute("SET search_path TO public,pg_catalog")
+            if tenant_id:
                 cur.execute(
                     """UPDATE dose_tenantapp SET extra_config = %s
                        WHERE app_name = 'mattermost' AND tenant_id = %s""",
-                    [json.dumps(extra_config), tenant.id],
+                    [json.dumps(extra_config), tenant_id],
                 )
             else:
                 cur.execute(
