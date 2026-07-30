@@ -125,18 +125,7 @@ def run_pt_admin_passthrough_core(request):
                     request._passthrough_handled = True
                     return shell
 
-    # Resolve the actual PassThroughEndpoint ORM object so handler.proxy_prefix works.
-    # SECURITY/CORRECTNESS FIX 2026-07-30 (owner-approved, frozen-file exception):
-    # The /pt/admin/<hostname>/ URL segment is ONLY a routing tag — it must never be
-    # treated as the source of truth for the upstream base URL. endpoint.endpoint_url
-    # above is a best-effort GUESS reconstructed from that tag (scheme inferred by
-    # heuristic, any path prefix on the real endpoint_url is lost). The configured
-    # PassThroughEndpoint.endpoint_url row is the only authoritative base URL, so once
-    # we find it here we must overwrite the guess with it before forwarding. Previously
-    # this block only wired up handler.endpoint and left the guessed URL in place,
-    # which could silently forward to the wrong scheme/port/path when it diverged from
-    # the configured record. The inferred guess remains only as the DB-unavailable
-    # recovery fallback the SimpleEndpoint class was originally built for.
+    # Resolve the actual PassThroughEndpoint ORM object so handler.proxy_prefix works
     from dose.models import PassThroughEndpoint
     from urllib.parse import urlparse
     endpoint_obj = None
@@ -145,18 +134,9 @@ def run_pt_admin_passthrough_core(request):
         endpoint_obj = PassThroughEndpoint.objects.filter(
             endpoint_url__icontains=host
         ).first()
-        if endpoint_obj:
-            if endpoint_obj.endpoint_url:
-                if endpoint_obj.endpoint_url != endpoint.endpoint_url:
-                    print(
-                        f"[PT-CORE] Overriding guessed endpoint_url "
-                        f"{endpoint.endpoint_url!r} with configured "
-                        f"PassThroughEndpoint.endpoint_url {endpoint_obj.endpoint_url!r}"
-                    )
-                endpoint.endpoint_url = endpoint_obj.endpoint_url
-            if handler and hasattr(handler, 'endpoint'):
-                handler.endpoint = endpoint_obj
-                print(f"[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
+        if endpoint_obj and handler and hasattr(handler, 'endpoint'):
+            handler.endpoint = endpoint_obj
+            print(f"[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
     except Exception as e:
         print(f"[PT-CORE] Could not resolve PassThroughEndpoint: {e}")
 
