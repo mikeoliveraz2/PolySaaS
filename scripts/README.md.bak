@@ -4,7 +4,7 @@ This folder contains operational helpers for local development and migration tas
 
 ## Current focus
 
-1. Local stack workflows based on `docker-compose.local.yml`.
+1. Local stack workflows based on `docker-compose.local-stack.yml` and `docker-compose.full-stack.yml`.
 2. Application maintenance scripts (WordPress sync, checks, audits, and fix helpers).
 3. GCP migration and deployment support under `deploy/gcp/`.
 

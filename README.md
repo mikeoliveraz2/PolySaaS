@@ -13,17 +13,11 @@ PolySaaS is the product formerly code-named DOSE. In this repository, the live a
 
 ```bash
 pip install -r requirements.txt
-docker compose -f docker-compose.local-stack.yml up -d
+docker compose --env-file .env -f docker-compose.local.yml up -d
 python manage.py runserver
 ```
 
-The project expects PostgreSQL and, for async work, RabbitMQ. Use `docker-compose.local-stack.yml` for the local backing services.
-
-For a full local stack with bundled apps, run:
-
-```bash
-docker compose -f docker-compose.full-stack.yml up -d
-```
+`docker-compose.local.yml` is the one local stack: Postgres, Redis, RabbitMQ, plus bundled-app containers (Mattermost, Nextcloud, Odoo, Dolibarr). See `documentation/LOCAL_STANDALONE_STACK.md` for first-run notes. Copy `.env.local.example` into `.env` (or merge the values in) before starting.
 
 ## Container/Hosted Deploy
 

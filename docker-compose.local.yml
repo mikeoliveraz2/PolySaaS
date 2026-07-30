@@ -1,0 +1,279 @@
+# PolySaaS laptop standalone stack.
+# Core Django runs on the host via manage.py; this file provides local backing services
+# and shared app containers that later map cleanly to GCP services.
+
+name: polysaas-local
+
+services:
+  core-postgres:
+    image: postgres:16-alpine
+    container_name: polysaas-local-core-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-dosedbsaas}
+      POSTGRES_USER: ${DB_USER:-dosedbadmin}
+      POSTGRES_PASSWORD: ${DOSE_DB_PASSWORD:-PolySaaS2026!}
+    ports:
+      - "15433:5432"
+    volumes:
+      - polysaas_local_core_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-dosedbadmin} -d ${DB_NAME:-dosedbsaas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  redis:
+    image: redis:7-alpine
+    container_name: polysaas-local-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - polysaas_local_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: polysaas-local-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - polysaas_local_rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  mattermost-db:
+    image: postgres:16-alpine
+    container_name: polysaas-local-mattermost-db
+    environment:
+      POSTGRES_DB: ${MATTERMOST_DB_NAME:-mattermost}
+      POSTGRES_USER: ${MATTERMOST_DB_USER:-mattermost}
+      POSTGRES_PASSWORD: ${MATTERMOST_DB_PASSWORD:-mattermost_pw}
+    volumes:
+      - polysaas_local_mattermost_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MATTERMOST_DB_USER:-mattermost} -d ${MATTERMOST_DB_NAME:-mattermost}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: polysaas-local-mattermost
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://${MATTERMOST_DB_USER:-mattermost}:${MATTERMOST_DB_PASSWORD:-mattermost_pw}@mattermost-db:5432/${MATTERMOST_DB_NAME:-mattermost}?sslmode=disable&connect_timeout=10
+      MM_SERVICESETTINGS_SITEURL: ${MATTERMOST_URL:-http://localhost:8065}
+      MM_SERVICESETTINGS_ENABLEDEVELOPER: "true"
+      MM_SERVICESETTINGS_ENABLETESTING: "true"
+      MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: "true"
+    ports:
+      - "8065:8065"
+    volumes:
+      - polysaas_local_mattermost_config:/mattermost/config
+      - polysaas_local_mattermost_data:/mattermost/data
+      - polysaas_local_mattermost_logs:/mattermost/logs
+      - polysaas_local_mattermost_plugins:/mattermost/plugins
+    depends_on:
+      mattermost-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  nextcloud-db:
+    image: postgres:16-alpine
+    container_name: polysaas-local-nextcloud-db
+    environment:
+      POSTGRES_DB: ${NEXTCLOUD_DB_NAME:-nextcloud}
+      POSTGRES_USER: ${NEXTCLOUD_DB_USER:-nextcloud}
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD:-nextcloud_pw}
+    volumes:
+      - polysaas_local_nextcloud_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NEXTCLOUD_DB_USER:-nextcloud} -d ${NEXTCLOUD_DB_NAME:-nextcloud}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  nextcloud-redis:
+    image: redis:7-alpine
+    container_name: polysaas-local-nextcloud-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  nextcloud:
+    image: nextcloud:30-apache
+    container_name: polysaas-local-nextcloud
+    environment:
+      POSTGRES_HOST: nextcloud-db
+      POSTGRES_DB: ${NEXTCLOUD_DB_NAME:-nextcloud}
+      POSTGRES_USER: ${NEXTCLOUD_DB_USER:-nextcloud}
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD:-nextcloud_pw}
+      REDIS_HOST: nextcloud-redis
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_SHARED_ADMIN_LOGIN:-ncadmin}
+      NEXTCLOUD_ADMIN_PASSWORD: ${POLYSAAS_APP_ADMIN_PASSWORD:-PolySaaS2026!}
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost 127.0.0.1 host.docker.internal}
+      OVERWRITEHOST: ${NEXTCLOUD_OVERWRITEHOST:-localhost:8888}
+      OVERWRITEPROTOCOL: http
+    ports:
+      - "8888:80"
+    volumes:
+      - polysaas_local_nextcloud_html:/var/www/html
+      - polysaas_local_nextcloud_data:/var/www/html/data
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+      nextcloud-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/status.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  odoo-db:
+    image: postgres:16-alpine
+    container_name: polysaas-local-odoo-db
+    environment:
+      POSTGRES_DB: ${ODOO_SHARED_DB:-polysaas_odoo}
+      POSTGRES_USER: ${ODOO_DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:-odoo_pw}
+    volumes:
+      - polysaas_local_odoo_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ODOO_DB_USER:-odoo} -d ${ODOO_SHARED_DB:-polysaas_odoo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  odoo:
+    image: odoo:18.0
+    container_name: polysaas-local-odoo
+    environment:
+      HOST: odoo-db
+      PORT: 5432
+      USER: ${ODOO_DB_USER:-odoo}
+      PASSWORD: ${ODOO_DB_PASSWORD:-odoo_pw}
+    ports:
+      - "8086:8069"
+    volumes:
+      - polysaas_local_odoo_data:/var/lib/odoo
+      - ./docker/odoo/addons:/mnt/extra-addons
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/health || curl -fsS http://127.0.0.1:8069/web/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  dolibarr-db:
+    image: mariadb:11
+    container_name: polysaas-local-dolibarr-db
+    environment:
+      MARIADB_DATABASE: ${DOLIBARR_DB_NAME:-dolibarr}
+      MARIADB_USER: ${DOLIBARR_DB_USER:-dolibarr}
+      MARIADB_PASSWORD: ${DOLIBARR_DB_PASSWORD:-dolibarr_pw}
+      MARIADB_ROOT_PASSWORD: ${DOLIBARR_DB_ROOT_PASSWORD:-dolibarr_root_pw}
+    volumes:
+      - polysaas_local_dolibarr_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+  dolibarr:
+    image: dolibarr/dolibarr:latest
+    container_name: polysaas-local-dolibarr
+    environment:
+      DOLI_DB_HOST: dolibarr-db
+      DOLI_DB_NAME: ${DOLIBARR_DB_NAME:-dolibarr}
+      DOLI_DB_USER: ${DOLIBARR_DB_USER:-dolibarr}
+      DOLI_DB_PASSWORD: ${DOLIBARR_DB_PASSWORD:-dolibarr_pw}
+      DOLI_ADMIN_LOGIN: ${DOLIBARR_ADMIN_LOGIN:-admin}
+      DOLI_ADMIN_PASSWORD: ${POLYSAAS_APP_ADMIN_PASSWORD:-PolySaaS2026!}
+      DOLI_URL_ROOT: ${DOLIBARR_SHARED_URL:-http://localhost:8083}
+    ports:
+      - "8083:80"
+    volumes:
+      - polysaas_local_dolibarr_html:/var/www/html
+      - polysaas_local_dolibarr_docs:/var/www/documents
+    depends_on:
+      dolibarr-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - polysaas-local
+
+networks:
+  polysaas-local:
+    driver: bridge
+
+volumes:
+  polysaas_local_core_pg:
+  polysaas_local_redis:
+  polysaas_local_rabbitmq:
+  polysaas_local_mattermost_pg:
+  polysaas_local_mattermost_config:
+  polysaas_local_mattermost_data:
+  polysaas_local_mattermost_logs:
+  polysaas_local_mattermost_plugins:
+  polysaas_local_nextcloud_pg:
+  polysaas_local_nextcloud_html:
+  polysaas_local_nextcloud_data:
+  polysaas_local_odoo_pg:
+  polysaas_local_odoo_data:
+  polysaas_local_dolibarr_db:
+  polysaas_local_dolibarr_html:
+  polysaas_local_dolibarr_docs:

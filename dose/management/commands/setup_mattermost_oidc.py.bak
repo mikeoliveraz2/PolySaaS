@@ -8,7 +8,7 @@ Usage:
   python manage.py setup_mattermost_oidc --tenant olient --mm-url http://localhost:8065
 
 Prerequisites:
-  1. Mattermost running (docker compose --env-file .env -f docker-compose.local.yml up -d mattermost)
+  1. Mattermost running (docker-compose -f docker-compose.mattermost.yml up -d)
   2. Mattermost admin user created (first user to sign up becomes admin)
   3. Admin personal access token created in Mattermost > Account Settings > Security
   4. Token stored in env: MATTERMOST_ADMIN_TOKEN=<token>
