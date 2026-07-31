@@ -284,10 +284,3 @@ try:
     post_save.connect(_on_trafficlog_created, sender=_TrafficLog, weak=False)
 except Exception:
     pass  # polysniffer not yet migrated — signal will be unavailable
-
-
-# Explicit local-dev trigger -> handler registrations (port-based; see module docstring).
-try:
-    import dose.passthrough.local_dev_registrations  # noqa: F401
-except Exception:
-    logger.exception("[local_dev_registrations] failed to register local dev handlers")

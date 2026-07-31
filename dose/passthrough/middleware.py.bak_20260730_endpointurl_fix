@@ -82,45 +82,18 @@ def run_pt_admin_passthrough_core(request):
             self.headers_to_forward = ''
             self.description = f'Passthrough to {hostname}'
 
-    # SECURITY/CORRECTNESS FIX 2026-07-31 (owner-approved, frozen-file exception):
-    # The /pt/admin/<hostname>/ URL segment IS urlparse(PassThroughEndpoint.endpoint_url).netloc
-    # by construction — see PassThroughEndpoint.get_menu_url(), which builds that exact segment
-    # from the configured record. There is therefore no need to guess a scheme from the segment
-    # and then fuzzy-match it back against the DB (icontains): a direct exact netloc match is
-    # sufficient and correct. This lookup runs ONCE, up front, before any handler hook (including
-    # try_root_display_shell_response), so every code path — early-shell, handler, forwarding —
-    # sees the same authoritative endpoint_url from the start. The trigger-guess SimpleEndpoint
-    # remains only as the fallback for a brand-new endpoint that has no matching record yet
-    # (e.g., added by hand before PolySniffer has corrected/populated it), or if the DB is
-    # unavailable. This logic is generic to every passthrough endpoint (no app names, no
-    # endpoint-specific branching) per the middleware handler-isolation rule.
-    from dose.models import PassThroughEndpoint
-    from urllib.parse import urlparse
+    # NOTE: We no longer look up endpoints in the DB by trigger_path.
+    # Sidebar links encode the hostname directly in the URL: /pt/admin/{hostname}/
+    # The hostname IS the endpoint URL — no DB lookup needed. This eliminates
+    # the old two-step lookup (trigger -> DB record -> endpoint_url) entirely.
+    endpoint = SimpleEndpoint(trigger)
 
-    endpoint_obj = None
-    try:
-        for _ep in PassThroughEndpoint.objects.filter(is_enabled=True):
-            if urlparse(_ep.endpoint_url).netloc.lower() == trigger.lower():
-                endpoint_obj = _ep
-                break
-    except Exception as e:
-        print(f"[PT-CORE] Could not resolve PassThroughEndpoint: {e}")
-
-    if endpoint_obj:
-        endpoint = SimpleEndpoint(trigger, url=endpoint_obj.endpoint_url)
-        print(f"[PT-CORE] endpoint resolved from PassThroughEndpoint record: {endpoint.endpoint_url}")
-    else:
-        endpoint = SimpleEndpoint(trigger)
-        print(f"[PT-CORE] No matching PassThroughEndpoint record; using inferred guess: {endpoint.endpoint_url}")
+    print(f"[PT-CORE] endpoint from URL hostname: {endpoint.endpoint_url}")
 
     request._passthrough_endpoint = endpoint
 
     handler = resolve_handler_for_pt_admin_trigger(trigger)
     print(f"[PT-CORE] Handler for {trigger}: {handler.__class__.__name__ if handler else None}")
-
-    if endpoint_obj and handler and hasattr(handler, 'endpoint'):
-        handler.endpoint = endpoint_obj
-        print("[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
 
     # Handler hook: some paths (e.g. Mattermost /login) need try_root before upstream fetch.
     if handler and hasattr(handler, "try_root_display_shell_response"):
@@ -151,6 +124,21 @@ def run_pt_admin_passthrough_core(request):
                 if shell is not None:
                     request._passthrough_handled = True
                     return shell
+
+    # Resolve the actual PassThroughEndpoint ORM object so handler.proxy_prefix works
+    from dose.models import PassThroughEndpoint
+    from urllib.parse import urlparse
+    endpoint_obj = None
+    try:
+        host = urlparse(endpoint.endpoint_url).netloc.lower()
+        endpoint_obj = PassThroughEndpoint.objects.filter(
+            endpoint_url__icontains=host
+        ).first()
+        if endpoint_obj and handler and hasattr(handler, 'endpoint'):
+            handler.endpoint = endpoint_obj
+            print(f"[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
+    except Exception as e:
+        print(f"[PT-CORE] Could not resolve PassThroughEndpoint: {e}")
 
     print("\n" + "=" * 120)
     print("PASSTHROUGH-OUT -> SENDING TO EXTERNAL SERVICE (PT-CORE)")
