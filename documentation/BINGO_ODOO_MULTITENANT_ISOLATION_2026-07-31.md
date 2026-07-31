@@ -1,0 +1,127 @@
+# BINGO: Odoo Multi-Tenant Database Isolation + SSO — 2026-07-31
+
+**Status:** ✅ Verified end-to-end. Committed and frozen per `bingo-freeze.mdc`.
+
+## Problem
+
+Odoo SSO provisioning previously created a single `res.users` login per tenant
+inside **one shared Odoo database** (`ODOO_SHARED_DB`). That gave **zero real
+data isolation**: every tenant's contacts, invoices, and settings lived in the
+same `res.company` / same tables, and any tenant user could — depending on
+group membership — see or affect another tenant's records or the shared
+instance's Apps/Settings. This violates `tenant-isolation.mdc`.
+
+Symptom that surfaced the issue: tenant `pso13` logging into Odoo hit
+`Access Error: You are not allowed to access 'Module' (ir.module.module)
+records` because the provisioner pointed every tenant's home action at the
+Apps screen (`id=39`), which requires Settings/Administration rights that
+regular (non-admin) shared-DB users don't have — and shouldn't have, since
+that screen is instance-wide, not tenant-scoped.
+
+## Fix — Option 2: One Odoo Database Per Tenant (shared server)
+
+Re-architected `dose/services/odoo_tenant_provisioner.py` so each tenant gets
+its **own isolated Odoo database** inside the same shared Odoo *server*
+container:
+
+- Tenant schema `pso13` → Odoo database `odoo_pso13` (sanitized via
+  `_sanitize_tenant_db_name()`, Postgres/Odoo-safe).
+- Database created through Odoo's db-manager XML-RPC service
+  (`/xmlrpc/2/db`), gated by `ODOO_MASTER_PASSWORD` (must match `odoo.conf`'s
+  `admin_passwd`). Long-running DB creation is wrapped in a
+  `_socket_timeout()` context manager so xmlrpc doesn't time out.
+- The tenant's own signup login/password becomes **that database's own
+  admin** — scoped only to their database. No shared `res.company`, no
+  shared Settings/Apps/Users across tenants.
+- Provisioner installs the `contacts` module into the new database and sets
+  the user's home action to `contacts.action_contacts` (not the Apps
+  screen), so a non-admin tenant user lands on a working, permission-safe
+  screen immediately after SSO.
+- `TenantApp.extra_config` now stores `odoo_db` (per-tenant database name)
+  alongside `odoo_login` / `odoo_password`. If `odoo_db` changes on
+  re-provisioning, stale `odoo_session_id` / `odoo_session_time` / `odoo_uid`
+  cache keys are popped so the passthrough handler never reuses a session
+  from the tenant's old (or another tenant's) database.
+- Legacy shared-DB helpers (`_odoo_authenticate`, `_odoo_create_user`,
+  `_get_odoo_shared_config`) were **left untouched** — they still back one
+  unrouted call site in `dose/views/main.py` (`SubscriptionViewSet`), which
+  is dead code not part of the live subscription flow. Do not delete without
+  separate confirmation that nothing depends on it.
+
+`dose/passthrough/handlers/odoo_handler.py` required **no changes** — it
+already reads `odoo_db` from `TenantApp.extra_config` per tenant and uses it
+to authenticate against the correct database, so per-tenant DB routing was
+already handler-isolated per `passthrough-handler-isolation.mdc`.
+
+## Security hardening
+
+- `ODOO_MASTER_PASSWORD` was a blank env var while `odoo.conf`'s
+  `admin_passwd` was hardcoded to the Odoo default `admin` — meaning anyone
+  who could reach `/web/database/manager` on the shared instance could
+  create/drop/restore any tenant's database. Generated a strong random
+  master password, set it in `.env` (`ODOO_MASTER_PASSWORD`) and in
+  `odoo.conf` (`admin_passwd`); `mysite/settings.py` reads it via
+  `ODOO_MASTER_PASSWORD = sm('odoo-master-password', 'ODOO_MASTER_PASSWORD', 'admin')`.
+- `ODOO_XMLRPC_ADMIN_PASSWORD` in `.env` was a stale 5-character placeholder
+  left over from an earlier setup — updated to the real shared-admin
+  password so XML-RPC auth against `http://localhost:8086` succeeds.
+- `ODOO_SHARED_URL` pointed at a dead Render service
+  (`polysaas-odoo2.onrender.com`, 404 on `/xmlrpc/2/common`) — corrected to
+  the local dev container `http://localhost:8086`.
+- **`odoo.conf` removed from git tracking** (added to `.gitignore`). It now
+  contains the real `ODOO_MASTER_PASSWORD` in plaintext, and — like `.env` —
+  must never be committed. A `odoo.conf.example` template (placeholder
+  password) is committed in its place. This file is bind-mounted read-only
+  into the running `polysaas-odoo` container from
+  `D:\PolySaaS\odoo.conf` directly (confirmed via `docker inspect`), so
+  removing it from git has no runtime effect — the container keeps reading
+  the same file on disk.
+- Two throwaway diagnostic scripts that had the live shared-admin password
+  hardcoded (`tmp/_check_odoo_companies.py`, `tmp/test_odoo_auth.py`) were
+  deleted rather than committed.
+
+## Verified end-to-end (tenant `pso13`)
+
+1. Subscribed a fresh test tenant (`pso13`) with Odoo enabled — no pre-existing
+   data, clean signup flow.
+2. Provisioner created isolated database `odoo_pso13`, made `pso13` its own
+   admin, installed Contacts, set home action.
+3. Clicking **Odoo** in the PolySaaS sidebar passthrough-embeds the tenant's
+   own database (confirmed via `odoo_db` routing in `extra_config`) —
+   auto-authenticated, no second login screen.
+4. Landed on **Contacts** (not Apps/Settings) — see screenshot below. No
+   `Access Error`.
+5. Confirmed `odoo_pso13` is a separate Postgres database from any other
+   tenant's Odoo database — no shared `res.company`, no cross-tenant record
+   visibility.
+
+![pso13 Odoo SSO landing on Contacts](assets/BINGO_ODOO_MULTITENANT_ISOLATION_2026-07-31_pso13-contacts.png)
+
+*(Screenshot: PSO13 tenant, orchestration bar active, Odoo passthrough
+embed showing Contacts app with "My Company" / pso13@me.yo — confirms
+per-tenant isolation and working SSO.)*
+
+## Files changed / frozen in this commit
+
+| File | Change |
+|---|---|
+| `dose/services/odoo_tenant_provisioner.py` | Rewritten for one-DB-per-tenant; freeze banner updated |
+| `mysite/settings.py` | Added `ODOO_MASTER_PASSWORD` setting; freeze banner updated |
+| `.gitignore` | Added `odoo.conf`, `.env.bak`, `.env.bak2` (secrets) |
+| `odoo.conf.example` | New — placeholder template (real `odoo.conf` is now gitignored) |
+| `documentation/BINGO_ODOO_MULTITENANT_ISOLATION_2026-07-31.md` | This doc |
+
+`odoo.conf`, `.env` were updated locally with real secret values but are
+**not** committed (gitignored by design).
+
+## Known follow-ups (not part of this BINGO, raised per Rule 3)
+
+- There is an existing **Option 3 blueprint** (`blueprints/odoo/`) for full
+  container-per-tenant isolation with Traefik routing — a further hardening
+  step if/when tenant count or compliance needs justify it. Not required for
+  current testing scale; flagged for Michael/Shela to decide on later.
+- The legacy shared-DB provisioning path in `dose/views/main.py`
+  (`SubscriptionViewSet`) still references the old single-shared-database
+  helpers and is unrouted/dead code. Recommend removing it in a follow-up
+  once confirmed nothing depends on it, to avoid future confusion with the
+  live one-DB-per-tenant path.

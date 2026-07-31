@@ -8,6 +8,10 @@ __pycache__/
 .worktree-path
 .env.railway.local
 .env.wordpress
+.env.bak
+.env.bak2
+# Contains ODOO_MASTER_PASSWORD in plaintext (db-manager admin_passwd) — see odoo.conf.example
+odoo.conf
 # Local cache: maps ML screenshot filenames → WordPress media URLs (wp_sync_ml_page.py)
 .wp-ml-screenshots.json
 .DS_Store

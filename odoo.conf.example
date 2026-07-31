@@ -1,0 +1,10 @@
+[options]
+; Copy this file to odoo.conf and set admin_passwd to the SAME value as
+; ODOO_MASTER_PASSWORD in your local .env file. This is the Odoo db-manager
+; master password (create/drop databases via /xmlrpc/2/db) — it is a real
+; secret and must never be committed to git (odoo.conf itself is gitignored).
+admin_passwd = CHANGE_ME_MATCH_ODOO_MASTER_PASSWORD_IN_ENV
+# Disable X-Frame-Options to allow iframe embedding
+x_frame_options =
+# Allow iframe embedding from localhost:8000
+proxy_mode = True

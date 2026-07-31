@@ -1,46 +1,26 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Odoo invoicing orchestration provision hook — commit 7d05920e
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
-# BINGO: Odoo Multi-Tenant DB Isolation — see documentation/BINGO_ODOO_MULTITENANT_ISOLATION_2026-07-31.md
 
 # dose/services/odoo_tenant_provisioner.py
 """
-Odoo Tenant Provisioner — creates an isolated Odoo database for each new
-PolySaaS tenant subscription (2026-07-31 architecture change; see
-documentation/BINGO_ODOO_MULTITENANT_ISOLATION_2026-07-31.md).
+Odoo Tenant Provisioner — creates a user in the shared Odoo instance for a
+new PolySaaS tenant subscription.
 
-Architecture (current):
-  • One shared Odoo *server* (container) hosts a separate Postgres database
-    per tenant — e.g. tenant schema "pso13" -> Odoo database "odoo_pso13".
-  • The tenant's signup login/password becomes that database's own admin —
-    scoped ONLY to their database, never to any other tenant's data or to
-    the shared instance's Settings/Apps/Users (which are instance-wide and
-    would otherwise leak across tenants if shared).
-  • Database creation goes through Odoo's db-manager XML-RPC service
-    (/xmlrpc/2/db), gated by ODOO_MASTER_PASSWORD (must match odoo.conf's
-    admin_passwd). Regular per-tenant XML-RPC calls use /xmlrpc/2/object
-    with each tenant's own db name + login + password (same as OdooCustomerSync).
+Architecture:
+  • A single shared Odoo instance serves all tenants (multi-company model).
+  • Each new tenant gets a `res.users` record with a `res.company` in Odoo.
+  • Communication is via XML-RPC (same as OdooCustomerSync).
+  • Odoo URL and admin credentials come from Django settings (env vars).
   • The provisioner also creates a PassThroughEndpoint in the tenant schema
     so the sidebar "Odoo" link appears immediately.
 
-  Prior architecture (still supported by the untouched helpers below for a
-  legacy/unrouted call site in dose/views/main.py — see
-  dose/urls.py, this path is NOT part of the live subscription flow):
-  a single shared Odoo *database* with one res.users login per tenant and no
-  per-tenant res.company. That gave zero real data isolation between tenants
-  and let any tenant's user affect Settings/Apps for everyone — do not revert
-  to it for the live flow.
-
 Settings used:
-  ODOO_SHARED_URL              — e.g. http://localhost:8086 (server, not a specific DB)
-  ODOO_MASTER_PASSWORD         — db-manager master password (create/drop databases)
-  ODOO_SHARED_DB               — legacy shared-DB name (kept for the unrouted legacy path)
-  ODOO_SHARED_ADMIN_LOGIN      — legacy shared-DB admin login (unrouted legacy path)
-  POLYSAAS_APP_ADMIN_PASSWORD  — fallback admin password (e.g. PolySaaS2026!)
+  ODOO_SHARED_URL              — e.g. https://polysaas-odoo2.onrender.com
+  ODOO_SHARED_DB               — e.g. odoodb
+  ODOO_SHARED_ADMIN_LOGIN      — e.g. odooAdmin
+  POLYSAAS_APP_ADMIN_PASSWORD  — shared admin password (e.g. PolySaaS2026!)
 """
-import re
-import socket
-from contextlib import contextmanager
 from typing import Dict, Any
 import logging
 import xmlrpc.client
@@ -57,15 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_odoo_shared_config() -> Dict[str, str]:
-    """
-    Return connection config for the shared Odoo instance.
-
-    NOTE: 'db'/'admin_login'/'admin_password' here describe the legacy shared
-    database, kept only for the unrouted legacy call site in
-    dose/views/main.py. The live per-tenant-database flow
-    (provision_odoo_tenant) uses 'url' + 'master_password' only — see
-    _sanitize_tenant_db_name / _odoo_create_tenant_database below.
-    """
+    """Return connection config for the shared Odoo instance."""
     return {
         'url': getattr(settings, 'ODOO_SHARED_URL', 'http://localhost:8086'),
         'db': getattr(settings, 'ODOO_SHARED_DB', 'odoo'),
@@ -75,84 +47,7 @@ def _get_odoo_shared_config() -> Dict[str, str]:
             'ODOO_XMLRPC_ADMIN_PASSWORD',
             getattr(settings, 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!'),
         ),
-        'master_password': getattr(settings, 'ODOO_MASTER_PASSWORD', 'admin'),
     }
-
-
-def _sanitize_tenant_db_name(tenant_schema: str) -> str:
-    """Odoo/Postgres-safe database name for a tenant, namespaced to avoid collisions."""
-    slug = re.sub(r'[^a-z0-9_]', '_', (tenant_schema or 'tenant').lower()).strip('_') or 'tenant'
-    return f"odoo_{slug}"
-
-
-@contextmanager
-def _socket_timeout(seconds: int):
-    """Scoped socket timeout — database creation/module install can take 20-90s."""
-    previous = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(seconds)
-    try:
-        yield
-    finally:
-        socket.setdefaulttimeout(previous)
-
-
-def _odoo_tenant_db_exists(base_url: str, db_name: str) -> bool:
-    db_service = xmlrpc.client.ServerProxy(f"{base_url}/xmlrpc/2/db", allow_none=True)
-    return bool(db_service.db_exist(db_name))
-
-
-def _odoo_create_tenant_database(base_url: str, master_password: str, db_name: str, *, login: str, password: str) -> None:
-    """
-    Create a brand-new, isolated Odoo database for one tenant via the
-    db-manager service. The login/password given here become that
-    database's own Administrator — scoped only to this tenant's database.
-    """
-    with _socket_timeout(180):
-        db_service = xmlrpc.client.ServerProxy(f"{base_url}/xmlrpc/2/db", allow_none=True)
-        db_service.create_database(master_password, db_name, False, 'en_US', password, login)
-
-
-def _odoo_authenticate_in_db(base_url: str, db_name: str, login: str, password: str) -> int:
-    """Authenticate a tenant's own admin login against their own database."""
-    common = xmlrpc.client.ServerProxy(f"{base_url}/xmlrpc/2/common", allow_none=True)
-    uid = common.authenticate(db_name, login, password, {})
-    if not uid:
-        raise RuntimeError(f"Odoo XML-RPC auth failed: url={base_url} db={db_name} login={login}")
-    return uid
-
-
-def _odoo_install_module(base_url: str, db_name: str, uid: int, password: str, module_name: str) -> None:
-    """Install a module by technical name into a specific tenant database (best-effort)."""
-    try:
-        with _socket_timeout(90):
-            models = xmlrpc.client.ServerProxy(f"{base_url}/xmlrpc/2/object", allow_none=True)
-            found = models.execute_kw(
-                db_name, uid, password, 'ir.module.module', 'search_read',
-                [[['name', '=', module_name]]], {'fields': ['id', 'state'], 'limit': 1},
-            )
-            if found and found[0]['state'] != 'installed':
-                models.execute_kw(
-                    db_name, uid, password, 'ir.module.module', 'button_immediate_install',
-                    [[found[0]['id']]],
-                )
-    except Exception as e:
-        logger.warning("[OdooProvisioner] Module install '%s' failed for db=%s: %s", module_name, db_name, e)
-
-
-def _odoo_set_home_action(base_url: str, db_name: str, uid: int, password: str, xml_id: str) -> None:
-    """Point a user's home screen at an action resolved by XML ID (best-effort)."""
-    try:
-        models = xmlrpc.client.ServerProxy(f"{base_url}/xmlrpc/2/object", allow_none=True)
-        module, name_part = xml_id.split('.')
-        found = models.execute_kw(
-            db_name, uid, password, 'ir.model.data', 'search_read',
-            [[['module', '=', module], ['name', '=', name_part]]],
-            {'fields': ['res_id'], 'limit': 1},
-        )
-        if found:
-            models.execute_kw(db_name, uid, password, 'res.users', 'write', [[uid], {'action_id': found[0]['res_id']}])
-    except Exception as e:
-        logger.warning("[OdooProvisioner] Set home action '%s' failed for db=%s: %s", xml_id, db_name, e)
 
 
 def _odoo_authenticate(config: Dict[str, str]) -> int:
@@ -236,26 +131,22 @@ def provision_odoo_tenant(
     admin_password: str = '',
 ) -> Dict[str, Any]:
     """
-    Celery task: provision an isolated Odoo database for a new PolySaaS tenant.
-
+    Celery task: provision an Odoo user for a new PolySaaS tenant.
+    
     Reports ACTUAL success/failure - not demo mode.
-    Only returns success=True if the tenant's Odoo database was actually created.
+    Only returns success=True if Odoo user was actually created.
 
     Steps:
       1. Create PassThroughEndpoint in tenant schema (sidebar link)
-      2. Create a dedicated Odoo database for this tenant via db-manager XML-RPC
-         (the tenant's own login/password become that database's admin)
-      3. Install baseline apps (Contacts) and point the home screen there
-      4. Update TenantApp.extra_config with final credentials (incl. per-tenant odoo_db)
-      5. Mark TenantApp as 'active' (only on success)
-      6. (Optional) Send welcome email
+      2. Create res.users in shared Odoo via XML-RPC
+      3. Update TenantApp.extra_config with final credentials
+      4. Mark TenantApp as 'active' (only on success)
+      5. (Optional) Send welcome email
     """
     try:
         config = _get_odoo_shared_config()
         odoo_url = config['url']
-        master_password = config['master_password']
         password = (admin_password or '').strip() or config['admin_password']
-        tenant_db = _sanitize_tenant_db_name(tenant_schema)
 
         # Resolve TenantApp record
         tenant_app = None
@@ -289,37 +180,20 @@ def provision_odoo_tenant(
         except Exception as e:
             logger.warning("[OdooProvisioner] PassThroughEndpoint creation failed: %s", e)
 
-        # ── Step 2: Create (or reuse) this tenant's own isolated Odoo database ──
+        # ── Step 2: Create Odoo user via XML-RPC ──────────────────────────────
         odoo_user_id = None
         user_created = False
         try:
-            if not _odoo_tenant_db_exists(odoo_url, tenant_db):
-                logger.info(
-                    "[OdooProvisioner] Creating isolated Odoo database '%s' for tenant=%s",
-                    tenant_db, tenant_schema,
-                )
-                _odoo_create_tenant_database(
-                    odoo_url, master_password, tenant_db,
-                    login=admin_email, password=password,
-                )
-            else:
-                logger.info(
-                    "[OdooProvisioner] Odoo database '%s' already exists for tenant=%s, reusing",
-                    tenant_db, tenant_schema,
-                )
-
-            odoo_user_id = _odoo_authenticate_in_db(odoo_url, tenant_db, admin_email, password)
-            user_created = odoo_user_id is not None and odoo_user_id > 0
-
-            # Baseline apps for a usable landing page — tenant is the admin of
-            # their OWN database only, so this does not affect other tenants.
-            _odoo_install_module(odoo_url, tenant_db, odoo_user_id, password, 'contacts')
-            _odoo_set_home_action(odoo_url, tenant_db, odoo_user_id, password, 'contacts.action_contacts')
-        except Exception as exc:
-            logger.error(
-                "[OdooProvisioner] Odoo database provisioning failed for %s (db=%s): %s",
-                tenant_name, tenant_db, exc,
+            uid = _odoo_authenticate(config)
+            odoo_user_id = _odoo_create_user(
+                config, uid,
+                login=admin_email,
+                name=company_name or tenant_name,
+                password=password,
             )
+            user_created = odoo_user_id is not None and odoo_user_id > 0
+        except Exception as exc:
+            logger.error("[OdooProvisioner] Odoo user creation failed for %s: %s", tenant_name, exc)
             odoo_user_id = 0
             user_created = False
 
@@ -327,17 +201,10 @@ def provision_odoo_tenant(
         if tenant_app:
             try:
                 extra = tenant_app.extra_config if isinstance(tenant_app.extra_config, dict) else {}
-                # If the tenant's Odoo database changed (e.g. migrating from the
-                # old shared 'odoo' db), any cached session belongs to the wrong
-                # database and must not be reused by the passthrough handler.
-                if extra.get('odoo_db') and extra.get('odoo_db') != tenant_db:
-                    extra.pop('odoo_session_id', None)
-                    extra.pop('odoo_session_time', None)
-                    extra.pop('odoo_uid', None)
                 extra.update({
                     'odoo_login': admin_email,
                     'odoo_password': password,
-                    'odoo_db': tenant_db,
+                    'odoo_db': config['db'],
                     'odoo_user_id': odoo_user_id,
                     'odoo_url': odoo_url,
                 })
@@ -353,7 +220,7 @@ def provision_odoo_tenant(
             else:
                 # Only mark error if we have a valid tenant_app
                 try:
-                    mark_tenant_app_error(tenant_app, f"Odoo database provisioning failed for {admin_email} (db={tenant_db})")
+                    mark_tenant_app_error(tenant_app, f"Odoo user creation failed for {admin_email}")
                 except Exception as mark_err:
                     logger.warning("[OdooProvisioner] Failed to mark tenant_app error: %s", mark_err)
 
@@ -402,11 +269,11 @@ def provision_odoo_tenant(
             )
         else:
             logger.warning(
-                "[OdooProvisioner] Provisioning failed: tenant=%s login=%s db=%s (no Odoo database created)",
-                tenant_name, admin_email, tenant_db,
+                "[OdooProvisioner] Provisioning failed: tenant=%s login=%s (no Odoo user created)",
+                tenant_name, admin_email,
             )
 
-        # Return actual result based on whether the tenant's database was provisioned
+        # Return actual result based on whether user was created
         if user_created:
             return {
                 "success": True,
@@ -415,25 +282,25 @@ def provision_odoo_tenant(
                 "odoo_credentials": {
                     "login": admin_email,
                     "password": password,
-                    "db": tenant_db,
+                    "db": config.get('db', ''),
                 },
                 "sso": bool(oauth_client_id),
-                "message": f"Odoo database '{tenant_db}' provisioned for '{admin_email}'",
+                "message": f"Odoo user '{admin_email}' provisioned in shared instance",
             }
         else:
-            # Database provisioning failed - report failure
+            # User creation failed - report failure
             return {
                 "success": False,
-                "error": "Odoo database provisioning failed",
+                "error": "Odoo user creation failed",
                 "odoo_url": odoo_url,
                 "odoo_user_id": 0,
                 "odoo_credentials": {
                     "login": admin_email,
                     "password": password,
-                    "db": tenant_db,
+                    "db": config.get('db', ''),
                 },
                 "sso": bool(oauth_client_id),
-                "message": f"Failed to provision Odoo database for '{admin_email}'",
+                "message": f"Failed to create Odoo user for '{admin_email}'",
             }
 
     except Exception as exc:
