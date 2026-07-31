@@ -26,6 +26,14 @@
 
 ---
 
+## Why This Fix Works
+
+**The Problem:** With `starting_uri = '/web'`, the initial request goes to `http://localhost:8086/web`. Odoo then tries to redirect to `/web/login.php`, but the handler's path handling breaks during the double-redirect. The user sees a login page instead of the app.
+
+**The Solution:** With empty `starting_uri = ''`, the initial request goes to `http://localhost:8086/` (bare base). Odoo redirects to `/web/login.php` from the root, which the handler correctly processes. The user sees the app.
+
+---
+
 ## What Condo Needs to Do
 
 ### Step 1: Pull Latest Changes
