@@ -36,31 +36,24 @@ def _load_passthrough_endpoints(schema_name):
     if not schema_name:
         return []
 
-    search_paths = [
-        f'SET search_path TO "{schema_name}",public',
-        'SET search_path TO public,pg_catalog',
-    ]
-
-    for search_path_sql in search_paths:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(search_path_sql)
-            endpoints = list(
-                PassThroughEndpoint.objects.filter(
-                    is_enabled=True,
-                    show_in_menu=True,
-                )
-                .exclude(menu_title__isnull=True)
-                .exclude(menu_title__exact='')
-                .order_by('menu_sort_order', 'id')
+    try:
+        # Tenant schema only — PassThroughEndpoint rows are tenant-owned, not public.
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{schema_name}"')
+        endpoints = list(
+            PassThroughEndpoint.objects.filter(
+                is_enabled=True,
+                show_in_menu=True,
             )
-            if endpoints:
-                print(f"[JAZZMIN DEBUG] Loaded {len(endpoints)} passthrough endpoints using {search_path_sql}")
-                return endpoints
-        except Exception as exc:
-            print(f"[JAZZMIN DEBUG] Failed passthrough lookup with {search_path_sql}: {exc}")
-
-    return []
+            .exclude(menu_title__isnull=True)
+            .exclude(menu_title__exact='')
+            .order_by('menu_sort_order', 'id')
+        )
+        print(f"[JAZZMIN DEBUG] Loaded {len(endpoints)} passthrough endpoints from schema: {schema_name}")
+        return endpoints
+    except Exception as exc:
+        print(f"[JAZZMIN DEBUG] Failed passthrough lookup for schema {schema_name}: {exc}")
+        return []
 
 
 class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # ← FIRST!

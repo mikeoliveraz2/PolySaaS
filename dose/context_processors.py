@@ -16,24 +16,19 @@ def _load_passthrough_endpoints(schema_name):
     if not schema_name:
         return []
 
-    for search_path_sql in (
-        f'SET search_path TO "{schema_name}",public',
-        'SET search_path TO public,pg_catalog',
-    ):
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(search_path_sql)
-            endpoints = list(
-                PassThroughEndpoint.objects.filter(is_enabled=True, show_in_menu=True)
-                .order_by('menu_sort_order', 'id')
-            )
-            if endpoints:
-                print(f"[ADMIN_NAV] Loaded {len(endpoints)} passthrough endpoints using {search_path_sql}")
-                return endpoints
-        except Exception as exc:
-            print(f"[ADMIN_NAV] Passthrough lookup failed with {search_path_sql}: {exc}")
-
-    return []
+    try:
+        # Tenant schema only — PassThroughEndpoint rows are tenant-owned, not public.
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{schema_name}"')
+        endpoints = list(
+            PassThroughEndpoint.objects.filter(is_enabled=True, show_in_menu=True)
+            .order_by('menu_sort_order', 'id')
+        )
+        print(f"[ADMIN_NAV] Loaded {len(endpoints)} passthrough endpoints from schema: {schema_name}")
+        return endpoints
+    except Exception as exc:
+        print(f"[ADMIN_NAV] Passthrough lookup failed for schema {schema_name}: {exc}")
+        return []
 
 def tenant_context(request):
     """

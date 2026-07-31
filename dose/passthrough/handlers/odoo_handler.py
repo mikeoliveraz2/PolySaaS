@@ -615,7 +615,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             }}
             document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
 
-            var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus', '/mail', '/longpolling', '/websocket', '/jsonrpc', '/website'];
+            var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus', '/mail', '/longpolling', '/websocket', '/jsonrpc', '/website', '/logo.png', '/logo'];
 
             function normalizeToPath(url) {{
                 if (!url || typeof url !== 'string') return url;
@@ -981,7 +981,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         html_str = self._rewrite_form_actions_server_side(html_str, prefix)
 
         html_str = re.sub(
-            r'(src|href|action)=(["\'])(/(web|odoo|apps|report|download|base|api|bus|mail|longpolling|websocket|jsonrpc|website)[^"\']*)',
+            r'(src|href|action)=(["\'])(/(web|odoo|apps|report|download|base|api|bus|mail|longpolling|websocket|jsonrpc|website|logo\.png|logo)[^"\']*)',
             lambda m: f'{m.group(1)}={m.group(2)}{prefix}{m.group(3)}{m.group(2)}',
             html_str,
             flags=re.IGNORECASE
