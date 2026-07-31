@@ -11,17 +11,19 @@ When clicking the Odoo passthrough link in the admin sidebar (condo machine), th
 
 ## Root Cause Analysis
 
-The issue is likely one of:
+**The Odoo handler's `get_upstream_cookies()` returns an empty dict when:**
 
-1. **Endpoint URL Mismatch** — The Odoo PassThroughEndpoint in condo's database might be pointing to a production URL (e.g., `https://polysaas-odoo2.onrender.com`) instead of the local Docker address (`http://localhost:8086`).
+1. **Missing Credentials** — The TenantApp for Odoo doesn't have `odoo_login` and `odoo_password` in `extra_config`. Without these, the handler can't authenticate to Odoo and returns no session cookies, so the user lands on the login page.
 
-2. **Starting URI Issue** — The `starting_uri` field might be empty or incorrect, causing Odoo to land on a login page instead of the app entry point.
+2. **Invalid Session** — The cached `odoo_session_id` has expired (older than 30 minutes), but new credentials aren't available to re-authenticate.
 
-3. **Session/Cookies** — The Odoo handler's `get_upstream_cookies()` might not be retrieving valid session tokens from the provisioned TenantApp.
+3. **Wrong Endpoint** — The PassThroughEndpoint endpoint_url might point to the wrong Odoo instance (production vs. local Docker).
 
 ## Steps to Debug on Condo
 
 ### 1. Check Endpoint Configuration
+
+**Expected:** endpoint_url should be the Odoo instance (e.g., `http://localhost:8086` for local Docker or `https://polysaas-odoo2.onrender.com` for production). `starting_uri` should be empty or `/` — Odoo appends `/web` internally.
 
 ```bash
 cd D:\PolySaaS
@@ -69,71 +71,65 @@ PSO5 Odoo endpoint:
   is_enabled: True
 ```
 
-### 2. If Endpoint URL is Wrong
+### 2. Check TenantApp Odoo Credentials (PRIMARY CHECK)
 
-If the condo's endpoint_url is pointing to a production URL (e.g., `https://polysaas-odoo2.onrender.com`), update it:
+This is the **most likely cause** of the login screen:
 
 ```python
 from django.db import connection
-from dose.models import PassThroughEndpoint, Tenant
+from dose.models import TenantApp, Tenant
+import json
 
-# Fix public schema
-with connection.cursor() as c:
-    c.execute('SET search_path TO public')
-
-odoo_ep = PassThroughEndpoint.objects.filter(slug='odoo').first()
-if odoo_ep:
-    odoo_ep.endpoint_url = 'http://localhost:8086'
-    odoo_ep.starting_uri = '/web'
-    odoo_ep.save()
-    print("✓ Updated PUBLIC odoo endpoint")
-
-# Fix pso5 schema
 pso5 = Tenant.objects.get(schema_name='pso5')
 with connection.cursor() as c:
     c.execute('SET search_path TO pso5')
 
-odoo_ep = PassThroughEndpoint.objects.filter(slug='odoo').first()
-if odoo_ep:
-    odoo_ep.endpoint_url = 'http://localhost:8086'
-    odoo_ep.starting_uri = '/web'
-    odoo_ep.save()
-    print("✓ Updated PSO5 odoo endpoint")
+odoo_app = TenantApp.objects.filter(app_name='odoo', status='active').first()
+if odoo_app:
+    print(f"Odoo TenantApp found:")
+    print(f"  app_slug: {odoo_app.app_slug}")
+    print(f"  app_url: {odoo_app.app_url}")
+    print(f"\n  extra_config:")
+    print(json.dumps(odoo_app.extra_config, indent=4))
+else:
+    print("❌ No active Odoo TenantApp found in pso5")
 ```
 
-### 3. Check Odoo Session Provisioning
+**What to look for:**
 
-Verify that the TenantApp for Odoo has valid credentials in `extra_config`:
+- `odoo_login` — Must exist and be a valid Odoo username
+- `odoo_password` — Must exist and be a valid Odoo password  
+- `odoo_db` — Database name (optional, defaults to `polysaas_odoo` or `ODOO_SHARED_DB` setting)
+- `odoo_session_id` — Cached session token (can be empty if not yet authenticated)
+
+**If `odoo_login` or `odoo_password` are missing:**
+
+Run the Odoo provisioning service to populate them. Contact Michael/Shela for the provisioning command or check `documentation/LOCAL_STANDALONE_STACK.md` for setup instructions.
+
+### 3. If Credentials Exist But Still Showing Login
+
+Enable debug logging in the Odoo handler to see what's happening:
 
 ```python
-from dose.models import TenantApp, Tenant
-
-pso5 = Tenant.objects.get(schema_name='pso5')
-with connection.cursor() as c:
-    c.execute('SET search_path TO pso5')
-
-odoo_app = TenantApp.objects.filter(app_slug='odoo').first()
-if odoo_app:
-    print(f"Odoo TenantApp extra_config:")
-    import json
-    print(json.dumps(odoo_app.extra_config, indent=2))
-else:
-    print("No Odoo TenantApp found in pso5")
+# In dose/passthrough/handlers/odoo_handler.py, the logs will show:
+# - "[ODOO HANDLER] get_upstream_cookies: authenticating tenant=..."
+# - "[ODOO HANDLER] Using cached Odoo session for tenant=..."
+# - "[ODOO HANDLER] get_upstream_cookies: missing odoo_login/password in extra_config"
 ```
 
-Look for fields like `odoo_session_id` or `odoo_uid` in the `extra_config`.
+Check server logs (e.g., `runall.ps1` console output) for these messages when you click the Odoo link.
 
 ## Recent Changes (Commit 06269607)
 
-This commit cleared `starting_uri` for local endpoints to let the upstream app handle redirects. However, Odoo's login page still needs the correct auth flow. Verify:
+This commit changed how endpoints are resolved locally. The local_dev_registrations now explicitly map `localhost:8086 -> OdooPassthroughHandler`. The real issue is credential provisioning: if the TenantApp doesn't have `odoo_login` and `odoo_password`, the handler can't authenticate and the user sees the login page.
 
-1. **Endpoint is localhost:8086** (not a production URL)
-2. **Starting URI is `/web`** (Odoo's application entry point)
-3. **Session credentials exist** in TenantApp.extra_config
+## Verification Checklist
 
-## Next Step
-
-Run the diagnostic checks above on the condo machine, then report back with the findings. If the endpoint URL is pointing to production, update it to `http://localhost:8086` and test again.
+- [ ] Odoo endpoint URL is correct (local Docker or production)
+- [ ] TenantApp.extra_config has `odoo_login` and `odoo_password`
+- [ ] If credentials are missing, provision them (contact Michael/Shela or see LOCAL_STANDALONE_STACK.md)
+- [ ] Restart PolySaaS after fixing credentials
+- [ ] Hard refresh browser and test again
 
 ## Files Involved
 
