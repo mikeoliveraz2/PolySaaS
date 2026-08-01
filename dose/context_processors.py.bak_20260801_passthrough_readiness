@@ -1,9 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
-# FIX 2026-08-01 (owner-approved): passthrough_services now carries 'ready'/'app_status' from
-# TenantApp.status so the sidebar can show not-yet-provisioned passthroughs as disabled instead
-# of clickable-but-broken. See BINGO_ODOO_MULTITENANT_ISOLATION_2026-07-31.md for why a
-# PassThroughEndpoint row can exist before the underlying app is actually usable.
 
 from dose.utils import get_current_tenant, get_current_tenant_role
 from dose.models import UserProfile, Tenant
@@ -378,36 +374,12 @@ def admin_navigation(request):
             title = endpoint.menu_title or norm.replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (from {endpoint.endpoint_url})")
 
-            # READINESS 2026-08-01 (owner-approved, frozen-file exception): a PassThroughEndpoint
-            # row is created (provisioner Step 1) before the underlying app account/database is
-            # actually finished provisioning (Step 2+), so it can appear here before it's usable.
-            # TenantApp.status is the existing source of truth for that ('provisioning'/'active'/
-            # 'error'/'disabled' — see dose/models/tenant_app.py). If no TenantApp row matches this
-            # endpoint's slug (e.g. Gmail, which isn't an APP_CHOICES entry), default to ready=True
-            # so nothing that previously worked without app-registry tracking gets hidden/disabled.
-            ready = True
-            app_status = 'active'
-            try:
-                if tenant and tenant.schema_name:
-                    from django.db import connection as _ta_connection
-                    with _ta_connection.cursor() as _ta_cursor:
-                        _ta_cursor.execute(f'SET search_path TO "{tenant.schema_name}", public')
-                    from dose.models import TenantApp
-                    _tenant_app = TenantApp.objects.filter(app_name=endpoint.slug).first()
-                    if _tenant_app:
-                        app_status = _tenant_app.status
-                        ready = (app_status == 'active')
-            except Exception as _ready_exc:
-                print(f"[ADMIN_NAV] Readiness lookup failed for slug={endpoint.slug!r}: {_ready_exc}")
-
             service_data = {
                 'id': endpoint.id,
                 'url': url,
                 'title': title,
                 'description': endpoint.description or '',
                 'icon': endpoint.menu_icon or '🔗',
-                'ready': ready,
-                'app_status': app_status,
             }
 
             # All PassThroughEndpoint records go to passthrough_services

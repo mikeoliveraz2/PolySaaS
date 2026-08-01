@@ -1,6 +1,5 @@
 {# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION #}
 {# BINGO: UI Cleanup — commit 748e871e #}
-{# FIX 2026-08-01 (owner-approved): added .pss-pt-card--not-ready + .pss-pt-status-dot styles for passthrough readiness UI (see custom_sidebar.html + context_processors.py) #}
 {# Sidebar head assets — in extrahead only; never inside .admin-main-wrapper grid #}
 
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -757,7 +756,6 @@
         min-width: 0;
         max-width: 100%;
         box-sizing: border-box;
-        position: relative;
     }
     .pss-pt-card:hover {
         background: rgba(255,255,255,0.12);
@@ -769,48 +767,7 @@
         background: rgba(77,182,255,0.15);
         border-color: rgba(77,182,255,0.35);
     }
-    /* READINESS 2026-08-01 — not-ready cards render as <span>, not <a>; dim + block clicks
-       defensively (belt-and-suspenders alongside the missing href in the template). */
-    .pss-pt-card--not-ready {
-        cursor: not-allowed;
-        opacity: 0.45;
-        filter: grayscale(0.6);
-        pointer-events: none;
-    }
-    .pss-pt-card--not-ready:hover {
-        background: rgba(255,255,255,0.05);
-        transform: none;
-    }
-    /* Positioned relative to .pss-pt-card (not .pss-pt-logo, which has overflow:hidden and
-       would clip it) — sits at the logo's bottom-right corner. */
-    .pss-pt-status-dot {
-        position: absolute;
-        top: 44px;
-        left: 50%;
-        margin-left: 14px;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        border: 2px solid var(--pss-sidebar-shell-bg);
-        box-sizing: border-box;
-        z-index: 1;
-    }
-    .pss-pt-status-dot--ready {
-        background: #22c55e;
-    }
-    .pss-pt-status-dot--pending {
-        background: #f59e0b;
-        animation: pss-pt-pulse 1.6s ease-in-out infinite;
-    }
-    .pss-pt-status-dot--error {
-        background: #ef4444;
-    }
-    @keyframes pss-pt-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.4; }
-    }
     .pss-pt-logo {
-        position: relative;
         width: 56px;
         height: 56px;
         border-radius: 12px;
@@ -919,14 +876,6 @@
     .collapsible-nav.collapsed .pss-pt-label,
     #dose-custom-sidebar.collapsed .pss-pt-label {
         display: none !important;
-    }
-
-    .collapsible-nav.collapsed .pss-pt-status-dot,
-    #dose-custom-sidebar.collapsed .pss-pt-status-dot {
-        top: 24px;
-        margin-left: 6px;
-        width: 9px;
-        height: 9px;
     }
 
     .collapsible-nav.collapsed .nav-panel-title {

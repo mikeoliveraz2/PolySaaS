@@ -5,9 +5,6 @@
 # SECURITY FIX 2026-07-30 (owner-approved): removed TenantApp.public_bundles (forced
 # search_path=public, leaking tenant-owned TenantApp rows/credentials cross-tenant).
 # All lookups now use tenant_app_lookup.tenant_schema_search_path (tenant schema only).
-# FIX 2026-08-01 (owner-approved): patched Location.prototype.href/assign/replace in the
-# client shim so full-page navigations (e.g. Odoo Invoicing app activation) route through
-# the passthrough prefix instead of hitting the PolySaaS origin directly and 404ing.
 
 import logging
 import re
@@ -780,48 +777,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 }}
                 return _originalReplaceState.call(this, state, title, url);
             }};
-
-            /* FIX 2026-08-01 (owner-approved, frozen-file exception): Odoo's newer
-               app-activation flow (e.g. installing/opening Invoicing) navigates via a
-               full-page `location.href` / `location.assign` / `location.replace` to a
-               bare path like "/odoo/invoicing" instead of pushState or fetch. None of
-               the patches above catch that, so the browser resolved it against the
-               PolySaaS origin (localhost:8000) and 404'd. Patch Location the same way
-               img.src is already patched above, reusing the existing rewriteUrl(). */
-            try {{
-                var _locHrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-                if (_locHrefDesc && _locHrefDesc.set) {{
-                    Object.defineProperty(Location.prototype, 'href', {{
-                        configurable: true,
-                        get: _locHrefDesc.get,
-                        set: function(v) {{
-                            var rewritten = rewriteUrl(v);
-                            if (rewritten !== v) {{
-                                console.log('[ODOO SHIM] location.href rewrite: ' + v + ' -> ' + rewritten);
-                            }}
-                            _locHrefDesc.set.call(this, rewritten);
-                        }}
-                    }});
-                }}
-                var _locAssign = Location.prototype.assign;
-                Location.prototype.assign = function(url) {{
-                    var rewritten = rewriteUrl(url);
-                    if (rewritten !== url) {{
-                        console.log('[ODOO SHIM] location.assign rewrite: ' + url + ' -> ' + rewritten);
-                    }}
-                    return _locAssign.call(this, rewritten);
-                }};
-                var _locReplace = Location.prototype.replace;
-                Location.prototype.replace = function(url) {{
-                    var rewritten = rewriteUrl(url);
-                    if (rewritten !== url) {{
-                        console.log('[ODOO SHIM] location.replace rewrite: ' + url + ' -> ' + rewritten);
-                    }}
-                    return _locReplace.call(this, rewritten);
-                }};
-            }} catch (locErr) {{
-                console.warn('[ODOO SHIM] location patch skipped:', locErr);
-            }}
 
             console.log('[ODOO SHIM] Installed rewriter + form POST guard. Proxy prefix: ' + PROXY_PREFIX);
             {auto_login_js}

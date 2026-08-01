@@ -2,8 +2,6 @@
 <!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
 <!-- BINGO: UI Cleanup — commit 748e871e -->
 <!-- BINGO: Sidebar Alerts Dose Messages — commit d8a02538 -->
-<!-- FIX 2026-08-01 (owner-approved): passthrough cards now reflect service.ready/app_status
-     (not-ready renders as a non-clickable <span> with a status dot; see context_processors.py) -->
 {# AUTHORITATIVE ADMIN SIDEBAR — dose/templates/admin/includes/custom_sidebar.html — DO NOT MODIFY WITHOUT APPROVAL #}
 {% load i18n static custom_menu_tags %}
 
@@ -58,12 +56,10 @@
                 <div class="pss-pt-cards">
                     {% for service in passthrough_services %}
                         {% with slug=service.title|lower %}
-                        {# READINESS 2026-08-01 (owner-approved): not-ready cards render as a non-navigating <span> (see context_processors.py for service.ready / app_status). #}
-                        <{% if service.ready %}a href="{{ service.url }}"{% else %}span{% endif %}
-                           class="pss-pt-card{% if service.ready and request.path_info|path_starts_with:service.url %} is-active{% endif %}{% if not service.ready %} pss-pt-card--not-ready{% endif %}"
-                           {% if service.ready and request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
-                           {% if not service.ready %}aria-disabled="true" tabindex="-1"{% endif %}
-                           title="{% if service.ready %}{{ service.description|default:service.title }}{% else %}{{ service.title }} is still provisioning ({{ service.app_status }}){% endif %}">
+                        <a href="{{ service.url }}"
+                           class="pss-pt-card{% if request.path_info|path_starts_with:service.url %} is-active{% endif %}"
+                           {% if request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
+                           title="{{ service.description|default:service.title }}">
                             <div class="pss-pt-logo pss-pt-logo--{{ slug }}">
                                 {% if 'odoo' in slug %}
                                     <img src="{% static 'img/apps/odoo-sidebar-mark.svg' %}" alt="Odoo">
@@ -79,9 +75,8 @@
                                     {{ service.title|first|upper }}
                                 {% endif %}
                             </div>
-                            <span class="pss-pt-status-dot{% if service.ready %} pss-pt-status-dot--ready{% elif service.app_status == 'error' or service.app_status == 'disabled' %} pss-pt-status-dot--error{% else %} pss-pt-status-dot--pending{% endif %}"></span>
                             <span class="pss-pt-label">{{ service.title }}</span>
-                        </{% if service.ready %}a{% else %}span{% endif %}>
+                        </a>
                         {% endwith %}
                     {% endfor %}
                 </div>
