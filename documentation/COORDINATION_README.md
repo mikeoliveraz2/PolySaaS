@@ -4,6 +4,79 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-08-02 (Morning — Office, session wrap-up) — Passthrough Fixes ✅ / Mattermost Client Stall ⚠️ PENDING
+
+**Status**: ✅ Backend/DB fixes complete and verified — ⚠️ live-browser Mattermost issue open
+**Branch**: main
+**Commits pushed today (chronological)**: signup password security + Odoo trailing-slash BINGO,
+dose-home passthrough (`get_current_tenant` search_path leak + `_endpoint_visible` fuzzy match)
++ Odoo anchor-click BINGO, Mattermost `PassThroughEndpoint` upsert fix (`6a783900`)
+
+### Summary
+
+Rule 6 in effect this session (never hold back WIP — see `process-rules.mdc`). Everything below
+is committed and pushed to `main`; nothing sitting locally uncommitted.
+
+1. **Signup password security** — removed plaintext password from debug log
+   (`dose/subscription_views.py`), added Confirm Password field + client-side match validation
+   to `dose/templates/dose/subscribe.html`. See `BINGO_SIGNUP_PASSWORD_SECURITY_AND_ODOO_TRAILING_SLASH_2026-08-02.md`.
+2. **Odoo Invoicing 404/POST failures** — `mysite/urls.py` `pt/admin/`/`pt/dose/` subpath routes
+   required a trailing slash, so Odoo's AJAX POSTs (no trailing slash) hit Django's
+   `APPEND_SLASH` redirect and 500'd. Removed the mandatory trailing slash.
+3. **Dose-home passthrough panel empty for every tenant** — root cause was `get_current_tenant()`
+   in `dose/utils.py` flipping `search_path` to `public` for the Tenant lookup and never
+   restoring it, so every tenant-scoped query for the rest of the request silently ran against
+   `public`. Fixed with save/restore in a `finally` block. Compounding bug:
+   `_endpoint_visible()` in `dose/views/main.py` used fuzzy hostname substring matching
+   (`'odoo' in host`) which fails for `localhost:PORT` in local dev — replaced with explicit
+   `endpoint.slug == TenantApp.app_name` matching. See
+   `BINGO_DOSE_HOME_PASSTHROUGH_AND_ODOO_ANCHOR_FIX_2026-08-02.md`.
+4. **Odoo "Activate Invoicing" 404 on bare `/odoo`** — native `<a href="/odoo">` clicks bypass
+   all of the shim's patched `fetch`/`XHR`/`Location` functions. Added a capture-phase
+   `click` listener in `dose/passthrough/handlers/odoo_handler.py` that rewrites anchor `href`
+   before the browser navigates. Verified live by Michael — invoicing + dynamic orchestration
+   confirmed working end-to-end.
+5. **Mattermost never got a sidebar tile, for any tenant, ever** — owner unlocked the freeze on
+   `dose/services/mattermost_tenant_provisioner.py` for this one fix
+   ("unlock the freeze it was obviously wrong, fix it properly"). Root cause:
+   `_ensure_passthrough_endpoint()`'s `update_or_create()` set `'name': 'Mattermost'`, but
+   `PassThroughEndpoint` has no `name` field — every call raised, caught by a broad
+   `try/except`, logged as a warning, and silently skipped, while the rest of provisioning
+   (team/user/token) succeeded and reported success. Removed the bad key; `description` now
+   reads `Mattermost Team Chat for {company/tenant name} (shared team: polysaas-dev-team)`,
+   matching the convention already used by `odoo_tenant_provisioner.py`. Backfilled the missing
+   row (without re-running Mattermost API provisioning) for `polysaas`, `pso13`, `pso14`,
+   `pso16`. Verified via Django test client: `/dose/home/` for `pso16` now shows Mattermost
+   alongside Odoo/NextCloud/HubSpot/Dolibarr (status 200), and a full click-through to
+   `/pt/dose/localhost:8065/` returns a real 856KB Mattermost SPA shell (`<title>Mattermost</title>`),
+   no redirect loop, no "Team Not Found". See
+   `BINGO_MATTERMOST_PASSTHROUGH_ENDPOINT_FIX_2026-08-02.md`.
+
+### ⚠️ Open issue — "Mattermost not responding" (reported live in browser, NOT yet reproduced/fixed)
+
+After the endpoint fix above, Michael clicked into Mattermost in an actual browser and reported
+it "not responding." All backend checks passed clean:
+- Mattermost Docker container: healthy, port 8065 listening
+- Direct `http://localhost:8065`: 200
+- Passthrough proxy fetch (`/pt/dose/localhost:8065/`) via Django test client: 200, real HTML
+
+Since a test client can't execute JS or open a WebSocket, this points to a **client-side stall**
+in the injected shim (`dose/passthrough/handlers/mattermost_handler.py` — BINGO-frozen since
+2026-05-31, ~5000 lines, heavy token/IDB/WebSocket bootstrap logic). Deliberately did NOT start
+editing that file solo — it's frozen, huge, and specifically covered by
+`.cursor/rules/mattermost-passthrough-no-team.mdc` (past unsupervised edits there caused
+regressions).
+
+### Next Session First Task
+
+1. Open Mattermost via the sidebar in an actual browser, DevTools open (Console + Network tabs).
+2. Identify exactly where it stalls: stuck spinner? console error? a specific XHR/WebSocket
+   pending forever? token missing from IDB/localStorage/cookie?
+3. Bring findings back before touching `mattermost_handler.py` — it's frozen, get Michael/Shela's
+   sign-off on the specific fix before editing (per `bingo-freeze.mdc` / `process-rules.mdc`).
+
+---
+
 ## 2026-05-29 (Morning — Condo) — Mattermost IDB Auth Fix ✅
 
 **Status**: ✅ COMPLETE — committed and pushed  
