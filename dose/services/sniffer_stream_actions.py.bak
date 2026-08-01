@@ -12,14 +12,14 @@ Local RabbitMQ flow (Odoo-first / current primary):
   3. On a live passthrough POST, DoseRequestController matches the Instruction
      and runs EndpointDataExtractor.
   4. EndpointDataExtractor publishes to RabbitMQ with topic
-     {REQ|RES}.{action_path}.{username} (see dose.utils.mq_topic).
+     {action_path}.{username} (see dose.utils.mq_topic).
   5. Queue monitor / subscribers consume by routing key.
 
 Topic naming convention (locked 2026-08-01):
-  {REQ|RES}.{action_path}.{username}
-  e.g. RES + "/odoo/contacts" + "pso13" → "RES.odoo.contacts.pso13"
-       REQ + "/odoo/contacts" + "pso13" → "REQ.odoo.contacts.pso13"
-  MQOutput stores the action_path prefix; direction + username applied at publish.
+  {action_path}.{username}
+  e.g. instruction path "/odoo/contacts", user "pso13"
+       → topic "odoo.contacts.pso13"
+  MQOutput stores the action_path prefix; username is appended at publish time.
 """
 import logging
 from django.db import transaction
@@ -31,13 +31,13 @@ logger = logging.getLogger(__name__)
 
 
 def _topic_prefix(instruction_path: str) -> str:
-    """Action-path segment only (REQ/RES + username applied at publish time)."""
+    """Action-path segment only (username appended at publish time)."""
     return sanitize_action_path(instruction_path)
 
 
-def _topic_name(instruction_path: str, username: str = "sniffer", direction: str = "REQ") -> str:
+def _topic_name(instruction_path: str, username: str = "sniffer") -> str:
     """Full topic for eventKey / dry-run display."""
-    return build_mq_topic(instruction_path, username, direction=direction)
+    return build_mq_topic(instruction_path, username)
 
 
 def _set_schema(tenant):

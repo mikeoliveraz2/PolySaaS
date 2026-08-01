@@ -83,7 +83,7 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
         'note': (
             'Use with Instruction direction=RES, requestmethod=GET. '
             'Captures upstream response body and publishes to RabbitMQ as '
-            'RES.{action_path}.{username} (e.g. RES.odoo.contacts.pso13).'
+            '{action_path}.{username} (e.g. odoo.contacts.pso13).'
         ),
     },
     'CapturePostRequest': {
@@ -92,7 +92,7 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
         'note': (
             'Use with Instruction direction=REQ, requestmethod=POST. '
             'Captures outbound POST body and publishes to RabbitMQ as '
-            'REQ.{action_path}.{username} (e.g. REQ.odoo.contacts.pso13).'
+            '{action_path}.{username}.'
         ),
     },
     'AtomicServiceSendApprovalEmail': {

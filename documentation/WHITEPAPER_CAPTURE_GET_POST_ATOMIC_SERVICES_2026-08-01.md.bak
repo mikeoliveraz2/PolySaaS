@@ -1,0 +1,241 @@
+# Capture Once, Orchestrate Everywhere  
+### Reusable GET/POST Atomic Services on Passthrough Action Paths
+
+**PolySaaS White Paper**  
+**Audience:** builders and operators wiring Instructions on passthrough action paths  
+**Scope:** Passthrough orchestration only — not the marketing site, not WPForms, not Stripe signup  
+**Status:** Ready for blog publication (explains platform internals; does not describe website forms)  
+**Date:** 2026-08-01  
+
+---
+
+## Scope (read this first)
+
+These two atomic services exist for one place in the platform:
+
+**Passthrough → Action Path → Instruction → Atomic service**
+
+| In scope | Out of scope |
+|----------|----------------|
+| **Any** passthrough action path (Odoo, Mattermost, Dolibarr, Nextcloud, HubSpot, Slack, Liferay, WordPress-as-passthrough app, …) | Marketing website pages |
+| Green orchestration bar **Action Path** (e.g. `/odoo/contacts`, `/liferay/...`) | WPForms / WordPress forms |
+| Tenant **Instruction** rows matched on that path (method + direction) | Stripe checkout / beta signup flows |
+| `CaptureGetResponse` / `CapturePostRequest` as `executescript` — **data capture only** | Public REST APIs unrelated to passthrough |
+| Publishing to MQ topics `{REQ\|RES}.{action_path}.{username}` | MQ **consume / convert / save** atomics (separate layer — see below) |
+
+If there is no passthrough session and no Instruction tied to an action path, these services do not run.
+
+---
+
+## Two layers (do not conflate)
+
+| Layer | Job | Trigger | This white paper? |
+|-------|-----|---------|-------------------|
+| **1. Capture** | Read GET response or POST body on a passthrough action path; publish to MQ | Instruction on the action path (`CaptureGetResponse` / `CapturePostRequest`) | **Yes — this is it** |
+| **2. MQ consumers** | Pick up messages from MQ topics; convert; save / sync / notify | Queue monitor / MQ Instructions bound to topics — **a different set of atomic services** | **No — follow-on design** |
+
+Capture never “does business.” Conversion and persistence are strictly **topic consumers**.
+
+### Important: one capture code path — not one block per action path
+
+There is **no** separate Python class, handler branch, or per-path code block for `/odoo/contacts`, `/liferay/...`, Mattermost, etc.
+
+| What changes per place you capture | What does **not** change |
+|------------------------------------|---------------------------|
+| Instruction **request path** (action path match) | `CaptureGetResponse` / `CapturePostRequest` source code |
+| Method + direction on that Instruction | Topic formula `{REQ\|RES}.{action_path}.{username}` |
+| Optional `parameters_json` (e.g. `max_chars`) | “Write capture to the topic” behavior |
+
+Wherever you are capturing data to be written to a topic, you use **the same two atomic services**. New action paths are new Instruction rows—not new capture code. That rule applies to every passthrough app, including Liferay.
+
+---
+
+## Executive summary
+
+When a subscriber works inside a bundled app **through PolySaaS passthrough**, HTTP traffic is already flowing through PolySaaS. Operators attach **Instructions** to the **action path** shown in the orchestration bar. Two reusable atomic services **capture** what matters (they do not convert or save downstream):
+
+1. **CaptureGetResponse** — Instruction on a **GET**, direction **RESPONSE**: capture the **data the app returned**.  
+2. **CapturePostRequest** — Instruction on a **POST**, direction **REQUEST**: capture the **data going into the app**.
+
+Both publish a structured event onto a message topic `{REQ|RES}.{action_path}.{username}` — direction first (`REQ` or `RES`), then action path, then the signed-in PolySaaS user. A **separate** set of atomic services will later bind to those topics, convert payloads, and save data. Capture stays identical for Odoo, Liferay, Mattermost, and every other passthrough action path—because the binding is always **Instruction + action path**.
+
+---
+
+## The problem these services solve
+
+Without passthrough Instructions, each integration tends to hard-code one app’s API. PolySaaS already provides the middle layer: users stay in familiar UIs; PolySaaS sees the HTTP. What was missing was a pair of **generic capture atomics** that operators attach to **passthrough action-path Instructions**—not product-specific scrapers, and not anything on the public site.
+
+---
+
+## Two services, two moments on the passthrough path
+
+| Service | HTTP method | Instruction direction | Moment | What is captured |
+|--------|-------------|----------------------|--------|------------------|
+| **CaptureGetResponse** | GET | **RESPONSE (RES)** | After the upstream app returns through passthrough | Response body (JSON preferred; large text truncated) |
+| **CapturePostRequest** | POST | **REQUEST (REQ)** | When the client posts through passthrough | Outbound POST body (JSON or form fields) |
+
+**Mnemonic (passthrough only)**
+
+- GET Instruction (RES) → capture on the **way out of the app**.  
+- POST Instruction (REQ) → capture on the **way into the app**.
+
+Neither service hard-codes Odoo, Mattermost, or Dolibarr schemas. Which app is involved is decided by **which action path the Instruction matches**.
+
+---
+
+## Topic naming (direction + action path + user)
+
+```text
+{REQ|RES}.{action_path}.{username}
+```
+
+- **Direction prepended:** `REQ` for request-side Instructions, `RES` for response-side  
+- Delimiter: `.`  
+- Action path: from the Instruction / orch bar (e.g. `/odoo/contacts` → `odoo.contacts`)  
+- Username: PolySaaS login (e.g. `pso13`)  
+- Examples: **`RES.odoo.contacts.pso13`** (GET response capture), **`REQ.odoo.contacts.pso13`** (POST request capture)
+
+Same formula when you later attach Instructions to Mattermost or Dolibarr action paths. Consumers can bind by direction (`RES.#`, `REQ.odoo.#`) or precisely per user.
+
+---
+
+## How to use them (passthrough operator walkthrough)
+
+### Prerequisites
+
+- PolySaaS running (e.g. `.\runall.ps1`), including local RabbitMQ  
+- Signed-in tenant user  
+- Bundled app opened from the **passthrough sidebar** (not a raw app URL that bypasses `/pt/…`)
+
+### Step 1 — Confirm the action path
+
+With the app embedded, the green orchestration bar shows **Action Path** (for example `/odoo/contacts`). That string is what Instructions associate with.
+
+### Step 2 — GET capture Instruction
+
+1. **+ Insert Orchestration Instruction** (from the passthrough orch bar), or create an Instruction in admin for the same path.  
+2. Set:
+   - **Request path** = that action path (or a more specific match)  
+   - **Method** = `GET`  
+   - **Direction** = `RESPONSE`  
+   - **Execute script** = `CaptureGetResponse`  
+3. Optional `parameters_json`:
+
+```json
+{
+  "publish": true,
+  "max_chars": 100000
+}
+```
+
+### Step 3 — POST capture Instruction
+
+Same action path (or a POST-specific path under that app), but:
+
+- **Method** = `POST`  
+- **Direction** = `REQUEST`  
+- **Execute script** = `CapturePostRequest`  
+
+### Step 4 — Exercise the passthrough UI
+
+Navigate and submit inside the embedded app. Matching GET responses / POST bodies publish to `{REQ|RES}.{action_path}.{username}` and optionally save CallBackData in the **tenant schema**.
+
+### Step 5 — Verify
+
+- RabbitMQ management UI (`localhost:15672`) — routing keys such as `RES.odoo.contacts.pso13` / `REQ.odoo.contacts.pso13`  
+- Admin → CallBackData (with tenant search path) for payload previews  
+
+---
+
+## Event shape (passthrough capture)
+
+```json
+{
+  "capture": "get_response",
+  "topic": "RES.odoo.contacts.pso13",
+  "action_path": "/odoo/contacts",
+  "method": "GET",
+  "direction": "RES",
+  "response_meta": {
+    "status_code": 200,
+    "content_type": "application/json",
+    "source": "upstream_response"
+  },
+  "data": { },
+  "username": "pso13",
+  "instruction_id": 42,
+  "eventKey": "odoo.contacts"
+}
+```
+
+POST captures use `"capture": "post_request"` and `"direction": "REQ"`. Truncation via `max_chars` protects the broker; `"publish": false` keeps CallBackData-only mode.
+
+---
+
+## Why they are reusable (still only on passthrough Instructions)
+
+1. **App-agnostic HTTP** — They understand GET/POST bodies, not a specific product SDK.  
+2. **Binding is the Instruction** — Path, method, and direction are tenant data on the action path.  
+3. **One topic scheme** — Consumers subscribe; capture stays stable when you add apps.  
+4. **Tenant-scoped** — Topics include the user; CallBackData lives in the tenant schema.  
+5. **PolySniffer discovers; Instructions act** — Sniff finds paths; these atomics run only when you attach them to those action-path Instructions.  
+6. **Local RabbitMQ today** — Same topic names can later map to cloud Pub/Sub without changing the Instruction model.
+
+Reusability means: **copy the Instruction pattern to the next app’s action paths**—not “drop a form on the website.”
+
+---
+
+## Recommended rollout
+
+1. **Capture first** — Odoo passthrough action paths (GET reads, POST writes) with these two atomics.  
+2. **Same capture pair on every passthrough action path** — Mattermost, Dolibarr, Nextcloud, HubSpot, Slack, **Liferay**, WordPress-as-passthrough — same executescript names; only the Instruction path changes.  
+3. **Then MQ consumer atomics** — a second set that operate **strictly on MQ topics**: pick up `REQ.*` / `RES.*` messages, convert, and save. Those are not substitutes for capture; they only run after topics are publishing.
+
+---
+
+## Instruction cheat sheet
+
+| Goal on a passthrough action path | Method | Direction | executescript |
+|-----------------------------------|--------|-----------|---------------|
+| Capture data the app returned | GET | RES | `CaptureGetResponse` |
+| Capture data submitted into the app | POST | REQ | `CapturePostRequest` |
+
+Mismatched method → service skips (so one action path can host both Instructions).
+
+---
+
+## Security and operations
+
+- Captured bodies may include PII from the **bundled app** session; keep RabbitMQ and CallBackData tenant-aware.  
+- Truncation is an infrastructure limit, not a privacy control.  
+- App SSO secrets stay in `TenantApp.extra_config`; these services publish request/response bodies already exchanged through passthrough, not stored admin passwords.  
+- Orchestration may dedupe repeats on the same action path in a session—design Instructions for the moment you care about.
+
+---
+
+## Closing
+
+**CaptureGetResponse** and **CapturePostRequest** are passthrough Instruction tools for **data capture only**. They attach to **any** passthrough action path (including Liferay), publish `{REQ|RES}.{action_path}.{username}` events, and stop there. Conversion and save belong to a **separate** set of MQ-topic atomic services. Not website features; not WPForm or Stripe signup.
+
+---
+
+### Suggested blog metadata (article about the platform)
+
+| Field | Suggestion |
+|-------|------------|
+| Title | Capture Once, Orchestrate Everywhere: GET/POST Atomics on Passthrough Action Paths |
+| Slug | `passthrough-capture-get-post-atomic-services` |
+| Category | Architecture / Platform |
+| Tags | passthrough, orchestration, atomic services, Instructions, action path, RabbitMQ, Odoo, Liferay |
+| Excerpt | Capture atomics on any passthrough action path (incl. Liferay) publish `REQ.*` / `RES.*` topics. A separate MQ consumer atomic set will convert and save. Not for website or WPForms. |
+
+### Related code
+
+- `dose/services/capture_http_traffic.py`  
+- `dose/utils/mq_topic.py`  
+- `dose/passthrough/orchestration_hook.py`  
+- `dose/services/atomic_service_param_samples.py`  
+
+---
+
+*White paper text may be published on the PolySaaS blog as documentation of passthrough orchestration. The services themselves are unrelated to WordPress forms or site checkout.*

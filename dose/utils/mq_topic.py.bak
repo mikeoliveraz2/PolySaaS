@@ -1,0 +1,61 @@
+"""
+MQ topic naming — local RabbitMQ (and later Pub/Sub) convention.
+
+Topic = {action_path}.{username}
+
+Rules (keep consistent across every app):
+  - Delimiter: '.' (AMQP routing-key style)
+  - Action path: strip leading '/', replace '/' and ':' with '.', lowercase,
+    drop characters that are not alphanumeric / '.' / '-' / '_'
+  - Username: PolySaaS login, lowercase; fall back to 'anonymous'
+  - Example: action path /odoo/contacts + user pso13 → odoo.contacts.pso13
+"""
+from __future__ import annotations
+
+import re
+
+
+def sanitize_action_path(action_path: str) -> str:
+    """Turn an orch-bar action path into a topic prefix segment."""
+    raw = (action_path or "").strip()
+    if not raw:
+        return "unknown"
+    # Accept both UI form (/odoo/contacts) and orch-gate form (odoo:contacts)
+    raw = raw.lstrip("/")
+    raw = raw.replace("/", ".").replace(":", ".")
+    raw = re.sub(r"[^a-zA-Z0-9.\-_]", "", raw)
+    raw = re.sub(r"\.+", ".", raw).strip(".")
+    return (raw or "unknown").lower()
+
+
+def sanitize_username(username: str | None) -> str:
+    """PolySaaS login → topic suffix."""
+    name = (username or "").strip().lower()
+    name = re.sub(r"[^a-z0-9.\-_]", "", name)
+    return name or "anonymous"
+
+
+def build_mq_topic(action_path: str, username: str | None) -> str:
+    """
+    Build routing key / topic: {action_path}.{username}, max 255 chars.
+    """
+    prefix = sanitize_action_path(action_path)
+    user = sanitize_username(username)
+    return f"{prefix}.{user}"[:255]
+
+
+def topic_from_request(request, action_path: str | None = None) -> str:
+    """
+    Convenience for request-time publish.
+
+    Prefer explicit action_path, then instruction-style request.path.
+    Username from authenticated user when present.
+    """
+    path = action_path
+    if not path:
+        path = getattr(request, "path", "") or ""
+    user = getattr(request, "user", None)
+    username = None
+    if user is not None and getattr(user, "is_authenticated", False):
+        username = getattr(user, "username", None) or getattr(user, "get_username", lambda: None)()
+    return build_mq_topic(path, username)
