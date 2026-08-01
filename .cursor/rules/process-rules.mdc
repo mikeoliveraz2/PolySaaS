@@ -50,3 +50,22 @@ Every git operation follows a three-step sequence: `git pull origin main`, then 
    c. `git push origin main` — push to remote
 2. Daily backup zip (skip if today's already exists) — captures the synced codebase
 3. Activate venv and start services
+
+## Rule 6 — Never Hold Back Work (No Silent WIP)
+
+It is just Michael and the agent working across two machines (office + laptop) through this one
+remote. **Every session's changes get committed and pushed — no exceptions, no "I'll leave this
+as WIP for now."**
+
+- Do NOT leave finished or in-progress work uncommitted at the end of a session unless Michael
+  explicitly says to hold it back.
+- Do NOT stash, branch off silently, or otherwise sequester changes where the other machine can't
+  see them, without saying so out loud first.
+- If a change is genuinely too risky/unfinished to push as-is, **say that explicitly** and ask
+  before leaving anything unpushed — never decide unilaterally to omit something from a commit.
+- When asked to "commit and push," that means **everything** relevant to the work done, not a
+  curated subset. If something is intentionally excluded (e.g. a stray temp file), name it and say
+  why, rather than silently dropping it.
+
+This rule exists after a prior incident where work was left uncommitted/unpushed, blocking
+continuation from the other machine.

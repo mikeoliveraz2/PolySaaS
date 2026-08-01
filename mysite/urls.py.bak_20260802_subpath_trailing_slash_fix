@@ -1,12 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: UI Cleanup — commit 748e871e
 # BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
-# FIX 2026-08-02 (owner-approved): subpath routes no longer require a trailing slash. Upstream
-# apps (e.g. Odoo's /web/dataset/call_button/... JSON-RPC POSTs) commonly omit trailing slashes;
-# the old pattern forced Django's APPEND_SLASH redirect, which is refused for POST bodies and
-# produced a silent 500 (button clicks doing nothing). forwarding.py already normalizes subpath
-# generically (prepends '/' if missing) so no other file needed to change.
-# BINGO: Odoo Invoicing Trailing-Slash Fix — 2026-08-02
 
 # mysite/urls.py
 from django.contrib import admin
@@ -33,14 +27,14 @@ urlpatterns = [
     path('pt/polysniff/', include('dose.polysniffer.pt_polysniff_urls')),
     # Dose home shell — passthrough loads in landing content column only.
     path('pt/dose/<str:trigger>/', pt_dose_generic_passthrough_view, name='pt_dose_generic'),
-    path('pt/dose/<str:trigger>/<path:subpath>', pt_dose_generic_passthrough_view, name='pt_dose_generic_subpath'),
+    path('pt/dose/<str:trigger>/<path:subpath>/', pt_dose_generic_passthrough_view, name='pt_dose_generic_subpath'),
     # Mattermost static assets must bypass generic passthrough/login flow.
     path('pt/admin/<str:trigger>/static/<path:path>', mattermost_static_proxy, name='mattermost_static_proxy'),
     # FORCE PASSTHROUGH FIRST - highest priority
     # Root path (e.g., /pt/admin/mattermost/)
     path('pt/admin/<str:endpoint>/', pt_admin_generic_passthrough_view, name='pt_admin_generic'),
     # Subpath catch-all (e.g., /pt/admin/mattermost/login, /pt/admin/mattermost/api/v4/...)
-    path('pt/admin/<str:endpoint>/<path:subpath>', pt_admin_generic_passthrough_view, name='pt_admin_generic_subpath'),
+    path('pt/admin/<str:endpoint>/<path:subpath>/', pt_admin_generic_passthrough_view, name='pt_admin_generic_subpath'),
 
     path('admin/select-theme/api/', select_theme_api, name='select_theme_api'),
     path('admin/select-theme/', select_theme, name='select_theme'),
