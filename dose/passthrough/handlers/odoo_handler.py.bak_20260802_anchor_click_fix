@@ -8,11 +8,6 @@
 # FIX 2026-08-01 (owner-approved): patched Location.prototype.href/assign/replace in the
 # client shim so full-page navigations (e.g. Odoo Invoicing app activation) route through
 # the passthrough prefix instead of hitting the PolySaaS origin directly and 404ing.
-# FIX 2026-08-02 (owner-approved): added a capture-phase click listener that rewrites plain
-# <a href="/odoo"> anchor navigation before the browser acts on it. The Location.href/assign/
-# replace patch above only catches JS-driven navigation; a native anchor click never touches
-# setAttribute(), location.href=, or pushState, so it still 404'd against the PolySaaS origin.
-# BINGO: Odoo Anchor Click Navigation Fix — 2026-08-02
 
 import logging
 import re
@@ -721,29 +716,6 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             }} else if (!attachFormObserver()) {{
                 setTimeout(attachFormObserver, 500);
             }}
-
-            /* FIX 2026-08-02 (owner-approved, frozen-file exception): a plain
-               <a href="/odoo"> (or similar) in Odoo's own rendered markup navigates
-               natively on click — it never calls setAttribute(), location.href=, or
-               pushState, so none of the patches above see it. Rewrite the href on the
-               capture phase, before the browser acts on the click, same pattern as the
-               form-submit guard above. */
-            function rewriteAnchor(anchor) {{
-                if (!anchor || anchor.tagName !== 'A') return;
-                var rawHref = anchor.getAttribute('href');
-                if (!rawHref) return;
-                if (rawHref.indexOf(PROXY_PREFIX) !== -1) return;
-                var proxied = rewriteUrl(rawHref);
-                if (proxied !== rawHref) {{
-                    console.log('[ODOO SHIM] anchor href rewrite: ' + rawHref + ' -> ' + proxied);
-                    anchor.setAttribute('href', proxied);
-                }}
-            }}
-
-            document.addEventListener('click', function(e) {{
-                var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-                if (anchor) rewriteAnchor(anchor);
-            }}, true);
 
             var _originalFetch = window.fetch;
             window.fetch = function(url, init) {{

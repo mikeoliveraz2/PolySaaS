@@ -1,0 +1,127 @@
+# BINGO: Dose-Home Passthrough Fixes + Odoo Anchor-Click Navigation Fix
+
+**Date:** 2026-08-02
+**Verified by:** Michael + agent, via Django test client render of `/dose/home/` for tenant `pso16`, plus code trace for the Odoo anchor fix.
+
+## What this certifies
+
+Three owner-approved fixes, found while looking around after the signup-security BINGO:
+
+1. `dose/utils.py` — `get_current_tenant()` search_path leak
+2. `dose/views/main.py` — `_endpoint_visible()` fuzzy hostname matching
+3. `dose/passthrough/handlers/odoo_handler.py` — native anchor-click navigation not intercepted
+
+---
+
+## 1. `get_current_tenant()` search_path leak (root cause of "no passthrough on dose home")
+
+**Symptom:** `/dose/home/` never showed a "PASSTHROUGH SERVICES" panel for any tenant, even
+tenants with fully active, correctly-configured apps.
+
+**Root cause:** `get_current_tenant()` correctly flips `search_path` to `public` to look up the
+`Tenant` row (right — `Tenant`/`User` live in `public` so login can find the right schema), but
+never restored it afterward. `_build_landing_page_context()` calls `get_current_tenant(request)`
+first, then queries tenant-scoped `PassThroughEndpoint` / `NavigationPanel` / `DashboardButton` —
+all of which silently ran against `public` (empty or stale) for the rest of the request.
+
+Confirmed directly:
+
+```
+BEFORE get_current_tenant: ('pso16, public',)
+get_current_tenant() -> pso16
+AFTER get_current_tenant: ('public',)
+PassThroughEndpoint count visible now: 2   # stale public-schema rows, not pso16's real 4
+```
+
+**Fix:** `get_current_tenant()` now saves the caller's `search_path` before the `public` override
+and restores it in a `finally` block (same pattern as `tenant_schema_search_path()` in
+`dose/tenant_app_lookup.py`), in both the primary session-lookup branch and the user-profile
+fallback branch.
+
+**Verified:** Rendered `/dose/home/` for `pso16` before and after. Before:
+`console.log('passthrough_services:', 0, [])`. After:
+`console.log('passthrough_services:', 4, [...])` with all 4 of pso16's active apps (Odoo,
+NextCloud, HubSpot, Dolibarr) rendering as real clickable nav items in the PASSTHROUGH SERVICES
+panel.
+
+---
+
+## 2. `_endpoint_visible()` fuzzy hostname matching
+
+**Symptom:** Even with #1 fixed, only HubSpot would ever show on `/dose/home/` in local dev —
+Odoo, NextCloud, and Dolibarr would still be invisible.
+
+**Root cause:**
+
+```python
+def _endpoint_visible(endpoint_url):
+    host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+    return 'gmail' in host or any(app in host for app in _subscribed)
+```
+
+Visibility was decided by checking whether the subscribed app's name is a *substring of the
+endpoint's hostname*. That happens to work by accident for production hosts like
+`polysaas-odoo2.onrender.com` (contains "odoo"), but fails for every local endpoint —
+`localhost:8086` does not contain "odoo". This is the same fuzzy-matching anti-pattern flagged
+and removed from the passthrough middleware earlier ("the endpoint is the endpoint, no lookup, no
+guessing").
+
+**Fix:** Replaced with an explicit match: `endpoint.slug == 'gmail' or endpoint.slug in
+_subscribed`, where `_subscribed` is the tenant's own `TenantApp.app_name` set (`active` /
+`provisioning`). Same convention already used in `dose/context_processors.py`'s admin-sidebar
+readiness logic. No hostname guessing anywhere in this codepath now.
+
+---
+
+## 3. Odoo anchor-click navigation not intercepted
+
+**Symptom:** Clicking "Activate Invoicing" inside the Odoo passthrough sometimes 404'd on a bare
+`http://localhost:8000/odoo` — the proxy prefix (`/pt/admin/localhost:8086`) vanished entirely.
+
+**Root cause:** The Odoo client shim already patches `fetch`, `XMLHttpRequest.open`,
+`history.pushState`/`replaceState`, `Location.href`/`assign`/`replace`, `setAttribute('href'/'src')`,
+and `HTMLImageElement.src` — but a plain `<a href="/odoo">` already present in (or inserted as raw
+markup into) Odoo's own rendered HTML navigates *natively* on click. Native anchor navigation
+never touches any of those patched functions, so it fell straight through to the browser's
+top-level navigation against the PolySaaS origin. Traced by confirming `/odoo` is already in
+`rewriteUrl()`'s `ODOO_PATHS` list — if the click had gone through any patched function, it would
+have been correctly rewritten. It didn't, which narrows the gap to native anchor navigation.
+
+**Fix:** Added a capture-phase `click` listener on `document` (same pattern as the existing
+form-submit guard) that rewrites an anchor's `href` attribute via the shim's existing
+`rewriteUrl()` before the browser acts on the click:
+
+```javascript
+function rewriteAnchor(anchor) {
+    if (!anchor || anchor.tagName !== 'A') return;
+    var rawHref = anchor.getAttribute('href');
+    if (!rawHref) return;
+    if (rawHref.indexOf(PROXY_PREFIX) !== -1) return;
+    var proxied = rewriteUrl(rawHref);
+    if (proxied !== rawHref) {
+        anchor.setAttribute('href', proxied);
+    }
+}
+
+document.addEventListener('click', function(e) {
+    var anchor = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (anchor) rewriteAnchor(anchor);
+}, true);
+```
+
+**Verification status:** Code-traced and consistent with the existing, already-verified
+form-submit-guard pattern in the same file. Not yet re-tested live against Odoo's "Activate
+Invoicing" flow in a browser — next step is to confirm in-browser after this restart.
+
+---
+
+## Files in this commit
+
+- `dose/utils.py`
+- `dose/views/main.py`
+- `dose/passthrough/handlers/odoo_handler.py`
+- `.bak` copies of the above (created before editing, per `bak-before-edit.mdc`)
+- `documentation/BINGO_DOSE_HOME_PASSTHROUGH_AND_ODOO_ANCHOR_FIX_2026-08-02.md` (this file)
+
+All three source files carry the freeze banner and a `BINGO:` annotation line dated 2026-08-02.
+The server (Waitress, PID 9032) was restarted via `.\runall.ps1` to load these changes.

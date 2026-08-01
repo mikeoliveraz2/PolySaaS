@@ -1,14 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
-# FIX 2026-08-02 (owner-approved): get_current_tenant() switched search_path to public to
-# look up the Tenant row (correct — Tenant/User live in public so login can find the right
-# schema) but never restored it afterward. Every tenant-scoped query later in the same
-# request (PassThroughEndpoint, NavigationPanel, DashboardButton, etc. in
-# _build_landing_page_context) then silently ran against public instead of the tenant's
-# schema, which is why /dose/home's passthrough panel showed nothing. Now saves and restores
-# the caller's original search_path around the public-schema lookup, same pattern as
-# tenant_schema_search_path() in dose/tenant_app_lookup.py.
-# BINGO: Dose Home Passthrough Search-Path Restore Fix — 2026-08-02
 
 # Utility function to get current tenant from session
 def get_current_tenant(request):
@@ -24,12 +15,8 @@ def get_current_tenant(request):
     if tenant_slug:
         from django.db import connection
         from dose.models import Tenant
-        original_search_path = None
         try:
             with connection.cursor() as cursor:
-                cursor.execute("SHOW search_path")
-                row = cursor.fetchone()
-                original_search_path = row[0] if row else None
                 cursor.execute("SET search_path TO public;")
                 tenant = Tenant.objects.get(slug=tenant_slug, is_active=True)
             logger.info(
@@ -42,26 +29,15 @@ def get_current_tenant(request):
             )
         except Exception as e:
             logger.error(f"get_current_tenant: Exception during tenant lookup (public schema): {e}")
-        finally:
-            if original_search_path:
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {original_search_path}")
-                except Exception as restore_exc:
-                    logger.error(f"get_current_tenant: Failed to restore search_path to {original_search_path!r}: {restore_exc}")
     else:
         logger.warning("get_current_tenant: No tenant_slug in session, checking user profile")
         # Fallback: use user's profile tenant if session has no tenant
-        original_search_path = None
         try:
             from django.db import connection
             from dose.models import UserProfile, Tenant
             user = getattr(request, 'user', None)
             if user and user.is_authenticated:
                 with connection.cursor() as cursor:
-                    cursor.execute("SHOW search_path")
-                    row = cursor.fetchone()
-                    original_search_path = row[0] if row else None
                     cursor.execute("SET search_path TO public;")
                     profile = UserProfile.objects.filter(user=user).select_related('tenant').first()
                     if profile and profile.tenant:
@@ -71,13 +47,6 @@ def get_current_tenant(request):
                         return profile.tenant
         except Exception as e:
             logger.error(f"get_current_tenant: Error checking user profile: {e}")
-        finally:
-            if original_search_path:
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(f"SET search_path TO {original_search_path}")
-                except Exception as restore_exc:
-                    logger.error(f"get_current_tenant: Failed to restore search_path to {original_search_path!r}: {restore_exc}")
 
 
 def get_current_tenant_role(request):

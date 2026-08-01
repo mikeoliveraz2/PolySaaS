@@ -1,10 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: UI Cleanup — commit 748e871e
-# FIX 2026-08-02 (owner-approved): _build_landing_page_context()'s _endpoint_visible() used
-# to check whether an app name was a substring of the endpoint hostname (fails for
-# localhost:PORT everywhere in local dev). Replaced with an explicit PassThroughEndpoint.slug
-# == TenantApp.app_name match, same convention already used in context_processors.py.
-# BINGO: Dose Home Passthrough Visibility Fix — 2026-08-02
 # --- RESTORED ENDPOINTS FOR ADMIN UI ---
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -870,21 +865,17 @@ def _build_landing_page_context(request):
     except Exception:
         _subscribed = set()
 
-    def _endpoint_visible(endpoint):
-        # FIX 2026-08-02 (owner-approved): the endpoint is the endpoint — visibility is
-        # decided by matching endpoint.slug against this tenant's own TenantApp rows, not
-        # by guessing whether the app name happens to appear as a substring of the
-        # hostname (that failed for every locally-hosted app, e.g. "odoo" is not a
-        # substring of "localhost:8086"). Gmail has no APP_CHOICES/TenantApp entry, so it
-        # stays always-visible like before.
-        return endpoint.slug == 'gmail' or endpoint.slug in _subscribed
+    def _endpoint_visible(endpoint_url):
+        from urllib.parse import urlparse
+        host = urlparse(endpoint_url).netloc.lower().replace('-', '_')
+        return 'gmail' in host or any(app in host for app in _subscribed)
 
     passthrough_endpoints = [
         ep for ep in PassThroughEndpoint.objects.filter(
             is_enabled=True,
             show_in_menu=True,
         ).order_by('menu_sort_order', 'id')
-        if _endpoint_visible(ep)
+        if _endpoint_visible(ep.endpoint_url)
     ]
 
     passthrough_services = []
