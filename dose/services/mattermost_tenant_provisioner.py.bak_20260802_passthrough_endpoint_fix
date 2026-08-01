@@ -541,29 +541,20 @@ def _ensure_dev_team(mm_url: str, headers: dict, result: dict) -> Optional[str]:
         return None
 
 
-def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, display_name: str, result: dict) -> None:
-    # FIX 2026-08-02 (owner-approved, frozen-file exception): this upsert has been silently
-    # failing on every call since it was written — 'name' is not a field on PassThroughEndpoint
-    # (probably lost track of during the public_bundles/search_path cleanup on 2026-07-30). The
-    # try/except below swallowed the FieldError every time, so TenantApp still reported
-    # 'active' while zero tenants ever actually got a Mattermost sidebar entry. Dropped the
-    # invalid key and, per owner request, description now carries the tenant's actual company
-    # name (matching the convention already used by Odoo's provisioner) plus the shared/common
-    # team name so both are visible at a glance.
-    # BINGO: Mattermost PassThroughEndpoint Upsert Fix — 2026-08-02
+def _ensure_passthrough_endpoint(tenant_schema: str, mm_url: str, result: dict) -> None:
     try:
         from django.db import connection
         from urllib.parse import urlparse
         from dose.models import PassThroughEndpoint
         hostname = urlparse(mm_url).netloc
-        shared_team_name = _shared_team_name()
         with connection.cursor() as cursor:
             cursor.execute(f'SET search_path TO "{tenant_schema}", public')
         _, created = PassThroughEndpoint.objects.update_or_create(
             slug='mattermost',
             defaults={
+                'name': 'Mattermost',
                 'endpoint_url': mm_url,
-                'description': f'Mattermost Team Chat for {display_name} (shared team: {shared_team_name})',
+                'description': 'Mattermost Team Chat - tenant-specific team',
                 'is_enabled': True,
                 'passthrough_type': 'scraper',
                 'integration_mode': 'web_api',
@@ -726,7 +717,7 @@ def provision_mattermost_tenant(
     effective_password = admin_password or _get_default_app_password()
 
     try:
-        _ensure_passthrough_endpoint(tenant_schema, mm_url, display_name, result)
+        _ensure_passthrough_endpoint(tenant_schema, mm_url, result)
 
         # Private company team — tenant-owned workspace for their org
         company_team_id = _create_team(mm_url, headers, tenant_schema, display_name, result)
