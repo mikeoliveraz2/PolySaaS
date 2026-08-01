@@ -109,9 +109,9 @@ document.addEventListener('click', function(e) {
 }, true);
 ```
 
-**Verification status:** Code-traced and consistent with the existing, already-verified
-form-submit-guard pattern in the same file. Not yet re-tested live against Odoo's "Activate
-Invoicing" flow in a browser — next step is to confirm in-browser after this restart.
+**Verified:** Confirmed live in-browser by Michael after the restart — clicking "Activate
+Invoicing" inside the Odoo passthrough now completes the dynamic orchestration flow correctly
+instead of 404ing on a bare `/odoo`.
 
 ---
 
