@@ -5,7 +5,7 @@
 
 **Date:** 2026-08-02  
 **Verified by:** Michael (live browser, tenant `pso17`) + agent  
-**Commit:** _(filled after push)_
+**Commit:** `8100b79a` (`8100b79a11f6099841079b45ab87ecc88b6f5277`)
 
 ## What this certifies
 
