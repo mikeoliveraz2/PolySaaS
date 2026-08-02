@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect Everything You Already Use | PolySaaS Online</title>
+<style>
+    :root {
+        --ps-blue: #1976d2;
+        --ps-blue-dark: #1565c0;
+        --ps-green: #43a047;
+        --ps-amber: #f9a825;
+        --ps-ink: #263238;
+        --ps-muted: #607d8b;
+        --ps-bg: #f7f9fb;
+        --ps-card: #ffffff;
+        --ps-border: #e3e8ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ps-ink);
+        background: var(--ps-bg);
+        line-height: 1.55;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.5em; }
+
+    /* Hero */
+    .hero {
+        background: linear-gradient(135deg, #1976d2 0%, #1565c0 55%, #0d47a1 100%);
+        color: #fff;
+        padding: 4.5em 0 3.5em;
+        text-align: center;
+    }
+    .hero h1 { font-size: 2.4em; margin: 0 0 0.3em; font-weight: 800; letter-spacing: -0.01em; }
+    .hero p.lead { font-size: 1.15em; max-width: 680px; margin: 0 auto; opacity: 0.92; }
+    .hero .cta-row { margin-top: 2em; display: flex; justify-content: center; gap: 1em; flex-wrap: wrap; }
+    .btn {
+        display: inline-block; padding: 0.75em 1.6em; border-radius: 8px; font-weight: 700;
+        text-decoration: none; font-size: 0.98em; transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary { background: #fff; color: var(--ps-blue-dark); box-shadow: 0 6px 18px rgba(0,0,0,0.18); }
+    .btn-ghost { background: rgba(255,255,255,0.12); color: #fff; border: 1.5px solid rgba(255,255,255,0.55); }
+
+    /* Section shells */
+    section { padding: 3.5em 0; }
+    section h2 { font-size: 1.7em; margin: 0 0 0.25em; text-align: center; }
+    section p.section-sub { text-align: center; color: var(--ps-muted); max-width: 620px; margin: 0 auto 2.2em; font-size: 1.02em; }
+
+    /* Status badges */
+    .badge {
+        display: inline-block; font-size: 0.72em; font-weight: 800; letter-spacing: 0.04em;
+        text-transform: uppercase; padding: 0.25em 0.7em; border-radius: 999px; margin-bottom: 0.6em;
+    }
+    .badge-live { background: #e6f4ea; color: var(--ps-green); }
+    .badge-soon { background: #fff6e0; color: #b8860b; }
+    .badge-request { background: #eef2ff; color: #3f51b5; }
+
+    /* App grid (live + coming soon) */
+    .app-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 1.1em; margin-top: 0.5em;
+    }
+    .app-card {
+        background: var(--ps-card); border: 1px solid var(--ps-border); border-radius: 12px;
+        padding: 1.3em 1.1em; text-align: center; box-shadow: 0 2px 8px rgba(20,30,60,0.04);
+    }
+    .app-card .app-name { font-weight: 700; font-size: 1.05em; margin: 0.2em 0 0.15em; }
+    .app-card .app-desc { font-size: 0.85em; color: var(--ps-muted); }
+    .app-card.connect-model .app-desc::after { content: " · BYO / Connect"; color: #3f51b5; font-weight: 600; }
+    .app-card.hosted-model .app-desc::after { content: " · Hosted by PolySaaS"; color: var(--ps-blue); font-weight: 600; }
+
+    /* Category grid ("we can connect nearly anything") */
+    .cat-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.25em;
+    }
+    .cat-card {
+        background: var(--ps-card); border: 1px solid var(--ps-border); border-radius: 12px; padding: 1.4em;
+    }
+    .cat-card h3 { margin: 0 0 0.6em; font-size: 1.05em; color: var(--ps-blue-dark); }
+    .cat-card ul { list-style: none; margin: 0; padding: 0; }
+    .cat-card li {
+        padding: 0.3em 0; font-size: 0.92em; color: var(--ps-ink); border-bottom: 1px dashed #eef1f5;
+    }
+    .cat-card li:last-child { border-bottom: none; }
+    .cat-card li::before { content: "＋"; color: var(--ps-blue); margin-right: 0.5em; font-weight: 700; }
+
+    /* Bottom CTA */
+    .cta-band {
+        background: #0d1b2a; color: #fff; text-align: center; padding: 3.5em 1.5em;
+    }
+    .cta-band h2 { color: #fff; }
+    .cta-band p { color: #b8c4d0; max-width: 560px; margin: 0 auto 1.6em; }
+    .fine-print { text-align: center; color: var(--ps-muted); font-size: 0.85em; margin-top: 1.5em; }
+
+    .disclaimer-box {
+        background: #fffbe6; border: 1px solid #f5e1a4; border-radius: 10px; padding: 1em 1.3em;
+        font-size: 0.88em; color: #7a5c00; max-width: 780px; margin: 2em auto 0;
+    }
+</style>
+</head>
+<body>
+
+<div class="hero">
+    <div class="wrap">
+        <h1>Connect Everything You Already Use</h1>
+        <p class="lead">
+            PolySaaS doesn't ask you to migrate off your existing tools. We plug into the SaaS
+            applications you already run — CRM, accounting, chat, support, and more — and
+            orchestrate them together with AI-driven automation, in one unified control tower.
+        </p>
+        <div class="cta-row">
+            <a href="#request" class="btn btn-primary">Tell Us What You Use</a>
+            <a href="/subscribe" class="btn btn-ghost">See Plans</a>
+        </div>
+    </div>
+</div>
+
+<section>
+    <div class="wrap">
+        <span class="badge badge-live" style="display:block; text-align:center;">Live Today</span>
+        <h2>Connected &amp; Ready Now</h2>
+        <p class="section-sub">
+            Already fully integrated — provision a hosted instance, or connect an account you already own.
+        </p>
+        <div class="app-grid">
+            <div class="app-card hosted-model">
+                <div class="app-name">Odoo ERP</div>
+                <div class="app-desc">Accounting, invoicing, inventory</div>
+            </div>
+            <div class="app-card hosted-model">
+                <div class="app-name">Mattermost</div>
+                <div class="app-desc">Team chat, AI peers built in</div>
+            </div>
+            <div class="app-card hosted-model">
+                <div class="app-name">Nextcloud</div>
+                <div class="app-desc">File storage &amp; sharing</div>
+            </div>
+            <div class="app-card hosted-model">
+                <div class="app-name">Dolibarr</div>
+                <div class="app-desc">ERP / CRM</div>
+            </div>
+            <div class="app-card connect-model">
+                <div class="app-name">HubSpot CRM</div>
+                <div class="app-desc">Your existing portal</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section style="background:#eef2f6;">
+    <div class="wrap">
+        <span class="badge badge-soon" style="display:block; text-align:center;">In Active Development</span>
+        <h2>Coming Soon</h2>
+        <p class="section-sub">Being built now — join the waitlist to be notified the moment yours goes live.</p>
+        <div class="app-grid">
+            <div class="app-card"><div class="app-name">WordPress</div><div class="app-desc">CMS &amp; content</div></div>
+            <div class="app-card"><div class="app-name">Liferay</div><div class="app-desc">Enterprise portal</div></div>
+            <div class="app-card"><div class="app-name">PolySysMon</div><div class="app-desc">System monitoring</div></div>
+            <div class="app-card"><div class="app-name">Monitor Logger</div><div class="app-desc">Event &amp; audit logging</div></div>
+        </div>
+    </div>
+</section>
+
+<section>
+    <div class="wrap">
+        <span class="badge badge-request" style="display:block; text-align:center;">Built On Request</span>
+        <h2>We Can Connect Nearly Anything</h2>
+        <p class="section-sub">
+            If a SaaS tool has an API — or even just a web login — our PolySniffer discovery process
+            can turn it into a PolySaaS connector. Here's a sample of what's possible by category:
+        </p>
+        <div class="cat-grid">
+            <div class="cat-card">
+                <h3>CRM &amp; Sales</h3>
+                <ul><li>Salesforce</li><li>Pipedrive</li><li>Zoho CRM</li><li>Close</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Accounting &amp; Finance</h3>
+                <ul><li>QuickBooks</li><li>Xero</li><li>FreshBooks</li><li>Wave</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Communication</h3>
+                <ul><li>Slack</li><li>Microsoft Teams</li><li>Zoom</li><li>Twilio</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Marketing</h3>
+                <ul><li>Mailchimp</li><li>ActiveCampaign</li><li>Klaviyo</li><li>Meta / Facebook Ads</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Support &amp; Helpdesk</h3>
+                <ul><li>Zendesk</li><li>Freshdesk</li><li>Intercom</li><li>Help Scout</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Project Management</h3>
+                <ul><li>Asana</li><li>Monday.com</li><li>Trello</li><li>Jira</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>E-commerce</h3>
+                <ul><li>Shopify</li><li>WooCommerce</li><li>BigCommerce</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>HR &amp; Payroll</h3>
+                <ul><li>BambooHR</li><li>Gusto</li><li>Rippling</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Files &amp; Storage</h3>
+                <ul><li>Google Drive</li><li>Dropbox</li><li>Box</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Analytics</h3>
+                <ul><li>Google Analytics</li><li>Mixpanel</li><li>Amplitude</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Documents &amp; E-Sign</h3>
+                <ul><li>DocuSign</li><li>PandaDoc</li></ul>
+            </div>
+            <div class="cat-card">
+                <h3>Payments</h3>
+                <ul><li>Stripe</li><li>PayPal</li><li>Square</li></ul>
+            </div>
+        </div>
+
+        <div class="disclaimer-box">
+            <strong>Honest expectations:</strong> the apps above are examples of what our connector
+            pipeline can reach — not a claim that every one is built today. Tools with a modern API
+            and OAuth support typically connect fastest; tools with no API at all take longer. Tell us
+            what you use and we'll give you a straight answer on timing before you commit to anything.
+        </div>
+    </div>
+</section>
+
+<div class="cta-band" id="request">
+    <div class="wrap">
+        <h2>Don't See Your Tool?</h2>
+        <p>
+            Tell us what you run and we'll sniff it, build the connector, and wire it into your
+            orchestration — most API-based tools in days, not months.
+        </p>
+        <a href="/subscribe" class="btn btn-primary">Request an Integration</a>
+        <p class="fine-print">No migration required. Keep every tool you already trust — we just make them talk to each other.</p>
+    </div>
+</div>
+
+</body>
+</html>
