@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # Owner-approved 2026-08-02: proxy prefix from endpoint.slug (not hostname/"trigger")
 # BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
 # BINGO: Demo Tenant Odoo SSO + public_bundles — commit 7d05920e
@@ -1082,4 +1081,3 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
         print(f"[ODOO HANDLER] Rewriting complete (shim injected, assets/forms rewritten)")
         return html_str
-

@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 
 import logging
@@ -126,4 +125,3 @@ def _odoo_sso_api_inner(request):
         "error": last_error,
         "debug": f"tried login={stored_login or 'odooAdmin'} db={db} at {odoo_base}",
     }, status=401)
-
