@@ -1,5 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Nextcloud server-side SSO working — 2026-08-03 — see documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md
 # dose/services/nextcloud_tenant_provisioner.py
 """
 Nextcloud Tenant Provisioner — creates a user in the shared Nextcloud instance

@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
+# Owner-approved 2026-08-02: Nextcloud server-side SSO (extra_config nc_login/nc_password → form login → Set-Cookie).
 # dose/passthrough/handlers/nextcloud_handler.py
 """
 Nextcloud passthrough handler — display-shell approach.
@@ -212,12 +215,175 @@ class NextcloudPassthroughHandler:
 
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:
+        slug = str(getattr(endpoint, 'slug', '') or '').lower().strip()
+        if slug == 'nextcloud':
+            return True
         url = str(getattr(endpoint, 'endpoint_url', '') or '').lower()
         host = urlparse(url).netloc.lower() if url else ''
-        slug = str(getattr(endpoint, 'slug', '') or '').lower()
         trigger = str(getattr(endpoint, 'trigger_path', '') or '').lower()
         blob = f"{host} {slug} {trigger}"
         return 'nextcloud' in blob
+
+    def _resolve_tenant(self, request):
+        if not request:
+            return None
+        tenant = getattr(request, 'tenant', None)
+        if tenant:
+            return tenant
+        try:
+            from dose.utils import get_current_tenant
+            return get_current_tenant(request)
+        except Exception:
+            return None
+
+    def _get_tenantapp_extra_config(self, request=None) -> dict:
+        """Return TenantApp.extra_config for this tenant's Nextcloud app."""
+        try:
+            from dose.models import TenantApp
+            from dose.tenant_app_lookup import tenant_schema_search_path
+            tenant = self._resolve_tenant(request)
+            if not tenant:
+                return {}
+            with tenant_schema_search_path(tenant):
+                ta = TenantApp.objects.filter(
+                    app_name='nextcloud',
+                    status='active',
+                ).exclude(extra_config={}).first()
+            if ta and isinstance(ta.extra_config, dict):
+                return ta.extra_config
+            if ta and ta.extra_config:
+                extra = ta.extra_config
+                if isinstance(extra, str):
+                    return json.loads(extra)
+                return dict(extra)
+        except Exception as exc:
+            logger.warning("[NC-HANDLER] extra_config lookup failed: %s", exc)
+        return {}
+
+    def _get_nc_credentials(self, request) -> tuple:
+        """(login, password) from TenantApp.extra_config; empty strings if missing."""
+        extra = self._get_tenantapp_extra_config(request) or {}
+        login = (
+            extra.get('nc_login')
+            or extra.get('nextcloud_login')
+            or extra.get('nc_userid')
+            or ''
+        )
+        password = (
+            extra.get('nc_password')
+            or extra.get('nextcloud_password')
+            or ''
+        )
+        return (str(login).strip(), str(password))
+
+    def _server_side_nc_login(self, base_url: str, username: str, password: str):
+        """
+        Form-login to Nextcloud; return (ok, set_cookie_raw_list).
+        Mirrors browser login: GET /login → requesttoken → POST /login.
+        """
+        import requests as _rq
+
+        if not base_url or not username or not password:
+            return False, []
+        base = base_url.rstrip('/')
+        # Prefer 127.0.0.1 for host→docker reliability while keeping Cookie Domain unset.
+        fetch_base = base.replace('localhost', '127.0.0.1')
+        try:
+            s = _rq.Session()
+            r = s.get(f"{fetch_base}/login", timeout=20)
+            if r.status_code != 200:
+                logger.warning("[NC-SSO] GET /login HTTP %s", r.status_code)
+                return False, []
+            m = re.search(r'data-requesttoken="([^"]+)"', r.text, re.I)
+            if not m:
+                m = re.search(r'name="requesttoken"\s+value="([^"]+)"', r.text, re.I)
+            tok = m.group(1) if m else ''
+            if not tok:
+                logger.warning("[NC-SSO] no requesttoken on login page")
+                return False, []
+            headers = {'requesttoken': tok, 'OCS-APIRequest': 'true'}
+            r2 = s.post(
+                f"{fetch_base}/login",
+                data={
+                    'user': username,
+                    'password': password,
+                    'requesttoken': tok,
+                    'timezone': 'UTC',
+                    'timezone_offset': '0',
+                },
+                headers=headers,
+                timeout=20,
+                allow_redirects=False,
+            )
+            loc = (r2.headers.get('Location') or '')
+            # Success: redirect away from login (dashboard/files) or Set-Cookie nc_username
+            cookie_names = {c.name for c in s.cookies}
+            logged_in = (
+                'nc_username' in cookie_names
+                or 'nc_session_id' in cookie_names
+                or ('/login' not in loc and r2.status_code in (301, 302, 303, 307) and loc)
+            )
+            if not logged_in:
+                # Confirm via OCS with the session jar
+                probe = s.get(
+                    f"{fetch_base}/ocs/v2.php/cloud/user",
+                    headers={'OCS-APIRequest': 'true', 'Accept': 'application/json'},
+                    timeout=10,
+                )
+                logged_in = probe.status_code == 200 and 'not logged in' not in (probe.text or '').lower()
+            if not logged_in:
+                logger.warning(
+                    "[NC-SSO] login failed for user=%s POST=%s loc=%s",
+                    username, r2.status_code, loc[:80],
+                )
+                return False, []
+            raw_cookies = []
+            for c in s.cookies:
+                raw_cookies.append(f"{c.name}={c.value}; Path=/; HttpOnly; SameSite=Lax")
+            print(f"[NC-SSO] server login OK user={username} cookies={len(raw_cookies)}")
+            return True, raw_cookies
+        except Exception as exc:
+            logger.warning("[NC-SSO] exception: %s", exc)
+            return False, []
+
+    def _sso_redirect_with_cookies(self, proxy_prefix: str, set_cookie_raw_list):
+        """Redirect into the Files app with upstream session cookies on the browser."""
+        target = (proxy_prefix.rstrip('/') + '/apps/files/')
+        resp = HttpResponseRedirect(target)
+        self._apply_set_cookies(resp, set_cookie_raw_list)
+        return resp
+
+    def try_nextcloud_sso(self, request, endpoint, proxy_prefix: str):
+        """
+        If browser has no NC session, authenticate with provisioned credentials and
+        return a redirect response with Set-Cookie. Returns None if SSO not possible.
+        """
+        login, password = self._get_nc_credentials(request)
+        if not login or not password:
+            print("[NC-SSO] no credentials in TenantApp.extra_config")
+            return None
+        base = (getattr(endpoint, 'endpoint_url', None) or '').rstrip('/')
+        if not base:
+            return None
+        ok, cookies = self._server_side_nc_login(base, login, password)
+        if not ok:
+            return None
+        return self._sso_redirect_with_cookies(proxy_prefix, cookies)
+
+    def passthrough_early_shell_paths(self):
+        """
+        Middleware only calls try_root_display_shell_response for these upstream
+        subpaths (plus children). Needed so /apps/files/ and /login hit SSO before
+        the forwarder (which only auto-invokes try_root for '/').
+        """
+        return (
+            '/',
+            '/login',
+            '/index.php',
+            '/index.php/login',
+            '/apps/files',
+            '/apps/dashboard',
+        )
 
     def filter_cookies_for_upstream(self, request, cookies: dict) -> dict:
         """
@@ -310,10 +476,9 @@ class NextcloudPassthroughHandler:
         if request.method != "GET":
             return None
 
-        seg = (
-            url_trigger_segment.strip("/").lower().split("/")[-1].replace("-", "_")
+        proxy_prefix = _nc_proxy_prefix_from_endpoint(endpoint) if endpoint is not None else (
+            f"/pt/admin/{(url_trigger_segment or 'nextcloud').strip('/').split('/')[-1]}"
         )
-        proxy_prefix = f"/pt/admin/{seg}"
         path_info = request.path_info
         norm = path_info.rstrip("/")
 
@@ -329,9 +494,12 @@ class NextcloudPassthroughHandler:
         if _nc_bypasses_display_shell(upstream_subpath):
             return None
 
-        # Skip display shell for login page — let browser get session + requesttoken directly
-        # from Nextcloud so they match. Server-side fetch creates a session mismatch.
+        # Login path: try server SSO first (provisioned creds), else fall through to NC login HTML.
         if upstream_subpath.rstrip("/") in ("/login", "/index.php/login"):
+            if endpoint is not None:
+                sso = self.try_nextcloud_sso(request, endpoint, proxy_prefix)
+                if sso is not None:
+                    return sso
             return None
 
         from django.shortcuts import render
@@ -358,9 +526,12 @@ class NextcloudPassthroughHandler:
             if _nc_shell_path_needs_nc_session(fetch_path):
                 _fb = _base.replace("localhost", "127.0.0.1")
                 if not NextcloudPassthroughHandler._nc_upstream_ocs_user_ok(_fb, request):
-                    print("[NC_OCS] user probe failed — redirect to login")
+                    print("[NC_OCS] user probe failed — attempting server SSO")
+                    sso = self.try_nextcloud_sso(request, endpoint, proxy_prefix)
+                    if sso is not None:
+                        return sso
                     print(
-                        "[NC-HANDLER] OCS user probe failed — redirect to login "
+                        "[NC-HANDLER] SSO unavailable — redirect to login "
                         "(bootstrap real NC session before display shell fetch)"
                     )
                     redir = proxy_prefix + "/login?direct=1"

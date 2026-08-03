@@ -4,6 +4,20 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-08-03 (Morning — Office) — BINGO: Nextcloud server-side SSO ✅
+
+**Status**: ✅ Verified for tenant `pso17` (Django test client SSO redirect + cookies)
+**Branch**: main
+**Doc**: `documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md`
+
+### Summary
+
+1. Endpoint/nc_url → `http://localhost:8888`; user `pso17` created in shared NC; creds in `extra_config`.
+2. Handler server-side form login SSO + `passthrough_early_shell_paths` so `/apps/files/` hits SSO.
+3. Provisioner/settings: local URL rewrite, admin `admin`, `starting_uri=/apps/files/`, password sync on exists.
+
+---
+
 ## 2026-08-02 (Late morning — Office) — BINGO: Mattermost slug identity + SSO Town Square ✅
 
 **Status**: ✅ Live-verified for tenant `pso17` (Town Square + auth + WebSocket)
