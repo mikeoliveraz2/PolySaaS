@@ -1,0 +1,37 @@
+/* THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION */
+/* BINGO: WordPress dark-mode nav visibility — 2026-08-04 */
+/*
+  Canonical copy of Additional CSS published on polysaas.online
+  (Appearance → Customize → Additional CSS → custom_css[kadence]).
+  Fixes Home / Applications / Features (current-menu-item) nearly invisible on dark navy.
+*/
+
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item > a,
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item > a:visited,
+body.dark-mode .header-navigation .menu > li > a,
+body.dark-mode .header-navigation .menu > li > a:visited,
+body.dark-mode .site-header .header-navigation a {
+    color: #60A5FA !important;
+}
+
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item.current-menu-item > a,
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item.current-menu-item > a:visited,
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item.current_page_item > a,
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item.current_page_item > a:visited,
+body.dark-mode .header-navigation .menu > li.current-menu-item > a,
+body.dark-mode .header-navigation .menu > li.current-menu-item > a:visited,
+body.dark-mode .header-navigation .menu > li.current_page_item > a,
+body.dark-mode .header-navigation .menu > li.current_page_item > a:visited {
+    color: #FFFFFF !important;
+    font-weight: 600;
+}
+
+body.dark-mode .main-navigation .primary-menu-container > ul > li.menu-item > a:hover,
+body.dark-mode .header-navigation .menu > li > a:hover {
+    color: #FFFFFF !important;
+}
+
+body.dark-mode .site-branding .site-title,
+body.dark-mode .site-branding .site-title a {
+    color: #E2E8F0 !important;
+}
