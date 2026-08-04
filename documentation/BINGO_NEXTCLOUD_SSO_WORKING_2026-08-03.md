@@ -5,7 +5,7 @@
 
 **Date:** 2026-08-03  
 **Verified by:** agent (Django test client, tenant `pso17`) + owner-approved implementation  
-**Commit:** _(filled after push)_
+**Commit:** `9afaaa12` (`9afaaa128f5540a4fbb71d0bd954243d4ddc346b`)
 
 ## What this certifies
 
