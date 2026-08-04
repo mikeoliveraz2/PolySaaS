@@ -6,7 +6,8 @@
 **Date:** 2026-08-04  
 **Status:** COMPLETE — Live on production WordPress  
 **Site:** `https://polysaas.online`  
-**Verified by:** owner (login) + agent (Customizer publish + computed-style check)
+**Verified by:** owner (login) + agent (Customizer publish + computed-style check)  
+**Commit:** `70cf5218` (`70cf521870f079505e6e00fe1f52b11c3f8f2f2a`)
 
 ## What this certifies
 
