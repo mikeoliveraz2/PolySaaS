@@ -1,5 +1,4 @@
 {# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION #}
-{# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md #}
 {# Owner-approved 2026-08-02: ready vs not-ready passthrough card contrast (brand colors + green ready ring) #}
 {# BINGO: UI Cleanup — commit 748e871e #}
 {# FIX 2026-08-01 (owner-approved): added .pss-pt-card--not-ready + .pss-pt-status-dot styles for passthrough readiness UI (see custom_sidebar.html + context_processors.py) #}
@@ -1056,4 +1055,3 @@
     }
     .collapsible-nav > script { display: none !important; }
 </style>
-

@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Nextcloud server-side SSO working — 2026-08-03 — see documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md
 # BINGO: UI Cleanup — commit 748e871e
 # BINGO: Waitress WhiteNoise static / orchestration button — commit 7d05920e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
@@ -251,8 +252,13 @@ ODOO_XMLRPC_ADMIN_PASSWORD = sm(
 ODOO_MASTER_PASSWORD = sm('odoo-master-password', 'ODOO_MASTER_PASSWORD', 'admin')
 
 # --- Shared Nextcloud instance (used by nextcloud_tenant_provisioner) ---
+# Local docker: host port 8888. Prefer localhost from Waitress (not polysaas-nextcloud DNS).
 NEXTCLOUD_SHARED_URL = env('NEXTCLOUD_SHARED_URL', default='http://localhost:8888')
-NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='ncadmin')
+NEXTCLOUD_SHARED_ADMIN_LOGIN = env('NEXTCLOUD_SHARED_ADMIN_LOGIN', default='admin')
+# Prefer NC-specific admin password; fall back to shared app admin password.
+NEXTCLOUD_SHARED_ADMIN_PASSWORD = env('NEXTCLOUD_SHARED_ADMIN_PASSWORD', default='') or env(
+    'POLYSAAS_APP_ADMIN_PASSWORD', default='PolySaaS2026!'
+)
 
 # --- HubSpot (per-tenant OAuth + passthrough) ---
 HUBSPOT_APP_URL = env('HUBSPOT_APP_URL', default='https://app.hubspot.com')

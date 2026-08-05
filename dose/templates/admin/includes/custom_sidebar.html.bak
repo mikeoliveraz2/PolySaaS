@@ -1,5 +1,4 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md -->
 <!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
 <!-- BINGO: UI Cleanup — commit 748e871e -->
 <!-- BINGO: Sidebar Alerts Dose Messages — commit d8a02538 -->
@@ -1456,4 +1455,3 @@ function toggleDoseSidebar() {
 </script>
     </div>
     <!-- End sidebar column -->
-
