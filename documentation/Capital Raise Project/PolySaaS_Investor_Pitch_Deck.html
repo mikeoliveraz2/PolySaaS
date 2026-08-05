@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolySaaS Online — Investor Pitch Deck</title>
+<style>
+    :root {
+        --ps-blue: #1976d2;
+        --ps-blue-dark: #0d47a1;
+        --ps-green: #43a047;
+        --ps-amber: #f9a825;
+        --ps-red: #e53935;
+        --ps-ink: #1c2733;
+        --ps-muted: #607d8b;
+        --ps-bg: #0d1b2a;
+        --ps-card: #ffffff;
+        --ps-border: #e3e8ee;
+        --fill: #fff3cd;
+        --fill-border: #f0b429;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #10131a; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ps-ink);
+    }
+
+    .slide {
+        width: 100vw;
+        height: 100vh;
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        padding: 5vh 8vw;
+        background: linear-gradient(160deg, #ffffff 0%, #f5f8fc 100%);
+        position: relative;
+        overflow: hidden;
+    }
+    .slide.active { display: flex; }
+    .slide.dark {
+        background: linear-gradient(160deg, #0d1b2a 0%, #142a42 100%);
+        color: #fff;
+    }
+    .slide.dark .muted { color: #9fb3c8; }
+    .slide.dark h2 { color: #fff; }
+
+    .kicker {
+        text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.8em; font-weight: 800;
+        color: var(--ps-blue); margin-bottom: 0.6em;
+    }
+    .slide.dark .kicker { color: #64b5f6; }
+    h1 { font-size: 3em; margin: 0 0 0.2em; font-weight: 800; letter-spacing: -0.01em; line-height: 1.05; }
+    h2 { font-size: 2.1em; margin: 0 0 0.5em; font-weight: 800; color: var(--ps-blue-dark); letter-spacing: -0.01em; }
+    h3 { font-size: 1.15em; margin: 0 0 0.3em; color: var(--ps-blue-dark); }
+    p.lead { font-size: 1.3em; color: var(--ps-muted); max-width: 760px; margin: 0 0 0.5em; }
+    .muted { color: var(--ps-muted); }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5em; align-items: start; margin-top: 1em; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.3em; margin-top: 1.2em; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.3em; margin-top: 1.2em; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1em; margin-top: 1.2em; }
+
+    .card {
+        background: rgba(255,255,255,0.9); border: 1px solid var(--ps-border); border-radius: 14px;
+        padding: 1.3em 1.4em; box-shadow: 0 4px 18px rgba(20,30,60,0.06);
+    }
+    .slide.dark .card { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.14); }
+    .card .icon { font-size: 1.6em; margin-bottom: 0.3em; }
+    .card p { margin: 0; font-size: 0.95em; }
+    .slide.dark .card p, .slide.dark .card h3 { color: #e3edf7; }
+
+    .pill { display: inline-block; padding: 0.3em 0.85em; border-radius: 999px; font-size: 0.78em; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; }
+    .pill-green { background: #e6f4ea; color: var(--ps-green); }
+    .pill-blue { background: #e3f2fd; color: var(--ps-blue); }
+    .pill-amber { background: #fff6e0; color: #b8860b; }
+    .pill-red { background: #fdecea; color: var(--ps-red); }
+
+    .fill { background: var(--fill); border: 2px dashed var(--fill-border); border-radius: 10px; padding: 0.9em 1.1em; font-weight: 700; color: #7a5c00; font-size: 0.95em; }
+
+    ul.check { list-style: none; padding: 0; margin: 0; }
+    ul.check li { padding: 0.35em 0; font-size: 1.05em; }
+    ul.check li::before { content: "✓"; color: var(--ps-green); font-weight: 900; margin-right: 0.6em; }
+    .slide.dark ul.check li::before { color: #66bb6a; }
+
+    table.comp { width: 100%; border-collapse: collapse; margin-top: 1em; font-size: 0.95em; }
+    table.comp th, table.comp td { padding: 0.55em 0.7em; text-align: center; border-bottom: 1px solid var(--ps-border); }
+    table.comp th { color: var(--ps-blue-dark); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.03em; }
+    table.comp td:first-child, table.comp th:first-child { text-align: left; font-weight: 700; }
+    table.comp .yes { color: var(--ps-green); font-weight: 900; }
+    table.comp .no { color: #b0bac2; }
+    table.comp .partial { color: var(--ps-amber); font-weight: 900; }
+
+    .pipeline { display: flex; align-items: center; justify-content: center; gap: 0.5em; margin-top: 1.5em; flex-wrap: wrap; }
+    .pipeline .stage {
+        background: var(--ps-blue); color: #fff; padding: 1em 1.3em; border-radius: 12px; font-weight: 800;
+        text-align: center; min-width: 150px; box-shadow: 0 6px 16px rgba(25,118,210,0.25);
+    }
+    .pipeline .stage small { display: block; font-weight: 500; font-size: 0.75em; opacity: 0.85; margin-top: 0.3em; }
+    .pipeline .arrow { font-size: 1.6em; color: var(--ps-blue-dark); font-weight: 900; }
+
+    .logo-title { display: flex; align-items: center; gap: 0.5em; font-weight: 900; font-size: 1.3em; color: var(--ps-blue-dark); margin-bottom: 1.5em; }
+    .slide.dark .logo-title { color: #fff; }
+    .logo-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ps-blue); display: inline-block; }
+
+    .footer-tag { position: absolute; bottom: 2.2em; left: 8vw; font-size: 0.8em; color: var(--ps-muted); }
+    .slide.dark .footer-tag { color: #6f8299; }
+
+    /* Nav */
+    #nav {
+        position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 10px; z-index: 100; background: rgba(0,0,0,0.35); padding: 8px 14px; border-radius: 999px;
+    }
+    #nav .dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.35); cursor: pointer; transition: background 0.2s; }
+    #nav .dot.active { background: #fff; }
+    #counter {
+        position: fixed; top: 18px; right: 24px; z-index: 100; font-size: 0.85em; color: rgba(255,255,255,0.6);
+        font-family: monospace;
+    }
+    #hint {
+        position: fixed; top: 18px; left: 24px; z-index: 100; font-size: 0.78em; color: rgba(255,255,255,0.45);
+    }
+
+    @media print {
+        #nav, #counter, #hint { display: none !important; }
+        .slide { display: flex !important; page-break-after: always; height: 100vh; }
+        body { background: #fff; }
+    }
+</style>
+</head>
+<body>
+
+<div id="hint">Use ← → arrow keys or click dots to navigate</div>
+<div id="counter">01 / 15</div>
+
+<!-- SLIDE 1: TITLE -->
+<div class="slide dark active">
+    <div class="kicker">Investor Forum · August 2026</div>
+    <h1>PolySaaS Online</h1>
+    <p class="lead">Connect every SaaS application your business already runs — and let AI orchestrate across all of them, in one unified control tower.</p>
+    <div style="margin-top:2em; font-size:1.05em;" class="muted">Mike Oliver — Founder &amp; Chief Architect<br>polysaas.online</div>
+</div>
+
+<!-- SLIDE 2: THE PROBLEM -->
+<div class="slide">
+    <div class="kicker">The Problem</div>
+    <h2>Every business is drowning in disconnected SaaS.</h2>
+    <div class="grid-3">
+        <div class="card">
+            <div class="icon">🧩</div>
+            <h3>SaaS Sprawl</h3>
+            <p>The average small-to-medium business runs 15–25+ SaaS tools — CRM, accounting, chat, support, marketing — each one a silo.</p>
+        </div>
+        <div class="card">
+            <div class="icon">🔌</div>
+            <h3>Fragile Point-to-Point</h3>
+            <p>Existing "automation" tools wire tools together one Zap at a time — brittle, per-task priced, and invisible until something breaks.</p>
+        </div>
+        <div class="card">
+            <div class="icon">🚪</div>
+            <h3>The Lock-In Trap</h3>
+            <p>The alternative — migrate everything into one vendor's all-in-one suite — means disruption, retraining, and permanent lock-in. Most businesses simply won't do it.</p>
+        </div>
+    </div>
+</div>
+
+<!-- SLIDE 3: THE INSIGHT / PIVOT -->
+<div class="slide dark">
+    <div class="kicker">The Pivot</div>
+    <h2 style="color:#fff;">We stopped asking customers to switch tools.</h2>
+    <div class="two-col">
+        <div>
+            <p class="lead" style="color:#cfe0f0;">We started by building our own hosted business apps — ERP, team chat, file storage. They work, and they're still valuable. But that's not the wedge.</p>
+            <ul class="check" style="color:#e3edf7;">
+                <li>Customers don't want to migrate off tools they already trust</li>
+                <li>The real value is connecting what they already run</li>
+                <li>Bundled apps become a cost-effective <em>starting point</em> — not the pitch</li>
+            </ul>
+        </div>
+        <div class="card">
+            <h3 style="color:#0d47a1;">The pitch now:</h3>
+            <p style="font-size:1.15em; font-weight:700; color:#1c2733;">"Keep every tool you already use. We'll connect it, and orchestrate across all of it, automatically."</p>
+        </div>
+    </div>
+</div>
+
+<!-- SLIDE 4: THE SOLUTION -->
+<div class="slide">
+    <div class="kicker">The Solution</div>
+    <h2>One platform. Every app you already use.</h2>
+    <div class="grid-3">
+        <div class="card">
+            <span class="pill pill-blue">Connect</span>
+            <p style="margin-top:0.6em;">Link your existing CRM, accounting, chat, and support tools in minutes — no data migration, no downtime.</p>
+        </div>
+        <div class="card">
+            <span class="pill pill-green">Orchestrate</span>
+            <p style="margin-top:0.6em;">AI-driven rules act across every connected tool automatically — an invoice paid in one app can notify your team in another, with zero custom code.</p>
+        </div>
+        <div class="card">
+            <span class="pill pill-amber">Control Tower</span>
+            <p style="margin-top:0.6em;">See everything happening across every connected tool in one unified activity feed — not scattered across 20 different logins.</p>
+        </div>
+    </div>
+</div>
+
+<!-- SLIDE 5: HOW IT WORKS -->
+<div class="slide">
+    <div class="kicker">How It Works</div>
+    <h2>A repeatable pipeline, not a custom project per app.</h2>
+    <div class="pipeline">
+        <div class="stage">Discover<small>PolySniffer captures how the app works</small></div>
+        <div class="arrow">→</div>
+        <div class="stage">Capture<small>OAuth/API, or hosted proxy for bundled apps</small></div>
+        <div class="arrow">→</div>
+        <div class="stage">Normalize<small>Every event becomes one canonical shape</small></div>
+        <div class="arrow">→</div>
+        <div class="stage">Orchestrate<small>Rules + AI act across every connected tool</small></div>
+    </div>
+    <p class="muted" style="margin-top:2em;">This is running in production today — not a roadmap slide.</p>
+</div>
+
+<!-- SLIDE 6: CONNECTION MODELS -->
+<div class="slide">
+    <div class="kicker">Product Architecture</div>
+    <h2>Right-sized connection for every SaaS tool</h2>
+    <table class="comp">
+        <tr><th>Model</th><th>When We Use It</th><th>How</th></tr>
+        <tr><td>Bundled / Hosted</td><td>Customer has no existing tool in that category</td><td>We host it, fully SSO'd, ready on day one</td></tr>
+        <tr><td>Connect (BYO)</td><td>Customer already owns the tool <em>(preferred model)</em></td><td>OAuth2 — no credentials stored, customer can revoke anytime</td></tr>
+        <tr><td>Hybrid</td><td>Tool has an API for some actions, not all</td><td>API where possible, tightly-scoped polling for the rest</td></tr>
+    </table>
+    <p class="muted" style="margin-top:1.2em;">OAuth/API-first is policy: it's cheaper to build, safer to run, and never breaks from a vendor's silent UI change.</p>
+</div>
+
+<!-- SLIDE 7: TRACTION / PROOF IT'S REAL -->
+<div class="slide dark">
+    <div class="kicker">Traction</div>
+    <h2 style="color:#fff;">Not a deck. A working platform.</h2>
+    <div class="grid-2">
+        <div class="card"><span class="pill pill-green">Live</span><p style="margin-top:0.5em;">Full single sign-on across Odoo, Mattermost, and Nextcloud — one login, zero friction</p></div>
+        <div class="card"><span class="pill pill-green">Live</span><p style="margin-top:0.5em;">HubSpot connected via real OAuth2 — the template for every future "bring your own SaaS" connector</p></div>
+        <div class="card"><span class="pill pill-green">Live</span><p style="margin-top:0.5em;">Dynamic orchestration: an Odoo invoice event automatically notifies the team in Mattermost — zero custom code per customer</p></div>
+        <div class="card"><span class="pill pill-green">Live</span><p style="margin-top:0.5em;">AI agents embedded directly inside team chat — available to every subscriber natively</p></div>
+    </div>
+    <p class="muted" style="margin-top:1.3em;">Enterprise-grade multi-tenant data isolation (schema-per-customer) from day one — not bolted on later.</p>
+</div>
+
+<!-- SLIDE 8: BUSINESS MODEL -->
+<div class="slide">
+    <div class="kicker">Business Model</div>
+    <h2>BYO costs us less — pricing reflects that.</h2>
+    <div class="grid-2">
+        <div class="card">
+            <h3>Bundled / Hosted</h3>
+            <p>We provision and run the app for the customer. Higher cost to us (compute, storage), priced accordingly — the accessible starting point for a category the customer doesn't have covered yet.</p>
+        </div>
+        <div class="card">
+            <h3>Connect (BYO)</h3>
+            <p>Customer already pays for and runs the tool — we only charge for orchestration and AI, not hosting. Materially lower cost to us, and the tier we expect to dominate as the connector library grows.</p>
+        </div>
+    </div>
+    <div class="fill" style="margin-top:1.3em;">[ FILL IN — final tier pricing once BYO-vs-hosted numbers are locked ]</div>
+</div>
+
+<!-- SLIDE 9: GO TO MARKET -->
+<div class="slide">
+    <div class="kicker">Go-To-Market</div>
+    <h2>First 100 — real users before we scale spend.</h2>
+    <ul class="check" style="font-size:1.1em;">
+        <li>Founders Beta Circle: lifetime/beta accounts for our first 100 users, direct personal outreach</li>
+        <li>Every beta connector we build for one customer becomes reusable for every customer after — compounding library, not one-off consulting</li>
+        <li>Website showcase of the categories of SaaS we connect, driving inbound "can you connect X?" requests</li>
+    </ul>
+    <p class="muted" style="margin-top:1.2em;">Purpose of First 100: early cash flow, proof of real usage, and brutally honest product feedback before wider launch.</p>
+</div>
+
+<!-- SLIDE 10: MARKET OPPORTUNITY -->
+<div class="slide dark">
+    <div class="kicker">Market Opportunity</div>
+    <h2 style="color:#fff;">A large, fast-growing market — and we compete differently within it.</h2>
+    <div class="grid-3">
+        <div class="card"><h3 style="color:#0d47a1;">~$17–23B</h3><p>Global iPaaS market size, 2026 (range across independent analyst estimates)</p></div>
+        <div class="card"><h3 style="color:#0d47a1;">24–32%</h3><p>Projected CAGR through the early-to-mid 2030s — AI-driven integration is the fastest-growing segment</p></div>
+        <div class="card"><h3 style="color:#0d47a1;">Nearly Universal</h3><p>Any business running more than one SaaS tool is a potential customer — not a narrow vertical</p></div>
+    </div>
+    <p class="muted" style="margin-top:1.2em; font-size:0.8em;">Sources: Precedence Research, Fortune Business Insights, Persistence Market Research, Mordor Intelligence (2026 estimates).</p>
+</div>
+
+<!-- SLIDE 11: COMPETITIVE LANDSCAPE -->
+<div class="slide">
+    <div class="kicker">Competitive Landscape</div>
+    <h2>Workflow automation vs. a real orchestration platform</h2>
+    <table class="comp">
+        <tr><th></th><th>Zapier / Workato</th><th>MuleSoft</th><th>Build In-House</th><th>PolySaaS</th></tr>
+        <tr><td>Unified UI (not just background flows)</td><td class="no">✕</td><td class="no">✕</td><td class="partial">Maybe</td><td class="yes">✓</td></tr>
+        <tr><td>AI-native orchestration</td><td class="partial">Add-on</td><td class="no">✕</td><td class="partial">DIY</td><td class="yes">✓</td></tr>
+        <tr><td>Hosted app option (no gap left uncovered)</td><td class="no">✕</td><td class="no">✕</td><td class="no">✕</td><td class="yes">✓</td></tr>
+        <tr><td>Enterprise multi-tenant isolation</td><td class="partial">Varies</td><td class="yes">✓</td><td class="partial">DIY</td><td class="yes">✓</td></tr>
+        <tr><td>New connector turnaround</td><td class="partial">Weeks</td><td class="no">Months</td><td class="no">Months</td><td class="yes">Days–weeks</td></tr>
+    </table>
+</div>
+
+<!-- SLIDE 12: THE MOAT -->
+<div class="slide dark">
+    <div class="kicker">Why We Win</div>
+    <h2 style="color:#fff;">Every connector we build makes the next one cheaper.</h2>
+    <p class="lead" style="color:#cfe0f0;">The first SaaS integration establishes the pattern. Every one after reuses the same discovery pipeline, the same normalization layer, and increasingly the same event definitions across an entire category — a compounding connector library, not a linear cost per customer.</p>
+</div>
+
+<!-- SLIDE 13: TEAM -->
+<div class="slide">
+    <div class="kicker">Team</div>
+    <h2>Built by operators, not just architects.</h2>
+    <div class="grid-2">
+        <div class="card">
+            <h3>Mike Oliver</h3>
+            <p>Founder &amp; Chief Architect — designed and built the multi-tenant orchestration engine, passthrough architecture, and connector pipeline described in this deck.</p>
+        </div>
+        <div class="fill">[ FILL IN — remaining team members / advisors / Shela's role ]</div>
+    </div>
+</div>
+
+<!-- SLIDE 14: THE ASK -->
+<div class="slide">
+    <div class="kicker">The Ask</div>
+    <h2>Raising to fund production launch and the connector library.</h2>
+    <div class="fill" style="font-size:1.1em; padding:1.3em 1.5em;">
+        [ FILL IN — raise amount, instrument (SAFE/priced round), use of funds breakdown, runway/milestones ]
+    </div>
+    <p class="muted" style="margin-top:1.3em;">Suggested structure: (1) Production infra + GCP scale-up, (2) connector library expansion (engineering), (3) go-to-market beyond First 100.</p>
+</div>
+
+<!-- SLIDE 15: CLOSING -->
+<div class="slide dark">
+    <h1 style="font-size:2.4em;">Keep every tool you trust.<br>Let us make them work together.</h1>
+    <p class="lead" style="color:#cfe0f0;">polysaas.online</p>
+    <div class="fill" style="margin-top:1.5em; display:inline-block;">[ FILL IN — contact email / phone for follow-up ]</div>
+</div>
+
+<div id="nav"></div>
+
+<script>
+    var slides = document.querySelectorAll('.slide');
+    var nav = document.getElementById('nav');
+    var counter = document.getElementById('counter');
+    var current = 0;
+
+    slides.forEach(function(_, i) {
+        var dot = document.createElement('div');
+        dot.className = 'dot' + (i === 0 ? ' active' : '');
+        dot.addEventListener('click', function() { goTo(i); });
+        nav.appendChild(dot);
+    });
+
+    function goTo(i) {
+        if (i < 0 || i >= slides.length) return;
+        slides[current].classList.remove('active');
+        nav.children[current].classList.remove('active');
+        current = i;
+        slides[current].classList.add('active');
+        nav.children[current].classList.add('active');
+        counter.textContent = String(current + 1).padStart(2, '0') + ' / ' + slides.length;
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { goTo(current + 1); e.preventDefault(); }
+        if (e.key === 'ArrowLeft' || e.key === 'PageUp') { goTo(current - 1); e.preventDefault(); }
+        if (e.key === 'Home') goTo(0);
+        if (e.key === 'End') goTo(slides.length - 1);
+    });
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('#nav')) return;
+        goTo(current + 1);
+    });
+</script>
+
+</body>
+</html>
