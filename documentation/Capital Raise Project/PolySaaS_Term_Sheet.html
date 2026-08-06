@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PolySaaS Online — Term Sheet (Summary of Indicative Terms)</title>
+<style>
+    :root {
+        --ps-blue: #1976d2;
+        --ps-blue-dark: #0d47a1;
+        --ps-ink: #1c2733;
+        --ps-muted: #56636f;
+        --ps-border: #d7dee6;
+        --fill-bg: #fff3cd;
+        --fill-border: #f0b429;
+        --warn-bg: #fdecea;
+        --warn-border: #e57373;
+    }
+    * { box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ps-ink);
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 3.5em 2.5em 5em;
+        line-height: 1.55;
+        background: #fff;
+    }
+    .brand { display: flex; align-items: center; gap: 0.5em; font-weight: 900; font-size: 1.15em; color: var(--ps-blue-dark); }
+    .brand .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--ps-blue); }
+    h1 { font-size: 1.9em; margin: 0.5em 0 0.1em; color: var(--ps-blue-dark); letter-spacing: -0.01em; }
+    .subtitle { color: var(--ps-muted); font-size: 1em; margin-bottom: 1.6em; }
+    h2 {
+        font-size: 1.05em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ps-blue-dark);
+        border-bottom: 2px solid var(--ps-border); padding-bottom: 0.35em; margin-top: 2em; margin-bottom: 0.9em;
+    }
+    table.terms { width: 100%; border-collapse: collapse; margin-bottom: 0.5em; }
+    table.terms tr { border-bottom: 1px solid var(--ps-border); }
+    table.terms td { padding: 0.65em 0.6em; vertical-align: top; font-size: 0.96em; }
+    table.terms td.label { width: 32%; font-weight: 700; color: var(--ps-blue-dark); }
+    .fill { background: var(--fill-bg); border: 1.5px dashed var(--fill-border); border-radius: 6px; padding: 0.15em 0.5em; font-weight: 700; color: #7a5c00; display: inline-block; }
+    .fill-block { background: var(--fill-bg); border: 1.5px dashed var(--fill-border); border-radius: 8px; padding: 0.8em 1em; font-weight: 700; color: #7a5c00; margin: 0.4em 0; }
+    .warn-block {
+        background: var(--warn-bg); border: 1.5px solid var(--warn-border); border-radius: 8px;
+        padding: 1em 1.2em; margin: 1.2em 0; font-size: 0.94em;
+    }
+    .warn-block strong { color: #b71c1c; }
+    ul { margin: 0.3em 0 0.6em 1.2em; padding: 0; }
+    li { margin-bottom: 0.3em; font-size: 0.96em; }
+    .use-table { width: 100%; border-collapse: collapse; font-size: 0.92em; margin-top: 0.5em; }
+    .use-table th, .use-table td { border: 1px solid var(--ps-border); padding: 0.5em 0.6em; text-align: left; }
+    .use-table th { background: #f2f6fb; color: var(--ps-blue-dark); }
+    .use-table td.pct { text-align: right; font-weight: 700; }
+    .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; margin-top: 1.5em; }
+    .sig-block { border-top: 1px solid var(--ps-ink); padding-top: 0.4em; margin-top: 3.5em; font-size: 0.9em; color: var(--ps-muted); }
+    .legal-footer {
+        margin-top: 3em; padding-top: 1.5em; border-top: 2px solid var(--ps-border);
+        font-size: 0.78em; color: var(--ps-muted); line-height: 1.6;
+    }
+    .legal-footer p { margin: 0.6em 0; }
+    .no-print { }
+    @media print {
+        body { padding: 0.5in; }
+        .no-print { display: none !important; }
+        a { color: inherit; text-decoration: none; }
+    }
+    .print-btn {
+        position: fixed; top: 20px; right: 20px; background: var(--ps-blue); color: #fff; border: none;
+        padding: 0.6em 1.1em; border-radius: 8px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">Print / Save as PDF</button>
+
+<div class="brand"><span class="dot"></span> PolySaaS Online</div>
+<h1>Term Sheet — Summary of Indicative Terms</h1>
+<div class="subtitle">Simple Agreement for Future Equity (SAFE) &nbsp;·&nbsp; Non-Binding &nbsp;·&nbsp; For Discussion Purposes Only</div>
+
+<div class="warn-block">
+    <strong>Read before using this document:</strong> This is a <strong>non-binding summary</strong> prepared for discussion at the Investor Forum. It is <strong>not an offer to sell securities</strong> and creates no obligation on either party. The only binding instrument, if the parties proceed, is the Company's executed SAFE agreement. <strong>This has not been reviewed by legal counsel — do not present it as a final or binding term sheet, and do not accept funds against it, without counsel review.</strong>
+</div>
+
+<h2>1 · Parties</h2>
+<table class="terms">
+    <tr><td class="label">Company</td><td><span class="fill">PolySaaS Online, Inc. — confirm exact legal entity name</span></td></tr>
+    <tr><td class="label">Jurisdiction</td><td><span class="fill">Delaware C-Corp recommended (standard for SAFEs) — confirm state / entity type; see note below on formation status</span></td></tr>
+    <tr><td class="label">Investor</td><td><span class="fill">[Investor name / entity]</span></td></tr>
+    <tr><td class="label">Date</td><td><span class="fill">[Date of forum / discussion]</span></td></tr>
+</table>
+
+<div class="warn-block">
+    <strong>Formation status flag:</strong> The Company's own use-of-funds plan lists "Entity formation + cap table — $15K" as a budgeted legal expense. If PolySaaS Online is not yet formally incorporated, a SAFE cannot be legally issued until it is. Recommend either (a) completing formation before the forum, or (b) making formation an explicit condition precedent to closing in Section 6 below, and saying so verbally to investors.
+</div>
+
+<h2>2 · Round Terms</h2>
+<table class="terms">
+    <tr><td class="label">Instrument</td><td>Simple Agreement for Future Equity (SAFE) — Y Combinator standard form, post-money valuation cap</td></tr>
+    <tr><td class="label">Total Round Target</td><td><strong>$3,000,000</strong> (aggregate across all SAFE investors in this round)</td></tr>
+    <tr><td class="label">This Investment</td><td><span class="fill">$[amount this investor is committing]</span></td></tr>
+    <tr><td class="label">Valuation Cap (post-money)</td><td><strong>$8,000,000</strong></td></tr>
+    <tr><td class="label">Discount Rate</td><td><span class="fill">[e.g., 0% if cap-only, or 10–20% if a discount is also offered]</span></td></tr>
+    <tr><td class="label">Pro Rata Rights</td><td><span class="fill">[Yes / No — YC SAFE handles this via a separate side letter, not the SAFE itself]</span></td></tr>
+    <tr><td class="label">Most Favored Nation</td><td>Included — standard YC MFN clause (investor gets benefit of any more favorable terms given to later SAFE investors in this round)</td></tr>
+    <tr><td class="label">Qualified Financing Threshold</td><td><span class="fill">$1,000,000+</span> in a single equity financing triggers conversion</td></tr>
+    <tr><td class="label">Minimum Check Size</td><td><span class="fill">[e.g., $10,000]</span></td></tr>
+</table>
+
+<h2>2a · Tranche Structure</h2>
+<table class="use-table">
+    <tr><th></th><th style="text-align:right;">Amount</th><th style="text-align:right;">% of Round</th><th>Trigger</th></tr>
+    <tr><td>Tranche 1</td><td class="pct">$1,800,000</td><td class="pct">60%</td><td>At initial closing</td></tr>
+    <tr><td>Tranche 2</td><td class="pct">$1,200,000</td><td class="pct">40%</td><td><span class="fill">[FILL IN — milestone or date-based trigger, e.g. ARR target, product milestone, or fixed date]</span></td></tr>
+</table>
+<div class="fill-block">The Tranche 2 trigger is not yet defined. Recommend tying it to an objective, verifiable milestone (e.g. a specific connector count, ARR figure, or calendar date) rather than a subjective one, to avoid disputes with investors at draw-down time.</div>
+
+<h2>3 · Conversion &amp; Liquidity</h2>
+<ul>
+    <li><strong>Conversion:</strong> SAFE converts to preferred stock automatically upon the Company's next Qualified Financing, at the lower of the Valuation Cap price or the discounted price (if a discount applies).</li>
+    <li><strong>Liquidity Event:</strong> If the Company is acquired or dissolves before conversion, Investor receives the greater of the Purchase Amount back or the as-converted value, per standard SAFE terms.</li>
+    <li><strong>No interest, no maturity date</strong> — a SAFE is not debt. It carries no interest rate and does not need to be repaid if no qualifying event occurs.</li>
+</ul>
+
+<h2>4 · Use of Proceeds (indicative, full round)</h2>
+<table class="use-table">
+    <tr><th>Category</th><th style="text-align:right;">% of Raise</th><th>Purpose</th></tr>
+    <tr><td>Go-to-market</td><td class="pct">40%</td><td>GTM execution, conference presence, partner recruitment, demo &amp; conversion pipeline</td></tr>
+    <tr><td>Product &amp; engineering</td><td class="pct">35%</td><td>Connector library expansion (BYO/OAuth integrations), core orchestration engine, AI-peer hardening</td></tr>
+    <tr><td>Infrastructure &amp; ops</td><td class="pct">15%</td><td>Production GCP scale-up (partially offset by Google for Startups Cloud credits, applied for separately, non-dilutive)</td></tr>
+    <tr><td>Legal, compliance &amp; admin</td><td class="pct">10%</td><td>Entity formation, contracts, IP, data-privacy posture</td></tr>
+</table>
+<div class="fill-block">Confirm this split still matches current priorities post-pivot (heavier weight toward connector/BYO engineering may be warranted given the shift away from bundled-app-led GTM).</div>
+
+<h2>5 · Representations (summary)</h2>
+<ul>
+    <li>Investor represents they are an <strong>accredited investor</strong> under Rule 501(a) of Regulation D, are investing for their own account, and understand this is a high-risk, illiquid investment that may result in total loss.</li>
+    <li>Company represents it is duly organized (or will be, per Section 6) and has authority to enter into the SAFE.</li>
+</ul>
+
+<h2>6 · Conditions to Closing</h2>
+<ul>
+    <li>Execution of the Company's definitive SAFE agreement (see companion draft, Y Combinator standard form)</li>
+    <li><span class="fill">If applicable: completion of entity formation / good-standing confirmation prior to or concurrent with closing</span></li>
+    <li>Receipt of cleared funds</li>
+    <li><span class="fill">[Any additional closing conditions]</span></li>
+</ul>
+
+<h2>7 · Other Terms</h2>
+<table class="terms">
+    <tr><td class="label">Governing Law</td><td><span class="fill">Delaware — confirm once entity is formed</span></td></tr>
+    <tr><td class="label">Confidentiality</td><td>Both parties agree to keep the terms of this discussion confidential until a definitive agreement is signed</td></tr>
+    <tr><td class="label">No Solicitation</td><td>This document is shared only in the context of a direct, pre-existing relationship or forum where accreditation has been confirmed; it is not a general solicitation</td></tr>
+    <tr><td class="label">Expenses</td><td>Each party bears its own legal and other expenses</td></tr>
+    <tr><td class="label">Expiration</td><td><span class="fill">This summary is valid for discussion through [date] and does not bind either party thereafter</span></td></tr>
+</table>
+
+<h2>8 · Acknowledgement (non-binding)</h2>
+<p style="font-size:0.9em; color:var(--ps-muted);">Signing below acknowledges the parties discussed these indicative terms in good faith. It does <strong>not</strong> obligate either party to invest or accept investment. Binding terms will be set out solely in the definitive SAFE agreement.</p>
+
+<div class="sig-grid">
+    <div>
+        <div class="sig-block">Company — PolySaaS Online<br><span class="fill">Michael Oliver, Founder</span></div>
+    </div>
+    <div>
+        <div class="sig-block">Investor<br><span class="fill">[Name / Entity]</span></div>
+    </div>
+</div>
+
+<div class="legal-footer">
+    <p><strong>Not legal advice.</strong> This term sheet was drafted for discussion purposes ahead of an investor forum and has not been reviewed by a securities attorney. Terms marked with a highlighted box are placeholders and must be filled in and reviewed before this document — or the accompanying SAFE — is presented as final or signed by any party.</p>
+    <p>Offers and sales of securities referenced here are intended to rely on exemptions from registration under the Securities Act of 1933 (e.g., Section 4(a)(2) / Regulation D). Confirm the actual exemption relied upon, investor accreditation status, and any state "blue sky" filing requirements with counsel before closing any investment.</p>
+    <p>Source data for use-of-proceeds figures: PolySaaS Online Business Plan (Feb/Mar 2026). Confirm these figures still reflect current strategy before the forum, given the shift toward BYO/connect-any-SaaS positioning described in the accompanying pitch deck.</p>
+</div>
+
+</body>
+</html>
