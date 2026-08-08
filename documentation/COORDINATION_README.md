@@ -4,6 +4,51 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-08-08 (Office) — Passthrough endpoint source-of-truth redesign
+
+**Status**: COMPLETE — committed and pushed
+**Branch**: main
+**Commit**: `d7981e58` (`Fix tenant passthrough endpoint identity`)
+**Architecture doc**: `documentation/passthrough/tenant-endpoint-source-of-truth.md`
+
+### Protected architecture
+
+This entry supersedes the August 2 "slug identity" notes below. Do not restore
+slug-based passthrough routing or public-schema endpoint fallback.
+
+1. The active tenant's `PassThroughEndpoint` row is the only source of truth.
+2. `endpoint_url` remains unchanged and supplies both the upstream target and the
+   exact host segment in `/pt/admin/<host>/`.
+3. `starting_uri` is appended only to form the initial UI link.
+4. `slug` is descriptive/application metadata only. It is not a route key.
+5. The database record ID is not part of the browser link or proxy identity.
+6. `public.dose_passthroughendpoint` has no role in tenant endpoint reads, writes,
+   defaults, fallback, merging, or cloning.
+7. A missing exact host match in the active tenant schema returns `404`; the proxy
+   must not search `public`, another tenant, or synthesize an upstream URL.
+8. Tenant app provisioners create their own endpoint rows. Subscription, bootstrap,
+   and generic tenant creation must not seed rows from another schema.
+9. Admin endpoint saves require an active tenant and must never write to `public`.
+
+### Canonical example
+
+```text
+endpoint_url = https://tenant-app.example.com:8443
+starting_uri = /web
+browser URL  = /pt/admin/tenant-app.example.com:8443/web
+proxy target = https://tenant-app.example.com:8443
+```
+
+### Validation baseline
+
+- `python manage.py check` passes.
+- `dose.tests.test_passthrough_endpoint_url` passes both tests.
+- `python manage.py makemigrations --check --dry-run` reports no changes.
+- Migration `dose.0059_alter_passthroughendpoint_slug` documents that slug is not
+  passthrough identity; it does not rewrite endpoint records.
+
+---
+
 ## 2026-08-03 (Morning — Office) — BINGO: Nextcloud server-side SSO ✅
 
 **Status**: ✅ Verified for tenant `pso17` (Django test client SSO redirect + cookies)
