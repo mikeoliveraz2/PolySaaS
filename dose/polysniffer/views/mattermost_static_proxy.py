@@ -66,26 +66,26 @@ def mattermost_static_proxy(request, path, slug='', trigger=''):
     if ".." in path or path.startswith("/"):
         return HttpResponse("Invalid path", status=400)
 
-    # Owner-approved 2026-08-02: slug is URL identity; upstream from DB endpoint_url.
+    # URL segment is the exact host from the tenant endpoint_url record.
     seg = (slug or trigger or "mattermost").strip()
-    base = "http://localhost:8065"
+    base = ""
     try:
         from urllib.parse import urlparse
         from dose.models import PassThroughEndpoint
-        ep = PassThroughEndpoint.objects.filter(is_enabled=True, slug__iexact=seg).first()
-        if ep is None:
-            # Legacy hostname bookmarks
-            for _ep in PassThroughEndpoint.objects.filter(is_enabled=True):
-                if urlparse(_ep.endpoint_url or "").netloc.lower() == seg.lower():
-                    ep = _ep
-                    seg = (ep.slug or seg).strip() or seg
-                    break
+        ep = None
+        for candidate in PassThroughEndpoint.objects.filter(is_enabled=True):
+            if urlparse(candidate.endpoint_url or "").netloc.lower() == seg.lower():
+                ep = candidate
+                break
         if ep and ep.endpoint_url:
             p = urlparse(ep.endpoint_url)
             if p.scheme and p.netloc:
                 base = f"{p.scheme}://{p.netloc}"
     except Exception as exc:
         logger.warning("Mattermost static proxy endpoint lookup failed: %s", exc)
+
+    if not base:
+        return HttpResponse("Passthrough endpoint not found", status=404)
 
     webpack_prefix = f"/pt/admin/{seg}/static/"
     qs = f"?{request.META['QUERY_STRING']}" if request.META.get("QUERY_STRING") else ""

@@ -3,7 +3,7 @@
 """
 Local-dev handler registration — OBSOLETE for discovery (2026-08-02).
 
-Passthrough identity is PassThroughEndpoint.slug → /pt/admin/<slug>/.
+Passthrough identity is the tenant PassThroughEndpoint.endpoint_url host.
 Handler discovery is resolve_handler_for_endpoint(DB row) via matches_endpoint().
 Upstream is always endpoint.endpoint_url from that row.
 

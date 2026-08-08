@@ -5,7 +5,7 @@
 # TenantApp.status so the sidebar can show not-yet-provisioned passthroughs as disabled instead
 # of clickable-but-broken. See BINGO_ODOO_MULTITENANT_ISOLATION_2026-07-31.md for why a
 # PassThroughEndpoint row can exist before the underlying app is actually usable.
-# Owner-approved 2026-08-02: menu URLs use /pt/admin/<slug>/ (DB endpoint is identity; no trigger).
+# Passthrough menu URLs derive only from the tenant row's endpoint_url and starting_uri.
 
 from dose.utils import get_current_tenant, get_current_tenant_role
 from dose.models import UserProfile, Tenant
@@ -19,7 +19,7 @@ def _load_passthrough_endpoints(schema_name):
     from django.db import connection
     from dose.models.pass_through_endpoint import PassThroughEndpoint
 
-    if not schema_name:
+    if not schema_name or schema_name.lower() == 'public':
         return []
 
     try:
@@ -296,46 +296,23 @@ def admin_navigation(request):
 
             return any(app in token for token in _subscribed for token in visible_tokens)
 
-        # Use endpoints from middleware if available (already queried and filtered)
+        # Use the middleware-populated tenant list if available; otherwise query once.
         endpoints = []
         if hasattr(request, 'passthrough_endpoints') and request.passthrough_endpoints:
             endpoints = list(request.passthrough_endpoints)
             print(f"[ADMIN_NAV] Using {len(endpoints)} endpoints from request.passthrough_endpoints (set by middleware)")
-            # Debug: print all endpoint URLs to see what we have
             for ep in endpoints:
                 print(f"[ADMIN_NAV]   - {ep.endpoint_url} (menu_title: {ep.menu_title}, show_in_menu: {ep.show_in_menu}, is_enabled: {ep.is_enabled})")
-
-            # Also include endpoints that might not have menu_title (like v0)
-            # The middleware excludes endpoints without menu_title, but we want to show them in sidebar
-            if tenant and tenant.schema_name:
-                try:
-                    additional_endpoints = _load_passthrough_endpoints(tenant.schema_name)
-
-                    # Add endpoints that aren't already in the list
-                    existing_urls = {ep.endpoint_url for ep in endpoints}
-                    for ep in additional_endpoints:
-                        if ep.endpoint_url not in existing_urls:
-                            endpoints.append(ep)
-                            print(f"[ADMIN_NAV] Added endpoint without menu_title: {ep.endpoint_url}")
-
-                    print(f"[ADMIN_NAV] Total endpoints after adding ones without menu_title: {len(endpoints)}")
-                except Exception as e:
-                    print(f"[ADMIN_NAV] Error querying additional endpoints: {e}")
-                    import traceback
-                    print(traceback.format_exc())
+        elif tenant and tenant.schema_name:
+            try:
+                endpoints = _load_passthrough_endpoints(tenant.schema_name)
+                print(f"[ADMIN_NAV] Found {len(endpoints)} enabled PassThroughEndpoints with show_in_menu=True for schema: {tenant.schema_name}")
+            except Exception as e:
+                print(f"[ADMIN_NAV] Error querying PassThroughEndpoint in schema {tenant.schema_name}: {e}")
+                import traceback
+                print(traceback.format_exc())
         else:
-            # Fallback: query endpoints ourselves if middleware didn't set them
-            print(f"[ADMIN_NAV] request.passthrough_endpoints not available, querying ourselves")
-            if tenant and tenant.schema_name:
-                try:
-                    endpoints = _load_passthrough_endpoints(tenant.schema_name)
-                    print(f"[ADMIN_NAV] Found {len(endpoints)} enabled PassThroughEndpoints with show_in_menu=True for schema: {tenant.schema_name}")
-                except Exception as e:
-                    print(f"[ADMIN_NAV] Error querying PassThroughEndpoint in schema {tenant.schema_name}: {e}")
-                    import traceback
-                    print(traceback.format_exc())
-            else:
-                print(f"[ADMIN_NAV] No tenant found - no PassThroughEndpoints will be shown")
+            print(f"[ADMIN_NAV] No tenant found - no PassThroughEndpoints will be shown")
 
         # Track seen normalized trigger names to prevent duplicates.
         # Normalise: strip slashes, lowercase, take last path segment
@@ -359,18 +336,8 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
-            # Owner-approved 2026-08-02: URL identity is slug. Upstream is always
-            # endpoint.endpoint_url from the DB row — never inferred from the path.
+            # endpoint_url is the sole routing source; starting_uri is only the entry path.
             url = endpoint.get_menu_url()
-            try:
-                from dose.passthrough.registry import resolve_handler_for_endpoint
-                _nav_handler = resolve_handler_for_endpoint(endpoint)
-                if _nav_handler and hasattr(_nav_handler, 'passthrough_menu_url'):
-                    _menu_url = _nav_handler.passthrough_menu_url(request, endpoint)
-                    if _menu_url:
-                        url = _menu_url
-            except Exception as _nav_exc:
-                print(f"[ADMIN_NAV] passthrough_menu_url hook failed: {_nav_exc}")
             title = endpoint.menu_title or (endpoint.slug or norm).replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (slug={endpoint.slug!r}, upstream={endpoint.endpoint_url})")
 
@@ -397,7 +364,6 @@ def admin_navigation(request):
                 print(f"[ADMIN_NAV] Readiness lookup failed for slug={endpoint.slug!r}: {_ready_exc}")
 
             service_data = {
-                'id': endpoint.id,
                 'url': url,
                 'title': title,
                 'slug': (endpoint.slug or '').strip(),

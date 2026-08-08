@@ -1,6 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
+# Passthrough URL identity is the exact host in the tenant endpoint_url record.
 # BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # Prior FROZEN — Mattermost Passthrough BINGO (2026-05-31) [handler hook contract]
@@ -10,9 +10,8 @@
 """
 Base class for endpoint-specific passthrough handlers (Shela / Michael pattern).
 
-- **slug** is the /pt/admin/<slug>/ URL identity (menu + middleware lookup).
-- **endpoint_url** is the upstream origin — always taken from the DB row, never inferred
-  from the URL segment.
+- **endpoint_url** is both the upstream source and the source of the browser host segment.
+- **slug** is descriptive metadata only and never participates in passthrough routing.
 
 Handlers that need shared helpers can subclass PassthroughHandlerBase. The legacy
 BasePassthroughHandler in __init__.py remains the HTML-rewrite fallback for get_handler().
@@ -32,13 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def proxy_prefix_for_endpoint(endpoint: PassThroughEndpoint) -> str:
-    """Build /pt/admin/<slug>/ from the PassThroughEndpoint row (DB is source of truth)."""
+    """Build /pt/admin/<host>/ only from the tenant PassThroughEndpoint row."""
     try:
         if hasattr(endpoint, "get_proxy_prefix"):
             return endpoint.get_proxy_prefix().rstrip("/") + "/"
-        slug = (getattr(endpoint, "slug", None) or "").strip().strip("/")
-        if slug:
-            return f"/pt/admin/{slug}/"
         from urllib.parse import urlparse
         host = urlparse(getattr(endpoint, "endpoint_url", None) or "").netloc
         return f"/pt/admin/{host}/" if host else "/pt/admin/"
@@ -47,7 +43,7 @@ def proxy_prefix_for_endpoint(endpoint: PassThroughEndpoint) -> str:
 
 
 def proxy_prefix_for_trigger_endpoint(endpoint: PassThroughEndpoint) -> str:
-    """Deprecated alias — use proxy_prefix_for_endpoint (slug identity, not trigger)."""
+    """Deprecated alias for proxy_prefix_for_endpoint."""
     return proxy_prefix_for_endpoint(endpoint)
 
 

@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 
 def run_pt_admin_passthrough_core(request):
     """
-    Handle /pt/admin/<slug>/... by loading the PassThroughEndpoint row.
+    Handle /pt/admin/<host>/... by loading the exact tenant PassThroughEndpoint row.
 
-    - URL segment = endpoint.slug (identity)
-    - Upstream = endpoint.endpoint_url (always from DB)
+    - URL segment = endpoint.endpoint_url host
+    - Upstream = the unchanged endpoint.endpoint_url from that row
     - Handler = resolve_handler_for_endpoint(endpoint)
 
     Returns HttpResponse, or None to let URLconf continue (static proxy, building pen).
@@ -52,48 +52,26 @@ def run_pt_admin_passthrough_core(request):
     print(f"[PT-CORE] path={path} parts={parts}")
     if len(parts) < 3 or parts[0] != "pt":
         return None
-    slug = parts[2]
-    print(f"[PT-CORE] slug={slug}")
+    endpoint_host = parts[2]
+    print(f"[PT-CORE] endpoint_host={endpoint_host}")
 
     from dose.models import PassThroughEndpoint
     from urllib.parse import urlparse
 
     endpoint_obj = None
     try:
-        endpoint_obj = PassThroughEndpoint.objects.filter(
-            is_enabled=True, slug__iexact=slug,
-        ).first()
+        for candidate in PassThroughEndpoint.objects.filter(is_enabled=True):
+            if urlparse(candidate.endpoint_url or "").netloc.lower() == endpoint_host.lower():
+                endpoint_obj = candidate
+                break
     except Exception as e:
-        print(f"[PT-CORE] Could not resolve PassThroughEndpoint by slug: {e}")
-
-    # Compat: old bookmarks used /pt/admin/<hostname:port>/ — redirect once to slug URL.
-    if endpoint_obj is None:
-        try:
-            _legacy_ep = None
-            for _ep in PassThroughEndpoint.objects.filter(is_enabled=True):
-                if urlparse(_ep.endpoint_url or "").netloc.lower() == slug.lower():
-                    _legacy_ep = _ep
-                    break
-        except Exception as e:
-            print(f"[PT-CORE] Legacy hostname lookup failed: {e}")
-            _legacy_ep = None
-        if _legacy_ep is not None:
-            ep_slug = (_legacy_ep.slug or "").strip()
-            if ep_slug:
-                if len(parts) > 3:
-                    new_path = f"/pt/admin/{ep_slug}/{'/'.join(parts[3:])}"
-                else:
-                    new_path = f"/pt/admin/{ep_slug}/"
-                qs = request.META.get("QUERY_STRING") or ""
-                loc = new_path + (f"?{qs}" if qs else "")
-                print(f"[PT-CORE] Legacy hostname URL -> redirect to slug: {loc}")
-                return HttpResponseRedirect(loc)
+        print(f"[PT-CORE] Could not resolve PassThroughEndpoint by exact host: {e}")
 
     if endpoint_obj is None:
-        print(f"[PT-CORE] No PassThroughEndpoint for slug={slug!r}")
+        print(f"[PT-CORE] No PassThroughEndpoint for host={endpoint_host!r}")
         return HttpResponse(
             f"<h2>Passthrough endpoint not found</h2>"
-            f"<p>No enabled PassThroughEndpoint with slug <code>{slug}</code>.</p>",
+            f"<p>No enabled tenant PassThroughEndpoint has host <code>{endpoint_host}</code>.</p>",
             status=404,
             content_type="text/html; charset=utf-8",
         )
@@ -101,7 +79,7 @@ def run_pt_admin_passthrough_core(request):
     endpoint = endpoint_obj
     request._passthrough_endpoint = endpoint
     print(
-        f"[PT-CORE] endpoint from DB: slug={endpoint.slug!r} "
+        f"[PT-CORE] endpoint from DB: host={endpoint_host!r} "
         f"upstream={endpoint.endpoint_url}"
     )
 
@@ -115,8 +93,8 @@ def run_pt_admin_passthrough_core(request):
         handler.endpoint = endpoint
         print("[PT-CORE] Set handler.endpoint to PassThroughEndpoint object")
 
-    # Path key for handlers/forwarder that still accept a "trigger" kwarg = slug.
-    trigger = (endpoint.slug or slug).strip("/")
+    # Legacy handler argument carries the canonical host; it is not a second identity.
+    trigger = endpoint_host
 
     # Handler hook: some paths (e.g. Mattermost /login) need try_root before upstream fetch.
     if handler and hasattr(handler, "try_root_display_shell_response"):

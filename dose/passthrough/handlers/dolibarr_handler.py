@@ -114,14 +114,11 @@ class DolibarrPassthroughHandler:
 
     @staticmethod
     def _proxy_prefix(endpoint, endpoint_url: str) -> str:
-        # Owner-approved 2026-08-02: slug is URL identity.
         if endpoint is not None:
             if hasattr(endpoint, "get_proxy_prefix"):
                 return endpoint.get_proxy_prefix().rstrip("/")
-            slug = (getattr(endpoint, "slug", None) or "").strip().strip("/")
-            if slug:
-                return f"/pt/admin/{slug}"
-        return "/pt/admin/dolibarr"
+        host = urlparse(endpoint_url or "").netloc
+        return f"/pt/admin/{host}" if host else "/pt/admin"
 
     @staticmethod
     def _base_from_url(endpoint_url: str) -> str:

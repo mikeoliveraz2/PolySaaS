@@ -6,67 +6,11 @@ from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 from django.utils.text import slugify
 
-from dose.models import PassThroughEndpoint, Tenant, UserProfile, UserTenantMembership
+from dose.models import Tenant, UserProfile, UserTenantMembership
 
 
 class Command(BaseCommand):
     help = "Bootstrap Site, admin user, and Google SocialApp from environment variables"
-
-    def _seed_passthrough_endpoints(self, tenant_obj):
-        target_schema = (tenant_obj.schema_name or "").strip()
-        if not target_schema or target_schema == "public":
-            return
-
-        fields_to_copy = [
-            f.name for f in PassThroughEndpoint._meta.fields
-            if f.name not in {"id", "created_at"}
-        ]
-
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{target_schema}",public;')
-        target_count = PassThroughEndpoint.objects.count()
-        if target_count > 0:
-            with connection.cursor() as cursor:
-                cursor.execute("SET search_path TO public,pg_catalog")
-            self.stdout.write(
-                f"bootstrap_auth: passthrough endpoints already present in {target_schema} ({target_count})"
-            )
-            return
-
-        source_rows = []
-        source_schema = None
-        candidate_schemas = ["public"]
-        candidate_schemas += list(
-            Tenant.objects.exclude(schema_name__in=["public", target_schema])
-            .values_list("schema_name", flat=True)
-        )
-
-        for schema in candidate_schemas:
-            if not schema:
-                continue
-            with connection.cursor() as cursor:
-                cursor.execute(f'SET search_path TO "{schema}",public;')
-            rows = list(PassThroughEndpoint.objects.all().values(*fields_to_copy))
-            if rows:
-                source_rows = rows
-                source_schema = schema
-                break
-
-        if source_rows:
-            with connection.cursor() as cursor:
-                cursor.execute(f'SET search_path TO "{target_schema}",public;')
-            for row in source_rows:
-                PassThroughEndpoint.objects.create(**row)
-            self.stdout.write(
-                f"bootstrap_auth: seeded {len(source_rows)} passthrough endpoints from {source_schema} -> {target_schema}"
-            )
-        else:
-            self.stdout.write(
-                f"bootstrap_auth: no source passthrough endpoints found to seed {target_schema}"
-            )
-
-        with connection.cursor() as cursor:
-            cursor.execute("SET search_path TO public,pg_catalog")
 
     def handle(self, *args, **options):
         site_domain = os.environ.get("BOOTSTRAP_SITE_DOMAIN", "").strip()
@@ -85,7 +29,6 @@ class Command(BaseCommand):
         tenant_admin_tenant_slug = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_SLUG", "olient").strip()
         tenant_admin_tenant_name = os.environ.get("BOOTSTRAP_TENANT_ADMIN_TENANT_NAME", "").strip()
         tenant_admin_force_password = os.environ.get("BOOTSTRAP_TENANT_ADMIN_FORCE_PASSWORD", "0").strip() == "1"
-        tenant_admin_clone_endpoints = os.environ.get("BOOTSTRAP_TENANT_ADMIN_CLONE_ENDPOINTS", "1").strip() == "1"
 
         user_model = get_user_model()
         existing_admin = user_model.objects.filter(username=admin_username).first()
@@ -208,6 +151,5 @@ class Command(BaseCommand):
                     f"{user_state} -> {tenant_admin_username}, tenant={tenant_obj.slug}, "
                     f"membership={member_state}, profile={profile_state}"
                 )
+        return None
 
-                if tenant_admin_clone_endpoints:
-                    self._seed_passthrough_endpoints(tenant_obj)

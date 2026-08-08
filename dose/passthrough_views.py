@@ -39,14 +39,7 @@ def direct_service_view(request, endpoint_id):
         from django.http import HttpResponseBadRequest
         return HttpResponseBadRequest("Endpoint URL is required")
 
-    # NOTE: trigger_path removed from model. URL built from endpoint_url hostname.
-    # Build the proper passthrough URL: /pt/admin/{hostname}/
-    try:
-        from urllib.parse import urlparse
-        host = urlparse(endpoint.endpoint_url).netloc
-        passthrough_url = f'/pt/admin/{host}/'
-    except:
-        passthrough_url = '/pt/admin/'
+    passthrough_url = endpoint.get_menu_url()
 
     # Debug logging
     logger.info(f"[DIRECT_SERVICE] Endpoint ID: {endpoint_id}, redirecting to: {passthrough_url}")

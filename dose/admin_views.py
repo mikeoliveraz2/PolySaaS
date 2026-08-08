@@ -182,7 +182,7 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
 
     from dose.utils import get_current_tenant
     from dose.models import UserTenantMembership, PassThroughEndpoint
-    from dose.passthrough.registry import get_handler
+    from dose.passthrough.registry import resolve_handler_for_endpoint
     from dose.passthrough.forwarding import forward_request_standardized
     from urllib.parse import urlparse
 
@@ -194,40 +194,24 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
     if not (u.is_superuser or UserTenantMembership.objects.filter(user=u, tenant=tenant).exists()):
         return HttpResponseForbidden("Access denied to this tenant.")
 
-    # Use modern handler discovery system, not legacy get_handler()
-    from dose.passthrough.registry import resolve_handler_for_pt_admin_trigger
-    handler = resolve_handler_for_pt_admin_trigger(endpoint)
+    endpoint_obj = None
+    for candidate in PassThroughEndpoint.objects.filter(is_enabled=True):
+        if urlparse(candidate.endpoint_url or '').netloc.lower() == endpoint.lower():
+            endpoint_obj = candidate
+            break
+    if endpoint_obj is None:
+        raise Http404('No enabled tenant PassThroughEndpoint matches this host.')
+
+    endpoint_url = endpoint_obj.endpoint_url
+    handler = resolve_handler_for_endpoint(endpoint_obj)
+    if handler and hasattr(handler, 'endpoint'):
+        handler.endpoint = endpoint_obj
 
     if handler and hasattr(handler, 'handle_request'):
         print(f"[VIEW] Using handler: {handler.__class__.__name__}")
         response = handler.handle_request(request, subpath)
         if response is not None:
             return response
-
-    # Look up PassThroughEndpoint by slug first — the slug IS the endpoint parameter.
-    # This gives us the real upstream URL stored at provisioning time.
-    from dose.models import PassThroughEndpoint as _PTE
-    endpoint_obj = _PTE.objects.filter(slug=endpoint, is_enabled=True).first()
-    if endpoint_obj:
-        endpoint_url = endpoint_obj.endpoint_url
-        print(f"[VIEW] Resolved by slug '{endpoint}' -> {endpoint_url}")
-        if handler and hasattr(handler, 'endpoint'):
-            handler.endpoint = endpoint_obj
-    else:
-        # Slug not found — fall back to treating endpoint as a hostname
-        endpoint_url = f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint
-        print(f"[VIEW] No slug match for '{endpoint}', falling back to {endpoint_url}")
-        try:
-            from urllib.parse import urlparse as _urlparse
-            host = _urlparse(endpoint_url).netloc.lower()
-            endpoint_obj = _PTE.objects.filter(endpoint_url__icontains=host).first()
-            if endpoint_obj:
-                endpoint_url = endpoint_obj.endpoint_url
-                if handler and hasattr(handler, 'endpoint'):
-                    handler.endpoint = endpoint_obj
-                print(f"[VIEW] Resolved by hostname '{host}' -> {endpoint_url}")
-        except Exception as _e:
-            print(f"[VIEW] Hostname fallback failed: {_e}")
 
     print(f"[VIEW] Using generic forwarder for '{endpoint}' -> {endpoint_url}")
     

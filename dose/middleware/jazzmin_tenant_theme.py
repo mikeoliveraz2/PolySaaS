@@ -119,7 +119,7 @@ class JazzminTenantThemeMiddleware(DebugStackMiddleware, MiddlewareMixin):  # â†
                 for endpoint in passthrough_endpoints:
                     # Don't add duplicates - check if this URL already exists in static config
                     existing_urls = [link.get('url', '') for link in topmenu_links if 'url' in link]
-                    # Use slug-based passthrough URL (/pt/admin/<slug>/) â€” handler resolves upstream
+                    # endpoint_url host + starting_uri are the complete menu route.
                     full_url = endpoint.get_menu_url()
                     if full_url not in existing_urls:
                         menu_link = {

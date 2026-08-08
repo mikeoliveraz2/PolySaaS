@@ -141,16 +141,11 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _odoo_proxy_prefix_from_endpoint(endpoint) -> str:
-        # Owner-approved 2026-08-02: slug is URL identity; upstream stays endpoint_url.
         if hasattr(endpoint, "get_proxy_prefix"):
             return endpoint.get_proxy_prefix().rstrip("/")
-        slug = (getattr(endpoint, "slug", None) or "").strip().strip("/")
-        if slug:
-            return f"/pt/admin/{slug}"
         url = getattr(endpoint, "endpoint_url", "") or ""
         parsed = urlparse(url)
-        seg = parsed.netloc or "odoo"
-        return f"/pt/admin/{seg}"
+        return f"/pt/admin/{parsed.netloc}" if parsed.netloc else "/pt/admin"
 
     @staticmethod
     def _odoo_endpoint_is_odoo(endpoint) -> bool:

@@ -35,7 +35,7 @@ from django.db import connection, transaction
 from django.utils.text import slugify
 
 from dose.management.schema_utils import tenant_schema_disallowed_reason
-from dose.models import PassThroughEndpoint, Tenant, UserProfile, UserTenantMembership
+from dose.models import Tenant, UserProfile, UserTenantMembership
 
 User = get_user_model()
 
@@ -45,64 +45,6 @@ ROLE_MAP = {
     "member": UserTenantMembership.Role.MEMBER,
     "viewer": UserTenantMembership.Role.VIEWER,
 }
-
-
-def _seed_passthrough_endpoints(stdout, tenant_obj: Tenant) -> None:
-    """Copy passthrough rows from a donor schema into the tenant schema (same idea as bootstrap_auth)."""
-    target_schema = (tenant_obj.schema_name or "").strip()
-    if not target_schema or target_schema.lower() == "public":
-        return
-
-    fields_to_copy = [
-        f.name
-        for f in PassThroughEndpoint._meta.fields
-        if f.name not in {"id", "created_at"}
-    ]
-
-    with connection.cursor() as cursor:
-        cursor.execute(f'SET search_path TO "{target_schema}",public;')
-    target_count = PassThroughEndpoint.objects.count()
-    if target_count > 0:
-        with connection.cursor() as cursor:
-            cursor.execute("SET search_path TO public,pg_catalog")
-        stdout.write(
-            f"Passthrough endpoints already present in {target_schema} ({target_count}); skip seed."
-        )
-        return
-
-    source_rows = []
-    source_schema = None
-    candidate_schemas = ["public"]
-    candidate_schemas += list(
-        Tenant.objects.exclude(schema_name__in=["public", target_schema]).values_list(
-            "schema_name", flat=True
-        )
-    )
-
-    for schema in candidate_schemas:
-        if not schema:
-            continue
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{schema}",public;')
-        rows = list(PassThroughEndpoint.objects.all().values(*fields_to_copy))
-        if rows:
-            source_rows = rows
-            source_schema = schema
-            break
-
-    if source_rows:
-        with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{target_schema}",public;')
-        for row in source_rows:
-            PassThroughEndpoint.objects.create(**row)
-        stdout.write(
-            f"Seeded {len(source_rows)} passthrough endpoints from {source_schema} -> {target_schema}"
-        )
-    else:
-        stdout.write(f"No donor passthrough rows found; left {target_schema} empty.")
-
-    with connection.cursor() as cursor:
-        cursor.execute("SET search_path TO public,pg_catalog")
 
 
 class Command(BaseCommand):
@@ -152,11 +94,6 @@ class Command(BaseCommand):
             "--no-migrate",
             action="store_true",
             help="After creating a new tenant, skip migrate_all_schemas (you must run it yourself).",
-        )
-        parser.add_argument(
-            "--no-passthrough-seed",
-            action="store_true",
-            help="Do not copy passthrough template rows into the new tenant schema.",
         )
         parser.add_argument(
             "--reset-password",
@@ -251,8 +188,6 @@ class Command(BaseCommand):
             )
             if created_tenant and not options["no_migrate"]:
                 self.stdout.write(self.style.WARNING("[dry-run] Would run migrate_all_schemas"))
-            if created_tenant and not options["no_passthrough_seed"]:
-                self.stdout.write(self.style.WARNING("[dry-run] Would seed passthrough endpoints"))
             return
 
         if created_tenant and not dry and tenant is not None and not options["no_migrate"]:
@@ -261,9 +196,6 @@ class Command(BaseCommand):
 
         if tenant is None:
             raise CommandError("Internal error: tenant is None after creation.")
-
-        if created_tenant and not options["no_passthrough_seed"]:
-            _seed_passthrough_endpoints(self.stdout, tenant)
 
         with connection.cursor() as cursor:
             cursor.execute("SET search_path TO public, pg_catalog")

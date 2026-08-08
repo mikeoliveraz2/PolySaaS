@@ -62,9 +62,7 @@ def _odoo_sso_api_inner(request):
 
     parsed = urlparse(endpoint.endpoint_url)
     odoo_base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    # Owner-approved 2026-08-02: redirect via slug identity
-    _slug = (endpoint.slug or "").strip() or parsed.netloc
-    redirect_url = f"/pt/admin/{_slug}/web"
+    redirect_url = endpoint.get_menu_url()
 
     # Get credentials from TenantApp.extra_config (set during subscription)
     ta = TenantApp.objects.filter(tenant=tenant, app_name='odoo').first()

@@ -1543,14 +1543,14 @@ try {{
         return login_id, password, team_name
 
     def _mm_proxy_prefix_from_request(self, request, endpoint=None) -> str:
-        """Build /pt/admin|<dose>/<slug> from the request (slug identity; keep shell)."""
+        """Use the request's exact host segment, falling back to the endpoint row."""
         parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         if len(parts) >= 3 and parts[0] == 'pt' and parts[1] in ('admin', 'dose'):
             return f"/pt/{parts[1]}/{parts[2]}"
         ep = endpoint or getattr(request, '_passthrough_endpoint', None)
-        slug = (getattr(ep, 'slug', None) or 'mattermost')
-        slug = str(slug).strip().strip('/') or 'mattermost'
-        return f"/pt/admin/{slug}"
+        if ep is not None and hasattr(ep, 'get_proxy_prefix'):
+            return ep.get_proxy_prefix().rstrip('/')
+        return '/pt/admin'
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")

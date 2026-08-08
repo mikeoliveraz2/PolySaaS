@@ -106,13 +106,10 @@ _NC_PARTIAL_PT_PREFIXES = (
 
 
 def _nc_proxy_prefix_from_endpoint(endpoint) -> str:
-    # Owner-approved 2026-08-02: slug is URL identity (not trigger_path / hostname).
     if hasattr(endpoint, "get_proxy_prefix"):
         return endpoint.get_proxy_prefix().rstrip("/")
-    slug = (getattr(endpoint, "slug", None) or "").strip().strip("/")
-    if slug:
-        return f"/pt/admin/{slug}"
-    return "/pt/admin/nextcloud"
+    host = urlparse(getattr(endpoint, "endpoint_url", "") or "").netloc
+    return f"/pt/admin/{host}" if host else "/pt/admin"
 
 
 def _nc_netloc_variants(endpoint_url: str) -> tuple:
