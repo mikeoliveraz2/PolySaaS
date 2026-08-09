@@ -13,6 +13,9 @@
 2. Identity = endpoint string only (`PassThroughEndpoint.endpoint_url` / host).
    No endpoint ID in PolySniffer URLs, UI, session keys, capture names,
    commands, manifests, or tests as public identity. DB PKs internal only.
+   `public` never participates in endpoint lookup, fallback, or merging. The
+   eight bundled apps are valid only after their rows are copied into and
+   owned by the tenant schema.
 3. Native = raw: no production handler resolve, no processors, no HTML/string
    rewrite before capture. Learn then generate — not assume then navigate.
 4. Viewport isolation required; mechanism UNDECIDED (not iframe by default).
@@ -57,3 +60,43 @@ that row’s `endpoint_url`; user navigates and captures.
 - Certify Odoo, then Zoho same workflow
 
 Owner: Mike Oliver. Implementation peer must not expand scope.
+
+_______________________________________________________________
+The steps 1-7
+**Anticipated Step B**
+
+1. **Synchronize**
+   - Pull `main`.
+   - Confirm no newer handoff or conflicting work from Shela.
+
+2. **Trace the existing Admin action**
+   - Follow the “PolySniffer” link from the `PassThroughEndpoint` admin row to the workspace.
+   - Identify the smallest remaining place where the database ID is used as public identity.
+
+3. **Change the open path**
+   - Build the Admin link from that row’s `endpoint_url` host.
+   - Route using the endpoint host string, never the row ID or slug.
+   - Resolve the exact endpoint inside the active tenant schema.
+   - Return 404 for an unknown endpoint instead of falling back or translating to an ID.
+
+4. **Open the existing workspace**
+   - Supply the selected row’s unchanged `endpoint_url` to the current workspace.
+   - Preserve the current workspace UI and navigation behavior.
+   - Do not touch Native rewriting, isolation, capture generation, or unrelated routes.
+
+5. **Add focused coverage**
+   - Admin link contains the endpoint host, not its PK.
+   - Clicking it opens the workspace for the correct `endpoint_url`.
+   - Changing the row ID or slug does not change the link.
+   - Unknown or cross-tenant endpoint hosts are rejected.
+
+6. **Validate**
+   - Run the focused Admin-to-workspace tests.
+   - Run all seven locked architecture tests.
+   - Report exactly which tests pass and which intentional failures remain.
+
+7. **Hand back**
+   - List changed files.
+   - Update HANDOFF.md with Step B’s result.
+   - Commit and push.
+   - Stop before any next architectural step.

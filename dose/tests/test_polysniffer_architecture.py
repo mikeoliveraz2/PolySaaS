@@ -499,6 +499,21 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         self.assertNotIn("/admin/polysniffer/sniff/17/", str(source))
         self.assertIn("schema=tenant_alpha", str(source))
 
+    def test_endpoint_resolver_search_paths_never_include_public(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "polysniffer"
+            / "views"
+            / "core.py"
+        ).read_text(encoding="utf-8")
+        mixed_search_paths = [
+            line.strip()
+            for line in source.splitlines()
+            if "SET search_path" in line and "public" in line.lower()
+        ]
+
+        self.assertEqual(mixed_search_paths, [])
+
     @patch("dose.polysniffer.views.core.get_current_tenant")
     @patch("dose.models.Tenant.objects.filter")
     def test_explicit_unknown_schema_never_falls_back_to_session_tenant(
@@ -552,7 +567,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         self.assertIs(request.tenant, tenant)
         self.assertEqual(request.schema_name, "tenant_alpha")
         cursor.execute.assert_called_once_with(
-            'SET search_path TO "tenant_alpha",public;'
+            'SET search_path TO "tenant_alpha";'
         )
         set_tenant_in_session.assert_called_once_with(request, tenant)
 

@@ -123,7 +123,7 @@ def get_endpoint_any_schema(endpoint_id, request=None):
 
         try:
             with connection.cursor() as cursor:
-                cursor.execute(f'SET search_path TO "{owning_tenant.schema_name}",public;')
+                cursor.execute(f'SET search_path TO "{owning_tenant.schema_name}";')
             endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
         except Exception as exc:
             raise Http404("PolySniffer endpoint lookup failed") from exc
@@ -144,7 +144,7 @@ def get_endpoint_any_schema(endpoint_id, request=None):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}";')
             endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
             if endpoint:
                 return endpoint
@@ -170,7 +170,7 @@ def get_endpoint_by_host(endpoint_host, request=None):
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}";')
         matches = [
             endpoint for endpoint in PassThroughEndpoint.objects.all()
             if urlparse((endpoint.endpoint_url or '').strip()).netloc == endpoint_host
