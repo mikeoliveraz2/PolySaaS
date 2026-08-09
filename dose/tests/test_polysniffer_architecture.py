@@ -59,6 +59,14 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         for shell_element in ('class="topbar"', 'class="split"', 'id="captures"'):
             self.assertEqual(native_html.count(shell_element), passthrough_html.count(shell_element))
 
+    def test_start_reserves_an_isolated_top_level_app_window(self):
+        html = self._render_shell("")
+
+        self.assertIn("window.open('about:blank', '_blank')", html)
+        self.assertIn("appWindow.opener = null", html)
+        self.assertIn("appWindow.location.replace", html)
+        self.assertNotIn("<iframe", html.lower())
+
     def test_mode_viewports_use_separate_native_and_passthrough_proxies(self):
         native_url = "https://example.test/web"
         passthrough_url = "/pt/admin/example.test/web"

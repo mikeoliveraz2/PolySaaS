@@ -93,6 +93,8 @@
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
     const pollUrl = '{{ poll_url|escapejs }}';
+    const nativeLaunchUrl = '{{ upstream_browse_url|escapejs }}';
+    const passthroughLaunchUrl = '/pt/admin/' + endpointHost + '{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let count = 0;
@@ -102,14 +104,24 @@
     function modeUrl(mode) { return workspaceUrl + '/workspace/' + mode + '/'; }
 
     window.startSession = async function(mode) {
+        const appWindow = window.open('about:blank', '_blank');
+        if (!appWindow) {
+            alert('Allow pop-ups for this site to open the isolated app window.');
+            return;
+        }
+        appWindow.opener = null;
         try {
             const form = new FormData();
             form.append('mode', mode);
             const response = await fetch(workspaceUrl + '/session/start/', {method: 'POST', body: form, credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
+            appWindow.location.replace(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl);
             window.location.replace(modeUrl(mode));
-        } catch (error) { alert(error.message); }
+        } catch (error) {
+            appWindow.close();
+            alert(error.message);
+        }
     };
 
     window.stopSession = async function() {

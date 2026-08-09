@@ -66,7 +66,7 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
         if not frame_subpath.startswith("/"):
             frame_subpath = f"/{frame_subpath}"
         app_launch_url = (
-            f"{endpoint.get_proxy_prefix(surface='admin').rstrip('/')}"
+            f"{endpoint.get_proxy_prefix().rstrip('/')}"
             f"{frame_subpath}"
         )
     workspace_prefix = f"/admin/polysniffer/sniff/{endpoint_host}"

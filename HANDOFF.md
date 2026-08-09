@@ -9,11 +9,14 @@
 - Native purity DONE: Native forwarding sends the exact endpoint URL upstream
    and returns the raw body, status, headers, and redirect location without
    production handlers, processors, or rewrite helpers.
+- Isolation boundary DONE: Start reserves a separate top-level browser window
+   before the asynchronous session request, removes its opener, and navigates
+   it to the Native or Passthrough app while Admin remains the control plane.
 - Locked architecture tests: 7 run, 4 pass, 2 intentional failures and 1
    missing-file error remain (endpoint-ID routes, legacy numeric happy-path
    tests, missing browser-capture command).
 - Board frozen. No next step is authorized.
-- No isolation mechanism chosen. No Native rewrite work. No generator work.
+- No HAR/CDP work. No generator work.
 
 ## LOCKED RULES (non-negotiable)
 1. PolySniffer exists ONLY in Admin — not DOSE, not `/pt/dose/`, not end-user PT.
@@ -26,7 +29,7 @@
    from `public`; `PassThroughEndpoint` is then read from the tenant schema only.
 3. Native = raw: no production handler resolve, no processors, no HTML/string
    rewrite before capture. Learn then generate — not assume then navigate.
-4. Viewport isolation required; mechanism UNDECIDED (not iframe by default).
+4. Viewport isolation uses a separate top-level browser window. No iframe.
 5. Piccolo passo: one authorized change → validate → stop. No drive-by scope.
 
 ## WORKFLOW (the product contract)
@@ -43,6 +46,20 @@ that row’s `endpoint_url`; user navigates and captures.
 
 ## NEXT STEP
 None authorized. Stop until the owner selects the next micro-step.
+
+## COMPLETED STEP — ISOLATION BOUNDARY
+- Owner-selected mechanism: separate top-level browser window.
+- Start reserves the app window synchronously before `fetch`, so popup blockers
+   do not race the asynchronous session request.
+- The app window has no opener and receives the Native or Passthrough launch
+   URL; the original Admin page remains the workspace/control plane.
+- A failed session start closes the reserved app window.
+- Focused isolation tests: 4 passed.
+- Browser result: PASS. Native capture started in the tenant-owned workspace,
+   Admin remained open separately, and the temporary endpoint was removed.
+- Files changed: `dose/polysniffer/views/sniff_v2_workspace.py`,
+   `dose/templates/polysniffer/sniff_workspace.html`,
+   `dose/tests/test_polysniffer_architecture.py`, and `HANDOFF.md`.
 
 ## COMPLETED STEP — NATIVE PURITY
 - Removed endpoint-specific URL mutation and Native handler registration.
