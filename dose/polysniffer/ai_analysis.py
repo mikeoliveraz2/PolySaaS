@@ -6,36 +6,49 @@ import json
 import re
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
-from django.db.models import Q
-
-
-def analyze_polysniffer_capture(endpoint_id):
+def analyze_polysniffer_capture(endpoint_host, capture_session_id):
     """
-    Analyze PolySniffer captures for an endpoint and generate handler code.
+    Analyze one completed Native capture session and generate draft handler code.
 
     Returns structured analysis that AI can use to generate handlers.
     """
     from dose.models import PassThroughEndpoint
-    from .models import TrafficLog
+    from .models import TrafficCapture, TrafficLog
 
-    endpoint = PassThroughEndpoint.objects.get(id=endpoint_id)
+    endpoint_matches = [
+        endpoint
+        for endpoint in PassThroughEndpoint.objects.all()
+        if urlparse((endpoint.endpoint_url or "").strip()).netloc == endpoint_host
+    ]
+    if len(endpoint_matches) != 1:
+        raise ValueError("Endpoint host must identify exactly one tenant endpoint")
+    endpoint = endpoint_matches[0]
 
-    captures = TrafficLog.objects.none()
-    search_terms = [t for t in [endpoint.trigger_path, endpoint.endpoint_url] if t]
-    for term in search_terms:
-        captures = captures | TrafficLog.objects.filter(endpoint_name__icontains=term)
-        captures = captures | TrafficLog.objects.filter(url__icontains=term)
-    captures = captures.distinct().order_by('captured_at')
+    capture_session = TrafficCapture.objects.filter(
+        id=capture_session_id,
+        is_active=False,
+        capture_name__startswith=f"{endpoint_host}-native-",
+    ).first()
+    if capture_session is None:
+        raise ValueError("Select a completed Native capture session for this endpoint")
+
+    captures = TrafficLog.objects.filter(
+        capture_session=capture_session,
+        capture_source=TrafficLog.CAPTURE_NATIVE,
+    ).order_by('captured_at')
 
     if not captures.exists():
         return {
-            "error": "No captures found for this endpoint",
-            "suggestion": "Use the PolySniffer Chrome extension to capture traffic, then try again"
+            "error": "No Native traffic found in the selected capture session",
+            "capture_session_id": capture_session_id,
+            "tenant_schema": capture_session.tenant.schema_name,
         }
 
     analysis = {
-        "endpoint_id": endpoint_id,
+        "endpoint_host": endpoint_host,
         "endpoint_url": endpoint.endpoint_url,
+        "capture_session_id": capture_session_id,
+        "tenant_schema": capture_session.tenant.schema_name,
         "base_url": extract_base_url(endpoint.endpoint_url),
         "authentication": analyze_authentication_flow(captures),
         "request_patterns": analyze_request_patterns(captures),
@@ -329,8 +342,9 @@ def generate_handler_code(analysis, endpoint):
     base_url = analysis["base_url"]
     cookies = analysis.get("cookie_analysis", {})
     
-    # Determine app name from trigger path
-    app_name = (endpoint.trigger_path or "app").strip("/").lower().replace("-", "_")
+    endpoint_host = urlparse(endpoint.endpoint_url).netloc
+    endpoint_hostname = urlparse(endpoint.endpoint_url).hostname or "app"
+    app_name = re.sub(r"\W+", "_", endpoint_hostname.lower()).strip("_") or "app"
     class_name = "".join(word.title() for word in app_name.split("_")) + "PassthroughHandler"
     
     # Identify session cookies from analysis
@@ -351,7 +365,7 @@ def generate_handler_code(analysis, endpoint):
 # This handler provides:
 # - SSO/auto-login via get_upstream_cookies()
 # - URL rewriting and shim injection via process_html_response()
-# - All traffic flows through /pt/admin/{app_name}/ for PolySniffer capture
+# - All traffic flows through /pt/admin/{endpoint_host}/ for PolySniffer capture
 
 import json
 import logging
@@ -488,11 +502,11 @@ class {class_name}:
     def _inject_client_shim(self, html, base_origin, request):
         """
         Inject JavaScript shim that:
-        - Rewrites all URLs to go through /pt/admin/{app_name}/
+        - Rewrites all URLs to go through /pt/admin/{endpoint_host}/
         - Patches fetch, XHR, WebSocket to use proxy
         - Seeds session token for SPA authentication
         """
-        proxy_prefix = "/pt/admin/{app_name}"
+        proxy_prefix = "/pt/admin/{endpoint_host}"
         
         shim = """
 <script data-polysaas-{app_name}-shim="1">
@@ -622,11 +636,9 @@ class {class_name}:
     return handler_code
 
 
-def generate_handler_from_captures(endpoint_id):
+def generate_handler_from_captures(endpoint_host, capture_session_id):
     """
-    Main entry point: Analyze captures and generate handler code.
-    Returns analysis + generated code.
+    Return a reviewable draft generated from one completed Native session.
     """
-    analysis = analyze_polysniffer_capture(endpoint_id)
-    return analysis
+    return analyze_polysniffer_capture(endpoint_host, capture_session_id)
 

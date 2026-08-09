@@ -21,7 +21,7 @@ def generate_structured_capture(endpoint, traffic_logs=None):
     # Get all captures for this endpoint if not provided
     if traffic_logs is None:
         traffic_logs = TrafficLog.objects.filter(
-            endpoint_name__icontains=endpoint.trigger_path or endpoint.endpoint_url
+            endpoint_name__icontains=urlparse(endpoint.endpoint_url).netloc
         ).order_by('captured_at')
     
     # Extract base URL
@@ -44,7 +44,7 @@ def generate_structured_capture(endpoint, traffic_logs=None):
     patterns = extract_patterns(traffic_logs)
     
     structured_capture = {
-        "endpoint_id": f"{endpoint.trigger_path or 'endpoint'}_{endpoint.id}",
+        "endpoint_host": parsed_url.netloc,
         "app_name": app_name,
         "base_url": base_url,
         "endpoint_url": endpoint.endpoint_url,
@@ -61,9 +61,9 @@ def generate_structured_capture(endpoint, traffic_logs=None):
 
 
 def detect_app_name(endpoint):
-    """Detect application name from endpoint URL or trigger path"""
+    """Detect application name from the endpoint URL."""
     url_lower = endpoint.endpoint_url.lower()
-    path_lower = (endpoint.trigger_path or "").lower()
+    path_lower = urlparse(endpoint.endpoint_url).path.lower()
     
     if 'osticket' in url_lower or 'osticket' in path_lower or '/scp/' in url_lower:
         return "OS Ticket"

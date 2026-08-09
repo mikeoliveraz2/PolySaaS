@@ -108,7 +108,7 @@ class PolySnifferLockedArchitectureTests(SimpleTestCase):
         findings = _matches(
             "dose/tests/test_polysniffer_architecture.py",
             [
-                r"/dose/sniff/\d+(?:/|['\"])",
+                r"/dose/sniff/",
                 r"/admin/polysniffer/[^'\"]*/\d+(?:/|['\"])",
                 r"/pt/dose/\d+(?:/|['\"])",
             ],
@@ -118,8 +118,9 @@ class PolySnifferLockedArchitectureTests(SimpleTestCase):
         self.assertEqual(
             findings,
             [],
-            "PolySniffer happy paths must use endpoint strings; numeric examples "
-            "belong only in explicit rejection tests:\n" + "\n".join(findings),
+            "PolySniffer happy paths must use Admin endpoint-host URLs; /dose/ "
+            "and numeric examples belong only in explicit rejection tests:\n"
+            + "\n".join(findings),
         )
 
     def test_native_path_has_no_handler_processor_or_rewrite_dependency(self):

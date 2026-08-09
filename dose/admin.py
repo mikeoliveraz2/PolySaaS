@@ -508,6 +508,18 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
             endpoint = self.get_object(request, object_id)
             extra_context = dict(extra_context or {})
             extra_context['polysniffer_url'] = self._polysniffer_url(endpoint)
+            if endpoint and endpoint.endpoint_url:
+                from urllib.parse import urlparse
+                from dose.polysniffer.models import TrafficCapture
+
+                endpoint_host = urlparse(endpoint.endpoint_url).netloc
+                extra_context['polysniffer_endpoint_host'] = endpoint_host
+                extra_context['polysniffer_native_sessions'] = (
+                    TrafficCapture.objects.filter(
+                        is_active=False,
+                        capture_name__startswith=f'{endpoint_host}-native-',
+                    ).order_by('-created_at')[:20]
+                )
             return super().change_view(request, object_id, form_url, extra_context)
         except Exception as exc:
             import logging

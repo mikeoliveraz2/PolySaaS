@@ -24,9 +24,9 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
             "mode": mode,
             "active_session": SimpleNamespace(capture_name=f"ep17-{mode}"),
             "app_launch_url": f"/example/{mode}/",
-            "poll_url": f"/dose/sniff/example.test/workspace/poll/?mode={mode}",
-            "diff_url": "/dose/sniff/example.test/diff/",
-            "export_url": "/dose/sniff/example.test/export-har/",
+            "poll_url": f"/admin/polysniffer/sniff/example.test/workspace/poll/?mode={mode}",
+            "diff_url": "/admin/polysniffer/sniff/example.test/diff/",
+            "export_url": "/admin/polysniffer/sniff/example.test/export-har/",
             "browse_subpath": "/",
             "upstream_browse_url": "https://example.test/",
         }
@@ -103,7 +103,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         }
         for mode, expected_url in expected_urls.items():
             with self.subTest(mode=mode):
-                request = RequestFactory().get("/dose/sniff/example.test/")
+                request = RequestFactory().get("/admin/polysniffer/sniff/example.test/")
                 request.user = SimpleNamespace(
                     is_active=True,
                     is_staff=True,
@@ -357,7 +357,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
             cookies={},
             is_redirect=False,
         )
-        request = RequestFactory().get("/dose/sniff/17/native/")
+        request = RequestFactory().get("/admin/polysniffer/sniff/example.test/native/")
         request.user = SimpleNamespace(is_authenticated=True)
         request.tenant = None
         request.session = {}
@@ -390,7 +390,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
             is_redirect=False,
         )
         request = RequestFactory().get(
-            "/dose/sniff/17/native/api/v4/config/client"
+            "/admin/polysniffer/sniff/example.test/native/api/v4/config/client"
         )
         request.user = SimpleNamespace(is_authenticated=True)
         request.tenant = None
@@ -426,7 +426,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
             cookies={},
             is_redirect=True,
         )
-        request = RequestFactory().get("/dose/sniff/17/native/")
+        request = RequestFactory().get("/admin/polysniffer/sniff/example.test/native/")
         request.user = SimpleNamespace(is_authenticated=True)
         request.tenant = None
         request.session = {}
@@ -454,7 +454,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         get_endpoint.return_value = endpoint
         get_capture.return_value = SimpleNamespace(capture_name="example.test-native")
         render_workspace.return_value = HttpResponse("workspace")
-        request = RequestFactory().get("/dose/sniff/example.test/")
+        request = RequestFactory().get("/admin/polysniffer/sniff/example.test/")
         request.user = SimpleNamespace(
             is_active=True,
             is_staff=True,
@@ -534,7 +534,9 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         from dose.polysniffer.views.core import get_endpoint_by_host
 
         tenant_filter.return_value.first.return_value = None
-        request = RequestFactory().get("/dose/sniff/example.test/?schema=missing_tenant")
+        request = RequestFactory().get(
+            "/admin/polysniffer/sniff/example.test/?schema=missing_tenant"
+        )
         request.user = SimpleNamespace(is_staff=True)
         request.session = {"tenant_slug": "different-tenant"}
 
@@ -571,7 +573,9 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         all_endpoints.return_value = [endpoint]
         cursor = MagicMock()
         core_connection.cursor.return_value.__enter__.return_value = cursor
-        request = RequestFactory().get("/dose/sniff/example.test/?schema=tenant_alpha")
+        request = RequestFactory().get(
+            "/admin/polysniffer/sniff/example.test/?schema=tenant_alpha"
+        )
         request.user = SimpleNamespace(is_staff=True)
         request.session = {}
 

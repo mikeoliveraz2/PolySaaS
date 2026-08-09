@@ -14,11 +14,13 @@
    it to the Native or Passthrough app while Admin remains the control plane.
 - Browser-level HAR DONE: the host-identified command captures Playwright HAR
    and separate CDP WebSocket evidence for one explicit tenant capture session.
-- Locked architecture tests: 7 run, 4 pass and 3 known failures remain
-   (endpoint-ID routes, legacy numeric happy-path tests, and the pre-existing
-   generator-side `structured_capture.py` endpoint-ID artifact).
+- Handler draft generation DONE: Admin requires one selected completed Native
+   session, generates a reviewable host-identified draft, and never saves it.
+- Legacy identity cleanup DONE: removed active endpoint-ID PolySniffer routes,
+   the numeric Auto-Login action, and all `/dose/sniff/` happy-path fixtures.
+- Locked architecture tests: 7/7 pass. Full architecture tests: 22/22 pass.
 - Board frozen. No next step is authorized.
-- No handler-generator work.
+- No Odoo or Zoho certification work.
 
 ## LOCKED RULES (non-negotiable)
 1. PolySniffer exists ONLY in Admin — not DOSE, not `/pt/dose/`, not end-user PT.
@@ -34,6 +36,16 @@
 4. Viewport isolation uses a separate top-level browser window. No iframe.
 5. Piccolo passo: one authorized change → validate → stop. No drive-by scope.
 
+## COMPLETED STEP — LEGACY IDENTITY CLEANUP
+- The active Admin URL configuration has no endpoint-ID PolySniffer routes.
+- The endpoint Admin opens only its canonical host-identified workspace; the
+   legacy numeric Auto-Login control and route were removed.
+- Active architecture fixtures use `/admin/polysniffer/sniff/{host}/...` only.
+- The locked suite rejects every `/dose/sniff/` happy-path string and every
+   integer endpoint route declaration.
+- Validation: locked architecture 7/7, full architecture 22/22, Django checks
+   and editor diagnostics clean.
+
 ## WORKFLOW (the product contract)
 1. Admin → PassThrough Endpoint row
 2. Click PolySniffer
@@ -48,6 +60,26 @@ that row’s `endpoint_url`; user navigates and captures.
 
 ## NEXT STEP
 None authorized. Stop until the owner selects the next micro-step.
+
+## COMPLETED STEP — HANDLER DRAFT GENERATION
+- Analysis accepts only an explicit endpoint host and capture-session ID.
+- The selected session must be inactive and named for that host in Native mode;
+   only `TrafficLog.CAPTURE_NATIVE` rows from that exact session are analyzed.
+- The endpoint Admin lists completed Native sessions and renders generated code
+   as a reviewable draft. It does not mutate or save the endpoint.
+- Generated handler and structured-capture identity now derive from
+   `endpoint_url` host, with no endpoint PK or removed `trigger_path` fallback.
+- Focused generator tests: 2 passed. Django checks and diagnostics clean.
+- Browser result: PASS. Session `4` generated an HTTP 200 draft in-place; the
+   endpoint remained unchanged (`draft_persisted=False`).
+- Runtime result: PASS. A temporary `t104` Native session produced a
+   `form_based` analysis and nonempty handler draft; all temporary rows were
+   removed afterward.
+- Files changed: `dose/polysniffer/ai_analysis.py`,
+   `dose/polysniffer/views_ai.py`, `dose/polysniffer/structured_capture.py`,
+   `dose/admin.py`,
+   `dose/templates/admin/dose/passthroughendpoint/change_form.html`, and
+   `HANDOFF.md`.
 
 ## COMPLETED STEP — BROWSER-LEVEL HAR
 - Added `capture_polysniffer_browser` with explicit tenant schema, endpoint
@@ -117,10 +149,7 @@ None authorized. Stop until the owner selects the next micro-step.
 - Files changed: `dose/polysniffer/views/core.py`,
    `dose/tests/test_polysniffer_architecture.py`, and `HANDOFF.md`.
 
-## REMAINING AFTER B (not authorized yet)
-- Isolation boundary (mechanism TBD by owner)
-- Browser-level HAR (Playwright/CDP) when authorized
-- Handler generation from selected Native session only
+## REMAINING (not authorized yet)
 - Certify Odoo, then Zoho same workflow
 
 Owner: Mike Oliver. Implementation peer must not expand scope.
