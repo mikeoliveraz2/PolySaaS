@@ -364,6 +364,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
 
         resolve_handler.assert_not_called()
         generic_rewrite.assert_not_called()
+        _get_capture.assert_called_once_with(request, "example.test")
         self.assertEqual(response.content, b"RAW-UPSTREAM")
 
     @patch("dose.polysniffer.sniff_forward.log_requests_response")

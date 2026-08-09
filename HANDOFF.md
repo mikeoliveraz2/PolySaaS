@@ -6,9 +6,12 @@
 - Step B DONE: Admin PolySniffer action opens the single workspace using the
    selected tenant row's `endpoint_url` host. Browser verified with
    `/admin/polysniffer/sniff/example.test/?schema=t104`.
-- Locked architecture tests: 7 run, 3 pass, 3 intentional failures and 1
-   missing-file error remain (endpoint IDs, Native rewrite import, legacy
-   numeric happy-path tests, missing browser-capture command).
+- Native purity DONE: Native forwarding sends the exact endpoint URL upstream
+   and returns the raw body, status, headers, and redirect location without
+   production handlers, processors, or rewrite helpers.
+- Locked architecture tests: 7 run, 4 pass, 2 intentional failures and 1
+   missing-file error remain (endpoint-ID routes, legacy numeric happy-path
+   tests, missing browser-capture command).
 - Board frozen. No next step is authorized.
 - No isolation mechanism chosen. No Native rewrite work. No generator work.
 
@@ -41,6 +44,14 @@ that row’s `endpoint_url`; user navigates and captures.
 ## NEXT STEP
 None authorized. Stop until the owner selects the next micro-step.
 
+## COMPLETED STEP — NATIVE PURITY
+- Removed endpoint-specific URL mutation and Native handler registration.
+- Removed body, response-header, and redirect-location rewrites.
+- Native capture lookup uses the endpoint host instead of the database PK.
+- Raw-forwarding tests: 4 passed.
+- Files changed: `dose/polysniffer/sniff_forward.py`,
+  `dose/tests/test_polysniffer_architecture.py`, and `HANDOFF.md`.
+
 ## IN SCOPE
 - Smallest change so Admin click → workspace for clicked endpoint’s URL string
 - Only what that open path strictly requires
@@ -70,7 +81,6 @@ None authorized. Stop until the owner selects the next micro-step.
    `dose/tests/test_polysniffer_architecture.py`, and `HANDOFF.md`.
 
 ## REMAINING AFTER B (not authorized yet)
-- Native purity (no rewrite on forward path)
 - Isolation boundary (mechanism TBD by owner)
 - Browser-level HAR (Playwright/CDP) when authorized
 - Handler generation from selected Native session only
