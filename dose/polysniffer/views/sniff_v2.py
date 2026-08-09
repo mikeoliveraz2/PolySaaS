@@ -22,7 +22,7 @@ from dose.polysniffer.har_capture import body_hash, get_active_capture_session
 from dose.polysniffer.models import TrafficCapture, TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.polysniffer.sniff_forward import forward_sniff_native
-from dose.polysniffer.views.core import get_endpoint_any_schema
+from dose.polysniffer.views.core import get_endpoint_by_host, get_endpoint_any_schema
 from dose.utils import get_current_tenant
 
 
@@ -41,23 +41,15 @@ def _session_name(endpoint_id: int, mode: str) -> str:
 
 @staff_member_required
 def mode_picker(request, endpoint_id: int):
-    try:
-        endpoint = get_endpoint_any_schema(endpoint_id, request)
-    except Exception as exc:
-        return HttpResponse(f'Endpoint not found: {exc}', status=404)
-
-    tenant = get_current_tenant(request)
-    active = get_active_capture_session(request, endpoint_id)
-    context = {
-        'endpoint': endpoint,
-        'endpoint_id': endpoint_id,
-        'active_session': active,
-        'native_url': f'/dose/sniff/{endpoint_id}/native/',
-        'passthrough_url': f'/pt/polysniff/{endpoint_id}/',
-        'diff_url': f'/dose/sniff/{endpoint_id}/diff/',
-        'export_url': f'/dose/sniff/{endpoint_id}/export-har/',
-    }
-    return render(request, 'polysniffer/mode_picker.html', context)
+    """Legacy /picker/ URL — owner-approved 2026-08-08 (frozen-file exception,
+    see .cursor/rules/polysniffer-layout-locked.mdc): collapsed into the one
+    canonical workspace shell (sniff_shell / sniff_workspace.html) instead of
+    rendering its own separate mode_picker.html template, so there is no
+    dormant second layout reachable by direct URL. No data lost — this route
+    only ever needed the endpoint_id, which sniff_shell also takes.
+    BINGO: PolySniffer One-Layout Consolidation — 2026-08-08
+    """
+    return redirect(f'/dose/sniff/{endpoint_id}/workspace/')
 
 
 @staff_member_required
@@ -125,12 +117,13 @@ def passthrough_sniff_proxy(request, endpoint_id: int, path: str = ''):
 
 
 @staff_member_required
-def sniff_diff(request, endpoint_id: int):
+def sniff_diff(request, endpoint_host: str):
     ensure_trafficlog_capture_columns(request)
+    get_endpoint_by_host(endpoint_host, request)
     tenant = get_current_tenant(request)
-    session = get_active_capture_session(request, endpoint_id)
+    session = get_active_capture_session(request)
     if not session and tenant:
-        prefix = f'ep{endpoint_id}-'
+        prefix = f'{endpoint_host}-'
         session = (
             TrafficCapture.objects.filter(tenant=tenant, capture_name__startswith=prefix)
             .order_by('-created_at')
@@ -141,7 +134,7 @@ def sniff_diff(request, endpoint_id: int):
     if session:
         qs = qs.filter(capture_session=session)
     else:
-        qs = qs.filter(endpoint_name__icontains=str(endpoint_id))[:200]
+        qs = qs.filter(endpoint_name=endpoint_host)[:200]
 
     native_rows = { _norm_path(r.path): r for r in qs.filter(capture_source=TrafficLog.CAPTURE_NATIVE) }
     pt_rows = { _norm_path(r.path): r for r in qs.filter(capture_source=TrafficLog.CAPTURE_PASSTHROUGH) }
@@ -167,7 +160,7 @@ def sniff_diff(request, endpoint_id: int):
             diffs.append({'path': p, 'status': 'match'})
 
     return render(request, 'polysniffer/diff_view.html', {
-        'endpoint_id': endpoint_id,
+        'endpoint_host': endpoint_host,
         'session': session,
         'diffs': diffs,
         'mismatch_count': sum(1 for d in diffs if d.get('status') == 'mismatch'),
@@ -180,12 +173,13 @@ def _norm_path(path: str) -> str:
 
 
 @staff_member_required
-def export_session_har(request, endpoint_id: int):
+def export_session_har(request, endpoint_host: str):
     ensure_trafficlog_capture_columns(request)
-    session = get_active_capture_session(request, endpoint_id)
+    get_endpoint_by_host(endpoint_host, request)
+    session = get_active_capture_session(request)
     tenant = get_current_tenant(request)
     if not session and tenant:
-        prefix = f'ep{endpoint_id}-'
+        prefix = f'{endpoint_host}-'
         session = (
             TrafficCapture.objects.filter(tenant=tenant, capture_name__startswith=prefix)
             .order_by('-created_at')
@@ -196,7 +190,7 @@ def export_session_har(request, endpoint_id: int):
     if session:
         qs = qs.filter(capture_session=session)
     else:
-        qs = qs.filter(client_path__contains=f'/sniff/{endpoint_id}/')[:500]
+        qs = qs.filter(client_path__contains=f'/sniff/{endpoint_host}/')[:500]
 
     entries = []
     for log in qs:
@@ -213,5 +207,5 @@ def export_session_har(request, endpoint_id: int):
             return JsonResponse({'ok': True, 'gcs_uri': uri})
 
     response = HttpResponse(json.dumps(har, indent=2), content_type='application/json')
-    response['Content-Disposition'] = f'attachment; filename="polysniffer-ep{endpoint_id}.har"'
+    response['Content-Disposition'] = f'attachment; filename="polysniffer-{endpoint_host}.har"'
     return response

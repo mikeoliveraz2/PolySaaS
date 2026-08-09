@@ -103,7 +103,6 @@ urlpatterns = [
     path('api/hubspot/portlets/layout/', hubspot_portlet_layout_api, name='hubspot_portlet_layout'),
     path('hubspot/oauth/start/', hubspot_oauth_start, name='hubspot_oauth_start'),
     path('hubspot/oauth/callback/', hubspot_oauth_callback, name='hubspot_oauth_callback'),
-    path('sniff/', include('dose.polysniffer.sniff_urls')),
     path('hs-asset-proxy/', hs_asset_proxy, name='hs_asset_proxy'),
     # Founder Beta Circle — REST API for WordPress integration
     path('api/founders/signup/', founders_signup_api, name='founders_signup_api'),

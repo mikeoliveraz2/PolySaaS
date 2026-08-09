@@ -505,6 +505,9 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
         try:
+            endpoint = self.get_object(request, object_id)
+            extra_context = dict(extra_context or {})
+            extra_context['polysniffer_url'] = self._polysniffer_url(endpoint)
             return super().change_view(request, object_id, form_url, extra_context)
         except Exception as exc:
             import logging
@@ -595,12 +598,41 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
 
     # Media removed - using integrated Django view instead of external PolySniffer
 
+    def _current_admin_schema(self):
+        """Return the tenant schema that owns the endpoint admin queryset."""
+        from django.db import connection
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT current_schema()")
+                row = cursor.fetchone()
+            schema = (row[0] if row else "") or ""
+            return schema if schema.lower() != "public" else ""
+        except Exception:
+            return ""
+
+    def _polysniffer_url(self, obj):
+        from urllib.parse import quote, urlencode, urlparse
+
+        if not obj or not obj.endpoint_url:
+            return ""
+        schema = self._current_admin_schema()
+        endpoint_host = urlparse(obj.endpoint_url).netloc
+        if not schema or not endpoint_host:
+            return ""
+        return (
+            f'/admin/polysniffer/sniff/{quote(endpoint_host, safe=":[]")}/?'
+            f'{urlencode({"schema": schema})}'
+        )
+
     def debug_button(self, obj):
-        """Render PolySniffer Analysis button that opens the live capture viewer"""
+        """Open the canonical admin-only PolySniffer screen by endpoint host."""
         from django.utils.html import format_html
         from django.utils.safestring import mark_safe
         if obj and obj.endpoint_url:
-            capture_url = f'/dose/sniff/{obj.id}/'
+            capture_url = self._polysniffer_url(obj)
+            if not capture_url:
+                return mark_safe('<span style="color: #999;">Tenant schema unavailable</span>')
             return format_html(
                 '<a href="{}" target="_blank" '
                 'style="padding: 6px 12px; font-size: 13px; font-weight: bold; cursor: pointer; background: #417ccc; color: white; border: none; border-radius: 4px; text-decoration: none; display: inline-block; white-space: nowrap;">'

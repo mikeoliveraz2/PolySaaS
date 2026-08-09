@@ -55,14 +55,14 @@ def bind_request_tenant(request):
     return tenant
 
 
-def get_sniff_capture_session(request, endpoint_id: int | None = None):
+def get_sniff_capture_session(request, endpoint_host: str | None = None):
     tenant = bind_request_tenant(request)
     if tenant:
         ensure_trafficlog_capture_columns(request)
         _ensure_tenant_schema(tenant)
 
-    if endpoint_id is not None:
-        cap_id = request.session.get(f"polysniffer_ep{endpoint_id}_capture_id")
+    if endpoint_host is not None:
+        cap_id = request.session.get(f"polysniffer_{endpoint_host}_capture")
         if cap_id:
             from dose.polysniffer.models import TrafficCapture
 
@@ -70,4 +70,4 @@ def get_sniff_capture_session(request, endpoint_id: int | None = None):
             if cap:
                 return cap
 
-    return get_active_capture_session(request, endpoint_id)
+    return get_active_capture_session(request)

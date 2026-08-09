@@ -5,6 +5,7 @@ from django.db import connection
 from dose.utils import get_current_tenant
 from dose.models import PassThroughEndpoint
 import re
+from urllib.parse import urlparse
 
 STATIC_PATHS = ['/_next/', '/chat-static/', '/static/', '/assets/', '/css/', '/js/', '/fonts/', '/images/', '/image']
 STATIC_EXTS = ['.css', '.js', '.woff', '.woff2', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.json', '.webp', '.ttf', '.otf', '.eot']
@@ -94,6 +95,49 @@ def convert_relative_static_to_absolute(match, base_url):
     return match.group(0)
 
 def get_endpoint_any_schema(endpoint_id, request=None):
+    # FIX 2026-08-08 (owner-approved): PassThroughEndpoint.id is a per-schema
+    # row id, not a global identifier -- id=1 in tenant A's schema and id=1 in
+    # tenant B's schema are unrelated rows. This function used to trust
+    # get_current_tenant(request) (the browser session's "active tenant")
+    # blindly, so entering PolySniffer for one tenant's endpoint while the
+    # session's active tenant was a *different* tenant silently resolved to
+    # the wrong row (e.g. Odoo's admin-widget link opened Mattermost's
+    # endpoint instead), which then broke browse-subpath/redirect logic
+    # downstream in confusing, hard-to-diagnose ways.
+    # Now the admin's PolySniffer entry link passes ?schema=<owning tenant
+    # schema> explicitly (the schema is already known for certain at render
+    # time -- it's whatever search_path was active when the admin listed that
+    # row). If present and valid, that schema is authoritative for this
+    # lookup and is also persisted to the session so subsequent in-workspace
+    # navigation (which does not repeat the query param) stays consistent.
+    # BINGO: PolySniffer Endpoint Schema Guard — 2026-08-08
+    schema_param = (request.GET.get('schema') or '').strip() if request else ''
+    if schema_param:
+        if request is None or not getattr(request.user, 'is_staff', False):
+            raise Http404("PolySniffer tenant context is invalid")
+
+        from dose.models import Tenant
+        owning_tenant = Tenant.objects.filter(schema_name=schema_param, is_active=True).first()
+        if owning_tenant is None:
+            raise Http404("PolySniffer endpoint not found in the requested tenant")
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f'SET search_path TO "{owning_tenant.schema_name}",public;')
+            endpoint = PassThroughEndpoint.objects.filter(id=endpoint_id).first()
+        except Exception as exc:
+            raise Http404("PolySniffer endpoint lookup failed") from exc
+
+        if endpoint is None:
+            raise Http404("PolySniffer endpoint not found in the requested tenant")
+
+        request.tenant = owning_tenant
+        request.schema_name = owning_tenant.schema_name
+        if request.session.get('tenant_slug') != owning_tenant.slug:
+            from dose.doseusertenantmiddleware import set_tenant_in_session
+            set_tenant_in_session(request, owning_tenant)
+        return endpoint
+
     tenant = get_current_tenant(request) if request else None
     if not tenant or not tenant.schema_name:
         raise Http404("No active tenant context for endpoint lookup")
@@ -107,3 +151,39 @@ def get_endpoint_any_schema(endpoint_id, request=None):
     except Exception:
         pass
     raise Http404(f"PassThroughEndpoint with id={endpoint_id} does not exist")
+
+
+def get_endpoint_by_host(endpoint_host, request=None):
+    """Resolve one tenant endpoint by its exact URL host, never by database ID."""
+    schema_param = (request.GET.get('schema') or '').strip() if request else ''
+    if schema_param:
+        if request is None or not getattr(request.user, 'is_staff', False):
+            raise Http404("PolySniffer tenant context is invalid")
+        from dose.models import Tenant
+        tenant = Tenant.objects.filter(schema_name=schema_param, is_active=True).first()
+        if tenant is None:
+            raise Http404("PolySniffer endpoint not found in the requested tenant")
+    else:
+        tenant = get_current_tenant(request) if request else None
+        if not tenant or not tenant.schema_name:
+            raise Http404("No active tenant context for endpoint lookup")
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{tenant.schema_name}",public;')
+        matches = [
+            endpoint for endpoint in PassThroughEndpoint.objects.all()
+            if urlparse((endpoint.endpoint_url or '').strip()).netloc == endpoint_host
+        ]
+    except Exception as exc:
+        raise Http404("PolySniffer endpoint lookup failed") from exc
+    if len(matches) != 1:
+        raise Http404("PolySniffer endpoint host is not unique in the requested tenant")
+
+    if request is not None:
+        request.tenant = tenant
+        request.schema_name = tenant.schema_name
+        if request.session.get('tenant_slug') != tenant.slug:
+            from dose.doseusertenantmiddleware import set_tenant_in_session
+            set_tenant_in_session(request, tenant)
+    return matches[0]

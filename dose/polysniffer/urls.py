@@ -2,7 +2,7 @@
 PolySniffer URLs - Admin Only Access
 All URLs require staff access and should only be accessed from PassThrough Endpoint admin interface
 """
-from django.urls import path
+from django.urls import include, path
 from dose.polysniffer.views import mattermost_embed_view  # polysniffer.views.mattermost_embed_view
 from .views.ui import (
     redirect_to_admin,
@@ -31,13 +31,13 @@ urlpatterns = [
     path('api/capture/', capture_endpoint, name='api_capture'),
 
     # AI analysis and handler generation
-    path('ai-analyze/<int:endpoint_id>/', ai_analyze_endpoint, name='ai_analyze'),
-    path('ai-generate-handler/<int:endpoint_id>/', ai_generate_handler, name='ai_generate_handler'),
+    path('ai-analyze/<str:endpoint_host>/', ai_analyze_endpoint, name='ai_analyze'),
+    path('ai-generate-handler/<str:endpoint_host>/', ai_generate_handler, name='ai_generate_handler'),
 
     # Root URL - redirect to admin (PolySniffer should only be accessed via admin)
     path('', redirect_to_admin, name='index'),
     # Main entry point - accessed via admin "Sniff" button (old headless version)
-    path('sniff/<int:endpoint_id>/', open_sniffer, name='open_sniffer'),
+    path('sniff/', include('dose.polysniffer.sniff_urls')),
     # Live capture window - opens endpoint in new window with request interception
     path('capture/<int:endpoint_id>/', live_capture, name='live_capture'),
     # Navigate with persistent toolbar - redirects to endpoint with toolbar script

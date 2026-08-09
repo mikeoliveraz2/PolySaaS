@@ -10,13 +10,13 @@ from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture
 from dose.utils import get_current_tenant
 
 
-def _session_name(endpoint_id: int, mode: str) -> str:
+def _session_name(endpoint_host: str, mode: str) -> str:
     ts = timezone.now().strftime("%Y%m%d-%H%M")
     safe_mode = mode if mode in ("native", "passthrough") else "native"
-    return f"ep{endpoint_id}-{safe_mode}-{ts}"
+    return f"{endpoint_host}-{safe_mode}-{ts}"
 
 
-def ensure_capture_session(request, endpoint_id: int, mode: str) -> TrafficCapture | None:
+def ensure_capture_session(request, endpoint_host: str, mode: str) -> TrafficCapture | None:
     """
     Start or switch capture session for workspace mode URLs.
 
@@ -34,19 +34,19 @@ def ensure_capture_session(request, endpoint_id: int, mode: str) -> TrafficCaptu
     ensure_trafficlog_capture_columns(request)
     _ensure_tenant_schema(tenant)
 
-    existing = get_sniff_capture_session(request, endpoint_id)
-    session_mode = (request.session.get(f"polysniffer_ep{endpoint_id}_mode") or "").strip().lower()
+    existing = get_sniff_capture_session(request, endpoint_host)
+    session_mode = (request.session.get(f"polysniffer_{endpoint_host}_mode") or "").strip().lower()
     if existing and session_mode == mode:
         return existing
 
     TrafficCapture.objects.filter(tenant=tenant, is_active=True).update(is_active=False)
     cap = TrafficCapture.objects.create(
         tenant=tenant,
-        capture_name=_session_name(endpoint_id, mode),
-        description=f"PolySniffer 2.0 {mode} endpoint_id={endpoint_id}",
+        capture_name=_session_name(endpoint_host, mode),
+        description=f"PolySniffer 2.0 {mode} endpoint_host={endpoint_host}",
         is_active=True,
     )
-    request.session[f"polysniffer_ep{endpoint_id}_mode"] = mode
-    request.session[f"polysniffer_ep{endpoint_id}_capture_id"] = cap.id
+    request.session[f"polysniffer_{endpoint_host}_mode"] = mode
+    request.session[f"polysniffer_{endpoint_host}_capture"] = cap.id
     request.session.modified = True
     return cap

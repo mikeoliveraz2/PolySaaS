@@ -15,15 +15,15 @@ from dose.polysniffer.sniff_tenant import bind_request_tenant
 from dose.utils import get_current_tenant
 
 
-def _session_name(endpoint_id: int, mode: str) -> str:
+def _session_name(endpoint_host: str, mode: str) -> str:
     ts = timezone.now().strftime("%Y%m%d-%H%M")
     safe_mode = mode if mode in ("native", "passthrough") else "native"
-    return f"ep{endpoint_id}-{safe_mode}-{ts}"
+    return f"{endpoint_host}-{safe_mode}-{ts}"
 
 
 @staff_member_required
 @require_http_methods(["POST"])
-def session_start(request, endpoint_id: int):
+def session_start(request, endpoint_host: str):
     mode = (request.POST.get("mode") or "native").strip().lower()
     if mode not in ("native", "passthrough"):
         return JsonResponse({"error": "mode must be native or passthrough"}, status=400)
@@ -38,12 +38,12 @@ def session_start(request, endpoint_id: int):
     TrafficCapture.objects.filter(tenant=tenant, is_active=True).update(is_active=False)
     cap = TrafficCapture.objects.create(
         tenant=tenant,
-        capture_name=_session_name(endpoint_id, mode),
-        description=f"PolySniffer 2.0 {mode} endpoint_id={endpoint_id}",
+        capture_name=_session_name(endpoint_host, mode),
+        description=f"PolySniffer 2.0 {mode} endpoint_host={endpoint_host}",
         is_active=True,
     )
-    request.session[f"polysniffer_ep{endpoint_id}_mode"] = mode
-    request.session[f"polysniffer_ep{endpoint_id}_capture_id"] = cap.id
+    request.session[f"polysniffer_{endpoint_host}_mode"] = mode
+    request.session[f"polysniffer_{endpoint_host}_capture"] = cap.id
     return JsonResponse(
         {
             "ok": True,
@@ -56,13 +56,13 @@ def session_start(request, endpoint_id: int):
 
 @staff_member_required
 @require_http_methods(["POST"])
-def session_stop(request, endpoint_id: int):
+def session_stop(request, endpoint_host: str):
     tenant = bind_request_tenant(request) or get_current_tenant(request)
     if not tenant:
         return JsonResponse({"error": "no tenant context"}, status=400)
 
     _ensure_tenant_schema(tenant)
     updated = TrafficCapture.objects.filter(tenant=tenant, is_active=True).update(is_active=False)
-    request.session.pop(f"polysniffer_ep{endpoint_id}_capture_id", None)
-    request.session.pop(f"polysniffer_ep{endpoint_id}_mode", None)
+    request.session.pop(f"polysniffer_{endpoint_host}_capture", None)
+    request.session.pop(f"polysniffer_{endpoint_host}_mode", None)
     return JsonResponse({"ok": True, "stopped": updated})
