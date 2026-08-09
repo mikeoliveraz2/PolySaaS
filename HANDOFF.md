@@ -12,11 +12,13 @@
 - Isolation boundary DONE: Start reserves a separate top-level browser window
    before the asynchronous session request, removes its opener, and navigates
    it to the Native or Passthrough app while Admin remains the control plane.
-- Locked architecture tests: 7 run, 4 pass, 2 intentional failures and 1
-   missing-file error remain (endpoint-ID routes, legacy numeric happy-path
-   tests, missing browser-capture command).
+- Browser-level HAR DONE: the host-identified command captures Playwright HAR
+   and separate CDP WebSocket evidence for one explicit tenant capture session.
+- Locked architecture tests: 7 run, 4 pass and 3 known failures remain
+   (endpoint-ID routes, legacy numeric happy-path tests, and the pre-existing
+   generator-side `structured_capture.py` endpoint-ID artifact).
 - Board frozen. No next step is authorized.
-- No HAR/CDP work. No generator work.
+- No handler-generator work.
 
 ## LOCKED RULES (non-negotiable)
 1. PolySniffer exists ONLY in Admin — not DOSE, not `/pt/dose/`, not end-user PT.
@@ -46,6 +48,24 @@ that row’s `endpoint_url`; user navigates and captures.
 
 ## NEXT STEP
 None authorized. Stop until the owner selects the next micro-step.
+
+## COMPLETED STEP — BROWSER-LEVEL HAR
+- Added `capture_polysniffer_browser` with explicit tenant schema, endpoint
+   host, capture-session ID, and Native/Passthrough mode inputs.
+- Tenant registry lookup is explicit in `public`; endpoint and capture lookup
+   occur only inside the selected tenant schema.
+- Playwright records full HAR; CDP WebSocket lifecycle/frame events are stored
+   in a separate JSON artifact; a host-named manifest ties both to the selected
+   capture session.
+- Optional Playwright storage state binds its Django session cookie to that
+   exact capture session and mode.
+- Focused browser-capture tests: 3 passed. Django checks and diagnostics clean.
+- Runtime result: PASS with Playwright 1.62/Chromium. A temporary `t104`
+   endpoint produced HAR 1.2 with one request to `https://example.com/`; all
+   temporary endpoint, capture, and artifact data was removed afterward.
+- Files changed: `dose/polysniffer/browser_capture.py`,
+   `dose/management/commands/capture_polysniffer_browser.py`,
+   `requirements.txt`, and `HANDOFF.md`.
 
 ## COMPLETED STEP — ISOLATION BOUNDARY
 - Owner-selected mechanism: separate top-level browser window.
