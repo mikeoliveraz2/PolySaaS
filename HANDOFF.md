@@ -3,9 +3,13 @@
 ## STATUS
 - Step A DONE: PolySniffer unmounted from DOSE (`/dose/sniff/` include removed
   from `dose/urls.py`). Admin-only architecture test green.
-- Locked architecture tests: 7 run, 3 pass, 4 intentional failures remain
-  (endpoint IDs, Native rewrite import, legacy numeric happy-path tests).
-- Board frozen except the single authorized step below.
+- Step B DONE: Admin PolySniffer action opens the single workspace using the
+   selected tenant row's `endpoint_url` host. Browser verified with
+   `/admin/polysniffer/sniff/example.test/?schema=t104`.
+- Locked architecture tests: 7 run, 3 pass, 3 intentional failures and 1
+   missing-file error remain (endpoint IDs, Native rewrite import, legacy
+   numeric happy-path tests, missing browser-capture command).
+- Board frozen. No next step is authorized.
 - No isolation mechanism chosen. No Native rewrite work. No generator work.
 
 ## LOCKED RULES (non-negotiable)
@@ -15,7 +19,8 @@
    commands, manifests, or tests as public identity. DB PKs internal only.
    `public` never participates in endpoint lookup, fallback, or merging. The
    eight bundled apps are valid only after their rows are copied into and
-   owned by the tenant schema.
+   owned by the tenant schema. The shared `Tenant` registry is read explicitly
+   from `public`; `PassThroughEndpoint` is then read from the tenant schema only.
 3. Native = raw: no production handler resolve, no processors, no HTML/string
    rewrite before capture. Learn then generate — not assume then navigate.
 4. Viewport isolation required; mechanism UNDECIDED (not iframe by default).
@@ -29,9 +34,12 @@
 5. Capture browser traffic
 6. Done
 
-## AUTHORIZED NEXT STEP — B ONLY
+## COMPLETED STEP — B
 Admin “PolySniffer” on the endpoint row opens the single workspace using
 that row’s `endpoint_url`; user navigates and captures.
+
+## NEXT STEP
+None authorized. Stop until the owner selects the next micro-step.
 
 ## IN SCOPE
 - Smallest change so Admin click → workspace for clicked endpoint’s URL string
@@ -51,6 +59,15 @@ that row’s `endpoint_url`; user navigates and captures.
 - Files changed listed
 - Locked architecture suite re-run; report pass/fail
 - STOP — no further steps without new authorization
+
+## STEP B RESULT
+- Browser result: PASS. The Admin action used endpoint host `example.test`,
+   opened the existing workspace, and displayed the selected endpoint.
+- No capture mode was started. Native, isolation, HAR, and generator work were
+   not touched.
+- Temporary verification endpoint was deleted after the check.
+- Files changed: `dose/polysniffer/views/core.py`,
+   `dose/tests/test_polysniffer_architecture.py`, and `HANDOFF.md`.
 
 ## REMAINING AFTER B (not authorized yet)
 - Native purity (no rewrite on forward path)

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import call, MagicMock, Mock, patch
 
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
@@ -509,15 +509,18 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         mixed_search_paths = [
             line.strip()
             for line in source.splitlines()
-            if "SET search_path" in line and "public" in line.lower()
+            if "SET search_path" in line
+            and "public" in line.lower()
+            and "TO public;" not in line
         ]
 
         self.assertEqual(mixed_search_paths, [])
 
+    @patch("dose.polysniffer.views.core.connection")
     @patch("dose.polysniffer.views.core.get_current_tenant")
     @patch("dose.models.Tenant.objects.filter")
     def test_explicit_unknown_schema_never_falls_back_to_session_tenant(
-        self, tenant_filter, get_session_tenant
+        self, tenant_filter, get_session_tenant, core_connection
     ):
         from dose.polysniffer.views.core import get_endpoint_by_host
 
@@ -529,6 +532,8 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         with self.assertRaises(Http404):
             get_endpoint_by_host("example.test", request)
 
+        cursor = core_connection.cursor.return_value.__enter__.return_value
+        cursor.execute.assert_called_once_with("SET search_path TO public;")
         get_session_tenant.assert_not_called()
 
     @patch("dose.doseusertenantmiddleware.set_tenant_in_session")
@@ -566,8 +571,11 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         self.assertIs(result, endpoint)
         self.assertIs(request.tenant, tenant)
         self.assertEqual(request.schema_name, "tenant_alpha")
-        cursor.execute.assert_called_once_with(
-            'SET search_path TO "tenant_alpha";'
+        cursor.execute.assert_has_calls(
+            [
+                call("SET search_path TO public;"),
+                call('SET search_path TO "tenant_alpha";'),
+            ]
         )
         set_tenant_in_session.assert_called_once_with(request, tenant)
 

@@ -117,6 +117,8 @@ def get_endpoint_any_schema(endpoint_id, request=None):
             raise Http404("PolySniffer tenant context is invalid")
 
         from dose.models import Tenant
+        with connection.cursor() as cursor:
+            cursor.execute("SET search_path TO public;")
         owning_tenant = Tenant.objects.filter(schema_name=schema_param, is_active=True).first()
         if owning_tenant is None:
             raise Http404("PolySniffer endpoint not found in the requested tenant")
@@ -160,6 +162,8 @@ def get_endpoint_by_host(endpoint_host, request=None):
         if request is None or not getattr(request.user, 'is_staff', False):
             raise Http404("PolySniffer tenant context is invalid")
         from dose.models import Tenant
+        with connection.cursor() as cursor:
+            cursor.execute("SET search_path TO public;")
         tenant = Tenant.objects.filter(schema_name=schema_param, is_active=True).first()
         if tenant is None:
             raise Http404("PolySniffer endpoint not found in the requested tenant")
