@@ -29,6 +29,12 @@ def truncate_text(text: Any, max_len: int = _BODY_TRUNCATE) -> str:
     return text[:max_len] + ' [TRUNCATED]'
 
 
+def capture_user_in_current_schema(user):
+    if not user or isinstance(user, AnonymousUser):
+        return None
+    return user if user.__class__._default_manager.filter(pk=user.pk).exists() else None
+
+
 def get_active_capture_session(request, endpoint_id: Optional[int] = None):
     """Return active TrafficCapture for tenant, optionally matching endpoint id in name."""
     tenant = getattr(request, 'tenant', None)
@@ -150,7 +156,7 @@ def log_http_exchange(
     except Exception:
         pass
 
-    user = request.user if getattr(request, 'user', None) and not isinstance(request.user, AnonymousUser) else None
+    user = capture_user_in_current_schema(getattr(request, 'user', None))
     correlation_id = getattr(request, '_polysniffer_correlation_id', None) or str(uuid.uuid4())[:12]
 
     if capture_session is None:
