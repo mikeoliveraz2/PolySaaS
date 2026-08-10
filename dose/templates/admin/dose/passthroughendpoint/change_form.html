@@ -11,7 +11,7 @@
 </div>
 {% elif original and original.endpoint_url %}
 <div class="submit-row" style="margin-top: 10px;">
-    <a href="/dose/sniff/{{ original.id }}/"
+    <a href="{{ polysniffer_url }}"
        target="_blank"
        rel="noopener"
        class="button"
@@ -29,10 +29,10 @@
 </div>
 <div class="submit-row" style="margin-top: 10px;">
     <button type="button"
-            onclick="aiGenerateHandler({{ original.id }})"
+            onclick="aiGenerateHandler(event, '{{ original.endpoint_url|escapejs }}')"
             class="button"
             style="background: #9c27b0; color: white; padding: 10px 15px; width: 100%; text-align: center; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; box-sizing: border-box;">
-        🤖 AI Generate Handler (No More Access Denied!)
+        Generate Handler Draft
     </button>
 </div>
 <script>
@@ -73,29 +73,30 @@ function applyLatestCapture(endpointId) {
     });
 }
 
-function aiGenerateHandler(endpointId) {
-    console.log('[JS] aiGenerateHandler called with endpointId:', endpointId);
+function aiGenerateHandler(buttonEvent, endpointUrl) {
+    const endpointHost = new URL(endpointUrl).host;
 
-    if (!confirm('🤖 AI will analyze PolySniffer captures and generate handler code automatically!\n\nThis will:\n1. Analyze all captured traffic from PolySniffer\n2. Extract authentication flow (CSRF tokens, cookies, headers)\n3. Generate Python handler code\n4. Save it to fix "Access Denied" errors\n\nMake sure you\'ve run "🔍 Sniff" first to capture traffic.')) {
-        console.log('[JS] User cancelled');
+    const captureSessionId = window.prompt('Completed Native capture session ID:');
+    if (!captureSessionId || !/^\d+$/.test(captureSessionId)) {
         return;
     }
 
-    const url = `/admin/polysniffer/ai-generate-handler/${endpointId}/`;
+    const url = `/admin/polysniffer/ai-generate-handler/${endpointHost}/`;
     console.log('[JS] Calling URL:', url);
 
-    // Show loading
-    const button = event.target;
+    const button = buttonEvent.currentTarget;
     const originalText = button.textContent;
-    button.textContent = '🤖 Analyzing...';
+    button.textContent = 'Generating draft...';
     button.disabled = true;
+    const draftWindow = window.open('', '_blank', 'noopener');
 
     fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCookie('csrftoken')
-        }
+        },
+        body: JSON.stringify({capture_session_id: Number(captureSessionId)})
     })
     .then(response => {
         console.log('[JS] Response status:', response.status);
@@ -108,20 +109,27 @@ function aiGenerateHandler(endpointId) {
 
         if (result.success) {
             const summary = result.analysis_summary || {};
-            alert(`✅ Handler Generated!\n\n` +
-                  `Auth Method: ${summary.auth_method || 'Detected'}\n` +
-                  `Session Cookie: ${summary.session_cookie || 'Detected'}\n` +
-                  `CSRF Token: ${summary.csrf_token_field || 'Detected'}\n\n` +
-                  `Handler code saved to endpoint. No more "Access Denied"!`);
-            location.reload();
+            if (draftWindow) {
+                draftWindow.document.title = `Handler draft — session ${result.capture_session_id}`;
+                const heading = draftWindow.document.createElement('h1');
+                heading.textContent = `Handler draft — session ${result.capture_session_id}`;
+                const metadata = draftWindow.document.createElement('p');
+                metadata.textContent = `${result.tenant_schema} · ${result.endpoint_url} · ${summary.auth_method || 'auth not detected'}`;
+                const code = draftWindow.document.createElement('pre');
+                code.textContent = result.handler_code;
+                draftWindow.document.body.replaceChildren(heading, metadata, code);
+            }
+            alert('Handler draft generated for review. Nothing was installed or saved.');
         } else {
-            alert('Error: ' + (result.error || 'Unknown error') + '\n\nMake sure you\'ve run "🔍 Sniff" first to capture traffic.');
+            if (draftWindow) draftWindow.close();
+            alert('Error: ' + (result.error || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('[JS] Fetch error:', error);
         button.disabled = false;
         button.textContent = originalText;
+        if (draftWindow) draftWindow.close();
         alert('Error: ' + error.message);
     });
 }
