@@ -26,24 +26,11 @@ from django.http import HttpResponse
 
 from dose.polysniffer.har_capture import log_requests_response
 from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
-
-from dose.polysniffer.sniff_handler_bridge import apply_native_sniff_rewrites
-
 from dose.polysniffer.sniff_native_rewrite import (
 
     filter_native_response_headers,
 
-    prepare_native_upstream_url,
-
-    sniff_native_proxy_prefix,
-
 )
-
-
-
-# Register handler native-sniff processors (Mattermost, future apps)
-
-import dose.polysniffer.handlers.mattermost_native_sniff  # noqa: F401
 
 
 
@@ -58,24 +45,6 @@ def _resolve_upstream_url(endpoint_url: str, subpath: str) -> tuple[str, str]:
     if not sub.startswith('/'):
 
         sub = '/' + sub
-
-    if sub.startswith('/static/'):
-
-        try:
-
-            from dose.polysniffer.views.mattermost_static_proxy import _upstream_rel_for_mm_static
-
-
-
-            rel = sub[len('/static/') :]
-
-            mapped = _upstream_rel_for_mm_static(rel)
-
-            return base + mapped, mapped
-
-        except Exception:
-
-            pass
 
     if sub == '/':
 
@@ -113,43 +82,13 @@ def _outbound_headers(request) -> dict:
 
 
 
-def _rewrite_location(location: str, proxy_prefix: str, endpoint_url: str) -> str:
-
-    if not location:
-
-        return proxy_prefix + '/'
-
-    parsed_ep = urlparse(endpoint_url)
-
-    upstream_origin = f'{parsed_ep.scheme}://{parsed_ep.netloc}'
-
-    if location.startswith(upstream_origin):
-
-        rest = location[len(upstream_origin):] or '/'
-
-        if not rest.startswith('/'):
-
-            rest = '/' + rest
-
-        return proxy_prefix + rest
-
-    if location.startswith('/'):
-
-        return proxy_prefix + location
-
-    return location
-
-
-
-
-
 def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
     """
 
-    Transparent proxy for native sniff mode. Captures to TrafficLog when session active.
+    Raw proxy for native sniff mode. Captures the upstream exchange unchanged.
 
-    Body rewrites delegate to endpoint handlers (static direct to host; API via sniff prefix).
+    Native must not resolve production handlers or rewrite endpoint content.
 
     """
 
@@ -160,14 +99,6 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
         sep = '&' if '?' in target_url else '?'
 
         target_url += sep + request.GET.urlencode()
-
-    target_url = prepare_native_upstream_url(target_url, upstream_path)
-
-
-
-    proxy_prefix = sniff_native_proxy_prefix(request, endpoint.id)
-
-
 
     start = time.time()
 
@@ -193,7 +124,7 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
 
 
-    service = (getattr(endpoint, 'provider', None) or endpoint.trigger_path or 'unknown')[:50]
+    service = (urlparse(endpoint.endpoint_url or '').netloc or 'unknown')[:50]
 
     bind_request_tenant(request)
     session = get_sniff_capture_session(request, endpoint.id)
@@ -214,7 +145,7 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
             upstream_path=upstream_path,
 
-            endpoint_name=endpoint.menu_title or endpoint.trigger_path or service,
+            endpoint_name=endpoint.menu_title or service,
 
             service=service,
 
@@ -228,27 +159,9 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
     content_type = resp.headers.get('Content-Type', 'application/octet-stream')
 
-    body = apply_native_sniff_rewrites(
-
-        resp.content,
-
-        content_type=content_type,
-
-        request=request,
-
-        endpoint=endpoint,
-
-        upstream_path=upstream_path,
-
-        proxy_prefix=proxy_prefix,
-
-    )
-
-
-
     django_resp = HttpResponse(
 
-        content=body,
+        content=resp.content,
 
         status=resp.status_code,
 
@@ -268,18 +181,6 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
 
 
-    if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
-
-        loc = resp.headers.get('Location', '/')
-
-        django_resp['Location'] = _rewrite_location(loc, proxy_prefix, endpoint.endpoint_url)
-
-
-
     return django_resp
-
-
-# HubSpot native CDN rewrite + upstream patch (after _resolve_upstream_url is defined).
-import dose.polysniffer.handlers.hubspot_native_sniff  # noqa: F401,E402
 
 
