@@ -4,6 +4,25 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-08-09 — BINGO: Passthrough endpoint-only identity
+
+**Status**: COMPLETE — implemented and regression-tested
+**Certification**: `documentation/BINGO_PASSTHROUGH_ENDPOINT_ONLY_IDENTITY_2026-08-09.md`
+
+This tightens the August 8 source-of-truth redesign. The unique tenant
+`endpoint_url` string is now the only `PassThroughEndpoint` route identity for
+both `/pt/admin/<host>/` and `/pt/dose/<host>/`. Integer primary-key/offset,
+slug, trigger, public-schema, and cross-tenant fallback identity are defunct and
+must not be restored. Integer IDs elsewhere, including PolySniffer and Django
+admin records, are outside this rule.
+
+Validation: five focused tests pass, Django reports no issues, migrations match
+the model, and all nine existing endpoint tables contain no duplicate
+`endpoint_url` values. Migrations `0059` and `0060` were applied successfully to
+public and all eight tenant schemas.
+
+---
+
 ## 2026-08-08 (Office) — Passthrough endpoint source-of-truth redesign
 
 **Status**: COMPLETE — committed and pushed

@@ -1,10 +1,11 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# ROUTE IDENTITY SUPERSEDED 2026-08-09: unique endpoint_url only; no ID/offset or slug routing.
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f
 # BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
-# Owner-approved 2026-08-02: /pt/admin/<slug>/ — DB PassThroughEndpoint is the only identity.
-# No "trigger", no hostname-as-URL-key, no inventing upstream from the path segment.
+# Owner-approved 2026-08-09: endpoint_url is the sole passthrough identity.
+# /pt/admin/<host>/ and /pt/dose/<host>/ resolve only to the matching tenant row.
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
 import requests

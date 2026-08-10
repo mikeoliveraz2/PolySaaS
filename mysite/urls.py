@@ -1,7 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# ROUTE IDENTITY SUPERSEDED 2026-08-09: unique endpoint_url only; no ID/offset or slug routing.
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: UI Cleanup — commit 748e871e
-# BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
 # FIX 2026-08-02 (owner-approved): subpath routes no longer require a trailing slash. Upstream
 # apps (e.g. Odoo's /web/dataset/call_button/... JSON-RPC POSTs) commonly omit trailing slashes;
 # the old pattern forced Django's APPEND_SLASH redirect, which is refused for POST bodies and
@@ -30,12 +30,10 @@ from llm_router.admin_chat import (
 )
 
 urlpatterns = [
-    # PolySniffer passthrough browse (iframe-safe; rewrites away from /pt/admin/).
-    path('pt/polysniff/', include('dose.polysniffer.pt_polysniff_urls')),
     # Dose home shell — passthrough loads in landing content column only.
-    # slug = PassThroughEndpoint.slug (URL identity); upstream always from DB endpoint_url
-    path('pt/dose/<str:slug>/', pt_dose_generic_passthrough_view, name='pt_dose_generic'),
-    path('pt/dose/<str:slug>/<path:subpath>', pt_dose_generic_passthrough_view, name='pt_dose_generic_subpath'),
+    # endpoint host is derived from the unique tenant endpoint_url; IDs and slugs are not route identity.
+    path('pt/dose/<str:endpoint>/', pt_dose_generic_passthrough_view, name='pt_dose_generic'),
+    path('pt/dose/<str:endpoint>/<path:subpath>', pt_dose_generic_passthrough_view, name='pt_dose_generic_subpath'),
     path('pt/admin/<str:slug>/static/<path:path>', mattermost_static_proxy, name='mattermost_static_proxy'),
     path('pt/admin/<str:endpoint>/', pt_admin_generic_passthrough_view, name='pt_admin_generic'),
     path('pt/admin/<str:endpoint>/<path:subpath>', pt_admin_generic_passthrough_view, name='pt_admin_generic_subpath'),

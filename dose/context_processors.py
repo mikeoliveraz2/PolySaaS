@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# ROUTE IDENTITY SUPERSEDED 2026-08-09: unique endpoint_url only; no ID/offset or slug routing.
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 # FIX 2026-08-01 (owner-approved): passthrough_services now carries 'ready'/'app_status' from

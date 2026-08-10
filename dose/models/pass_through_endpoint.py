@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# ROUTE IDENTITY SUPERSEDED 2026-08-09: unique endpoint_url only; no ID/offset or slug routing.
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 from django.db import models
 
@@ -46,7 +47,14 @@ class PassThroughEndpoint(models.Model):
         help_text="Type of passthrough: 'api' for REST APIs (Gmail), 'scraper' for HTML content"
     )
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='custom', help_text="OAuth2 provider or passthrough method")
-    endpoint_url = models.CharField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online or http://service-name:80 for internal Docker)")
+    endpoint_url = models.CharField(
+        max_length=300,
+        unique=True,
+        help_text=(
+            "Unique canonical URL for this tenant endpoint and the sole source "
+            "of passthrough identity"
+        ),
+    )
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
     # Legacy metadata only. Passthrough identity is always endpoint_url's host.
@@ -165,17 +173,20 @@ class PassThroughEndpoint(models.Model):
             except:
                 return "External Service"
 
-    def get_proxy_prefix(self) -> str:
-        """Return /pt/admin/<host> derived only from the stored endpoint_url."""
+    def get_proxy_prefix(self, surface: str = "admin") -> str:
+        """Return /pt/<surface>/<host> derived only from the stored endpoint_url."""
         from urllib.parse import urlparse
 
+        if surface not in ("admin", "dose"):
+            raise ValueError("Passthrough surface must be 'admin' or 'dose'")
         host = (urlparse(self.endpoint_url or "").netloc or "").strip()
-        return f"/pt/admin/{host}" if host else "/pt/admin"
+        prefix = f"/pt/{surface}"
+        return f"{prefix}/{host}" if host else prefix
 
-    def get_menu_url(self):
-        """Return /pt/admin/<host>/<starting_uri> without changing endpoint_url."""
-        prefix = self.get_proxy_prefix().rstrip("/")
-        if prefix == "/pt/admin":
+    def get_menu_url(self, surface: str = "admin"):
+        """Return /pt/<surface>/<host>/<starting_uri> without changing endpoint_url."""
+        prefix = self.get_proxy_prefix(surface).rstrip("/")
+        if prefix == f"/pt/{surface}":
             return "/"
         start = (self.starting_uri or "").strip()
         if start and start not in ("/", ""):

@@ -34,7 +34,7 @@ def main():
     </html>
     '''
 
-    processed, _ = handler.process_html_response(
+    processed = handler.process_html_response(
         native_login_html,
         request,
         endpoint_url='https://polysaas-odoo2.onrender.com',

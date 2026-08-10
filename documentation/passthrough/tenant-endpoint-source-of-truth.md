@@ -32,12 +32,25 @@ The stored `endpoint_url` is never rewritten during this process.
 
 ## Identity Rules
 
+- `endpoint_url` is unique within each tenant schema and is the only
+  `PassThroughEndpoint` routing identity.
 - `endpoint_url` supplies both the upstream target and browser route host.
 - `starting_uri` supplies only the initial application path.
 - `slug` is optional descriptive/application metadata. It is not a route key.
 - The database primary key is not exposed as passthrough route identity.
 - Proxy resolution requires an exact `endpoint_url` host match in the active
   tenant schema.
+
+Integer primary keys remain valid for unrelated Django admin, PolySniffer,
+capture, and session records. The defunct rule applies only to
+`PassThroughEndpoint` browser links and proxy resolution.
+
+Both browser surfaces are derived from the same endpoint string:
+
+```text
+/pt/admin/<endpoint host>/<upstream path>
+/pt/dose/<endpoint host>/<upstream path>
+```
 
 ## Tenant Isolation
 
@@ -73,7 +86,9 @@ the `/pt/admin/<host>/` segment, the request returns `404`. It must not search
 
 `dose/tests/test_passthrough_endpoint_url.py` verifies that:
 
-- Host and `starting_uri` produce the canonical browser URL.
+- Host and `starting_uri` produce canonical `/pt/admin/` and `/pt/dose/` URLs.
 - Changing `slug` does not change the browser URL.
 - Changing the database record ID does not change the browser URL.
 - Building the browser URL does not mutate `endpoint_url`.
+- Unsupported passthrough surface prefixes are rejected.
+- `endpoint_url` is declared unique at the database model boundary.

@@ -1,7 +1,7 @@
 """
 Passthrough Views - Direct access to external services
 """
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse, HttpResponseNotFound
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
@@ -15,40 +15,6 @@ import logging
 from dose.models import PassThroughEndpoint
 
 logger = logging.getLogger(__name__)
-
-
-@staff_member_required
-def direct_service_view(request, endpoint_id):
-    """
-    Redirect to proper middleware passthrough route - NO IFRAMES
-
-    This view redirects to the proper trigger_path URL which the middleware
-    will handle. The middleware does all the passthrough work:
-    - Proxies requests to external service
-    - Rewrites URLs in HTML responses
-    - Handles form submissions
-    - Maintains session state
-
-    NO IFRAMES - uses proper middleware-based passthrough architecture.
-    """
-    from django.shortcuts import redirect
-
-    endpoint = get_object_or_404(PassThroughEndpoint, id=endpoint_id)
-
-    if not endpoint.endpoint_url:
-        from django.http import HttpResponseBadRequest
-        return HttpResponseBadRequest("Endpoint URL is required")
-
-    passthrough_url = endpoint.get_menu_url()
-
-    # Debug logging
-    logger.info(f"[DIRECT_SERVICE] Endpoint ID: {endpoint_id}, redirecting to: {passthrough_url}")
-    print(f"[DIRECT_SERVICE] Endpoint ID: {endpoint_id}", flush=True)
-    print(f"[DIRECT_SERVICE] Endpoint URL: {endpoint.endpoint_url}", flush=True)
-    print(f"[DIRECT_SERVICE] Redirecting to: {passthrough_url}", flush=True)
-
-    # Redirect to the middleware passthrough route
-    return redirect(passthrough_url)
 
 
 @login_required

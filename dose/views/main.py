@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# ROUTE IDENTITY SUPERSEDED 2026-08-09: unique endpoint_url only; no ID/offset or slug routing.
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: UI Cleanup — commit 748e871e
 # FIX 2026-08-02 (owner-approved): _build_landing_page_context()'s _endpoint_visible() used
@@ -902,7 +903,7 @@ def _build_landing_page_context(request):
         passthrough_services.append({
             'title': title,
             'endpoint_host': host,
-            'url': endpoint.get_menu_url(),
+            'url': endpoint.get_menu_url(surface='dose'),
             'icon': endpoint.menu_icon or '🔗',
             'description': endpoint.description or f"Access {title}"
         })
@@ -1024,13 +1025,13 @@ def _split_html_document_for_dose_embed(html):
 
 
 @login_required
-def pt_dose_generic_passthrough_view(request, slug=None, subpath=None, trigger=None):
+def pt_dose_generic_passthrough_view(request, endpoint=None, subpath=None):
     from dose.models import UserTenantMembership
     from dose.passthrough.forwarding import fetch_upstream_index_html
     from dose.passthrough.registry import resolve_handler_for_endpoint
     from dose.utils import get_current_tenant
 
-    endpoint_host = (slug or trigger or '').strip('/').lower()
+    endpoint_host = (endpoint or '').strip('/').lower()
 
     context, response = _build_landing_page_context(request)
     if response is not None:

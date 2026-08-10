@@ -31,3 +31,38 @@ class PassThroughEndpointUrlTests(SimpleTestCase):
         endpoint.id = 42
         endpoint.slug = "changed-label"
         self.assertEqual(endpoint.get_menu_url(), expected)
+
+    def test_admin_and_dose_urls_use_only_the_endpoint_host(self):
+        endpoint = PassThroughEndpoint(
+            id=917,
+            endpoint_url="https://tenant-app.example.test:8443",
+            starting_uri="web",
+            slug="ignored-label",
+        )
+
+        self.assertEqual(
+            endpoint.get_menu_url(surface="admin"),
+            "/pt/admin/tenant-app.example.test:8443/web",
+        )
+        self.assertEqual(
+            endpoint.get_menu_url(surface="dose"),
+            "/pt/dose/tenant-app.example.test:8443/web",
+        )
+
+        endpoint.id = 1
+        endpoint.slug = "another-ignored-label"
+        self.assertEqual(
+            endpoint.get_menu_url(surface="dose"),
+            "/pt/dose/tenant-app.example.test:8443/web",
+        )
+
+    def test_rejects_unknown_passthrough_surface(self):
+        endpoint = PassThroughEndpoint(endpoint_url="https://tenant-app.example.test")
+
+        with self.assertRaises(ValueError):
+            endpoint.get_menu_url(surface="unknown")
+
+    def test_endpoint_url_is_declared_unique(self):
+        field = PassThroughEndpoint._meta.get_field("endpoint_url")
+
+        self.assertTrue(field.unique)
