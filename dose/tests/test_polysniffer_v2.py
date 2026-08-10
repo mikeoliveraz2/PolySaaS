@@ -3,10 +3,38 @@
 # BINGO: PolySniffer 2.0 — 2026-06-24
 from django.test import SimpleTestCase
 
-from dose.polysniffer.har_capture import body_hash, build_har_entry, truncate_text
+from unittest.mock import Mock
+
+from dose.polysniffer.har_capture import (
+    body_hash,
+    build_har_entry,
+    capture_user_in_current_schema,
+    truncate_text,
+)
 
 
 class PolySnifferV2HarCaptureTests(SimpleTestCase):
+    def test_capture_user_requires_current_schema_row(self):
+        class User:
+            _default_manager = Mock()
+
+        user = User()
+        user.pk = 17
+        User._default_manager.filter.return_value.exists.return_value = False
+
+        self.assertIsNone(capture_user_in_current_schema(user))
+        User._default_manager.filter.assert_called_once_with(pk=17)
+
+    def test_capture_user_keeps_current_schema_user(self):
+        class User:
+            _default_manager = Mock()
+
+        user = User()
+        user.pk = 17
+        User._default_manager.filter.return_value.exists.return_value = True
+
+        self.assertIs(capture_user_in_current_schema(user), user)
+
     def test_truncate_text(self):
         self.assertEqual(truncate_text('abc', 10), 'abc')
         long = 'x' * 20

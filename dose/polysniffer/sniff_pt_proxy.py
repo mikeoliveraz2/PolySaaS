@@ -86,6 +86,7 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
     request._polysniffer_endpoint_id = endpoint_id
     request._polysniffer_sniff_mode = "passthrough"
     request._polysniffer_proxy_prefix = pub
+    request._polysniffer_upstream_url = (endpoint.endpoint_url or "").strip()
     cap = get_active_capture_session(request, endpoint_id)
     if cap:
         request._polysniffer_capture = cap

@@ -205,7 +205,8 @@ def pt_admin_generic_passthrough_view(request, endpoint, subpath=None):
             return response
 
     # Construct the upstream endpoint URL from the endpoint parameter
-    endpoint_url = f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint
+    endpoint_url = getattr(request, '_polysniffer_upstream_url', None)
+    endpoint_url = endpoint_url or (f"https://{endpoint}" if not endpoint.startswith(('http://', 'https://')) else endpoint)
     print(f"[VIEW] Using generic forwarder for {endpoint} -> {endpoint_url}")
     
     # Lookup the actual PassThroughEndpoint ORM object to pass to handler.
