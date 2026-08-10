@@ -1,0 +1,96 @@
+---
+description: PolySniffer 2.0 workspace layout — single frozen shared shell, no per-app customization
+alwaysApply: true
+---
+
+# PolySniffer Workspace — ONE Layout, Frozen Until v3
+
+## Incident (2026-08-08, owner: Michael)
+
+While onboarding a new external SaaS (Zoho) into PolySniffer, the agent built an
+app-specific native-sniff processor that spliced the target site's own `<head>`
+(including its full third-party CSS) into the shared workspace shell's `<head>`.
+The target's CSS clobbered the shell's own `.btn` / `.toolbar` / `.split` rules —
+toolbar buttons rendered as full-width stacked blocks instead of a compact row,
+and the right-hand capture column disappeared. This broke the **same shared page
+every tenant/every endpoint uses**, not just the one being onboarded — exactly
+the failure mode this rule exists to prevent. The offending code was fully
+removed (not patched, removed) the same session. See
+`documentation/Capital Raise Project/` session notes / commit history around
+2026-08-08 for the full incident trace.
+
+## The One Rule
+
+**There is exactly ONE PolySniffer workspace layout, shared by every endpoint,
+every tenant, every mode (native and passthrough). It does not get a per-app
+variant. It does not change to accommodate a specific SaaS's quirks. It is
+frozen as of the 2026-06-24 "PolySniffer 2.0 Native Login Workspace" BINGO and
+stays frozen until a deliberate, owner-approved v3.**
+
+**AUTHORITATIVE files (the shared shell — the ONLY copies):**
+- `dose/templates/polysniffer/sniff_workspace.html` — the shell itself: topbar,
+  the two big mode cards (Native / Passthrough), the toolbar (Stop capture /
+  Diff / Export HAR / Endpoints), the left browse pane, the right "Live
+  capture" column. This is the file that must never change per-app.
+- `dose/templates/polysniffer/sniff_workspace_capture.html` — content rendered
+  inside the right-column capture iframe.
+- `dose/templates/polysniffer/sniff_pt_orchestration_bar.html` — orchestration
+  bar snippet for passthrough mode.
+- `dose/polysniffer/views/sniff_v2_workspace.py` — the view that assembles
+  context for the shell above.
+
+Everything else under `dose/templates/polysniffer/` (`mode_picker.html`,
+`dashboard.html`, `diff_view.html`, `sniff_native_embed.html`, and the
+pre-2026-06-24 files like `sniffer.html`, `live_capture*.html`,
+`in_content*.html`, `split_window.html`, `capture_interface.html`,
+`building_pen_embed.html`) belongs to **other, separate routes** (endpoint
+list, diff tool, legacy pre-v2 code) — not the workspace shell. Do not confuse
+them with the one shell, and do not treat "it's a different template" as
+license to introduce app-specific layout changes anywhere in this directory
+without asking first.
+
+## What broke it, and the actual rule that follows from it
+
+The native/passthrough embed mechanism (`_extract_head_and_body` /
+`build_inline_native_embed_context` in `dose/polysniffer/sniff_native_embed.py`)
+splices an upstream app's own HTML `<head>`/`<body>` fragments directly into
+`sniff_workspace.html`'s DOM. That means **any upstream app's CSS, if left
+unfiltered, can leak into and break the shared shell** — this is a structural
+risk for every future SaaS onboarded, not just Zoho.
+
+- A new app's native-sniff processor (see `dose/polysniffer/handlers/*_native_sniff.py`,
+  the Mattermost/HubSpot pattern) may rewrite that **app's own** response body.
+  It must **never** assume it is safe to leave the target's global stylesheets
+  in place once real content starts flowing through the splice point — verify
+  with an actual screenshot (see `bingo-freeze.mdc` screenshot-proof rule)
+  before trusting it, not just code review.
+- If there is any doubt about whether a new integration's content is safe to
+  splice into the shared shell, do not splice it. Fall back to the placeholder/
+  unavailable state rather than risk the shared page for every tenant.
+- Never touch `sniff_workspace.html`, `sniff_workspace_capture.html`,
+  `sniff_pt_orchestration_bar.html`, or the workspace-assembly logic in
+  `sniff_v2_workspace.py` while debugging a single app's onboarding. If the
+  shared shell visibly changes as a side effect of onboarding one app, that is
+  the bug — stop and revert the app-specific change, don't patch the shell.
+
+## Before touching anything under `dose/templates/polysniffer/` or `dose/polysniffer/`
+
+1. Identify whether the file is part of the ONE shared shell (list above) or a
+   separate route. If it's the shared shell — assume it is correct and the bug
+   is elsewhere, unless Michael/Shela explicitly say otherwise.
+2. Get explicit approval before changing shared-shell behavior for any reason,
+   including "just for testing."
+3. After any change that *could* touch shared rendering (including adding a
+   new native-sniff processor for a new app): restart, load the workspace for
+   an *unrelated, already-working* endpoint (e.g. Odoo) first, screenshot it,
+   and confirm it is pixel-identical to before. Only then test the new app.
+4. Commit with a clear message; document with a screenshot per `bingo-freeze.mdc`.
+
+## Do Not
+
+- Add per-app CSS, per-app `<head>` content, or per-app layout branches to
+  `sniff_workspace.html`.
+- Assume a new native-sniff processor is safe because it "only touches that
+  app's response body" — the response body is spliced into the shared page.
+- Declare an onboarding fix done without a screenshot showing the shared shell
+  (toolbar row, capture column) still renders correctly for a known-good app.

@@ -23,6 +23,10 @@ venv/
 *.pem
 ~$*
 
+# PolySniffer browser evidence and authenticated Playwright state
+/polysniffer-auth.json
+/polysniffer_evidence/
+
 # WordPress site — managed by Hostinger, covered by daily backups
 dose/website/
 

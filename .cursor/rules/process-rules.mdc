@@ -69,3 +69,27 @@ as WIP for now."**
 
 This rule exists after a prior incident where work was left uncommitted/unpushed, blocking
 continuation from the other machine.
+
+## Rule 7 — Piccolo Passo (Small Steps)
+
+Take small steps, and test along the way. Go from working code and make backups. If something
+doesn't work, revert to working code and find another path.
+
+- **Start from a known-working state.** Confirm it works (screenshot/test) before changing anything.
+- **Back up before every edit** (see `bak-before-edit.mdc`) — this is what makes "revert" actually
+  possible, not just a nice idea.
+- **Make one small change at a time**, not a bundle of speculative fixes. Verify each one before
+  moving to the next.
+- **Test immediately after the change** — with real evidence (screenshot, actual request/response,
+  not just "the code looks right" or a passing syntax check). See the screenshot-proof rule in
+  `bingo-freeze.mdc`.
+- **If it doesn't work, revert to the last known-working state first**, then think again — do not
+  keep layering new fixes on top of a change that isn't confirmed working. Debugging forward from a
+  broken, half-changed state compounds risk instead of reducing it.
+- This applies especially when the change touches anything shared across tenants/endpoints (e.g. the
+  PolySniffer workspace shell, admin templates) — a small untested step there breaks it for everyone.
+
+This rule exists after the 2026-08-08 PolySniffer/Zoho incident: an app-specific fix was built,
+wired in, and left running without verifying against a known-good baseline first, breaking the
+shared workspace shell for every endpoint. Backing out required guesswork instead of a clean revert
+because the "before" state hadn't been confirmed/captured as a checkpoint before the change went in.
