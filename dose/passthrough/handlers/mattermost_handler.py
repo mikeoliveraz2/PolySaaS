@@ -2759,6 +2759,29 @@ try {{
     var PS_MM_THEME_LIGHT_JSON = {mm_theme_light_js};
     console.log('[PolySaaS MM] PolySaaS display_mode (one-way theme sync):', PS_DISPLAY_MODE);
 
+    // Patch querySelector to escape colons in HTML5 IDs (prevents SyntaxError for #:...: selectors)
+    (function() {{
+        var _origDQS = Document.prototype.querySelector;
+        var _origDQSA = Document.prototype.querySelectorAll;
+        var _origEQS = Element.prototype.querySelector;
+        var _origEQSA = Element.prototype.querySelectorAll;
+        function _mmEscapeIdSelector(sel) {{
+            if (typeof sel !== 'string' || sel.indexOf('#') !== 0) return sel;
+            var end = 1;
+            while (end < sel.length) {{
+                var ch = sel.charAt(end);
+                if (ch === ' ' || ch === '>' || ch === '.' || ch === '[' || ch === ':' || ch === '#' || ch === '~' || ch === '+' || ch === '(') break;
+                end++;
+            }}
+            var id = sel.substring(1, end).replace(/:/g, '\\:');
+            return '#' + id + sel.substring(end);
+        }}
+        Document.prototype.querySelector = function(sel) {{ try {{ return _origDQS.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] querySelector guard', e); return null; }} }};
+        Document.prototype.querySelectorAll = function(sel) {{ try {{ return _origDQSA.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] querySelectorAll guard', e); return []; }} }};
+        Element.prototype.querySelector = function(sel) {{ try {{ return _origEQS.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] el querySelector guard', e); return null; }} }};
+        Element.prototype.querySelectorAll = function(sel) {{ try {{ return _origEQSA.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] el querySelectorAll guard', e); return []; }} }};
+    }})();
+
     // Error capture to diagnose composer crash
     window.onerror = function(msg, src, line, col, err) {{
         console.error('[PolySaaS MM ERROR]', msg, 'at', src, line + ':' + col);

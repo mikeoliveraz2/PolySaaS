@@ -3,9 +3,13 @@
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
 from __future__ import annotations
 
+import json
+import logging
+
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from dose.polysniffer.har_capture import _ensure_tenant_schema
@@ -14,6 +18,8 @@ from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.models import TenantApp
 from dose.polysniffer.views.core import get_endpoint_by_host
+
+logger = logging.getLogger(__name__)
 
 
 def _endpoint_label(endpoint) -> str:
@@ -99,81 +105,96 @@ sniff_workspace = sniff_shell
 @staff_member_required
 @require_GET
 def workspace_poll(request, endpoint_host: str):
-    tenant = bind_request_tenant(request)
-    if not tenant:
-        return JsonResponse({"success": False, "error": "no tenant context"}, status=400)
-
-    ensure_trafficlog_capture_columns(request)
-    _ensure_tenant_schema(tenant)
-
-    mode = (request.GET.get("mode") or _session_mode(request, endpoint_host) or "native").strip().lower()
-    if mode not in ("native", "passthrough"):
-        mode = "native"
-
     try:
-        since_id = int(request.GET.get("since_id", 0))
-    except (TypeError, ValueError):
-        since_id = 0
+        tenant = bind_request_tenant(request)
+        if not tenant:
+            return JsonResponse({"success": False, "error": "no tenant context"}, status=400)
 
-    session = get_sniff_capture_session(request, endpoint_host)
-    qs = TrafficLog.objects.all()
-    if session:
-        qs = qs.filter(capture_session=session)
-    else:
-        if mode == "passthrough":
-            qs = qs.filter(client_path__contains=f"/pt/admin/{endpoint_host}")
+        ensure_trafficlog_capture_columns(request)
+        _ensure_tenant_schema(tenant)
+
+        mode = (request.GET.get("mode") or _session_mode(request, endpoint_host) or "native").strip().lower()
+        if mode not in ("native", "passthrough"):
+            mode = "native"
+
+        try:
+            since_id = int(request.GET.get("since_id", 0))
+        except (TypeError, ValueError):
+            since_id = 0
+
+        session = get_sniff_capture_session(request, endpoint_host)
+        qs = TrafficLog.objects.all()
+        if session:
+            qs = qs.filter(capture_session=session)
         else:
-            qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
+            if mode == "passthrough":
+                qs = qs.filter(client_path__contains=f"/pt/admin/{endpoint_host}")
+            else:
+                qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
 
-    if not session:
-        qs = qs.filter(capture_source=mode)
-    if since_id:
-        qs = qs.filter(id__gt=since_id)
-        logs = list(qs.order_by("id")[:100])
-    else:
-        # Initial backfill: newest rows first in UI (client prepends in id order).
-        logs = list(qs.order_by("-id")[:100])
-        logs.reverse()
+        if not session:
+            qs = qs.filter(capture_source=mode)
+        if since_id:
+            qs = qs.filter(id__gt=since_id)
+            logs = list(qs.order_by("id")[:100])
+        else:
+            # Initial backfill: newest rows first in UI (client prepends in id order).
+            logs = list(qs.order_by("-id")[:100])
+            logs.reverse()
 
-    try:
-        captures = [
+        try:
+            captures = [
+                {
+                    "id": log.id,
+                    "method": log.method,
+                    "url": log.url,
+                    "path": log.path,
+                    "client_path": log.client_path,
+                    "status_code": log.status_code,
+                    "capture_source": log.capture_source,
+                    "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
+                    "duration_ms": log.duration_ms,
+                }
+                for log in logs
+            ]
+        except Exception as exc:
+            return JsonResponse(
+                {
+                    "success": True,
+                    "captures": [],
+                    "session_active": bool(session),
+                    "session_name": session.capture_name if session else "",
+                    "mode": mode,
+                    "warning": str(exc),
+                }
+            )
+
+        return JsonResponse(
             {
-                "id": log.id,
-                "method": log.method,
-                "url": log.url,
-                "path": log.path,
-                "client_path": log.client_path,
-                "status_code": log.status_code,
-                "capture_source": log.capture_source,
-                "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
-                "duration_ms": log.duration_ms,
+                "success": True,
+                "captures": captures,
+                "session_active": bool(session),
+                "session_name": session.capture_name if session else "",
+                "mode": mode,
             }
-            for log in logs
-        ]
+        )
     except Exception as exc:
+        logger.exception("workspace_poll failed")
         return JsonResponse(
             {
                 "success": True,
                 "captures": [],
-                "session_active": bool(session),
-                "session_name": session.capture_name if session else "",
-                "mode": mode,
+                "session_active": False,
+                "session_name": "",
+                "mode": "native",
                 "warning": str(exc),
-            }
+            },
+            status=200,
         )
-
-    return JsonResponse(
-        {
-            "success": True,
-            "captures": captures,
-            "session_active": bool(session),
-            "session_name": session.capture_name if session else "",
-            "mode": mode,
-        }
-    )
 
 
 @staff_member_required
+@csrf_exempt
 @require_http_methods(["POST"])
 def store_mm_token(request, endpoint_host: str):
     """Store browser MMAUTHTOKEN in TenantApp so passthrough can use it server-side."""
@@ -191,7 +212,7 @@ def store_mm_token(request, endpoint_host: str):
     if not token:
         return JsonResponse({"ok": False, "error": "no MMAUTHTOKEN found"}, status=400)
 
-    tenant = get_current_tenant(request)
+    tenant = bind_request_tenant(request)
     if not tenant:
         return JsonResponse({"ok": False, "error": "no tenant context"}, status=400)
 
@@ -209,5 +230,25 @@ def store_mm_token(request, endpoint_host: str):
         ta.save()
         return JsonResponse({"ok": True})
     except Exception as exc:
-        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+        logger.exception("store_mm_token failed")
+        return JsonResponse({"ok": False, "error": str(exc)})
+
+
+@staff_member_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def workspace_ingest(request, endpoint_id: int):
+    """Accept client-side passthrough traffic captured by the workspace shim."""
+    try:
+        body = request.body
+        if body:
+            try:
+                data = json.loads(body.decode("utf-8", errors="ignore"))
+            except Exception:
+                data = {}
+            if data:
+                logger.debug("[PolySniffer] workspace_ingest from %s: %r", endpoint_id, data)
+    except Exception as exc:
+        logger.warning("[PolySniffer] workspace_ingest error: %s", exc)
+    return JsonResponse({"ok": True})
 

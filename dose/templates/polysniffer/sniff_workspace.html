@@ -9,19 +9,21 @@
         html, body { margin: 0; min-height: 100%; background: #111827; color: #e5e7eb; font-family: Georgia, "Times New Roman", serif; }
         body { min-height: 100vh; display: flex; flex-direction: column; }
         .topbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 16px; background: #1f2937; border-bottom: 1px solid #374151; }
-        .topbar h1 { margin: 0; font-size: 1rem; color: #34d399; }
+        .topbar h1 { margin: 0; font-size: 1rem; color: #34d399; display: inline; }
         .meta, .live { font: 0.78rem Consolas, monospace; color: #9ca3af; }
+        .topbar .meta { margin-left: 0.5rem; }
         .live { color: #6ee7b7; text-align: right; }
         .split { flex: 1; display: grid; grid-template-columns: 1fr 30%; min-height: 0; }
         .left-col { display: flex; flex-direction: column; padding: 14px; border-right: 1px solid #374151; background: #0b1220; }
         .right-col { min-width: 0; display: flex; flex-direction: column; background: #171717; }
         h2 { margin: 0 0 10px; font-size: 0.9rem; color: #d1d5db; }
         .mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .mode-card { border: 1px solid #374151; border-radius: 6px; padding: 12px; background: #1f2937; }
+        .mode-card { border: 1px solid #374151; border-radius: 6px; padding: 12px; background: #1f2937; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
         .mode-card.selected { border-color: #34d399; }
         .mode-card.pt.selected { border-color: #60a5fa; }
-        .mode-card h3 { margin: 0 0 5px; font-size: 0.85rem; }
+        .mode-card p { margin: 0; }
         .mode-card p, .browser-placeholder p { margin: 0 0 8px; font: 0.72rem/1.4 Consolas, monospace; color: #9ca3af; overflow-wrap: anywhere; }
+        .mode-card p { margin: 0; }
         .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 6px 12px; border: 0; border-radius: 5px; color: #fff; font: 600 0.78rem Georgia, serif; cursor: pointer; text-decoration: none; }
         .btn-native { background: #047857; }
         .btn-pt { background: #1d4ed8; }
@@ -58,17 +60,14 @@
 </div>
 <div class="split">
     <section class="left-col">
-        <h2>Capture mode</h2>
         <div class="mode-cards">
             <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
-                <h3>Native</h3>
-                <p>Direct top-level browser navigation to {{ upstream_browse_url }}.</p>
                 <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
+                <p>Direct top-level browser navigation to {{ upstream_browse_url }}.</p>
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
-                <h3>Passthrough</h3>
-                <p>Top-level browser navigation through /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
+                <p>Top-level browser navigation through /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
             </div>
         </div>
         <div class="toolbar">

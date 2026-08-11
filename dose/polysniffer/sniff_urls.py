@@ -19,6 +19,8 @@ from dose.polysniffer.views.sniff_v2_workspace import (
 
     store_mm_token,
 
+    workspace_ingest,
+
     workspace_poll,
 
 )
@@ -40,6 +42,7 @@ urlpatterns = [
     path('<str:endpoint_host>/workspace/poll/', workspace_poll, name='workspace_poll'),
     path('<str:endpoint_host>/workspace/native/', sniff_shell, {'mode': 'native'}, name='workspace_native'),
     path('<str:endpoint_host>/workspace/passthrough/', sniff_shell, {'mode': 'passthrough'}, name='workspace_passthrough'),
+    re_path(r'^(?P<endpoint_id>\d+)/workspace/ingest/$', workspace_ingest, name='workspace_ingest'),
     re_path(r'^(?P<endpoint_id>\d+)/native/(?P<path>.*)$', native_sniff_proxy, name='native_sniff_proxy'),
 ]
 

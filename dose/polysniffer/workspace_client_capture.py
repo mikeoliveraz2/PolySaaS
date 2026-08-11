@@ -9,7 +9,7 @@ def inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     """Log direct upstream API calls to /dose/sniff/<id>/workspace/ingest/."""
     if "data-polysniffer-client-capture" in html:
         return html
-    ingest = f"/dose/sniff/{endpoint_id}/workspace/ingest/"
+    ingest = f"/admin/polysniffer/sniff/{endpoint_id}/workspace/ingest/"
     shim = f"""
 <script data-polysniffer-client-capture="1">
 (function() {{

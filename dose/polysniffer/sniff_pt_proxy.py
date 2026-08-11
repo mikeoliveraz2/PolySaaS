@@ -46,7 +46,7 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     """Hook fetch/XHR in passthrough iframe — shim traffic bypasses server proxy."""
     if "data-polysniffer-pt-client-capture" in html:
         return html
-    ingest = f"/dose/sniff/{endpoint_id}/workspace/ingest/"
+    ingest = f"/admin/polysniffer/sniff/{endpoint_id}/workspace/ingest/"
     shim = f"""
 <script data-polysniffer-pt-client-capture="1">
 (function() {{
