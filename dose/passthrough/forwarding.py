@@ -262,6 +262,13 @@ def _extract_upstream_root_classes(html):
 
 def _wrap_in_admin_template(request, response, trigger, endpoint, handler=None):
     """Wrap raw proxied HTML in admin template for embedded display."""
+    # PolySniffer workspace embed needs the raw target page only.
+    if getattr(request, '_polysniffer_proxy_prefix', '').startswith('/pt/polysniff'):
+        response['X-Frame-Options'] = 'ALLOWALL'
+        for h in ('Content-Security-Policy', 'X-Content-Security-Policy', 'Content-Security-Policy-Report-Only'):
+            if h in response:
+                del response[h]
+        return response
     content_type = response.get('Content-Type', '')
     if 'text/html' not in content_type:
         return response

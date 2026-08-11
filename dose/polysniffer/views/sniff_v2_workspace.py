@@ -6,12 +6,13 @@ from __future__ import annotations
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import JsonResponse
 from django.shortcuts import render
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 
 from dose.polysniffer.har_capture import _ensure_tenant_schema
 from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
 from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
+from dose.models import TenantApp
 from dose.polysniffer.views.core import get_endpoint_by_host
 
 
@@ -124,7 +125,8 @@ def workspace_poll(request, endpoint_host: str):
         else:
             qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
 
-    qs = qs.filter(capture_source=mode)
+    if not session:
+        qs = qs.filter(capture_source=mode)
     if since_id:
         qs = qs.filter(id__gt=since_id)
         logs = list(qs.order_by("id")[:100])
@@ -170,4 +172,42 @@ def workspace_poll(request, endpoint_host: str):
         }
     )
 
+
+@staff_member_required
+@require_http_methods(["POST"])
+def store_mm_token(request, endpoint_host: str):
+    """Store browser MMAUTHTOKEN in TenantApp so passthrough can use it server-side."""
+    try:
+        get_endpoint_by_host(endpoint_host, request)
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    token = (
+        request.POST.get("token") or
+        request.COOKIES.get("MMAUTHTOKEN") or
+        request.COOKIES.get("mmauthtoken") or
+        ""
+    ).strip()
+    if not token:
+        return JsonResponse({"ok": False, "error": "no MMAUTHTOKEN found"}, status=400)
+
+    tenant = get_current_tenant(request)
+    if not tenant:
+        return JsonResponse({"ok": False, "error": "no tenant context"}, status=400)
+
+    _ensure_tenant_schema(tenant)
+    try:
+        ta, _ = TenantApp.objects.get_or_create(
+            tenant=tenant,
+            app_name="mattermost",
+            defaults={"status": "active"},
+        )
+        extra = ta.extra_config or {}
+        extra["mmauthtoken"] = token
+        extra["mm_session_token"] = token
+        ta.extra_config = extra
+        ta.save()
+        return JsonResponse({"ok": True})
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
 

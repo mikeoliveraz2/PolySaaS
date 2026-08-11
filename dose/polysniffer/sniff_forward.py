@@ -25,6 +25,8 @@ from django.http import HttpResponse
 
 
 from dose.polysniffer.har_capture import log_requests_response
+from dose.polysniffer.sniff_handler_bridge import apply_native_sniff_rewrites
+from dose.polysniffer.sniff_native_rewrite import filter_native_response_headers
 from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
 
 
@@ -151,25 +153,27 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
 
 
+    content = resp.content
+    content_type = (resp.headers.get('Content-Type') or '').lower()
+    if content_type.startswith('text/html'):
+        proxy_prefix = f"/dose/sniff/{getattr(endpoint, 'pk', '')}/native"
+        content = apply_native_sniff_rewrites(
+            content,
+            content_type=content_type,
+            request=request,
+            endpoint=endpoint,
+            upstream_path=upstream_path,
+            proxy_prefix=proxy_prefix,
+        )
+
     django_resp = HttpResponse(
-
-        content=resp.content,
-
+        content=content,
         status=resp.status_code,
-
     )
 
-    hop_by_hop = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
-
-                  'te', 'trailers', 'transfer-encoding', 'upgrade', 'content-encoding'}
-
-    for k, v in resp.headers.items():
-
-        if k.lower() not in hop_by_hop:
-
-            django_resp[k] = v
-
-
+    safe_headers = filter_native_response_headers(dict(resp.headers))
+    for k, v in safe_headers.items():
+        django_resp[k] = v
 
     return django_resp
 

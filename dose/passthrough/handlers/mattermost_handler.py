@@ -1981,6 +1981,16 @@ try {{
             print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
             return {'mmauthtoken': browser_token, 'MMAUTHTOKEN': browser_token}
 
+        # Fallback to a token previously saved from the browser (PolySniffer workspace save).
+        try:
+            extra = self._get_tenantapp_extra_config(request) or {}
+            saved = (extra.get('mmauthtoken') or extra.get('mm_session_token') or '').strip()
+            if saved:
+                print(f"[MM_AUTH] TenantApp saved token fallback len={len(saved)}")
+                return {'mmauthtoken': saved, 'MMAUTHTOKEN': saved}
+        except Exception as _exc:
+            print(f"[MM_AUTH] TenantApp token fallback error: {_exc}")
+
         _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else 'mattermost'
         server_token = self._attempt_server_mm_session(request, endpoint_url, _trigger)
