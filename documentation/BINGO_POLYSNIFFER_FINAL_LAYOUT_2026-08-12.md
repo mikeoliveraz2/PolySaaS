@@ -41,9 +41,7 @@ The PolySniffer capture workspace is now a single-pane, demo-ready layout with t
 
 ## Screenshot
 
-![PolySniffer final layout](assets/BINGO_POLYSNIFFER_FINAL_LAYOUT_2026-08-12_workspace.png)
-
-*(Drop the final-layout screenshot as `documentation/assets/BINGO_POLYSNIFFER_FINAL_LAYOUT_2026-08-12_workspace.png` if it is not already present.)*
+[Final layout screenshot (PDF)](assets/BINGO_POLYSNIFFER_FINAL_LAYOUT_2026-08-12.pdf)
 
 ---
 
