@@ -33,7 +33,10 @@ class PolysysmonPassthroughHandler:
         Otherwise, passthrough the HTML unchanged.
         """
         logger.info("[POLYSYSMON HANDLER] Handling PolySysMon admin/template endpoint")
-        # Iframe shells are retired — return upstream HTML for display-shell injection.
+        request = kwargs.get('request', None)
+        if request is not None:
+            from django.shortcuts import render
+            return render(request, 'passthrough/iframe_polysysmon.html'), None
         return html_str, None
 
     def handle_static_asset(self, request_path, ext_path_str):

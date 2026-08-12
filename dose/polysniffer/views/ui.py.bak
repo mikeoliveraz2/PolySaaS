@@ -434,9 +434,7 @@ def capture_interface_view(request, endpoint_id):
                 <button class="btn" onclick="window.close()">✖️ Close</button>
             </div>
         </div>
-        <p style="padding:24px;">Iframe capture is retired. Open the app top-level:
-        <a href="/admin/polysniffer/proxy/{endpoint_id}/" target="_blank" rel="noopener">Open proxy</a>
-        or use the PolySniffer workspace Start Native / Start Passthrough buttons.</p>
+        <iframe id="proxy-iframe" class="iframe-container" src="/admin/polysniffer/proxy/{endpoint_id}/"></iframe>
         <script>
             let captures = [];
 
@@ -564,9 +562,7 @@ def split_window_view(request, endpoint_id):
                 <button class="clear-btn" onclick="clearCaptures()">Clear All</button>
             </div>
             <div class="proxy-panel">
-                <p style="padding:24px;">Iframe split view is retired. Open the app top-level:
-                <a href="/admin/polysniffer/proxy/{endpoint_id}/" target="_blank" rel="noopener">Open proxy</a>
-                or use the PolySniffer workspace Start Native / Start Passthrough buttons.</p>
+                <iframe id="proxy-iframe" class="iframe-container" src="/admin/polysniffer/proxy/{endpoint_id}/"></iframe>
             </div>
         </div>
         <script>

@@ -5,7 +5,7 @@
 **Status:** Verified (not BINGO) — Company/Organization and theme CSS OK under PolySniffer workspace  
 **Endpoint:** Dolibarr `http://localhost:8083`  
 **Tenant context:** `pso17`  
-**Related commits:** `c9fe06bf` (proxy prefix / DOLSESSID), `22dc51bd` (SSO cookies)
+**Related commits:** `c9fe06bf` (proxy prefix / DOLSESSID), `22dc51bd` (SSO cookies), `d23d23a8` (workspace `<iframe>`)
 
 ---
 
@@ -18,9 +18,9 @@ PolySniffer workspace (**Native** session) loads Dolibarr Setup → **Company/Or
 | Company/Organization form (tabs, fields, currency/country) | Renders with eldy theme |
 | Live capture lists theme/CSS/JS assets | `200` including `/theme/eldy/style.css.php?...` |
 | Session example | `localhost:8083-native-20240812-2255` |
-| App window | Top-level (no iframe) |
+| Workspace browser pane | `<iframe>` (object→iframe on this branch) |
 
-Jazzmin production-style path `/pt/admin/localhost:8083/…` was already known good for Dolibarr CSS.
+Jazzmin production-style path `/pt/admin/localhost:8083/…` was already known good for Dolibarr CSS; this note certifies the **PolySniffer** embed path (`/pt/polysniff/{endpoint_id}/…`) for the same Company setup screen.
 
 ---
 
@@ -28,12 +28,11 @@ Jazzmin production-style path `/pt/admin/localhost:8083/…` was already known g
 
 | Piece | Role |
 |-------|------|
-| `sniff_workspace.html` | Admin capture shell; Native/Passthrough open a **top-level** window (no iframe) |
-| Passthrough launch | `/pt/admin/{host}{starting_uri}` — HTML injected in Jazzmin display shell |
-| Native launch | Direct upstream URL |
-| `dolibarr_handler.py` | Theme/CSS path rewrites |
+| `sniff_workspace.html` | Admin shell; both modes load `/pt/polysniff/{id}{browse_subpath}` in the pane |
+| `sniff_pt_proxy.py` | Rewrites to `/pt/admin/{trigger}/`, sets `_polysniffer_proxy_prefix`, Location/HTML rewrite, capture shim |
+| `dolibarr_handler.py` | Theme/CSS path rewrites; honors `_polysniffer_proxy_prefix` |
 
-If CSS breaks again: inspect the **app window** Network tab (not the workspace poll HAR) for `/theme/…` and `style.css.php` host/status.
+If CSS breaks again: inspect the **iframe** document Network tab (not the workspace poll HAR) for `/theme/…` and `style.css.php` host/status.
 
 ---
 

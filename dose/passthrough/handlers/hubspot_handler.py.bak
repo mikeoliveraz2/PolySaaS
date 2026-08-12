@@ -2181,11 +2181,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         browser reading HubSpot's OWN headers and cannot be bypassed from our
         proxy. See repo memory hubspot-passthrough-client-shim-notes.md.
         """
-        return (
-            '<div style="padding:16px">HubSpot iframe embed is retired and must not be wired. '
-            'Use HTML rewrite + shim. See documentation/NO_IFRAMES_IN_DOSE.md.</div>'
-            f'{HubspotPassthroughHandler._orchestration_polling_script_html()}'
-        )
+        origin = (upstream_origin or 'https://app.hubspot.com').rstrip('/')
+        return f"""
+<div style="height:78vh;min-height:520px;">
+  <iframe src="{origin}/home/" title="HubSpot"
+          style="width:100%;height:100%;border:0;display:block;"
+          referrerpolicy="no-referrer-when-downgrade"></iframe>
+</div>
+{HubspotPassthroughHandler._orchestration_polling_script_html()}"""
 
     def process_html_response(self, html_str, request, endpoint_url=None, **context):
         self._bind_hubspot_request(request)

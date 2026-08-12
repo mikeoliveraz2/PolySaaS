@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Nextcloud server-side SSO working — 2026-08-03 — see documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # Owner-approved 2026-08-02: Nextcloud server-side SSO (extra_config nc_login/nc_password → form login → Set-Cookie).
 # dose/passthrough/handlers/nextcloud_handler.py
@@ -105,13 +106,10 @@ _NC_PARTIAL_PT_PREFIXES = (
 
 
 def _nc_proxy_prefix_from_endpoint(endpoint) -> str:
-    # Owner-approved 2026-08-02: slug is URL identity (not trigger_path / hostname).
     if hasattr(endpoint, "get_proxy_prefix"):
         return endpoint.get_proxy_prefix().rstrip("/")
-    slug = (getattr(endpoint, "slug", None) or "").strip().strip("/")
-    if slug:
-        return f"/pt/admin/{slug}"
-    return "/pt/admin/nextcloud"
+    host = urlparse(getattr(endpoint, "endpoint_url", "") or "").netloc
+    return f"/pt/admin/{host}" if host else "/pt/admin"
 
 
 def _nc_netloc_variants(endpoint_url: str) -> tuple:

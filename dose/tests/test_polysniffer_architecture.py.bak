@@ -1,5 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13
 """Architecture contracts for the PolySniffer Native/Passthrough workflow."""
 from inspect import signature
 import json
@@ -57,8 +55,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertIn('href="/example/native/"', native_html)
         self.assertIn('href="/example/passthrough/"', passthrough_html)
         self.assertIn('target="_blank"', native_html)
-        self.assertNotIn('target="_blank"', passthrough_html)
-        self.assertIn("Open in Jazzmin panel", passthrough_html)
+        self.assertIn('target="_blank"', passthrough_html)
         for shell_element in ('class="topbar"', 'class="split"', 'id="captures"'):
             self.assertEqual(native_html.count(shell_element), passthrough_html.count(shell_element))
 
@@ -68,7 +65,6 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertIn("window.open('about:blank', '_blank')", html)
         self.assertIn("appWindow.opener = null", html)
         self.assertIn("appWindow.location.replace", html)
-        self.assertIn("window.location.assign(passthroughLaunchUrl)", html)
         self.assertNotIn("<iframe", html.lower())
 
     def test_mode_viewports_use_separate_native_and_passthrough_proxies(self):

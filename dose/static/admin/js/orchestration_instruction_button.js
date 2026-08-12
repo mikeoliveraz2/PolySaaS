@@ -1,7 +1,8 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+// BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13
 // BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 /**
- * Passthrough orchestration bar + green instruction button (modal iframe → Django admin).
+ * Passthrough orchestration bar + green instruction button (new top-level window → Django admin).
  */
 (function (global) {
     'use strict';
@@ -151,8 +152,7 @@
             '#ps-orch-instruction-modal .ps-orch-modal-header{display:flex;align-items:center;justify-content:space-between;',
             'padding:10px 14px;background:#1e293b;color:#f8fafc;font-size:14px;font-weight:600;}',
             '#ps-orch-instruction-modal .ps-orch-modal-close{background:transparent;border:none;color:#f8fafc;',
-            'font-size:22px;line-height:1;cursor:pointer;padding:0 4px;}',
-            '#ps-orch-instruction-modal #ps-orch-instruction-iframe{flex:1 1 auto;width:100%;border:0;background:#fff;}'
+            'font-size:22px;line-height:1;cursor:pointer;padding:0 4px;}'
         ].join('');
         document.head.appendChild(style);
     }
@@ -322,7 +322,7 @@
                 'style="color:#93c5fd;font-size:12px;font-weight:500;text-decoration:none;">Open in new tab</a>',
                 '<button type="button" class="ps-orch-modal-close" id="ps-orch-modal-close" aria-label="Close">&times;</button>',
                 '</span></div>',
-                '<iframe id="ps-orch-instruction-iframe" title="Orchestration instruction form"></iframe>',
+                '<p style="margin:24px;font:14px/1.4 system-ui,sans-serif;">Instruction form opens in a new window.</p>',
                 '</div>'
             ].join('');
             document.body.appendChild(modal);
@@ -334,54 +334,22 @@
     };
 
     OrchestrationBar.prototype.openInstructionModal = function (adminUrl, mode, actionPath, fullAdminUrl) {
-        var modal = this.ensureModalMounted();
-        var iframe = document.getElementById('ps-orch-instruction-iframe');
-        var title = document.getElementById('ps-orch-modal-title');
-        if (!modal || !iframe) {
-            console.error('[ORCH-BTN] modal create failed — opening new tab');
-            global.open(fullAdminUrl || adminUrl, '_blank', 'noopener,width=1024,height=820');
-            this.showEvent('Opened instruction form in new tab');
-            return;
-        }
-        if (title) {
-            title.textContent = mode === 'update'
-                ? ('Edit Orchestration Instruction — ' + actionPath)
-                : ('Create Orchestration Instruction — ' + actionPath);
-        }
-        var tabLink = document.getElementById('ps-orch-modal-open-tab');
-        if (tabLink) {
-            tabLink.href = fullAdminUrl || adminUrl;
-        }
-        iframe.src = adminUrl;
-        modal.classList.add('ps-orch-modal-open');
-        modal.style.display = 'flex';
-        modal.style.pointerEvents = 'auto';
-        modal.style.visibility = 'visible';
-        modal.style.opacity = '1';
-        modal.setAttribute('aria-hidden', 'false');
-        document.body.classList.add('ps-orch-modal-active');
-        console.log('[ORCH-BTN] modal open →', adminUrl);
-        this.showEvent(mode === 'update' ? 'Edit instruction form open' : 'Create instruction form open');
-        var self = this;
-        global.requestAnimationFrame(function () {
-            var rect = modal.getBoundingClientRect();
-            if (rect.width < 10 || rect.height < 10) {
-                console.warn('[ORCH-BTN] modal not visible — opening new tab');
-                global.open(fullAdminUrl || adminUrl, '_blank', 'noopener,width=1024,height=820');
-            }
-        });
+        var url = fullAdminUrl || adminUrl;
+        global.open(url, '_blank', 'noopener,width=1024,height=820');
+        this.showEvent(mode === 'update'
+            ? 'Edit instruction form opened in new window'
+            : 'Create instruction form opened in new window');
+        console.log('[ORCH-BTN] top-level window →', url);
     };
 
     OrchestrationBar.prototype.closeInstructionModal = function () {
         var modal = document.getElementById('ps-orch-instruction-modal');
-        var iframe = document.getElementById('ps-orch-instruction-iframe');
         if (!modal) return;
         modal.classList.remove('ps-orch-modal-open');
         modal.style.display = 'none';
         modal.style.pointerEvents = 'none';
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('ps-orch-modal-active');
-        if (iframe) iframe.src = 'about:blank';
         this.updateBar(true);
     };
 

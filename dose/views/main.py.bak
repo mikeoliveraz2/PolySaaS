@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: UI Cleanup — commit 748e871e
 # FIX 2026-08-02 (owner-approved): _build_landing_page_context()'s _endpoint_visible() used
 # to check whether an app name was a substring of the endpoint hostname (fails for
@@ -889,24 +890,19 @@ def _build_landing_page_context(request):
 
     passthrough_services = []
     external_services = []
-    seen_slugs = set()
+    seen_hosts = set()
     for endpoint in passthrough_endpoints:
-        # Owner-approved 2026-08-02: slug is URL identity (not hostname/"trigger").
-        seg = (endpoint.slug or "").strip().strip("/").lower()
-        if not seg:
-            from urllib.parse import urlparse
-            seg = urlparse(endpoint.endpoint_url or "").netloc.lower()
-        if not seg or seg in seen_slugs:
+        from urllib.parse import urlparse
+        host = urlparse(endpoint.endpoint_url or "").netloc.lower()
+        if not host or host in seen_hosts:
             continue
-        seen_slugs.add(seg)
+        seen_hosts.add(host)
 
-        title = endpoint.menu_title or seg.replace('-', ' ').replace('_', ' ').title()
+        title = endpoint.menu_title or host.replace('-', ' ').replace('_', ' ').title()
         passthrough_services.append({
-            'id': f"pt_{endpoint.id}",
             'title': title,
-            'slug': seg,
-            'trigger': seg,  # legacy key — same as slug until templates drop it
-            'url': f'/pt/dose/{seg}/',
+            'endpoint_host': host,
+            'url': endpoint.get_menu_url(),
             'icon': endpoint.menu_icon or '🔗',
             'description': endpoint.description or f"Access {title}"
         })
@@ -976,22 +972,17 @@ def _build_landing_page_context(request):
     return context, None
 
 
-def _resolve_landing_passthrough_endpoint(slug):
-    """Resolve PassThroughEndpoint by slug (URL identity). Legacy: hostname match."""
+def _resolve_landing_passthrough_endpoint(endpoint_host):
+    """Resolve the tenant PassThroughEndpoint by exact endpoint_url host."""
     from dose.models import PassThroughEndpoint
     from urllib.parse import urlparse
 
-    slug_lower = (slug or '').strip().lower()
-    if not slug_lower:
+    host_key = (endpoint_host or '').strip().lower()
+    if not host_key:
         return None
-    by_slug = PassThroughEndpoint.objects.filter(
-        is_enabled=True, slug__iexact=slug_lower,
-    ).order_by('-id').first()
-    if by_slug is not None:
-        return by_slug
     for candidate in PassThroughEndpoint.objects.filter(is_enabled=True).order_by('-id'):
-        host = urlparse(candidate.endpoint_url or '').netloc.lower().replace('-', '_')
-        if host == slug_lower.replace('-', '_') or slug_lower.replace('-', '_') in host:
+        host = urlparse(candidate.endpoint_url or '').netloc.lower()
+        if host == host_key:
             return candidate
     return None
 
@@ -1039,8 +1030,7 @@ def pt_dose_generic_passthrough_view(request, slug=None, subpath=None, trigger=N
     from dose.passthrough.registry import resolve_handler_for_endpoint
     from dose.utils import get_current_tenant
 
-    # Owner-approved 2026-08-02: URL kwarg is slug (trigger kept as alias only).
-    slug = (slug or trigger or '').strip('/')
+    endpoint_host = (slug or trigger or '').strip('/').lower()
 
     context, response = _build_landing_page_context(request)
     if response is not None:
@@ -1054,15 +1044,14 @@ def pt_dose_generic_passthrough_view(request, slug=None, subpath=None, trigger=N
     ).exists():
         return HttpResponseForbidden('You do not have access to this tenant.')
 
-    slug_key = slug.lower()
     allowed = {
-        (service.get('slug') or service.get('trigger') or '').lower()
+        (service.get('endpoint_host') or '').lower()
         for service in context.get('passthrough_services', [])
     }
-    if slug_key not in allowed:
+    if endpoint_host not in allowed:
         raise Http404('Not found')
 
-    endpoint = _resolve_landing_passthrough_endpoint(slug_key)
+    endpoint = _resolve_landing_passthrough_endpoint(endpoint_host)
     if endpoint is None:
         raise Http404('No enabled PassThroughEndpoint matches this URL.')
 
@@ -1081,7 +1070,7 @@ def pt_dose_generic_passthrough_view(request, slug=None, subpath=None, trigger=N
         handler=handler,
     )
 
-    embed_title = endpoint.menu_title or slug_key.replace('.', ' ').replace('-', ' ').title()
+    embed_title = endpoint.menu_title or endpoint_host.replace('.', ' ').replace('-', ' ').title()
     embed_head = ''
     embed_body = ''
     if raw_html and raw_html.startswith('REDIRECT:'):
@@ -1095,11 +1084,11 @@ def pt_dose_generic_passthrough_view(request, slug=None, subpath=None, trigger=N
         )
     elif raw_html:
         processed = _process_upstream_html_for_embed(handler, raw_html, request, endpoint.endpoint_url)
-        processed = _retarget_passthrough_prefixes_for_dose(processed, slug_key)
+        processed = _retarget_passthrough_prefixes_for_dose(processed, endpoint_host)
         head_inner, body_html = _split_html_document_for_dose_embed(processed)
         embed_head = mark_safe(head_inner)
         embed_body = mark_safe(
-            f'<div class="polysaas-passthrough-scope" data-polysaas-embed-slug="{slug_key}">{body_html or ""}</div>'
+            f'<div class="polysaas-passthrough-scope" data-polysaas-embed-host="{endpoint_host}">{body_html or ""}</div>'
         )
     else:
         embed_body = mark_safe(
@@ -1421,3 +1410,4 @@ def subscribe_view(request):
     return render(request, 'dose/subscribe.html', plan_context)
 
 # ...other views from dose/views.py will be moved here...
+
