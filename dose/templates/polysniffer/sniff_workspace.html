@@ -30,7 +30,7 @@
         .btn-secondary { background: #374151; }
         .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; margin-bottom: 12px; }
         .browser-pane { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #fff; overflow: hidden; }
-        .browser-pane object { width: 100%; height: 100%; border: 0; background: #fff; }
+        .browser-pane iframe { width: 100%; height: 100%; border: 0; background: #fff; }
         .browser-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280; font: 0.8rem Consolas, monospace; background: #111827; }
         .right-col header { padding: 12px 14px; border-bottom: 2px solid #16a34a; }
         .right-col header h2 { margin: 0; color: #4ade80; }
@@ -103,7 +103,7 @@
     const browserPane = document.getElementById('browser-pane');
 
     function setBrowserUrl(url, mode) {
-        browserPane.innerHTML = '<object type="text/html" data="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></object>';
+        browserPane.innerHTML = '<iframe src="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></iframe>';
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function(card) {
             card.classList.remove('selected');
