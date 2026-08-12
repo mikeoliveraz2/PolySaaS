@@ -14,9 +14,16 @@ area via the generic forwarder.
 """
 import re
 import logging
+import time
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# Module-level cache for DOLSESSID cookies keyed by endpoint ID.
+# Avoids modifying the Django session (which would issue a new sessionid
+# cookie and break the PolySaaS login loop).
+_DOLSESSID_CACHE: dict[str, dict] = {}  # {ep_id: {"name": ..., "value": ..., "ts": ...}}
+_CACHE_TTL = 3600  # 1 hour
 
 # Root-relative paths that Dolibarr embeds in HTML and that must be prefixed.
 # Order matters: longer prefixes first to avoid partial matches.
@@ -102,11 +109,37 @@ class DolibarrPassthroughHandler:
             return html_str
 
         endpoint = getattr(request, "_passthrough_endpoint", None)
-        proxy_prefix = self._proxy_prefix(endpoint, endpoint_url)
+        poly_prefix = (getattr(request, "_polysniffer_proxy_prefix", None) or "").strip()
+        proxy_prefix = poly_prefix.rstrip("/") if poly_prefix else self._proxy_prefix(endpoint, endpoint_url)
         base = self._base_from_url(endpoint_url)
 
         html_str = self._rewrite_paths(html_str, proxy_prefix, base)
         return html_str
+
+    def _endpoint_id(self, request) -> str:
+        endpoint = getattr(request, "_passthrough_endpoint", None) or getattr(request, "_polysniffer_endpoint", None)
+        return str(getattr(endpoint, "pk", None) or getattr(endpoint, "id", None) or 0)
+
+    def postprocess_upstream_response(self, resp, request, **context):
+        """Cache the upstream Dolibarr session cookie so GET token and POST session match."""
+        try:
+            for name, value in resp.cookies.get_dict().items():
+                if name.startswith("DOLSESSID_"):
+                    ep_id = self._endpoint_id(request)
+                    _DOLSESSID_CACHE[ep_id] = {"name": name, "value": value, "ts": time.time()}
+                    print(f"[DOLI-HANDLER] cached {name}={value[:8]}... for ep={ep_id}")
+                    break
+        except Exception:
+            pass
+        return resp
+
+    def override_upstream_cookies(self, request, target_url: str) -> dict:
+        """Force the cached Dolibarr session cookie on every upstream request."""
+        ep_id = self._endpoint_id(request)
+        entry = _DOLSESSID_CACHE.get(ep_id)
+        if entry and entry.get("name") and (time.time() - entry.get("ts", 0) < _CACHE_TTL):
+            return {entry["name"]: entry["value"]}
+        return {}
 
     # ------------------------------------------------------------------
     # Internal helpers

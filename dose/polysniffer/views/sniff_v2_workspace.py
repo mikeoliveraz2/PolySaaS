@@ -51,19 +51,22 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             {"error": str(exc), "endpoint_host": endpoint_host},
             status=404,
         )
-    active_mode = (mode or _session_mode(request, endpoint_host)).strip().lower()
-    if mode in ("native", "passthrough"):
+    active_mode = (mode or "").strip().lower()
+    if active_mode in ("native", "passthrough"):
         from dose.polysniffer.sniff_session_utils import ensure_capture_session
 
-        ensure_capture_session(request, endpoint_host, mode)
-        active_mode = mode
-    elif active_mode not in ("native", "passthrough"):
+        ensure_capture_session(request, endpoint_host, active_mode)
+    else:
+        # Fresh workspace window: do not carry over a prior capture session
+        request.session.pop(f"polysniffer_{endpoint_host}_capture", None)
+        request.session.pop(f"polysniffer_{endpoint_host}_mode", None)
         active_mode = ""
+    request.session.modified = True
 
     upstream_url = (getattr(endpoint, "endpoint_url", None) or "").strip().rstrip("/")
     browse_subpath = _native_browse_subpath(endpoint)
     upstream_browse_url = f"{upstream_url}{browse_subpath}" if upstream_url else ""
-    active_session = get_sniff_capture_session(request, endpoint_host)
+    active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
 
     app_launch_url = ""
     if active_session and active_mode == "native":

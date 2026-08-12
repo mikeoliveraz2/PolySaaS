@@ -5,11 +5,7 @@
 
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
-from django.http import (
-    JsonResponse,
-    HttpResponse,
-    HttpResponseForbidden,
-)
+from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 import re

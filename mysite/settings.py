@@ -233,6 +233,7 @@ STRICT_TENANT_ENFORCEMENT = env.bool('STRICT_TENANT_ENFORCEMENT', default=False)
 MATTERMOST_URL = sm('mattermost-url', 'MATTERMOST_URL', 'http://localhost:8065')
 MATTERMOST_ADMIN_TOKEN = sm('MATTERMOST_ADMIN_TOKEN', 'MATTERMOST_ADMIN_TOKEN') or sm('mattermost-admin-token', 'MATTERMOST_ADMIN_TOKEN')
 POLYSAAS_APP_ADMIN_PASSWORD = sm('polysaas-app-admin-password', 'POLYSAAS_APP_ADMIN_PASSWORD', 'PolySaaS2026!')
+DOLIBARR_ADMIN_LOGIN = sm('dolibarr-admin-login', 'DOLIBARR_ADMIN_LOGIN', 'admin')
 MATTERMOST_PASSTHROUGH_SECRET = sm('mattermost-passthrough-secret', 'MATTERMOST_PASSTHROUGH_SECRET', '')
 
 # --- Shared Odoo instance (used by odoo_tenant_provisioner, OdooCustomerSync, etc.) ---

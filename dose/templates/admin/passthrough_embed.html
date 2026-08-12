@@ -49,6 +49,26 @@ body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
 body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
     grid-template-columns: 60px 1fr !important;
 }
+
+/* Full-width passthrough: hide the PolySaaS left sidebar so the upstream app fills the viewport */
+body.polysaas-passthrough-embed-page .admin-main-wrapper,
+body.polysaas-passthrough-embed-page .admin-main-wrapper.admin-content-grid,
+body.polysaas-passthrough-embed-page .admin-content-grid {
+    grid-template-columns: 0 1fr !important;
+}
+body.polysaas-passthrough-embed-page #dose-custom-sidebar,
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav,
+body.polysaas-passthrough-embed-page .admin-main-wrapper > .collapsible-nav {
+    display: none !important;
+}
+body.polysaas-passthrough-embed-page .admin-main-wrapper.sidebar-collapse,
+body.polysaas-passthrough-embed-page .admin-main-wrapper.admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-main-wrapper,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-main-wrapper.admin-content-grid,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 0 1fr !important;
+}
 body.polysaas-passthrough-embed-page #recent-actions-sidebar {
     display: none !important;
 }
@@ -607,4 +627,24 @@ body.polysaas-passthrough-embed-page {
     })();
     </script>
     {% endif %}
+    <script>
+    (function () {
+        function psForceHideSidebar() {
+            var sidebar = document.getElementById('dose-custom-sidebar');
+            if (sidebar) {
+                sidebar.style.setProperty('display', 'none', 'important');
+                sidebar.style.setProperty('visibility', 'hidden', 'important');
+            }
+            var main = document.querySelector('.admin-main-wrapper, .admin-content-grid');
+            if (main) {
+                main.style.setProperty('grid-template-columns', '0 1fr', 'important');
+            }
+        }
+        psForceHideSidebar();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', psForceHideSidebar);
+        }
+        window.addEventListener('load', psForceHideSidebar);
+    })();
+    </script>
 {% endblock %}
