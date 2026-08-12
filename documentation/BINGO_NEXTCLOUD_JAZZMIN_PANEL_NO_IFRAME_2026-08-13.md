@@ -5,7 +5,7 @@
 
 **Date:** 2026-08-13  
 **Declared by:** Michael  
-**Commit:** `TBD` (filled after push)
+**Commit:** `49ddbb11`
 
 ---
 
