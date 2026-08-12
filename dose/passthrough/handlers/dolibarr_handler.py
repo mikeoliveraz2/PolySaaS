@@ -142,6 +142,117 @@ class DolibarrPassthroughHandler:
         return {}
 
     # ------------------------------------------------------------------
+    # Server-side SSO — logs into Dolibarr with stored credentials so the
+    # user never sees Dolibarr's own login form inside the passthrough.
+    # ------------------------------------------------------------------
+
+    def _resolve_tenant(self, request):
+        if not request:
+            return None
+        tenant = getattr(request, "tenant", None)
+        if tenant:
+            return tenant
+        try:
+            from dose.utils import get_current_tenant
+            return get_current_tenant(request)
+        except Exception:
+            return None
+
+    def _get_tenantapp_extra_config(self, request=None):
+        """Return extra_config dict for this tenant's Dolibarr TenantApp."""
+        try:
+            from dose.models import TenantApp
+            from dose.tenant_app_lookup import tenant_schema_search_path
+
+            tenant = self._resolve_tenant(request)
+            if not tenant:
+                return {}
+            with tenant_schema_search_path(tenant):
+                ta = TenantApp.objects.filter(
+                    app_name="dolibarr", status="active",
+                ).exclude(extra_config={}).first()
+            if ta and ta.extra_config:
+                return ta.extra_config
+        except Exception as exc:
+            print(f"[DOLI-HANDLER] _get_tenantapp_extra_config error: {exc}")
+        return {}
+
+    def _resolve_base_url(self, request) -> str:
+        endpoint = getattr(request, "_passthrough_endpoint", None) or getattr(request, "_polysniffer_endpoint", None)
+        url = (getattr(endpoint, "endpoint_url", "") or "").strip().rstrip("/")
+        if url:
+            return url
+        extra = self._get_tenantapp_extra_config(request)
+        return (extra.get("dolibarr_url") or "").strip().rstrip("/")
+
+    def get_upstream_cookies(self, request) -> dict:
+        """
+        Log into Dolibarr server-side with the tenant's stored admin credentials
+        so no Dolibarr login form is ever shown inside the passthrough.
+        Only runs when there is no valid cached DOLSESSID for this endpoint.
+        """
+        ep_id = self._endpoint_id(request)
+        entry = _DOLSESSID_CACHE.get(ep_id)
+        if entry and entry.get("name") and (time.time() - entry.get("ts", 0) < _CACHE_TTL):
+            return {entry["name"]: entry["value"]}
+
+        base_url = self._resolve_base_url(request)
+        if not base_url:
+            print("[DOLI-HANDLER] get_upstream_cookies: no base_url resolved")
+            return {}
+
+        extra = self._get_tenantapp_extra_config(request)
+        login_id = extra.get("dolibarr_login")
+        password = extra.get("dolibarr_password")
+        if not login_id or not password:
+            print("[DOLI-HANDLER] get_upstream_cookies: missing dolibarr_login/password in extra_config")
+            return {}
+
+        try:
+            import requests as _req
+
+            sess = _req.Session()
+            r1 = sess.get(f"{base_url}/", timeout=15, allow_redirects=True)
+            token_match = re.search(
+                r'name=["\']token["\'][^>]*value=["\']([^"\']+)["\']', r1.text, re.I,
+            )
+            token = token_match.group(1) if token_match else ""
+
+            r2 = sess.post(
+                f"{base_url}/index.php?mainmenu=home",
+                data={
+                    "username": login_id,
+                    "password": password,
+                    "token": token,
+                    "actionlogin": "login",
+                    "loginfunction": "loginfunction",
+                },
+                timeout=15,
+                allow_redirects=False,
+            )
+
+            dolsessid_name, dolsessid_value = None, None
+            for name, value in sess.cookies.get_dict().items():
+                if name.startswith("DOLSESSID_"):
+                    dolsessid_name, dolsessid_value = name, value
+                    break
+
+            if not dolsessid_name:
+                print(f"[DOLI-HANDLER] get_upstream_cookies: login failed, status={r2.status_code}")
+                return {}
+
+            _DOLSESSID_CACHE[ep_id] = {
+                "name": dolsessid_name,
+                "value": dolsessid_value,
+                "ts": time.time(),
+            }
+            print(f"[DOLI-HANDLER] SSO login OK, cached {dolsessid_name}={dolsessid_value[:8]}... for ep={ep_id}")
+            return {dolsessid_name: dolsessid_value}
+        except Exception as exc:
+            print(f"[DOLI-HANDLER] get_upstream_cookies SSO login error: {exc}")
+            return {}
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
