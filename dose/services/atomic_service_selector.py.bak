@@ -1,26 +1,11 @@
 # dose/services/atomic_service_selector.py
-"""Filter/group Instruction Atomic Service choices by app + category (KISS).
-
-App keys are open-ended: use PassThroughEndpoint.slug (odoo, nextcloud, slack,
-salesforce, …). Tag a new service with atomic_apps = ("slack",) — no registry
-rewrite, no marketplace. Path hints below are only a fallback when slug is missing.
-"""
+"""Filter/group Instruction Atomic Service choices by app + category (KISS)."""
 from __future__ import annotations
 
 import re
 from urllib.parse import unquote, urlparse
 
-# Optional path fallbacks for today's bundled apps. Append a row when a new app
-# has a distinctive URL prefix; visibility itself does not require this list.
-_PATH_APP_HINTS = (
-    (("/web/", "/web?", "/odoo/", "/web/dataset", "/web/action"), "odoo"),
-    (("/apps/", "/ocs/", "/remote.php/", "/index.php/apps/", "/dist/"), "nextcloud"),
-    (("/api/v4/", "/plugins/", "/channels/"), "mattermost"),
-    (("/crm/", "/contacts/", "/hs-fs/", "/hubspot"), "hubspot"),
-    (("/htdocs/", "/societe/", "/compta/", "/dolibarr"), "dolibarr"),
-)
-
-_APP_KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
+KNOWN_ATOMIC_APPS = ("odoo", "nextcloud", "mattermost", "hubspot", "dolibarr")
 
 CATEGORY_ORDER = (
     ("capture", "Capture"),
@@ -31,15 +16,14 @@ CATEGORY_ORDER = (
     ("other", "Other"),
 )
 
-
-def normalize_app_key(value: str | None) -> str:
-    """Accept any slug-like app key (slack, salesforce, nextcloud, …)."""
-    key = str(value or "").strip().lower()
-    if not key or key == "generic":
-        return ""
-    if not _APP_KEY_RE.match(key):
-        return ""
-    return key
+_PATH_APP_HINTS = (
+    (("action_id", "menu_id"), "odoo"),
+    (("/web/", "/web?", "/odoo/", "/web/dataset", "/web/action"), "odoo"),
+    (("/apps/", "/ocs/", "/remote.php/", "/index.php/apps/", "/dist/"), "nextcloud"),
+    (("/api/v4/", "/plugins/", "/channels/"), "mattermost"),
+    (("/crm/", "/contacts/", "/hs-fs/", "/hubspot"), "hubspot"),
+    (("/htdocs/", "/societe/", "/compta/", "/dolibarr"), "dolibarr"),
+)
 
 
 def _norm_apps(cls) -> tuple:
@@ -66,17 +50,16 @@ def service_category_key(cls) -> str:
 
 
 def app_key_from_endpoint(endpoint) -> str:
-    """Canonical key is endpoint.slug — works for slack, salesforce, or any later app."""
     if endpoint is None:
         return ""
-    slug = normalize_app_key(getattr(endpoint, "slug", "") or "")
-    if slug:
+    slug = str(getattr(endpoint, "slug", "") or "").lower().strip()
+    if slug in KNOWN_ATOMIC_APPS:
         return slug
     url = str(getattr(endpoint, "endpoint_url", "") or "").lower()
     title = str(getattr(endpoint, "menu_title", "") or "").lower()
-    blob = f"{url} {title}"
-    for _needles, key in _PATH_APP_HINTS:
-        if key and key in blob:
+    blob = f"{slug} {url} {title}"
+    for key in KNOWN_ATOMIC_APPS:
+        if key in blob:
             return key
     return ""
 
@@ -91,6 +74,8 @@ def app_key_from_requestpath(requestpath: str, match_type: str = "") -> str:
     if not path.startswith("/"):
         path = "/" + path
     for needles, key in _PATH_APP_HINTS:
+        if needles == ("action_id", "menu_id"):
+            continue
         if any(n in path for n in needles):
             return key
     return ""
@@ -133,8 +118,9 @@ def infer_atomic_app_key(request) -> str:
     """Current bundled app for the Instruction selector, or empty (show all)."""
     if request is None:
         return ""
-    q = normalize_app_key((getattr(request, "GET", None) or {}).get("app") or "")
-    if q:
+    q = (getattr(request, "GET", None) or {}).get("app") or ""
+    q = str(q).strip().lower()
+    if q in KNOWN_ATOMIC_APPS:
         return q
     path = str((getattr(request, "GET", None) or {}).get("requestpath") or "")
     match_type = str((getattr(request, "GET", None) or {}).get("match_type") or "")

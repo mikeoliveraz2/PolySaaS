@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 
 class AtomicServiceBase(ABC):
     # Instruction selector metadata (optional). Empty apps = generic (every endpoint).
+    # App keys are PassThroughEndpoint.slug values — any future app (slack, salesforce, …)
+    # works without changing this base class. Example: atomic_apps = ("salesforce",)
     atomic_apps = ()
     atomic_category = ""
 
