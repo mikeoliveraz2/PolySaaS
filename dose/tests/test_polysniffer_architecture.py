@@ -21,6 +21,7 @@ from dose.polysniffer.views.sniff_v2_workspace import sniff_shell
 class PolySnifferShellIsolationTests(SimpleTestCase):
     def _render_shell(self, mode, **overrides):
         context = {
+            "endpoint": SimpleNamespace(pk=17),
             "endpoint_host": "example.test",
             "endpoint_label": "Test endpoint",
             "mode": mode,
@@ -48,40 +49,38 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertNotIn(marker, html)
         self.assertNotIn(".toolbar{display:none}", html)
 
-    def test_shell_is_iframe_free_and_both_modes_use_top_level_launches(self):
+    def test_shell_loads_both_modes_in_the_browser_pane(self):
         native_html = self._render_shell("native")
         passthrough_html = self._render_shell("passthrough")
 
-        self.assertNotIn("<iframe", native_html.lower())
-        self.assertNotIn("<iframe", passthrough_html.lower())
-        self.assertIn('href="/example/native/"', native_html)
-        self.assertIn('href="/example/passthrough/"', passthrough_html)
-        self.assertIn('target="_blank"', native_html)
-        self.assertNotIn('target="_blank"', passthrough_html)
-        self.assertIn("Open in Jazzmin panel", passthrough_html)
+        self.assertIn('id="browser-pane"', native_html)
+        self.assertIn("setBrowserUrl", native_html)
+        self.assertIn("const endpointId = 17;", native_html)
+        self.assertIn("'/pt/polysniff/' + endpointId", native_html)
+        self.assertIn("'/pt/polysniff/' + endpointId", passthrough_html)
+        self.assertNotIn("window.open('about:blank'", native_html)
+        self.assertNotIn("window.location.assign(passthroughLaunchUrl)", passthrough_html)
         for shell_element in ('class="topbar"', 'class="split"', 'id="captures"'):
             self.assertEqual(native_html.count(shell_element), passthrough_html.count(shell_element))
 
-    def test_start_reserves_an_isolated_top_level_app_window(self):
+    def test_start_injects_sniff_proxy_into_the_browser_pane(self):
         html = self._render_shell("")
 
-        self.assertIn("window.open('about:blank', '_blank')", html)
-        self.assertIn("appWindow.opener = null", html)
-        self.assertIn("appWindow.location.replace", html)
-        self.assertIn("window.location.assign(passthroughLaunchUrl)", html)
-        self.assertNotIn("<iframe", html.lower())
+        self.assertIn("function setBrowserUrl", html)
+        self.assertIn('<iframe src="', html)
+        self.assertIn("nativeLaunchUrl", html)
+        self.assertIn("passthroughLaunchUrl", html)
+        self.assertNotIn("window.open('about:blank', '_blank')", html)
+        self.assertNotIn("window.location.assign(passthroughLaunchUrl)", html)
 
-    def test_mode_viewports_use_separate_native_and_passthrough_proxies(self):
-        native_url = "https://example.test/web"
-        passthrough_url = "/pt/admin/example.test/web"
+    def test_mode_viewports_use_the_polysniff_proxy_in_the_pane(self):
+        native_html = self._render_shell("native", browse_subpath="/web")
+        passthrough_html = self._render_shell("passthrough", browse_subpath="/web")
 
-        native_html = self._render_shell("native", app_launch_url=native_url)
-        passthrough_html = self._render_shell(
-            "passthrough", app_launch_url=passthrough_url
-        )
-
-        self.assertIn(f'href="{native_url}"', native_html)
-        self.assertIn(f'href="{passthrough_url}"', passthrough_html)
+        self.assertIn("'/pt/polysniff/' + endpointId + '/web'", native_html)
+        self.assertIn("'/pt/polysniff/' + endpointId + '/web'", passthrough_html)
+        self.assertNotIn('href="https://example.test/web"', native_html)
+        self.assertNotIn('href="/pt/admin/example.test/web"', passthrough_html)
 
     @patch("dose.polysniffer.views.sniff_v2_workspace.render")
     @patch("dose.polysniffer.views.sniff_v2_workspace.get_sniff_capture_session")
@@ -113,9 +112,12 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
                     is_staff=True,
                     is_authenticated=True,
                 )
-                request.session = {"polysniffer_example.test_mode": mode}
+                class _Session(dict):
+                    modified = False
 
-                sniff_shell(request, "example.test")
+                request.session = _Session({"polysniffer_example.test_mode": mode})
+
+                sniff_shell(request, "example.test", mode=mode)
 
                 context = render_workspace.call_args.args[2]
                 self.assertEqual(context["mode"], mode)

@@ -1,3 +1,5 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,7 +67,7 @@
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
-                <p>Top-level browser navigation through /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
+                <p>Opens Nextcloud (or this endpoint) in the Jazzmin panel: /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
             </div>
         </div>
         <div class="toolbar">
@@ -77,10 +79,15 @@
         <div class="launch-panel">
             {% if app_launch_url %}
             <p>{{ app_launch_url }}</p>
-            <a class="btn {% if mode == 'passthrough' %}btn-pt{% else %}btn-native{% endif %}" href="{{ app_launch_url }}" target="_blank" rel="noopener">Open {{ mode|title }} App</a>
-            <p>App opens in a new top-level window. Passthrough is HTML-injected in the Jazzmin shell — no iframe.</p>
+            {% if mode == 'passthrough' %}
+            <a class="btn btn-pt" href="{{ app_launch_url }}">Open in Jazzmin panel</a>
+            <p>Passthrough loads in this window inside the PolySaaS admin panel (HTML inject, no iframe).</p>
             {% else %}
-            <p>Click Native or Passthrough to start capturing. The app opens top-level (no iframe, no object embed).</p>
+            <a class="btn btn-native" href="{{ app_launch_url }}" target="_blank" rel="noopener">Open {{ mode|title }} App</a>
+            <p>Native opens the upstream app in a new top-level window (no iframe).</p>
+            {% endif %}
+            {% else %}
+            <p>Start Passthrough to open the app in the Jazzmin panel (this window). Start Native for a separate upstream window. No iframes.</p>
             {% endif %}
         </div>
     </section>
@@ -106,12 +113,6 @@
     function modeUrl(mode) { return workspaceUrl + '/workspace/' + mode + '/'; }
 
     window.startSession = async function(mode) {
-        const appWindow = window.open('about:blank', '_blank');
-        if (!appWindow) {
-            alert('Allow pop-ups for this site to open the isolated app window.');
-            return;
-        }
-        appWindow.opener = null;
         try {
             const form = new FormData();
             form.append('mode', mode);
@@ -119,10 +120,20 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            appWindow.location.replace(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl);
+            if (mode === 'passthrough') {
+                window.location.assign(passthroughLaunchUrl);
+                return;
+            }
+            const appWindow = window.open('about:blank', '_blank');
+            if (!appWindow) {
+                alert('Allow pop-ups to open the native app window, or use Start Passthrough for the Jazzmin panel.');
+                window.location.replace(modeUrl(mode));
+                return;
+            }
+            appWindow.opener = null;
+            appWindow.location.replace(nativeLaunchUrl);
             window.location.replace(modeUrl(mode));
         } catch (error) {
-            appWindow.close();
             alert(error.message);
         }
     };

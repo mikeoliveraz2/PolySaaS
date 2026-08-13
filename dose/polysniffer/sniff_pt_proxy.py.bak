@@ -115,47 +115,6 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
 
 
 
-_SNIFF_SKIP_ROOT_PREFIXES = (
-    "/pt/",
-    "/admin/",
-    "/static/",
-    "/dose/",
-    "/media/",
-    "/accounts/",
-    "/favicon",
-)
-
-
-def _prefix_sniff_root_urls(html: str, public_prefix: str) -> str:
-    """Point root-relative href/src/action at the sniff iframe prefix.
-
-    Handler rewrite may already have done this; skip URLs that are already
-    under public_prefix or a PolySaaS path. Without this, /core/css/… is
-    requested from the Django origin, CSS 404s, and Nextcloud Files looks
-    like an unstyled password-confirm page.
-    """
-    prefix = (public_prefix or "").rstrip("/")
-    if not prefix:
-        return html
-    html = re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
-
-    def _repl(match):
-        attr, quote, url = match.group(1), match.group(2), match.group(3)
-        if url.startswith("//"):
-            return match.group(0)
-        if url.startswith(prefix + "/") or url == prefix:
-            return match.group(0)
-        if any(url.startswith(p) for p in _SNIFF_SKIP_ROOT_PREFIXES):
-            return match.group(0)
-        return f"{attr}={quote}{prefix}{url}{quote}"
-
-    return re.sub(
-        r'(?i)\b(href|src|action)\s*=\s*(["\'])(/[^"\']*)\2',
-        _repl,
-        html,
-    )
-
-
 def rewrite_polysniff_response(
     response,
     *,
@@ -183,7 +142,6 @@ def rewrite_polysniff_response(
         body = response.content.decode("utf-8", errors="ignore")
         for old, new in replacements:
             body = body.replace(old, new)
-        body = _prefix_sniff_root_urls(body, public_prefix)
         if not popup_login:
             body = _inject_workspace_client_capture(body, endpoint_id)
         response.content = body.encode("utf-8")

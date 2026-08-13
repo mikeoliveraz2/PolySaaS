@@ -1,5 +1,7 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13 -->
+<!-- Restore 2026-08-13: Start Native/Passthrough load the app in #browser-pane, not full-page. -->
+<!-- PolySniffer workspace: app loads in the left browser pane (not full-page). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,14 +26,16 @@
         .mode-card.selected { border-color: #34d399; }
         .mode-card.pt.selected { border-color: #60a5fa; }
         .mode-card p { margin: 0; }
-        .mode-card p, .launch-panel p { margin: 0 0 8px; font: 0.72rem/1.4 Consolas, monospace; color: #9ca3af; overflow-wrap: anywhere; }
+        .mode-card p, .browser-placeholder p { margin: 0 0 8px; font: 0.72rem/1.4 Consolas, monospace; color: #9ca3af; overflow-wrap: anywhere; }
         .mode-card p { margin: 0; }
         .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 6px 12px; border: 0; border-radius: 5px; color: #fff; font: 600 0.78rem Georgia, serif; cursor: pointer; text-decoration: none; }
         .btn-native { background: #047857; }
         .btn-pt { background: #1d4ed8; }
         .btn-secondary { background: #374151; }
         .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; margin-bottom: 12px; }
-        .launch-panel { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #111827; padding: 16px; }
+        .browser-pane { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #fff; overflow: hidden; }
+        .browser-pane iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+        .browser-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280; font: 0.8rem Consolas, monospace; background: #111827; }
         .right-col header { padding: 12px 14px; border-bottom: 2px solid #16a34a; }
         .right-col header h2 { margin: 0; color: #4ade80; }
         .stats { padding: 8px 14px; border-bottom: 1px solid #404040; font: 0.75rem Consolas, monospace; color: #a3a3a3; }
@@ -63,11 +67,11 @@
         <div class="mode-cards">
             <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
                 <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
-                <p>Direct top-level browser navigation to {{ upstream_browse_url }}.</p>
+                <p>Load the app in the pane below (sniff capture). Does not leave this workspace.</p>
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
-                <p>Opens Nextcloud (or this endpoint) in the Jazzmin panel: /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
+                <p>Load the app in the pane below through passthrough capture. Does not leave this workspace.</p>
             </div>
         </div>
         <div class="toolbar">
@@ -76,19 +80,8 @@
             <a class="btn btn-secondary" href="{{ export_url }}">Export HAR</a>
             <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Endpoints</a>
         </div>
-        <div class="launch-panel">
-            {% if app_launch_url %}
-            <p>{{ app_launch_url }}</p>
-            {% if mode == 'passthrough' %}
-            <a class="btn btn-pt" href="{{ app_launch_url }}">Open in Jazzmin panel</a>
-            <p>Passthrough loads in this window inside the PolySaaS admin panel (HTML inject, no iframe).</p>
-            {% else %}
-            <a class="btn btn-native" href="{{ app_launch_url }}" target="_blank" rel="noopener">Open {{ mode|title }} App</a>
-            <p>Native opens the upstream app in a new top-level window (no iframe).</p>
-            {% endif %}
-            {% else %}
-            <p>Start Passthrough to open the app in the Jazzmin panel (this window). Start Native for a separate upstream window. No iframes.</p>
-            {% endif %}
+        <div class="browser-pane" id="browser-pane">
+            <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
         </div>
     </section>
     <section class="right-col">
@@ -101,16 +94,32 @@
 (function() {
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
+    const endpointId = {% if endpoint %}{{ endpoint.pk }}{% else %}0{% endif %};
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '{{ upstream_browse_url|escapejs }}';
-    const passthroughLaunchUrl = '/pt/admin/' + endpointHost + '{{ browse_subpath|escapejs }}';
+    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
+    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let count = 0;
     const seen = new Set();
 
     const workspaceUrl = '/admin/polysniffer/sniff/' + endpointHost;
-    function modeUrl(mode) { return workspaceUrl + '/workspace/' + mode + '/'; }
+    const browserPane = document.getElementById('browser-pane');
+
+    function setBrowserUrl(url, mode) {
+        browserPane.innerHTML = '<iframe src="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></iframe>';
+        currentMode = mode;
+        document.querySelectorAll('.mode-card').forEach(function(card) {
+            card.classList.remove('selected');
+            if (card.dataset.mode === mode) card.classList.add('selected');
+        });
+    }
+
+    function clearBrowser() {
+        browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
+        currentMode = '';
+        document.querySelectorAll('.mode-card').forEach(function(card) { card.classList.remove('selected'); });
+    }
 
     window.startSession = async function(mode) {
         try {
@@ -120,30 +129,21 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            if (mode === 'passthrough') {
-                window.location.assign(passthroughLaunchUrl);
-                return;
-            }
-            const appWindow = window.open('about:blank', '_blank');
-            if (!appWindow) {
-                alert('Allow pop-ups to open the native app window, or use Start Passthrough for the Jazzmin panel.');
-                window.location.replace(modeUrl(mode));
-                return;
-            }
-            appWindow.opener = null;
-            appWindow.location.replace(nativeLaunchUrl);
-            window.location.replace(modeUrl(mode));
-        } catch (error) {
-            alert(error.message);
-        }
+            setBrowserUrl(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl, mode);
+        } catch (error) { alert(error.message); }
     };
 
     window.stopSession = async function() {
         try {
             const response = await fetch(workspaceUrl + '/session/stop/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
             const data = await response.json();
-            if (!data.ok) throw new Error(data.error || 'Failed to stop capture');
-            window.location.replace(workspaceUrl + '/');
+            if (!data.ok) throw new Error(data.error || 'Failed to start capture');
+            clearBrowser();
+            lastId = 0;
+            count = 0;
+            seen.clear();
+            document.getElementById('captures').innerHTML = '<div class="empty">No captured requests.</div>';
+            document.getElementById('count').textContent = '0';
         } catch (error) { alert(error.message); }
     };
 
