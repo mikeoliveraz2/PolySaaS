@@ -44,8 +44,6 @@ def _load_portlet_rows(request, object_key: str, *, limit: int = 10) -> Dict[str
 
 
 class _HubSpotPortletBase(AtomicServiceBase):
-    atomic_apps = ("hubspot",)
-    atomic_category = "integration"
     OBJECT_KEY = 'contacts'
     SERVICE_NAME = 'HubSpotContactsPortlet'
 

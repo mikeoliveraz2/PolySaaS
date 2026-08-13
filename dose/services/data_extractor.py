@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 class EndpointDataExtractor(AtomicServiceBase):
+    atomic_apps = ()
+    atomic_category = "capture"
 
     @staticmethod
     def get_parameters(parameters):

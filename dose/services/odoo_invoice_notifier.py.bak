@@ -33,8 +33,6 @@ _EMOJI_MAP = {
 
 
 class OdooInvoiceNotifier(AtomicServiceBase):
-    atomic_apps = ("odoo",)
-    atomic_category = "notify"
 
     @staticmethod
     def get_parameters(parameters):

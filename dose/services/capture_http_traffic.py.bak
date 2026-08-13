@@ -7,8 +7,8 @@ CaptureGetResponse  — Instruction direction=RES, requestmethod=GET
 CapturePostRequest  — Instruction direction=REQ, requestmethod=POST
   Captures the outbound POST body as it goes to the upstream app.
 
-Both publish to RabbitMQ with topic {action_path}.{username}
-(see dose.utils.mq_topic).
+Both publish to RabbitMQ with topic {REQ|RES}.{action_path}.{username}
+(see dose.utils.mq_topic) — RES for response capture, REQ for request capture.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from dose.services.atomic_service_utils import (
     maybe_save_callback,
     service_result,
 )
-from dose.utils.mq_topic import topic_from_request
+from dose.utils.mq_topic import build_mq_topic, topic_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -198,12 +198,11 @@ class CaptureGetResponse(AtomicServiceBase):
 
         captured = _truncate(data, max_chars=max_chars)
         action_path = _action_path(request, instruction_row)
-        # Rebuild a request-like topic when DoseResponseController passed a bare response
+        # RES prepended — response-side capture
         if hasattr(request, "method"):
-            topic = topic_from_request(request, action_path=action_path)
+            topic = topic_from_request(request, action_path=action_path, direction="RES")
         else:
-            from dose.utils.mq_topic import build_mq_topic
-            topic = build_mq_topic(action_path, "anonymous")
+            topic = build_mq_topic(action_path, "anonymous", direction="RES")
 
         message = {
             "capture": "get_response",
@@ -271,7 +270,8 @@ class CapturePostRequest(AtomicServiceBase):
 
         captured = _truncate(data, max_chars=max_chars)
         action_path = _action_path(request, instruction_row)
-        topic = topic_from_request(request, action_path=action_path)
+        # REQ prepended — request-side capture
+        topic = topic_from_request(request, action_path=action_path, direction="REQ")
 
         message = {
             "capture": "post_request",

@@ -31,8 +31,6 @@ ODOO_DEFAULTS = {
 
 
 class OdooCustomerSync(AtomicServiceBase):
-    atomic_apps = ("odoo",)
-    atomic_category = "write"
 
     @staticmethod
     def get_parameters(parameters):

@@ -29,8 +29,6 @@ logger = logging.getLogger(__name__)
 
 
 class MattermostProvisioning(AtomicServiceBase):
-    atomic_apps = ("mattermost",)
-    atomic_category = "write"
 
     @staticmethod
     def get_parameters(parameters, key='MattermostProvisioning'):

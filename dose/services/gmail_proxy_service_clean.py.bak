@@ -13,8 +13,6 @@ class GmailProxy(AtomicServiceBase):
     Provides a custom Gmail proxy that uses OAuth tokens to access Gmail API
     instead of trying to proxy the Gmail web interface.
     """
-    atomic_apps = ()
-    atomic_category = "notify"
 
     @staticmethod
     def execute_and_save(request, instruction_row):

@@ -137,19 +137,18 @@ def get_atomic_service_choices(tenant_name=None):
     return sorted(names)
 
 
-def build_executescript_choices(tenant_name=None, current_value=None, app_key=None):
+def build_executescript_choices(tenant_name=None, current_value=None):
     """
-    Build Django choices for Instruction.executescript.
-    When app_key is set, hide services tagged for other apps; generic stay visible.
-    Grouped by atomic_category. current_value is always kept.
+    Build (value, label) tuples for Instruction.executescript admin dropdown.
+    current_value is normalized and preserved if not in the registry.
     """
-    from dose.services.atomic_service_selector import grouped_executescript_choices
-
     names = get_atomic_service_choices(tenant_name=tenant_name)
     current = normalize_executescript_value(current_value)
-    return grouped_executescript_choices(
-        names, current_value=current, app_key=app_key or ""
-    )
+    choices = [(name, name) for name in names]
+    if current and current not in names:
+        choices.insert(0, (current, f'{current} (saved — not in registry)'))
+    choices.append(('', CUSTOM_ENDPOINT_LABEL))
+    return choices
 
 
 def _scan_services_directory(directory_path, tenant_name=''):

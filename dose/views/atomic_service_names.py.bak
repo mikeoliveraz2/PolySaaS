@@ -3,7 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 
 from dose.services.atomic_services_registry import get_atomic_service_choices
-from dose.services.atomic_service_selector import infer_atomic_app_key, service_visible_for_app
 from dose.utils import get_current_tenant
 
 
@@ -11,15 +10,6 @@ from dose.utils import get_current_tenant
 def atomic_service_names(request):
     tenant = get_current_tenant(request)
     tenant_name = tenant.schema_name if tenant and getattr(tenant, 'schema_name', None) else None
-    app_key = infer_atomic_app_key(request)
     names = get_atomic_service_choices(tenant_name=tenant_name)
-    if app_key:
-        from dose.services.atomic_services_registry import get_atomic_service
-        filtered = []
-        for name in names:
-            cls = get_atomic_service(name, tenant_name=tenant_name)
-            if cls is None or service_visible_for_app(cls, app_key):
-                filtered.append(name)
-        names = filtered
     names.append('Custom Endpoint URL')
-    return JsonResponse({'atomic_services': names, 'app': app_key or None})
+    return JsonResponse({'atomic_services': names})

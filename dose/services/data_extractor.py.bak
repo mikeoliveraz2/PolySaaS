@@ -8,7 +8,8 @@ Flow:
   2. This service executes, extracts entity data from request body
   3. Normalizes data using the app endpoint catalog field mappings
   4. Publishes to RabbitMQ (local primary) with topic
-     {action_path}.{username} — see dose.utils.mq_topic
+     {REQ|RES}.{action_path}.{username} — see dose.utils.mq_topic
+     (defaults to REQ for request-path extractors)
   5. Downstream atomic service picks up via MQQueueMonitor → MQRequestController
 
 GCP Pub/Sub remains a fallback when an active google_pubsub MQConfig exists
@@ -76,12 +77,15 @@ class EndpointDataExtractor(AtomicServiceBase):
 
             normalized = normalize_data(raw_data, action_config["field_map"])
 
-        # Locked convention: {action_path}.{username}
+        # Locked convention: {REQ|RES}.{action_path}.{username}
         action_path = (
             getattr(instruction_row, "requestpath", None)
             or request_path
         )
-        topic = topic_from_request(request, action_path=action_path)
+        direction = getattr(instruction_row, "direction", None) or "REQ"
+        topic = topic_from_request(
+            request, action_path=action_path, direction=direction
+        )
 
         message = {
             "source_app": app_name,

@@ -11,6 +11,8 @@ class GmailProxy(AtomicServiceBase):
     Gmail Proxy Service with Gmail-like UI Interface
     Provides a complete Gmail experience using Gmail API
     """
+    atomic_apps = ()
+    atomic_category = "notify"
 
     @staticmethod
     def get_service_name():

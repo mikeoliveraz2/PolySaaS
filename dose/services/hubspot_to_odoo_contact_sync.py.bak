@@ -38,8 +38,6 @@ class HubSpotToOdooContactSync(AtomicServiceBase):
     a res.partner (contact type, not company).  Idempotent: searches by email
     first; updates if found, creates if not.
     """
-    atomic_apps = ("hubspot", "odoo")
-    atomic_category = "integration"
 
     @staticmethod
     def get_parameters(parameters):

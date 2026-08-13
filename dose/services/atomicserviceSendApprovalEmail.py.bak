@@ -11,8 +11,6 @@ Sample JSON for instruction parameters:
 from dose.services.atomic_service_base import AtomicServiceBase
 
 class AtomicServiceSendApprovalEmail(AtomicServiceBase):
-	atomic_apps = ()
-	atomic_category = "notify"
 	@staticmethod
 	def execute_and_save(request, instruction_row):
 		from django.core.mail import send_mail

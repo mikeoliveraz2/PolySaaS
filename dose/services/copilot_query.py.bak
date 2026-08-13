@@ -4,8 +4,6 @@ from dose.models import CallBackData
 from dose.services.atomic_service_base import AtomicServiceBase
 
 class CopilotQuery(AtomicServiceBase):
-    atomic_apps = ()
-    atomic_category = "orchestration"
     @staticmethod
     def execute_and_save(request, instruction_row):
         """

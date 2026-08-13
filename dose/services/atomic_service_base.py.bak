@@ -7,10 +7,6 @@ from abc import ABC, abstractmethod
 
 
 class AtomicServiceBase(ABC):
-    # Instruction selector metadata (optional). Empty apps = generic (every endpoint).
-    atomic_apps = ()
-    atomic_category = ""
-
     @staticmethod
     @abstractmethod
     def execute_and_save(request, instruction_row):
