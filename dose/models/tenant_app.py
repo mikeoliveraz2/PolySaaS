@@ -24,6 +24,7 @@ class TenantApp(models.Model):
         ('monitor_logger', 'Monitor Logger'),
         ('polysysmon', 'PolySysMon'),
         ('hubspot', 'HubSpot'),
+        ('slack', 'Slack'),
     ]
 
     STATUS_CHOICES = [

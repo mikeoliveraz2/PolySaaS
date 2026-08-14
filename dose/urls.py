@@ -57,6 +57,7 @@ from dose.views.founder_views import (
     founders_signup_api,
     lemon_squeezy_webhook,
 )
+from dose.views.slack_slash_command import slack_slash_command
 
 try:
     from rest_framework.routers import DefaultRouter
@@ -107,4 +108,6 @@ urlpatterns = [
     # Founder Beta Circle — REST API for WordPress integration
     path('api/founders/signup/', founders_signup_api, name='founders_signup_api'),
     path('webhook/lemon-squeezy/', lemon_squeezy_webhook, name='lemon_squeezy_webhook'),
+    # Slack slash command — first-ack only
+    path('hooks/slack/commands/', slack_slash_command, name='slack_slash_command'),
 ]
