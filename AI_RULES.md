@@ -30,7 +30,17 @@ All AI assistants working on this repository MUST read this file before making c
 - Prefer minimal upstream fixes over downstream workarounds.
 - For passthrough apps, route all asset URLs through the existing proxy; do not hotlink upstream hosts.
 
-## 4. Slack integration — API ONLY
+## 4. Orchestration Action Points
+
+- An "Action Point" is an HTTP request (commonly a GET) where the user is expected to take an action.
+- Instructions are matched and executed at Action Points using **only**:
+  - `action_path`
+  - HTTP `method` (GET, POST, PATCH, PUT, DELETE)
+  - `direction` (request or response)
+- Do not mutate the request or response to force an instruction match.
+- No model or code changes are allowed to make an instruction match outside of `(action_path, method, direction)`.
+
+## 5. Slack integration — API ONLY
 
 - Slack is **NOT** a passthrough app. Do **NOT** build scrapers, proxy `slack.com`, or put Slack in the PolySniffer workspace UI pane.
 - Slack integration is API-only via a Slack App.
