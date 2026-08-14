@@ -53,6 +53,14 @@
         .empty { padding: 24px 12px; text-align: center; color: #737373; }
         .error-box { margin: 40px auto; max-width: 560px; padding: 24px; border: 1px solid #991b1b; background: #1f2937; color: #fecaca; }
         a { color: #93c5fd; }
+        .capture-summary { margin-bottom: 10px; font: 0.75rem Consolas, monospace; color: #d1d5db; overflow-wrap: anywhere; }
+        .capture-tree { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .capture-tree-col { min-width: 0; }
+        .capture-section { margin-bottom: 10px; }
+        .capture-section-title { font: 600 0.7rem Consolas, monospace; color: #4ade80; margin-bottom: 4px; }
+        .capture-section pre { margin: 0; padding: 6px; background: #111827; border: 1px solid #374151; border-radius: 4px; font: 0.7rem Consolas, monospace; color: #9ca3af; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow-y: auto; }
+        .capture-more { font: 0.65rem Consolas, monospace; color: #6ee7b7; margin-top: 2px; }
+        .capture-attach { display: inline-block; margin-top: 8px; padding: 4px 8px; background: #047857; color: #fff; border-radius: 4px; font: 0.7rem Georgia, serif; text-decoration: none; }
         @media (max-width: 860px) { .split { grid-template-columns: 1fr; } .left-col { border-right: 0; border-bottom: 1px solid #374151; } }
     </style>
 </head>
@@ -184,6 +192,7 @@
         lastId = Math.max(lastId, capture.id);
         const empty = document.querySelector('#captures .empty');
         if (empty) empty.remove();
+
         const item = document.createElement('div');
         item.className = 'capture-item';
         const row = document.createElement('div');
@@ -197,10 +206,67 @@
         const status = document.createElement('span');
         status.className = 'capture-status';
         status.textContent = capture.status_code || '-';
+        row.append(method, path, status);
+
         const detail = document.createElement('div');
         detail.className = 'capture-detail';
-        detail.textContent = capture.url || '';
-        row.append(method, path, status);
+
+        const summary = document.createElement('div');
+        summary.className = 'capture-summary';
+        summary.innerHTML = '<b>' + (capture.method || 'GET') + '</b> ' + (capture.url || '-') + '<br>Client: ' + (capture.client_path || '-') + '<br>' + (capture.captured_at || '-') + ' — ' + (capture.duration_ms || '0') + ' ms';
+        detail.appendChild(summary);
+
+        const tree = document.createElement('div');
+        tree.className = 'capture-tree';
+
+        const fmt = function(o) {
+            try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); }
+        };
+
+        function section(title, content, more) {
+            const div = document.createElement('div');
+            div.className = 'capture-section';
+            const h = document.createElement('div');
+            h.className = 'capture-section-title';
+            h.textContent = title;
+            const pre = document.createElement('pre');
+            pre.textContent = content || '(empty)';
+            div.appendChild(h);
+            div.appendChild(pre);
+            if (more) {
+                const m = document.createElement('div');
+                m.className = 'capture-more';
+                m.textContent = '... (truncated in preview)';
+                div.appendChild(m);
+            }
+            return div;
+        }
+
+        const req = document.createElement('div');
+        req.className = 'capture-tree-col';
+        req.appendChild(section('Headers', fmt(capture.headers), false));
+        req.appendChild(section('Query params', fmt(capture.query_params), false));
+        req.appendChild(section('Request body', capture.body_preview, capture.body_more));
+
+        const res = document.createElement('div');
+        res.className = 'capture-tree-col';
+        res.appendChild(section('Status', String(capture.status_code || '-'), false));
+        res.appendChild(section('Response headers', fmt(capture.response_headers), false));
+        res.appendChild(section('Response body', capture.response_body_preview, capture.response_body_more));
+
+        tree.appendChild(req);
+        tree.appendChild(res);
+        detail.appendChild(tree);
+
+        if (capture.capture_source === 'passthrough') {
+            const attach = document.createElement('a');
+            attach.className = 'capture-attach';
+            attach.target = '_blank';
+            attach.textContent = 'Attach instruction';
+            attach.href = '/admin/dose/instruction/add/?requestpath=' + encodeURIComponent(capture.path || '') + '&requestmethod=' + encodeURIComponent(capture.method || 'GET') + '&direction=REQ&match_type=path';
+            detail.appendChild(attach);
+        }
+
         item.append(row, detail);
         item.onclick = function() { item.classList.toggle('open'); };
         document.getElementById('captures').prepend(item);

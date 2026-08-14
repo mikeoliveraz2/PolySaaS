@@ -169,6 +169,12 @@ def workspace_poll(request, endpoint_host: str):
             logs = list(qs.order_by("-id")[:100])
             logs.reverse()
 
+        def _preview(text):
+            return (text or "")[:500]
+
+        def _more(text):
+            return len(text or "") > 500
+
         try:
             captures = [
                 {
@@ -181,6 +187,13 @@ def workspace_poll(request, endpoint_host: str):
                     "capture_source": log.capture_source,
                     "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
                     "duration_ms": log.duration_ms,
+                    "headers": log.headers or {},
+                    "query_params": log.query_params or {},
+                    "body_preview": _preview(log.body or ""),
+                    "body_more": _more(log.body or ""),
+                    "response_headers": log.response_headers or {},
+                    "response_body_preview": _preview(log.response_body or ""),
+                    "response_body_more": _more(log.response_body or ""),
                 }
                 for log in logs
             ]
