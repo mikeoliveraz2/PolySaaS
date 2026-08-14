@@ -76,7 +76,10 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     app_launch_url = ""
     pt_embed_ctx = None
     if active_session and active_mode == "native":
-        app_launch_url = upstream_browse_url
+        native_subpath = (browse_path or browse_subpath or "/").strip()
+        if not native_subpath.startswith("/"):
+            native_subpath = f"/{native_subpath}"
+        app_launch_url = f"/dose/sniff/{endpoint.pk}/native{native_subpath}"
     elif active_session and active_mode == "passthrough":
         frame_subpath = (browse_path or browse_subpath or "/").strip()
         if not frame_subpath.startswith("/"):
@@ -279,7 +282,30 @@ def store_mm_token(request, endpoint_host: str):
 @require_http_methods(["POST"])
 def workspace_ingest(request, endpoint_id: int):
     """Accept client-side passthrough traffic captured by the workspace shim."""
+    from dose.polysniffer.views.core import get_endpoint_any_schema
+    from urllib.parse import urlparse
+    
     try:
+        endpoint = get_endpoint_any_schema(endpoint_id, request)
+        endpoint_url = (endpoint.endpoint_url or "").strip()
+        if endpoint_url.startswith("http://") or endpoint_url.startswith("https://"):
+            trigger = urlparse(endpoint_url).netloc
+        else:
+            trigger = endpoint_url.split("/")[0] if endpoint_url else ""
+        
+        if not trigger:
+            return JsonResponse({"ok": True})
+        
+        session = get_sniff_capture_session(request, trigger)
+        if not session:
+            return JsonResponse({"ok": True})
+        
+        tenant = bind_request_tenant(request)
+        if not tenant:
+            return JsonResponse({"ok": True})
+        
+        _ensure_tenant_schema(tenant)
+        
         body = request.body
         if body:
             try:
@@ -287,7 +313,17 @@ def workspace_ingest(request, endpoint_id: int):
             except Exception:
                 data = {}
             if data:
-                logger.debug("[PolySniffer] workspace_ingest from %s: %r", endpoint_id, data)
+                TrafficLog.objects.create(
+                    tenant=tenant,
+                    capture_session=session,
+                    method=data.get("method", "GET"),
+                    url=data.get("url", ""),
+                    path=data.get("path", ""),
+                    client_path=data.get("path", ""),
+                    status_code=data.get("status_code", 0),
+                    duration_ms=int(data.get("duration_ms", 0)),
+                    capture_source="native",
+                )
     except Exception as exc:
         logger.warning("[PolySniffer] workspace_ingest error: %s", exc)
     return JsonResponse({"ok": True})

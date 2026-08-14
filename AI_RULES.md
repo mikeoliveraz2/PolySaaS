@@ -40,10 +40,11 @@ All AI assistants working on this repository MUST read this file before making c
 - Do not mutate the request or response to force an instruction match.
 - No model or code changes are allowed to make an instruction match outside of `(action_path, method, direction)`.
 
-## 5. Slack integration — API ONLY
+## 5. Slack integration — API ONLY, except native sniff capture
 
-- Slack is **NOT** a passthrough app. Do **NOT** build scrapers, proxy `slack.com`, or put Slack in the PolySniffer workspace UI pane.
-- Slack integration is API-only via a Slack App.
+- Default rule: Slack is **NOT** a passthrough app. Do **NOT** build scrapers, proxy `slack.com`, or put Slack in the PolySniffer workspace UI pane unless this is an explicit native-sniff capture flow for a signed-in browser session.
+- Slack integration is API-only via a Slack App unless a dedicated native-sniff capture is intentionally requested for browser traffic capture.
+- For native browser capture, PolySniffer may open the upstream Slack sign-in flow through its native sniff proxy, log the requests/responses to TrafficLog, and rewrite only the minimal asset/auth paths needed to keep the browser session stable; no Slack scraper UI or workspace embed is required.
 - The next build target is the **inbound slash-command webhook** (`/hooks/slack/commands/`) that receives `/poly`, verifies the Slack Signing Secret, and acks.
 - Only after the inbound webhook is wired should we add the Odoo write atomics (`OdooCreatePartner`, `OdooCreateSale`) and connect them through an Instruction.
 - Posting back to Slack (`chat.postMessage`) is a later optional step — do not build it first.

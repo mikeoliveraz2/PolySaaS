@@ -110,7 +110,7 @@
     const endpointHost = '{{ endpoint_host|escapejs }}';
     const endpointId = {% if endpoint %}{{ endpoint.pk }}{% else %}0{% endif %};
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
+    const nativeLaunchUrl = '/dose/sniff/' + endpointId + '/native{{ browse_subpath|escapejs }}';
     const passthroughLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
