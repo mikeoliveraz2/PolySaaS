@@ -19,6 +19,11 @@ from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.models import TenantApp
 from dose.polysniffer.views.core import get_endpoint_by_host
 
+
+def _workspace_pt_shell_base(endpoint_host: str, endpoint_id: int) -> str:
+    """URL prefix for passthrough workspace navigation — matches sniff_urls.py."""
+    return f"/admin/polysniffer/sniff/{endpoint_host}/workspace/passthrough"
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,6 +74,7 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
 
     app_launch_url = ""
+    pt_embed_ctx = None
     if active_session and active_mode == "native":
         app_launch_url = upstream_browse_url
     elif active_session and active_mode == "passthrough":
@@ -79,25 +85,43 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             f"{endpoint.get_proxy_prefix().rstrip('/')}"
             f"{frame_subpath}"
         )
+        # Build the inline HTML scoping for non-iframe passthrough.
+        try:
+            from dose.polysniffer.sniff_pt_embed import build_inline_passthrough_embed_context
+
+            pt_embed_ctx = build_inline_passthrough_embed_context(
+                request,
+                endpoint.pk,
+                endpoint,
+                frame_subpath,
+                endpoint_label=_endpoint_label(endpoint),
+                shell_base=_workspace_pt_shell_base(endpoint_host, endpoint.pk),
+            )
+        except Exception as exc:
+            logger.exception("passthrough inline embed build failed")
     workspace_prefix = f"/admin/polysniffer/sniff/{endpoint_host}"
     poll_url = f"{workspace_prefix}/workspace/poll/"
+
+    context = {
+        "endpoint": endpoint,
+        "endpoint_host": endpoint_host,
+        "endpoint_label": _endpoint_label(endpoint),
+        "mode": active_mode,
+        "app_launch_url": app_launch_url,
+        "browse_subpath": browse_subpath,
+        "upstream_browse_url": upstream_browse_url,
+        "active_session": active_session,
+        "diff_url": f"{workspace_prefix}/diff/",
+        "export_url": f"{workspace_prefix}/export-har/",
+        "poll_url": poll_url,
+    }
+    if pt_embed_ctx:
+        context.update(pt_embed_ctx)
 
     return render(
         request,
         "polysniffer/sniff_workspace.html",
-        {
-            "endpoint": endpoint,
-            "endpoint_host": endpoint_host,
-            "endpoint_label": _endpoint_label(endpoint),
-            "mode": active_mode,
-            "app_launch_url": app_launch_url,
-            "browse_subpath": browse_subpath,
-            "upstream_browse_url": upstream_browse_url,
-            "active_session": active_session,
-            "diff_url": f"{workspace_prefix}/diff/",
-            "export_url": f"{workspace_prefix}/export-har/",
-            "poll_url": poll_url,
-        },
+        context,
     )
 
 

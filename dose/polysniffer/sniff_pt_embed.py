@@ -281,6 +281,7 @@ def build_inline_passthrough_embed_context(
     path: str,
     *,
     endpoint_label: str = "",
+    shell_base: str = "",
 ) -> dict | None:
     """Passthrough HTML as inline embed — /pt/polysniff/{id}/ in browser, handler chain internal."""
     from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough
@@ -330,7 +331,7 @@ def build_inline_passthrough_embed_context(
     body_html = rewrite_pt_form_actions_to_workspace(str(scoped_body), endpoint_id, trigger)
     head_static, head_scripts = _split_head_for_inline(head_html)
     orch_bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html", request=request)
-    shell_base = workspace_shell_prefix(endpoint_id)
+    shell_base = (shell_base or "").rstrip("/") or workspace_shell_prefix(endpoint_id)
     proxy_base = polysniff_proxy_prefix(endpoint_id)
     np_prefixes = non_page_path_prefixes(handler, request, f"/{subpath}" if subpath else "/")
     guard = build_workspace_shell_guard_script(

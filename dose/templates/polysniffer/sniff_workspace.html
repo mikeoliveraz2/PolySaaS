@@ -8,6 +8,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PolySniffer - {% firstof endpoint_label "Workspace" %}</title>
+    {% if passthrough_embed_head %}{{ passthrough_embed_head }}{% endif %}
+    {% if passthrough_guard_head %}{{ passthrough_guard_head }}{% endif %}
     <style>
         * { box-sizing: border-box; }
         html, body { margin: 0; min-height: 100%; background: #111827; color: #e5e7eb; font-family: Georgia, "Times New Roman", serif; }
@@ -34,7 +36,7 @@
         .btn-secondary { background: #374151; }
         .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; margin-bottom: 12px; }
         .browser-pane { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #fff; overflow: hidden; }
-        .browser-pane iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+        .browser-pane object { width: 100%; height: 100%; border: 0; background: #fff; }
         .browser-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280; font: 0.8rem Consolas, monospace; background: #111827; }
         .right-col header { padding: 12px 14px; border-bottom: 2px solid #16a34a; }
         .right-col header h2 { margin: 0; color: #4ade80; }
@@ -81,7 +83,11 @@
             <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Endpoints</a>
         </div>
         <div class="browser-pane" id="browser-pane">
-            <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
+            {% if passthrough_embed_body %}
+                {{ passthrough_embed_body }}
+            {% else %}
+                <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
+            {% endif %}
         </div>
     </section>
     <section class="right-col">
@@ -97,7 +103,7 @@
     const endpointId = {% if endpoint %}{{ endpoint.pk }}{% else %}0{% endif %};
     const pollUrl = '{{ poll_url|escapejs }}';
     const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
-    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
+    const passthroughLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let count = 0;
@@ -107,12 +113,16 @@
     const browserPane = document.getElementById('browser-pane');
 
     function setBrowserUrl(url, mode) {
-        browserPane.innerHTML = '<iframe src="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></iframe>';
+        browserPane.innerHTML = '<object type="text/html" data="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></object>';
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function(card) {
             card.classList.remove('selected');
             if (card.dataset.mode === mode) card.classList.add('selected');
         });
+    }
+
+    function loadPassthroughWorkspace(url, mode) {
+        window.location.href = url;
     }
 
     function clearBrowser() {
@@ -129,7 +139,15 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            setBrowserUrl(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl, mode);
+            if (mode === 'passthrough') {
+                var launch = passthroughLaunchUrl;
+                launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
+                loadPassthroughWorkspace(launch, mode);
+            } else {
+                var launch = nativeLaunchUrl;
+                launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
+                setBrowserUrl(launch, mode);
+            }
         } catch (error) { alert(error.message); }
     };
 
