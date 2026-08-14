@@ -29,3 +29,11 @@ All AI assistants working on this repository MUST read this file before making c
 - Frozen files (`# THIS CODE IS FROZEN`) may not be changed without owner permission.
 - Prefer minimal upstream fixes over downstream workarounds.
 - For passthrough apps, route all asset URLs through the existing proxy; do not hotlink upstream hosts.
+
+## 4. Slack integration — API ONLY
+
+- Slack is **NOT** a passthrough app. Do **NOT** build scrapers, proxy `slack.com`, or put Slack in the PolySniffer workspace UI pane.
+- Slack integration is API-only via a Slack App.
+- The next build target is the **inbound slash-command webhook** (`/hooks/slack/commands/`) that receives `/poly`, verifies the Slack Signing Secret, and acks.
+- Only after the inbound webhook is wired should we add the Odoo write atomics (`OdooCreatePartner`, `OdooCreateSale`) and connect them through an Instruction.
+- Posting back to Slack (`chat.postMessage`) is a later optional step — do not build it first.
