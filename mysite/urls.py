@@ -22,6 +22,7 @@ from dose.admin_views import (
     select_theme_api,
 )
 from dose.views.main import pt_dose_generic_passthrough_view
+from dose.views.slack_slash_command import slack_slash_command
 from dose.polysniffer.views import mattermost_static_proxy
 from llm_router.admin_chat import (
     admin_llm_router_chat_api,
@@ -49,6 +50,8 @@ urlpatterns = [
     # Single PolySaaS login — admin login redirects to allauth (post-login → /dose/home/).
     path('admin/login/', RedirectView.as_view(url='/accounts/login/', query_string=False)),
     path('admin/', admin.site.urls),
+    # Slack slash command — first-ack only
+    path('hooks/slack/commands/', slack_slash_command, name='slack_slash_command'),
     path('dose/', include('dose.urls')),
     path('accounts/', include('allauth.urls')),
 
