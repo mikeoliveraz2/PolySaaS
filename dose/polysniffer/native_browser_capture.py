@@ -178,6 +178,7 @@ def _browser_worker(
                 record_har_mode="full",
                 no_viewport=True,
             )
+            run.started_event.set()
 
             def attach_page(page) -> None:
                 page.on(
@@ -192,7 +193,6 @@ def _browser_worker(
             else:
                 page = context.new_page()
             page.goto(endpoint_url, wait_until="domcontentloaded", timeout=60000)
-            run.started_event.set()
 
             while not run.stop_event.is_set() and context.pages:
                 active_page = next((item for item in context.pages if not item.is_closed()), None)

@@ -1,7 +1,9 @@
+import tempfile
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.http import HttpResponse
+from django.test import override_settings
 from django.test import RequestFactory
 from django.test import SimpleTestCase
 
@@ -69,6 +71,41 @@ class SlackNativeSniffTests(SimpleTestCase):
 
         self.assertTrue(result["started"])
         thread.return_value.start.assert_called_once_with()
+
+    @patch("dose.polysniffer.native_browser_capture._mark_capture_stopped")
+    @patch("playwright.sync_api.sync_playwright")
+    def test_native_browser_is_ready_before_upstream_navigation(
+        self, sync_playwright, _mark_stopped
+    ):
+        from dose.polysniffer.native_browser_capture import _browser_worker
+
+        events = []
+        run = MagicMock()
+        run.stop_event.is_set.return_value = True
+        run.started_event.set.side_effect = lambda: events.append("ready")
+        context = MagicMock()
+        page = MagicMock()
+        context.pages = [page]
+        page.goto.side_effect = lambda *args, **kwargs: events.append("navigate")
+        playwright = sync_playwright.return_value.__enter__.return_value
+
+        def launch_context(*args, **kwargs):
+            events.append("launch")
+            return context
+
+        playwright.chromium.launch_persistent_context.side_effect = launch_context
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                _browser_worker(
+                    run,
+                    key=("polysaasonline", "polysaasworkspace.slack.com"),
+                    endpoint_url="https://polysaasworkspace.slack.com",
+                    tenant_schema="polysaasonline",
+                    capture_session_id=36,
+                    endpoint_host="polysaasworkspace.slack.com",
+                )
+
+        self.assertEqual(events, ["launch", "ready", "navigate"])
 
     @patch("dose.polysniffer.native_browser_capture.start_native_browser")
     @patch("dose.polysniffer.sniff_session.get_endpoint_by_host")

@@ -74,6 +74,7 @@ Example for Slack/HubSpot work:
 - Send a real `/poly` command and verify fast ephemeral ack, one consumer execution, `CallBackData`, and tenant-visible `DoseMessage` feedback.
 - Trace the active Admin PolySniffer endpoint-row action through workspace launch and session identity.
 - Use Start Native to launch the persistent Chromium profile, interact with Slack in that browser, monitor requests in Live capture, then click Stop capture or close Chromium to finalize the HAR.
+- Refresh the port 8000 PolySniffer workspace and confirm Start Native now returns success as soon as Chromium opens without the false timeout alert.
 - Review the broad checkpoint commit before promoting any unfinished WIP as completed behavior.
 
 ## Session summary for this EOD
@@ -93,6 +94,8 @@ Example for Slack/HubSpot work:
 - Replaced the blank Slack `<object>` Native flow with an asynchronous headed Chromium session on Slack's real origin.
 - Added a persistent per-tenant/host Chromium profile, full HAR recording, live Playwright response snapshots into tenant `TrafficLog`, and Stop capture signaling.
 - Kept Passthrough in the workspace pane; only Native launches the real browser required for upstream origin, cookies, scripts, and API traffic.
+- Fixed a false Native startup timeout by signaling readiness immediately after Chromium's persistent context launches, before the slower Slack navigation completes.
+- Added a regression test that locks the Native lifecycle order to `launch`, `ready`, then `navigate`.
 
 ## Validation
 
@@ -109,6 +112,11 @@ Example for Slack/HubSpot work:
 - Django system check: passed with no issues.
 - Real Slack Native capture 34: `60` responses across `30` distinct paths, including HTTP 200 from `POST /api/signin.findWorkspaces`.
 - Normal `runall.ps1` stack restarted successfully on port 8000 with the real-browser capture implementation.
+- Timeout diagnosis: captures 35 and 36 each persisted `27` Slack responses and an approximately 11.8 MB HAR despite the UI receiving `Native browser startup timed out`; this proved the five-second caller wait raced Slack's navigation readiness signal.
+- Native and PolySniffer architecture tests after the timeout fix: `28/28` passed.
+- Focused Slack Native tests after adding the lifecycle regression: `5/5` passed.
+- Django system check and editor diagnostics: no issues.
+- Managed stack restarted after the fix; Waitress is listening on port 8000 as PID 11000.
 
 ## Blockers / risks
 
@@ -136,6 +144,7 @@ Example for Slack/HubSpot work:
 - Formal Slack webhook design: `99bd7b8f`
 - Slack Native host-identity fix: `40a21d8c`
 - Slack real-browser Native capture: `2540b140`
+- Native false-timeout correction: included in the next commit after base `c4abfc87`
 - Latest repo sync validation: passed
 - Final push status: Slack real-browser Native capture pushed on 2026-08-15
 
