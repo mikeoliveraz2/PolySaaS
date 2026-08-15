@@ -105,6 +105,20 @@ def native_sniff_proxy(request, endpoint_id: int, path: str = ''):
 
 @staff_member_required
 @csrf_exempt
+def native_sniff_proxy_by_host(request, endpoint_host: str, path: str = ''):
+    if not request.user.is_staff:
+        return HttpResponseForbidden('Staff only')
+    endpoint = get_endpoint_by_host(endpoint_host, request)
+    request._polysniffer_endpoint_id = endpoint.pk
+    request._polysniffer_sniff_mode = 'native'
+    request._polysniffer_proxy_prefix = (
+        f'/admin/polysniffer/sniff/{endpoint_host}/native'
+    )
+    return forward_sniff_native(request, endpoint, path)
+
+
+@staff_member_required
+@csrf_exempt
 def passthrough_sniff_proxy(request, endpoint_id: int, path: str = ''):
     from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough, legacy_sniff_prefix
 

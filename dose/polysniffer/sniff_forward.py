@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 
 
@@ -45,7 +45,9 @@ def _resolve_upstream_url(endpoint_url: str, subpath: str) -> tuple[str, str]:
 
     if sub == '/':
 
-        return base + '/', '/'
+        configured_path = urlparse(base).path or '/'
+
+        return (base if configured_path != '/' else base + '/'), configured_path
 
     return base + sub, sub
 
@@ -89,11 +91,14 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
     target_url, upstream_path = _resolve_upstream_url(endpoint.endpoint_url, subpath)
 
-    if request.GET:
+    upstream_query = request.GET.copy()
+    upstream_query.pop('schema', None)
+    upstream_query.pop('ps_sniff', None)
+    if upstream_query:
 
         sep = '&' if '?' in target_url else '?'
 
-        target_url += sep + request.GET.urlencode()
+        target_url += sep + upstream_query.urlencode()
 
     start = time.time()
 
@@ -153,10 +158,13 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
 
 
 
+    proxy_prefix = getattr(request, '_polysniffer_proxy_prefix', '') or (
+        f"/dose/sniff/{getattr(endpoint, 'pk', '')}/native"
+    )
+
     content = resp.content
     content_type = (resp.headers.get('Content-Type') or '').lower()
     if content_type.startswith('text/html'):
-        proxy_prefix = f"/dose/sniff/{getattr(endpoint, 'pk', '')}/native"
         content = apply_native_sniff_rewrites(
             content,
             content_type=content_type,
@@ -172,6 +180,18 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
     )
 
     safe_headers = filter_native_response_headers(dict(resp.headers))
+    location = safe_headers.get('Location')
+    if location:
+        endpoint_origin = urlparse(endpoint.endpoint_url)
+        target = urlparse(urljoin(endpoint.endpoint_url, location))
+        if (
+            target.scheme == endpoint_origin.scheme
+            and target.netloc == endpoint_origin.netloc
+        ):
+            target_path = target.path or '/'
+            if target.query:
+                target_path += f'?{target.query}'
+            safe_headers['Location'] = f'{proxy_prefix}{target_path}'
     for k, v in safe_headers.items():
         django_resp[k] = v
 

@@ -23,6 +23,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         context = {
             "endpoint": SimpleNamespace(pk=17),
             "endpoint_host": "example.test",
+            "tenant_schema": "tenant_alpha",
             "endpoint_label": "Test endpoint",
             "mode": mode,
             "active_session": SimpleNamespace(capture_name=f"ep17-{mode}"),
@@ -55,9 +56,9 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
 
         self.assertIn('id="browser-pane"', native_html)
         self.assertIn("setBrowserUrl", native_html)
-        self.assertIn("const endpointId = 17;", native_html)
-        self.assertIn("'/dose/sniff/' + endpointId + '/native'", native_html)
-        self.assertIn("'/pt/polysniff/' + endpointId", passthrough_html)
+        self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/native", native_html)
+        self.assertIn("encodeURIComponent(tenantSchema)", native_html)
+        self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough", passthrough_html)
         self.assertNotIn("window.open('about:blank'", native_html)
         self.assertNotIn("window.location.assign(passthroughLaunchUrl)", passthrough_html)
         for shell_element in ('class="topbar"', 'class="split"', 'id="captures"'):
@@ -71,14 +72,14 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertIn("passthroughLaunchUrl", html)
         self.assertNotIn("window.open('about:blank', '_blank')", html)
         self.assertNotIn("window.location.assign(passthroughLaunchUrl)", html)
-        self.assertIn("/dose/sniff/", html)
+        self.assertIn("/admin/polysniffer/sniff/", html)
 
     def test_mode_viewports_use_the_polysniff_proxy_in_the_pane(self):
         native_html = self._render_shell("native", browse_subpath="/web")
         passthrough_html = self._render_shell("passthrough", browse_subpath="/web")
 
-        self.assertIn("'/dose/sniff/' + endpointId + '/native/web'", native_html)
-        self.assertIn("'/pt/polysniff/' + endpointId + '/web'", passthrough_html)
+        self.assertIn("endpointHost + '/native/web?schema='", native_html)
+        self.assertIn("endpointHost + '/workspace/passthrough/web'", passthrough_html)
         self.assertNotIn('href="https://example.test/web"', native_html)
         self.assertNotIn('href="/pt/admin/example.test/web"', passthrough_html)
 
@@ -101,7 +102,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         render_workspace.return_value = HttpResponse("workspace")
 
         expected_urls = {
-            "native": "https://example.test/web",
+            "native": "/admin/polysniffer/sniff/example.test/native/web",
             "passthrough": "/pt/admin/example.test/web",
         }
         for mode, expected_url in expected_urls.items():
@@ -396,7 +397,8 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
             is_redirect=False,
         )
         request = RequestFactory().get(
-            "/admin/polysniffer/sniff/example.test/native/api/v4/config/client"
+            "/admin/polysniffer/sniff/example.test/native/api/v4/config/client",
+            {"schema": "tenant_alpha", "ps_sniff": "123", "cursor": "next"},
         )
         request.user = SimpleNamespace(is_authenticated=True)
         request.tenant = None
@@ -412,14 +414,14 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
 
         self.assertEqual(
             request_upstream.call_args.kwargs["url"],
-            "https://example.test/api/v4/config/client",
+            "https://example.test/api/v4/config/client?cursor=next",
         )
 
     @patch("dose.polysniffer.sniff_forward.log_requests_response")
     @patch("dose.polysniffer.sniff_forward.get_sniff_capture_session", return_value=None)
     @patch("dose.polysniffer.sniff_forward.bind_request_tenant", return_value=None)
     @patch("dose.polysniffer.sniff_forward.requests.request")
-    def test_native_preserves_upstream_redirect_location(
+    def test_native_keeps_same_origin_redirect_inside_capture(
         self, request_upstream, _bind_tenant, _get_capture, _log_response
     ):
         request_upstream.return_value = Mock(
@@ -433,6 +435,9 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
             is_redirect=True,
         )
         request = RequestFactory().get("/admin/polysniffer/sniff/example.test/native/")
+        request._polysniffer_proxy_prefix = (
+            "/admin/polysniffer/sniff/example.test/native"
+        )
         request.user = SimpleNamespace(is_authenticated=True)
         request.tenant = None
         request.session = {}
@@ -444,7 +449,43 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
 
         response = forward_sniff_native(request, endpoint, "/")
 
-        self.assertEqual(response["Location"], "https://example.test/login")
+        self.assertEqual(
+            response["Location"],
+            "/admin/polysniffer/sniff/example.test/native/login",
+        )
+
+    @patch("dose.polysniffer.sniff_forward.log_requests_response")
+    @patch("dose.polysniffer.sniff_forward.get_sniff_capture_session", return_value=None)
+    @patch("dose.polysniffer.sniff_forward.bind_request_tenant", return_value=None)
+    @patch("dose.polysniffer.sniff_forward.requests.request")
+    def test_native_uses_configured_endpoint_path_without_trailing_slash(
+        self, request_upstream, _bind_tenant, _get_capture, _log_response
+    ):
+        request_upstream.return_value = Mock(
+            content=b"<html></html>",
+            status_code=200,
+            headers={"Content-Type": "text/html"},
+            cookies={},
+            is_redirect=False,
+        )
+        request = RequestFactory().get(
+            "/admin/polysniffer/sniff/example.test/native/"
+        )
+        request.user = SimpleNamespace(is_authenticated=True)
+        request.tenant = None
+        request.session = {}
+        endpoint = PassThroughEndpoint(
+            id=17,
+            endpoint_url="https://example.test/sign_in",
+            provider="custom",
+        )
+
+        forward_sniff_native(request, endpoint, "")
+
+        self.assertEqual(
+            request_upstream.call_args.kwargs["url"],
+            "https://example.test/sign_in",
+        )
 
     @patch("dose.polysniffer.views.sniff_v2_workspace.render")
     @patch("dose.polysniffer.views.sniff_v2_workspace.get_sniff_capture_session")
@@ -466,12 +507,18 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
             is_staff=True,
             is_authenticated=True,
         )
-        request.session = {"polysniffer_example.test_mode": "native"}
+        class _Session(dict):
+            modified = False
 
-        sniff_shell(request, "example.test")
+        request.session = _Session({"polysniffer_example.test_mode": "native"})
+
+        sniff_shell(request, "example.test", mode="native")
 
         context = render_workspace.call_args.args[2]
-        self.assertEqual(context["app_launch_url"], "https://example.test/web")
+        self.assertEqual(
+            context["app_launch_url"],
+            "/admin/polysniffer/sniff/example.test/native/web",
+        )
 
     def test_generator_requires_an_explicit_native_capture_session(self):
         parameters = signature(generate_handler_from_captures).parameters

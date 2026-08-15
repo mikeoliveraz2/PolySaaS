@@ -10,6 +10,7 @@ from dose.polysniffer.sniff_session import session_start, session_stop
 from dose.polysniffer.views.sniff_v2 import (
     export_session_har,
     native_sniff_proxy,
+    native_sniff_proxy_by_host,
     sniff_diff,
 )
 
@@ -45,5 +46,6 @@ urlpatterns = [
     re_path(r'^(?P<endpoint_host>[^/]+)/workspace/passthrough/(?P<browse_path>.*)$', sniff_shell, {'mode': 'passthrough'}, name='workspace_passthrough_browse'),
     re_path(r'^(?P<endpoint_id>\d+)/workspace/ingest/$', workspace_ingest, name='workspace_ingest'),
     re_path(r'^(?P<endpoint_id>\d+)/native/(?P<path>.*)$', native_sniff_proxy, name='native_sniff_proxy'),
+    re_path(r'^(?P<endpoint_host>[^/]+)/native/(?P<path>.*)$', native_sniff_proxy_by_host, name='native_sniff_proxy_by_host'),
 ]
 

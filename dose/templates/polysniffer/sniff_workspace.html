@@ -109,8 +109,9 @@
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
     const endpointId = {% if endpoint %}{{ endpoint.pk }}{% else %}0{% endif %};
+    const tenantSchema = '{{ tenant_schema|escapejs }}';
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '/dose/sniff/' + endpointId + '/native{{ browse_subpath|escapejs }}';
+    const nativeLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/native{{ browse_subpath|escapejs }}?schema=' + encodeURIComponent(tenantSchema);
     const passthroughLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;

@@ -79,7 +79,9 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
         native_subpath = (browse_path or browse_subpath or "/").strip()
         if not native_subpath.startswith("/"):
             native_subpath = f"/{native_subpath}"
-        app_launch_url = f"/dose/sniff/{endpoint.pk}/native{native_subpath}"
+        app_launch_url = (
+            f"/admin/polysniffer/sniff/{endpoint_host}/native{native_subpath}"
+        )
     elif active_session and active_mode == "passthrough":
         frame_subpath = (browse_path or browse_subpath or "/").strip()
         if not frame_subpath.startswith("/"):
@@ -108,6 +110,8 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     context = {
         "endpoint": endpoint,
         "endpoint_host": endpoint_host,
+        "tenant_schema": getattr(request, "schema_name", "")
+        or getattr(getattr(request, "tenant", None), "schema_name", ""),
         "endpoint_label": _endpoint_label(endpoint),
         "mode": active_mode,
         "app_launch_url": app_launch_url,

@@ -62,9 +62,7 @@ Example for Slack/HubSpot work:
 
 ## Current blockers
 
-- Slack native sniff remains unvalidated end to end.
-- A staff-side request to `/dose/sniff/6/native/sign_in` returned HTTP 404 because endpoint ID 6 in active schema `t104` resolved to Dolibarr, not Slack.
-- The Slack WIP uses endpoint-ID `/dose/sniff/` routing and response rewriting, while the earlier PolySniffer architecture handoff documented host-identified Admin-only raw Native capture. Resolve this architecture mismatch before treating the 404 as only an endpoint-row problem.
+- Slack Native now resolves and returns rewritten Slack HTML server-side, but the signed-in browser flow and visible TrafficLog capture still need confirmation in the workspace pane after the running server reloads the new code.
 - The WIP checkpoint includes unfinished and unvalidated changes across PolySniffer, Nextcloud, Odoo services/tests, startup scripts, backup files, and probes.
 - The Slack webhook slice is unit-tested but has not received a signed request from a real Slack workspace or published through the live RabbitMQ configuration.
 
@@ -75,8 +73,7 @@ Example for Slack/HubSpot work:
 - Confirm the tenant Slack `TenantApp.extra_config` has `slack_team_id` and `signing_secret`, and that the tenant has an active RabbitMQ `MQConfig`.
 - Send a real `/poly` command and verify fast ephemeral ack, one consumer execution, `CallBackData`, and tenant-visible `DoseMessage` feedback.
 - Trace the active Admin PolySniffer endpoint-row action through workspace launch and session identity.
-- Decide whether the Slack native capture must be adapted to host-identified Admin-only raw Native capture or whether the owner explicitly supersedes that architecture.
-- Validate the exact Slack endpoint host in the correct tenant schema before editing production code.
+- Reload the running PolySaaS server, open Slack PolySniffer from the `polysaasonline` endpoint admin, click Start Native, and confirm the Slack UI renders plus requests appear in Live capture.
 - Review the broad checkpoint commit before promoting any unfinished WIP as completed behavior.
 
 ## Session summary for this EOD
@@ -90,6 +87,9 @@ Example for Slack/HubSpot work:
 - Routed trigger envelopes through the existing MQ monitor while leaving legacy `/mq/` processing and `generic_inbound_webhook` unchanged.
 - Added `pika==1.3.2` to the primary requirements and installed it in the active venv.
 - Added the formal Slack webhook architecture specification at `documentation/architecture/SLACK_WEBHOOK_ORCHESTRATION_DESIGN.md`.
+- Replaced the ambiguous endpoint-ID Native pane launch with a schema-qualified, host-identified route under `/admin/polysniffer/sniff/<host>/native/`.
+- Kept configured endpoint paths exact, retained same-origin redirects inside Native capture, and prevented internal `schema`/`ps_sniff` parameters from leaking upstream.
+- Corrected `polysaasonline` endpoint 6 from Slack's obsolete `/sign_in` URL to `https://polysaasworkspace.slack.com` with starting path `/`.
 
 ## Validation
 
@@ -102,10 +102,14 @@ Example for Slack/HubSpot work:
 - Editor diagnostics: no errors in the new webhook module, Slack view, MQ monitor, tests, or requirements file.
 - Runtime dependency check: `pika 1.3.2` imports successfully.
 - Live Slack and RabbitMQ end-to-end validation: not run.
+- Slack Native and PolySniffer architecture tests: `25/25` passed.
+- Django system check: passed with no issues.
+- Real Slack Native server-side probe: HTTP 200, rewritten HTML contained `data-polysniffer-slack-native`, tenant `polysaasonline`, and the host-identified proxy prefix.
+- Signed-in browser-pane and TrafficLog validation: pending server reload and manual browser action.
 
 ## Blockers / risks
 
-- Slack endpoint/tenant identity and the current PolySniffer architecture conflict remain unresolved.
+- Slack Native browser authentication and capture behavior may expose additional Slack cookie or CSP constraints after the host-identity fix is loaded in the running server.
 - The checkpoint intentionally includes `.bak`, temporary, generated, and potentially incomplete files under the full-WIP synchronization rule.
 - Do not delete or rewrite checkpointed WIP without reviewing its purpose first.
 - The existing RabbitMQ adapter acknowledges a consumed message before dispatcher execution; a worker crash after consume could lose that delivery. This pre-existing adapter behavior was not expanded in the locked slice and should be reviewed before production hardening.
@@ -116,6 +120,7 @@ Example for Slack/HubSpot work:
 - Run `python scripts/check_agent_sync.py` before making edits.
 - Pull `cursor/polysniffer-switch-object-to-iframe` and resume from the pushed repo state.
 - Start with the Admin host-identity trace described under Next actions.
+- Reload the application process and perform the Slack Native browser-pane check described under Next actions.
 
 ## Commit info
 
@@ -126,8 +131,9 @@ Example for Slack/HubSpot work:
 - Trigger-delivery architecture rule: `37d47924`
 - Slack webhook slice: `00ddd80a`
 - Formal Slack webhook design: `99bd7b8f`
+- Slack Native host-identity fix: pending commit
 - Latest repo sync validation: passed
-- Final push status: formal Slack webhook design pushed on 2026-08-15
+- Final push status: pending Slack Native fix commit and push
 
 ## Handoff template
 
