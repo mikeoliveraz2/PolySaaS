@@ -153,9 +153,11 @@
                 launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
                 loadPassthroughWorkspace(launch, mode);
             } else {
-                var launch = nativeLaunchUrl;
-                launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
-                setBrowserUrl(launch, mode);
+                browserPane.innerHTML = '<div class="browser-placeholder"><p>Native browser opened in Chromium. Traffic from that browser appears in Live capture.</p></div>';
+                currentMode = mode;
+                document.querySelectorAll('.mode-card').forEach(function(card) {
+                    card.classList.toggle('selected', card.dataset.mode === mode);
+                });
             }
         } catch (error) { alert(error.message); }
     };

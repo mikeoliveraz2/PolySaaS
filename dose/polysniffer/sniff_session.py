@@ -12,6 +12,7 @@ from dose.polysniffer.har_capture import _ensure_tenant_schema
 from dose.polysniffer.models import TrafficCapture
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.polysniffer.sniff_tenant import bind_request_tenant
+from dose.polysniffer.views.core import get_endpoint_by_host
 from dose.utils import get_current_tenant
 
 
@@ -34,6 +35,7 @@ def session_start(request, endpoint_host: str):
 
     ensure_trafficlog_capture_columns(request)
     _ensure_tenant_schema(tenant)
+    endpoint = get_endpoint_by_host(endpoint_host, request) if mode == "native" else None
 
     TrafficCapture.objects.filter(tenant=tenant, is_active=True).update(is_active=False)
     cap = TrafficCapture.objects.create(
@@ -44,12 +46,30 @@ def session_start(request, endpoint_host: str):
     )
     request.session[f"polysniffer_{endpoint_host}_mode"] = mode
     request.session[f"polysniffer_{endpoint_host}_capture"] = cap.id
+    browser = None
+    if mode == "native":
+        from dose.polysniffer.native_browser_capture import start_native_browser
+
+        browser = start_native_browser(
+            endpoint_url=endpoint.endpoint_url,
+            tenant_schema=tenant.schema_name,
+            capture_session_id=cap.id,
+            endpoint_host=endpoint_host,
+        )
+        if not browser["started"]:
+            cap.is_active = False
+            cap.save(update_fields=["is_active"])
+            return JsonResponse(
+                {"error": browser["error"] or "Native browser failed to start"},
+                status=503,
+            )
     return JsonResponse(
         {
             "ok": True,
             "capture_id": cap.id,
             "capture_name": cap.capture_name,
             "mode": mode,
+            "browser": browser,
         }
     )
 
@@ -62,6 +82,12 @@ def session_stop(request, endpoint_host: str):
         return JsonResponse({"error": "no tenant context"}, status=400)
 
     _ensure_tenant_schema(tenant)
+    from dose.polysniffer.native_browser_capture import stop_native_browser
+
+    stop_native_browser(
+        tenant_schema=tenant.schema_name,
+        endpoint_host=endpoint_host,
+    )
     updated = TrafficCapture.objects.filter(tenant=tenant, is_active=True).update(is_active=False)
     request.session.pop(f"polysniffer_{endpoint_host}_capture", None)
     request.session.pop(f"polysniffer_{endpoint_host}_mode", None)

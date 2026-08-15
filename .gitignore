@@ -33,6 +33,9 @@ dose/website/
 # Local Render env overlay (real secrets) — never commit
 scripts/env-master.local.json
 
+# PolySniffer Native browser profiles and HARs can contain authenticated data.
+/media/polysniffer/
+
 # Large binaries — were Git LFS; removed from Git to avoid LFS quota blocking Render/GitHub CI.
 documentation/Capital Raise Project/*.pptx
 documentation/Capital Raise Project/*.ppt

@@ -50,7 +50,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertNotIn(marker, html)
         self.assertNotIn(".toolbar{display:none}", html)
 
-    def test_shell_loads_both_modes_in_the_browser_pane(self):
+    def test_shell_keeps_passthrough_in_pane_and_native_in_real_browser(self):
         native_html = self._render_shell("native")
         passthrough_html = self._render_shell("passthrough")
 
@@ -59,6 +59,11 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/native", native_html)
         self.assertIn("encodeURIComponent(tenantSchema)", native_html)
         self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough", passthrough_html)
+        self.assertIn("Native browser opened in Chromium", native_html)
+        native_branch = native_html.split("if (mode === 'passthrough')", 1)[1].split(
+            "window.stopSession", 1
+        )[0]
+        self.assertNotIn("setBrowserUrl(launch, mode)", native_branch)
         self.assertNotIn("window.open('about:blank'", native_html)
         self.assertNotIn("window.location.assign(passthroughLaunchUrl)", passthrough_html)
         for shell_element in ('class="topbar"', 'class="split"', 'id="captures"'):
