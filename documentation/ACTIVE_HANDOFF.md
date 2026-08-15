@@ -135,9 +135,9 @@ Example for Slack/HubSpot work:
 - Slack webhook slice: `00ddd80a`
 - Formal Slack webhook design: `99bd7b8f`
 - Slack Native host-identity fix: `40a21d8c`
-- Slack real-browser Native capture: pending commit
+- Slack real-browser Native capture: `2540b140`
 - Latest repo sync validation: passed
-- Final push status: pending real-browser Native capture commit and push
+- Final push status: Slack real-browser Native capture pushed on 2026-08-15
 
 ## Handoff template
 
