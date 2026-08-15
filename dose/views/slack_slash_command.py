@@ -8,6 +8,7 @@ from django.views.decorators.http import require_POST
 
 from dose.models import Tenant, TenantApp
 from dose.tenant_app_lookup import tenant_schema_search_path
+from dose.webhook_events import publish_slack_command_event
 
 
 MAX_AGE_SECONDS = 300
@@ -68,6 +69,13 @@ def slack_slash_command(request):
 
     if not _verify_slack_signature(signing_secret, timestamp, raw_body, signature):
         return HttpResponseForbidden('Invalid Slack signature.')
+
+    publish_result = publish_slack_command_event(tenant, request.POST.dict())
+    if not publish_result.get('success'):
+        return JsonResponse(
+            {'error': 'Slack trigger could not be queued.'},
+            status=503,
+        )
 
     return JsonResponse({
         'response_type': 'ephemeral',

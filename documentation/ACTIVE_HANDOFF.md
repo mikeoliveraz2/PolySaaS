@@ -48,6 +48,7 @@ Example for Slack/HubSpot work:
 - Continue to prefer proxy/rewrite passthrough patterns over iframes.
 - Keep both machines synchronized at the worktree/repo level instead of recreating local-only state.
 - Apply the locked trigger-delivery model: passthrough observes direct HTTP triggers; webhooks deliver externally observed UI/API triggers; outbound APIs run from existing Instructions; all results can surface on the orchestration bar.
+- Live-validate the completed Slack `/poly` webhook slice against the configured tenant RabbitMQ and Slack app.
 
 ## Locked orchestration trigger model
 
@@ -64,10 +65,14 @@ Example for Slack/HubSpot work:
 - A staff-side request to `/dose/sniff/6/native/sign_in` returned HTTP 404 because endpoint ID 6 in active schema `t104` resolved to Dolibarr, not Slack.
 - The Slack WIP uses endpoint-ID `/dose/sniff/` routing and response rewriting, while the earlier PolySniffer architecture handoff documented host-identified Admin-only raw Native capture. Resolve this architecture mismatch before treating the 404 as only an endpoint-row problem.
 - The WIP checkpoint includes unfinished and unvalidated changes across PolySniffer, Nextcloud, Odoo services/tests, startup scripts, backup files, and probes.
+- The Slack webhook slice is unit-tested but has not received a signed request from a real Slack workspace or published through the live RabbitMQ configuration.
 
 ## Next actions
 
 - Pull this feature branch on the next machine and run `python scripts/check_agent_sync.py`.
+- Create or verify one Instruction with the exact triple `/events/slack/command/poly` + `POST` + `REQ` and the intended atomic service.
+- Confirm the tenant Slack `TenantApp.extra_config` has `slack_team_id` and `signing_secret`, and that the tenant has an active RabbitMQ `MQConfig`.
+- Send a real `/poly` command and verify fast ephemeral ack, one consumer execution, `CallBackData`, and tenant-visible `DoseMessage` feedback.
 - Trace the active Admin PolySniffer endpoint-row action through workspace launch and session identity.
 - Decide whether the Slack native capture must be adapted to host-identified Admin-only raw Native capture or whether the owner explicitly supersedes that architecture.
 - Validate the exact Slack endpoint host in the correct tenant schema before editing production code.
@@ -80,6 +85,9 @@ Example for Slack/HubSpot work:
 - Consolidated handoff ownership into this canonical file and removed the dated Slack handoff.
 - Kept incomplete work clearly labeled instead of claiming behavior validation.
 - Locked and documented the shared orchestration trigger-delivery model in `AI_RULES.md` and this handoff.
+- Implemented the approved Slack-only webhook slice: signature verification and team mapping, canonical trigger envelope, RabbitMQ publication before fast ack, exact Instruction matching, atomic execution, durable per-tenant event dedup, `CallBackData`, and tenant-visible `DoseMessage` feedback.
+- Routed trigger envelopes through the existing MQ monitor while leaving legacy `/mq/` processing and `generic_inbound_webhook` unchanged.
+- Added `pika==1.3.2` to the primary requirements and installed it in the active venv.
 
 ## Validation
 
@@ -88,12 +96,17 @@ Example for Slack/HubSpot work:
 - Exit code: `0`
 - Checked shared policy files for unresolved merge markers: none found.
 - Product behavior tests were not run for checkpoint `434ef226`; it is explicitly unvalidated WIP.
+- Slack webhook and adjacent atomic-selector tests: `20/20` passed.
+- Editor diagnostics: no errors in the new webhook module, Slack view, MQ monitor, tests, or requirements file.
+- Runtime dependency check: `pika 1.3.2` imports successfully.
+- Live Slack and RabbitMQ end-to-end validation: not run.
 
 ## Blockers / risks
 
 - Slack endpoint/tenant identity and the current PolySniffer architecture conflict remain unresolved.
 - The checkpoint intentionally includes `.bak`, temporary, generated, and potentially incomplete files under the full-WIP synchronization rule.
 - Do not delete or rewrite checkpointed WIP without reviewing its purpose first.
+- The existing RabbitMQ adapter acknowledges a consumed message before dispatcher execution; a worker crash after consume could lose that delivery. This pre-existing adapter behavior was not expanded in the locked slice and should be reviewed before production hardening.
 
 ## Next session
 
@@ -108,9 +121,10 @@ Example for Slack/HubSpot work:
 - Main workflow commit integrated: `36048d89`
 - Full WIP checkpoint: `434ef226`
 - Merge commit: `ea4b7fc9`
-- Trigger-delivery architecture rule: included in the next commit after `4b5e8f19`
+- Trigger-delivery architecture rule: `37d47924`
+- Slack webhook slice: pending commit after validation
 - Latest repo sync validation: passed
-- Final push status: pending trigger-rule commit and push
+- Final push status: pending Slack webhook slice commit and push
 
 ## Handoff template
 

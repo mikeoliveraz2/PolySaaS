@@ -10,8 +10,23 @@ from dose.models.mq_config import MQConfig
 from dose.utils import get_current_tenant
 from dose.mq.mq_request_controller import MQRequestController
 from dose.mq.mq_response_controller import MQResponseController
+from dose.webhook_events import TRIGGER_ENVELOPE_KIND, process_trigger_envelope
 
 logger = logging.getLogger(__name__)
+
+
+def dispatch_queue_message(message, mq_config):
+    routing_key = message.get('routing_key') or message.get('topic', '')
+    message_data = message.get('data') or message.get('body', {})
+    if isinstance(message_data, dict) and message_data.get('kind') == TRIGGER_ENVELOPE_KIND:
+        return process_trigger_envelope(message_data, mq_config.tenant)
+    return MQRequestController.process_mq_message(
+        message_data=message_data,
+        routing_key=routing_key,
+        topic=routing_key,
+        mq_config=mq_config,
+        tenant=mq_config.tenant,
+    )
 
 
 class MQQueueMonitor:
@@ -117,19 +132,10 @@ class MQQueueMonitor:
                 if message:
                     logger.info(f"Received message from {mq_config.name}: {message.get('routing_key') or message.get('topic')}")
 
-                    # Process message through MQRequestController
                     routing_key = message.get('routing_key') or message.get('topic', '')
-                    message_data = message.get('data') or message.get('body', {})
+                    result = dispatch_queue_message(message, mq_config)
 
-                    result = MQRequestController.process_mq_message(
-                        message_data=message_data,
-                        routing_key=routing_key,
-                        topic=routing_key,
-                        mq_config=mq_config,
-                        tenant=mq_config.tenant
-                    )
-
-                    logger.info(f"Message processed: {result.get('success', False)}")
+                    logger.info(f"Message processed: {result.get('success', result.get('status') == 'processed')}")
 
                     # If response processing is needed, process through MQResponseController
                     if result.get('success') and mq_config.response_queue_enabled:
