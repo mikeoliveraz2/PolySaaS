@@ -56,7 +56,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         self.assertIn('id="browser-pane"', native_html)
         self.assertIn("setBrowserUrl", native_html)
         self.assertIn("const endpointId = 17;", native_html)
-        self.assertIn("'/pt/polysniff/' + endpointId", native_html)
+        self.assertIn("'/dose/sniff/' + endpointId + '/native'", native_html)
         self.assertIn("'/pt/polysniff/' + endpointId", passthrough_html)
         self.assertNotIn("window.open('about:blank'", native_html)
         self.assertNotIn("window.location.assign(passthroughLaunchUrl)", passthrough_html)
@@ -67,17 +67,17 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         html = self._render_shell("")
 
         self.assertIn("function setBrowserUrl", html)
-        self.assertIn('<iframe src="', html)
         self.assertIn("nativeLaunchUrl", html)
         self.assertIn("passthroughLaunchUrl", html)
         self.assertNotIn("window.open('about:blank', '_blank')", html)
         self.assertNotIn("window.location.assign(passthroughLaunchUrl)", html)
+        self.assertIn("/dose/sniff/", html)
 
     def test_mode_viewports_use_the_polysniff_proxy_in_the_pane(self):
         native_html = self._render_shell("native", browse_subpath="/web")
         passthrough_html = self._render_shell("passthrough", browse_subpath="/web")
 
-        self.assertIn("'/pt/polysniff/' + endpointId + '/web'", native_html)
+        self.assertIn("'/dose/sniff/' + endpointId + '/native/web'", native_html)
         self.assertIn("'/pt/polysniff/' + endpointId + '/web'", passthrough_html)
         self.assertNotIn('href="https://example.test/web"', native_html)
         self.assertNotIn('href="/pt/admin/example.test/web"', passthrough_html)

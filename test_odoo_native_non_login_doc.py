@@ -19,7 +19,7 @@ from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
 def main():
     handler = OdooPassthroughHandler()
     factory = RequestFactory()
-    request = factory.get('/pt/admin/polysaas-odoo2.onrender.com/web')
+    request = factory.get('/pt/admin/localhost:8086/web')
     request.session = SessionStore()
 
     native_html = '''
@@ -37,13 +37,19 @@ def main():
     </html>
     '''
 
-    processed, _ = handler.process_html_response(
+    processed = handler.process_html_response(
         native_html,
         request,
-        endpoint_url='https://polysaas-odoo2.onrender.com',
+      endpoint_url='http://localhost:8086',
     )
 
     assert processed == native_html, processed
+    shim = handler.get_client_side_shim('/pt/admin/localhost:8086')
+    assert 'window.Worker = function(url, options)' in shim
+    assert 'window.SharedWorker = undefined' in shim
+    assert "data: {type: 'initialized', data: {}}" in shim
+    assert 'var worker = new EventTarget()' in shim
+    assert shim.count("String(url).indexOf('/bus/websocket_worker_bundle')") == 1
     print('PASS: native Odoo non-login document is preserved')
 
 

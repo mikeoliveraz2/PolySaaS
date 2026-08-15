@@ -525,10 +525,35 @@ class NextcloudPassthroughHandler:
     def try_rewrite_incoming_path(self, request, endpoint) -> bool:
         """
         Map /pt/... (missing admin segment) and bare /core/, /apps/, … onto this endpoint's proxy prefix.
+
+        PolySniffer workspace iframe Referer is /pt/polysniff/{id}/… — map bare Nextcloud
+        asset paths onto that sniff prefix (not /pt/admin/{host}), or CSS/JS 404 on Django.
         """
         path = request.path_info
         if path.startswith("/pt/polysniff/"):
             return False
+
+        ref = request.META.get("HTTP_REFERER", "") or ""
+        sniff_m = re.search(r"/pt/polysniff/\d+", ref)
+        if sniff_m:
+            sniff_prefix = sniff_m.group(0)
+            if path.startswith("/pt/") and not path.startswith("/pt/admin/"):
+                for pfx in _NC_PARTIAL_PT_PREFIXES:
+                    if path == pfx.rstrip("/") or path.startswith(pfx):
+                        request.path_info = sniff_prefix + path[3:]
+                        print(f"[NC-HANDLER] sniff partial /pt/ rewrite -> {request.path_info}")
+                        return True
+                return False
+            if path.startswith("/pt/"):
+                return False
+            if path == "/" or not path.startswith("/"):
+                return False
+            if not _nc_root_path_should_proxy(path, sniff_prefix):
+                return False
+            request.path_info = sniff_prefix + path
+            print(f"[NC-HANDLER] sniff bare path rewrite -> {request.path_info}")
+            return True
+
         proxy_prefix = _nc_browser_proxy_prefix(request, endpoint)
 
         if path.startswith("/pt/") and not path.startswith("/pt/admin/"):
@@ -1070,11 +1095,23 @@ class NextcloudPassthroughHandler:
             host = parsed.netloc
             proxy_prefix = f"/pt/admin/{host}" if host else "/pt/admin/nextcloud"
         html_str = self._rewrite_nc_paths(html_str, proxy_prefix, base)
-        
+        html_str = self._strip_base_tags(html_str)
+        html_str = self._strip_csp_meta(html_str)
+
         # Inject shim + _oc_webroot at the START of <head>, BEFORE oc.js loads
         # This ensures _oc_webroot is set before Nextcloud reads it
         shim = self._build_early_shim(proxy_prefix, base)
-        import re
+        if _nc_polysniff_prefix(request):
+            # Jazzmin display.html uses polysaas-nc-bucket so NC Vue is not height 0.
+            # Sniff skips that shell (raw HTML in the workspace iframe) — same collapse
+            # shows as a blank white pane with only the notifications badge.
+            shim = (
+                '<style data-polysaas-nc-sniff-height="1">'
+                "html,body{height:100%!important;min-height:100%!important;}"
+                "#content,#app-content,#app-content-vue,.app-files{"
+                "min-height:100%!important;overflow:auto!important;}"
+                "</style>"
+            ) + shim
         # Insert right after <head...>
         html_str = re.sub(
             r'(<head[^>]*>)',
@@ -1083,8 +1120,42 @@ class NextcloudPassthroughHandler:
             count=1,
             flags=re.IGNORECASE
         )
-        
+
         return html_str, None
+
+    def rewrite_upstream_body(self, body, content_type, request, **context):
+        """Prefix url(...) in Nextcloud CSS so background images hit the proxy, not Django."""
+        ct = (content_type or "").lower()
+        if "text/css" not in ct or not body:
+            return None
+        ep = getattr(request, "_passthrough_endpoint", None) or getattr(self, "endpoint", None)
+        proxy_prefix = _nc_browser_proxy_prefix(request, ep)
+        if not proxy_prefix or proxy_prefix == "/pt/admin":
+            return None
+        try:
+            text = body.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+        def _css_url(match):
+            quote, path = match.group(1) or "", match.group(2).strip()
+            if not path.startswith("/") or path.startswith("//"):
+                return match.group(0)
+            if path.startswith(proxy_prefix):
+                return match.group(0)
+            if not _nc_root_path_should_proxy(path, proxy_prefix):
+                return match.group(0)
+            return f"url({quote}{proxy_prefix}{path}{quote})"
+
+        new_text = re.sub(
+            r"url\(\s*(['\"]?)(/[^)'\"]+)\1\s*\)",
+            _css_url,
+            text,
+            flags=re.IGNORECASE,
+        )
+        if new_text == text:
+            return None
+        return new_text.encode("utf-8")
 
     # ------------------------------------------------------------------
     # Server-side URL rewriting
@@ -1342,10 +1413,24 @@ document.addEventListener('DOMContentLoaded', function() {{
     _fixLoginForms();
 }});
 
+function _fromPtAdmin(u){{
+    if(!u||typeof u!=='string')return null;
+    if(PROXY.indexOf('/pt/polysniff/')!==0)return null;
+    var marker='/pt/admin/';
+    var i=u.indexOf(marker);
+    if(i<0)return null;
+    var rest=u.slice(i+marker.length);
+    var slash=rest.indexOf('/');
+    var tail=slash<0?'/':rest.slice(slash);
+    if(tail.charAt(0)!=='/')tail='/'+tail;
+    return PROXY+tail;
+}}
 function _toProxy(u){{
     if(!u||typeof u!=='string')return u;
     var ap=_absUpstreamToProxy(u);
     if(ap!==null)return ap;
+    var admin=_fromPtAdmin(u);
+    if(admin!==null)return admin;
     if(u.indexOf(BASE)===0)return PROXY+u.slice(BASE.length);
     if(u.startsWith(PROXY))return u;
     if(u.startsWith(O+'/')){{
@@ -1525,12 +1610,15 @@ var _setAttr=Element.prototype.setAttribute;
 Element.prototype.setAttribute=function(name,value){{
     if(typeof value==='string'){{
         var ln=name.toLowerCase();
-        if((ln==='src'||ln==='href')&&
-            (this instanceof HTMLScriptElement||this instanceof HTMLLinkElement||this instanceof HTMLImageElement))
+        if((ln==='src'||ln==='href'||ln==='action')&&
+            (this instanceof HTMLScriptElement||this instanceof HTMLLinkElement||this instanceof HTMLImageElement||
+             this instanceof HTMLAnchorElement||this instanceof HTMLFormElement))
             value=_toProxy(value);
     }}
     return _setAttr.call(this,name,value);
 }};
+_patchProp(HTMLAnchorElement.prototype,'href');
+_patchProp(HTMLFormElement.prototype,'action');
 
 // Patch OC.generateUrl (Nextcloud's URL builder)
 function _patchOC(){{
@@ -1568,6 +1656,41 @@ history.replaceState=function(state,title,url){{
     if(url)url=_toProxy(url);
     return _replaceState.call(this,state,title,url);
 }};
+
+function _ncNavTo(u){{
+    var n=_toProxy(''+u);
+    if(n&&n.charAt(0)==='/'&&n.indexOf('http')!==0)n=O+n;
+    window.location.href=n;
+}}
+try{{
+    var _assign=window.location.assign.bind(window.location);
+    window.location.assign=function(u){{_assign(_toProxy(''+u));}};
+}}catch(e){{}}
+try{{
+    var _repl=window.location.replace.bind(window.location);
+    window.location.replace=function(u){{_repl(_toProxy(''+u));}};
+}}catch(e){{}}
+
+document.addEventListener('click',function(ev){{
+    if(ev.defaultPrevented||ev.button!==0||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey)return;
+    var t=ev.target;
+    if(!t||!t.closest)return;
+    var a=t.closest('a[href]');
+    if(!a)return;
+    var tgt=(a.getAttribute('target')||'_self').toLowerCase();
+    if(tgt&&tgt!=='_self'&&tgt!=='_top'&&tgt!=='_parent')return;
+    var raw=a.getAttribute('href')||'';
+    if(!raw||raw.charAt(0)==='#'||raw.toLowerCase().indexOf('javascript:')===0)return;
+    var next=_toProxy(raw);
+    if(next===raw){{
+        try{{next=_toProxy(a.href||raw);}}catch(e2){{return;}}
+        if(next===(a.href||raw))return;
+    }}
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(tgt==='_top'||tgt==='_parent')tgt='_self';
+    _ncNavTo(next);
+}},true);
 
 // Run OC patch now and again after scripts load
 _patchOC();

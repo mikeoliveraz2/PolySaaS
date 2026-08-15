@@ -224,22 +224,9 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         return True
 
     def should_wrap_in_admin_template(self, request, upstream_path, **kwargs):
-        """Force wrapping in admin template for Odoo HTML pages."""
+        """Keep Odoo's document body intact so its web client can mount."""
         print(f"[ODOO HANDLER] should_wrap_in_admin_template: upstream_path={upstream_path}, status={kwargs.get('status_code')}, ct={kwargs.get('content_type')}")
-
-        status = kwargs.get('status_code', 200)
-        ct = (kwargs.get('content_type') or '').lower()
-
-        if status != 200:
-            print(f"[ODOO HANDLER] Not wrapping: status {status}")
-            return False
-
-        if 'text/html' not in ct and 'application/xhtml' not in ct:
-            print(f"[ODOO HANDLER] Not wrapping: content_type {ct}")
-            return False
-
-        print(f"[ODOO HANDLER] Wrapping in admin template")
-        return True
+        return False
 
     def passthrough_embed_template_context(self, trigger, request):
         """Provide Odoo-specific template context including the body scope flag."""
@@ -768,6 +755,32 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 }}
                 return _originalOpen.call(this, method, rewritten, async, user, pass);
             }};
+
+            if (window.Worker) {{
+                var _OriginalWorker = window.Worker;
+                window.Worker = function(url, options) {{
+                    if (String(url).indexOf('/bus/websocket_worker_bundle') !== -1) {{
+                        var worker = new EventTarget();
+                        worker.postMessage = function(message) {{
+                            if (message && message.action === 'initialize_connection') {{
+                                setTimeout(function() {{
+                                    worker.dispatchEvent(new MessageEvent('message', {{
+                                        data: {{type: 'initialized', data: {{}}}}
+                                    }}));
+                                }}, 0);
+                            }}
+                        }};
+                        worker.terminate = function() {{}};
+                        return worker;
+                    }}
+                    return new _OriginalWorker(rewriteUrl(url), options);
+                }};
+                window.Worker.prototype = _OriginalWorker.prototype;
+            }}
+
+            if (window.SharedWorker) {{
+                window.SharedWorker = undefined;
+            }}
 
             var _origSetAttribute = Element.prototype.setAttribute;
             Element.prototype.setAttribute = function(name, value) {{

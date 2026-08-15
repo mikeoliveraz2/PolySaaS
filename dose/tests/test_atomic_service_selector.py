@@ -13,6 +13,7 @@ from dose.services.atomic_service_selector import (
 from dose.services.capture_http_traffic import CaptureGetResponse
 from dose.services.hubspot_portlet_services import HubSpotContactsPortlet
 from dose.services.data_extractor import EndpointDataExtractor
+from dose.services.odoo_create_partner import OdooCreatePartner
 from dose.services.odoo_customer_sync import OdooCustomerSync
 
 
@@ -42,6 +43,10 @@ class AtomicServiceSelectorTests(SimpleTestCase):
         self.assertFalse(service_visible_for_app(OdooCustomerSync, "hubspot"))
         self.assertFalse(service_visible_for_app(OdooCustomerSync, "nextcloud"))
         self.assertTrue(service_visible_for_app(OdooCustomerSync, "odoo"))
+        self.assertTrue(service_visible_for_app(OdooCreatePartner, "odoo"))
+        self.assertFalse(service_visible_for_app(OdooCreatePartner, "hubspot"))
+        self.assertEqual(OdooCreatePartner.atomic_apps, ("odoo",))
+        self.assertEqual(OdooCreatePartner.atomic_category, "write")
 
     def test_hubspot_portlet_not_on_dolibarr(self):
         self.assertTrue(service_visible_for_app(HubSpotContactsPortlet, "hubspot"))

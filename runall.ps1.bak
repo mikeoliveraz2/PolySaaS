@@ -1,6 +1,7 @@
 ﻿# THIS CODE IS FROZEN -- NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Mattermost Composer via Roles Hydration -- 2026-06-11 -- commit 8293f54f
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
+# Owner-approved 2026-08-01: start local RabbitMQ (docker-compose.local.yml) for Odoo MQ path
 # PolySaaS Run All Services
 # Activates venv, starts Waitress WSGI server (Windows), syncs AI peers, starts Mattermost bot
 
@@ -9,6 +10,9 @@ $ProjectRoot = if ($PSScriptRoot) { $PSScriptRoot } else { "D:\PolySaaS" }
 $WaitressListen = "0.0.0.0:8000"
 $WaitressPort = 8000
 $WaitressThreads = 32
+$RabbitMqAmqpPort = 5672
+$RabbitMqMgmtPort = 15672
+$LocalComposeFile = "docker-compose.local.yml"
 
 function Get-PolySaaSVenvPython {
     param([string]$Root)
@@ -339,18 +343,103 @@ function Start-PolySaaSCursorWorker {
     }
 }
 
+function Test-PortListening {
+    param([int]$Port)
+    return [bool]@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+}
+
+function Start-PolySaaSRabbitMQ {
+    param(
+        [string]$Root,
+        [int]$AmqpPort = 5672,
+        [int]$MgmtPort = 15672,
+        [string]$ComposeFile = "docker-compose.local.yml"
+    )
+
+    if (Test-PortListening -Port $AmqpPort) {
+        Write-Host "RabbitMQ already listening on port $AmqpPort" -ForegroundColor Green
+        return @{
+            Ok      = $true
+            AmqpPort = $AmqpPort
+            MgmtPort = $MgmtPort
+            Note    = "already_running"
+        }
+    }
+
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        Write-Host "WARNING: docker not found -- RabbitMQ not started" -ForegroundColor Red
+        return @{
+            Ok      = $false
+            AmqpPort = $AmqpPort
+            MgmtPort = $MgmtPort
+            Note    = "docker_missing"
+        }
+    }
+
+    $composePath = Join-Path $Root $ComposeFile
+    if (-not (Test-Path $composePath)) {
+        Write-Host "WARNING: $ComposeFile not found -- RabbitMQ not started" -ForegroundColor Red
+        return @{
+            Ok      = $false
+            AmqpPort = $AmqpPort
+            MgmtPort = $MgmtPort
+            Note    = "compose_missing"
+        }
+    }
+
+    Write-Host "Starting RabbitMQ (docker compose service rabbitmq only)..." -ForegroundColor Green
+    $envFile = Join-Path $Root ".env"
+    $composeArgs = @("compose")
+    if (Test-Path $envFile) {
+        $composeArgs += @("--env-file", $envFile)
+    }
+    $composeArgs += @("-f", $ComposeFile, "up", "-d", "rabbitmq")
+
+    Push-Location $Root
+    try {
+        & docker @composeArgs 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+    } finally {
+        Pop-Location
+    }
+
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-PortListening -Port $AmqpPort) {
+            Write-Host "RabbitMQ listening on port $AmqpPort (UI http://localhost:$MgmtPort)" -ForegroundColor Green
+            return @{
+                Ok      = $true
+                AmqpPort = $AmqpPort
+                MgmtPort = $MgmtPort
+                Note    = "started"
+            }
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    Write-Host "WARNING: RabbitMQ did not open port $AmqpPort within 60s" -ForegroundColor Red
+    return @{
+        Ok      = $false
+        AmqpPort = $AmqpPort
+        MgmtPort = $MgmtPort
+        Note    = "timeout"
+    }
+}
+
 function Show-PolySaaSRunAllSummary {
     param(
         [int]$WaitressPid,
         [bool]$WaitressOk,
         [hashtable]$BotStatus,
         [hashtable]$WorkerStatus,
+        [hashtable]$RabbitStatus,
         [int]$Port = 8000
     )
 
     $botOk = [bool]$BotStatus.Ok
     $workerOk = [bool]$WorkerStatus.Ok
-    $allOk = $WaitressOk -and $botOk
+    $rabbitOk = [bool]$RabbitStatus.Ok
+    $allOk = $WaitressOk -and $botOk -and $rabbitOk
     $line = ('=' * 62)
 
     Write-Host ""
@@ -361,6 +450,7 @@ function Show-PolySaaSRunAllSummary {
     Write-Host "  Deployment (current phase):" -ForegroundColor White
     Write-Host "    Django / PolySaaS admin  -> LOCAL ONLY  http://localhost:$Port" -ForegroundColor Gray
     Write-Host "    Mattermost + bundled apps -> Render (cloud); bot connects outbound" -ForegroundColor Gray
+    Write-Host "    RabbitMQ (local Odoo MQ) -> docker-compose.local.yml service rabbitmq" -ForegroundColor Gray
     Write-Host ""
     Write-Host "  Service status:" -ForegroundColor White
 
@@ -368,6 +458,12 @@ function Show-PolySaaSRunAllSummary {
         Write-Host "    [OK]   Django (Waitress)     PID $WaitressPid  port $Port" -ForegroundColor Green
     } else {
         Write-Host "    [FAIL] Django (Waitress)     not listening on port $Port" -ForegroundColor Red
+    }
+
+    if ($rabbitOk) {
+        Write-Host ("    [OK]   RabbitMQ              :{0}  UI :{1}" -f $RabbitStatus.AmqpPort, $RabbitStatus.MgmtPort) -ForegroundColor Green
+    } else {
+        Write-Host ("    [FAIL] RabbitMQ              not on :{0} ({1})" -f $RabbitStatus.AmqpPort, $RabbitStatus.Note) -ForegroundColor Red
     }
 
     if ($botOk) {
@@ -402,6 +498,8 @@ Write-Host ""
 Write-Host "PolySaaS runall -- starting local services (Django is local-only for now)..." -ForegroundColor Cyan
 Write-Host ""
 
+$rabbitStatus = Start-PolySaaSRabbitMQ -Root $ProjectRoot -AmqpPort $RabbitMqAmqpPort -MgmtPort $RabbitMqMgmtPort -ComposeFile $LocalComposeFile
+
 Write-Host "Activating virtual environment..." -ForegroundColor Cyan
 $VenvPython = Get-PolySaaSVenvPython -Root $ProjectRoot
 $VenvRoot = Split-Path (Split-Path $VenvPython -Parent) -Parent
@@ -424,4 +522,4 @@ $workerStatus = Start-PolySaaSCursorWorker -Root $ProjectRoot -Name $CursorWorke
 $portOwners = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
 $waitressOk = ($portOwners.Count -eq 1)
 
-Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -WorkerStatus $workerStatus -Port $WaitressPort
+Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -WorkerStatus $workerStatus -RabbitStatus $rabbitStatus -Port $WaitressPort

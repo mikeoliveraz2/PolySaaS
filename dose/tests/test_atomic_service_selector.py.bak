@@ -7,6 +7,7 @@ from dose.services.atomic_service_selector import (
     app_key_from_requestpath,
     count_service_choices,
     grouped_executescript_choices,
+    infer_atomic_app_key,
     service_visible_for_app,
 )
 from dose.services.capture_http_traffic import CaptureGetResponse
@@ -51,9 +52,34 @@ class AtomicServiceSelectorTests(SimpleTestCase):
         self.assertEqual(app_key_from_requestpath("account.action_invoice", "action_id"), "odoo")
         self.assertEqual(app_key_from_requestpath("/web/dataset/call_kw", "path"), "odoo")
 
-    def test_endpoint_slug(self):
-        ep = SimpleNamespace(slug="nextcloud", endpoint_url="http://localhost:8888", menu_title="Nextcloud")
-        self.assertEqual(app_key_from_endpoint(ep), "nextcloud")
+    def test_future_app_slug_is_the_key(self):
+        nc = SimpleNamespace(slug="nextcloud", endpoint_url="http://localhost:8888", menu_title="Nextcloud")
+        slack = SimpleNamespace(slug="slack", endpoint_url="https://app.slack.com", menu_title="Slack")
+        sf = SimpleNamespace(slug="salesforce", endpoint_url="https://na1.salesforce.com", menu_title="Salesforce")
+        self.assertEqual(app_key_from_endpoint(nc), "nextcloud")
+        self.assertEqual(app_key_from_endpoint(slack), "slack")
+        self.assertEqual(app_key_from_endpoint(sf), "salesforce")
+
+    def test_future_app_services_do_not_leak(self):
+        class SlackPostMessage:
+            atomic_apps = ("slack",)
+            atomic_category = "write"
+
+        self.assertTrue(service_visible_for_app(SlackPostMessage, "slack"))
+        self.assertFalse(service_visible_for_app(SlackPostMessage, "odoo"))
+        self.assertFalse(service_visible_for_app(OdooCustomerSync, "slack"))
+        self.assertTrue(service_visible_for_app(CaptureGetResponse, "slack"))
+        self.assertTrue(service_visible_for_app(CaptureGetResponse, "salesforce"))
+
+    def test_empty_slug_falls_back_to_url(self):
+        ep = SimpleNamespace(slug="", endpoint_url="https://polysaas-mattermost.onrender.com", menu_title="Mattermost")
+        self.assertEqual(app_key_from_endpoint(ep), "mattermost")
+
+    def test_app_query_param_accepts_any_slug(self):
+        req = SimpleNamespace(GET={"app": "salesforce"}, META={})
+        self.assertEqual(infer_atomic_app_key(req), "salesforce")
+        req2 = SimpleNamespace(GET={"app": "slack"}, META={})
+        self.assertEqual(infer_atomic_app_key(req2), "slack")
 
     def test_grouped_choices_hide_other_app(self):
         registry = {

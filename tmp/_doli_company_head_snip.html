@@ -1,0 +1,172 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
+BINGO: Demo Tenant Odoo Embed o_web_client Shell — commit 7d05920e
+BINGO: Odoo Passthrough Layout Fix — 2026-06-09
+BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0 -->
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en-us" >
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <!--  Prevent admin panel being crawled by search engines -->
+    <meta name="robots" content="none, noarchive">
+    <script>
+        (function() {
+            var mode = localStorage.getItem('jazzmin-theme-mode') || 'light';
+            if (mode === 'auto') {
+                mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-bs-theme', mode);
+        })();
+    </script>
+
+    <title>Localhost:8083 — Django site admin</title>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="/static/vendor/fontawesome-free/css/all.min.css">
+
+    <!-- Bootstrap and adminLTE -->
+    <link rel="stylesheet" href="/static/vendor/adminlte/css/adminlte.min.css" id="adminlte-css">
+
+    <!-- Bootswatch theme -->
+    <link rel="stylesheet" href="/static/vendor/bootswatch/flatly/bootstrap.min.css" id="jazzmin-theme" data-theme-base="/static/vendor/bootswatch" />
+    
+
+    <!-- Custom fixes for django -->
+    <link rel="stylesheet" href="/static/jazzmin/css/main.css">
+
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/admin/css/theme-toggle.css">
+    
+
+    <!-- favicons -->
+    <link rel="shortcut icon" href="/static/img/PolySaaS-Industrial-Logo.png" type="image/png">
+    <link rel="icon" href="/static/img/PolySaaS-Industrial-Logo.png" sizes="32x32" type="image/png">
+
+    
+    <!-- Google Font: Source Sans Pro -->
+    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+    
+
+     
+    
+
+
+
+<!-- Upstream head first (passthrough shims, upstream scripts) -->
+
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="Dolibarr Development Team">
+<meta name="anti-csrf-newtoken" content="ac84f10bbb345509fe43f9487a108e71">
+<meta name="anti-csrf-currenttoken" content="ac84f10bbb345509fe43f9487a108e71">
+<link rel="shortcut icon" type="image/x-icon" href="/pt/admin/localhost:8083/theme/dolibarr_256x256_color.png"/>
+<link rel="apple-touch-icon" href="/pt/admin/localhost:8083/theme/apple-touch-icon.png"/>
+<link rel="manifest" href="/pt/admin/localhost:8083/theme/eldy/manifest.json.php" />
+<title>Setup</title>
+<!-- Includes CSS for JQuery (Ajax library) -->
+<link rel="stylesheet" type="text/css" href="/pt/admin/localhost:8083/includes/jquery/css/base/jquery-ui.css?layout=classic&version=23.0.2">
+<link rel="stylesheet" type="text/css" href="/pt/admin/localhost:8083/includes/jquery/plugins/jnotify/jquery.jnotify-alt.min.css?layout=classic&version=23.0.2">
+<link rel="stylesheet" type="text/css" href="/pt/admin/localhost:8083/includes/jquery/plugins/select2/dist/css/select2.css?layout=classic&version=23.0.2">
+<!-- Includes CSS for font awesome -->
+<link rel="stylesheet" type="text/css" href="/pt/admin/localhost:8083/theme/common/fontawesome-5/css/all.min.css?layout=classic&version=23.0.2">
+<!-- Includes CSS for Dolibarr theme -->
+<link rel="stylesheet" type="text/css" href="/pt/admin/localhost:8083/theme/eldy/style.css.php?lang=en_US&amp;theme=eldy&amp;userid=1&amp;entity=1&layout=classic&version=23.0.2&revision=0">
+<!-- Includes JS for JQuery -->
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/jquery/js/jquery.min.js?layout=classic&version=23.0.2"></script>
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/jquery/js/jquery-ui.min.js?layout=classic&version=23.0.2"></script>
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/jquery/plugins/jnotify/jquery.jnotify.min.js?layout=classic&version=23.0.2"></script>
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/jquery/plugins/tablednd/jquery.tablednd.min.js?layout=classic&version=23.0.2"></script>
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/nnnick/chartjs/dist/chart.min.js?layout=classic&version=23.0.2"></script>
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/jquery/plugins/select2/dist/js/select2.full.min.js?layout=classic&version=23.0.2"></script>
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/includes/jquery/plugins/multiselect/jquery.multi-select.js?layout=classic&version=23.0.2"></script>
+<!-- Includes JS of Dolibarr -->
+<script nonce="fba9c550" src="/pt/admin/localhost:8083/core/js/lib_head.js.php?lang=en_US&layout=classic&version=23.0.2"></script>
+
+
+
+   
+  
+
+
+
+
+
+
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+    /* Header height — tuned to the live Jazzmin navbar so the grid clears the fixed header. */
+    :root {
+        --pss-header-h: 64px;
+        --pss-sidebar-shell-bg: #1e293b;
+        --pss-sidebar-shell-shadow: 2px 0 12px rgba(15, 23, 42, 0.12);
+        --pss-sidebar-header-bg: #34495e;
+        --pss-sidebar-header-hover-bg: #1e293b;
+        --pss-sidebar-header-text: #ffffff;
+        --pss-sidebar-header-border: #2c3e50;
+        --pss-sidebar-surface: #f8fafc;
+        --pss-sidebar-scroll-track: #f1f1f1;
+        --pss-sidebar-scroll-thumb: #888;
+        --pss-sidebar-scroll-thumb-hover: #555;
+        --pss-sidebar-item-text: #334155;
+        --pss-sidebar-item-hover-bg: rgba(37, 99, 235, 0.08);
+        --pss-sidebar-item-active-bg: rgba(37, 99, 235, 0.18);
+        --pss-sidebar-item-active-text: #1e3a8a;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #2563eb;
+        --pss-sidebar-icon: #64748b;
+        --pss-sidebar-icon-hover: #2563eb;
+        --pss-sidebar-icon-active: #2563eb;
+        --pss-sidebar-panel-bg: #f1f5f9;
+        --pss-sidebar-panel-text: #64748b;
+        --pss-sidebar-panel-border: #e2e8f0;
+        --pss-sidebar-passthrough-bg: #eff6ff;
+        --pss-sidebar-passthrough-text: #1e40af;
+        --pss-sidebar-passthrough-border: #3b82f6;
+    }
+
+    html[data-bs-theme="dark"],
+    html[data-ps-theme="darkly"],
+    html[data-ps-theme="cyborg"],
+    html[data-ps-theme="slate"],
+    html[data-ps-theme="solar"],
+    html[data-ps-theme="superhero"] {
+        --pss-sidebar-shell-bg: #20252b;
+        --pss-sidebar-shell-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+        --pss-sidebar-header-bg: #2f353c;
+        --pss-sidebar-header-hover-bg: #252a31;
+        --pss-sidebar-header-text: #f5f7fa;
+        --pss-sidebar-header-border: #454d55;
+        --pss-sidebar-surface: #2b2b2b;
+        --pss-sidebar-scroll-track: #252525;
+        --pss-sidebar-scroll-thumb: #626b75;
+        --pss-sidebar-scroll-thumb-hover: #7a848f;
+        --pss-sidebar-item-text: #d9e2ec;
+        --pss-sidebar-item-hover-bg: rgba(41, 128, 185, 0.2);
+        --pss-sidebar-item-active-bg: rgba(77, 182, 255, 0.22);
+        --pss-sidebar-item-active-text: #f5fbff;
+        --pss-sidebar-item-active-shadow: inset 3px 0 0 #4db6ff;
+        --pss-sidebar-icon: #a7b3c2;
+        --pss-sidebar-icon-hover: #4db6ff;
+        --pss-sidebar-icon-active: #8ecbff;
+        --pss-sidebar-panel-bg: #3a3a3a;
+        --pss-sidebar-panel-text: #d0d7de;
+        --pss-sidebar-panel-border: #4b525a;
+        --pss-sidebar-passthrough-bg: #16324f;
+        --pss-sidebar-passthrough-text: #8ecbff;
+        --pss-sidebar-passthrough-border: #2196f3;
+    }
+
+    /* Main layout grid — two columns by default (sidebar | content).
+       Third column only when JS moves #recent-actions-module (.has-recent-actions). */
+    .admin-main-wrapper,
+    .admin-main-wrapper.admin-content-grid

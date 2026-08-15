@@ -1,7 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13 -->
-<!-- Restore 2026-08-13: Start Native/Passthrough load the app in #browser-pane, not full-page. -->
-<!-- PolySniffer workspace: app loads in the left browser pane (not full-page). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,11 +63,11 @@
         <div class="mode-cards">
             <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
                 <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
-                <p>Load the app in the pane below (sniff capture). Does not leave this workspace.</p>
+                <p>Direct top-level browser navigation to {{ upstream_browse_url }}.</p>
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
-                <p>Load the app in the pane below through passthrough capture. Does not leave this workspace.</p>
+                <p>Top-level browser navigation through /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
             </div>
         </div>
         <div class="toolbar">
@@ -94,7 +90,7 @@
 (function() {
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
-    const endpointId = {% if endpoint %}{{ endpoint.pk }}{% else %}0{% endif %};
+    const endpointId = {{ endpoint.pk }};
     const pollUrl = '{{ poll_url|escapejs }}';
     const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
     const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
@@ -137,7 +133,7 @@
         try {
             const response = await fetch(workspaceUrl + '/session/stop/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
             const data = await response.json();
-            if (!data.ok) throw new Error(data.error || 'Failed to start capture');
+            if (!data.ok) throw new Error(data.error || 'Failed to stop capture');
             clearBrowser();
             lastId = 0;
             count = 0;

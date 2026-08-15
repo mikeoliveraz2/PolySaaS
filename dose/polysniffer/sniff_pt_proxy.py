@@ -156,6 +156,30 @@ def _prefix_sniff_root_urls(html: str, public_prefix: str) -> str:
     )
 
 
+def _prefix_sniff_css_urls(css: str, public_prefix: str) -> str:
+    """Prefix root-relative url(...) in CSS so background images hit the sniff proxy."""
+    prefix = (public_prefix or "").rstrip("/")
+    if not prefix or not css:
+        return css
+
+    def _repl(match):
+        quote, path = match.group(1) or "", match.group(2).strip()
+        if not path.startswith("/") or path.startswith("//"):
+            return match.group(0)
+        if path.startswith(prefix + "/") or path == prefix:
+            return match.group(0)
+        if any(path.startswith(p) for p in _SNIFF_SKIP_ROOT_PREFIXES):
+            return match.group(0)
+        return f"url({quote}{prefix}{path}{quote})"
+
+    return re.sub(
+        r"url\(\s*(['\"]?)(/[^)'\"]+)\1\s*\)",
+        _repl,
+        css,
+        flags=re.IGNORECASE,
+    )
+
+
 def rewrite_polysniff_response(
     response,
     *,
@@ -189,6 +213,16 @@ def rewrite_polysniff_response(
         response.content = body.encode("utf-8")
         if "Content-Length" in response:
             response["Content-Length"] = len(response.content)
+    elif hasattr(response, "content") and response.content and "text/css" in content_type:
+        body = response.content.decode("utf-8", errors="ignore")
+        new_body = _prefix_sniff_css_urls(body, public_prefix)
+        if new_body != body:
+            response.content = new_body.encode("utf-8")
+            response["Cache-Control"] = "no-store"
+            if "ETag" in response:
+                del response["ETag"]
+            if "Content-Length" in response:
+                response["Content-Length"] = len(response.content)
 
     response.xframe_options_exempt = True
     return response
@@ -231,7 +265,9 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
     request._polysniffer_sniff_mode = "passthrough"
     request._polysniffer_proxy_prefix = pub
     bind_request_tenant(request)
-    cap = get_sniff_capture_session(request, endpoint_id)
+    # Workspace Start Native/Passthrough stores polysniffer_{host}_capture (e.g. localhost:8888),
+    # not an integer endpoint id — look up by host so CSS/JS under /pt/polysniff/{id}/ land in the session.
+    cap = get_sniff_capture_session(request, trigger)
     if cap:
         request._polysniffer_capture = cap
 
