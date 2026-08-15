@@ -47,6 +47,16 @@ Example for Slack/HubSpot work:
 - Keep the handoff current and reviewable at startup.
 - Continue to prefer proxy/rewrite passthrough patterns over iframes.
 - Keep both machines synchronized at the worktree/repo level instead of recreating local-only state.
+- Apply the locked trigger-delivery model: passthrough observes direct HTTP triggers; webhooks deliver externally observed UI/API triggers; outbound APIs run from existing Instructions; all results can surface on the orchestration bar.
+
+## Locked orchestration trigger model
+
+- Every orchestration requires a user or system trigger.
+- Passthrough receives a direct action-path trigger observed on proxied HTTP traffic.
+- A webhook is a delivery pipe for a trigger that occurred in another system's UI or API; it is not spontaneous.
+- An outbound API call is made by an already-running Instruction and returns its result.
+- The orchestration bar displays progress and results for all modes.
+- Instruction matching remains `(action_path, method, direction)`. For webhook/API mode, `action_path` may be a normalized logical event key rather than a browser URL.
 
 ## Current blockers
 
@@ -69,6 +79,7 @@ Example for Slack/HubSpot work:
 - Committed every local tracked and untracked file before merging; no WIP was omitted.
 - Consolidated handoff ownership into this canonical file and removed the dated Slack handoff.
 - Kept incomplete work clearly labeled instead of claiming behavior validation.
+- Locked and documented the shared orchestration trigger-delivery model in `AI_RULES.md` and this handoff.
 
 ## Validation
 
@@ -97,8 +108,9 @@ Example for Slack/HubSpot work:
 - Main workflow commit integrated: `36048d89`
 - Full WIP checkpoint: `434ef226`
 - Merge commit: `ea4b7fc9`
+- Trigger-delivery architecture rule: included in the next commit after `4b5e8f19`
 - Latest repo sync validation: passed
-- Final push status: completed with this handoff update on 2026-08-15
+- Final push status: pending trigger-rule commit and push
 
 ## Handoff template
 

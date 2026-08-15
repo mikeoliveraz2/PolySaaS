@@ -32,7 +32,12 @@ All AI assistants working on this repository MUST read this file before making c
 
 ## 4. Orchestration Action Points
 
-- An "Action Point" is an HTTP request (commonly a GET) where the user is expected to take an action.
+- Every orchestration starts with a trigger. Nothing runs without a user or system action.
+- In scraper/path mode, PolySaaS observes the triggering HTTP request directly through passthrough.
+- In webhook/API mode, the external system observes its UI or API action and forwards that trigger to PolySaaS. Webhooks deliver triggers; they do not invent them.
+- An outbound API call is made by an already-running Instruction; its response is a result, not a new spontaneous trigger.
+- The orchestration bar is the shared feedback surface for progress, success, and failure from passthrough, webhook, and outbound API flows.
+- An `action_path` may be a real captured/proxied HTTP path or a normalized logical event key for a forwarded webhook/API trigger.
 - Instructions are matched and executed at Action Points using **only**:
   - `action_path`
   - HTTP `method` (GET, POST, PATCH, PUT, DELETE)
