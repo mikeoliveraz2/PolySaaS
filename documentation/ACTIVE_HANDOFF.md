@@ -49,6 +49,7 @@ Example for Slack/HubSpot work:
 - Keep both machines synchronized at the worktree/repo level instead of recreating local-only state.
 - Apply the locked trigger-delivery model: passthrough observes direct HTTP triggers; webhooks deliver externally observed UI/API triggers; outbound APIs run from existing Instructions; all results can surface on the orchestration bar.
 - Live-validate the completed Slack `/poly` webhook slice against the configured tenant RabbitMQ and Slack app.
+- Treat `documentation/architecture/SLACK_WEBHOOK_ORCHESTRATION_DESIGN.md` as the formal design specification for the Slack webhook slice.
 
 ## Locked orchestration trigger model
 
@@ -88,6 +89,7 @@ Example for Slack/HubSpot work:
 - Implemented the approved Slack-only webhook slice: signature verification and team mapping, canonical trigger envelope, RabbitMQ publication before fast ack, exact Instruction matching, atomic execution, durable per-tenant event dedup, `CallBackData`, and tenant-visible `DoseMessage` feedback.
 - Routed trigger envelopes through the existing MQ monitor while leaving legacy `/mq/` processing and `generic_inbound_webhook` unchanged.
 - Added `pika==1.3.2` to the primary requirements and installed it in the active venv.
+- Added the formal Slack webhook architecture specification at `documentation/architecture/SLACK_WEBHOOK_ORCHESTRATION_DESIGN.md`.
 
 ## Validation
 
@@ -123,8 +125,9 @@ Example for Slack/HubSpot work:
 - Merge commit: `ea4b7fc9`
 - Trigger-delivery architecture rule: `37d47924`
 - Slack webhook slice: `00ddd80a`
+- Formal Slack webhook design: pending documentation commit
 - Latest repo sync validation: passed
-- Final push status: Slack webhook slice pushed on 2026-08-15
+- Final push status: pending formal design commit and push
 
 ## Handoff template
 
