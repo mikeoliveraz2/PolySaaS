@@ -7,16 +7,19 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 ## Status
 
 - Date: 2026-08-15
-- Repo state: synchronized with current main branch
+- Branch: `cursor/polysniffer-switch-object-to-iframe`
+- Repo state: `origin/main` commit `36048d89` merged locally in `ea4b7fc9`
 - Latest validated handoff: this file
 - Policy: end-of-day work requires a handoff update before the final commit is considered complete
 
 ## Last session summary
 
-- Confirmed the relevant repo-level rules already exist in the Cursor and Windsurf configuration.
-- Confirmed there is no current active iframe reference in the latest local source tree.
-- The repo’s latest explicit handoff and process docs are treated as the cross-tool source of truth.
-- Important: local-only findings must be copied into this handoff before ending a session so they are not stranded on one machine.
+- Fetched and read the shared workflow commit `36048d89` from `origin/main`.
+- Read `ACTIVE_HANDOFF.md`, `AGENTS.md`, Cursor rules, Windsurf workflow, and Copilot instructions before integration.
+- Preserved all office-machine changes in WIP checkpoint `434ef226`: 55 files, including unfinished source, tests, `.bak` files, temporary probes, and capital-raise artifacts.
+- Merged `origin/main` into the feature branch as `ea4b7fc9`.
+- Resolved the sole merge conflict in `.github/copilot-instructions.md` by keeping the shared cross-agent contract and the stronger all-WIP preservation rule.
+- Retired the dated Slack handoff. This file is the only active handoff.
 
 ## Critical local facts to record before EOD
 
@@ -47,46 +50,55 @@ Example for Slack/HubSpot work:
 
 ## Current blockers
 
-- No active code-level blocker at this time.
-- Some local-only work and office-machine artifacts still require explicit handoff and replay before they are treated as repo truth.
+- Slack native sniff remains unvalidated end to end.
+- A staff-side request to `/dose/sniff/6/native/sign_in` returned HTTP 404 because endpoint ID 6 in active schema `t104` resolved to Dolibarr, not Slack.
+- The Slack WIP uses endpoint-ID `/dose/sniff/` routing and response rewriting, while the earlier PolySniffer architecture handoff documented host-identified Admin-only raw Native capture. Resolve this architecture mismatch before treating the 404 as only an endpoint-row problem.
+- The WIP checkpoint includes unfinished and unvalidated changes across PolySniffer, Nextcloud, Odoo services/tests, startup scripts, backup files, and probes.
 
 ## Next actions
 
-- Keep this handoff updated at end of day.
-- On startup, read this file and the process rules before making edits.
-- If any file appears recently changed, confirm recency before editing.
-- Continue to treat the repo state as the source of truth across machines.
+- Pull this feature branch on the next machine and run `python scripts/check_agent_sync.py`.
+- Trace the active Admin PolySniffer endpoint-row action through workspace launch and session identity.
+- Decide whether the Slack native capture must be adapted to host-identified Admin-only raw Native capture or whether the owner explicitly supersedes that architecture.
+- Validate the exact Slack endpoint host in the correct tenant schema before editing production code.
+- Review the broad checkpoint commit before promoting any unfinished WIP as completed behavior.
 
 ## Session summary for this EOD
 
-- Tightened the shared repo sync contract across Copilot, Cursor, and Windsurf.
-- Added repo-level startup validation via `python scripts/check_agent_sync.py`.
-- Added the required EOD handoff enforcement and clearer machine-local capture requirements.
-- Confirmed the current repo contract passes validation (`EXIT:0`).
-- This protects against divergence caused by local-only office-machine work and prevents the “recreate it from memory” failure mode.
+- Synchronized the office-machine feature branch with the laptop's `origin/main` workflow commit.
+- Committed every local tracked and untracked file before merging; no WIP was omitted.
+- Consolidated handoff ownership into this canonical file and removed the dated Slack handoff.
+- Kept incomplete work clearly labeled instead of claiming behavior validation.
 
 ## Validation
 
-- Ran: `python F:\PolySaaS\scripts\check_agent_sync.py`
+- Ran: `d:\PolySaaS\venv\Scripts\python.exe d:\PolySaaS\scripts\check_agent_sync.py`
 - Result: `Agent sync validation passed: repo policy files are aligned.`
 - Exit code: `0`
+- Checked shared policy files for unresolved merge markers: none found.
+- Product behavior tests were not run for checkpoint `434ef226`; it is explicitly unvalidated WIP.
 
 ## Blockers / risks
 
-- Local-only office-machine artifacts remain a risk if they are not captured in the repo handoff before work is continued elsewhere.
-- The repo enforcement prevents drift, but only if the handoff is updated and the work is committed/pushed before switching contexts.
+- Slack endpoint/tenant identity and the current PolySniffer architecture conflict remain unresolved.
+- The checkpoint intentionally includes `.bak`, temporary, generated, and potentially incomplete files under the full-WIP synchronization rule.
+- Do not delete or rewrite checkpointed WIP without reviewing its purpose first.
 
 ## Next session
 
 - Read this handoff first on startup.
 - Run `python scripts/check_agent_sync.py` before making edits.
-- Resume from the repo state, not from a local-only recollection of the office machine state.
+- Pull `cursor/polysniffer-switch-object-to-iframe` and resume from the pushed repo state.
+- Start with the Admin host-identity trace described under Next actions.
 
 ## Commit info
 
-- Branch: `main`
-- Latest repo sync validation: passed (`python scripts/check_agent_sync.py`)
-- Final push status: pending until this EOD commit is pushed
+- Branch: `cursor/polysniffer-switch-object-to-iframe`
+- Main workflow commit integrated: `36048d89`
+- Full WIP checkpoint: `434ef226`
+- Merge commit: `ea4b7fc9`
+- Latest repo sync validation: passed
+- Final push status: completed with this handoff update on 2026-08-15
 
 ## Handoff template
 
