@@ -125,9 +125,9 @@ Example for Slack/HubSpot work:
 - Merge commit: `ea4b7fc9`
 - Trigger-delivery architecture rule: `37d47924`
 - Slack webhook slice: `00ddd80a`
-- Formal Slack webhook design: pending documentation commit
+- Formal Slack webhook design: `99bd7b8f`
 - Latest repo sync validation: passed
-- Final push status: pending formal design commit and push
+- Final push status: formal Slack webhook design pushed on 2026-08-15
 
 ## Handoff template
 
