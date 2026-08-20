@@ -20,14 +20,18 @@ def admin_proxy_prefix(trigger: str) -> str:
 
 
 def subpath_from_passthrough_location(location: str, endpoint_id: int, trigger: str) -> str:
-    """Map /pt/polysniff/<id>/path (or internal /pt/admin/) to upstream subpath."""
+    """Map /pt/polysniff/<host>/path (or legacy /pt/polysniff/<id>/, or /pt/admin/) to upstream subpath."""
     loc = (location or "").strip()
+    host = (trigger or "").strip()
     prefixes = (
-        public_polysniff_prefix(endpoint_id).rstrip("/"),
+        public_polysniff_prefix(host).rstrip("/") if host else "",
+        f"/pt/polysniff/{endpoint_id}",  # legacy id-keyed prefix
         workspace_pt_proxy_prefix(endpoint_id).rstrip("/"),
         admin_proxy_prefix(trigger).rstrip("/"),
     )
     for prefix in prefixes:
+        if not prefix:
+            continue
         if loc.startswith(prefix + "/"):
             return loc[len(prefix) + 1 :]
         if loc == prefix:
@@ -104,7 +108,9 @@ def workspace_redirect_for_pt_response(
 
 def rewrite_pt_form_actions_to_workspace(html: str, endpoint_id: int, trigger: str) -> str:
     """Login/forms post via workspace/pt → /pt/polysniff dispatch → shell redirect."""
-    pub = public_polysniff_prefix(endpoint_id).rstrip("/")
+    host = (trigger or "").strip()
+    pub = public_polysniff_prefix(host).rstrip("/") if host else f"/pt/polysniff/{endpoint_id}"
+    legacy_pub = f"/pt/polysniff/{endpoint_id}"
     ws = workspace_pt_proxy_prefix(endpoint_id).rstrip("/")
     admin = admin_proxy_prefix(trigger).rstrip("/")
     for old, new in (
@@ -112,6 +118,10 @@ def rewrite_pt_form_actions_to_workspace(html: str, endpoint_id: int, trigger: s
         (f"action='{pub}/", f"action='{ws}/"),
         (f'action="{pub}"', f'action="{ws}"'),
         (f"action='{pub}'", f"action='{ws}'"),
+        (f'action="{legacy_pub}/', f'action="{ws}/'),
+        (f"action='{legacy_pub}/", f"action='{ws}/"),
+        (f'action="{legacy_pub}"', f'action="{ws}"'),
+        (f"action='{legacy_pub}'", f"action='{ws}'"),
         (f'action="{admin}/', f'action="{ws}/'),
         (f"action='{admin}/", f"action='{ws}/"),
         (f'action="{admin}"', f'action="{ws}"'),

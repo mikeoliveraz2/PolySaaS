@@ -4,6 +4,34 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-08-21 — Slack proxy-relay + host-keyed polysniff; native pane still OPEN
+
+**Status**: PARTIAL — host-keyed `/pt/polysniff/<host>/` shipped; Slack handler proxy-relay
+auth path largely working through credentials-ready + postMessage retarget; **native pane
+still blank** (parent credential timeout). Not BINGO.
+
+### Shipped
+
+- `/pt/polysniff/app.slack.com/...` (no endpoint id in path).
+- Slack handler: host-root `/auth`, `_ps_tenant` (not `schema`), proxy-relay (no direct
+  off-proxy `/auth` rewrite), postMessage bridge to proxy origin.
+- MessageEvent origin spoof + `onmessage` wrap written; **needs browser verify after
+  Waitress restart** on next machine.
+
+### Open
+
+- Parent: “fetching credentials from iframe took too long” → fallback `/auth`; pane blank.
+- Next: pull, restart, prove MessageEvent spoof or capture next failure.
+
+### Do not regress
+
+- Forwarder black-box / proxy-relay model.
+- No Slack `schema=` launch poison; use `_ps_tenant=`.
+
+Full detail: `documentation/ACTIVE_HANDOFF.md` (2026-08-21).
+
+---
+
 ## 2026-08-20 (Morning) — PolySniffer cross-tenant schema fixes; Slack native pane still blank (OPEN)
 
 **Status**: PARTIAL — two confirmed, reproducible bug fixes committed; the reported

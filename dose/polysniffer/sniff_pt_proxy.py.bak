@@ -1,5 +1,5 @@
 """
-PolySniffer passthrough — public /pt/polysniff/{endpoint_host}/ routes.
+PolySniffer passthrough — public /pt/polysniff/{endpoint_id}/ routes.
 
 Production handlers still run on internal /pt/admin/{trigger}/ paths; responses
 are rewritten so redirects and shim PROXY_PREFIX stay on /pt/polysniff/ (iframe-safe).
@@ -20,17 +20,14 @@ are rewritten so redirects and shim PROXY_PREFIX stay on /pt/polysniff/ (iframe-
 # stripping (any proxied app's CSP could block injected/rewritten content),
 # not Slack-specific logic, so it belongs in this shared response-rewrite step.
 # BINGO: PolySniffer CSP Strip For Injected Capture Script — 2026-08-21
-#
-# FIX 2026-08-21 (owner-approved): public prefix keyed by endpoint host, not
-# PassThroughEndpoint.id — same identity as /pt/admin/<host>/ and the workspace
-# shell. Row id remains only for internal capture ingest / session helpers.
-# BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21
 from __future__ import annotations
 
 from urllib.parse import urlparse
 
 import json
 import re
+
+from django.http import HttpResponse
 
 _CSP_HEADER_NAMES = ("Content-Security-Policy", "Content-Security-Policy-Report-Only")
 _CSP_META_RE = re.compile(
@@ -40,15 +37,15 @@ _CSP_META_RE = re.compile(
 
 def _strip_csp(response) -> None:
     """Remove the proxied app's own CSP (header + meta tag) so our injected
-    capture script and any rewritten URLs aren't blocked by it."""
+    capture script and any rewritten URLs aren't blocked by it. See fix note
+    above the module docstring for the concrete failure this addresses."""
     for header in _CSP_HEADER_NAMES:
         if header in response:
             del response[header]
 
 
-def public_polysniff_prefix(endpoint_host: str) -> str:
-    host = (endpoint_host or "").strip().strip("/")
-    return f"/pt/polysniff/{host}"
+def public_polysniff_prefix(endpoint_id: int) -> str:
+    return f"/pt/polysniff/{endpoint_id}"
 
 
 def legacy_sniff_prefix(endpoint_id: int) -> str:
@@ -77,7 +74,6 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     """Hook fetch/XHR in passthrough iframe — shim traffic bypasses server proxy."""
     if "data-polysniffer-pt-client-capture" in html:
         return html
-    # Ingest route is still id-keyed under admin sniff urls (separate leftover).
     ingest = f"/admin/polysniffer/sniff/{endpoint_id}/workspace/ingest/"
     shim = f"""
 <script data-polysniffer-pt-client-capture="1">
@@ -145,6 +141,8 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     return shim + html
 
 
+
+
 def rewrite_polysniff_response(
     response,
     *,
@@ -158,7 +156,6 @@ def rewrite_polysniff_response(
     replacements = (
         (admin_pf, public_prefix),
         (legacy_sniff_prefix(endpoint_id), public_prefix),
-        (f"/pt/polysniff/{endpoint_id}", public_prefix),
     )
 
     location = response.get("Location")
@@ -186,31 +183,31 @@ def rewrite_polysniff_response(
     return response
 
 
-def dispatch_polysniff_passthrough(request, endpoint_host: str, path: str = "", *, public_prefix: str | None = None):
+def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *, public_prefix: str | None = None):
     from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
-    from dose.polysniffer.views.core import get_endpoint_by_host
+    from dose.polysniffer.views.core import get_endpoint_any_schema
 
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
 
         return HttpResponseForbidden("Staff only")
 
-    host = (endpoint_host or "").strip().strip("/")
-    endpoint = get_endpoint_by_host(host, request)
+    endpoint = get_endpoint_any_schema(endpoint_id, request)
     trigger = _endpoint_trigger(endpoint)
-    endpoint_id = int(endpoint.pk)
     subpath = path or ""
     if subpath and not subpath.startswith("/"):
         subpath = "/" + subpath
 
     popup_login = (request.GET.get("ps_hs_popup") or "").strip() == "1"
 
+    # Catch bad paths (undefined/null/nan) emitted by HubSpot SPA before routing is
+    # initialized — redirect to workspace home rather than falling through to admin passthrough.
     _bad_segs = {"undefined", "null", "nan"}
     if any(seg.lower() in _bad_segs for seg in (subpath or "").strip("/").split("/") if seg):
         from django.shortcuts import redirect as _redirect
 
         if popup_login:
-            pub_early = (public_prefix or public_polysniff_prefix(host)).rstrip("/")
+            pub_early = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
             return _redirect(f"{pub_early}/home/")
         from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
         return _redirect(f"{workspace_shell_prefix(endpoint_id)}/home/")
@@ -218,13 +215,12 @@ def dispatch_polysniff_passthrough(request, endpoint_host: str, path: str = "", 
     if popup_login:
         request._polysniffer_popup_login = True
 
-    pub = (public_prefix or public_polysniff_prefix(host)).rstrip("/")
+    pub = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
     request._polysniffer_endpoint_id = endpoint_id
-    request._polysniffer_endpoint_host = host
     request._polysniffer_sniff_mode = "passthrough"
     request._polysniffer_proxy_prefix = pub
     bind_request_tenant(request)
-    cap = get_sniff_capture_session(request, host)
+    cap = get_sniff_capture_session(request, endpoint_id)
     if cap:
         request._polysniffer_capture = cap
 

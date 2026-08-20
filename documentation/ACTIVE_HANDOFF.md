@@ -6,117 +6,101 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 
 ## Status
 
-- Date: 2026-08-15
-- Repo state: synchronized with current main branch
+- Date: 2026-08-21
+- Repo state: synchronized with current main branch (after this push)
 - Latest validated handoff: this file
 - Policy: end-of-day work requires a handoff update before the final commit is considered complete
+- Branch: `main`
+- Machine: laptop session → push for office pickup
 
-## Last session summary
+## Last session summary (2026-08-21)
 
-- Confirmed the relevant repo-level rules already exist in the Cursor and Windsurf configuration.
-- Confirmed there is no current active iframe reference in the latest local source tree.
-- The repo’s latest explicit handoff and process docs are treated as the cross-tool source of truth.
-- Important: local-only findings must be copied into this handoff before ending a session so they are not stranded on one machine.
+Slack PolySniffer native-pane work (still OPEN — pane not settled). Large progress on proxy-relay auth path and host-keyed polysniff URLs.
 
-## Critical local facts to record before EOD
+### What landed this session
 
-Every session must capture the facts that are only available on the current machine, especially when the work is not yet committed or pushed:
+1. **Host-keyed `/pt/polysniff/`** — dropped redundant endpoint id.
+   - Before: `/pt/polysniff/4/...`
+   - After: `/pt/polysniff/app.slack.com/...`
+   - Aligned with `/pt/admin/<host>/` and workspace `/admin/polysniffer/sniff/<host>/`.
+   - Files: `pt_polysniff_urls.py`, `sniff_pt_proxy.py`, `sniff_workspace.html`, `sync_session.py`, HubSpot URL helpers, `client_snippets.py`, `sniff_pt_embed.py`, `workspace_pt_redirect.py`, `sniff_v2.py`.
 
-- endpoint URL and hostname under test
-- tenant / schema / user context
-- browser or local-session state that affects the route
-- the exact failing symptom or last working state
-- what is still uncommitted or local-only
-- what must be reproduced on the other machine before continuing
+2. **Slack passthrough handler** (`dose/passthrough/handlers/slack_handler.py`) — major work:
+   - Proxy-relay model (do not rewrite `/auth` direct to `app.slack.com`; keep traffic through our proxy so cookie relay + CSP strip apply).
+   - Host-root `/auth` via `upstream_url_for_subpath` (Nextcloud-style origin+path) — stops stacking `/auth` under deep client URLs.
+   - Renamed tenant launch param from `?schema=` to `?_ps_tenant=` (Slack’s own `schema` query is numeric; our value caused `lc cookie (NaN)`).
+   - Cookie-aware path + CSP strip coordination with polysniff proxy.
+   - `postMessage` bridge: patch `window` / `parent` / `top` / `Window.prototype` so auth iframe `postMessage(..., 'https://app.slack.com')` retargets to proxy origin (`localhost:8000`). Confirmed live: `[SLACK SHIM] postMessage(parent) … -> http://localhost:8000`.
+   - In progress (unverified after last edit): spoof parent `MessageEvent.origin` to `UPSTREAM_ORIGIN` + wrap `window.onmessage` — parent still timed out after successful postMessage (“fetching credentials from iframe took too long”).
 
-Example for Slack/HubSpot work:
+3. **`handler_base.py`** — `requires_top_level_native()` default False; Slack no longer forced to top-level tab for Native.
 
-- endpoint URL under test
-- tenant membership / active tenant
-- working vs failing path
-- current admin or browser login context
-- whether the result was proven in the browser or only server-side
-- whether a follow-up requires the office machine or laptop machine
+4. **Workspace / core** — `_ps_tenant` threaded alongside schema for admin / launch links.
+
+### Live state at handoff (OPEN — not BINGO)
+
+- Endpoint: Slack `app.slack.com` under tenant `olient`
+- Native pane loads host-keyed proxy; `/` and `/auth` return 200
+- Auth iframe reaches “credentials are ready”; postMessage rewrite works
+- Parent still falls back after ~30s → redirect to `/auth`; pane remains blank
+- Beacon to `dev.slack.com` fails (noise, not the primary blocker)
+- Server: Waitress via `runall.ps1` (no autoreload) — restart after pulling this commit before testing MessageEvent spoof
+
+### Architectural stance (do not regress)
+
+- Forwarder is a black box: browser ↔ our proxy ↔ Slack; Slack must not see “behind” the proxy.
+- Passthrough look/feel should match other apps; Native may differ only when an app cannot embed.
+- No iframes-as-default for SPAs; current workspace uses `<object>` (same pattern as Odoo/Mattermost sniff).
+
+## Critical local facts for office machine
+
+- Restart services after pull (`runall.ps1` / Waitress) — code changes do not hot-reload.
+- Test URL shape: `/pt/polysniff/app.slack.com/?_ps_tenant=olient` (not `/pt/polysniff/<id>/`, not `?schema=` for Slack launch).
+- Watch DevTools console for `[SLACK SHIM] postMessage(...)` and whether parent still times out on credential iframe.
+- Do **not** mark BINGO until native pane shows Slack UI with screenshot proof.
 
 ## Current priorities
 
-- Maintain rule synchronization across Copilot, Cursor, and Windsurf.
-- Keep the handoff current and reviewable at startup.
-- Continue to prefer proxy/rewrite passthrough patterns over iframes.
-- Keep both machines synchronized at the worktree/repo level instead of recreating local-only state.
+1. Finish/verify MessageEvent origin spoof so parent accepts credentials and UI settles.
+2. Keep host-keyed polysniff as the only launch path.
+3. Maintain rule sync + handoff discipline across machines.
 
 ## Current blockers
 
-- No active code-level blocker at this time.
-- Some local-only work and office-machine artifacts still require explicit handoff and replay before they are treated as repo truth.
+- Slack native pane blank after auth credential handoff (parent message-origin / timeout path). MessageEvent spoof written but **not proven** in browser after last edit.
 
-## Next actions
+## Next actions (office / next session)
 
-- Keep this handoff updated at end of day.
-- On startup, read this file and the process rules before making edits.
-- If any file appears recently changed, confirm recency before editing.
-- Continue to treat the repo state as the source of truth across machines.
-
-## Session summary for this EOD
-
-- Tightened the shared repo sync contract across Copilot, Cursor, and Windsurf.
-- Added repo-level startup validation via `python scripts/check_agent_sync.py`.
-- Added the required EOD handoff enforcement and clearer machine-local capture requirements.
-- Confirmed the current repo contract passes validation (`EXIT:0`).
-- This protects against divergence caused by local-only office-machine work and prevents the “recreate it from memory” failure mode.
+1. `git pull origin main` then restart Waitress.
+2. Open PolySniffer workspace for Slack → Native mode → left pane.
+3. Confirm MessageEvent spoof: credentials apply and pane renders (or capture next failure: Network + Console).
+4. If settled: screenshot + decide BINGO vs further shim polish.
+5. Do not re-add team-slug / Mattermost team logic; do not rewrite Slack `/auth` direct off-proxy.
 
 ## Validation
 
-- Ran: `python F:\PolySaaS\scripts\check_agent_sync.py`
-- Result: `Agent sync validation passed: repo policy files are aligned.`
-- Exit code: `0`
+- Host-keyed URL resolution exercised in session.
+- Auth path: real small `/auth` response; credentials-ready observed.
+- postMessage retarget confirmed in console.
+- MessageEvent spoof: code present; browser proof pending after restart.
 
-## Blockers / risks
+## Session files (this commit)
 
-- Local-only office-machine artifacts remain a risk if they are not captured in the repo handoff before work is continued elsewhere.
-- The repo enforcement prevents drift, but only if the handoff is updated and the work is committed/pushed before switching contexts.
+- `dose/passthrough/handlers/slack_handler.py` (+ `.bak`)
+- `dose/passthrough/handlers/handler_base.py` (+ `.bak`)
+- `dose/passthrough/handlers/hubspot_handler.py` (+ `.bak`)
+- PolySniffer host-key + `_ps_tenant` path files listed above (+ `.bak` where created)
+- This handoff + `COORDINATION_README.md`
 
-## Next session
+## Explicitly excluded from commit
 
-- Read this handoff first on startup.
-- Run `python scripts/check_agent_sync.py` before making edits.
-- Resume from the repo state, not from a local-only recollection of the office machine state.
+- `documentation/Capital Raise Project/*` (unrelated investor assets)
+- `polysniffer-auth.json` (credentials)
+- `polysniffer_evidence/` (local screenshots; not BINGO-certified)
+- `dose/polysniffer/sniff_pt_proxy.py.bak_20260821_csp_strip_fix` (dated side backup; optional — include only if present as session bak)
 
-## Commit info
+## Process notes
 
-- Branch: `main`
-- Latest repo sync validation: passed (`python scripts/check_agent_sync.py`)
-- Final push status: pending until this EOD commit is pushed
-
-## Handoff template
-
-Use this structure for each end-of-day handoff:
-
-### Session summary
-- What was finished
-- What remains uncertain
-- What changed since last session
-
-### Validation
-- Tests or checks run
-- Results
-- Any follow-up required
-
-### Blockers / risks
-- Known blockers
-- Open risks
-- Questions needing user decision
-
-### Next session
-- Specific next actions
-- Files to review
-- Pending branch/commit status
-
-### Commit info
-- Branch
-- Latest commit hash
-- Final push status
-
----
-
-This is the current handoff-of-record for PolySaaS. Read it before continuing work.
+- Piccolo Passo / bak-before-edit followed.
+- Frozen-file exceptions used only with owner approval when applicable.
+- Rule 6: no silent WIP — this push is the office handoff.

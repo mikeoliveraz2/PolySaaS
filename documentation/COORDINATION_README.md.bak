@@ -4,6 +4,145 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
+## 2026-08-20 (Morning) — PolySniffer cross-tenant schema fixes; Slack native pane still blank (OPEN)
+
+**Status**: PARTIAL — two confirmed, reproducible bug fixes committed; the reported
+symptom (Slack PolySniffer native browser pane blank) is **not resolved** as of
+this entry. Do not mark this BINGO — no screenshot proof of the pane rendering
+content, per the screenshot-proof rule in `bingo-freeze.mdc`. Next session should
+pick up live debugging in the browser (DevTools Network tab on the actual failing
+request) rather than re-deriving the same evidence via test client.
+
+### What was found and fixed (both reproduced with automated before/after evidence)
+
+1. **`dose/middleware/jazzmin_tenant_theme.py`** — `_load_passthrough_endpoints()`
+   set `search_path` to the tenant schema alone, with no `,public` fallback, and
+   never restored it. Since this middleware runs first on every request, any
+   later code needing `public`-schema models (Tenant, User) in that same request
+   could silently fail to find rows. Traced back to the 2026-08-08 Odoo/Zoho
+   "native pane blank" investigation, whose fix was written but never actually
+   applied until today. Fixed: `,public` added back to the `SET search_path`.
+
+2. **`dose/polysniffer/views/sniff_v2_workspace.py` + `dose/templates/polysniffer/sniff_workspace.html`**
+   — the workspace page resolves its endpoint correctly via `?schema=<tenant>`,
+   but the client-built browser-launch URLs (`/pt/polysniff/<id>/...`, loaded via
+   `<object data="...">`, not an iframe) carried no schema hint and depended on
+   session state. `AdminTenantSessionMiddleware` (`mysite/admin_tenant_session_middleware.py`)
+   resets `session['tenant_slug']` back to the logged-in admin's own home tenant
+   on every `/admin/` response, so for any endpoint owned by a *different* tenant
+   than the admin's own, the object-tag fetch 404'd and rendered blank (confirmed:
+   same endpoint id resolves 200 under the right tenant, 404 under the reset one).
+   Fixed: the endpoint's already-resolved schema is now threaded through to the
+   client and appended as `?schema=` on the launch URLs, so resolution no longer
+   depends on session state a shared admin middleware is entitled to overwrite.
+   **Caveat**: the actual browser session in this environment (`Michael.Oliver`,
+   home tenant `olient`) already matches Slack's owning tenant (`olient`), so this
+   specific mechanism was not necessarily the cause of what was observed live —
+   the fix is real and correct in isolation, but did not resolve the user-visible
+   symptom on hard reset.
+
+3. **Stale server process** — port 8000 had been served since **2026-08-15** by a
+   `waitress-serve` process with no autoreload, while several `manage.py runserver`
+   processes from today's session collided on the same port without ever taking
+   over. This means most of today's earlier "restart" attempts likely never
+   loaded new code at all. Killed the stale process; `runall.ps1`'s own
+   supervisor loop (already running in another terminal) respawned Waitress
+   fresh, confirmed as the sole listener on port 8000 afterward.
+
+4. **Migration `0060_alter_passthroughendpoint_endpoint_url`** was applied to the
+   database in an earlier part of this session but the migration file was never
+   committed. Committed now — `showmigrations` confirms `[X]` applied locally;
+   verify it applies cleanly with `migrate_all_schemas` on the other machine too.
+
+### What's still open
+
+- Slack PolySniffer native pane (`/admin/polysniffer/sniff/app.slack.com/`)
+  remains blank after a hard browser reset, even with both fixes above live and
+  the server confirmed freshly restarted. Capture panel keeps polling
+  successfully (`GET / 200` entries increment), so the poll/session-tracking path
+  works; the actual content pane (`<object data="/pt/polysniff/4/...">`) does not
+  render.
+- Next step: reproduce with actual browser DevTools open (Network tab) on the
+  real failing request to `/pt/polysniff/4/...` while logged in as the real user,
+  rather than continuing to infer behavior via `manage.py shell` + Django test
+  Client, since the test-client environment does not perfectly mirror the live
+  browser session (different user, different session state, as this entry's
+  caveat above shows).
+- Also worth checking directly: does Slack's own page (loaded inside the
+  `<object>` tag) block itself from rendering via `X-Frame-Options` /
+  `frame-ancestors` CSP the same way it would in a real `<iframe>`? `<object>`
+  tags are subject to the same framing protections as `<iframe>` in modern
+  browsers — this was not ruled out and may be the true root cause rather than
+  tenant/schema resolution.
+
+### Files changed
+
+- `dose/middleware/jazzmin_tenant_theme.py` (+ `.bak_20260820_searchpath_public_fix`)
+- `dose/polysniffer/views/sniff_v2_workspace.py` (+ `.bak_20260820_schema_qualify_urls`)
+- `dose/templates/polysniffer/sniff_workspace.html` (+ `.bak_20260820_schema_qualify_urls`)
+- `dose/migrations/0060_alter_passthroughendpoint_endpoint_url.py` (new, already applied)
+
+---
+
+## 2026-08-08 (Office) — Passthrough endpoint source-of-truth redesign
+
+**Status**: COMPLETE — committed and pushed
+**Branch**: main
+**Commit**: `d7981e58` (`Fix tenant passthrough endpoint identity`)
+**Architecture doc**: `documentation/passthrough/tenant-endpoint-source-of-truth.md`
+
+### Protected architecture
+
+This entry supersedes the August 2 "slug identity" notes below. Do not restore
+slug-based passthrough routing or public-schema endpoint fallback.
+
+1. The active tenant's `PassThroughEndpoint` row is the only source of truth.
+2. `endpoint_url` remains unchanged and supplies both the upstream target and the
+   exact host segment in `/pt/admin/<host>/`.
+3. `starting_uri` is appended only to form the initial UI link.
+4. `slug` is descriptive/application metadata only. It is not a route key.
+5. The database record ID is not part of the browser link or proxy identity.
+6. `public.dose_passthroughendpoint` has no role in tenant endpoint reads, writes,
+   defaults, fallback, merging, or cloning.
+7. A missing exact host match in the active tenant schema returns `404`; the proxy
+   must not search `public`, another tenant, or synthesize an upstream URL.
+8. Tenant app provisioners create their own endpoint rows. Subscription, bootstrap,
+   and generic tenant creation must not seed rows from another schema.
+9. Admin endpoint saves require an active tenant and must never write to `public`.
+
+### Canonical example
+
+```text
+endpoint_url = https://tenant-app.example.com:8443
+starting_uri = /web
+browser URL  = /pt/admin/tenant-app.example.com:8443/web
+proxy target = https://tenant-app.example.com:8443
+```
+
+### Validation baseline
+
+- `python manage.py check` passes.
+- `dose.tests.test_passthrough_endpoint_url` passes both tests.
+- `python manage.py makemigrations --check --dry-run` reports no changes.
+- Migration `dose.0059_alter_passthroughendpoint_slug` documents that slug is not
+  passthrough identity; it does not rewrite endpoint records.
+
+---
+
+## 2026-08-03 (Morning — Office) — BINGO: Nextcloud server-side SSO ✅
+
+**Status**: ✅ Verified for tenant `pso17` (Django test client SSO redirect + cookies)
+**Branch**: main
+**Doc**: `documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md`
+
+### Summary
+
+1. Endpoint/nc_url → `http://localhost:8888`; user `pso17` created in shared NC; creds in `extra_config`.
+2. Handler server-side form login SSO + `passthrough_early_shell_paths` so `/apps/files/` hits SSO.
+3. Provisioner/settings: local URL rewrite, admin `admin`, `starting_uri=/apps/files/`, password sync on exists.
+
+---
+
 ## 2026-08-02 (Late morning — Office) — BINGO: Mattermost slug identity + SSO Town Square ✅
 
 **Status**: ✅ Live-verified for tenant `pso17` (Town Square + auth + WebSocket)
