@@ -58,36 +58,21 @@ def build_slack_command_envelope(tenant, payload: dict[str, str]) -> dict:
 
 
 def publish_slack_command_event(tenant, payload: dict[str, str]) -> dict:
-    """
-    Publish Slack command event to webhook mailbox.
-    
-    Builds canonical envelope and writes to WebhookMailbox for consumer processing.
-    Returns immediately after mailbox write (no blocking RabbitMQ publish).
-    """
-    from dose.models import WebhookMailbox
+    from dose.mq.adapters.rabbitmq_adapter import RabbitMQAdapter
 
     envelope = build_slack_command_envelope(tenant, payload)
-    
-    try:
-        with tenant_schema_search_path(tenant) as ok:
-            if not ok:
-                return {"success": False, "error": "invalid tenant schema"}
-            
-            # Write to mailbox with 5 minute TTL
-            mailbox = WebhookMailbox.create_from_envelope(envelope, ttl_seconds=300)
-            
-        return {
-            "success": True,
-            "event_id": envelope["event_id"],
-            "action_path": envelope["action_path"],
-            "mailbox_id": mailbox.id,
-        }
-    except Exception as exc:
-        return {
-            "success": False,
-            "error": f"Failed to write to mailbox: {exc}",
-            "event_id": envelope.get("event_id"),
-        }
+    with tenant_schema_search_path(tenant) as ok:
+        if not ok:
+            return {"success": False, "error": "invalid tenant schema"}
+        config = MQConfig.objects.filter(is_active=True, provider="rabbitmq").first()
+        if config is None:
+            return {"success": False, "error": "no active RabbitMQ config"}
+        adapter = RabbitMQAdapter(config)
+        try:
+            result = adapter.publish(envelope, routing_key=SLACK_TRIGGER_ROUTING_KEY)
+        finally:
+            adapter.close()
+    return {**result, "event_id": envelope["event_id"], "action_path": envelope["action_path"]}
 
 
 def _claim_event(envelope: dict, tenant) -> bool:

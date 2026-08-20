@@ -1,0 +1,196 @@
+"""
+WebhookMailbox Consumer - Dequeues and processes webhook events from mailbox.
+
+Replaces RabbitMQ-based consumer with database-backed mailbox pattern.
+"""
+import logging
+import time
+from django.db import connection, transaction
+from django.utils import timezone
+
+from dose.models import Tenant, WebhookMailbox
+from dose.webhook_events import process_trigger_envelope
+from dose.tenant_app_lookup import tenant_schema_search_path
+
+
+logger = logging.getLogger(__name__)
+
+
+class WebhookMailboxConsumer:
+    """
+    Consumer that dequeues pending webhooks from mailbox and processes them.
+    """
+    
+    def __init__(self, poll_interval=2.0, batch_size=10):
+        """
+        Initialize consumer.
+        
+        Args:
+            poll_interval: seconds to wait between polls
+            batch_size: max events to process per poll
+        """
+        self.poll_interval = poll_interval
+        self.batch_size = batch_size
+        self.running = False
+        logger.info(f"WebhookMailboxConsumer initialized (poll={poll_interval}s, batch={batch_size})")
+    
+    def start(self):
+        """Start consuming from mailbox."""
+        if self.running:
+            logger.warning("Consumer is already running")
+            return
+        
+        self.running = True
+        logger.info("Starting WebhookMailboxConsumer...")
+        
+        while self.running:
+            try:
+                self._poll_and_process()
+            except Exception as exc:
+                logger.error(f"Error in consumer loop: {exc}", exc_info=True)
+            
+            if self.running:
+                time.sleep(self.poll_interval)
+    
+    def stop(self):
+        """Stop consuming."""
+        logger.info("Stopping WebhookMailboxConsumer...")
+        self.running = False
+    
+    def _poll_and_process(self):
+        """Poll mailbox for pending events and process them."""
+        # Get all active tenants
+        try:
+            connection.cursor().execute("SET search_path TO public;")
+            tenants = list(Tenant.objects.filter(is_active=True).exclude(schema_name__iexact='public'))
+        except Exception as exc:
+            logger.error(f"Failed to load tenants: {exc}")
+            return
+        
+        processed_count = 0
+        
+        for tenant in tenants:
+            try:
+                count = self._process_tenant_mailbox(tenant)
+                processed_count += count
+            except Exception as exc:
+                logger.error(f"Error processing mailbox for tenant {tenant.schema_name}: {exc}", exc_info=True)
+        
+        if processed_count > 0:
+            logger.info(f"Processed {processed_count} mailbox entries across {len(tenants)} tenants")
+    
+    def _process_tenant_mailbox(self, tenant):
+        """
+        Process pending mailbox entries for a specific tenant.
+        
+        Args:
+            tenant: Tenant instance
+        
+        Returns:
+            int: number of entries processed
+        """
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                return 0
+            
+            # Dequeue pending entries
+            pending = WebhookMailbox.dequeue_pending(tenant, limit=self.batch_size)
+            
+            if not pending:
+                return 0
+            
+            logger.info(f"Found {len(pending)} pending mailbox entries for tenant {tenant.schema_name}")
+            
+            processed = 0
+            for mailbox_entry in pending:
+                try:
+                    self._process_mailbox_entry(mailbox_entry, tenant)
+                    processed += 1
+                except Exception as exc:
+                    logger.error(
+                        f"Failed to process mailbox entry {mailbox_entry.id}: {exc}",
+                        exc_info=True
+                    )
+                    mailbox_entry.mark_failed(str(exc))
+            
+            return processed
+    
+    def _process_mailbox_entry(self, mailbox_entry, tenant):
+        """
+        Process a single mailbox entry.
+        
+        Args:
+            mailbox_entry: WebhookMailbox instance
+            tenant: Tenant instance
+        """
+        logger.info(
+            f"Processing mailbox entry {mailbox_entry.id}: "
+            f"{mailbox_entry.source} {mailbox_entry.action_path} (event_id={mailbox_entry.event_id[:16]}...)"
+        )
+        
+        # Check if expired
+        if mailbox_entry.is_expired():
+            logger.warning(f"Mailbox entry {mailbox_entry.id} has expired, skipping")
+            mailbox_entry.status = 'expired'
+            mailbox_entry.processed_at = timezone.now()
+            mailbox_entry.save(update_fields=['status', 'processed_at'])
+            return
+        
+        # Claim the entry
+        mailbox_entry.mark_claimed()
+        
+        # Process the trigger envelope
+        try:
+            envelope = mailbox_entry.envelope
+            result = process_trigger_envelope(envelope, tenant)
+            
+            logger.info(
+                f"Mailbox entry {mailbox_entry.id} processed: "
+                f"status={result.get('status')}, matched={result.get('matched', 0)} instructions"
+            )
+            
+            # Mark as processed
+            mailbox_entry.mark_processed(result)
+            
+        except Exception as exc:
+            logger.error(f"Error processing envelope from mailbox {mailbox_entry.id}: {exc}", exc_info=True)
+            mailbox_entry.mark_failed(str(exc))
+            raise
+
+
+def start_consumer_background():
+    """
+    Start consumer in background thread.
+    
+    Returns:
+        WebhookMailboxConsumer instance (already running)
+    """
+    import threading
+    
+    consumer = WebhookMailboxConsumer()
+    thread = threading.Thread(
+        target=consumer.start,
+        daemon=True,
+        name="WebhookMailboxConsumer"
+    )
+    thread.start()
+    logger.info("WebhookMailboxConsumer started in background thread")
+    return consumer
+
+
+def cleanup_expired_mailbox_entries():
+    """
+    Cleanup task to mark expired pending entries.
+    Should be called periodically (e.g., every 5 minutes).
+    
+    Returns:
+        int: number of entries expired
+    """
+    try:
+        expired_count = WebhookMailbox.expire_old_entries()
+        if expired_count > 0:
+            logger.info(f"Marked {expired_count} mailbox entries as expired")
+        return expired_count
+    except Exception as exc:
+        logger.error(f"Failed to cleanup expired mailbox entries: {exc}", exc_info=True)
+        return 0
