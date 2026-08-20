@@ -1,0 +1,30 @@
+# Orchestration Model — Locked
+
+The orchestration model specification at `documentation/POLYSAAS_ORCHESTRATION_MODEL.md` is the authoritative design for webhook mailboxes and consumer orchestration.
+
+## The Rule
+
+**Do not modify `documentation/POLYSAAS_ORCHESTRATION_MODEL.md` without explicit owner approval.**
+
+This document defines:
+- How webhooks work as dumb mailboxes
+- How consumers dequeue and execute work
+- Two surfaces: Surfing (passthrough for self-hosted) vs SaaS (API-first like Slack)
+- Canonical envelope format
+- What is in scope and out of scope
+
+## Locked decisions
+
+1. Slack is API-first. No proxy, no passthrough, no native sniff.
+2. Native/passthrough is ONLY for self-hosted apps (Odoo, Nextcloud, Mattermost, Dolibarr).
+3. Webhooks do not run atomics — they accept, persist, and queue.
+4. Consumers do the work asynchronously.
+5. Implementation happens ONLY after owner says "go".
+
+## Before any orchestration work
+
+1. Read `documentation/POLYSAAS_ORCHESTRATION_MODEL.md`
+2. Confirm the work aligns with the model
+3. Get explicit approval before implementing
+
+Do not invent new orchestration patterns that contradict the model.
