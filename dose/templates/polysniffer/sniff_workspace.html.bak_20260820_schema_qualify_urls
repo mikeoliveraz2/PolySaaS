@@ -91,18 +91,9 @@
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
     const endpointId = {{ endpoint.pk }};
-    const schemaParam = '{{ schema|escapejs }}';
-    /* FIX 2026-08-20 (owner-approved, frozen-file exception): /pt/polysniff/<id>/
-       resolves its tenant from session by default, but AdminTenantSessionMiddleware
-       resets the session's active tenant back to the staff user's own home tenant
-       on every response -- so without an explicit ?schema=, this <object> request
-       404'd for any endpoint owned by a different tenant (confirmed for Slack under
-       'olient'), rendering the browser pane blank. See sniff_v2_workspace.py note.
-       BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20 */
-    const schemaQuery = schemaParam ? ('?schema=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
-    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
+    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
+    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let count = 0;

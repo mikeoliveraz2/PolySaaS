@@ -1,25 +1,6 @@
 """Admin-only PolySniffer control screen with top-level browser launches."""
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
-#
-# FIX 2026-08-20 (owner-approved, frozen-file exception): sniff_shell() resolved
-# the endpoint correctly (via ?schema= or session), but the browser-launch URLs
-# it handed to the client (/pt/polysniff/<id>/...) carried no schema hint at
-# all. AdminTenantSessionMiddleware resets request.session['tenant_slug'] back
-# to the logged-in staff user's own home tenant on every response, so by the
-# time the client's <object data="..."> fetched that URL, session-based
-# resolution in get_endpoint_any_schema() pointed at the wrong tenant and
-# 404'd -- rendering as a blank pane (confirmed via direct repro: same
-# endpoint_id resolves 200 under the correct tenant, 404 under the reset one).
-# This only showed up for endpoints owned by a tenant other than the staff
-# user's own (e.g. Slack under 'olient' while admin's home tenant is
-# 'polysaas'); Odoo/Mattermost never exposed it because they happened to match.
-# Now the endpoint's authoritative schema (already resolved once via
-# get_endpoint_by_host) is threaded through to the client as an explicit
-# ?schema= query param on the native/passthrough launch URLs, so resolution
-# never depends on session state that this same request cycle is about to
-# overwrite.
-# BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
 from __future__ import annotations
 
 import json
@@ -100,9 +81,6 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
         )
     workspace_prefix = f"/admin/polysniffer/sniff/{endpoint_host}"
     poll_url = f"{workspace_prefix}/workspace/poll/"
-    # See 2026-08-20 fix note above: this is the tenant schema already resolved
-    # (authoritatively) for this endpoint by get_endpoint_by_host(), not a guess.
-    schema = getattr(request, "schema_name", "") or ""
 
     return render(
         request,
@@ -119,7 +97,6 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             "diff_url": f"{workspace_prefix}/diff/",
             "export_url": f"{workspace_prefix}/export-har/",
             "poll_url": poll_url,
-            "schema": schema,
         },
     )
 
