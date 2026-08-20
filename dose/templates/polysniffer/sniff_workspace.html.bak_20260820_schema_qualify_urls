@@ -1,15 +1,9 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13 -->
-<!-- Restore 2026-08-13: Start Native/Passthrough load the app in #browser-pane, not full-page. -->
-<!-- PolySniffer workspace: app loads in the left browser pane (not full-page). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PolySniffer - {% firstof endpoint_label "Workspace" %}</title>
-    {% if passthrough_embed_head %}{{ passthrough_embed_head }}{% endif %}
-    {% if passthrough_guard_head %}{{ passthrough_guard_head }}{% endif %}
     <style>
         * { box-sizing: border-box; }
         html, body { margin: 0; min-height: 100%; background: #111827; color: #e5e7eb; font-family: Georgia, "Times New Roman", serif; }
@@ -53,14 +47,6 @@
         .empty { padding: 24px 12px; text-align: center; color: #737373; }
         .error-box { margin: 40px auto; max-width: 560px; padding: 24px; border: 1px solid #991b1b; background: #1f2937; color: #fecaca; }
         a { color: #93c5fd; }
-        .capture-summary { margin-bottom: 10px; font: 0.75rem Consolas, monospace; color: #d1d5db; overflow-wrap: anywhere; }
-        .capture-tree { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .capture-tree-col { min-width: 0; }
-        .capture-section { margin-bottom: 10px; }
-        .capture-section-title { font: 600 0.7rem Consolas, monospace; color: #4ade80; margin-bottom: 4px; }
-        .capture-section pre { margin: 0; padding: 6px; background: #111827; border: 1px solid #374151; border-radius: 4px; font: 0.7rem Consolas, monospace; color: #9ca3af; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow-y: auto; }
-        .capture-more { font: 0.65rem Consolas, monospace; color: #6ee7b7; margin-top: 2px; }
-        .capture-attach { display: inline-block; margin-top: 8px; padding: 4px 8px; background: #047857; color: #fff; border-radius: 4px; font: 0.7rem Georgia, serif; text-decoration: none; }
         @media (max-width: 860px) { .split { grid-template-columns: 1fr; } .left-col { border-right: 0; border-bottom: 1px solid #374151; } }
     </style>
 </head>
@@ -77,11 +63,11 @@
         <div class="mode-cards">
             <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
                 <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
-                <p>Load the app in the pane below (sniff capture). Does not leave this workspace.</p>
+                <p>Direct top-level browser navigation to {{ upstream_browse_url }}.</p>
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
-                <p>Load the app in the pane below through passthrough capture. Does not leave this workspace.</p>
+                <p>Top-level browser navigation through /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
             </div>
         </div>
         <div class="toolbar">
@@ -91,11 +77,7 @@
             <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Endpoints</a>
         </div>
         <div class="browser-pane" id="browser-pane">
-            {% if passthrough_embed_body %}
-                {{ passthrough_embed_body }}
-            {% else %}
-                <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
-            {% endif %}
+            <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
         </div>
     </section>
     <section class="right-col">
@@ -109,18 +91,9 @@
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
     const endpointId = {{ endpoint.pk }};
-    const schemaParam = '{{ schema|escapejs }}';
-    /* FIX 2026-08-20 (owner-approved, frozen-file exception): /pt/polysniff/<id>/
-       resolves its tenant from session by default, but AdminTenantSessionMiddleware
-       resets the session's active tenant back to the staff user's own home tenant
-       on every response -- so without an explicit ?schema=, this <object> request
-       404'd for any endpoint owned by a different tenant (confirmed for Slack under
-       'olient'), rendering the browser pane blank. See sniff_v2_workspace.py note.
-       BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20 */
-    const schemaQuery = schemaParam ? ('?schema=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
-    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
+    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
+    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let count = 0;
@@ -138,10 +111,6 @@
         });
     }
 
-    function loadPassthroughWorkspace(url, mode) {
-        window.location.href = url;
-    }
-
     function clearBrowser() {
         browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
         currentMode = '';
@@ -156,17 +125,7 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            if (mode === 'passthrough') {
-                var launch = passthroughLaunchUrl;
-                launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
-                loadPassthroughWorkspace(launch, mode);
-            } else {
-                browserPane.innerHTML = '<div class="browser-placeholder"><p>Native browser opened in Chromium. Traffic from that browser appears in Live capture.</p></div>';
-                currentMode = mode;
-                document.querySelectorAll('.mode-card').forEach(function(card) {
-                    card.classList.toggle('selected', card.dataset.mode === mode);
-                });
-            }
+            setBrowserUrl(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl, mode);
         } catch (error) { alert(error.message); }
     };
 
@@ -174,7 +133,7 @@
         try {
             const response = await fetch(workspaceUrl + '/session/stop/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
             const data = await response.json();
-            if (!data.ok) throw new Error(data.error || 'Failed to start capture');
+            if (!data.ok) throw new Error(data.error || 'Failed to stop capture');
             clearBrowser();
             lastId = 0;
             count = 0;
@@ -203,7 +162,6 @@
         lastId = Math.max(lastId, capture.id);
         const empty = document.querySelector('#captures .empty');
         if (empty) empty.remove();
-
         const item = document.createElement('div');
         item.className = 'capture-item';
         const row = document.createElement('div');
@@ -217,67 +175,10 @@
         const status = document.createElement('span');
         status.className = 'capture-status';
         status.textContent = capture.status_code || '-';
-        row.append(method, path, status);
-
         const detail = document.createElement('div');
         detail.className = 'capture-detail';
-
-        const summary = document.createElement('div');
-        summary.className = 'capture-summary';
-        summary.innerHTML = '<b>' + (capture.method || 'GET') + '</b> ' + (capture.url || '-') + '<br>Client: ' + (capture.client_path || '-') + '<br>' + (capture.captured_at || '-') + ' — ' + (capture.duration_ms || '0') + ' ms';
-        detail.appendChild(summary);
-
-        const tree = document.createElement('div');
-        tree.className = 'capture-tree';
-
-        const fmt = function(o) {
-            try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); }
-        };
-
-        function section(title, content, more) {
-            const div = document.createElement('div');
-            div.className = 'capture-section';
-            const h = document.createElement('div');
-            h.className = 'capture-section-title';
-            h.textContent = title;
-            const pre = document.createElement('pre');
-            pre.textContent = content || '(empty)';
-            div.appendChild(h);
-            div.appendChild(pre);
-            if (more) {
-                const m = document.createElement('div');
-                m.className = 'capture-more';
-                m.textContent = '... (truncated in preview)';
-                div.appendChild(m);
-            }
-            return div;
-        }
-
-        const req = document.createElement('div');
-        req.className = 'capture-tree-col';
-        req.appendChild(section('Headers', fmt(capture.headers), false));
-        req.appendChild(section('Query params', fmt(capture.query_params), false));
-        req.appendChild(section('Request body', capture.body_preview, capture.body_more));
-
-        const res = document.createElement('div');
-        res.className = 'capture-tree-col';
-        res.appendChild(section('Status', String(capture.status_code || '-'), false));
-        res.appendChild(section('Response headers', fmt(capture.response_headers), false));
-        res.appendChild(section('Response body', capture.response_body_preview, capture.response_body_more));
-
-        tree.appendChild(req);
-        tree.appendChild(res);
-        detail.appendChild(tree);
-
-        if (capture.capture_source === 'passthrough') {
-            const attach = document.createElement('a');
-            attach.className = 'capture-attach';
-            attach.target = '_blank';
-            attach.textContent = 'Attach instruction';
-            attach.href = '/admin/dose/instruction/add/?requestpath=' + encodeURIComponent(capture.path || '') + '&requestmethod=' + encodeURIComponent(capture.method || 'GET') + '&direction=REQ&match_type=path';
-            detail.appendChild(attach);
-        }
-
+        detail.textContent = capture.url || '';
+        row.append(method, path, status);
         item.append(row, detail);
         item.onclick = function() { item.classList.toggle('open'); };
         document.getElementById('captures').prepend(item);

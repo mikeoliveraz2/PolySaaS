@@ -37,25 +37,9 @@ def _load_passthrough_endpoints(schema_name):
         return []
 
     try:
-        # FIX 2026-08-20 (owner-approved, traced 2026-08-08): this used to set
-        # search_path to the tenant schema ALONE, with no ",public" fallback,
-        # and never restored it afterward. This middleware runs first on every
-        # request, so for the rest of that request any code needing shared
-        # public-schema models (Tenant, User, etc.) would silently fail to
-        # find rows -- confirmed as the root cause of PolySniffer's native
-        # pane staying blank while the capture panel kept polling (traced via
-        # SHOW search_path instrumentation on 2026-08-08: search_path was
-        # bare 'polysaas' instead of 'polysaas, public' at the exact point
-        # get_endpoint_any_schema's schema-guard lookup ran). The comment
-        # below is about PassThroughEndpoint rows being tenant-owned data (see
-        # tenant-isolation.mdc) -- that's a data-placement rule, not a reason
-        # to exclude public from search_path. Adding ",public" back matches
-        # the same safe pattern already used in SessionTenantMiddleware and
-        # get_current_tenant().
-        # BINGO: PolySniffer Native Pane Search-Path Fix — 2026-08-20
-        # Tenant schema first, public as fallback — PassThroughEndpoint rows are tenant-owned, not public.
+        # Tenant schema only — PassThroughEndpoint rows are tenant-owned, not public.
         with connection.cursor() as cursor:
-            cursor.execute(f'SET search_path TO "{schema_name}",public')
+            cursor.execute(f'SET search_path TO "{schema_name}"')
         endpoints = list(
             PassThroughEndpoint.objects.filter(
                 is_enabled=True,
