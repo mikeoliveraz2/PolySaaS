@@ -140,30 +140,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             / "session_cookies.json"
         )
 
-    def prepare_native_page(self, page, request=None):
-        """Dismiss Slack chrome that would block the first real click.
-
-        Cookie consent sits over the bottom of the viewport on workspace-signin;
-        accepting it is session setup, not filling Slack's login form.
-        """
-        import re
-
-        patterns = (
-            re.compile(r"accept all cookies", re.I),
-            re.compile(r"accept all", re.I),
-            re.compile(r"allow all", re.I),
-        )
-        for pattern in patterns:
-            try:
-                page.get_by_role("button", name=pattern).first.click(timeout=2500)
-                return
-            except Exception:
-                continue
-        try:
-            page.locator("button:has-text('ACCEPT ALL COOKIES')").first.click(timeout=1500)
-        except Exception:
-            pass
-
     def stray_root_paths(self):
         """Root-absolute paths Slack navigates the browser to on its own.
 

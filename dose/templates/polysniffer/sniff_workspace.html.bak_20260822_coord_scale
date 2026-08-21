@@ -216,10 +216,15 @@
             ev.preventDefault();
             view.focus();
             const at = frameCoords(view, ev);
-            // One atomic click — separate down/up often landed as move-only when
-            // bitmap and CSS pixels differed, so the field never took focus.
-            if (at) sendNativeInput({kind: 'mouse', action: 'click', x: at.x, y: at.y,
-                button: ev.button, click_count: ev.detail || 1,
+            if (at) sendNativeInput({kind: 'mouse', action: 'down', x: at.x, y: at.y,
+                button: ev.button, buttons: ev.buttons, click_count: ev.detail || 1,
+                modifiers: modifiersOf(ev)});
+        });
+        view.addEventListener('mouseup', function(ev) {
+            ev.preventDefault();
+            const at = frameCoords(view, ev);
+            if (at) sendNativeInput({kind: 'mouse', action: 'up', x: at.x, y: at.y,
+                button: ev.button, buttons: ev.buttons, click_count: ev.detail || 1,
                 modifiers: modifiersOf(ev)});
         });
         view.addEventListener('contextmenu', function(ev) { ev.preventDefault(); });

@@ -143,6 +143,7 @@ class SlackNativeSniffTests(SimpleTestCase):
         self.assertEqual(kwargs["endpoint_host"], "polysaasworkspace.slack.com")
         self.assertEqual(kwargs["session_cookies"], [])
         self.assertTrue(callable(kwargs["persist_cookies"]))
+        self.assertTrue(callable(kwargs["prepare_page"]))
 
     def test_slack_handler_remembers_only_slack_cookies(self):
         import tempfile

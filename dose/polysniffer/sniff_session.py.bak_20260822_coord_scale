@@ -101,12 +101,6 @@ def session_start(request, endpoint_host: str):
                     endpoint_host=_host,
                 )
 
-        prepare_page = None
-        prepare_hook = getattr(handler, "prepare_native_page", None)
-        if prepare_hook:
-            def prepare_page(page, _hook=prepare_hook):
-                _hook(page, request=None)
-
         browser = start_native_browser(
             endpoint_url=endpoint.endpoint_url,
             tenant_schema=tenant.schema_name,
@@ -114,7 +108,6 @@ def session_start(request, endpoint_host: str):
             endpoint_host=endpoint_host,
             session_cookies=session_cookies,
             persist_cookies=persist_cookies,
-            prepare_page=prepare_page,
         )
         if not browser["started"]:
             cap.is_active = False

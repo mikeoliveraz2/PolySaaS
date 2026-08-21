@@ -123,23 +123,41 @@ class InputDispatchTests(SimpleTestCase):
     def test_click_uses_the_page_mouse_when_available(self):
         page = MagicMock()
         session = MagicMock()
+        run = _NativeBrowserRun()
 
         _dispatch_input(
             page,
             session,
-            {"kind": "mouse", "action": "down", "x": 12, "y": 34, "button": 0},
+            run,
+            {"kind": "mouse", "action": "click", "x": 12, "y": 34, "button": 0},
         )
 
-        page.mouse.move.assert_called_with(12.0, 34.0)
-        page.mouse.down.assert_called_once_with(button="left")
+        page.mouse.click.assert_called_once_with(12.0, 34.0, button="left", click_count=1)
         session.send.assert_not_called()
+
+    def test_bitmap_coords_are_scaled_to_css_viewport(self):
+        page = MagicMock()
+        run = _NativeBrowserRun()
+        run.frame_bitmap = (2560, 1600)
+        run.frame_css = (1280, 800)
+
+        _dispatch_input(
+            page,
+            None,
+            run,
+            {"kind": "mouse", "action": "click", "x": 640, "y": 400, "button": 0},
+        )
+
+        page.mouse.click.assert_called_once_with(320.0, 200.0, button="left", click_count=1)
 
     def test_click_falls_back_to_cdp_without_a_page(self):
         session = MagicMock()
+        run = _NativeBrowserRun()
 
         _dispatch_input(
             None,
             session,
+            run,
             {"kind": "mouse", "action": "down", "x": 12, "y": 34, "button": 0},
         )
 
@@ -152,21 +170,21 @@ class InputDispatchTests(SimpleTestCase):
     def test_typing_is_inserted_as_text(self):
         page = MagicMock()
 
-        _dispatch_input(page, None, {"kind": "text", "text": "hi"})
+        _dispatch_input(page, None, _NativeBrowserRun(), {"kind": "text", "text": "hi"})
 
         page.keyboard.insert_text.assert_called_once_with("hi")
 
     def test_enter_is_sent_as_a_key_press(self):
         page = MagicMock()
 
-        _dispatch_input(page, None, {"kind": "key", "key": "Enter"})
+        _dispatch_input(page, None, _NativeBrowserRun(), {"kind": "key", "key": "Enter"})
 
         page.keyboard.press.assert_called_once_with("Enter")
 
     def test_unknown_keys_are_ignored(self):
         page = MagicMock()
 
-        _dispatch_input(page, None, {"kind": "key", "key": "F13"})
+        _dispatch_input(page, None, _NativeBrowserRun(), {"kind": "key", "key": "F13"})
 
         page.keyboard.press.assert_not_called()
 
@@ -174,7 +192,10 @@ class InputDispatchTests(SimpleTestCase):
         page = MagicMock()
 
         _dispatch_input(
-            page, None, {"kind": "wheel", "x": 5, "y": 6, "delta_y": 120}
+            page,
+            None,
+            _NativeBrowserRun(),
+            {"kind": "wheel", "x": 5, "y": 6, "delta_y": 120},
         )
 
         page.mouse.wheel.assert_called_once_with(0.0, 120.0)

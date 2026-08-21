@@ -66,10 +66,6 @@ class _NativeBrowserRun:
     inputs: "queue.Queue[dict]" = field(default_factory=queue.Queue)
     # Owned only by the browser worker thread — request threads must not touch it.
     active_page: object | None = None
-    # Screencast bitmap size vs CSS viewport — pane coords arrive in bitmap
-    # pixels and must be scaled down before page.mouse sees them.
-    frame_bitmap: tuple[int, int] = (0, 0)
-    frame_css: tuple[int, int] = (1280, 800)
 
 
 _RUNS: dict[tuple[str, str], _NativeBrowserRun] = {}
@@ -310,18 +306,8 @@ class _ScreencastPump:
         while self._pending:
             frame = self._pending.popleft()
             try:
-                data = base64.b64decode(frame["data"])
-                self._run.frames.publish(data)
-                meta = frame.get("metadata") or {}
-                css_w = int(meta.get("deviceWidth") or 0)
-                css_h = int(meta.get("deviceHeight") or 0)
-                if css_w > 0 and css_h > 0:
-                    self._run.frame_css = (css_w, css_h)
-                # JPEG SOF0 marker carries the bitmap dimensions the pane sees.
-                bitmap = _jpeg_size(data)
-                if bitmap:
-                    self._run.frame_bitmap = bitmap
-            except (KeyError, TypeError, binascii.Error, ValueError):
+                self._run.frames.publish(base64.b64decode(frame["data"]))
+            except (KeyError, TypeError, binascii.Error):
                 continue
             finally:
                 session_id = frame.get("sessionId") if isinstance(frame, dict) else None
@@ -334,63 +320,23 @@ class _ScreencastPump:
                         pass
 
 
-def _jpeg_size(data: bytes) -> tuple[int, int] | None:
-    """Return (width, height) from a JPEG SOF0 marker, or None."""
-    i = 2
-    while i + 9 < len(data):
-        if data[i] != 0xFF:
-            return None
-        marker = data[i + 1]
-        if marker == 0xD9:
-            return None
-        if marker in (0xC0, 0xC1, 0xC2):
-            height = (data[i + 5] << 8) | data[i + 6]
-            width = (data[i + 7] << 8) | data[i + 8]
-            if width > 0 and height > 0:
-                return width, height
-            return None
-        length = (data[i + 2] << 8) | data[i + 3]
-        i += 2 + length
-    return None
-
-
-def _scale_pane_coords(run: _NativeBrowserRun, x: float, y: float) -> tuple[float, float]:
-    """Map pane/bitmap pixels into the page's CSS viewport coordinates."""
-    bw, bh = run.frame_bitmap
-    cw, ch = run.frame_css
-    if bw > 0 and bh > 0 and cw > 0 and ch > 0 and (bw != cw or bh != ch):
-        return x * (cw / bw), y * (ch / bh)
-    return x, y
-
-
-def _dispatch_input(page, session, run: _NativeBrowserRun, event: dict) -> None:
+def _dispatch_input(page, session, event: dict) -> None:
     """Replay one pane gesture into the captured browser.
 
     Prefer Playwright's page mouse/keyboard when we have the page — CDP alone
     often fails to focus form fields after a screencast-only session. Fall back
     to CDP Input.* when the page handle is missing.
-
-    Pane coordinates are in screencast bitmap pixels; page.mouse wants CSS
-    viewport pixels. Scale when the bitmap is larger (devicePixelRatio > 1).
     """
     kind = event.get("kind")
     modifiers = int(event.get("modifiers") or 0)
-    x, y = _scale_pane_coords(
-        run, float(event.get("x") or 0), float(event.get("y") or 0)
-    )
     if page is not None:
         if kind == "mouse":
             action = event.get("action") or ""
+            x = float(event.get("x") or 0)
+            y = float(event.get("y") or 0)
             button = _MOUSE_BUTTONS.get(int(event.get("button") or 0), "left")
             if action == "move":
                 page.mouse.move(x, y)
-            elif action == "click":
-                page.mouse.click(
-                    x,
-                    y,
-                    button=button,
-                    click_count=int(event.get("click_count") or 1),
-                )
             elif action == "down":
                 page.mouse.move(x, y)
                 page.mouse.down(button=button)
@@ -399,7 +345,7 @@ def _dispatch_input(page, session, run: _NativeBrowserRun, event: dict) -> None:
                 page.mouse.up(button=button)
             return
         if kind == "wheel":
-            page.mouse.move(x, y)
+            page.mouse.move(float(event.get("x") or 0), float(event.get("y") or 0))
             page.mouse.wheel(
                 float(event.get("delta_x") or 0), float(event.get("delta_y") or 0)
             )
@@ -418,22 +364,7 @@ def _dispatch_input(page, session, run: _NativeBrowserRun, event: dict) -> None:
     if session is None:
         return
     if kind == "mouse":
-        action = event.get("action") or ""
-        if action == "click":
-            for cdp_type in ("mousePressed", "mouseReleased"):
-                session.send(
-                    "Input.dispatchMouseEvent",
-                    {
-                        "type": cdp_type,
-                        "x": x,
-                        "y": y,
-                        "button": _MOUSE_BUTTONS.get(int(event.get("button") or 0), "left"),
-                        "clickCount": int(event.get("click_count") or 1),
-                        "modifiers": modifiers,
-                    },
-                )
-            return
-        cdp_type = _MOUSE_TYPES.get(action)
+        cdp_type = _MOUSE_TYPES.get(event.get("action") or "")
         if not cdp_type:
             return
         button = int(event.get("button") or 0)
@@ -441,8 +372,8 @@ def _dispatch_input(page, session, run: _NativeBrowserRun, event: dict) -> None:
             "Input.dispatchMouseEvent",
             {
                 "type": cdp_type,
-                "x": x,
-                "y": y,
+                "x": float(event.get("x") or 0),
+                "y": float(event.get("y") or 0),
                 "button": _MOUSE_BUTTONS.get(button, "left")
                 if cdp_type != "mouseMoved"
                 else "none",
@@ -458,8 +389,8 @@ def _dispatch_input(page, session, run: _NativeBrowserRun, event: dict) -> None:
             "Input.dispatchMouseEvent",
             {
                 "type": "mouseWheel",
-                "x": x,
-                "y": y,
+                "x": float(event.get("x") or 0),
+                "y": float(event.get("y") or 0),
                 "deltaX": float(event.get("delta_x") or 0),
                 "deltaY": float(event.get("delta_y") or 0),
                 "modifiers": modifiers,
@@ -492,7 +423,7 @@ def _drain_input(page, session, run: _NativeBrowserRun) -> None:
         except queue.Empty:
             return
         try:
-            _dispatch_input(page, session, run, event)
+            _dispatch_input(page, session, event)
         except Exception:
             logger.exception("Native browser input dispatch failed")
 
@@ -521,7 +452,6 @@ def _browser_worker(
     endpoint_host: str,
     session_cookies: list | None = None,
     persist_cookies=None,
-    prepare_page=None,
 ) -> None:
     from playwright.sync_api import sync_playwright
 
@@ -565,7 +495,6 @@ def _browser_worker(
                 record_har_path=str(har_path),
                 record_har_mode="full",
                 viewport=_VIEWPORT,
-                device_scale_factor=1,
                 args=_LAUNCH_ARGS,
             )
             run.started_event.set()
@@ -605,17 +534,6 @@ def _browser_worker(
                 screencast = _ScreencastPump(context, run)
                 screencast.attach(page)
                 page.goto(endpoint_url, wait_until="domcontentloaded", timeout=60000)
-                run.active_page = page
-                run.frame_css = (_VIEWPORT["width"], _VIEWPORT["height"])
-                # Handler may dismiss cookie banners / ready the page before the
-                # user touches the pane. Failures are non-fatal.
-                if prepare_page is not None:
-                    try:
-                        prepare_page(page)
-                    except Exception:
-                        logger.exception(
-                            "Native page prepare failed for %s", endpoint_host
-                        )
 
                 while not run.stop_event.is_set() and context.pages:
                     active_page = next((item for item in context.pages if not item.is_closed()), None)
@@ -668,7 +586,6 @@ def start_native_browser(
     endpoint_host: str,
     session_cookies: list | None = None,
     persist_cookies=None,
-    prepare_page=None,
 ) -> dict:
     key = _run_key(tenant_schema, endpoint_host)
     with _RUNS_LOCK:
@@ -692,7 +609,6 @@ def start_native_browser(
             "endpoint_host": endpoint_host,
             "session_cookies": session_cookies or [],
             "persist_cookies": persist_cookies,
-            "prepare_page": prepare_page,
         },
         name=f"polysniffer-native-{_safe_path_part(endpoint_host)}",
         daemon=True,
