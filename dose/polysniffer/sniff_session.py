@@ -104,8 +104,10 @@ def session_start(request, endpoint_host: str):
         prepare_page = None
         prepare_hook = getattr(handler, "prepare_native_page", None)
         if prepare_hook:
-            def prepare_page(page, _hook=prepare_hook):
-                _hook(page, request=None)
+            launch_url = endpoint.endpoint_url
+
+            def prepare_page(page, _hook=prepare_hook, _url=launch_url):
+                _hook(page, request=None, endpoint_url=_url)
 
         browser = start_native_browser(
             endpoint_url=endpoint.endpoint_url,

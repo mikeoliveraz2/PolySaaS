@@ -184,9 +184,8 @@
         }).catch(function() {});
     }
 
-    /* The frame is object-fit:contain + object-position:top center — map pane
-       clicks through that same letterbox, or every click lands in the dark band
-       under Slack's form and the field never focuses. */
+    /* The frame keeps its aspect ratio inside the pane, so pane coordinates are
+       mapped back through the letterboxing to browser coordinates. */
     function frameCoords(view, ev) {
         const rect = view.getBoundingClientRect();
         if (!view.naturalWidth || !view.naturalHeight || !rect.width || !rect.height) {
@@ -197,13 +196,11 @@
         const shownWidth = natural > box ? rect.width : rect.height * natural;
         const shownHeight = natural > box ? rect.width / natural : rect.height;
         const left = rect.left + (rect.width - shownWidth) / 2;
-        const top = rect.top; /* matches object-position: top */
-        const x = (ev.clientX - left) * (view.naturalWidth / shownWidth);
-        const y = (ev.clientY - top) * (view.naturalHeight / shownHeight);
-        if (x < 0 || y < 0 || x > view.naturalWidth || y > view.naturalHeight) {
-            return null;
-        }
-        return {x: x, y: y};
+        const top = rect.top + (rect.height - shownHeight) / 2;
+        return {
+            x: (ev.clientX - left) * (view.naturalWidth / shownWidth),
+            y: (ev.clientY - top) * (view.naturalHeight / shownHeight)
+        };
     }
 
     function attachNativeInput(view) {

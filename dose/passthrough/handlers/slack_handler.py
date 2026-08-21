@@ -140,13 +140,16 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             / "session_cookies.json"
         )
 
-    def prepare_native_page(self, page, request=None):
+    def prepare_native_page(self, page, request=None, endpoint_url=""):
         """Dismiss Slack chrome that would block the first real click.
 
         Cookie consent sits over the bottom of the viewport on workspace-signin;
-        accepting it is session setup, not filling Slack's login form.
+        accepting it is session setup, not filling Slack's login form. When the
+        endpoint already names a workspace host (foo.slack.com), pre-fill that
+        so the user is not stuck typing into a dead pane.
         """
         import re
+        from urllib.parse import urlparse
 
         patterns = (
             re.compile(r"accept all cookies", re.I),
@@ -156,13 +159,25 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
         for pattern in patterns:
             try:
                 page.get_by_role("button", name=pattern).first.click(timeout=2500)
-                return
+                break
             except Exception:
                 continue
-        try:
-            page.locator("button:has-text('ACCEPT ALL COOKIES')").first.click(timeout=1500)
-        except Exception:
-            pass
+        else:
+            try:
+                page.locator("button:has-text('ACCEPT ALL COOKIES')").first.click(timeout=1500)
+            except Exception:
+                pass
+
+        host = (urlparse(endpoint_url or "").netloc or "").lower()
+        if host.endswith(".slack.com") and host not in ("app.slack.com", "slack.com", "www.slack.com"):
+            try:
+                field = page.locator(
+                    'input[placeholder*="workspace"], input[name="domain"], input[type="text"]'
+                ).first
+                field.click(timeout=2000)
+                field.fill(host, timeout=2000)
+            except Exception:
+                pass
 
     def stray_root_paths(self):
         """Root-absolute paths Slack navigates the browser to on its own.
