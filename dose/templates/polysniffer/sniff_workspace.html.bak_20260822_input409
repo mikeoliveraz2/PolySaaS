@@ -154,22 +154,12 @@
             | (ev.metaKey ? MOD_META : 0) | (ev.shiftKey ? MOD_SHIFT : 0);
     }
 
-    let nativeInputAlive = true;
-
     function sendNativeInput(event) {
-        if (!nativeInputAlive) return;
         fetch(workspaceUrl + '/native/input/', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
             body: JSON.stringify(event)
-        }).then(function(response) {
-            // 409 means the captured browser has already exited; keep sending
-            // would only flood the console with Conflict errors over a stale frame.
-            if (response.status === 409) {
-                nativeInputAlive = false;
-                browserPane.innerHTML = '<div class="browser-placeholder">Captured browser stopped. Click Start Native again to resume.</div>';
-            }
         }).catch(function() {});
     }
 
@@ -236,7 +226,6 @@
     }
 
     function setRealBrowserPane(mode) {
-        nativeInputAlive = true;
         browserPane.innerHTML = '<img id="native-view" tabindex="0" alt="Captured browser"'
             + ' src="' + workspaceUrl + '/native/stream/?t=' + Date.now() + '"'
             + ' style="width:100%;height:100%;object-fit:contain;background:#0b1220;outline:0;cursor:default;">';

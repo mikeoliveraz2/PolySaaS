@@ -101,38 +101,13 @@ def _cookie_dict(headers: dict) -> dict:
     return {name: morsel.value for name, morsel in cookie.items()}
 
 
-def _safe_post_data(request) -> str:
-    """Read the request body without letting binary POSTs kill the browser.
-
-    Playwright's post_data decodes as UTF-8. Slack (and others) often POST
-    gzipped or otherwise binary payloads; that raises UnicodeDecodeError inside
-    the response listener, which Playwright treats as fatal and tears the
-    whole context down. Capture still needs a note of the body, so binary is
-    recorded as a short placeholder instead.
-    """
-    try:
-        data = request.post_data
-        return data or ""
-    except UnicodeDecodeError:
-        pass
-    except Exception:
-        return ""
-    try:
-        buf = request.post_data_buffer
-        if buf:
-            return f"<binary {len(buf)} bytes>"
-    except Exception:
-        pass
-    return ""
-
-
 def _response_snapshot(response) -> dict:
     request = response.request
     return {
         "url": request.url,
         "method": request.method,
         "request_headers": dict(request.headers),
-        "post_data": _safe_post_data(request),
+        "post_data": request.post_data or "",
         "status": response.status,
         "response_headers": dict(response.headers),
     }
@@ -233,13 +208,9 @@ class _ScreencastPump:
         self._page = None
         self.session = None
         self._pending: deque = deque(maxlen=4)
-        self._attach_failed_for = set()
 
     def attach(self, page) -> None:
         if page is None or page is self._page:
-            return
-        page_id = id(page)
-        if page_id in self._attach_failed_for:
             return
         try:
             session = self._context.new_cdp_session(page)
@@ -257,12 +228,10 @@ class _ScreencastPump:
                 },
             )
         except Exception:
-            self._attach_failed_for.add(page_id)
             logger.exception("Could not start screencast for the native browser")
             return
         self._page = page
         self.session = session
-        self._attach_failed_for.discard(page_id)
 
     def pump(self) -> None:
         while self._pending:
@@ -423,18 +392,10 @@ def _browser_worker(
             run.started_event.set()
 
             def attach_page(page) -> None:
-                def on_response(response) -> None:
-                    # Any exception here is treated as fatal by Playwright and
-                    # tears the browser down, so capture must never raise.
-                    try:
-                        snapshots.put(_response_snapshot(response))
-                    except Exception:
-                        logger.exception(
-                            "Native browser response snapshot failed for %s",
-                            getattr(getattr(response, "request", None), "url", "?"),
-                        )
-
-                page.on("response", on_response)
+                page.on(
+                    "response",
+                    lambda response: snapshots.put(_response_snapshot(response)),
+                )
 
             try:
                 context.on("page", attach_page)

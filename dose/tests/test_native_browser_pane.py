@@ -12,9 +12,29 @@ from dose.polysniffer.native_browser_capture import (
     _RUNS_LOCK,
     _ScreencastPump,
     _dispatch_input,
+    _safe_post_data,
     next_native_frame,
     queue_native_input,
 )
+
+
+class SafePostDataTests(SimpleTestCase):
+    def test_text_bodies_are_kept(self):
+        request = MagicMock()
+        request.post_data = "hello=world"
+
+        self.assertEqual(_safe_post_data(request), "hello=world")
+
+    def test_binary_bodies_do_not_raise(self):
+        request = MagicMock()
+        type(request).post_data = property(
+            lambda self: (_ for _ in ()).throw(
+                UnicodeDecodeError("utf-8", b"\x8b", 1, 2, "invalid")
+            )
+        )
+        request.post_data_buffer = b"\x1f\x8bcompressed"
+
+        self.assertEqual(_safe_post_data(request), "<binary 14 bytes>")
 
 
 class FrameBufferTests(SimpleTestCase):
