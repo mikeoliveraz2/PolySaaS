@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import uuid
+from types import SimpleNamespace
+
+from django.db import connection, transaction
+from django.utils import timezone
+
+from dose.models import Instruction, MQConfig, RequestLog, UserTenantMembership
+from dose.passthrough.orchestration_hook import _create_dose_message, _save_callback_data
+from dose.tenant_app_lookup import tenant_schema_search_path
+
+
+TRIGGER_ENVELOPE_KIND = "polysaas.trigger.v1"
+SLACK_POLY_ACTION_PATH = "/events/slack/command/poly"
+SLACK_POLY_EVENT_KEY = "slack.command.poly"
+SLACK_TRIGGER_ROUTING_KEY = "polysaas.events.slack.command.poly"
+
+
+def _slack_event_id(payload: dict[str, str]) -> str:
+    stable = "\x1f".join(
+        [
+            payload.get("team_id", ""),
+            payload.get("trigger_id", ""),
+            payload.get("user_id", ""),
+            payload.get("command", ""),
+            payload.get("text", ""),
+        ]
+    )
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+
+
+def build_slack_command_envelope(tenant, payload: dict[str, str]) -> dict:
+    return {
+        "kind": TRIGGER_ENVELOPE_KIND,
+        "event_id": _slack_event_id(payload),
+        "correlation_id": str(uuid.uuid4()),
+        "tenant_schema": tenant.schema_name,
+        "source": "slack",
+        "action_path": SLACK_POLY_ACTION_PATH,
+        "method": "POST",
+        "direction": "REQ",
+        "event_key": SLACK_POLY_EVENT_KEY,
+        "actor": {
+            "external_user_id": payload.get("user_id", ""),
+            "team_id": payload.get("team_id", ""),
+        },
+        "payload": {
+            "command": payload.get("command", ""),
+            "text": payload.get("text", ""),
+            "channel_id": payload.get("channel_id", ""),
+            "response_url": payload.get("response_url", ""),
+        },
+        "received_at": timezone.now().isoformat(),
+    }
+
+
+def publish_slack_command_event(tenant, payload: dict[str, str]) -> dict:
+    from dose.mq.adapters.rabbitmq_adapter import RabbitMQAdapter
+
+    envelope = build_slack_command_envelope(tenant, payload)
+    with tenant_schema_search_path(tenant) as ok:
+        if not ok:
+            return {"success": False, "error": "invalid tenant schema"}
+        config = MQConfig.objects.filter(is_active=True, provider="rabbitmq").first()
+        if config is None:
+            return {"success": False, "error": "no active RabbitMQ config"}
+        adapter = RabbitMQAdapter(config)
+        try:
+            result = adapter.publish(envelope, routing_key=SLACK_TRIGGER_ROUTING_KEY)
+        finally:
+            adapter.close()
+    return {**result, "event_id": envelope["event_id"], "action_path": envelope["action_path"]}
+
+
+def _claim_event(envelope: dict, tenant) -> bool:
+    event_id = envelope["event_id"]
+    lock_material = f"{tenant.schema_name}:{event_id}".encode("utf-8")
+    lock_id = int.from_bytes(hashlib.sha256(lock_material).digest()[:8], "big", signed=True)
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock_id])
+        if RequestLog.objects.filter(
+            path=envelope["action_path"],
+            method="EVENT",
+            body__event_id=event_id,
+        ).exists():
+            return False
+        RequestLog.objects.create(
+            user=None,
+            tenant=tenant,
+            path=envelope["action_path"],
+            method="EVENT",
+            body={
+                "event_id": event_id,
+                "correlation_id": envelope.get("correlation_id", ""),
+                "source": envelope.get("source", ""),
+                "status": "claimed",
+            },
+        )
+    return True
+
+
+def _request_for_envelope(envelope: dict, tenant):
+    payload = envelope.get("payload") or {}
+    body = json.dumps(payload).encode("utf-8")
+    return SimpleNamespace(
+        body=body,
+        method=envelope["method"],
+        path=envelope["action_path"],
+        headers={},
+        GET={},
+        POST=payload,
+        user=None,
+        tenant=tenant,
+        atomic_parameters=[],
+        mq_message_data=payload,
+        trigger_envelope=envelope,
+        correlation_id=envelope.get("correlation_id", ""),
+    )
+
+
+def _feedback_users(tenant) -> list:
+    users = list(
+        UserTenantMembership.objects.filter(tenant=tenant)
+        .select_related("user")
+        .values_list("user", flat=True)
+    )
+    if not users:
+        return [None]
+    from django.contrib.auth import get_user_model
+
+    return list(get_user_model().objects.filter(pk__in=users))
+
+
+def process_trigger_envelope(envelope: dict, tenant) -> dict:
+    if envelope.get("kind") != TRIGGER_ENVELOPE_KIND:
+        return {"status": "ignored", "error": "unsupported envelope kind"}
+    if envelope.get("tenant_schema") != getattr(tenant, "schema_name", None):
+        return {"status": "ignored", "error": "tenant mismatch"}
+    if not envelope.get("event_id"):
+        return {"status": "ignored", "error": "missing event_id"}
+    request = _request_for_envelope(envelope, tenant)
+    with tenant_schema_search_path(tenant) as ok:
+        if not ok:
+            return {"status": "error", "error": "invalid tenant schema"}
+        if not _claim_event(envelope, tenant):
+            return {"status": "duplicate", "event_id": envelope["event_id"]}
+        instructions = list(
+            Instruction.objects.filter(
+                requestpath=envelope["action_path"],
+                requestmethod=envelope["method"],
+                direction=envelope["direction"],
+            )
+        )
+        results = []
+        for instruction in instructions:
+            result = {
+                "status": "success",
+                "event_id": envelope["event_id"],
+                "correlation_id": envelope.get("correlation_id", ""),
+                "path": envelope["action_path"],
+                "method": envelope["method"],
+                "direction": envelope["direction"],
+                "instruction_id": instruction.id,
+                "eventKey": instruction.eventKey or envelope.get("event_key", ""),
+            }
+            try:
+                atomic_result = instruction.execute_atomic_service(request)
+                if isinstance(atomic_result, dict):
+                    result.update(atomic_result)
+                elif atomic_result is not None:
+                    result["service_result"] = atomic_result
+            except Exception as exc:
+                result["status"] = "error"
+                result["error"] = str(exc)
+
+            _save_callback_data(request, instruction, result, tenant)
+            for user in _feedback_users(tenant):
+                request.user = user
+                _create_dose_message(
+                    request,
+                    instruction,
+                    result,
+                    instruction.executescript or "OrchestratedEvent",
+                )
+            results.append(result)
+
+    return {
+        "status": "processed" if instructions else "no_instruction",
+        "event_id": envelope["event_id"],
+        "matched": len(instructions),
+        "results": results,
+    }

@@ -1,0 +1,203 @@
+import hashlib
+import hmac
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+from django.test import RequestFactory, SimpleTestCase
+
+from dose.views.slack_slash_command import slack_slash_command
+from dose.webhook_events import (
+    SLACK_POLY_ACTION_PATH,
+    TRIGGER_ENVELOPE_KIND,
+    build_slack_command_envelope,
+    process_trigger_envelope,
+)
+from dose.mq.queue_monitor import dispatch_queue_message
+
+
+class SlackSlashCommandTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.tenant = SimpleNamespace(schema_name="tenant_one")
+        self.app = SimpleNamespace(extra_config={"signing_secret": "secret"})
+
+    def _request(self, *, signature=None):
+        timestamp = "1700000000"
+        request = self.factory.post(
+            "/hooks/slack/commands/",
+            data={
+                "team_id": "T123",
+                "user_id": "U123",
+                "command": "/poly",
+                "text": "create customer Alice",
+                "trigger_id": "trigger-1",
+            },
+        )
+        if signature is None:
+            digest = hmac.new(
+                b"secret",
+                f"v0:{timestamp}:".encode() + request.body,
+                hashlib.sha256,
+            ).hexdigest()
+            signature = f"v0={digest}"
+        request.META["HTTP_X_SLACK_REQUEST_TIMESTAMP"] = timestamp
+        request.META["HTTP_X_SLACK_SIGNATURE"] = signature
+        return request
+
+    @patch("dose.views.slack_slash_command.time.time", return_value=1700000000)
+    @patch("dose.views.slack_slash_command.publish_slack_command_event")
+    @patch("dose.views.slack_slash_command._find_slack_tenant")
+    def test_valid_request_publishes_then_acknowledges(self, find_tenant, publish, _time):
+        find_tenant.return_value = (self.tenant, self.app)
+        publish.return_value = {
+            "success": True,
+            "event_id": "event-1",
+            "action_path": SLACK_POLY_ACTION_PATH,
+        }
+
+        response = slack_slash_command(self._request())
+
+        self.assertEqual(response.status_code, 200)
+        publish.assert_called_once()
+        self.assertIn(b"received `/poly`", response.content)
+
+    @patch("dose.views.slack_slash_command.time.time", return_value=1700000000)
+    @patch("dose.views.slack_slash_command.publish_slack_command_event")
+    @patch("dose.views.slack_slash_command._find_slack_tenant")
+    def test_publish_failure_returns_retryable_error(self, find_tenant, publish, _time):
+        find_tenant.return_value = (self.tenant, self.app)
+        publish.return_value = {"success": False, "error": "RabbitMQ unavailable"}
+
+        response = slack_slash_command(self._request())
+
+        self.assertEqual(response.status_code, 503)
+
+    def test_envelope_uses_locked_event_triple(self):
+        envelope = build_slack_command_envelope(
+            self.tenant,
+            {"team_id": "T123", "user_id": "U123", "command": "/poly", "trigger_id": "trigger-1"},
+        )
+
+        self.assertEqual(envelope["action_path"], "/events/slack/command/poly")
+        self.assertEqual(envelope["method"], "POST")
+        self.assertEqual(envelope["direction"], "REQ")
+        self.assertEqual(envelope["tenant_schema"], "tenant_one")
+
+    @patch("dose.views.slack_slash_command.publish_slack_command_event")
+    @patch("dose.views.slack_slash_command._find_slack_tenant", return_value=(None, None))
+    def test_unknown_team_is_rejected_without_publish(self, _find_tenant, publish):
+        response = slack_slash_command(self._request(signature="v0=bad"))
+
+        self.assertEqual(response.status_code, 403)
+        publish.assert_not_called()
+
+    @patch("dose.views.slack_slash_command.time.time", return_value=1700000000)
+    @patch("dose.views.slack_slash_command.publish_slack_command_event")
+    @patch("dose.views.slack_slash_command._find_slack_tenant")
+    def test_bad_signature_is_rejected_without_publish(self, find_tenant, publish, _time):
+        find_tenant.return_value = (self.tenant, self.app)
+
+        response = slack_slash_command(self._request(signature="v0=bad"))
+
+        self.assertEqual(response.status_code, 403)
+        publish.assert_not_called()
+
+
+class TriggerEnvelopeConsumerTests(SimpleTestCase):
+    def setUp(self):
+        self.tenant = SimpleNamespace(schema_name="tenant_one")
+        self.envelope = {
+            "kind": TRIGGER_ENVELOPE_KIND,
+            "event_id": "event-1",
+            "correlation_id": "correlation-1",
+            "tenant_schema": "tenant_one",
+            "source": "slack",
+            "action_path": SLACK_POLY_ACTION_PATH,
+            "method": "POST",
+            "direction": "REQ",
+            "event_key": "slack.command.poly",
+            "actor": {"external_user_id": "U123"},
+            "payload": {"text": "create customer Alice"},
+            "received_at": "2026-08-15T12:00:00+00:00",
+        }
+
+    @patch("dose.webhook_events._create_dose_message")
+    @patch("dose.webhook_events._feedback_users", return_value=[None])
+    @patch("dose.webhook_events._save_callback_data", return_value=True)
+    @patch("dose.webhook_events.tenant_schema_search_path")
+    @patch("dose.webhook_events._claim_event", return_value=True)
+    @patch("dose.webhook_events.Instruction.objects.filter")
+    def test_exact_match_runs_atomic_and_records_feedback(
+        self, instruction_filter, _claim_event, schema_path, save_callback, _feedback_users, create_message
+    ):
+        schema_path.return_value.__enter__.return_value = True
+        instruction = MagicMock()
+        instruction.id = 7
+        instruction.executescript = "OdooCreatePartner"
+        instruction.eventKey = "slack.command.poly"
+        instruction.execute_atomic_service.return_value = {"status": "success", "partner_id": 42}
+        instruction_filter.return_value = [instruction]
+
+        result = process_trigger_envelope(self.envelope, self.tenant)
+
+        instruction_filter.assert_called_once_with(
+            requestpath=SLACK_POLY_ACTION_PATH,
+            requestmethod="POST",
+            direction="REQ",
+        )
+        instruction.execute_atomic_service.assert_called_once()
+        save_callback.assert_called_once()
+        create_message.assert_called_once()
+        self.assertEqual(result["status"], "processed")
+        self.assertEqual(result["matched"], 1)
+
+    @patch("dose.webhook_events._create_dose_message")
+    @patch("dose.webhook_events._feedback_users", return_value=[None])
+    @patch("dose.webhook_events._save_callback_data", return_value=True)
+    @patch("dose.webhook_events.tenant_schema_search_path")
+    @patch("dose.webhook_events._claim_event", return_value=True)
+    @patch("dose.webhook_events.Instruction.objects.filter")
+    def test_atomic_failure_is_recorded_for_orchestration_bar(
+        self, instruction_filter, _claim_event, schema_path, _save_callback, _feedback_users, create_message
+    ):
+        schema_path.return_value.__enter__.return_value = True
+        instruction = MagicMock()
+        instruction.id = 8
+        instruction.executescript = "FailingAtomic"
+        instruction.eventKey = "slack.command.poly"
+        instruction.execute_atomic_service.side_effect = RuntimeError("atomic failed")
+        instruction_filter.return_value = [instruction]
+
+        result = process_trigger_envelope(self.envelope, self.tenant)
+
+        self.assertEqual(result["results"][0]["status"], "error")
+        self.assertEqual(result["results"][0]["error"], "atomic failed")
+        feedback_result = create_message.call_args.args[2]
+        self.assertEqual(feedback_result["status"], "error")
+
+    @patch("dose.webhook_events._create_dose_message")
+    @patch("dose.webhook_events.tenant_schema_search_path")
+    @patch("dose.webhook_events._claim_event", return_value=False)
+    @patch("dose.webhook_events.Instruction.objects.filter")
+    def test_duplicate_event_does_not_execute(
+        self, instruction_filter, _claim_event, schema_path, create_message
+    ):
+        schema_path.return_value.__enter__.return_value = True
+        result = process_trigger_envelope(self.envelope, self.tenant)
+
+        self.assertEqual(result["status"], "duplicate")
+        instruction_filter.assert_not_called()
+        create_message.assert_not_called()
+
+    @patch("dose.mq.queue_monitor.process_trigger_envelope")
+    @patch("dose.mq.queue_monitor.MQRequestController.process_mq_message")
+    def test_queue_monitor_routes_trigger_envelope_to_exact_consumer(self, legacy, process):
+        config = SimpleNamespace(tenant=self.tenant)
+        message = {"data": self.envelope, "routing_key": "polysaas.events.slack.command.poly"}
+        process.return_value = {"status": "processed"}
+
+        result = dispatch_queue_message(message, config)
+
+        process.assert_called_once_with(self.envelope, self.tenant)
+        legacy.assert_not_called()
+        self.assertEqual(result["status"], "processed")
