@@ -34,7 +34,7 @@ class SafePostDataTests(SimpleTestCase):
         )
         request.post_data_buffer = b"\x1f\x8bcompressed"
 
-        self.assertEqual(_safe_post_data(request), "<binary 14 bytes>")
+        self.assertEqual(_safe_post_data(request), "<binary 12 bytes>")
 
 
 class FrameBufferTests(SimpleTestCase):
