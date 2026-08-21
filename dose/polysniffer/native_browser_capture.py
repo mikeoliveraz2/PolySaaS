@@ -247,7 +247,11 @@ def start_native_browser(
     )
     run.thread = thread
     thread.start()
-    ready = run.started_event.wait(timeout=5)
+    # Generous: a first run creates the profile directory and opens the HAR
+    # recorder before the worker signals ready, which takes well over a few
+    # seconds on Windows. Timing out early reports a failure for a browser
+    # that is still coming up.
+    ready = run.started_event.wait(timeout=30)
     if not ready:
         run.stop_event.set()
         return {"started": False, "error": "Native browser startup timed out"}

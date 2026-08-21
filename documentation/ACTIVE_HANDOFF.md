@@ -80,11 +80,41 @@ Those are commits `2540b140` "Launch real browser for Slack native capture" and 
 `browser_capture.py` (Playwright) **is** on main but nothing imports it — the workspace
 never calls it.
 
-### Next action (do not invert)
+### Next action — DONE, awaiting one live click
 
-Bring those three files onto `main` surgically (same method as the webhook slice), wire
-Start Native to the real browser, then re-ask the HAR question. Do **not** continue tuning
-the injected shim — the shim's job (auth relay across the boundary) is already proven green.
+Branch **`feature/slack-native-real-browser`**, commit `0662f784` (+ launch-timeout fix).
+Brought over from the preserved branch and wired:
+
+- `dose/polysniffer/native_browser_capture.py` — `launch_persistent_context` (profile kept
+  under `MEDIA_ROOT/polysniffer/native/profiles/<schema>/<host>`), `headless=False`,
+  `record_har_path` + `record_har_mode="full"`, every response written to `TrafficLog` with
+  `capture_source=CAPTURE_NATIVE`. HAR lands at
+  `MEDIA_ROOT/polysniffer/native/captures/<schema>/<host>-<capture_id>.har`.
+- `dose/polysniffer/sniff_session.py` (**frozen — edited under the bring-over approval**):
+  `session_start` launches the browser, `session_stop` stops it.
+- **Scoped per handler, not per app name:** `_endpoint_wants_real_browser()` asks the
+  resolved handler for `native_uses_real_browser()` via `getattr`. Only
+  `SlackPassthroughHandler` returns True, so **Odoo / Mattermost / Nextcloud / HubSpot
+  Native panes are untouched** and still embed exactly as before.
+- `sniff_workspace.html` — Native shows "Native browser launched…" instead of embedding the
+  proxy when `session/start` reports `browser.started`.
+- Launch wait raised 5s → 30s (first run builds the profile; 5s gave false timeouts).
+- `dose/tests/test_slack_native_sniff.py` — 6 tests, all pass. The branch's
+  `native_sniff_proxy_by_host` test was dropped (that view does not exist on main) and
+  replaced with two hook-scoping tests.
+- `playwright install chromium` done. Resolves at
+  `%LOCALAPPDATA%\ms-playwright\chromium-1228\chrome-win64\chrome.exe`, i.e. visible to the
+  Waitress process. Verified headless launch, Chromium 149.0.7827.55.
+- `dose/polysniffer/handlers/slack_native_sniff.py` also came over but is **deliberately not
+  imported** — it rewrites HTML for the *proxy*-native path, which Slack no longer uses.
+  Stage 2 (passthrough) material.
+
+**The one remaining step is a human click:** open the Slack PolySniffer workspace and press
+Start Native. A real Chrome window opens on `app.slack.com`; sign in there as yourself. Then
+check the capture count moves past `/` + `/auth` and export the HAR.
+
+Do **not** resume tuning the injected shim — the shim's job (auth relay across the boundary)
+is already proven green, and it is not the thing standing between us and a HAR.
 
 ### Shim work completed tonight (keep, but it is stage-1 plumbing only)
 
