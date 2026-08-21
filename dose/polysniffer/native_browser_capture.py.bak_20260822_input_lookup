@@ -64,8 +64,6 @@ class _NativeBrowserRun:
     thread: threading.Thread | None = None
     frames: _FrameBuffer = field(default_factory=_FrameBuffer)
     inputs: "queue.Queue[dict]" = field(default_factory=queue.Queue)
-    # Owned only by the browser worker thread — request threads must not touch it.
-    active_page: object | None = None
 
 
 _RUNS: dict[tuple[str, str], _NativeBrowserRun] = {}
@@ -91,39 +89,7 @@ _LAUNCH_ARGS = [
 
 
 def _run_key(tenant_schema: str, endpoint_host: str) -> tuple[str, str]:
-    return (tenant_schema or "").strip().lower(), (endpoint_host or "").strip().lower()
-
-
-def _find_run(*, tenant_schema: str, endpoint_host: str) -> _NativeBrowserRun | None:
-    """Resolve the live Native run for this pane.
-
-    Exact (schema, host) first. If that misses — common when the stream request
-    and a later input POST resolve the tenant differently — fall back to the
-    single run for that host so gestures are not rejected while the browser is
-    clearly still open.
-    """
-    key = _run_key(tenant_schema, endpoint_host)
-    with _RUNS_LOCK:
-        run = _RUNS.get(key)
-        if run is not None:
-            return run
-        host = key[1]
-        matches = [item for (schema, h), item in _RUNS.items() if h == host]
-        if len(matches) == 1:
-            logger.warning(
-                "Native input matched host %s without schema %r (have %s)",
-                host,
-                key[0],
-                [k for k in _RUNS if k[1] == host],
-            )
-            return matches[0]
-        if _RUNS:
-            logger.warning(
-                "Native run miss for %r; live keys=%s",
-                key,
-                list(_RUNS.keys()),
-            )
-        return None
+    return tenant_schema, endpoint_host.lower()
 
 
 def _safe_path_part(value: str) -> str:
@@ -320,49 +286,12 @@ class _ScreencastPump:
                         pass
 
 
-def _dispatch_input(page, session, event: dict) -> None:
-    """Replay one pane gesture into the captured browser.
-
-    Prefer Playwright's page mouse/keyboard when we have the page — CDP alone
-    often fails to focus form fields after a screencast-only session. Fall back
-    to CDP Input.* when the page handle is missing.
-    """
-    kind = event.get("kind")
-    modifiers = int(event.get("modifiers") or 0)
-    if page is not None:
-        if kind == "mouse":
-            action = event.get("action") or ""
-            x = float(event.get("x") or 0)
-            y = float(event.get("y") or 0)
-            button = _MOUSE_BUTTONS.get(int(event.get("button") or 0), "left")
-            if action == "move":
-                page.mouse.move(x, y)
-            elif action == "down":
-                page.mouse.move(x, y)
-                page.mouse.down(button=button)
-            elif action == "up":
-                page.mouse.move(x, y)
-                page.mouse.up(button=button)
-            return
-        if kind == "wheel":
-            page.mouse.move(float(event.get("x") or 0), float(event.get("y") or 0))
-            page.mouse.wheel(
-                float(event.get("delta_x") or 0), float(event.get("delta_y") or 0)
-            )
-            return
-        if kind == "text":
-            text = event.get("text") or ""
-            if text:
-                page.keyboard.insert_text(text)
-            return
-        if kind == "key":
-            key = event.get("key") or ""
-            if key in _SPECIAL_KEYS:
-                page.keyboard.press(key)
-            return
-
+def _dispatch_input(session, event: dict) -> None:
+    """Replay one pane gesture into the captured browser."""
     if session is None:
         return
+    kind = event.get("kind")
+    modifiers = int(event.get("modifiers") or 0)
     if kind == "mouse":
         cdp_type = _MOUSE_TYPES.get(event.get("action") or "")
         if not cdp_type:
@@ -376,7 +305,7 @@ def _dispatch_input(page, session, event: dict) -> None:
                 "y": float(event.get("y") or 0),
                 "button": _MOUSE_BUTTONS.get(button, "left")
                 if cdp_type != "mouseMoved"
-                else "none",
+                else _MOUSE_BUTTONS.get(button, "none"),
                 "buttons": int(event.get("buttons") or 0),
                 "clickCount": int(event.get("click_count") or 1)
                 if cdp_type != "mouseMoved"
@@ -416,14 +345,14 @@ def _dispatch_input(page, session, event: dict) -> None:
         session.send("Input.dispatchKeyEvent", {"type": "keyUp", **payload})
 
 
-def _drain_input(page, session, run: _NativeBrowserRun) -> None:
+def _drain_input(session, run: _NativeBrowserRun) -> None:
     while True:
         try:
             event = run.inputs.get_nowait()
         except queue.Empty:
             return
         try:
-            _dispatch_input(page, session, event)
+            _dispatch_input(session, event)
         except Exception:
             logger.exception("Native browser input dispatch failed")
 
@@ -539,13 +468,12 @@ def _browser_worker(
                     active_page = next((item for item in context.pages if not item.is_closed()), None)
                     if active_page is None:
                         break
-                    run.active_page = active_page
                     screencast.attach(active_page)
                     # Also pumps Playwright's event loop, which is what delivers
                     # screencast frames, so this doubles as the frame tick.
                     active_page.wait_for_timeout(30)
                     screencast.pump()
-                    _drain_input(active_page, screencast.session, run)
+                    _drain_input(screencast.session, run)
             finally:
                 # Playwright writes the HAR when the context closes, so this has
                 # to happen even when the session ended badly, or the recording
@@ -627,7 +555,8 @@ def start_native_browser(
 
 
 def stop_native_browser(*, tenant_schema: str, endpoint_host: str) -> bool:
-    run = _find_run(tenant_schema=tenant_schema, endpoint_host=endpoint_host)
+    with _RUNS_LOCK:
+        run = _RUNS.get(_run_key(tenant_schema, endpoint_host))
     if run is None:
         return False
     run.stop_event.set()
@@ -635,14 +564,16 @@ def stop_native_browser(*, tenant_schema: str, endpoint_host: str) -> bool:
 
 
 def native_browser_is_running(*, tenant_schema: str, endpoint_host: str) -> bool:
-    return _find_run(tenant_schema=tenant_schema, endpoint_host=endpoint_host) is not None
+    with _RUNS_LOCK:
+        return _run_key(tenant_schema, endpoint_host) in _RUNS
 
 
 def next_native_frame(
     *, tenant_schema: str, endpoint_host: str, after_seq: int, timeout: float = 1.0
 ) -> tuple[int, bytes]:
     """Block until the captured browser renders a frame newer than after_seq."""
-    run = _find_run(tenant_schema=tenant_schema, endpoint_host=endpoint_host)
+    with _RUNS_LOCK:
+        run = _RUNS.get(_run_key(tenant_schema, endpoint_host))
     if run is None:
         return after_seq, b""
     if after_seq <= 0:
@@ -658,7 +589,8 @@ def queue_native_input(*, tenant_schema: str, endpoint_host: str, event: dict) -
     Playwright's synchronous API may only be driven from the thread that owns the
     browser, so request threads queue here instead of touching it directly.
     """
-    run = _find_run(tenant_schema=tenant_schema, endpoint_host=endpoint_host)
+    with _RUNS_LOCK:
+        run = _RUNS.get(_run_key(tenant_schema, endpoint_host))
     if run is None:
         return False
     run.inputs.put(event)

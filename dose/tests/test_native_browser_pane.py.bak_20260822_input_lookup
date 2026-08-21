@@ -120,25 +120,10 @@ class NativeRunRegistryTests(SimpleTestCase):
 
 
 class InputDispatchTests(SimpleTestCase):
-    def test_click_uses_the_page_mouse_when_available(self):
-        page = MagicMock()
+    def test_click_becomes_a_mouse_event(self):
         session = MagicMock()
 
         _dispatch_input(
-            page,
-            session,
-            {"kind": "mouse", "action": "down", "x": 12, "y": 34, "button": 0},
-        )
-
-        page.mouse.move.assert_called_with(12.0, 34.0)
-        page.mouse.down.assert_called_once_with(button="left")
-        session.send.assert_not_called()
-
-    def test_click_falls_back_to_cdp_without_a_page(self):
-        session = MagicMock()
-
-        _dispatch_input(
-            None,
             session,
             {"kind": "mouse", "action": "down", "x": 12, "y": 34, "button": 0},
         )
@@ -150,65 +135,36 @@ class InputDispatchTests(SimpleTestCase):
         self.assertEqual(payload["button"], "left")
 
     def test_typing_is_inserted_as_text(self):
-        page = MagicMock()
+        session = MagicMock()
 
-        _dispatch_input(page, None, {"kind": "text", "text": "hi"})
+        _dispatch_input(session, {"kind": "text", "text": "hi"})
 
-        page.keyboard.insert_text.assert_called_once_with("hi")
+        session.send.assert_called_once_with("Input.insertText", {"text": "hi"})
 
-    def test_enter_is_sent_as_a_key_press(self):
-        page = MagicMock()
+    def test_enter_is_sent_as_a_key_press_and_release(self):
+        session = MagicMock()
 
-        _dispatch_input(page, None, {"kind": "key", "key": "Enter"})
+        _dispatch_input(session, {"kind": "key", "key": "Enter"})
 
-        page.keyboard.press.assert_called_once_with("Enter")
+        types = [call[0][1]["type"] for call in session.send.call_args_list]
+        self.assertEqual(types, ["keyDown", "keyUp"])
 
     def test_unknown_keys_are_ignored(self):
-        page = MagicMock()
+        session = MagicMock()
 
-        _dispatch_input(page, None, {"kind": "key", "key": "F13"})
+        _dispatch_input(session, {"kind": "key", "key": "F13"})
 
-        page.keyboard.press.assert_not_called()
+        session.send.assert_not_called()
 
-    def test_scrolling_uses_the_page_wheel(self):
-        page = MagicMock()
+    def test_scrolling_becomes_a_wheel_event(self):
+        session = MagicMock()
 
-        _dispatch_input(
-            page, None, {"kind": "wheel", "x": 5, "y": 6, "delta_y": 120}
-        )
+        _dispatch_input(session, {"kind": "wheel", "x": 5, "y": 6, "delta_y": 120})
 
-        page.mouse.wheel.assert_called_once_with(0.0, 120.0)
-
-
-class HostFallbackLookupTests(SimpleTestCase):
-    def setUp(self):
-        self.key = ("olient", "app.slack.com")
-        self.run = _NativeBrowserRun()
-        with _RUNS_LOCK:
-            _RUNS[self.key] = self.run
-        self.addCleanup(self._forget)
-
-    def _forget(self):
-        with _RUNS_LOCK:
-            _RUNS.pop(self.key, None)
-
-    def test_input_finds_the_run_when_schema_casing_differs(self):
-        queued = queue_native_input(
-            tenant_schema="Olient",
-            endpoint_host="APP.SLACK.COM",
-            event={"kind": "text", "text": "x"},
-        )
-
-        self.assertTrue(queued)
-
-    def test_input_finds_the_only_host_run_when_schema_is_wrong(self):
-        queued = queue_native_input(
-            tenant_schema="wrong-schema",
-            endpoint_host="app.slack.com",
-            event={"kind": "text", "text": "x"},
-        )
-
-        self.assertTrue(queued)
+        name, payload = session.send.call_args[0]
+        self.assertEqual(name, "Input.dispatchMouseEvent")
+        self.assertEqual(payload["type"], "mouseWheel")
+        self.assertEqual(payload["deltaY"], 120.0)
 
 
 class ScreencastPumpTests(SimpleTestCase):
