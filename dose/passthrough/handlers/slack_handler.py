@@ -63,6 +63,16 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
     def needs_readable_response_body(self, request, target_url: str) -> bool:
         return True
 
+    def native_uses_real_browser(self, request=None) -> bool:
+        """Native capture for Slack drives a real browser, not the proxy pane.
+
+        Slack's web client only boots from a session it established itself, and
+        the browser cannot hand app.slack.com cookies to our origin. Native
+        therefore launches a persistent-profile browser so the user logs in once
+        as themselves, and records the full HAR from that session.
+        """
+        return True
+
     def stray_root_paths(self):
         """Root-absolute paths Slack navigates the browser to on its own.
 

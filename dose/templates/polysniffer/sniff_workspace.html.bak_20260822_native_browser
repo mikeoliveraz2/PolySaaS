@@ -139,18 +139,6 @@
         });
     }
 
-    /* Native drove a real browser (persistent profile, full HAR) rather than
-       embedding the proxy, so the pane reports that instead of loading a URL.
-       Driven by the session/start response, not by any app name. */
-    function setRealBrowserPlaceholder(mode) {
-        browserPane.innerHTML = '<div class="browser-placeholder">Native browser launched - sign in there as yourself. Capture and HAR are recording; use Stop capture when finished.</div>';
-        currentMode = mode;
-        document.querySelectorAll('.mode-card').forEach(function(card) {
-            card.classList.remove('selected');
-            if (card.dataset.mode === mode) card.classList.add('selected');
-        });
-    }
-
     function clearBrowser() {
         browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
         currentMode = '';
@@ -165,9 +153,7 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            if (mode === 'native' && data.browser && data.browser.started) {
-                setRealBrowserPlaceholder(mode);
-            } else if (mode === 'native' && nativeTopLevel) {
+            if (mode === 'native' && nativeTopLevel) {
                 window.open(upstreamBrowseUrl, '_blank', 'noopener');
                 setTopLevelPlaceholder(mode);
             } else {
