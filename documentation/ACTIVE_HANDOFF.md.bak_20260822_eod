@@ -6,102 +6,118 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 
 ## Status
 
-- Date: **2026-08-22** (morning laptop → office)
-- Branch: **`feature/slack-native-real-browser`** (HEAD `38b22b32` + this handoff commit)
-- `main` is behind this work (`0a566af9`) — **do not assume Native pane lives on main yet**
-- Machine: laptop session ending; pull this branch at the office
+- Date: 2026-08-21
+- Repo state: synchronized with current main branch (after this push)
+- Latest validated handoff: this file
 - Policy: end-of-day work requires a handoff update before the final commit is considered complete
+- Branch: `main`
+- Machine: laptop session → push for office pickup
 
-## Slack Native — Stage 1 VERDICT (2026-08-22)
+## Slack Native — state of record (2026-08-21 late / 2026-08-22 early)
 
 Per Shela's ordering: **Stage 1 Native black box first**, then passthrough from that HAR,
-then orchestration.
+then orchestration. Failure is treated as **proxy fidelity**, not Slack policy.
 
-### Today's question: does Slack Native produce a complete HAR in *your* browser?
-
-**YES — in substance.** Live proof this morning:
-
-| Field | Value |
-|---|---|
-| Tenant / schema | **olient** |
-| Workspace UI | PolySniffer → Slack → **Start Native** |
-| Pane | Live MJPEG of off-screen Chromium (not proxy HTML, not a separate desktop window as the only surface) |
-| User progress | Past Slack login; into **“Invite your teammates”** onboarding; workspace name **polysaas** visible |
-| Capture session | `app.slack.com-native-20260821-2336` |
-| Capture count | **649** rows (APIs: `client.counts`, `onboarding.updateUser`, `clog/track`, canvas blobs, …) — not stuck on `/` + `/auth` |
-| Endpoint URL (configured) | `https://app.slack.com/client/T0BPQCW981W/D0BNPR1537V` (UI may show a nearby team id) |
-
-**Last GREEN:** Native pane interactive; capture stream moving with real Slack client traffic; user past auth wall.
-
-**Last RED / remaining polish (not blockers for Stage 1 “HAR exists”):**
-
-- Pane letterboxing / dark band under short Slack pages — usable but ugly
-- Input path had several bugs on the way (409 tenant key, binary `post_data` crash, bitmap vs CSS scale, **top-align click math**) — fixed on this branch; verify once more at office after pull + `runall`
-- Playwright HAR file under `media/polysniffer/native/captures/olient/` — confirm Export HAR / file flush after **Stop capture** (context close writes HAR)
-- Cookie/session store: `…/profiles/olient/app.slack.com/session_cookies.json` + Chromium profile — **do not commit `media/polysniffer/`** (session secrets)
-
-### Architecture that landed (this branch only until merged)
-
-1. **Real browser Native** (`native_browser_capture.py`): persistent profile, HAR record, TrafficLog `CAPTURE_NATIVE`
-2. **Pane = browser**: CDP screencast → MJPEG `/native/stream/`; gestures → `/native/input/` → Playwright page mouse/keyboard
-3. **Handler-scoped:** `SlackPassthroughHandler.native_uses_real_browser()`; other apps keep embedded Native
-4. **Black-box session hooks:** `native_session_cookies` / `remember_native_session_cookies` / `prepare_native_page` (cookie banner; optional workspace host prefill)
-5. Frozen files touched with prior approval: `sniff_session.py`, `sniff_urls.py` (+ `.bak_*` alongside)
-
-### Office startup
-
-```powershell
-git pull origin feature/slack-native-real-browser
-# ensure venv has playwright browsers: .\venv\Scripts\python.exe -m playwright install chromium
-.\runall.ps1
-# open PolySniffer Slack workspace → Start Native (hard refresh if pane stale)
-```
-
-### Next (Shela Stage 2 — only after Stage 1 accepted)
-
-- Export / confirm a real HAR from this session (or a clean Stop→Export)
-- Build **passthrough** from that HAR (`/pt/admin/app.slack.com/…`), assets on our host, session survives revisit
-- Do **not** invert to orchestration-first
-- Merge `feature/slack-native-real-browser` → `main` only when Michael/Shela say so
-
-### Do not regress
-
-- No iframe default; failure = proxy/Native fidelity, not “Slack forbids embed”
-- No app names in shared forwarder; Slack logic stays in `SlackPassthroughHandler`
-- No Mattermost-style team recovery in Slack paths
-- Do not commit `media/polysniffer/native/profiles/**` or `polysniffer-auth.json`
-
----
-
-## Prior note (2026-08-21 late) — superseded by Stage 1 verdict above
-
-The 2026-08-21 diagnosis (Native was proxy-only; blank pane; capture stuck on `/`+`/auth`) was correct
-**then**. It drove the bring-over of real-browser Native. Keep the detail below for archaeology;
-**current truth is the Stage 1 verdict section.**
-
-### Exact coordinates (as of 2026-08-21 evening)
+### Exact coordinates
 
 | Field | Value |
 |---|---|
 | Endpoint row | `PassThroughEndpoint` id **4**, slug `slack` |
 | Endpoint URL | `https://app.slack.com/client/T0BPQCW981W/D0BNPR1537V` |
-| Tenant / schema | **olient** |
-| Browser URL under test (old proxy Native) | `http://localhost:8000/pt/polysniff/app.slack.com/` |
+| Tenant / schema | **olient** (Oliver Enterprises) |
+| Browser URL under test | `http://localhost:8000/pt/polysniff/app.slack.com/` |
+| Capture session | `app.slack.com-native-20260821-1141` |
+| Server | Waitress, restarted 2026-08-21 ~19:40 (no autoreload) |
 
-### Today's question (2026-08-21): complete HAR? **NO** (at that time)
+### Today's question: does Slack Native produce a complete HAR? **NO**
 
-Capture only `/` and `/auth`. Root cause: Start Native loaded the proxy, not the user's browser.
+**Last GREEN line** (credential handshake across the proxy boundary now fully works):
 
-### Next action then — DONE on `feature/slack-native-real-browser`
+```
+[SLACK SHIM] credential message origin=https://app.slack.com inPlace=true source=kept trusted=true data=string
+```
 
-Real-browser capture + pane streaming + input fixes through `38b22b32`.
+**Last RED line** (Slack ignores it anyway and falls back):
 
-### Shim work (Stage 2 plumbing — keep)
+```
+[AUTH] fetching credentials from iframe took too long, but it looks like we are online, so we can go fetch via a redirect instead
+[AUTH] fetchAuthAndReturnToUrl: fallback redirecting to /auth?app=client&return_to=%2Fpt%2Fpolysniff%2Fapp.slack.com%2F&teams=
+```
 
-Credential postMessage bridge, stray-root relay, MessageEvent in-place spoof — useful for
-passthrough later; not what unlocked Stage 1 HAR.
+Capture count moves but only ever between **2 and 4 rows**, always the same two upstream
+paths (`/` and `/auth`). Never an API call, never a WS attempt. 53 rows total since Aug 20,
+all of that shape. No exportable real HAR.
 
-## Evening addendum (2026-08-21) — navigation interception is impossible; relay is server-side
+### The one fail to fix (root cause found — stop shim work)
+
+`main`'s **Native mode is not "your browser, your login" at all** — it loads the proxy:
+
+```
+dose/templates/polysniffer/sniff_workspace.html:100
+const nativeLaunchUrl = '/pt/polysniff/' + endpointHost + ...
+```
+
+So Native and Passthrough both go through the forwarder; Native just drops the admin chrome.
+Consequences, all consistent with the observed logs:
+
+- The browser is on `localhost:8000`, so it **cannot** send `app.slack.com` cookies. The
+  proxy therefore presents **no Slack session**.
+- There is **no Slack `TenantApp` row at all** for `olient` — only `odoo`, `nextcloud`,
+  `mattermost`. So no server-side session/token exists to relay either.
+- `/auth` answers 200 and the page says "credentials are ready", but with no session the
+  payload is useless to gantry, which waits 30s and falls back. Hence `psc=NaN` on every load.
+
+**`main` is missing the real-browser Native capture implementation.** Present on
+`backup/slack-webhook-native-20260821` (= old `cursor/polysniffer-switch-object-to-iframe`),
+absent on `main`:
+
+- `dose/polysniffer/handlers/slack_native_sniff.py`
+- `dose/polysniffer/native_browser_capture.py`
+- `dose/tests/test_slack_native_sniff.py`
+
+Those are commits `2540b140` "Launch real browser for Slack native capture" and `e8bbba50`
+"Fix Native browser false startup timeout by signaling ready before navigation".
+`browser_capture.py` (Playwright) **is** on main but nothing imports it — the workspace
+never calls it.
+
+### Next action — DONE, awaiting one live click
+
+Branch **`feature/slack-native-real-browser`**, commit `0662f784` (+ launch-timeout fix).
+Brought over from the preserved branch and wired:
+
+- `dose/polysniffer/native_browser_capture.py` — `launch_persistent_context` (profile kept
+  under `MEDIA_ROOT/polysniffer/native/profiles/<schema>/<host>`), `headless=False`,
+  `record_har_path` + `record_har_mode="full"`, every response written to `TrafficLog` with
+  `capture_source=CAPTURE_NATIVE`. HAR lands at
+  `MEDIA_ROOT/polysniffer/native/captures/<schema>/<host>-<capture_id>.har`.
+- `dose/polysniffer/sniff_session.py` (**frozen — edited under the bring-over approval**):
+  `session_start` launches the browser, `session_stop` stops it.
+- **Scoped per handler, not per app name:** `_endpoint_wants_real_browser()` asks the
+  resolved handler for `native_uses_real_browser()` via `getattr`. Only
+  `SlackPassthroughHandler` returns True, so **Odoo / Mattermost / Nextcloud / HubSpot
+  Native panes are untouched** and still embed exactly as before.
+- `sniff_workspace.html` — Native shows "Native browser launched…" instead of embedding the
+  proxy when `session/start` reports `browser.started`.
+- Launch wait raised 5s → 30s (first run builds the profile; 5s gave false timeouts).
+- `dose/tests/test_slack_native_sniff.py` — 6 tests, all pass. The branch's
+  `native_sniff_proxy_by_host` test was dropped (that view does not exist on main) and
+  replaced with two hook-scoping tests.
+- `playwright install chromium` done. Resolves at
+  `%LOCALAPPDATA%\ms-playwright\chromium-1228\chrome-win64\chrome.exe`, i.e. visible to the
+  Waitress process. Verified headless launch, Chromium 149.0.7827.55.
+- `dose/polysniffer/handlers/slack_native_sniff.py` also came over but is **deliberately not
+  imported** — it rewrites HTML for the *proxy*-native path, which Slack no longer uses.
+  Stage 2 (passthrough) material.
+
+**The one remaining step is a human click:** open the Slack PolySniffer workspace and press
+Start Native. A real Chrome window opens on `app.slack.com`; sign in there as yourself. Then
+check the capture count moves past `/` + `/auth` and export the HAR.
+
+Do **not** resume tuning the injected shim — the shim's job (auth relay across the boundary)
+is already proven green, and it is not the thing standing between us and a HAR.
+
+### Shim work completed tonight (keep, but it is stage-1 plumbing only)
+
 - Credential `postMessage` bridge across the proxy boundary: **working** (green line above).
   `origin` is now redefined **in place** so `source`/`isTrusted` survive.
 - Stray-root relay: Slack's fallback `window.location = '/auth?...'` is 302'd back onto the

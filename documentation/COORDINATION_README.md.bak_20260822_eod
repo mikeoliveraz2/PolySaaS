@@ -4,38 +4,11 @@ This document tracks session activity across machines (laptop/desktop) for synch
 
 ---
 
-## 2026-08-22 — Slack Native Stage 1: pane live + real capture (laptop → office)
-
-**Status**: Stage 1 largely **proven** on branch `feature/slack-native-real-browser`
-(`38b22b32` + handoff). Not merged to `main` yet. Not BINGO.
-
-### Proven live
-
-- Native left pane = off-screen Chromium via MJPEG + input relay
-- User past Slack login into onboarding (“Invite your teammates”); workspace **polysaas**
-- Capture session `app.slack.com-native-20260821-2336` with **~649** rows (real APIs)
-- Tenant **olient**
-
-### Office
-
-```text
-git pull origin feature/slack-native-real-browser
-.\runall.ps1
-```
-
-Then confirm Export HAR / Stop flush. Stage 2 = passthrough from that HAR.
-Do **not** commit `media/polysniffer/` profiles.
-
-Full detail: `documentation/ACTIVE_HANDOFF.md` (2026-08-22).
-
----
-
 ## 2026-08-21 — Slack proxy-relay + host-keyed polysniff; native pane still OPEN
 
 **Status**: PARTIAL — host-keyed `/pt/polysniff/<host>/` shipped; Slack handler proxy-relay
 auth path largely working through credentials-ready + postMessage retarget; **native pane
 still blank** (parent credential timeout). Not BINGO.
-*(Superseded for Stage 1 Native by 2026-08-22 entry above.)*
 
 ### Shipped
 
