@@ -139,11 +139,99 @@
         });
     }
 
-    /* Native drove a real browser (persistent profile, full HAR) rather than
-       embedding the proxy, so the pane reports that instead of loading a URL.
-       Driven by the session/start response, not by any app name. */
-    function setRealBrowserPlaceholder(mode) {
-        browserPane.innerHTML = '<div class="browser-placeholder">Native browser launched - sign in there as yourself. Capture and HAR are recording; use Stop capture when finished.</div>';
+    /* Native renders the captured browser itself into this pane: frames arrive as
+       a multipart image stream and gestures go back as small posts. Applications
+       that refuse to be framed, or that only run against a session they created
+       themselves, still appear here. Driven by the session/start response, so no
+       app name appears in this template. */
+    const MOD_ALT = 1, MOD_CTRL = 2, MOD_META = 4, MOD_SHIFT = 8;
+    const NATIVE_KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowLeft',
+        'ArrowUp', 'ArrowRight', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
+    let lastMoveSent = 0;
+
+    function modifiersOf(ev) {
+        return (ev.altKey ? MOD_ALT : 0) | (ev.ctrlKey ? MOD_CTRL : 0)
+            | (ev.metaKey ? MOD_META : 0) | (ev.shiftKey ? MOD_SHIFT : 0);
+    }
+
+    function sendNativeInput(event) {
+        fetch(workspaceUrl + '/native/input/', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            body: JSON.stringify(event)
+        }).catch(function() {});
+    }
+
+    /* The frame keeps its aspect ratio inside the pane, so pane coordinates are
+       mapped back through the letterboxing to browser coordinates. */
+    function frameCoords(view, ev) {
+        const rect = view.getBoundingClientRect();
+        if (!view.naturalWidth || !view.naturalHeight || !rect.width || !rect.height) {
+            return null;
+        }
+        const natural = view.naturalWidth / view.naturalHeight;
+        const box = rect.width / rect.height;
+        const shownWidth = natural > box ? rect.width : rect.height * natural;
+        const shownHeight = natural > box ? rect.width / natural : rect.height;
+        const left = rect.left + (rect.width - shownWidth) / 2;
+        const top = rect.top + (rect.height - shownHeight) / 2;
+        return {
+            x: (ev.clientX - left) * (view.naturalWidth / shownWidth),
+            y: (ev.clientY - top) * (view.naturalHeight / shownHeight)
+        };
+    }
+
+    function attachNativeInput(view) {
+        view.addEventListener('mousemove', function(ev) {
+            const now = Date.now();
+            if (now - lastMoveSent < 60) return;
+            lastMoveSent = now;
+            const at = frameCoords(view, ev);
+            if (at) sendNativeInput({kind: 'mouse', action: 'move', x: at.x, y: at.y,
+                buttons: ev.buttons, modifiers: modifiersOf(ev)});
+        });
+        view.addEventListener('mousedown', function(ev) {
+            ev.preventDefault();
+            view.focus();
+            const at = frameCoords(view, ev);
+            if (at) sendNativeInput({kind: 'mouse', action: 'down', x: at.x, y: at.y,
+                button: ev.button, buttons: ev.buttons, click_count: ev.detail || 1,
+                modifiers: modifiersOf(ev)});
+        });
+        view.addEventListener('mouseup', function(ev) {
+            ev.preventDefault();
+            const at = frameCoords(view, ev);
+            if (at) sendNativeInput({kind: 'mouse', action: 'up', x: at.x, y: at.y,
+                button: ev.button, buttons: ev.buttons, click_count: ev.detail || 1,
+                modifiers: modifiersOf(ev)});
+        });
+        view.addEventListener('contextmenu', function(ev) { ev.preventDefault(); });
+        view.addEventListener('wheel', function(ev) {
+            ev.preventDefault();
+            const at = frameCoords(view, ev);
+            if (at) sendNativeInput({kind: 'wheel', x: at.x, y: at.y,
+                delta_x: ev.deltaX, delta_y: ev.deltaY, modifiers: modifiersOf(ev)});
+        }, {passive: false});
+        view.addEventListener('keydown', function(ev) {
+            if (NATIVE_KEYS.indexOf(ev.key) !== -1) {
+                ev.preventDefault();
+                sendNativeInput({kind: 'key', key: ev.key, code: ev.code,
+                    modifiers: modifiersOf(ev)});
+            } else if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey) {
+                ev.preventDefault();
+                sendNativeInput({kind: 'text', text: ev.key});
+            }
+        });
+    }
+
+    function setRealBrowserPane(mode) {
+        browserPane.innerHTML = '<img id="native-view" tabindex="0" alt="Captured browser"'
+            + ' src="' + workspaceUrl + '/native/stream/?t=' + Date.now() + '"'
+            + ' style="width:100%;height:100%;object-fit:contain;background:#0b1220;outline:0;cursor:default;">';
+        const view = document.getElementById('native-view');
+        attachNativeInput(view);
+        view.focus();
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function(card) {
             card.classList.remove('selected');
@@ -166,7 +254,7 @@
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
             if (mode === 'native' && data.browser && data.browser.started) {
-                setRealBrowserPlaceholder(mode);
+                setRealBrowserPane(mode);
             } else if (mode === 'native' && nativeTopLevel) {
                 window.open(upstreamBrowseUrl, '_blank', 'noopener');
                 setTopLevelPlaceholder(mode);
