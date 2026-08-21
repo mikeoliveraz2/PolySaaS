@@ -22,10 +22,9 @@
 # BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
 #
 # FIX 2026-08-21 SUPERSEDED by POLYSNIFFER_NATIVE_FORWARDER north star:
-# Do not open upstream origin in a top-level tab for Native. CSP is stripped on
-# the polysniff proxy; Native always embeds host-keyed /pt/polysniff/<host>/.
-# requires_top_level_native is retained on handlers but workspace ignores it for
-# launch (see sniff_workspace.html). Owner-approved plan 2026-08-21.
+# Native = /admin/polysniffer/sniff/<host>/native/ (no green bar).
+# Passthrough = workspace/passthrough with orchestration bar + consumer bind.
+# Do not launch Native via /pt/polysniff/ (that path is passthrough-mode).
 from __future__ import annotations
 
 import json
@@ -48,6 +47,10 @@ from dose.passthrough.registry import resolve_handler_for_endpoint
 logger = logging.getLogger(__name__)
 
 
+def _workspace_pt_shell_base(endpoint_host: str) -> str:
+    return f"/admin/polysniffer/sniff/{endpoint_host}/workspace/passthrough"
+
+
 def _endpoint_label(endpoint) -> str:
     return endpoint.menu_title or endpoint.endpoint_url or f"Endpoint {endpoint.pk}"
 
@@ -67,7 +70,7 @@ def _native_browse_subpath(endpoint) -> str:
 
 @staff_member_required
 def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_path: str = ""):
-    """PolySniffer workspace — native inline embed or passthrough orchestration + capture."""
+    """PolySniffer workspace — native capture (no orch bar) or passthrough + green bar."""
     try:
         endpoint = get_endpoint_by_host(endpoint_host, request)
     except Exception as exc:
@@ -83,7 +86,6 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
 
         ensure_capture_session(request, endpoint_host, active_mode)
     else:
-        # Fresh workspace window: do not carry over a prior capture session
         request.session.pop(f"polysniffer_{endpoint_host}_capture", None)
         request.session.pop(f"polysniffer_{endpoint_host}_mode", None)
         active_mode = ""
@@ -95,8 +97,16 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
 
     app_launch_url = ""
+    pt_embed_ctx = None
     if active_session and active_mode == "native":
-        app_launch_url = upstream_browse_url
+        native_subpath = (browse_path or browse_subpath or "/").strip()
+        if not native_subpath.startswith("/"):
+            native_subpath = f"/{native_subpath}"
+        schema = getattr(request, "schema_name", "") or ""
+        q = f"?_ps_tenant={schema}" if schema else ""
+        app_launch_url = (
+            f"/admin/polysniffer/sniff/{endpoint_host}/native{native_subpath}{q}"
+        )
     elif active_session and active_mode == "passthrough":
         frame_subpath = (browse_path or browse_subpath or "/").strip()
         if not frame_subpath.startswith("/"):
@@ -105,41 +115,46 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             f"{endpoint.get_proxy_prefix().rstrip('/')}"
             f"{frame_subpath}"
         )
+        try:
+            from dose.polysniffer.sniff_pt_embed import build_inline_passthrough_embed_context
+
+            pt_embed_ctx = build_inline_passthrough_embed_context(
+                request,
+                endpoint.pk,
+                endpoint,
+                frame_subpath,
+                endpoint_label=_endpoint_label(endpoint),
+                shell_base=_workspace_pt_shell_base(endpoint_host),
+            )
+        except Exception:
+            logger.exception("passthrough inline embed build failed")
+
     workspace_prefix = f"/admin/polysniffer/sniff/{endpoint_host}"
     poll_url = f"{workspace_prefix}/workspace/poll/"
-    # See 2026-08-20 fix note above: this is the tenant schema already resolved
-    # (authoritatively) for this endpoint by get_endpoint_by_host(), not a guess.
     schema = getattr(request, "schema_name", "") or ""
 
-    # See 2026-08-21 fix note above: ask the resolved handler (if any) whether
-    # this app can be embedded at all -- default False for every handler that
-    # doesn't override it, so behavior is unchanged for existing apps.
-    native_top_level = False
-    try:
-        handler = resolve_handler_for_endpoint(endpoint)
-        if handler is not None:
-            native_top_level = bool(handler.requires_top_level_native(request))
-    except Exception:
-        native_top_level = False
+    context = {
+        "endpoint": endpoint,
+        "endpoint_host": endpoint_host,
+        "endpoint_label": _endpoint_label(endpoint),
+        "mode": active_mode,
+        "app_launch_url": app_launch_url,
+        "browse_subpath": browse_subpath,
+        "upstream_browse_url": upstream_browse_url,
+        "active_session": active_session,
+        "diff_url": f"{workspace_prefix}/diff/",
+        "export_url": f"{workspace_prefix}/export-har/",
+        "poll_url": poll_url,
+        "schema": schema,
+        "native_top_level": False,
+    }
+    if pt_embed_ctx:
+        context.update(pt_embed_ctx)
 
     return render(
         request,
         "polysniffer/sniff_workspace.html",
-        {
-            "endpoint": endpoint,
-            "endpoint_host": endpoint_host,
-            "endpoint_label": _endpoint_label(endpoint),
-            "mode": active_mode,
-            "app_launch_url": app_launch_url,
-            "browse_subpath": browse_subpath,
-            "upstream_browse_url": upstream_browse_url,
-            "active_session": active_session,
-            "diff_url": f"{workspace_prefix}/diff/",
-            "export_url": f"{workspace_prefix}/export-har/",
-            "poll_url": poll_url,
-            "schema": schema,
-            "native_top_level": native_top_level,
-        },
+        context,
     )
 
 

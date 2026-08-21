@@ -4,13 +4,16 @@ Authoritative design: `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.m
 
 ## Rule
 
-**Native mode must browse through the forwarder / host-keyed `/pt/polysniff/<host>/` so TrafficLog/HAR capture sees the same traffic a future passthrough handler will proxy.**
+**Native mode** browses `/admin/polysniffer/sniff/<host>/native/...` through the forwarder so TrafficLog/HAR sees proxy traffic. **No green orchestration bar.**
+
+**Passthrough mode** is where Native evidence meets product UI: green bar + Insert Orchestration / bind action path → consumer.
 
 Do **not**:
 
-- Launch Playwright / external Chromium as the default Native capture path
-- Bypass the proxy so the browser talks to upstream origin directly during Native sniff
-- Propose iframes as the default SPA embed
+- Launch Playwright / external Chromium as Native
+- Point Native at `/pt/polysniff/` (passthrough-mode path with the bar)
+- Put Insert Orchestration / consumer-bind controls on Native Live capture
+- Use iframes as the default SPA embed
 
 ## Success metric
 
