@@ -1,5 +1,6 @@
 """The workspace pane renders the captured browser and drives it back."""
 import threading
+import types
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -156,6 +157,10 @@ class ScreencastPumpTests(SimpleTestCase):
 
         session.on.assert_called_once()
         self.assertEqual(session.send.call_args[0][0], "Page.startScreencast")
+        # Playwright sets an attribute on the handler it is given, which a
+        # builtin method cannot carry, so the handler must be a real function.
+        handler = session.on.call_args[0][1]
+        self.assertIsInstance(handler, types.FunctionType)
 
         session.send.reset_mock()
         pump._pending.append({"data": "aGk=", "sessionId": 7})

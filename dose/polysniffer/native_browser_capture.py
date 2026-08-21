@@ -214,7 +214,9 @@ class _ScreencastPump:
             return
         try:
             session = self._context.new_cdp_session(page)
-            session.on("Page.screencastFrame", self._pending.append)
+            # Playwright tags handlers with an attribute, so this has to be a
+            # plain function: a builtin like deque.append cannot carry one.
+            session.on("Page.screencastFrame", lambda frame: self._pending.append(frame))
             session.send(
                 "Page.startScreencast",
                 {
