@@ -47,10 +47,6 @@ from dose.passthrough.registry import resolve_handler_for_endpoint
 logger = logging.getLogger(__name__)
 
 
-def _workspace_pt_shell_base(endpoint_host: str) -> str:
-    return f"/admin/polysniffer/sniff/{endpoint_host}/workspace/passthrough"
-
-
 def _endpoint_label(endpoint) -> str:
     return endpoint.menu_title or endpoint.endpoint_url or f"Endpoint {endpoint.pk}"
 
