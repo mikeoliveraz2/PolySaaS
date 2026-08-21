@@ -69,45 +69,13 @@ def session_start(request, endpoint_host: str):
     request.session[f"polysniffer_{endpoint_host}_capture"] = cap.id
     browser = None
     if real_browser:
-        from dose.passthrough.registry import resolve_handler_for_endpoint
         from dose.polysniffer.native_browser_capture import start_native_browser
-
-        handler = resolve_handler_for_endpoint(endpoint)
-        session_cookies = []
-        persist_cookies = None
-        get_cookies = getattr(handler, "native_session_cookies", None)
-        if get_cookies:
-            try:
-                session_cookies = (
-                    get_cookies(
-                        request,
-                        tenant_schema=tenant.schema_name,
-                        endpoint_host=endpoint_host,
-                    )
-                    or []
-                )
-            except Exception:
-                session_cookies = []
-        remember = getattr(handler, "remember_native_session_cookies", None)
-        if remember:
-            schema_name = tenant.schema_name
-            host = endpoint_host
-
-            def persist_cookies(cookies, _remember=remember, _schema=schema_name, _host=host):
-                _remember(
-                    cookies,
-                    request=None,
-                    tenant_schema=_schema,
-                    endpoint_host=_host,
-                )
 
         browser = start_native_browser(
             endpoint_url=endpoint.endpoint_url,
             tenant_schema=tenant.schema_name,
             capture_session_id=cap.id,
             endpoint_host=endpoint_host,
-            session_cookies=session_cookies,
-            persist_cookies=persist_cookies,
         )
         if not browser["started"]:
             cap.is_active = False

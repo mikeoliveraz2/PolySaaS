@@ -74,13 +74,9 @@ _RUNS_LOCK = threading.Lock()
 # because sites treat headless sessions differently during sign-in, and the
 # backgrounding flags stop Chrome throttling the renderer of a window it thinks
 # nobody is looking at — without them the pane freezes.
-#
-# Viewport matches a typical left-pane aspect (wider than tall) so Slack's login
-# card is not a postage stamp in a letterboxed tall frame.
-_VIEWPORT = {"width": 1280, "height": 800}
 _LAUNCH_ARGS = [
     "--window-position=-32000,-32000",
-    "--window-size=1280,800",
+    "--window-size=1600,1000",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
     "--disable-background-timer-throttling",
@@ -255,8 +251,8 @@ class _ScreencastPump:
                 {
                     "format": "jpeg",
                     "quality": 70,
-                    "maxWidth": 1280,
-                    "maxHeight": 800,
+                    "maxWidth": 1920,
+                    "maxHeight": 1200,
                     "everyNthFrame": 1,
                 },
             )
@@ -379,8 +375,6 @@ def _browser_worker(
     tenant_schema: str,
     capture_session_id: int,
     endpoint_host: str,
-    session_cookies: list | None = None,
-    persist_cookies=None,
 ) -> None:
     from playwright.sync_api import sync_playwright
 
@@ -423,7 +417,7 @@ def _browser_worker(
                 headless=False,
                 record_har_path=str(har_path),
                 record_har_mode="full",
-                viewport=_VIEWPORT,
+                no_viewport=True,
                 args=_LAUNCH_ARGS,
             )
             run.started_event.set()
@@ -449,17 +443,6 @@ def _browser_worker(
                     attach_page(page)
                 else:
                     page = context.new_page()
-                # Handler-supplied session cookies land before the first paint so
-                # a prior Slack session can skip the login screen. Failures here
-                # must not abort capture — the user can still sign in by hand.
-                if session_cookies:
-                    try:
-                        context.add_cookies(session_cookies)
-                    except Exception:
-                        logger.exception(
-                            "Native browser could not apply session cookies for %s",
-                            endpoint_host,
-                        )
                 screencast = _ScreencastPump(context, run)
                 screencast.attach(page)
                 page.goto(endpoint_url, wait_until="domcontentloaded", timeout=60000)
@@ -477,16 +460,7 @@ def _browser_worker(
             finally:
                 # Playwright writes the HAR when the context closes, so this has
                 # to happen even when the session ended badly, or the recording
-                # is lost entirely. Export cookies first so the next Native start
-                # can pre-position them before the first paint.
-                if persist_cookies is not None:
-                    try:
-                        persist_cookies(context.cookies())
-                    except Exception:
-                        logger.exception(
-                            "Native browser cookie export failed for %s",
-                            endpoint_host,
-                        )
+                # is lost entirely.
                 try:
                     context.close()
                 except Exception:
@@ -512,8 +486,6 @@ def start_native_browser(
     tenant_schema: str,
     capture_session_id: int,
     endpoint_host: str,
-    session_cookies: list | None = None,
-    persist_cookies=None,
 ) -> dict:
     key = _run_key(tenant_schema, endpoint_host)
     with _RUNS_LOCK:
@@ -535,8 +507,6 @@ def start_native_browser(
             "tenant_schema": tenant_schema,
             "capture_session_id": capture_session_id,
             "endpoint_host": endpoint_host,
-            "session_cookies": session_cookies or [],
-            "persist_cookies": persist_cookies,
         },
         name=f"polysniffer-native-{_safe_path_part(endpoint_host)}",
         daemon=True,

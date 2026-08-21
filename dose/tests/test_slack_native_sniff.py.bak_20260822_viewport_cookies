@@ -136,43 +136,9 @@ class SlackNativeSniffTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         get_endpoint.assert_called_once_with("polysaasworkspace.slack.com", request)
-        kwargs = start_browser.call_args.kwargs
-        self.assertEqual(kwargs["endpoint_url"], "https://polysaasworkspace.slack.com")
-        self.assertEqual(kwargs["tenant_schema"], "polysaasonline")
-        self.assertEqual(kwargs["capture_session_id"], 44)
-        self.assertEqual(kwargs["endpoint_host"], "polysaasworkspace.slack.com")
-        self.assertEqual(kwargs["session_cookies"], [])
-        self.assertTrue(callable(kwargs["persist_cookies"]))
-
-    def test_slack_handler_remembers_only_slack_cookies(self):
-        import tempfile
-        from pathlib import Path
-
-        from dose.passthrough.handlers.slack_handler import SlackPassthroughHandler
-
-        handler = SlackPassthroughHandler()
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                handler.remember_native_session_cookies(
-                    [
-                        {"name": "d", "value": "secret", "domain": ".slack.com", "path": "/"},
-                        {"name": "tracker", "value": "x", "domain": ".ads.example", "path": "/"},
-                    ],
-                    tenant_schema="olient",
-                    endpoint_host="app.slack.com",
-                )
-                cookies = handler.native_session_cookies(
-                    tenant_schema="olient", endpoint_host="app.slack.com"
-                )
-                store = (
-                    Path(media_root)
-                    / "polysniffer"
-                    / "native"
-                    / "profiles"
-                    / "olient"
-                    / "app.slack.com"
-                    / "session_cookies.json"
-                )
-                self.assertEqual(len(cookies), 1)
-                self.assertEqual(cookies[0]["name"], "d")
-                self.assertTrue(store.is_file())
+        start_browser.assert_called_once_with(
+            endpoint_url="https://polysaasworkspace.slack.com",
+            tenant_schema="polysaasonline",
+            capture_session_id=44,
+            endpoint_host="polysaasworkspace.slack.com",
+        )
