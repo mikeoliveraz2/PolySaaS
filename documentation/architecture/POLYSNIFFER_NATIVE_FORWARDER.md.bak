@@ -4,16 +4,27 @@
 
 Agents must not invent Native as an external Chromium/plain-browser session. Native traffic crosses the forwarder so HARs match what a handler will later proxy.
 
+## Two modes (same workspace shell)
+
+| Mode | Browse URL | Green orchestration bar | Purpose |
+|------|------------|-------------------------|---------|
+| **Native** | `/admin/polysniffer/sniff/<host>/native/...` | **No** | Discovery HAR through forwarder (cookies, headers, bodies, assets) |
+| **Passthrough** | `/admin/polysniffer/sniff/<host>/workspace/passthrough/...` | **Yes** | Product look-and-feel + **Insert Orchestration** / bind action path → consumer |
+
+Slack Native must look like every other Native: no green bar. The bar and consumer-bind UI meet only on Passthrough.
+
+Do **not** launch Native via `/pt/polysniff/` — that path is passthrough-mode and carries the bar.
+
 ## Intent
 
 ```
 User (workspace pane)
-  → Native browse through forwarder / host-keyed /pt/polysniff/<host>/
+  → Native browse through forwarder /admin/polysniffer/sniff/<host>/native/
   → Upstream app
   → Forwarder strips/relays
   → TrafficLog / HAR (cookies, headers, bodies, assets, redirects)
   → Enough evidence → app handler + Passthrough
-  → Attach orchestration at action paths (webhook → consumer)
+  → Passthrough: green bar + attach action path → webhook/consumer
   → Orchestration bar (DoseMessage)
 ```
 
