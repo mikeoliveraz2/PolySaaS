@@ -37,62 +37,67 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         context.update(overrides)
         return render_to_string("polysniffer/sniff_workspace.html", context)
 
-    def test_shell_never_inlines_upstream_head_or_body(self):
-        marker = "UPSTREAM-MUST-NOT-ENTER-POLYSNIFFER-DOCUMENT"
-        hostile = {
-            "native_embed_head": f"<style>.toolbar{{display:none}}</style>{marker}",
-            "native_embed_body": f"<main>{marker}</main>",
-            "native_browse_base": "/native/",
-        }
+    def test_shell_inlines_native_embed_when_provided(self):
+        html = self._render_shell(
+            "native",
+            native_embed_head="<style id='ps-native-style'>.x{color:red}</style>",
+            native_embed_body='<div class="polysniffer-native-inline">NATIVE-INLINE-OK</div>',
+        )
+        self.assertIn("NATIVE-INLINE-OK", html)
+        self.assertIn("polysniffer-native-inline", html)
+        self.assertIn("ps-native-style", html)
+        self.assertNotIn("<object", html)
 
-        html = self._render_shell("native", native_inline=hostile)
-
-        self.assertNotIn(marker, html)
-        self.assertNotIn(".toolbar{display:none}", html)
-
-    def test_shell_keeps_passthrough_in_pane_and_native_in_real_browser(self):
+    def test_shell_keeps_passthrough_in_pane_and_native_inline(self):
         native_html = self._render_shell("native")
         passthrough_html = self._render_shell("passthrough")
 
         self.assertIn('id="browser-pane"', native_html)
-        self.assertIn("setBrowserUrl", native_html)
-        self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/native", native_html)
-        self.assertIn("encodeURIComponent(tenantSchema)", native_html)
+        self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/workspace/native", native_html)
+        self.assertIn("_ps_tenant=", native_html)
         self.assertIn("'/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough", passthrough_html)
-        self.assertIn("Native browser opened in Chromium", native_html)
-        native_branch = native_html.split("if (mode === 'passthrough')", 1)[1].split(
-            "window.stopSession", 1
-        )[0]
-        self.assertNotIn("setBrowserUrl(launch, mode)", native_branch)
+        # Native and Passthrough both full-shell navigate to workspace/* inline embed.
+        self.assertIn("window.location.href = launch", native_html)
+        self.assertNotIn("<object", native_html)
         self.assertNotIn("window.open('about:blank'", native_html)
-        self.assertNotIn("window.location.assign(passthroughLaunchUrl)", passthrough_html)
         for shell_element in ('class="topbar"', 'class="split"', 'id="captures"'):
             self.assertEqual(native_html.count(shell_element), passthrough_html.count(shell_element))
 
     def test_start_injects_sniff_proxy_into_the_browser_pane(self):
         html = self._render_shell("")
 
-        self.assertIn("function setBrowserUrl", html)
         self.assertIn("nativeLaunchUrl", html)
         self.assertIn("passthroughLaunchUrl", html)
+        self.assertIn("window.location.href = launch", html)
         self.assertNotIn("window.open('about:blank', '_blank')", html)
-        self.assertNotIn("window.location.assign(passthroughLaunchUrl)", html)
         self.assertIn("/admin/polysniffer/sniff/", html)
+        self.assertNotIn("<object", html)
 
     def test_mode_viewports_use_the_polysniff_proxy_in_the_pane(self):
         native_html = self._render_shell("native", browse_subpath="/web")
         passthrough_html = self._render_shell("passthrough", browse_subpath="/web")
 
-        self.assertIn("endpointHost + '/native/web?schema='", native_html)
-        self.assertIn("endpointHost + '/workspace/passthrough/web'", passthrough_html)
+        self.assertIn("endpointHost + '/workspace/native/web' + schemaQuery", native_html)
+        self.assertIn("endpointHost + '/workspace/passthrough/web' + schemaQuery", passthrough_html)
+        self.assertIn("_ps_tenant=", native_html)
         self.assertNotIn('href="https://example.test/web"', native_html)
         self.assertNotIn('href="/pt/admin/example.test/web"', passthrough_html)
 
     @patch("dose.polysniffer.views.sniff_v2_workspace.render")
     @patch("dose.polysniffer.views.sniff_v2_workspace.get_sniff_capture_session")
     @patch("dose.polysniffer.views.sniff_v2_workspace.get_endpoint_by_host")
+    @patch(
+        "dose.polysniffer.sniff_native_embed.build_inline_native_embed_context",
+        return_value=None,
+    )
+    @patch(
+        "dose.polysniffer.sniff_pt_embed.build_inline_passthrough_embed_context",
+        return_value=None,
+    )
     def test_workspace_view_supplies_mode_proxy_to_shared_viewport(
         self,
+        _pt_embed,
+        _native_embed,
         get_endpoint,
         get_capture,
         render_workspace,
@@ -107,7 +112,7 @@ class PolySnifferShellIsolationTests(SimpleTestCase):
         render_workspace.return_value = HttpResponse("workspace")
 
         expected_urls = {
-            "native": "/admin/polysniffer/sniff/example.test/native/web",
+            "native": "/admin/polysniffer/sniff/example.test/workspace/native/web",
             "passthrough": "/pt/admin/example.test/web",
         }
         for mode, expected_url in expected_urls.items():
@@ -351,7 +356,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
     @patch("dose.polysniffer.sniff_forward.get_sniff_capture_session", return_value=None)
     @patch("dose.polysniffer.sniff_forward.bind_request_tenant", return_value=None)
     @patch("dose.polysniffer.sniff_native_rewrite.rewrite_generic_native_fallback")
-    @patch("dose.passthrough.registry.resolve_handler_for_endpoint")
+    @patch("dose.polysniffer.sniff_forward.resolve_handler_for_endpoint", return_value=None)
     @patch("dose.polysniffer.sniff_forward.requests.request")
     def test_native_returns_raw_body_without_handler_or_rewrite(
         self,
@@ -382,7 +387,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
 
         response = forward_sniff_native(request, endpoint, "/")
 
-        resolve_handler.assert_not_called()
+        resolve_handler.assert_called_once_with(endpoint)
         generic_rewrite.assert_not_called()
         _get_capture.assert_called_once_with(request, "example.test")
         self.assertEqual(response.content, b"RAW-UPSTREAM")
@@ -522,7 +527,7 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
         context = render_workspace.call_args.args[2]
         self.assertEqual(
             context["app_launch_url"],
-            "/admin/polysniffer/sniff/example.test/native/web",
+            "/admin/polysniffer/sniff/example.test/workspace/native/web",
         )
 
     def test_generator_requires_an_explicit_native_capture_session(self):
@@ -564,7 +569,8 @@ class PolySnifferFutureArchitectureTests(SimpleTestCase):
 
         self.assertIn("/admin/polysniffer/sniff/example.test/", str(source))
         self.assertNotIn("/admin/polysniffer/sniff/17/", str(source))
-        self.assertIn("schema=tenant_alpha", str(source))
+        self.assertIn("_ps_tenant=tenant_alpha", str(source))
+        self.assertNotIn("schema=tenant_alpha", str(source))
 
     def test_endpoint_resolver_search_paths_never_include_public(self):
         source = (

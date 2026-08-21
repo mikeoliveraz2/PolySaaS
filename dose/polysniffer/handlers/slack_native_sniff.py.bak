@@ -76,33 +76,6 @@ def _rewrite_meta_refresh_through_proxy(html: str, proxy_prefix: str) -> str:
     )
 
 
-_HTML_TAG_RE = re.compile(r"(?is)<html\b([^>]*)>")
-_ATTR_RE = re.compile(r"""(?is)([a-z_:][-a-z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""")
-
-
-def _root_element_attrs(html: str) -> dict:
-    """Slack keeps its CDN base on <html data-cdn=...>; inline embeds drop the tag."""
-    m = _HTML_TAG_RE.search(html or "")
-    if not m:
-        return {}
-    attrs = {}
-    for name, dq, sq, bare in _ATTR_RE.findall(m.group(1) or ""):
-        key = name.lower()
-        if key.startswith("data-") or key in ("lang", "dir"):
-            attrs[key] = dq or sq or bare or ""
-    return attrs
-
-
-def _sniff_root_prefix(proxy_prefix: str) -> str:
-    """PolySaaS-owned URL space the shim must never rewrite (workspace poll, admin)."""
-    prefix = proxy_prefix or ""
-    marker = "/sniff/"
-    idx = prefix.find(marker)
-    if idx == -1:
-        return ""
-    return prefix[: idx + len(marker)]
-
-
 def _inject_native_firewall_shim(
     html: str,
     proxy_prefix: str,
@@ -110,7 +83,6 @@ def _inject_native_firewall_shim(
     upstream_origin: str,
     *,
     shell_prefix: str = "",
-    root_attrs: dict | None = None,
 ) -> str:
     """Keep the SPA on the native proxy — including absolute Slack navigations.
 
@@ -129,16 +101,6 @@ def _inject_native_firewall_shim(
   var SHELL = {json.dumps(shell)};
   var PS_TENANT = {json.dumps(tenant or "")};
   var UPSTREAM = {json.dumps(upstream)};
-  var PS_OWN = {json.dumps(_sniff_root_prefix(prefix))};
-  var ROOT_ATTRS = {json.dumps(root_attrs or {})};
-  try {{
-    var root = document.documentElement;
-    for (var k in ROOT_ATTRS) {{
-      if (Object.prototype.hasOwnProperty.call(ROOT_ATTRS, k) && !root.hasAttribute(k)) {{
-        root.setAttribute(k, ROOT_ATTRS[k]);
-      }}
-    }}
-  }} catch (e) {{}}
   console.log('[PS SLACK FIREWALL] installed', {{
     proxy: PROXY,
     shell: SHELL,
@@ -169,15 +131,11 @@ def _inject_native_firewall_shim(
     if (SHELL && path.indexOf(SHELL) === 0) return path.slice(SHELL.length) || '/';
     return path;
   }}
-  function isOwnPath(path) {{
-    return !!(PS_OWN && String(path || '').indexOf(PS_OWN) === 0);
-  }}
   function rewriteTo(base, url) {{
     if (typeof url !== 'string' || !url) return url;
     if (url.indexOf('data:') === 0 || url.indexOf('blob:') === 0) return url;
     try {{
       var parsed = new URL(url, window.location.origin);
-      if (parsed.origin === window.location.origin && isOwnPath(parsed.pathname)) return url;
       if (parsed.origin === UPSTREAM || isSlackHost(parsed.hostname)) {{
         return withTenant(base + toProxyPath(parsed));
       }}
@@ -187,7 +145,6 @@ def _inject_native_firewall_shim(
       return withTenant(base + path);
     }} catch (e) {{
       if (url.charAt(0) === '/') {{
-        if (isOwnPath(url)) return url;
         var p = stripKnownPrefix(url);
         if (p.charAt(0) !== '/') p = '/' + p;
         return withTenant(base + p);
@@ -316,7 +273,6 @@ def process_slack_native_sniff(
 
     # Must strip before our shims land — Slack CSP meta ∩ our header CSP = blocked inline.
     html = _strip_csp_meta(html)
-    root_attrs = _root_element_attrs(html)
 
     prefix = (proxy_prefix or "").strip().rstrip("/")
     if prefix:
@@ -339,12 +295,7 @@ def process_slack_native_sniff(
     ).strip()
     # Firewall last so Location / setAttribute patches win.
     html = _inject_native_firewall_shim(
-        html,
-        prefix,
-        tenant,
-        base_origin,
-        shell_prefix=shell_prefix,
-        root_attrs=root_attrs,
+        html, prefix, tenant, base_origin, shell_prefix=shell_prefix
     )
     return html.encode("utf-8")
 

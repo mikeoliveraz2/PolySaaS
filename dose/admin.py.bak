@@ -270,6 +270,10 @@ class InstructionForm(forms.ModelForm):
             normalize_executescript_value,
             CUSTOM_ENDPOINT_LABEL,
         )
+        from dose.services.atomic_service_selector import (
+            count_service_choices,
+            infer_atomic_app_key,
+        )
         from dose.utils import get_current_tenant
 
         tenant_name = None
@@ -282,8 +286,12 @@ class InstructionForm(forms.ModelForm):
         if self.instance and getattr(self.instance, 'pk', None):
             current = normalize_executescript_value(self.instance.executescript)
 
-        service_names = [c[0] for c in build_executescript_choices(tenant_name=tenant_name) if c[0]]
-        choices = build_executescript_choices(tenant_name=tenant_name, current_value=current)
+        app_key = infer_atomic_app_key(self.admin_request)
+        choices = build_executescript_choices(
+            tenant_name=tenant_name, current_value=current, app_key=app_key
+        )
+        service_count = count_service_choices(choices)
+        app_note = f' Filtered to {app_key} + generic.' if app_key else ''
 
         self.fields['executescript'] = forms.ChoiceField(
             choices=choices,
@@ -296,8 +304,9 @@ class InstructionForm(forms.ModelForm):
                 }
             ),
             help_text=(
-                f'Select one of {len(service_names)} service(s) from dose/services/ '
-                f'(auto-discovered registry). Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist.'
+                f'Select one of {service_count} service(s) from dose/services/ '
+                f'(auto-discovered registry).{app_note} '
+                f'Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist.'
             ),
         )
         if not self.is_bound and current is not None:
@@ -359,12 +368,18 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 build_executescript_choices,
                 CUSTOM_ENDPOINT_LABEL,
             )
+            from dose.services.atomic_service_selector import (
+                count_service_choices,
+                infer_atomic_app_key,
+            )
             from dose.utils import get_current_tenant
 
             tenant = get_current_tenant(request)
             tenant_name = getattr(tenant, 'schema_name', None) if tenant else None
-            choices = build_executescript_choices(tenant_name=tenant_name)
-            service_count = sum(1 for v, _ in choices if v)
+            app_key = infer_atomic_app_key(request)
+            choices = build_executescript_choices(tenant_name=tenant_name, app_key=app_key)
+            service_count = count_service_choices(choices)
+            app_note = f' Filtered to {app_key} + generic.' if app_key else ''
             return forms.ChoiceField(
                 label='Atomic Service',
                 choices=choices,
@@ -377,7 +392,8 @@ class InstructionAdmin(TenantAwareModelAdmin):
                 ),
                 help_text=(
                     f'Select one of {service_count} service(s) from the dose/services '
-                    f'registry. Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist instead.'
+                    f'registry.{app_note} '
+                    f'Choose "{CUSTOM_ENDPOINT_LABEL}" to use urllist instead.'
                 ),
             )
         return super().formfield_for_dbfield(db_field, request, **kwargs)
@@ -392,9 +408,9 @@ class InstructionAdmin(TenantAwareModelAdmin):
             ],
             'description': (
                 '<b>Matching</b> — requestpath + match_type decide when this instruction fires.<br>'
-                '<b>Atomic Service</b> — dropdown lists every class in <code>dose/services/</code> '
-                'that defines <code>execute_and_save(request, instruction_row)</code> '
-                '(e.g. HelloWorld, EndpointDataExtractor). '
+                '<b>Atomic Service</b> — dropdown lists services from <code>dose/services/</code> '
+                'that define <code>execute_and_save</code>, grouped by category. '
+                'When opened from a passthrough app, only that app plus generic services are listed. '
                 'Selecting a service fills <code>parameters_json</code> with sample required fields. '
                 'Pick <i>Custom Endpoint URL</i> to use urllist instead.'
             ),

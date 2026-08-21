@@ -14,9 +14,7 @@ PolySniffer 2.0 — native (transparent) sniff forwarder.
 
 from __future__ import annotations
 
-import logging
 import time
-from http.cookies import CookieError, SimpleCookie
 from urllib.parse import urlencode, urljoin, urlparse
 
 import requests
@@ -27,8 +25,6 @@ from dose.polysniffer.har_capture import log_requests_response
 from dose.polysniffer.sniff_handler_bridge import apply_native_sniff_rewrites
 from dose.polysniffer.sniff_native_rewrite import filter_native_response_headers
 from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
-
-logger = logging.getLogger(__name__)
 
 
 def _resolve_upstream_url(endpoint_url: str, subpath: str) -> tuple[str, str]:
@@ -93,64 +89,6 @@ _HOP_BY_HOP_RESPONSE_HEADERS = frozenset(
 )
 
 
-class _CaptureSafeResponse:
-    """Capture-only view of the upstream response.
-
-    Binary bodies (beacons, images, gzip) decode to text containing NUL, which
-    PostgreSQL rejects outright — the insert raised and took the proxied
-    response down with it. The bytes handed to the browser are untouched.
-    """
-
-    __slots__ = ('_resp', 'content')
-
-    def __init__(self, resp):
-        self._resp = resp
-        raw = resp.content or b''
-        self.content = raw.replace(b'\x00', b'') if b'\x00' in raw else raw
-
-    def __getattr__(self, name):
-        return getattr(self._resp, name)
-
-
-def _upstream_set_cookie_headers(resp) -> list:
-    """Every Set-Cookie separately — dict(resp.headers) comma-joins them."""
-    try:
-        return list(resp.raw.headers.get_all('Set-Cookie') or [])
-    except Exception:
-        pass
-    try:
-        return list(resp.raw.headers.getlist('Set-Cookie') or [])
-    except Exception:
-        pass
-    single = (getattr(resp, 'headers', {}) or {}).get('Set-Cookie')
-    return [single] if single else []
-
-
-def _relay_upstream_cookies(request, resp, django_resp) -> None:
-    """Re-issue upstream cookies for the proxy origin.
-
-    Upstream sends Domain=.<upstream>; Secure, which the browser silently
-    refuses to store for the PolySaaS host — the app then waits forever for a
-    session cookie that can never appear.
-    """
-    secure_request = request.is_secure()
-    for raw in _upstream_set_cookie_headers(resp):
-        try:
-            jar = SimpleCookie()
-            jar.load(raw)
-        except CookieError:
-            logger.warning('PolySniffer could not parse upstream cookie: %s', raw[:80])
-            continue
-        for name, morsel in jar.items():
-            morsel['domain'] = ''
-            if not secure_request:
-                morsel['secure'] = ''
-                if (morsel['samesite'] or '').lower() == 'none':
-                    # SameSite=None is only honoured on secure cookies.
-                    morsel['samesite'] = 'Lax'
-            django_resp.cookies[name] = morsel
-
-
 def _outbound_headers(request) -> dict:
     skip = {
         'host', 'connection', 'content-length', 'transfer-encoding',
@@ -197,22 +135,17 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
         request._polysniffer_capture = session
 
     if session or getattr(request, '_polysniffer_capture', None):
-        try:
-            log_requests_response(
-                request,
-                _CaptureSafeResponse(resp),
-                capture_source='native',
-                target_url=target_url,
-                upstream_path=upstream_path,
-                endpoint_name=endpoint.menu_title or endpoint.endpoint_url or service,
-                service=service,
-                sniff_mode='native',
-                duration_ms=duration_ms,
-            )
-        except Exception:
-            # Capture is observation, never the product: a bad HAR row must not
-            # turn a healthy upstream response into a 500 for the browser.
-            logger.exception('PolySniffer native capture failed for %s', target_url)
+        log_requests_response(
+            request,
+            resp,
+            capture_source='native',
+            target_url=target_url,
+            upstream_path=upstream_path,
+            endpoint_name=endpoint.menu_title or endpoint.endpoint_url or service,
+            service=service,
+            sniff_mode='native',
+            duration_ms=duration_ms,
+        )
 
     proxy_prefix = getattr(request, '_polysniffer_proxy_prefix', '') or (
         f"/dose/sniff/{getattr(endpoint, 'pk', '')}/native"
@@ -236,6 +169,7 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
         content=content,
         status=resp.status_code,
     )
+
     safe_headers = filter_native_response_headers(dict(resp.headers))
     location = safe_headers.get('Location')
     if location:
@@ -249,10 +183,8 @@ def forward_sniff_native(request, endpoint, subpath: str = '') -> HttpResponse:
             if target.query:
                 target_path += f'?{target.query}'
             safe_headers['Location'] = f'{proxy_prefix}{target_path}'
-    _relay_upstream_cookies(request, resp, django_resp)
-
     for k, v in safe_headers.items():
-        if k.lower() in _HOP_BY_HOP_RESPONSE_HEADERS or k.lower() == 'set-cookie':
+        if k.lower() in _HOP_BY_HOP_RESPONSE_HEADERS:
             continue
         django_resp[k] = v
 

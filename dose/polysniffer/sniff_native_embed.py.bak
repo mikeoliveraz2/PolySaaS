@@ -160,13 +160,6 @@ def build_inline_native_embed_context(
         return None
 
     head_content, body_content = _extract_head_and_body(raw_html)
-    # Belt-and-suspenders: CSP meta must not reach the workspace <head>
-    # (Slack hash-allowlist ∩ Django CSP blocks our inline shims).
-    _csp_meta = re.compile(
-        r"(?is)<meta[^>]+http-equiv\s*=\s*[\"']?content-security-policy[\"']?[^>]*>"
-    )
-    head_content = _csp_meta.sub("", head_content or "")
-    body_content = _csp_meta.sub("", body_content or "")
     head_static, head_scripts = _split_head_for_inline(head_content)
     scoped = (
         f'<div class="polysniffer-native-inline" id="polysniffer-native-inline" '

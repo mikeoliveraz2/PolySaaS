@@ -232,6 +232,35 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             }}
             return _ael.call(this, type, listener, options);
         }};
+        /* Also wrap already-open parent/top so listeners registered there see spoofed origin. */
+        function patchParentMessageBridge(win, label) {{
+            if (!win || win === window) return;
+            try {{
+                var desc = Object.getOwnPropertyDescriptor(Window.prototype, 'onmessage');
+                if (desc && desc.set) {{
+                    Object.defineProperty(win, 'onmessage', {{
+                        configurable: true,
+                        enumerable: true,
+                        get: function() {{ return this.__ps_onmessage; }},
+                        set: function(fn) {{
+                            this.__ps_onmessage = fn;
+                            if (typeof fn === 'function') {{
+                                desc.set.call(this, function(event) {{
+                                    return fn.call(this, spoofMessageEvent(event));
+                                }});
+                            }} else {{
+                                desc.set.call(this, fn);
+                            }}
+                        }}
+                    }});
+                    console.log('[SLACK SHIM] onmessage bridge on ' + label);
+                }}
+            }} catch (e) {{
+                console.warn('[SLACK SHIM] parent onmessage bridge failed ' + label, e);
+            }}
+        }}
+        try {{ if (window.parent && window.parent !== window) patchParentMessageBridge(window.parent, 'parent'); }} catch (e) {{}}
+        try {{ if (window.top && window.top !== window && window.top !== window.parent) patchParentMessageBridge(window.top, 'top'); }} catch (e) {{}}
     }} catch (e) {{}}
     try {{
         var _onMsgDesc = Object.getOwnPropertyDescriptor(Window.prototype, 'onmessage');

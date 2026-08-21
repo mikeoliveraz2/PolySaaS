@@ -7,64 +7,53 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 ## Status
 
 - Date: 2026-08-21
-- Branch: `cursor/polysniffer-slack-native-capture` (merged main Slack proxy-relay)
-- Latest validated handoff: this file
-- Policy: end-of-day work requires a handoff update before the final commit is considered complete
-- North star locked: `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`
+- Branch: `cursor/polysniffer-slack-native-capture`
+- North star: `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`
+- Agent sync: passed
 
-## Architectural lock (do not regress)
+## Implemented this session (Native → Forwarder → Handler plan)
 
-**PolySniffer Native → Forwarder → Handler**
+### 1. Documented lock
 
-1. Native is discovery: richest unmodified HAR (cookies, headers, bodies, JS/assets, redirects) while user walks normal flow in the **unified** workspace UI.
-2. Traffic **must** cross the forwarder / host-keyed `/pt/polysniff/<host>/`. External Chromium / plain browser to upstream is invalid for Native.
-3. Passthrough is built from Native HAR evidence; handlers stay app-isolated.
-4. Orchestration attach = webhook → consumer (mailbox), feedback via DoseMessage / bar — not atomics inside the browse request.
-5. Production Slack events remain API-first (`POLYSAAS_ORCHESTRATION_MODEL.md`). Native Slack proxy is **discovery only**.
+- `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`
+- `.cursor/rules/polysniffer-native-forwarder.mdc`
+- `AI_RULES.md` §5 aligned (API-first production + Native discovery via forwarder)
 
-Rule file: `.cursor/rules/polysniffer-native-forwarder.mdc`
+### 2. Native through forwarder (code)
 
-## Last session summary (2026-08-21 office)
+- **`sniff_session.py`**: Native session start **no longer launches Playwright**. Returns `browse_via=forwarder`. Capture is pane → `/pt/polysniff/<host>/`.
+- **`sniff_workspace.html`**: Always embeds host-keyed polysniff in `<object>`; removed top-level upstream `window.open` bypass. Rich Live capture (headers/cookies/bodies) + **Mark action path** + Instruction draft link.
+- **`sniff_v2_workspace.py`**: Poll returns full HAR-ish fields for Live capture.
+- **`slack_handler.py`**: Stronger MessageEvent / parent `onmessage` spoof bridge.
+- Regression test: `dose/tests/test_native_session_forwarder_only.py` (PASS).
 
-### Doc / process
+### 3. HAR audit + handler-from-HAR docs
 
-- Added `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md` + cursor rule.
-- Merged `origin/main` Slack proxy-relay into feature branch earlier today (`83f0bff6`).
+- `documentation/architecture/POLYSNIFFER_HAR_FIDELITY_AUDIT.md` (gaps; next enrichment = Set-Cookie → HAR cookies — needs owner go)
+- `documentation/architecture/POLYSNIFFER_HANDLER_FROM_HAR.md`
 
-### Prior laptop work still in play (Slack Native pane OPEN)
+### 4. Mailbox track (separate)
 
-1. Host-keyed `/pt/polysniff/<host>/` (not endpoint id).
-2. Slack handler proxy-relay: keep `/auth` on-proxy; `_ps_tenant=` (not `?schema=`); postMessage retarget; MessageEvent origin spoof **not yet proven** in browser after restart.
-3. Native pane: `/` and `/auth` 200; credentials-ready observed; parent still timed out → blank pane.
+- Orchestration model updated with separation note (no clobber of API-first rules).
+- Mailbox timezone compare fixed (`is_expired` / dequeue naive-UTC safe).
+- Live `/poly` still **not** go-live until owner says go.
 
-### Webhook mailbox track (SEPARATE — do not conflate with Native)
+## Browser proof still required (after Waitress restart)
 
-- Code on branch: `WebhookMailbox`, consumer, `publish_slack_command_event` → mailbox.
-- Implement live `/poly` end-to-end only when owner says go.
-- Known issue: timezone-aware datetime comparison in processing path.
+Waitress does not auto-reload. After restart:
 
-## Current priorities
+1. Slack workspace → Start Native → pane must load `/pt/polysniff/app.slack.com/?_ps_tenant=…` (not external Chromium).
+2. Confirm Live capture rows with headers/cookies.
+3. Confirm MessageEvent spoof / auth settle (or capture next console failure).
+4. No BINGO until screenshot of settled Slack UI in Native pane.
 
-1. Prove Slack Native pane through host-keyed polysniff (MessageEvent spoof + Live capture proof).
-2. HAR fidelity audit; one enrichment at a time (owner approve before frozen capture/forwarder edits).
-3. Unified Live capture: mark action paths for later orchestration bind.
-4. Keep mailbox track separate.
+## Prior open item (unchanged until proven)
+
+- Slack auth: credentials-ready + postMessage retarget worked; parent timeout / blank pane was last live failure before this code pass.
 
 ## Next actions
 
-1. Restart Waitress (`runall.ps1`) after code pulls.
-2. Slack workspace → Start Native → `/pt/polysniff/app.slack.com/?_ps_tenant=olient`.
-3. Confirm credentials settle and pane renders; else capture Network + Console.
-4. No BINGO until screenshot of settled Slack UI in Native pane.
-
-## Validation
-
-- Agent sync: `python scripts/check_agent_sync.py` (run at session start).
-- MessageEvent spoof: browser proof pending.
-- Mailbox: write/dequeue exercised earlier; processing timezone bug open.
-
-## Commit info
-
-- Feature branch: `cursor/polysniffer-slack-native-capture`
-- Main tip previously merged: `97e3e460` Slack proxy-relay handoff
-- Mailbox commits remain on branch; orchestration model doc: `POLYSAAS_ORCHESTRATION_MODEL.md`
+1. Owner: restart Waitress (`runall.ps1` or equivalent).
+2. Prove Slack Native pane + Live capture.
+3. Owner go on HAR enrichment A (response cookies) if desired.
+4. Owner go on mailbox `/poly` live slice when ready.

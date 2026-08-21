@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PolySniffer - {% firstof endpoint_label "Workspace" %}</title>
+    {% if native_embed_head %}{{ native_embed_head }}{% endif %}
     {% if passthrough_embed_head %}{{ passthrough_embed_head }}{% endif %}
     {% if passthrough_guard_head %}{{ passthrough_guard_head }}{% endif %}
     <style>
@@ -32,7 +33,7 @@
         .btn-secondary { background: #374151; }
         .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; margin-bottom: 12px; }
         .browser-pane { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #fff; overflow: hidden; }
-        .browser-pane object { width: 100%; height: 100%; border: 0; background: #fff; }
+        .browser-pane .polysniffer-native-inline { width: 100%; height: 100%; }
         .browser-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280; font: 0.8rem Consolas, monospace; background: #111827; }
         .right-col header { padding: 12px 14px; border-bottom: 2px solid #16a34a; }
         .right-col header h2 { margin: 0; color: #4ade80; }
@@ -87,7 +88,9 @@
             <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Endpoints</a>
         </div>
         <div class="browser-pane" id="browser-pane">
-            {% if passthrough_embed_body %}
+            {% if native_embed_body %}
+                {{ native_embed_body }}
+            {% elif passthrough_embed_body %}
                 {{ passthrough_embed_body }}
             {% else %}
                 <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
@@ -111,10 +114,9 @@
        BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21 */
     const schemaQuery = schemaParam ? ('?_ps_tenant=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
-    /* Native = host-keyed sniff forwarder (no orchestration bar).
-       Passthrough = workspace passthrough path (green bar + Insert Instruction / consumer bind).
-       Do not point Native at /pt/polysniff/ — that path is passthrough-mode and carries the bar. */
-    const nativeLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/native{{ browse_subpath|escapejs }}' + schemaQuery;
+    /* Native = workspace/native inline embed (forwarder HTML in left pane; no object/iframe).
+       Passthrough = workspace/passthrough (green bar + Insert Instruction / consumer bind). */
+    const nativeLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/native{{ browse_subpath|escapejs }}' + schemaQuery;
     const passthroughLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough{{ browse_subpath|escapejs }}' + schemaQuery;
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
@@ -123,15 +125,6 @@
 
     const workspaceUrl = '/admin/polysniffer/sniff/' + endpointHost;
     const browserPane = document.getElementById('browser-pane');
-
-    function setBrowserUrl(url, mode) {
-        browserPane.innerHTML = '<object type="text/html" data="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></object>';
-        currentMode = mode;
-        document.querySelectorAll('.mode-card').forEach(function(card) {
-            card.classList.remove('selected');
-            if (card.dataset.mode === mode) card.classList.add('selected');
-        });
-    }
 
     function clearBrowser() {
         browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
@@ -147,16 +140,10 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            if (mode === 'passthrough') {
-                /* Full shell navigation so sniff_shell builds green orch bar + embed. */
-                var launch = passthroughLaunchUrl;
-                launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
-                window.location.href = launch;
-            } else {
-                var nativeLaunch = nativeLaunchUrl;
-                nativeLaunch += (nativeLaunch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
-                setBrowserUrl(nativeLaunch, mode);
-            }
+            /* Full shell navigation so sniff_shell builds inline embed (Native or PT). */
+            var launch = (mode === 'passthrough') ? passthroughLaunchUrl : nativeLaunchUrl;
+            launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
+            window.location.href = launch;
         } catch (error) { alert(error.message); }
     };
 
