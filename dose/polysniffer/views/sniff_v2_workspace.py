@@ -124,7 +124,6 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
                 endpoint,
                 frame_subpath,
                 endpoint_label=_endpoint_label(endpoint),
-                shell_base=_workspace_pt_shell_base(endpoint_host),
             )
         except Exception:
             logger.exception("passthrough inline embed build failed")
