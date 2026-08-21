@@ -89,20 +89,16 @@ class WebhookMailbox(models.Model):
         return f"Mailbox[{self.event_id[:8]}] {self.source} {self.action_path} ({self.status})"
     
     def is_expired(self):
-        """Check if this mailbox entry has expired."""
-        from django.conf import settings
-        import pytz
-        
+        """Check if this mailbox entry has expired (tz-safe)."""
         now = timezone.now()
         expires = self.expires_at
-        
-        # Ensure both datetimes are timezone-aware for comparison
-        if expires:
-            if timezone.is_naive(expires):
-                # Assume database stores in UTC
-                utc_tz = pytz.UTC
-                expires = timezone.make_aware(expires, timezone=utc_tz)
-        
+        if expires is None:
+            return False
+        # DB column may be TIMESTAMP WITHOUT TIME ZONE (naive) while Django now() is aware.
+        if timezone.is_aware(now) and timezone.is_naive(expires):
+            expires = timezone.make_aware(expires, timezone.utc)
+        elif timezone.is_naive(now) and timezone.is_aware(expires):
+            now = timezone.make_naive(now, timezone.utc)
         return now > expires
     
     def mark_claimed(self):
@@ -167,6 +163,8 @@ class WebhookMailbox(models.Model):
             QuerySet of pending WebhookMailbox entries
         """
         now = timezone.now()
+        if timezone.is_aware(now):
+            now = timezone.make_naive(now, timezone.utc)
         return cls.objects.filter(
             tenant=tenant,
             status='pending',
@@ -183,6 +181,8 @@ class WebhookMailbox(models.Model):
             int: number of entries expired
         """
         now = timezone.now()
+        if timezone.is_aware(now):
+            now = timezone.make_naive(now, timezone.utc)
         return cls.objects.filter(
             status='pending',
             expires_at__lte=now

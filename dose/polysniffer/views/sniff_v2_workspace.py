@@ -21,18 +21,11 @@
 # overwrite.
 # BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
 #
-# FIX 2026-08-21 (owner-approved, frozen-file exception): Native mode embeds
-# the upstream app in an <object> inside this shared workspace shell -- fine
-# for self-hosted apps (Odoo/Mattermost/Nextcloud/Dolibarr), but apps that
-# send Content-Security-Policy: frame-ancestors 'self' on their own pages
-# (confirmed live for Slack) refuse to render in ANY nested frame regardless
-# of origin; the browser enforces this server-side header and no client-side
-# rewrite can work around it. Generic per-handler hook
-# (requires_top_level_native) lets such handlers opt into a real top-level
-# browser tab instead, without hardcoding "slack" here (see
-# passthrough-handler-isolation.mdc). Every existing handler defaults to
-# False, so today's embed behavior is unchanged for them.
-# BINGO: PolySniffer Native Top-Level Fallback — 2026-08-21
+# FIX 2026-08-21 SUPERSEDED by POLYSNIFFER_NATIVE_FORWARDER north star:
+# Do not open upstream origin in a top-level tab for Native. CSP is stripped on
+# the polysniff proxy; Native always embeds host-keyed /pt/polysniff/<host>/.
+# requires_top_level_native is retained on handlers but workspace ignores it for
+# launch (see sniff_workspace.html). Owner-approved plan 2026-08-21.
 from __future__ import annotations
 
 import json
@@ -195,6 +188,12 @@ def workspace_poll(request, endpoint_host: str):
             logs.reverse()
 
         try:
+            def _preview(text):
+                return (text or "")[:500]
+
+            def _more(text):
+                return len(text or "") > 500
+
             captures = [
                 {
                     "id": log.id,
@@ -206,6 +205,14 @@ def workspace_poll(request, endpoint_host: str):
                     "capture_source": log.capture_source,
                     "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
                     "duration_ms": log.duration_ms,
+                    "headers": log.headers or {},
+                    "cookies": getattr(log, "cookies", None) or {},
+                    "query_params": log.query_params or {},
+                    "body_preview": _preview(log.body or ""),
+                    "body_more": _more(log.body or ""),
+                    "response_headers": log.response_headers or {},
+                    "response_body_preview": _preview(log.response_body or ""),
+                    "response_body_more": _more(log.response_body or ""),
                 }
                 for log in logs
             ]

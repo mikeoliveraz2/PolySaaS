@@ -90,7 +90,20 @@ class WebhookMailbox(models.Model):
     
     def is_expired(self):
         """Check if this mailbox entry has expired."""
-        return timezone.now() > self.expires_at
+        from django.conf import settings
+        import pytz
+        
+        now = timezone.now()
+        expires = self.expires_at
+        
+        # Ensure both datetimes are timezone-aware for comparison
+        if expires:
+            if timezone.is_naive(expires):
+                # Assume database stores in UTC
+                utc_tz = pytz.UTC
+                expires = timezone.make_aware(expires, timezone=utc_tz)
+        
+        return now > expires
     
     def mark_claimed(self):
         """Mark this mailbox entry as claimed by a consumer."""

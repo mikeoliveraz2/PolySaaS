@@ -90,25 +90,15 @@
 (function() {
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
-    const endpointId = {{ endpoint.pk }};
     const schemaParam = '{{ schema|escapejs }}';
-    /* FIX 2026-08-20 (owner-approved, frozen-file exception): /pt/polysniff/<id>/
-       resolves its tenant from session by default, but AdminTenantSessionMiddleware
-       resets the session's active tenant back to the staff user's own home tenant
-       on every response -- so without an explicit tenant hint, this <object> request
-       404'd for any endpoint owned by a different tenant (confirmed for Slack under
-       'olient'), rendering the browser pane blank. See sniff_v2_workspace.py note.
-       BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
-       FIX 2026-08-21: renamed query param from schema= to _ps_tenant= because
-       Slack's own SPA also reads a query param named "schema" (numeric login-schema
-       id). Putting ?schema=olient on the launch URL made Slack parse NaN and loop
-       on /auth forever ("lc cookie (NaN) is missing"). Admin entry links may still
-       use ?schema=; only this browser-visible polysniff launch URL must avoid the
-       collision. */
+    /* FIX 2026-08-20 / 2026-08-21: launch URL carries tenant as _ps_tenant= (not
+       schema= — Slack consumes that name). Prefix is host-keyed
+       /pt/polysniff/<host>/ — same identity as /pt/admin/<host>/; no row id.
+       BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21 */
     const schemaQuery = schemaParam ? ('?_ps_tenant=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
-    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
+    const nativeLaunchUrl = '/pt/polysniff/' + endpointHost + '{{ browse_subpath|escapejs }}' + schemaQuery;
+    const passthroughLaunchUrl = '/pt/polysniff/' + endpointHost + '{{ browse_subpath|escapejs }}' + schemaQuery;
     /* FIX 2026-08-21 (owner-approved, frozen-file exception): some apps send
        Content-Security-Policy: frame-ancestors 'self' on their own pages (confirmed
        live for Slack) and refuse to render inside this workspace's <object> embed no

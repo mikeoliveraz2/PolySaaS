@@ -20,6 +20,19 @@
 # never depends on session state that this same request cycle is about to
 # overwrite.
 # BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
+#
+# FIX 2026-08-21 (owner-approved, frozen-file exception): Native mode embeds
+# the upstream app in an <object> inside this shared workspace shell -- fine
+# for self-hosted apps (Odoo/Mattermost/Nextcloud/Dolibarr), but apps that
+# send Content-Security-Policy: frame-ancestors 'self' on their own pages
+# (confirmed live for Slack) refuse to render in ANY nested frame regardless
+# of origin; the browser enforces this server-side header and no client-side
+# rewrite can work around it. Generic per-handler hook
+# (requires_top_level_native) lets such handlers opt into a real top-level
+# browser tab instead, without hardcoding "slack" here (see
+# passthrough-handler-isolation.mdc). Every existing handler defaults to
+# False, so today's embed behavior is unchanged for them.
+# BINGO: PolySniffer Native Top-Level Fallback — 2026-08-21
 from __future__ import annotations
 
 import json
@@ -37,6 +50,7 @@ from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.models import TenantApp
 from dose.polysniffer.views.core import get_endpoint_by_host
+from dose.passthrough.registry import resolve_handler_for_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +118,17 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     # (authoritatively) for this endpoint by get_endpoint_by_host(), not a guess.
     schema = getattr(request, "schema_name", "") or ""
 
+    # See 2026-08-21 fix note above: ask the resolved handler (if any) whether
+    # this app can be embedded at all -- default False for every handler that
+    # doesn't override it, so behavior is unchanged for existing apps.
+    native_top_level = False
+    try:
+        handler = resolve_handler_for_endpoint(endpoint)
+        if handler is not None:
+            native_top_level = bool(handler.requires_top_level_native(request))
+    except Exception:
+        native_top_level = False
+
     return render(
         request,
         "polysniffer/sniff_workspace.html",
@@ -120,6 +145,7 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             "export_url": f"{workspace_prefix}/export-har/",
             "poll_url": poll_url,
             "schema": schema,
+            "native_top_level": native_top_level,
         },
     )
 

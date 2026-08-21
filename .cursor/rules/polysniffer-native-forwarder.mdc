@@ -1,0 +1,21 @@
+# PolySniffer Native — Forwarder Lock
+
+Authoritative design: `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`
+
+## Rule
+
+**Native mode must browse through the forwarder / host-keyed `/pt/polysniff/<host>/` so TrafficLog/HAR capture sees the same traffic a future passthrough handler will proxy.**
+
+Do **not**:
+
+- Launch Playwright / external Chromium as the default Native capture path
+- Bypass the proxy so the browser talks to upstream origin directly during Native sniff
+- Propose iframes as the default SPA embed
+
+## Success metric
+
+RICH unmodified HAR (cookies, headers, bodies, assets, redirects) while the user walks the normal app flow in the unified workspace UI.
+
+## After enough HAR
+
+Build/refine the app-specific handler (isolation rule). Passthrough + orchestration attach (webhook → consumer) come later. Production Slack events remain API-first mailbox; Native Slack proxy is discovery only.
