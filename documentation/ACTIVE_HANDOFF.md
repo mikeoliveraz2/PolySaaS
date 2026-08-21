@@ -13,6 +13,91 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 - Branch: `main`
 - Machine: laptop session → push for office pickup
 
+## Slack Native — state of record (2026-08-21 late / 2026-08-22 early)
+
+Per Shela's ordering: **Stage 1 Native black box first**, then passthrough from that HAR,
+then orchestration. Failure is treated as **proxy fidelity**, not Slack policy.
+
+### Exact coordinates
+
+| Field | Value |
+|---|---|
+| Endpoint row | `PassThroughEndpoint` id **4**, slug `slack` |
+| Endpoint URL | `https://app.slack.com/client/T0BPQCW981W/D0BNPR1537V` |
+| Tenant / schema | **olient** (Oliver Enterprises) |
+| Browser URL under test | `http://localhost:8000/pt/polysniff/app.slack.com/` |
+| Capture session | `app.slack.com-native-20260821-1141` |
+| Server | Waitress, restarted 2026-08-21 ~19:40 (no autoreload) |
+
+### Today's question: does Slack Native produce a complete HAR? **NO**
+
+**Last GREEN line** (credential handshake across the proxy boundary now fully works):
+
+```
+[SLACK SHIM] credential message origin=https://app.slack.com inPlace=true source=kept trusted=true data=string
+```
+
+**Last RED line** (Slack ignores it anyway and falls back):
+
+```
+[AUTH] fetching credentials from iframe took too long, but it looks like we are online, so we can go fetch via a redirect instead
+[AUTH] fetchAuthAndReturnToUrl: fallback redirecting to /auth?app=client&return_to=%2Fpt%2Fpolysniff%2Fapp.slack.com%2F&teams=
+```
+
+Capture count moves but only ever between **2 and 4 rows**, always the same two upstream
+paths (`/` and `/auth`). Never an API call, never a WS attempt. 53 rows total since Aug 20,
+all of that shape. No exportable real HAR.
+
+### The one fail to fix (root cause found — stop shim work)
+
+`main`'s **Native mode is not "your browser, your login" at all** — it loads the proxy:
+
+```
+dose/templates/polysniffer/sniff_workspace.html:100
+const nativeLaunchUrl = '/pt/polysniff/' + endpointHost + ...
+```
+
+So Native and Passthrough both go through the forwarder; Native just drops the admin chrome.
+Consequences, all consistent with the observed logs:
+
+- The browser is on `localhost:8000`, so it **cannot** send `app.slack.com` cookies. The
+  proxy therefore presents **no Slack session**.
+- There is **no Slack `TenantApp` row at all** for `olient` — only `odoo`, `nextcloud`,
+  `mattermost`. So no server-side session/token exists to relay either.
+- `/auth` answers 200 and the page says "credentials are ready", but with no session the
+  payload is useless to gantry, which waits 30s and falls back. Hence `psc=NaN` on every load.
+
+**`main` is missing the real-browser Native capture implementation.** Present on
+`backup/slack-webhook-native-20260821` (= old `cursor/polysniffer-switch-object-to-iframe`),
+absent on `main`:
+
+- `dose/polysniffer/handlers/slack_native_sniff.py`
+- `dose/polysniffer/native_browser_capture.py`
+- `dose/tests/test_slack_native_sniff.py`
+
+Those are commits `2540b140` "Launch real browser for Slack native capture" and `e8bbba50`
+"Fix Native browser false startup timeout by signaling ready before navigation".
+`browser_capture.py` (Playwright) **is** on main but nothing imports it — the workspace
+never calls it.
+
+### Next action (do not invert)
+
+Bring those three files onto `main` surgically (same method as the webhook slice), wire
+Start Native to the real browser, then re-ask the HAR question. Do **not** continue tuning
+the injected shim — the shim's job (auth relay across the boundary) is already proven green.
+
+### Shim work completed tonight (keep, but it is stage-1 plumbing only)
+
+- Credential `postMessage` bridge across the proxy boundary: **working** (green line above).
+  `origin` is now redefined **in place** so `source`/`isTrusted` survive.
+- Stray-root relay: Slack's fallback `window.location = '/auth?...'` is 302'd back onto the
+  proxy prefix. Confirmed live in `debug.log` (`[stray-root-relay] /auth -> ...`).
+- `window.location` / `Location.prototype` patching proven impossible (see below); dead code
+  removed.
+- Playwright browsers are **not installed** for this venv (`playwright install chromium`
+  needed); the location probe had to run with `channel="chrome"`.
+- `debug.log`/`info.log` had grown to ~1.8 GB each and were truncated (~3.6 GB freed).
+
 ## Evening addendum (2026-08-21) — navigation interception is impossible; relay is server-side
 
 ### Verified browser constraint (do not retry client-side navigation patching)

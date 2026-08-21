@@ -200,18 +200,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
        also wrap window.onmessage (not only addEventListener). */
     function spoofMessageEvent(event) {{
         if (!event || event.origin !== window.location.origin) return event;
-        /* Redefine origin on the delivered event first. A synthetic
-           MessageEvent is untrusted (isTrusted false) and can drop `source`,
-           and iframe handshakes routinely check
-           event.source === iframe.contentWindow, so replacing the event is a
-           last resort rather than the default. */
-        try {{
-            Object.defineProperty(event, 'origin', {{
-                get: function() {{ return UPSTREAM_ORIGIN; }},
-                configurable: true
-            }});
-            if (event.origin === UPSTREAM_ORIGIN) return event;
-        }} catch (e) {{}}
         try {{
             return new MessageEvent('message', {{
                 data: event.data,
@@ -221,14 +209,22 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
                 ports: event.ports ? Array.prototype.slice.call(event.ports) : []
             }});
         }} catch (e) {{
-            return {{
-                data: event.data,
-                origin: UPSTREAM_ORIGIN,
-                source: event.source,
-                ports: event.ports,
-                lastEventId: event.lastEventId,
-                type: 'message'
-            }};
+            try {{
+                Object.defineProperty(event, 'origin', {{
+                    get: function() {{ return UPSTREAM_ORIGIN; }},
+                    configurable: true
+                }});
+                return event;
+            }} catch (e2) {{
+                return {{
+                    data: event.data,
+                    origin: UPSTREAM_ORIGIN,
+                    source: event.source,
+                    ports: event.ports,
+                    lastEventId: event.lastEventId,
+                    type: 'message'
+                }};
+            }}
         }}
     }}
     try {{
@@ -237,13 +233,8 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             if (type === 'message' && typeof listener === 'function') {{
                 var wrapped = function(event) {{
                     var ev = spoofMessageEvent(event);
-                    if (ev && ev.origin === UPSTREAM_ORIGIN) {{
-                        console.log('[SLACK SHIM] credential message origin=' + ev.origin
-                            + ' inPlace=' + (ev === event)
-                            + ' source=' + (ev.source ? 'kept' : 'lost')
-                            + ' trusted=' + (ev.isTrusted === true)
-                            + ' data=' + (ev.data && typeof ev.data === 'object'
-                                ? Object.keys(ev.data).join(',') : typeof ev.data));
+                    if (ev !== event) {{
+                        console.log('[SLACK SHIM] message origin spoofed for listener');
                     }}
                     return listener.call(this, ev);
                 }};
