@@ -1,7 +1,7 @@
 """
 Inline passthrough embed for PolySniffer workspace.
 
-Browser-facing prefix: /pt/polysniff/{endpoint_id}/ (not /pt/admin/).
+Browser-facing prefix: /pt/polysniff/{endpoint_host}/ (not /pt/admin/).
 Production handlers run internally via dispatch_polysniff_passthrough (frozen sniff_pt_proxy).
 """
 from __future__ import annotations
@@ -46,9 +46,9 @@ def _hubspot_popup_sync_script(endpoint_id: int, proxy_prefix: str = '') -> str:
     return ep_script + tagged
 
 
-def polysniff_proxy_prefix(endpoint_id: int) -> str:
-    """Public PolySniffer passthrough prefix — /pt/polysniff/<id>."""
-    return public_polysniff_prefix(endpoint_id).rstrip("/")
+def polysniff_proxy_prefix(endpoint_host: str) -> str:
+    """Public PolySniffer passthrough prefix — /pt/polysniff/<host>."""
+    return public_polysniff_prefix(endpoint_host).rstrip("/")
 
 
 def build_workspace_shell_guard_script(
@@ -281,9 +281,8 @@ def build_inline_passthrough_embed_context(
     path: str,
     *,
     endpoint_label: str = "",
-    shell_base: str = "",
 ) -> dict | None:
-    """Passthrough HTML as inline embed — /pt/polysniff/{id}/ in browser, handler chain internal."""
+    """Passthrough HTML as inline embed — /pt/polysniff/<host>/ in browser, handler chain internal."""
     from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough
     from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
 
@@ -292,8 +291,9 @@ def build_inline_passthrough_embed_context(
         return None
 
     bind_request_tenant(request)
-    session = get_sniff_capture_session(request, endpoint_id)
+    session = get_sniff_capture_session(request, trigger)
     request._polysniffer_endpoint_id = endpoint_id
+    request._polysniffer_endpoint_host = trigger
     request._polysniffer_sniff_mode = "passthrough"
     request._polysniffer_workspace_inline = True
     if session:
@@ -304,7 +304,7 @@ def build_inline_passthrough_embed_context(
         handler.endpoint = endpoint
 
     subpath = (path or "").strip().lstrip("/")
-    response = dispatch_polysniff_passthrough(request, endpoint_id, subpath)
+    response = dispatch_polysniff_passthrough(request, trigger, subpath)
 
     if response.status_code in (301, 302, 303, 307, 308):
         loc = response.get("Location", "")
@@ -331,8 +331,8 @@ def build_inline_passthrough_embed_context(
     body_html = rewrite_pt_form_actions_to_workspace(str(scoped_body), endpoint_id, trigger)
     head_static, head_scripts = _split_head_for_inline(head_html)
     orch_bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html", request=request)
-    shell_base = (shell_base or "").rstrip("/") or workspace_shell_prefix(endpoint_id)
-    proxy_base = polysniff_proxy_prefix(endpoint_id)
+    shell_base = workspace_shell_prefix(endpoint_id)
+    proxy_base = polysniff_proxy_prefix(trigger)
     np_prefixes = non_page_path_prefixes(handler, request, f"/{subpath}" if subpath else "/")
     guard = build_workspace_shell_guard_script(
         shell_base,

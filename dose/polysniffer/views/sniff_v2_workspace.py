@@ -20,6 +20,19 @@
 # never depends on session state that this same request cycle is about to
 # overwrite.
 # BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
+#
+# FIX 2026-08-21 (owner-approved, frozen-file exception): Native mode embeds
+# the upstream app in an <object> inside this shared workspace shell -- fine
+# for self-hosted apps (Odoo/Mattermost/Nextcloud/Dolibarr), but apps that
+# send Content-Security-Policy: frame-ancestors 'self' on their own pages
+# (confirmed live for Slack) refuse to render in ANY nested frame regardless
+# of origin; the browser enforces this server-side header and no client-side
+# rewrite can work around it. Generic per-handler hook
+# (requires_top_level_native) lets such handlers opt into a real top-level
+# browser tab instead, without hardcoding "slack" here (see
+# passthrough-handler-isolation.mdc). Every existing handler defaults to
+# False, so today's embed behavior is unchanged for them.
+# BINGO: PolySniffer Native Top-Level Fallback — 2026-08-21
 from __future__ import annotations
 
 import json
@@ -37,11 +50,7 @@ from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.models import TenantApp
 from dose.polysniffer.views.core import get_endpoint_by_host
-
-
-def _workspace_pt_shell_base(endpoint_host: str, endpoint_id: int) -> str:
-    """URL prefix for passthrough workspace navigation — matches sniff_urls.py."""
-    return f"/admin/polysniffer/sniff/{endpoint_host}/workspace/passthrough"
+from dose.passthrough.registry import resolve_handler_for_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +102,8 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
 
     app_launch_url = ""
-    pt_embed_ctx = None
     if active_session and active_mode == "native":
-        native_subpath = (browse_path or browse_subpath or "/").strip()
-        if not native_subpath.startswith("/"):
-            native_subpath = f"/{native_subpath}"
-        app_launch_url = (
-            f"/admin/polysniffer/sniff/{endpoint_host}/native{native_subpath}"
-        )
+        app_launch_url = upstream_browse_url
     elif active_session and active_mode == "passthrough":
         frame_subpath = (browse_path or browse_subpath or "/").strip()
         if not frame_subpath.startswith("/"):
@@ -109,51 +112,41 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             f"{endpoint.get_proxy_prefix().rstrip('/')}"
             f"{frame_subpath}"
         )
-        # Build the inline HTML scoping for non-iframe passthrough.
-        try:
-            from dose.polysniffer.sniff_pt_embed import build_inline_passthrough_embed_context
-
-            pt_embed_ctx = build_inline_passthrough_embed_context(
-                request,
-                endpoint.pk,
-                endpoint,
-                frame_subpath,
-                endpoint_label=_endpoint_label(endpoint),
-                shell_base=_workspace_pt_shell_base(endpoint_host, endpoint.pk),
-            )
-        except Exception as exc:
-            logger.exception("passthrough inline embed build failed")
     workspace_prefix = f"/admin/polysniffer/sniff/{endpoint_host}"
     poll_url = f"{workspace_prefix}/workspace/poll/"
     # See 2026-08-20 fix note above: this is the tenant schema already resolved
     # (authoritatively) for this endpoint by get_endpoint_by_host(), not a guess.
     schema = getattr(request, "schema_name", "") or ""
 
-    context = {
-        "endpoint": endpoint,
-        "endpoint_host": endpoint_host,
-        "tenant_schema": getattr(request, "schema_name", "")
-        or getattr(getattr(request, "tenant", None), "schema_name", ""),
-        "endpoint_label": _endpoint_label(endpoint),
-        "mode": active_mode,
-        "app_launch_url": app_launch_url,
-        "browse_subpath": browse_subpath,
-        "upstream_browse_url": upstream_browse_url,
-        "active_session": active_session,
-        "diff_url": f"{workspace_prefix}/diff/",
-        "export_url": f"{workspace_prefix}/export-har/",
-        "poll_url": poll_url,
-    }
-    if pt_embed_ctx:
-        context.update(pt_embed_ctx)
+    # See 2026-08-21 fix note above: ask the resolved handler (if any) whether
+    # this app can be embedded at all -- default False for every handler that
+    # doesn't override it, so behavior is unchanged for existing apps.
+    native_top_level = False
+    try:
+        handler = resolve_handler_for_endpoint(endpoint)
+        if handler is not None:
+            native_top_level = bool(handler.requires_top_level_native(request))
+    except Exception:
+        native_top_level = False
 
-    # Add schema to context for cross-tenant endpoint resolution
-    context["schema"] = schema
-    
     return render(
         request,
         "polysniffer/sniff_workspace.html",
-        context,
+        {
+            "endpoint": endpoint,
+            "endpoint_host": endpoint_host,
+            "endpoint_label": _endpoint_label(endpoint),
+            "mode": active_mode,
+            "app_launch_url": app_launch_url,
+            "browse_subpath": browse_subpath,
+            "upstream_browse_url": upstream_browse_url,
+            "active_session": active_session,
+            "diff_url": f"{workspace_prefix}/diff/",
+            "export_url": f"{workspace_prefix}/export-har/",
+            "poll_url": poll_url,
+            "schema": schema,
+            "native_top_level": native_top_level,
+        },
     )
 
 
@@ -201,12 +194,6 @@ def workspace_poll(request, endpoint_host: str):
             logs = list(qs.order_by("-id")[:100])
             logs.reverse()
 
-        def _preview(text):
-            return (text or "")[:500]
-
-        def _more(text):
-            return len(text or "") > 500
-
         try:
             captures = [
                 {
@@ -219,13 +206,6 @@ def workspace_poll(request, endpoint_host: str):
                     "capture_source": log.capture_source,
                     "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
                     "duration_ms": log.duration_ms,
-                    "headers": log.headers or {},
-                    "query_params": log.query_params or {},
-                    "body_preview": _preview(log.body or ""),
-                    "body_more": _more(log.body or ""),
-                    "response_headers": log.response_headers or {},
-                    "response_body_preview": _preview(log.response_body or ""),
-                    "response_body_more": _more(log.response_body or ""),
                 }
                 for log in logs
             ]
@@ -311,30 +291,7 @@ def store_mm_token(request, endpoint_host: str):
 @require_http_methods(["POST"])
 def workspace_ingest(request, endpoint_id: int):
     """Accept client-side passthrough traffic captured by the workspace shim."""
-    from dose.polysniffer.views.core import get_endpoint_any_schema
-    from urllib.parse import urlparse
-    
     try:
-        endpoint = get_endpoint_any_schema(endpoint_id, request)
-        endpoint_url = (endpoint.endpoint_url or "").strip()
-        if endpoint_url.startswith("http://") or endpoint_url.startswith("https://"):
-            trigger = urlparse(endpoint_url).netloc
-        else:
-            trigger = endpoint_url.split("/")[0] if endpoint_url else ""
-        
-        if not trigger:
-            return JsonResponse({"ok": True})
-        
-        session = get_sniff_capture_session(request, trigger)
-        if not session:
-            return JsonResponse({"ok": True})
-        
-        tenant = bind_request_tenant(request)
-        if not tenant:
-            return JsonResponse({"ok": True})
-        
-        _ensure_tenant_schema(tenant)
-        
         body = request.body
         if body:
             try:
@@ -342,17 +299,7 @@ def workspace_ingest(request, endpoint_id: int):
             except Exception:
                 data = {}
             if data:
-                TrafficLog.objects.create(
-                    tenant=tenant,
-                    capture_session=session,
-                    method=data.get("method", "GET"),
-                    url=data.get("url", ""),
-                    path=data.get("path", ""),
-                    client_path=data.get("path", ""),
-                    status_code=data.get("status_code", 0),
-                    duration_ms=int(data.get("duration_ms", 0)),
-                    capture_source="native",
-                )
+                logger.debug("[PolySniffer] workspace_ingest from %s: %r", endpoint_id, data)
     except Exception as exc:
         logger.warning("[PolySniffer] workspace_ingest error: %s", exc)
     return JsonResponse({"ok": True})

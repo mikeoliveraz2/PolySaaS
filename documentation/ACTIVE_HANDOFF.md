@@ -6,126 +6,101 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 
 ## Status
 
-- Date: 2026-08-20
-- Branch: `cursor/polysniffer-slack-native-capture` (renamed from `cursor/polysniffer-switch-object-to-iframe`)
-- Latest commit: `db527f66` - Webhook mailbox consumer + timezone fixes
-- Validation: Webhook mailbox flow tested end-to-end, consumer operational with known timezone bug
+- Date: 2026-08-21
+- Repo state: synchronized with current main branch (after this push)
+- Latest validated handoff: this file
+- Policy: end-of-day work requires a handoff update before the final commit is considered complete
+- Branch: `main`
+- Machine: laptop session → push for office pickup
 
-## Last session summary (2026-08-20)
+## Last session summary (2026-08-21)
 
-### Orchestration Model Implementation - First Slice
+Slack PolySniffer native-pane work (still OPEN — pane not settled). Large progress on proxy-relay auth path and host-keyed polysniff URLs.
 
-**Major milestone:** Implemented webhook mailbox + consumer orchestration per `documentation/POLYSAAS_ORCHESTRATION_MODEL.md`.
+### What landed this session
 
-#### Work completed:
+1. **Host-keyed `/pt/polysniff/`** — dropped redundant endpoint id.
+   - Before: `/pt/polysniff/4/...`
+   - After: `/pt/polysniff/app.slack.com/...`
+   - Aligned with `/pt/admin/<host>/` and workspace `/admin/polysniffer/sniff/<host>/`.
+   - Files: `pt_polysniff_urls.py`, `sniff_pt_proxy.py`, `sniff_workspace.html`, `sync_session.py`, HubSpot URL helpers, `client_snippets.py`, `sniff_pt_embed.py`, `workspace_pt_redirect.py`, `sniff_v2.py`.
 
-1. **Documented orchestration model** (`documentation/POLYSAAS_ORCHESTRATION_MODEL.md`)
-   - Owner-approved architectural design
-   - Two surfaces: Surfing (passthrough for self-hosted) vs SaaS (API-first like Slack)
-   - Webhook mailboxes with TTL + consumer pattern
-   - Protected with `.cursor/rules/orchestration-model-locked.mdc`
+2. **Slack passthrough handler** (`dose/passthrough/handlers/slack_handler.py`) — major work:
+   - Proxy-relay model (do not rewrite `/auth` direct to `app.slack.com`; keep traffic through our proxy so cookie relay + CSP strip apply).
+   - Host-root `/auth` via `upstream_url_for_subpath` (Nextcloud-style origin+path) — stops stacking `/auth` under deep client URLs.
+   - Renamed tenant launch param from `?schema=` to `?_ps_tenant=` (Slack’s own `schema` query is numeric; our value caused `lc cookie (NaN)`).
+   - Cookie-aware path + CSP strip coordination with polysniff proxy.
+   - `postMessage` bridge: patch `window` / `parent` / `top` / `Window.prototype` so auth iframe `postMessage(..., 'https://app.slack.com')` retargets to proxy origin (`localhost:8000`). Confirmed live: `[SLACK SHIM] postMessage(parent) … -> http://localhost:8000`.
+   - In progress (unverified after last edit): spoof parent `MessageEvent.origin` to `UPSTREAM_ORIGIN` + wrap `window.onmessage` — parent still timed out after successful postMessage (“fetching credentials from iframe took too long”).
 
-2. **WebhookMailbox model** (`dose/models/webhook_mailbox.py`)
-   - Database table for webhook events with TTL (default 5 minutes)
-   - Status state machine: pending → claimed → processed/failed/expired
-   - Dedup via unique constraint on (tenant_id, event_id)
-   - Helper methods: create_from_envelope, dequeue_pending, expire_old_entries
+3. **`handler_base.py`** — `requires_top_level_native()` default False; Slack no longer forced to top-level tab for Native.
 
-3. **Updated webhook publisher** (`dose/webhook_events.py`)
-   - `publish_slack_command_event` now writes to WebhookMailbox instead of RabbitMQ
-   - Immediate return after mailbox write (non-blocking)
+4. **Workspace / core** — `_ps_tenant` threaded alongside schema for admin / launch links.
 
-4. **WebhookMailboxConsumer** (`dose/webhook_mailbox_consumer.py`)
-   - Polls mailbox for pending entries (configurable interval)
-   - Dequeues and processes via existing `process_trigger_envelope`
-   - Background thread support
+### Live state at handoff (OPEN — not BINGO)
 
-5. **Management command** (`dose/management/commands/start_mailbox_consumer.py`)
-   - Run with: `python manage.py start_mailbox_consumer --poll-interval 1`
+- Endpoint: Slack `app.slack.com` under tenant `olient`
+- Native pane loads host-keyed proxy; `/` and `/auth` return 200
+- Auth iframe reaches “credentials are ready”; postMessage rewrite works
+- Parent still falls back after ~30s → redirect to `/auth`; pane remains blank
+- Beacon to `dev.slack.com` fails (noise, not the primary blocker)
+- Server: Waitress via `runall.ps1` (no autoreload) — restart after pulling this commit before testing MessageEvent spoof
 
-6. **Database setup**
-   - Migration created: `dose/migrations/0061_webhook_mailbox.py`
-   - Table manually created in public schema via pgAdmin (migration blocked by inconsistent DB state)
-   - SQL script: `tmp/create_webhook_mailbox_fixed.sql`
+### Architectural stance (do not regress)
 
-7. **End-to-end validation**
-   - Created test mailbox entries
-   - Consumer polled and found pending entries
-   - Processed entries (status: pending → failed)
-   - **Flow confirmed working**: webhook → mailbox → consumer → process
+- Forwarder is a black box: browser ↔ our proxy ↔ Slack; Slack must not see “behind” the proxy.
+- Passthrough look/feel should match other apps; Native may differ only when an app cannot embed.
+- No iframes-as-default for SPAs; current workspace uses `<object>` (same pattern as Odoo/Mattermost sniff).
 
-#### Branch renamed:
-- Old: `cursor/polysniffer-switch-object-to-iframe` (misleading name suggesting iframes)
-- New: `cursor/polysniffer-slack-native-capture` (accurate description)
+## Critical local facts for office machine
 
-#### Files changed:
-- `documentation/POLYSAAS_ORCHESTRATION_MODEL.md` (new)
-- `.cursor/rules/orchestration-model-locked.mdc` (new)
-- `dose/models/webhook_mailbox.py` (new)
-- `dose/webhook_mailbox_consumer.py` (new)
-- `dose/management/commands/start_mailbox_consumer.py` (new)
-- `dose/webhook_events.py` (modified - mailbox write instead of RabbitMQ)
-- `dose/models/__init__.py` (added WebhookMailbox import)
+- Restart services after pull (`runall.ps1` / Waitress) — code changes do not hot-reload.
+- Test URL shape: `/pt/polysniff/app.slack.com/?_ps_tenant=olient` (not `/pt/polysniff/<id>/`, not `?schema=` for Slack launch).
+- Watch DevTools console for `[SLACK SHIM] postMessage(...)` and whether parent still times out on credential iframe.
+- Do **not** mark BINGO until native pane shows Slack UI with screenshot proof.
+
+## Current priorities
+
+1. Finish/verify MessageEvent origin spoof so parent accepts credentials and UI settles.
+2. Keep host-keyed polysniff as the only launch path.
+3. Maintain rule sync + handoff discipline across machines.
 
 ## Current blockers
 
-1. **Timezone comparison bug** (known issue, tracked)
-   - Error: "can't compare offset-naive and offset-aware datetimes"
-   - Location: Somewhere in `process_trigger_envelope` or `Instruction.execute_atomic_service`
-   - Impact: Mailbox entries process but fail with this error
-   - Partial fix: Updated `WebhookMailbox.is_expired()` to handle naive datetimes as UTC
-   - Remaining: Need to fix timezone handling deeper in the execution path
+- Slack native pane blank after auth credential handoff (parent message-origin / timeout path). MessageEvent spoof written but **not proven** in browser after last edit.
 
-2. **Database migration state** (pre-existing)
-   - Django migrations blocked by inconsistent state (tables exist but migrations not marked applied)
-   - Workaround: Manual table creation via pgAdmin
-   - Not blocking: Mailbox table created and working
+## Next actions (office / next session)
 
-## Next actions
-
-1. **Fix timezone bug**
-   - Search for datetime comparisons in `dose/webhook_events.py::process_trigger_envelope`
-   - Check `Instruction.execute_atomic_service` for naive datetime usage
-   - Ensure all datetime fields use timezone-aware datetimes throughout
-
-2. **Test complete flow**
-   - Start consumer: `python manage.py start_mailbox_consumer`
-   - Send real Slack `/poly` command
-   - Verify: mailbox entry → consumer processes → DoseMessage in orchestration bar
-
-3. **Consumer startup integration**
-   - Add consumer to `dose/apps.py::DoseConfig.ready()` for auto-start
-   - Or document as separate service to run alongside Django
-
-4. **Resolve DB migration state** (optional, not blocking)
-   - Mark problematic migrations 0028-0060 as fake applied
-   - Or restore from clean backup
+1. `git pull origin main` then restart Waitress.
+2. Open PolySniffer workspace for Slack → Native mode → left pane.
+3. Confirm MessageEvent spoof: credentials apply and pane renders (or capture next failure: Network + Console).
+4. If settled: screenshot + decide BINGO vs further shim polish.
+5. Do not re-add team-slug / Mattermost team logic; do not rewrite Slack `/auth` direct off-proxy.
 
 ## Validation
 
-- Ran: `python scripts/check_agent_sync.py` - PASSED
-- Webhook mailbox table created in public schema
-- Consumer tested: polls mailbox, finds pending entries, processes them
-- Status transitions verified: pending → claimed → failed (due to timezone bug)
-- Dedup constraint verified: duplicate event_id rejected correctly
+- Host-keyed URL resolution exercised in session.
+- Auth path: real small `/auth` response; credentials-ready observed.
+- postMessage retarget confirmed in console.
+- MessageEvent spoof: code present; browser proof pending after restart.
 
-## Session summary for this EOD
+## Session files (this commit)
 
-- Implemented webhook mailbox orchestration (first slice per orchestration model)
-- Renamed branch to remove misleading iframe reference
-- Created and tested WebhookMailbox table, consumer, management command
-- Validated end-to-end flow: webhook → mailbox → consumer → process
-- Identified and partially fixed timezone bug (remaining work needed)
-- All code committed and pushed to remote
+- `dose/passthrough/handlers/slack_handler.py` (+ `.bak`)
+- `dose/passthrough/handlers/handler_base.py` (+ `.bak`)
+- `dose/passthrough/handlers/hubspot_handler.py` (+ `.bak`)
+- PolySniffer host-key + `_ps_tenant` path files listed above (+ `.bak` where created)
+- This handoff + `COORDINATION_README.md`
 
-## Commit info
+## Explicitly excluded from commit
 
-- Branch: `cursor/polysniffer-slack-native-capture`
-- Orchestration model doc: `823fd3a3`
-- Mailbox implementation: `696e8de8`
-- Consumer + timezone fixes: `db527f66`
-- Latest push status: All commits pushed to remote
+- `documentation/Capital Raise Project/*` (unrelated investor assets)
+- `polysniffer-auth.json` (credentials)
+- `polysniffer_evidence/` (local screenshots; not BINGO-certified)
+- `dose/polysniffer/sniff_pt_proxy.py.bak_20260821_csp_strip_fix` (dated side backup; optional — include only if present as session bak)
 
----
+## Process notes
 
-This is the current handoff-of-record for PolySaaS. Read it before continuing work.
+- Piccolo Passo / bak-before-edit followed.
+- Frozen-file exceptions used only with owner approval when applicable.
+- Rule 6: no silent WIP — this push is the office handoff.

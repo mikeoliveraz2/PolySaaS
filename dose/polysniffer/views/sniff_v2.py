@@ -120,11 +120,16 @@ def native_sniff_proxy_by_host(request, endpoint_host: str, path: str = ''):
 @staff_member_required
 @csrf_exempt
 def passthrough_sniff_proxy(request, endpoint_id: int, path: str = ''):
-    from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough, legacy_sniff_prefix
+    from urllib.parse import urlparse
 
+    from dose.polysniffer.sniff_pt_proxy import dispatch_polysniff_passthrough, legacy_sniff_prefix
+    from dose.polysniffer.views.core import get_endpoint_any_schema
+
+    endpoint = get_endpoint_any_schema(endpoint_id, request)
+    host = urlparse((endpoint.endpoint_url or "").strip()).netloc
     return dispatch_polysniff_passthrough(
         request,
-        endpoint_id,
+        host,
         path,
         public_prefix=legacy_sniff_prefix(endpoint_id),
     )

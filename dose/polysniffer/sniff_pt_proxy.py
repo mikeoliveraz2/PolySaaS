@@ -1,11 +1,30 @@
 """
-PolySniffer passthrough — public /pt/polysniff/{endpoint_id}/ routes.
+PolySniffer passthrough — public /pt/polysniff/{endpoint_host}/ routes.
 
 Production handlers still run on internal /pt/admin/{trigger}/ paths; responses
 are rewritten so redirects and shim PROXY_PREFIX stay on /pt/polysniff/ (iframe-safe).
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24
+#
+# FIX 2026-08-21 (owner-approved, frozen-file exception): rewrite_polysniff_response()
+# injects our own inline <script data-polysniffer-pt-client-capture> into every
+# proxied HTML page but never stripped the proxied app's own
+# Content-Security-Policy (header or <meta http-equiv> tag). Confirmed live in
+# browser DevTools for Slack: its page ships a strict hash-allowlisted
+# script-src CSP meta tag; our inline script has no matching hash/nonce, so the
+# browser blocks it outright, Slack's own asset-loading watchdog then treats
+# that as a failed load and force-reloads the whole client
+# (?cdn_fallback=1&force_cold_boot=1) in a loop that never settles -- the
+# reported "blank native pane" symptom. This is generic, app-agnostic
+# stripping (any proxied app's CSP could block injected/rewritten content),
+# not Slack-specific logic, so it belongs in this shared response-rewrite step.
+# BINGO: PolySniffer CSP Strip For Injected Capture Script — 2026-08-21
+#
+# FIX 2026-08-21 (owner-approved): public prefix keyed by endpoint host, not
+# PassThroughEndpoint.id — same identity as /pt/admin/<host>/ and the workspace
+# shell. Row id remains only for internal capture ingest / session helpers.
+# BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -13,11 +32,23 @@ from urllib.parse import urlparse
 import json
 import re
 
-from django.http import HttpResponse
+_CSP_HEADER_NAMES = ("Content-Security-Policy", "Content-Security-Policy-Report-Only")
+_CSP_META_RE = re.compile(
+    r"(?is)<meta[^>]+http-equiv\s*=\s*[\"']?content-security-policy[\"']?[^>]*>"
+)
 
 
-def public_polysniff_prefix(endpoint_id: int) -> str:
-    return f"/pt/polysniff/{endpoint_id}"
+def _strip_csp(response) -> None:
+    """Remove the proxied app's own CSP (header + meta tag) so our injected
+    capture script and any rewritten URLs aren't blocked by it."""
+    for header in _CSP_HEADER_NAMES:
+        if header in response:
+            del response[header]
+
+
+def public_polysniff_prefix(endpoint_host: str) -> str:
+    host = (endpoint_host or "").strip().strip("/")
+    return f"/pt/polysniff/{host}"
 
 
 def legacy_sniff_prefix(endpoint_id: int) -> str:
@@ -46,6 +77,7 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     """Hook fetch/XHR in passthrough iframe — shim traffic bypasses server proxy."""
     if "data-polysniffer-pt-client-capture" in html:
         return html
+    # Ingest route is still id-keyed under admin sniff urls (separate leftover).
     ingest = f"/admin/polysniffer/sniff/{endpoint_id}/workspace/ingest/"
     shim = f"""
 <script data-polysniffer-pt-client-capture="1">
@@ -113,73 +145,6 @@ def _inject_workspace_client_capture(html: str, endpoint_id: int) -> str:
     return shim + html
 
 
-
-
-_SNIFF_SKIP_ROOT_PREFIXES = (
-    "/pt/",
-    "/admin/",
-    "/static/",
-    "/dose/",
-    "/media/",
-    "/accounts/",
-    "/favicon",
-)
-
-
-def _prefix_sniff_root_urls(html: str, public_prefix: str) -> str:
-    """Point root-relative href/src/action at the sniff iframe prefix.
-
-    Handler rewrite may already have done this; skip URLs that are already
-    under public_prefix or a PolySaaS path. Without this, /core/css/… is
-    requested from the Django origin, CSS 404s, and Nextcloud Files looks
-    like an unstyled password-confirm page.
-    """
-    prefix = (public_prefix or "").rstrip("/")
-    if not prefix:
-        return html
-    html = re.sub(r"<base\b[^>]*>", "", html, flags=re.IGNORECASE)
-
-    def _repl(match):
-        attr, quote, url = match.group(1), match.group(2), match.group(3)
-        if url.startswith("//"):
-            return match.group(0)
-        if url.startswith(prefix + "/") or url == prefix:
-            return match.group(0)
-        if any(url.startswith(p) for p in _SNIFF_SKIP_ROOT_PREFIXES):
-            return match.group(0)
-        return f"{attr}={quote}{prefix}{url}{quote}"
-
-    return re.sub(
-        r'(?i)\b(href|src|action)\s*=\s*(["\'])(/[^"\']*)\2',
-        _repl,
-        html,
-    )
-
-
-def _prefix_sniff_css_urls(css: str, public_prefix: str) -> str:
-    """Prefix root-relative url(...) in CSS so background images hit the sniff proxy."""
-    prefix = (public_prefix or "").rstrip("/")
-    if not prefix or not css:
-        return css
-
-    def _repl(match):
-        quote, path = match.group(1) or "", match.group(2).strip()
-        if not path.startswith("/") or path.startswith("//"):
-            return match.group(0)
-        if path.startswith(prefix + "/") or path == prefix:
-            return match.group(0)
-        if any(path.startswith(p) for p in _SNIFF_SKIP_ROOT_PREFIXES):
-            return match.group(0)
-        return f"url({quote}{prefix}{path}{quote})"
-
-    return re.sub(
-        r"url\(\s*(['\"]?)(/[^)'\"]+)\1\s*\)",
-        _repl,
-        css,
-        flags=re.IGNORECASE,
-    )
-
-
 def rewrite_polysniff_response(
     response,
     *,
@@ -193,6 +158,7 @@ def rewrite_polysniff_response(
     replacements = (
         (admin_pf, public_prefix),
         (legacy_sniff_prefix(endpoint_id), public_prefix),
+        (f"/pt/polysniff/{endpoint_id}", public_prefix),
     )
 
     location = response.get("Location")
@@ -202,57 +168,49 @@ def rewrite_polysniff_response(
                 response["Location"] = new + location[len(old) :]
                 break
 
+    _strip_csp(response)
+
     content_type = (response.get("Content-Type") or "").lower()
     if hasattr(response, "content") and response.content and "text/html" in content_type:
         body = response.content.decode("utf-8", errors="ignore")
         for old, new in replacements:
             body = body.replace(old, new)
-        body = _prefix_sniff_root_urls(body, public_prefix)
+        body = _CSP_META_RE.sub("", body)
         if not popup_login:
             body = _inject_workspace_client_capture(body, endpoint_id)
         response.content = body.encode("utf-8")
         if "Content-Length" in response:
             response["Content-Length"] = len(response.content)
-    elif hasattr(response, "content") and response.content and "text/css" in content_type:
-        body = response.content.decode("utf-8", errors="ignore")
-        new_body = _prefix_sniff_css_urls(body, public_prefix)
-        if new_body != body:
-            response.content = new_body.encode("utf-8")
-            response["Cache-Control"] = "no-store"
-            if "ETag" in response:
-                del response["ETag"]
-            if "Content-Length" in response:
-                response["Content-Length"] = len(response.content)
 
     response.xframe_options_exempt = True
     return response
 
 
-def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *, public_prefix: str | None = None):
+def dispatch_polysniff_passthrough(request, endpoint_host: str, path: str = "", *, public_prefix: str | None = None):
     from dose.polysniffer.sniff_tenant import bind_request_tenant, get_sniff_capture_session
-    from dose.polysniffer.views.core import get_endpoint_any_schema
+    from dose.polysniffer.views.core import get_endpoint_by_host
 
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
 
         return HttpResponseForbidden("Staff only")
 
-    endpoint = get_endpoint_any_schema(endpoint_id, request)
+    host = (endpoint_host or "").strip().strip("/")
+    endpoint = get_endpoint_by_host(host, request)
     trigger = _endpoint_trigger(endpoint)
+    endpoint_id = int(endpoint.pk)
     subpath = path or ""
     if subpath and not subpath.startswith("/"):
         subpath = "/" + subpath
 
     popup_login = (request.GET.get("ps_hs_popup") or "").strip() == "1"
 
-    # Catch bad paths (undefined/null/nan) emitted by HubSpot SPA before routing is
-    # initialized — redirect to workspace home rather than falling through to admin passthrough.
     _bad_segs = {"undefined", "null", "nan"}
     if any(seg.lower() in _bad_segs for seg in (subpath or "").strip("/").split("/") if seg):
         from django.shortcuts import redirect as _redirect
 
         if popup_login:
-            pub_early = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
+            pub_early = (public_prefix or public_polysniff_prefix(host)).rstrip("/")
             return _redirect(f"{pub_early}/home/")
         from dose.polysniffer.sniff_native_embed import workspace_shell_prefix
         return _redirect(f"{workspace_shell_prefix(endpoint_id)}/home/")
@@ -260,14 +218,13 @@ def dispatch_polysniff_passthrough(request, endpoint_id: int, path: str = "", *,
     if popup_login:
         request._polysniffer_popup_login = True
 
-    pub = (public_prefix or public_polysniff_prefix(endpoint_id)).rstrip("/")
+    pub = (public_prefix or public_polysniff_prefix(host)).rstrip("/")
     request._polysniffer_endpoint_id = endpoint_id
+    request._polysniffer_endpoint_host = host
     request._polysniffer_sniff_mode = "passthrough"
     request._polysniffer_proxy_prefix = pub
     bind_request_tenant(request)
-    # Workspace Start Native/Passthrough stores polysniffer_{host}_capture (e.g. localhost:8888),
-    # not an integer endpoint id — look up by host so CSS/JS under /pt/polysniff/{id}/ land in the session.
-    cap = get_sniff_capture_session(request, trigger)
+    cap = get_sniff_capture_session(request, host)
     if cap:
         request._polysniffer_capture = cap
 

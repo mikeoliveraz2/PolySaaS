@@ -1,6 +1,25 @@
 """Admin-only PolySniffer control screen with top-level browser launches."""
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: PolySniffer 2.0 Native Login Workspace — 2026-06-24
+#
+# FIX 2026-08-20 (owner-approved, frozen-file exception): sniff_shell() resolved
+# the endpoint correctly (via ?schema= or session), but the browser-launch URLs
+# it handed to the client (/pt/polysniff/<id>/...) carried no schema hint at
+# all. AdminTenantSessionMiddleware resets request.session['tenant_slug'] back
+# to the logged-in staff user's own home tenant on every response, so by the
+# time the client's <object data="..."> fetched that URL, session-based
+# resolution in get_endpoint_any_schema() pointed at the wrong tenant and
+# 404'd -- rendering as a blank pane (confirmed via direct repro: same
+# endpoint_id resolves 200 under the correct tenant, 404 under the reset one).
+# This only showed up for endpoints owned by a tenant other than the staff
+# user's own (e.g. Slack under 'olient' while admin's home tenant is
+# 'polysaas'); Odoo/Mattermost never exposed it because they happened to match.
+# Now the endpoint's authoritative schema (already resolved once via
+# get_endpoint_by_host) is threaded through to the client as an explicit
+# ?schema= query param on the native/passthrough launch URLs, so resolution
+# never depends on session state that this same request cycle is about to
+# overwrite.
+# BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
 from __future__ import annotations
 
 import json
@@ -18,11 +37,6 @@ from dose.polysniffer.models import TrafficLog
 from dose.polysniffer.schema_patch import ensure_trafficlog_capture_columns
 from dose.models import TenantApp
 from dose.polysniffer.views.core import get_endpoint_by_host
-
-
-def _workspace_pt_shell_base(endpoint_host: str, endpoint_id: int) -> str:
-    """URL prefix for passthrough workspace navigation — matches sniff_urls.py."""
-    return f"/admin/polysniffer/sniff/{endpoint_host}/workspace/passthrough"
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +88,6 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
 
     app_launch_url = ""
-    pt_embed_ctx = None
     if active_session and active_mode == "native":
         app_launch_url = upstream_browse_url
     elif active_session and active_mode == "passthrough":
@@ -85,43 +98,29 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
             f"{endpoint.get_proxy_prefix().rstrip('/')}"
             f"{frame_subpath}"
         )
-        # Build the inline HTML scoping for non-iframe passthrough.
-        try:
-            from dose.polysniffer.sniff_pt_embed import build_inline_passthrough_embed_context
-
-            pt_embed_ctx = build_inline_passthrough_embed_context(
-                request,
-                endpoint.pk,
-                endpoint,
-                frame_subpath,
-                endpoint_label=_endpoint_label(endpoint),
-                shell_base=_workspace_pt_shell_base(endpoint_host, endpoint.pk),
-            )
-        except Exception as exc:
-            logger.exception("passthrough inline embed build failed")
     workspace_prefix = f"/admin/polysniffer/sniff/{endpoint_host}"
     poll_url = f"{workspace_prefix}/workspace/poll/"
-
-    context = {
-        "endpoint": endpoint,
-        "endpoint_host": endpoint_host,
-        "endpoint_label": _endpoint_label(endpoint),
-        "mode": active_mode,
-        "app_launch_url": app_launch_url,
-        "browse_subpath": browse_subpath,
-        "upstream_browse_url": upstream_browse_url,
-        "active_session": active_session,
-        "diff_url": f"{workspace_prefix}/diff/",
-        "export_url": f"{workspace_prefix}/export-har/",
-        "poll_url": poll_url,
-    }
-    if pt_embed_ctx:
-        context.update(pt_embed_ctx)
+    # See 2026-08-20 fix note above: this is the tenant schema already resolved
+    # (authoritatively) for this endpoint by get_endpoint_by_host(), not a guess.
+    schema = getattr(request, "schema_name", "") or ""
 
     return render(
         request,
         "polysniffer/sniff_workspace.html",
-        context,
+        {
+            "endpoint": endpoint,
+            "endpoint_host": endpoint_host,
+            "endpoint_label": _endpoint_label(endpoint),
+            "mode": active_mode,
+            "app_launch_url": app_launch_url,
+            "browse_subpath": browse_subpath,
+            "upstream_browse_url": upstream_browse_url,
+            "active_session": active_session,
+            "diff_url": f"{workspace_prefix}/diff/",
+            "export_url": f"{workspace_prefix}/export-har/",
+            "poll_url": poll_url,
+            "schema": schema,
+        },
     )
 
 
@@ -169,12 +168,6 @@ def workspace_poll(request, endpoint_host: str):
             logs = list(qs.order_by("-id")[:100])
             logs.reverse()
 
-        def _preview(text):
-            return (text or "")[:500]
-
-        def _more(text):
-            return len(text or "") > 500
-
         try:
             captures = [
                 {
@@ -187,13 +180,6 @@ def workspace_poll(request, endpoint_host: str):
                     "capture_source": log.capture_source,
                     "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
                     "duration_ms": log.duration_ms,
-                    "headers": log.headers or {},
-                    "query_params": log.query_params or {},
-                    "body_preview": _preview(log.body or ""),
-                    "body_more": _more(log.body or ""),
-                    "response_headers": log.response_headers or {},
-                    "response_body_preview": _preview(log.response_body or ""),
-                    "response_body_more": _more(log.response_body or ""),
                 }
                 for log in logs
             ]

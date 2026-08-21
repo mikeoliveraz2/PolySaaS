@@ -9,8 +9,7 @@ POPUP_COOKIE_CAPTURE_SCRIPT = '''
 <script data-ps-popup-cookie-capture="1">
 (function() {
   var ENDPOINT_ID = window.__polysniffer_endpoint_id || 0;
-  var PROXY = (window.__polysniffer_proxy_prefix || '').replace(/\\/+$/, '');
-  var SYNC_URL = PROXY ? (PROXY + '/api/sync-session/') : '';
+  var SYNC_URL = '/pt/polysniff/' + ENDPOINT_ID + '/api/sync-session/';
   var popup = null;
   var originalOpen = window.open;
 
@@ -162,14 +161,12 @@ POPUP_COOKIE_CAPTURE_SCRIPT = '''
     }
   });
 
-  if (!PROXY && document.currentScript) {
+  if (!window.__polysniffer_endpoint_id && document.currentScript) {
     var src = document.currentScript.getAttribute('data-endpoint-id');
     if (src) {
       window.__polysniffer_endpoint_id = parseInt(src, 10);
+      SYNC_URL = '/pt/polysniff/' + window.__polysniffer_endpoint_id + '/api/sync-session/';
     }
-  }
-  if (!SYNC_URL && PROXY) {
-    SYNC_URL = PROXY + '/api/sync-session/';
   }
 })();
 </script>

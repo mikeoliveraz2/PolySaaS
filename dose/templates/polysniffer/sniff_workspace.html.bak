@@ -1,7 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13 -->
-<!-- Restore 2026-08-13: Start Native/Passthrough load the app in #browser-pane, not full-page. -->
-<!-- PolySniffer workspace: app loads in the left browser pane (not full-page). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,7 +30,7 @@
         .btn-secondary { background: #374151; }
         .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; margin-bottom: 12px; }
         .browser-pane { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #fff; overflow: hidden; }
-        .browser-pane iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+        .browser-pane object { width: 100%; height: 100%; border: 0; background: #fff; }
         .browser-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280; font: 0.8rem Consolas, monospace; background: #111827; }
         .right-col header { padding: 12px 14px; border-bottom: 2px solid #16a34a; }
         .right-col header h2 { margin: 0; color: #4ade80; }
@@ -67,11 +63,11 @@
         <div class="mode-cards">
             <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
                 <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
-                <p>Load the app in the pane below (sniff capture). Does not leave this workspace.</p>
+                <p>Direct top-level browser navigation to {{ upstream_browse_url }}.</p>
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
-                <p>Load the app in the pane below through passthrough capture. Does not leave this workspace.</p>
+                <p>Top-level browser navigation through /pt/admin/{{ endpoint_host }}{{ browse_subpath }}.</p>
             </div>
         </div>
         <div class="toolbar">
@@ -94,10 +90,36 @@
 (function() {
     const csrf = '{{ csrf_token }}';
     const endpointHost = '{{ endpoint_host|escapejs }}';
-    const endpointId = {% if endpoint %}{{ endpoint.pk }}{% else %}0{% endif %};
+    const endpointId = {{ endpoint.pk }};
+    const schemaParam = '{{ schema|escapejs }}';
+    /* FIX 2026-08-20 (owner-approved, frozen-file exception): /pt/polysniff/<id>/
+       resolves its tenant from session by default, but AdminTenantSessionMiddleware
+       resets the session's active tenant back to the staff user's own home tenant
+       on every response -- so without an explicit tenant hint, this <object> request
+       404'd for any endpoint owned by a different tenant (confirmed for Slack under
+       'olient'), rendering the browser pane blank. See sniff_v2_workspace.py note.
+       BINGO: PolySniffer Cross-Tenant Launch URL Schema Fix — 2026-08-20
+       FIX 2026-08-21: renamed query param from schema= to _ps_tenant= because
+       Slack's own SPA also reads a query param named "schema" (numeric login-schema
+       id). Putting ?schema=olient on the launch URL made Slack parse NaN and loop
+       on /auth forever ("lc cookie (NaN) is missing"). Admin entry links may still
+       use ?schema=; only this browser-visible polysniff launch URL must avoid the
+       collision. */
+    const schemaQuery = schemaParam ? ('?_ps_tenant=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
-    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
-    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}';
+    const nativeLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
+    const passthroughLaunchUrl = '/pt/polysniff/' + endpointId + '{{ browse_subpath|escapejs }}' + schemaQuery;
+    /* FIX 2026-08-21 (owner-approved, frozen-file exception): some apps send
+       Content-Security-Policy: frame-ancestors 'self' on their own pages (confirmed
+       live for Slack) and refuse to render inside this workspace's <object> embed no
+       matter what origin the request comes from -- a hard browser-enforced wall, not
+       a routing bug. Native mode only (Passthrough keeps identical <object> embed
+       behavior for every app -- same look and feel everywhere) falls back to opening
+       a real top-level tab for these apps, driven by the generic per-handler hook
+       requires_top_level_native() so no app name is hardcoded here.
+       BINGO: PolySniffer Native Top-Level Fallback — 2026-08-21 */
+    const nativeTopLevel = {{ native_top_level|yesno:"true,false" }};
+    const upstreamBrowseUrl = '{{ upstream_browse_url|escapejs }}';
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let count = 0;
@@ -107,7 +129,19 @@
     const browserPane = document.getElementById('browser-pane');
 
     function setBrowserUrl(url, mode) {
-        browserPane.innerHTML = '<iframe src="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></iframe>';
+        browserPane.innerHTML = '<object type="text/html" data="' + url + '" title="PolySniffer browse" style="width:100%;height:100%;border:0;background:#fff;"></object>';
+        currentMode = mode;
+        document.querySelectorAll('.mode-card').forEach(function(card) {
+            card.classList.remove('selected');
+            if (card.dataset.mode === mode) card.classList.add('selected');
+        });
+    }
+
+    /* Same panel, same placeholder styling as clearBrowser()/the initial state --
+       only the message differs, so the workspace still looks identical to every
+       other app's Native pane even though this one opened a separate tab. */
+    function setTopLevelPlaceholder(mode) {
+        browserPane.innerHTML = '<div class="browser-placeholder">Opened in a new browser tab (this app cannot be embedded). Capture continues on the right.</div>';
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function(card) {
             card.classList.remove('selected');
@@ -129,7 +163,12 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Failed to start capture');
             await storeMmToken();
-            setBrowserUrl(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl, mode);
+            if (mode === 'native' && nativeTopLevel) {
+                window.open(upstreamBrowseUrl, '_blank', 'noopener');
+                setTopLevelPlaceholder(mode);
+            } else {
+                setBrowserUrl(mode === 'passthrough' ? passthroughLaunchUrl : nativeLaunchUrl, mode);
+            }
         } catch (error) { alert(error.message); }
     };
 
@@ -137,7 +176,7 @@
         try {
             const response = await fetch(workspaceUrl + '/session/stop/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
             const data = await response.json();
-            if (!data.ok) throw new Error(data.error || 'Failed to start capture');
+            if (!data.ok) throw new Error(data.error || 'Failed to stop capture');
             clearBrowser();
             lastId = 0;
             count = 0;

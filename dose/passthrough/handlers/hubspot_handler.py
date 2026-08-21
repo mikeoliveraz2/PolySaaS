@@ -2595,7 +2595,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
     }} catch (e) {{}}
   }}
   function _probe() {{
-    return fetch('/pt/polysniff/' + EID + '/api/sync-session/', {{
+    return fetch(PROXY + '/api/sync-session/', {{
       method: 'POST',
       credentials: 'include',
       headers: {{'Content-Type': 'application/json'}},
@@ -2771,15 +2771,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       }} catch (e) {{ return ''; }}
     }}
     function _popupLoginUrl() {{
-      var eid = _endpointIdFromProxy();
-      if (!eid) {{
-        try {{
-          var m2 = (window.location.pathname || '').match(/\\/dose\\/sniff\\/(\\d+)\\//);
-          if (m2 && m2[1]) eid = m2[1];
-        }} catch (e2) {{}}
-      }}
-      if (!eid) return PROXY + '/login/?ps_hs_popup=1';
-      return window.location.origin + '/pt/polysniff/' + eid + '/login/?ps_hs_popup=1';
+      return (PROXY || '/pt/polysniff') + '/login/?ps_hs_popup=1';
     }}
     function _popupWindowName() {{
       var eid = _endpointIdFromProxy() || '0';
@@ -2789,9 +2781,8 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
       if (typeof window.__psSyncHubspotSession === 'function') {{
         return window.__psSyncHubspotSession();
       }}
-      var eid = _endpointIdFromProxy();
-      if (!eid) return Promise.resolve(null);
-      return fetch('/pt/polysniff/' + eid + '/api/sync-session/', {{
+      if (!PROXY) return Promise.resolve(null);
+      return fetch(PROXY + '/api/sync-session/', {{
         method: 'POST',
         credentials: 'same-origin',
         headers: {{'Content-Type': 'application/json'}},

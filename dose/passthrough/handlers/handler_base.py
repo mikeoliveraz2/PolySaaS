@@ -87,6 +87,10 @@ class PassthroughHandlerBase:
     - `should_wrap_in_admin_template(request, upstream_path, **kwargs) -> bool` (optional admin embed wrap gate)
     - `extra_blocked_upstream_prefixes(request, upstream_path) -> tuple` (optional paths to block at forwarder)
     - `coerce_upstream_response_for_path(resp, request, upstream_path) -> tuple|None` (optional API HTML→JSON stub)
+    - `requires_top_level_native(request=None) -> bool` (optional; True if this app cannot be
+      embedded in a nested frame at all -- e.g. it sends frame-ancestors CSP -- so PolySniffer's
+      Native mode must open a real top-level browser tab instead of the shared workspace's
+      <object> embed)
     """
 
     _GENERIC_NON_HTML_SUFFIXES = (
@@ -182,6 +186,19 @@ class PassthroughHandlerBase:
     def extra_blocked_upstream_prefixes(self, request, upstream_path: str):
         """Return extra upstream path prefixes the forwarder must not proxy (WS upgrade, etc.)."""
         return ()
+
+    def requires_top_level_native(self, request=None) -> bool:
+        """Return True when this app refuses to render inside ANY nested frame
+        (iframe/object/embed) regardless of origin -- e.g. it serves
+        Content-Security-Policy: frame-ancestors 'self' on its own pages. That
+        is a hard browser-enforced wall no proxy/URL-rewrite can work around
+        (see BINGO: Slack Native Top-Level Fallback -- 2026-08-21), so
+        PolySniffer's Native mode must open a real top-level browser tab for
+        these apps instead of the shared workspace's <object> embed. Default
+        False preserves today's embed behavior for every existing handler
+        (Odoo, Mattermost, Nextcloud, Dolibarr, HubSpot -- all self-hosted or
+        already proven embeddable)."""
+        return False
 
     @classmethod
     def _generic_non_embeddable_html_path(cls, upstream_path: str) -> bool:
