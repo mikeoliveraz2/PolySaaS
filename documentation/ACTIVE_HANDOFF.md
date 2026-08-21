@@ -13,6 +13,91 @@ Every agent — Copilot, Cursor, and Windsurf — must read this file at the sta
 - Branch: `main`
 - Machine: laptop session → push for office pickup
 
+## Evening addendum (2026-08-21) — navigation interception is impossible; relay is server-side
+
+### Verified browser constraint (do not retry client-side navigation patching)
+
+Probed in real Chrome via `tmp/_probe_location_patchability.py`:
+
+```
+window_location_descriptor: {'configurable': False, 'has_set': True, 'own': True}
+redefine_window_location: threw: TypeError
+location_proto_href: False          # Location.prototype.href does not exist
+location_proto_assign: undefined
+location_own_href_configurable: False
+redefine_location_href: threw: TypeError
+navigation_api: True
+```
+
+`window.location` and `Location`'s `href`/`assign`/`replace` are `[LegacyUnforgeable]`.
+A page script **cannot** intercept `window.location = '/path'`. The old
+`Location.prototype` patch block in `slack_handler.py` was therefore dead code and
+has been removed. Only the Navigation API (Chrome-only) could intercept client-side.
+
+### Why this mattered
+
+After the credential iframe times out (~30s), Slack falls back to
+`window.location = '/auth?...'`. That is root-absolute, so it landed on our origin
+outside any proxy prefix, was never forwarded, and the pane stayed blank. The
+console shows the fallback with **no** `[SLACK SHIM] proxy-relay rewrite` line,
+which is the fingerprint of this class of bug.
+
+### Fix shipped — generic stray-root-path relay (server-side)
+
+- `dose/passthrough/stray_root_paths.py` (new) — aggregates an optional
+  `stray_root_paths()` hook across discovered handlers, derives the proxy prefix
+  from a **same-origin** `Referer`, returns the relay target. No app names.
+- `dose/middleware/passthrough_stray_root_relay.py` (new) — 302s when a target is
+  returned; otherwise passes through.
+- `mysite/settings.py` — **one line** added to `MIDDLEWARE` (owner-approved frozen
+  edit), placed before `ExternalPassthroughMiddleware`.
+- `dose/passthrough/handlers/slack_handler.py` — declares `stray_root_paths()`
+  returning `('/auth',)`; dead `Location.prototype` block removed.
+- `dose/tests/test_stray_root_relay.py` (new) — 5 tests, all passing.
+
+Handler isolation preserved: the base class and `registry.py` were **not** touched;
+the hook is discovered via `getattr`, per the allowed pattern.
+
+Verified through the real middleware stack:
+
+```
+claimed  /auth        -> 302 /pt/polysniff/app.slack.com/auth?app=client&return_to=...
+no referer           -> 404 None
+unclaimed path       -> 200 None
+cross-origin referer -> 404 None
+```
+
+### Still open after this
+
+- **Browser proof pending** — server must be restarted (Waitress, no autoreload)
+  and the Native pane re-tested. The relay only removes the fallback dead-end; it
+  does not prove Slack boots.
+- The iframe credential handshake still times out for 30s before the fallback. The
+  shim's own message probe is **self-blinded**: its capture-phase listener is
+  registered through the patched `addEventListener`, so `spoofMessageEvent` rewrites
+  `origin` before the log check runs. To learn whether `postMessage` actually
+  delivers, save a native `addEventListener` reference before patching.
+- `psc=NaN` still appears in `[AUTH] Need to re-fetch auth (... psc=NaN ...)`.
+
+### Slack webhook slice recovered (separate track)
+
+- `origin/cursor/polysniffer-switch-object-to-iframe` had been **deleted from the
+  remote**; the local ref was the only copy. Preserved as
+  `backup/slack-webhook-native-20260821` (`e8bbba50`).
+- Surgical bring-over on `feature/slack-webhook-slice` (`e82fc259`): 9 files, zero
+  overlap with `main`, 9/9 tests pass, route resolves at `/hooks/slack/commands/`.
+  Awaiting Michael's review; **not merged**.
+- Transport is **RabbitMQ**, not a "WebhookMailbox" — an emailed analysis had this
+  wrong. Proving the pipe needs an active `MQConfig` (provider `rabbitmq`) in the
+  tenant schema *plus* `slack_team_id`/`signing_secret`, or the view returns 503
+  before Slack gets its ack.
+- `main` was missing `dose/services/odoo_rpc.py`, required by `OdooCreatePartner`;
+  included in the slice. `pika==1.3.2` installed on this laptop — the office
+  machine needs it too.
+- Fixed on `main` (`553f9b94`, owner-approved frozen edit): the orchestration toast
+  poller in `display.html` read `data.unread_messages` while the live
+  `UnreadDoseMessagesView` returns `messages`, so toasts never fired.
+
 ## Last session summary (2026-08-21)
 
 Slack PolySniffer native-pane work (still OPEN — pane not settled). Large progress on proxy-relay auth path and host-keyed polysniff URLs.

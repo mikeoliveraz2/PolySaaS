@@ -63,16 +63,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
     def needs_readable_response_body(self, request, target_url: str) -> bool:
         return True
 
-    def stray_root_paths(self):
-        """Root-absolute paths Slack navigates the browser to on its own.
-
-        When the credential iframe times out, Slack's client falls back to
-        `window.location = '/auth?...'`, which lands on our root instead of the
-        proxy prefix. No client shim can catch it (window.location is
-        unforgeable), so the relay middleware redirects it back onto the prefix.
-        """
-        return _SLACK_HOST_ROOT_PREFIXES
-
     def upstream_url_for_subpath(self, endpoint_url, clean_path):
         """Map proxied subpaths to real Slack URLs.
 
@@ -336,11 +326,20 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
         }}
     }} catch (e) {{}}
 
-    /* Navigation is NOT interceptable from page script: window.location is an
-       own non-configurable property and Location.prototype.href / .assign do not
-       exist (both [LegacyUnforgeable]; verified in Chrome). Slack's fallback
-       `window.location = '/auth?...'` is relayed server-side instead — see
-       stray_root_paths() on this handler. */
+    try {{
+        var _hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+        if (_hrefDesc && _hrefDesc.set) {{
+            Object.defineProperty(Location.prototype, 'href', {{
+                get: _hrefDesc.get,
+                set: function(v) {{ _hrefDesc.set.call(this, rewriteUrl(String(v || ''))); }},
+                configurable: true
+            }});
+        }}
+        var _assign = Location.prototype.assign;
+        Location.prototype.assign = function(v) {{ return _assign.call(this, rewriteUrl(String(v || ''))); }};
+        var _replace = Location.prototype.replace;
+        Location.prototype.replace = function(v) {{ return _replace.call(this, rewriteUrl(String(v || ''))); }};
+    }} catch (e) {{}}
 
     console.log('[SLACK SHIM] Installed proxy-relay + postMessage bridge. Proxy prefix: ' + PROXY_PREFIX);
 }})();

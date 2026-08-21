@@ -566,7 +566,6 @@ MIDDLEWARE = [
     'dose.middleware.jazzmin_tenant_theme.JazzminTenantThemeMiddleware',
     'dose.doseresponsecontroller.DoseResponseController',
     'dose.middleware.passthrough_auth.PassthroughAuthMiddleware',
-    'dose.middleware.passthrough_stray_root_relay.PassthroughStrayRootRelayMiddleware',
     # CRITICAL: ExternalPassthroughMiddleware must run BEFORE CsrfViewMiddleware
     # so it can return a response before CSRF validation occurs
     'dose.passthrough.middleware.ExternalPassthroughMiddleware',
