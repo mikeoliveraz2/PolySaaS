@@ -1,117 +1,102 @@
 # PolySaaS Active Handoff
 
 This file is the canonical startup and end-of-day handoff for the repo.
-
-Every agent — Copilot, Cursor, and Windsurf — must read this file at the start of every session.
+Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date: 2026-08-21
+- Date/session: 2026-08-22 EOD, Slack wireframe → live Odoo orchestration
 - Branch: `cursor/polysniffer-slack-native-capture`
-- North star: `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`
-- Agent sync: passed
-- Tests: `test_slack_native_sniff` + `test_polysniffer_architecture` = 31 pass
-- `python manage.py check`: no issues
-- Waitress restarted after every change (it does not auto-reload)
+- Sync: pulled `origin/main`; source merged cleanly; this handoff supersedes the stale conflict
+- Starting HEAD: `b97baeec` (branch was one commit ahead of its remote before this EOD commit)
+- Agent sync check: passed at session startup
+- Server: Waitress restarted after implementation; mailbox consumer started with 1-second polling
+- Policy: Slack demo panes are PolySaaS HTML. Do not load `app.slack.com`, add a Slack iframe, or create a PolySaaS `/auth` workaround.
 
-## Owner decision this session (supersedes prior "prove Slack UI in pane" goal)
+## Owner-approved delivery order
 
-**Slack will not be rendered inside PolySaaS — no frame, no proxy of the Slack UI.**
-Michael + Shela: the Slack scenario is **composition, not framing** — PolySaaS
-orchestration bar on our origin, real Slack in its own window/desktop app.
+1. Three stable Slack wireframe surfaces
+2. Real contact webhook + Odoo consumer
+3. Real sale webhook + draft-quotation consumer
+4. Messaging
+5. Visual polish to resemble Slack
 
-The Slack product slice is:
+The first three items are complete. Messaging is next; visual polish remains deliberately last.
 
-1. `/poly` in Slack → ack + mailbox + consumer + bar
-2. Bind UI: attach consumer to that webhook
-3. Consumers: create contact, create sale
-4. Record demo: Slack command → Odoo rows → bar update
+## Completed this session
 
-Native mode keeps its real job: **forwarder capture for discovery (HAR evidence)**.
-Whether the Slack UI ever paints in the pane is explicitly not a goal.
+### Three deterministic Slack surfaces
 
-## Session work — Slack Native inline embed (five real bugs)
+- PolySniffer Native: fake Slack discovery page, no orchestration bar.
+- PolySniffer Passthrough: the same shell plus the green orchestration bar.
+- Sidebar Passthrough: the same PolySaaS workspace, not a live Slack proxy.
+- Slack-specific handler hooks own the behavior; shared passthrough layers remain app-neutral.
+- Wireframe JavaScript was moved to a static file because inline script execution was blocked by admin CSP.
 
-Each was a distinct root cause found from live console + `debug.log` tracebacks.
+### Real contact webhook and consumer
 
-1. **Proxy 500 on every asset** — `sniff_forward.py` copied upstream
-   `Transfer-Encoding: chunked` onto the WSGI response; Waitress raises
-   `AssertionError: transfer-encoding is a "hop-by-hop" header` (PEP 3333), so a
-   healthy upstream 200 surfaced as 500 + `text/html` MIME errors. Now strips the
-   hop-by-hop set plus `content-encoding` / `content-length`.
-2. **Assets requested from our origin** — inline embed drops `<html>`, and Slack
-   keeps its CDN base on `<html data-cdn="https://a.slack-edge.com/">`. Firewall
-   shim now re-applies the upstream root element's `data-*` / `lang` / `dir` to
-   `document.documentElement` before Slack boots. CDN bundles load direct
-   (same precedent as `hubspot_native_sniff`). Result: `[WD] … s: 7; f: 0`.
-3. **Shim hijacked our own Live-capture poll** — `/admin/polysniffer/sniff/…/workspace/poll/`
-   was rewritten into the native proxy and forwarded upstream (CORS + 404 flood).
-   Shim now treats anything under `/admin/polysniffer/sniff/` as PolySaaS-owned.
-4. **`PermissionError` saving session (Windows)** — `MIDDLEWARE` listed **both**
-   `DebugSessionMiddleware` (which subclasses `SessionMiddleware`) **and** Django's
-   `SessionMiddleware`, so each response saved the same session file twice and the
-   writes raced. Removed the duplicate stock entry. `admin.E410` detects session
-   middleware by subclass, so `manage.py check` still passes. Sessions stay on the
-   file backend; nobody is logged out.
-5. **`/beacon/timing` 500** — HAR capture decoded a binary body to text, and
-   PostgreSQL rejects NUL: `ValueError: A string literal cannot contain NUL (0x00)`.
-   `har_capture.py` is FROZEN, so the fix is forwarder-side: capture receives a
-   NUL-scrubbed copy (`_CaptureSafeResponse`), browser bytes untouched, and the
-   capture call is wrapped so a bad HAR row can never 500 a healthy response.
+- Wireframe action: `/events/slack/webhook/contact` (`POST`, `REQ`).
+- Authenticated, CSRF-protected local trigger queues a canonical `polysaas.trigger.v1` envelope.
+- Tenant is derived from the authenticated request/session; it is never accepted from posted JSON.
+- Tenant Instruction #4 binds the action to `OdooCreatePartner`.
+- Live proof in tenant `polysaasonline`: Odoo partner #8 created by direct pipeline proof; browser click later created partner #11.
 
-Also: **upstream cookie relay**. Slack returns `Domain=.slack.com; Secure` cookies
-and the forwarder comma-joined multiple `Set-Cookie` headers into one. Cookies are
-now re-issued individually for the proxy origin (drop `Domain`, drop `Secure` on
-plain HTTP, downgrade `SameSite=None` → `Lax`). Generic proxy correctness, kept.
+### Real quotation webhook and consumer
 
-### Reverted deliberately
+- Wireframe action: `/events/slack/webhook/sale` (`POST`, `REQ`).
+- New `OdooCreateQuotation` atomic service creates an Odoo `sale.order` in `draft` state.
+- Tenant Instruction #5 binds the action to `OdooCreateQuotation`.
+- The standard Odoo Sales module (`sale_management`) was installed in `odoo_polysaasonline`; it had been uninstalled and `sale.order` did not exist.
+- Live proof: quotation S00001 created by direct pipeline proof; browser click later created draft quotation S00002.
+- Idempotency now scopes existing-quotation reuse by client reference + customer + draft state, preventing another customer's order from being updated.
 
-`django_resp.xframe_options_exempt = True` was added so Slack's **own** credential
-iframe (`fetchAuthAndReturnToUrl: fetching credentials with iframe at /auth?…`)
-would not be blocked by our own `XFrameOptionsMiddleware`. **Owner rejected it** —
-removed, with its test assertion. Do not re-add without a written exception.
+### Browser behavior
 
-## Evidence captured (before the no-framing decision)
+- Both wireframe buttons now perform a real same-origin POST, receive mailbox ID, poll tenant-safe mailbox status, and display the Odoo result.
+- Verified in the sidebar Slack wireframe:
+  - `Odoo contact ready — partner #11`
+  - `Odoo draft quotation S00002`
 
-- Live capture recorded `/`, `/auth`, `/beacon/timing` ×2 — all **200**.
-- Slack booted: all 7 gantry bundles loaded, watchdog reload loop gone.
-- Auth handshake reached `[AUTH] credentials are ready` + postMessage to parent.
-- Parent then waited on the `lc` cookie and fell back to a top-level `/auth`
-  redirect → 404. Confirms Slack needs first-party `slack.com` cookies, which is
-  exactly why framing/proxying the Slack UI is a dead end.
+## Primary files changed
 
-## Files changed
+- `dose/passthrough/handlers/slack_handler.py`
+- `dose/polysniffer/views/sniff_v2_workspace.py`
+- `dose/templates/polysniffer/sniff_workspace.html`
+- `dose/templates/polysniffer/slack_wireframe.html`
+- `dose/templates/admin/passthrough_embed.html`
+- `dose/static/admin/js/slack_wireframe.js`
+- `dose/views/slack_wireframe_webhook.py`
+- `dose/webhook_events.py`
+- `dose/urls.py`
+- `dose/services/odoo_create_quotation.py`
+- `dose/management/commands/setup_slack_wireframe_consumers.py`
+- Slack/Odoo tests and required adjacent `.bak` files
 
-`dose/polysniffer/sniff_forward.py`, `dose/polysniffer/handlers/slack_native_sniff.py`,
-`dose/polysniffer/sniff_native_embed.py`, `dose/polysniffer/sniff_urls.py`,
-`dose/polysniffer/views/sniff_v2_workspace.py`,
-`dose/templates/polysniffer/sniff_workspace.html`, `dose/admin.py` (`_ps_tenant=`),
-`mysite/settings.py`, plus `dose/tests/test_slack_native_sniff.py` and
-`dose/tests/test_polysniffer_architecture.py`. `.bak` files alongside each.
+The pull from `origin/main` also brought its existing stray-root relay and diagnostic work. Those merged source files were not rewritten during this session.
 
-## Blockers / advisories
+## Validation
 
-- **Known dead end (documented, not a bug):** the shim's `Location.prototype`
-  patch cannot work. `Location` members are `[LegacyUnforgeable]` — own,
-  non-configurable properties per instance — so a prototype patch is silently
-  ignored. Real `location` navigations can never be intercepted from inside the
-  page; any such recovery must be server-side.
-- **Advisory (needs owner call):** `xframe_options_exempt` already exists in older
-  modules — `dose/polysniffer/sniff_pt_proxy.py`, `pt_polysniff_urls.py`,
-  `views/proxy.py`. Predates this session, untouched. If no-framing is project-wide
-  policy, these want an audit.
-- `DebugSessionMiddleware` swallows any session-save failure and returns the
-  response anyway, so writes can be lost silently. It masked bug 4. Left as-is.
+- 39 focused Slack mailbox, wireframe, webhook, Odoo partner, and quotation tests passed.
+- Follow-up quotation hardening suite: 6/6 passed.
+- IDE lint diagnostics: no errors in changed files.
+- Live mailbox results: both actions `processed`, each matched exactly one Instruction, each atomic result returned `status=success`.
+- Live Odoo readback confirmed partner #8 and draft quotation S00001; browser action confirmation produced partner #11 and S00002.
+- Waitress restarted successfully on port 8000.
+
+## Blockers / risks
+
+- Messaging feedback exposes an existing schema defect: creating `DoseMessage` in `polysaasonline` fails because tenant-table FK `dose_dosemessage.user_id` references a tenant `auth_user` row that does not contain public user id 143. Atomic execution and mailbox completion still succeed. Resolve this tenant-safe user/message relationship before relying on messaging or toast feedback.
+- `Instruction.pub_date` and `CallBackData.pub_date` still emit naive-datetime warnings. They do not block the pipeline but should be corrected deliberately.
+- The first fixed-reference quotation proof was correctly deduplicated by `RequestLog`; unique browser/demo IDs avoid replay collisions.
 
 ## Next actions
 
-1. Verify `/poly` live end-to-end: ngrok URL registered on the Slack app,
-   `signing_secret` + `slack_team_id` in `TenantApp.extra_config`, mailbox write,
-   `start_mailbox_consumer` drain, bar update.
-   Already built: `mysite/urls.py` → `hooks/slack/commands/`,
-   `dose/views/slack_slash_command.py` (v0 signature, 300s replay window,
-   tenant-by-`team_id`), `publish_slack_command_event` → `WebhookMailbox` (300s TTL),
-   `dose/tests/test_slack_webhook_orchestration.py`.
-2. Bind UI: attach a consumer to that webhook (existence not yet verified).
-3. Consumers: `OdooCreatePartner` exists in the registry; "create sale" not found.
-4. Record the demo: Slack command → Odoo rows → bar update.
+1. Design and implement tenant-safe message feedback without moving tenant-owned data into `public`.
+2. Add the Slack wireframe message composer and render consumer replies/results as messages.
+3. Re-run contact and quotation actions through messaging and verify Odoo readback.
+4. Only after messaging works, polish the wireframe to more closely resemble Slack.
+5. Keep Native, PolySniffer Passthrough, and Sidebar Passthrough behavior separate and preserve the no-iframe/no-live-Slack decision.
+
+## Commit scope / exclusions
+
+Include the Slack wireframe, webhook, consumer, Odoo quotation, tests, handoff, and their `.bak` files. Exclude generated `__pycache__`/`.pyc`, local terminal output, and unrelated sanitized HAR diagnostics.

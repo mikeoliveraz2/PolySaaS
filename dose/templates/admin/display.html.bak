@@ -636,8 +636,8 @@ BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0 -->
             fetch('/dose/api/unread-dosemessages/', {credentials: 'same-origin'})
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(data) {
-                    if (!data || !data.messages) return;
-                    data.messages.forEach(function(msg) {
+                    if (!data || !data.unread_messages) return;
+                    data.unread_messages.forEach(function(msg) {
                         if (seenIds[msg.id]) return;
                         seenIds[msg.id] = true;
                         showToast(msg.message, msg.level || 'success');

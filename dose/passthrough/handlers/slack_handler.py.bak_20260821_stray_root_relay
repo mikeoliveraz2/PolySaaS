@@ -35,7 +35,7 @@ handshake completes across the proxy boundary.
 BINGO: Slack Native Proxy-Relay + Host-Root Paths — 2026-08-21
 """
 import re
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 from dose.passthrough.handlers.handler_base import PassthroughHandlerBase
 
@@ -52,41 +52,6 @@ _SLACK_PROXY_PATHS = _SLACK_HOST_ROOT_PREFIXES
 class SlackPassthroughHandler(PassthroughHandlerBase):
     """Slack passthrough — all Slack-specific rewrite logic lives here only."""
 
-    def polysniffer_mailbox_context(self, endpoint) -> dict:
-        """Describe Slack's logical webhook Action Point for PolySniffer."""
-        return {
-            "source": "slack",
-            "action_path": "/events/slack/command/poly",
-            "method": "POST",
-            "direction": "REQ",
-            "event_key": "slack.command.poly",
-        }
-
-    def passthrough_embed_template_context(self, trigger, request) -> dict:
-        """Bridge Slack mailbox events into the production passthrough bar."""
-        host = str(trigger or "").strip().strip("/")
-        schema = getattr(request, "schema_name", "") or ""
-        tenant_query = f"&_ps_tenant={quote(schema)}" if schema else ""
-        endpoint = (
-            getattr(request, "_passthrough_endpoint", None)
-            or getattr(self, "endpoint", None)
-        )
-        launch_url = (
-            getattr(endpoint, "endpoint_url", "")
-            or (f"https://{host}" if host else "https://app.slack.com")
-        )
-        return {
-            "embed_mailbox_poll_url": (
-                f"/admin/polysniffer/sniff/{host}/workspace/poll/"
-                f"?mode=passthrough{tenant_query}"
-            ),
-            "embed_mailbox_action_path": "/events/slack/command/poly",
-            "embed_mailbox_method": "POST",
-            "embed_mailbox_direction": "REQ",
-            "embed_external_launch_url": launch_url,
-            "embed_external_launch_label": "Open Slack",
-        }
-
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:
         slug = (getattr(endpoint, "slug", "") or "").lower().strip()
@@ -97,16 +62,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
 
     def needs_readable_response_body(self, request, target_url: str) -> bool:
         return True
-
-    def stray_root_paths(self):
-        """Root-absolute paths Slack navigates the browser to on its own.
-
-        When the credential iframe times out, Slack's client falls back to
-        `window.location = '/auth?...'`, which lands on our root instead of the
-        proxy prefix. No client shim can catch it (window.location is
-        unforgeable), so the relay middleware redirects it back onto the prefix.
-        """
-        return _SLACK_HOST_ROOT_PREFIXES
 
     def upstream_url_for_subpath(self, endpoint_url, clean_path):
         """Map proxied subpaths to real Slack URLs.
@@ -235,18 +190,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
        also wrap window.onmessage (not only addEventListener). */
     function spoofMessageEvent(event) {{
         if (!event || event.origin !== window.location.origin) return event;
-        /* Redefine origin on the delivered event first. A synthetic
-           MessageEvent is untrusted (isTrusted false) and can drop `source`,
-           and iframe handshakes routinely check
-           event.source === iframe.contentWindow, so replacing the event is a
-           last resort rather than the default. */
-        try {{
-            Object.defineProperty(event, 'origin', {{
-                get: function() {{ return UPSTREAM_ORIGIN; }},
-                configurable: true
-            }});
-            if (event.origin === UPSTREAM_ORIGIN) return event;
-        }} catch (e) {{}}
         try {{
             return new MessageEvent('message', {{
                 data: event.data,
@@ -256,14 +199,22 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
                 ports: event.ports ? Array.prototype.slice.call(event.ports) : []
             }});
         }} catch (e) {{
-            return {{
-                data: event.data,
-                origin: UPSTREAM_ORIGIN,
-                source: event.source,
-                ports: event.ports,
-                lastEventId: event.lastEventId,
-                type: 'message'
-            }};
+            try {{
+                Object.defineProperty(event, 'origin', {{
+                    get: function() {{ return UPSTREAM_ORIGIN; }},
+                    configurable: true
+                }});
+                return event;
+            }} catch (e2) {{
+                return {{
+                    data: event.data,
+                    origin: UPSTREAM_ORIGIN,
+                    source: event.source,
+                    ports: event.ports,
+                    lastEventId: event.lastEventId,
+                    type: 'message'
+                }};
+            }}
         }}
     }}
     try {{
@@ -272,13 +223,8 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             if (type === 'message' && typeof listener === 'function') {{
                 var wrapped = function(event) {{
                     var ev = spoofMessageEvent(event);
-                    if (ev && ev.origin === UPSTREAM_ORIGIN) {{
-                        console.log('[SLACK SHIM] credential message origin=' + ev.origin
-                            + ' inPlace=' + (ev === event)
-                            + ' source=' + (ev.source ? 'kept' : 'lost')
-                            + ' trusted=' + (ev.isTrusted === true)
-                            + ' data=' + (ev.data && typeof ev.data === 'object'
-                                ? Object.keys(ev.data).join(',') : typeof ev.data));
+                    if (ev !== event) {{
+                        console.log('[SLACK SHIM] message origin spoofed for listener');
                     }}
                     return listener.call(this, ev);
                 }};
@@ -286,35 +232,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             }}
             return _ael.call(this, type, listener, options);
         }};
-        /* Also wrap already-open parent/top so listeners registered there see spoofed origin. */
-        function patchParentMessageBridge(win, label) {{
-            if (!win || win === window) return;
-            try {{
-                var desc = Object.getOwnPropertyDescriptor(Window.prototype, 'onmessage');
-                if (desc && desc.set) {{
-                    Object.defineProperty(win, 'onmessage', {{
-                        configurable: true,
-                        enumerable: true,
-                        get: function() {{ return this.__ps_onmessage; }},
-                        set: function(fn) {{
-                            this.__ps_onmessage = fn;
-                            if (typeof fn === 'function') {{
-                                desc.set.call(this, function(event) {{
-                                    return fn.call(this, spoofMessageEvent(event));
-                                }});
-                            }} else {{
-                                desc.set.call(this, fn);
-                            }}
-                        }}
-                    }});
-                    console.log('[SLACK SHIM] onmessage bridge on ' + label);
-                }}
-            }} catch (e) {{
-                console.warn('[SLACK SHIM] parent onmessage bridge failed ' + label, e);
-            }}
-        }}
-        try {{ if (window.parent && window.parent !== window) patchParentMessageBridge(window.parent, 'parent'); }} catch (e) {{}}
-        try {{ if (window.top && window.top !== window && window.top !== window.parent) patchParentMessageBridge(window.top, 'top'); }} catch (e) {{}}
     }} catch (e) {{}}
     try {{
         var _onMsgDesc = Object.getOwnPropertyDescriptor(Window.prototype, 'onmessage');
@@ -409,11 +326,20 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
         }}
     }} catch (e) {{}}
 
-    /* Navigation is NOT interceptable from page script: window.location is an
-       own non-configurable property and Location.prototype.href / .assign do not
-       exist (both [LegacyUnforgeable]; verified in Chrome). Slack's fallback
-       `window.location = '/auth?...'` is relayed server-side instead — see
-       stray_root_paths() on this handler. */
+    try {{
+        var _hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+        if (_hrefDesc && _hrefDesc.set) {{
+            Object.defineProperty(Location.prototype, 'href', {{
+                get: _hrefDesc.get,
+                set: function(v) {{ _hrefDesc.set.call(this, rewriteUrl(String(v || ''))); }},
+                configurable: true
+            }});
+        }}
+        var _assign = Location.prototype.assign;
+        Location.prototype.assign = function(v) {{ return _assign.call(this, rewriteUrl(String(v || ''))); }};
+        var _replace = Location.prototype.replace;
+        Location.prototype.replace = function(v) {{ return _replace.call(this, rewriteUrl(String(v || ''))); }};
+    }} catch (e) {{}}
 
     console.log('[SLACK SHIM] Installed proxy-relay + postMessage bridge. Proxy prefix: ' + PROXY_PREFIX);
 }})();
