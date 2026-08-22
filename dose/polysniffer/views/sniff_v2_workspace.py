@@ -64,6 +64,52 @@ def _native_browse_subpath(endpoint) -> str:
     return path
 
 
+def _mailbox_context(endpoint) -> dict:
+    """Return handler-declared webhook/mailbox plumbing, if any."""
+    handler = resolve_handler_for_endpoint(endpoint)
+    hook = getattr(handler, "polysniffer_mailbox_context", None)
+    if not callable(hook):
+        return {}
+    return hook(endpoint) or {}
+
+
+def _serialize_mailbox_event(row) -> dict:
+    """Expose action evidence without leaking Slack tokens/response URLs."""
+    envelope = row.envelope or {}
+    raw_payload = envelope.get("payload") or {}
+    allowed_payload = {
+        "command",
+        "text",
+        "user_id",
+        "user_name",
+        "channel_id",
+        "channel_name",
+        "team_id",
+    }
+    payload = {
+        key: raw_payload.get(key)
+        for key in allowed_payload
+        if raw_payload.get(key) not in (None, "")
+    }
+    result = row.result if isinstance(row.result, dict) else {}
+    return {
+        "id": row.id,
+        "source": row.source,
+        "event_key": envelope.get("event_key", ""),
+        "action_path": row.action_path,
+        "method": envelope.get("method", "POST"),
+        "direction": envelope.get("direction", "REQ"),
+        "status": row.status,
+        "result_status": result.get("status", ""),
+        "matched": result.get("matched", 0),
+        "executed": result.get("executed", len(result.get("results") or [])),
+        "error": (row.error or "")[:500],
+        "payload": payload,
+        "created_at": row.created_at.strftime("%H:%M:%S") if row.created_at else "",
+        "processed_at": row.processed_at.strftime("%H:%M:%S") if row.processed_at else "",
+    }
+
+
 @staff_member_required
 def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_path: str = ""):
     """PolySniffer workspace — native capture (no orch bar) or passthrough + green bar."""
@@ -189,6 +235,9 @@ def workspace_poll(request, endpoint_host: str):
         if not tenant:
             return JsonResponse({"success": False, "error": "no tenant context"}, status=400)
 
+        endpoint = get_endpoint_by_host(endpoint_host, request)
+        mailbox_context = _mailbox_context(endpoint)
+
         ensure_trafficlog_capture_columns(request)
         _ensure_tenant_schema(tenant)
 
@@ -200,6 +249,10 @@ def workspace_poll(request, endpoint_host: str):
             since_id = int(request.GET.get("since_id", 0))
         except (TypeError, ValueError):
             since_id = 0
+        try:
+            mailbox_since_id = int(request.GET.get("mailbox_since_id", 0))
+        except (TypeError, ValueError):
+            mailbox_since_id = 0
 
         session = get_sniff_capture_session(request, endpoint_host)
         qs = TrafficLog.objects.all()
@@ -250,11 +303,29 @@ def workspace_poll(request, endpoint_host: str):
                 }
                 for log in logs
             ]
+
+            mailbox_events = []
+            if mode == "passthrough" and mailbox_context.get("source"):
+                from dose.models import WebhookMailbox
+
+                mailbox_qs = WebhookMailbox.objects.filter(
+                    source=mailbox_context["source"]
+                )
+                if mailbox_since_id:
+                    mailbox_qs = mailbox_qs.filter(id__gt=mailbox_since_id)
+                else:
+                    mailbox_qs = mailbox_qs.order_by("-id")[:100]
+                mailbox_rows = list(mailbox_qs.order_by("id")[:100]) if mailbox_since_id else list(mailbox_qs)
+                mailbox_rows.sort(key=lambda row: row.id)
+
+                for row in mailbox_rows:
+                    mailbox_events.append(_serialize_mailbox_event(row))
         except Exception as exc:
             return JsonResponse(
                 {
                     "success": True,
                     "captures": [],
+                    "mailbox_events": [],
                     "session_active": bool(session),
                     "session_name": session.capture_name if session else "",
                     "mode": mode,
@@ -266,6 +337,7 @@ def workspace_poll(request, endpoint_host: str):
             {
                 "success": True,
                 "captures": captures,
+                "mailbox_events": mailbox_events,
                 "session_active": bool(session),
                 "session_name": session.capture_name if session else "",
                 "mode": mode,

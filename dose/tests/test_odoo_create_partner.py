@@ -41,11 +41,27 @@ class OdooCreatePartnerPayloadTests(SimpleTestCase):
         payload = _extract_partner_payload(req, None)
         self.assertEqual(payload["name"], "Bob")
 
+    def test_slack_plain_text_becomes_partner_name(self):
+        req = SimpleNamespace(mq_message_data={"text": "Acme Limited"}, body=b"")
+        payload = _extract_partner_payload(req, None)
+        self.assertEqual(payload, {"name": "Acme Limited"})
+
+    def test_slack_json_text_becomes_partner_payload(self):
+        req = SimpleNamespace(
+            mq_message_data={
+                "text": '{"name":"Acme Limited","email":"sales@acme.test"}'
+            },
+            body=b"",
+        )
+        payload = _extract_partner_payload(req, None)
+        self.assertEqual(payload["name"], "Acme Limited")
+        self.assertEqual(payload["email"], "sales@acme.test")
+
     def test_partner_vals_person_not_company(self):
         vals = _partner_vals({"name": "Alice", "email": "alice@x.com"})
         self.assertEqual(vals["name"], "Alice")
         self.assertEqual(vals["email"], "alice@x.com")
-        self.assertEqual(vals["customer_rank"], 1)
+        self.assertNotIn("customer_rank", vals)
         self.assertFalse(vals["is_company"])
 
     def test_missing_name_error(self):

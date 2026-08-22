@@ -5,7 +5,7 @@ Stores canonical trigger envelopes for async processing by consumers.
 """
 from django.db import models
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, timezone as datetime_timezone
 
 
 class WebhookMailbox(models.Model):
@@ -96,9 +96,9 @@ class WebhookMailbox(models.Model):
             return False
         # DB column may be TIMESTAMP WITHOUT TIME ZONE (naive) while Django now() is aware.
         if timezone.is_aware(now) and timezone.is_naive(expires):
-            expires = timezone.make_aware(expires, timezone.utc)
+            expires = timezone.make_aware(expires, datetime_timezone.utc)
         elif timezone.is_naive(now) and timezone.is_aware(expires):
-            now = timezone.make_naive(now, timezone.utc)
+            now = timezone.make_naive(now, datetime_timezone.utc)
         return now > expires
     
     def mark_claimed(self):
@@ -163,8 +163,6 @@ class WebhookMailbox(models.Model):
             QuerySet of pending WebhookMailbox entries
         """
         now = timezone.now()
-        if timezone.is_aware(now):
-            now = timezone.make_naive(now, timezone.utc)
         return cls.objects.filter(
             tenant=tenant,
             status='pending',
@@ -181,8 +179,6 @@ class WebhookMailbox(models.Model):
             int: number of entries expired
         """
         now = timezone.now()
-        if timezone.is_aware(now):
-            now = timezone.make_naive(now, timezone.utc)
         return cls.objects.filter(
             status='pending',
             expires_at__lte=now

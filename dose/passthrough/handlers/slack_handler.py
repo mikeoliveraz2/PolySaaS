@@ -35,7 +35,7 @@ handshake completes across the proxy boundary.
 BINGO: Slack Native Proxy-Relay + Host-Root Paths — 2026-08-21
 """
 import re
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from dose.passthrough.handlers.handler_base import PassthroughHandlerBase
 
@@ -51,6 +51,41 @@ _SLACK_PROXY_PATHS = _SLACK_HOST_ROOT_PREFIXES
 
 class SlackPassthroughHandler(PassthroughHandlerBase):
     """Slack passthrough — all Slack-specific rewrite logic lives here only."""
+
+    def polysniffer_mailbox_context(self, endpoint) -> dict:
+        """Describe Slack's logical webhook Action Point for PolySniffer."""
+        return {
+            "source": "slack",
+            "action_path": "/events/slack/command/poly",
+            "method": "POST",
+            "direction": "REQ",
+            "event_key": "slack.command.poly",
+        }
+
+    def passthrough_embed_template_context(self, trigger, request) -> dict:
+        """Bridge Slack mailbox events into the production passthrough bar."""
+        host = str(trigger or "").strip().strip("/")
+        schema = getattr(request, "schema_name", "") or ""
+        tenant_query = f"&_ps_tenant={quote(schema)}" if schema else ""
+        endpoint = (
+            getattr(request, "_passthrough_endpoint", None)
+            or getattr(self, "endpoint", None)
+        )
+        launch_url = (
+            getattr(endpoint, "endpoint_url", "")
+            or (f"https://{host}" if host else "https://app.slack.com")
+        )
+        return {
+            "embed_mailbox_poll_url": (
+                f"/admin/polysniffer/sniff/{host}/workspace/poll/"
+                f"?mode=passthrough{tenant_query}"
+            ),
+            "embed_mailbox_action_path": "/events/slack/command/poly",
+            "embed_mailbox_method": "POST",
+            "embed_mailbox_direction": "REQ",
+            "embed_external_launch_url": launch_url,
+            "embed_external_launch_label": "Open Slack",
+        }
 
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:

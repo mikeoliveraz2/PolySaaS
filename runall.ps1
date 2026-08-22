@@ -65,7 +65,8 @@ function Get-PolySaaSServiceProcesses {
         '*waitress-serve*',
         '*mysite.wsgi*',
         '*run_mattermost_bot*',
-        '*mattermost_bot*'
+        '*mattermost_bot*',
+        '*start_mailbox_consumer*'
     )
 
     $procs = @()
@@ -267,6 +268,38 @@ function Start-PolySaaSAIPeersBot {
         Pid   = if ($botRoots.Count -ge 1) { ($botRoots | Sort-Object CreationDate -Descending | Select-Object -First 1).ProcessId } else { 0 }
         Ok    = ($botRoots.Count -eq 1)
     }
+}
+
+function Get-MailboxConsumerProcessRoots {
+    @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like '*manage.py*start_mailbox_consumer*' })
+}
+
+function Start-PolySaaSMailboxConsumer {
+    param(
+        [string]$PythonExe,
+        [string]$Root
+    )
+
+    Write-Host "Starting webhook mailbox consumer..." -ForegroundColor Green
+    $logDir = Join-Path $Root "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $stdoutLog = Join-Path $logDir "mailbox_consumer.log"
+    $stderrLog = Join-Path $logDir "mailbox_consumer.error.log"
+    $process = Start-Process -FilePath $PythonExe `
+        -ArgumentList "manage.py", "start_mailbox_consumer", "--poll-interval", "1" `
+        -WorkingDirectory $Root `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdoutLog `
+        -RedirectStandardError $stderrLog `
+        -PassThru
+    Start-Sleep -Seconds 3
+
+    if (-not $process.HasExited) {
+        return @{ Ok = $true; Pid = [int]$process.Id; Count = 1 }
+    }
+    Write-Host "  Mailbox consumer exited; see $stderrLog" -ForegroundColor Red
+    return @{ Ok = $false; Pid = 0; Count = 0 }
 }
 
 $CursorWorkerName = "PolySaaS-office"
@@ -499,13 +532,15 @@ function Show-PolySaaSRunAllSummary {
         [hashtable]$BotStatus,
         [hashtable]$WorkerStatus,
         [hashtable]$RabbitStatus,
+        [hashtable]$MailboxStatus,
         [int]$Port = 8000
     )
 
     $botOk = [bool]$BotStatus.Ok
     $workerOk = [bool]$WorkerStatus.Ok
     $rabbitOk = [bool]$RabbitStatus.Ok
-    $allOk = $WaitressOk -and $botOk -and $rabbitOk
+    $mailboxOk = [bool]$MailboxStatus.Ok
+    $allOk = $WaitressOk -and $botOk -and $rabbitOk -and $mailboxOk
     $line = ('=' * 62)
 
     Write-Host ""
@@ -538,6 +573,12 @@ function Show-PolySaaSRunAllSummary {
         Write-Host "    [WARN] AI Peers bot          $($BotStatus.Count) bot trees -- expect exactly 1" -ForegroundColor Red
     } else {
         Write-Host "    [FAIL] AI Peers bot          not running" -ForegroundColor Red
+    }
+
+    if ($mailboxOk) {
+        Write-Host ('    [OK]   Mailbox consumer      PID ' + $MailboxStatus.Pid + '  (1s poll)') -ForegroundColor Green
+    } else {
+        Write-Host "    [FAIL] Mailbox consumer      not running" -ForegroundColor Red
     }
 
     if ($workerOk) {
@@ -593,10 +634,11 @@ if (-not (Test-Path $WaitressExe)) {
 }
 
 $waitressPid = Start-PolySaaSWaitress -WaitressExe $WaitressExe -Root $ProjectRoot
+$mailboxStatus = Start-PolySaaSMailboxConsumer -PythonExe $VenvPython -Root $ProjectRoot
 $botStatus = Start-PolySaaSAIPeersBot -PythonExe $VenvPython -Root $ProjectRoot
 $workerStatus = Start-PolySaaSCursorWorker -Root $ProjectRoot -Name $CursorWorkerName
 
 $portOwners = @(Get-WaitressPortOwnerPids -Port $WaitressPort)
 $waitressOk = ($portOwners.Count -eq 1)
 
-Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -WorkerStatus $workerStatus -RabbitStatus $rabbitStatus -Port $WaitressPort
+Show-PolySaaSRunAllSummary -WaitressPid $waitressPid -WaitressOk $waitressOk -BotStatus $botStatus -WorkerStatus $workerStatus -RabbitStatus $rabbitStatus -MailboxStatus $mailboxStatus -Port $WaitressPort

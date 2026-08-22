@@ -90,7 +90,7 @@ JAZZMIN_SETTINGS = {
         {"name": "Platform help", "url": "/help/", "permissions": ["auth.view_user"], "icon": "fas fa-life-ring"},
     ],
     "usermenu_links": [
-        {"name": "My Profile",  "url": "/profile/", "icon": "fas fa-user"},
+        {"name": "My Profile",  "url": "/admin/dose/userprofile/", "icon": "fas fa-user"},
         {"name": "Toggle Theme", "url": "javascript:void(0)", "icon": "fas fa-moon"},
         {"name": "Settings", "url": "/settings/", "icon": "fas fa-cog"},
         {"name": "Logout", "url": "/accounts/logout/", "icon": "fas fa-sign-out-alt"},

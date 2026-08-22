@@ -1,18 +1,171 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.http import HttpResponse
+from django.template.loader import render_to_string
 from django.test import RequestFactory
 from django.test import SimpleTestCase
+from django.utils.safestring import mark_safe
 
 from dose.passthrough.handlers.slack_handler import SlackPassthroughHandler
 from dose.passthrough.registry import resolve_handler_for_endpoint
 from dose.polysniffer.handlers.slack_native_sniff import process_slack_native_sniff
 from dose.polysniffer.sniff_forward import forward_sniff_native
 from dose.polysniffer.views.sniff_v2 import native_sniff_proxy_by_host
+from dose.polysniffer.views.sniff_v2_workspace import (
+    _serialize_mailbox_event,
+    sniff_shell,
+)
 
 
 class SlackNativeSniffTests(SimpleTestCase):
+    def test_slack_handler_declares_mailbox_action(self):
+        endpoint = SimpleNamespace(
+            endpoint_url="https://app.slack.com/client/T0/C0",
+            slug="slack",
+        )
+        context = SlackPassthroughHandler().polysniffer_mailbox_context(endpoint)
+        self.assertEqual(context["action_path"], "/events/slack/command/poly")
+        self.assertEqual(context["method"], "POST")
+        self.assertEqual(context["direction"], "REQ")
+
+    def test_slack_handler_bridges_mailbox_to_production_passthrough(self):
+        request = SimpleNamespace(
+            schema_name="polysaasonline",
+            _passthrough_endpoint=SimpleNamespace(
+                endpoint_url="https://app.slack.com/client/T0/C0"
+            ),
+        )
+        context = SlackPassthroughHandler().passthrough_embed_template_context(
+            "app.slack.com", request
+        )
+        self.assertEqual(
+            context["embed_mailbox_poll_url"],
+            "/admin/polysniffer/sniff/app.slack.com/workspace/poll/"
+            "?mode=passthrough&_ps_tenant=polysaasonline",
+        )
+        self.assertEqual(context["embed_mailbox_action_path"], "/events/slack/command/poly")
+        self.assertEqual(context["embed_mailbox_method"], "POST")
+        self.assertEqual(context["embed_mailbox_direction"], "REQ")
+        self.assertEqual(
+            context["embed_external_launch_url"],
+            "https://app.slack.com/client/T0/C0",
+        )
+
+    def test_production_passthrough_offers_supported_browser_url_copy(self):
+        template = (
+            Path(__file__).parents[1]
+            / "templates"
+            / "admin"
+            / "passthrough_embed.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Copy Slack URL", template)
+        self.assertIn("Open in content area", template)
+        self.assertIn("Open in Microsoft Edge", template)
+        self.assertIn(
+            'href="microsoft-edge:{{ embed_external_launch_url }}"',
+            template,
+        )
+        self.assertIn('id="pss-slack-embedded-content"', template)
+        self.assertIn(
+            'data-launch-url="{{ embed_external_launch_url }}"',
+            template,
+        )
+        self.assertIn('id="pss-slack-url-value"', template)
+
+    def test_slack_passthrough_shell_has_green_bar_and_mailbox_binding(self):
+        bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html")
+        html = render_to_string(
+            "polysniffer/sniff_workspace.html",
+            {
+                "endpoint_label": "Slack",
+                "endpoint_host": "app.slack.com",
+                "mode": "passthrough",
+                "active_session": SimpleNamespace(id=1, capture_name="slack-pt"),
+                "passthrough_embed_body": mark_safe(bar),
+                "browse_subpath": "/",
+                "schema": "polysaasonline",
+                "poll_url": "/poll/",
+                "diff_url": "/diff/",
+                "export_url": "/export/",
+            },
+        )
+        self.assertIn("POLYSAAS ORCHESTRATION ACTIVE", html)
+        self.assertIn("bind_only=1", html)
+        self.assertNotIn("window.open(externalCompanionUrl", html)
+        self.assertNotIn("<iframe", html.lower())
+        self.assertNotIn("<object", html.lower())
+
+    def test_mailbox_event_redacts_slack_secrets(self):
+        row = SimpleNamespace(
+            id=7,
+            source="slack",
+            action_path="/events/slack/command/poly",
+            status="processed",
+            result={"status": "processed", "matched": 1, "executed": 1},
+            error="",
+            created_at=None,
+            processed_at=None,
+            envelope={
+                "event_key": "slack.command.poly",
+                "method": "POST",
+                "direction": "REQ",
+                "payload": {
+                    "command": "/poly",
+                    "text": "Acme Limited",
+                    "user_id": "U1",
+                    "response_url": "https://hooks.slack.com/secret",
+                    "token": "legacy-secret",
+                },
+            },
+        )
+        event = _serialize_mailbox_event(row)
+        self.assertEqual(event["payload"]["text"], "Acme Limited")
+        self.assertNotIn("response_url", event["payload"])
+        self.assertNotIn("token", event["payload"])
+
+    @patch("dose.polysniffer.views.sniff_v2_workspace.render")
+    @patch("dose.polysniffer.views.sniff_v2_workspace.get_sniff_capture_session")
+    @patch("dose.polysniffer.views.sniff_v2_workspace.get_endpoint_by_host")
+    @patch("dose.polysniffer.sniff_session_utils.ensure_capture_session")
+    def test_slack_native_workspace_builds_inline_har_browser(
+        self, _ensure_session, get_endpoint, get_capture, render_workspace
+    ):
+        endpoint = SimpleNamespace(
+            pk=6,
+            endpoint_url="https://app.slack.com/client/T0/C0",
+            starting_uri="/",
+            menu_title="Slack",
+            provider="slack",
+            slug="slack",
+        )
+        get_endpoint.return_value = endpoint
+        get_capture.return_value = SimpleNamespace(pk=1, capture_name="slack-native")
+        render_workspace.return_value = HttpResponse("workspace")
+        request = RequestFactory().get(
+            "/admin/polysniffer/sniff/app.slack.com/workspace/native/"
+        )
+        request.user = SimpleNamespace(
+            is_authenticated=True, is_active=True, is_staff=True
+        )
+
+        class _Session(dict):
+            modified = False
+
+        request.session = _Session()
+
+        with patch(
+            "dose.polysniffer.sniff_native_embed.build_inline_native_embed_context",
+            return_value={"native_embed_body": "NATIVE HAR BROWSER"},
+        ) as build_native:
+            sniff_shell(request, "app.slack.com", mode="native")
+
+        context = render_workspace.call_args.args[2]
+        build_native.assert_called_once()
+        self.assertEqual(context["native_embed_body"], "NATIVE HAR BROWSER")
+        self.assertIsNone(context.get("passthrough_embed_body"))
+
     def test_slack_endpoint_resolves_to_handler(self):
         endpoint = SimpleNamespace(
             endpoint_url="https://polysaasworkspace.slack.com/sign_in",

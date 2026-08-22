@@ -113,6 +113,20 @@ def _extract_partner_payload(request, instruction_row) -> dict:
         nested = data.get("normalized_data")
         if isinstance(nested, dict) and nested:
             return dict(nested)
+        # Slack slash commands deliver operator input in `text`. Accept either
+        # JSON (`/poly {"name":"Acme","email":"a@b.com"}`) or a plain partner
+        # name (`/poly Acme`). This adaptation belongs in the consumer, not the
+        # mailbox router or Action Point matcher.
+        slash_text = data.get("text")
+        if isinstance(slash_text, str) and slash_text.strip():
+            text = slash_text.strip()
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+            return {"name": text}
         return dict(data)
 
     body = getattr(request, "body", None) if request is not None else None
@@ -146,7 +160,6 @@ def _parse_json_body(body) -> dict:
 def _partner_vals(payload: dict) -> dict:
     vals: dict[str, Any] = {
         "name": str(payload.get("name") or "").strip(),
-        "customer_rank": 1,
         "is_company": bool(payload.get("is_company", False)),
     }
     for src, dest in (

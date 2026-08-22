@@ -325,7 +325,39 @@ body.polysaas-passthrough-embed-page {
             + Insert Orchestration Instruction
         </button>
     </div>
+    {% if embed_external_launch_url %}
+    <div id="pss-slack-launch-choices" style="min-height:260px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:30px;background:#111827;color:#e5e7eb;text-align:center;">
+        <strong style="font-size:20px;color:#4ade80;">Choose how to open Slack.</strong>
+        <span>Use the embedded browser in this content area, or open Slack separately while this event bar stays available.</span>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+            <button type="button" id="pss-open-slack-embedded"
+                    style="padding:10px 20px;border:0;border-radius:5px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;">
+                Open in content area
+            </button>
+            <a href="microsoft-edge:{{ embed_external_launch_url }}"
+               style="display:inline-block;padding:10px 20px;border-radius:5px;background:#16a34a;color:#fff;font-weight:700;text-decoration:none;">
+                Open in Microsoft Edge
+            </a>
+        </div>
+        <button type="button" id="pss-copy-slack-url"
+                style="padding:7px 14px;border:1px solid #4b5563;border-radius:5px;background:#1f2937;color:#d1d5db;font-weight:600;cursor:pointer;">
+            Copy Slack URL
+        </button>
+        <span id="pss-copy-slack-status" role="status" aria-live="polite" style="min-height:20px;color:#86efac;"></span>
+        <input id="pss-slack-url-value" type="text" readonly value="{{ embed_external_launch_url }}"
+               aria-label="Slack URL"
+               style="display:none;width:min(100%,700px);padding:9px;border:1px solid #4b5563;border-radius:4px;background:#0f172a;color:#e5e7eb;text-align:center;">
+    </div>
     {% if embed_body %}
+    <div id="pss-slack-embedded-content" style="display:none;">
+        <button type="button" id="pss-close-slack-embedded"
+                style="margin:8px;padding:6px 12px;border:1px solid #4b5563;border-radius:4px;background:#1f2937;color:#e5e7eb;cursor:pointer;">
+            Back to launch choices
+        </button>
+        {{ embed_body }}
+    </div>
+    {% endif %}
+    {% elif embed_body %}
     {{ embed_body }}
     {% endif %}
 </div>
@@ -339,6 +371,15 @@ body.polysaas-passthrough-embed-page {
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260629-2"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
+{% if embed_mailbox_poll_url %}
+<script id="pss-mailbox-bridge"
+        src="{% static 'admin/js/slack_mailbox_bar.js' %}?v=20260822-5"
+        data-poll-url="{{ embed_mailbox_poll_url }}"
+        data-action-path="{{ embed_mailbox_action_path }}"
+        data-method="{{ embed_mailbox_method }}"
+        data-direction="{{ embed_mailbox_direction }}"
+        data-launch-url="{{ embed_external_launch_url }}"></script>
+{% endif %}
     {% if embed_enable_odoo_body_scope %}
     <script>
     (function () {

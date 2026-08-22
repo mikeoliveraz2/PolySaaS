@@ -444,6 +444,18 @@ class InstructionAdmin(TenantAwareModelAdmin):
         from django.db import transaction
         from django.contrib import messages
 
+        # Webhook/mailbox binding creates the Instruction only. Runtime
+        # execution belongs exclusively to the later Action Point envelope,
+        # never to the admin save request that configures the consumer.
+        if request.GET.get('bind_only') == '1':
+            messages.add_message(
+                request,
+                messages.SUCCESS,
+                f"Consumer attached to {obj.requestmethod} {obj.requestpath} "
+                f"({obj.direction}). It will run on the next matching event.",
+            )
+            return
+
         executescript_name = (obj.executescript or '').strip()
         from dose.services.atomic_services_registry import normalize_executescript_value
         executescript_name = normalize_executescript_value(executescript_name)
