@@ -94,15 +94,37 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
 
     app_launch_url = ""
     pt_embed_ctx = None
+    native_embed_ctx = None
     if active_session and active_mode == "native":
+        # FIX 2026-08-21 (owner-approved): Inline Native — embed forwarder HTML in
+        # the workspace left pane (no <object>, no iframe). Same pattern as
+        # Passthrough inline, without the green orchestration bar.
         native_subpath = (browse_path or browse_subpath or "/").strip()
         if not native_subpath.startswith("/"):
             native_subpath = f"/{native_subpath}"
         schema = getattr(request, "schema_name", "") or ""
         q = f"?_ps_tenant={schema}" if schema else ""
         app_launch_url = (
-            f"/admin/polysniffer/sniff/{endpoint_host}/native{native_subpath}{q}"
+            f"/admin/polysniffer/sniff/{endpoint_host}/workspace/native"
+            f"{native_subpath}{q}"
         )
+        try:
+            from dose.polysniffer.sniff_native_embed import build_inline_native_embed_context
+
+            native_embed_ctx = build_inline_native_embed_context(
+                request,
+                endpoint.pk,
+                endpoint,
+                native_subpath,
+                endpoint_label=_endpoint_label(endpoint),
+                endpoint_host=endpoint_host,
+            )
+            if native_embed_ctx and native_embed_ctx.get("redirect"):
+                from django.shortcuts import redirect
+
+                return redirect(native_embed_ctx["redirect"])
+        except Exception:
+            logger.exception("native inline embed build failed")
     elif active_session and active_mode == "passthrough":
         frame_subpath = (browse_path or browse_subpath or "/").strip()
         if not frame_subpath.startswith("/"):
@@ -143,6 +165,8 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
         "schema": schema,
         "native_top_level": False,
     }
+    if native_embed_ctx:
+        context.update(native_embed_ctx)
     if pt_embed_ctx:
         context.update(pt_embed_ctx)
 

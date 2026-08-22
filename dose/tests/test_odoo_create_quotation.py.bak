@@ -1,0 +1,71 @@
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+
+from dose.services.odoo_create_quotation import (
+    OdooCreateQuotation,
+    _extract_quotation_payload,
+)
+
+
+class OdooCreateQuotationTests(SimpleTestCase):
+    def test_extracts_normalized_mailbox_payload(self):
+        request = SimpleNamespace(
+            mq_message_data={
+                "normalized_data": {
+                    "partner_name": "Wireframe Buyer",
+                    "order_reference": "WF-SALE-1",
+                }
+            }
+        )
+        self.assertEqual(
+            _extract_quotation_payload(request)["order_reference"],
+            "WF-SALE-1",
+        )
+
+    def test_missing_required_fields_returns_error(self):
+        request = SimpleNamespace(mq_message_data={"partner_name": "Buyer"})
+        result = OdooCreateQuotation.execute_and_save(request, None)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"], "missing_partner_or_reference")
+
+    def test_creates_draft_quotation(self):
+        request = SimpleNamespace(
+            mq_message_data={
+                "partner_name": "Wireframe Buyer",
+                "partner_email": "buyer@example.com",
+                "order_reference": "WF-SALE-1",
+            },
+            tenant=None,
+        )
+        client = MagicMock()
+        client.transport = "jsonrpc"
+        client.execute_kw.side_effect = [
+            [],  # res.partner email search
+            [],  # res.partner name search
+            42,  # res.partner create
+            [],  # sale.order reference search
+            84,  # sale.order create
+            [{"name": "S00084", "state": "draft"}],
+        ]
+        with patch(
+            "dose.services.odoo_create_quotation.load_odoo_rpc_config",
+            return_value={
+                "url": "http://odoo.test",
+                "db": "odoo",
+                "username": "admin",
+                "password": "secret",
+            },
+        ), patch(
+            "dose.services.odoo_create_quotation.OdooRpcClient.from_config",
+            return_value=client,
+        ):
+            result = OdooCreateQuotation.execute_and_save(request, None)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["partner_id"], 42)
+        self.assertEqual(result["order_id"], 84)
+        self.assertEqual(result["order_name"], "S00084")
+        self.assertEqual(result["order_state"], "draft")
+        self.assertTrue(result["created"])

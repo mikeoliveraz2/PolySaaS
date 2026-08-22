@@ -62,6 +62,10 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             "event_key": "slack.command.poly",
         }
 
+    def polysniffer_wireframe_context(self, endpoint) -> dict:
+        """Keep all three Slack demo surfaces deterministic while plumbing grows."""
+        return {"enabled": True, "app": "slack"}
+
     def passthrough_embed_template_context(self, trigger, request) -> dict:
         """Bridge Slack mailbox events into the production passthrough bar."""
         host = str(trigger or "").strip().strip("/")
@@ -85,6 +89,8 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
             "embed_mailbox_direction": "REQ",
             "embed_external_launch_url": launch_url,
             "embed_external_launch_label": "Open Slack",
+            "embed_slack_wireframe": True,
+            "slack_wireframe_mode": "sidebar",
         }
 
     @classmethod

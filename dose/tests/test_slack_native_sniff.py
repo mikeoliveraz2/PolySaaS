@@ -29,6 +29,10 @@ class SlackNativeSniffTests(SimpleTestCase):
         self.assertEqual(context["action_path"], "/events/slack/command/poly")
         self.assertEqual(context["method"], "POST")
         self.assertEqual(context["direction"], "REQ")
+        self.assertTrue(
+            SlackPassthroughHandler()
+            .polysniffer_wireframe_context(endpoint)["enabled"]
+        )
 
     def test_slack_handler_bridges_mailbox_to_production_passthrough(self):
         request = SimpleNamespace(
@@ -52,6 +56,26 @@ class SlackNativeSniffTests(SimpleTestCase):
             context["embed_external_launch_url"],
             "https://app.slack.com/client/T0/C0",
         )
+        self.assertTrue(context["embed_slack_wireframe"])
+        self.assertEqual(context["slack_wireframe_mode"], "sidebar")
+
+    def test_slack_wireframe_has_contact_and_sale_actions(self):
+        html = render_to_string(
+            "polysniffer/slack_wireframe.html",
+            {"slack_wireframe_mode": "passthrough"},
+        )
+        self.assertIn("Run contact webhook", html)
+        self.assertIn("Run sale webhook", html)
+        self.assertNotIn("<iframe", html.lower())
+        script = (
+            Path(__file__).parents[1]
+            / "static"
+            / "admin"
+            / "js"
+            / "slack_wireframe.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("/events/slack/webhook/contact", script)
+        self.assertIn("/events/slack/webhook/sale", script)
 
     def test_production_passthrough_offers_supported_browser_url_copy(self):
         template = (
@@ -129,7 +153,7 @@ class SlackNativeSniffTests(SimpleTestCase):
     @patch("dose.polysniffer.views.sniff_v2_workspace.get_sniff_capture_session")
     @patch("dose.polysniffer.views.sniff_v2_workspace.get_endpoint_by_host")
     @patch("dose.polysniffer.sniff_session_utils.ensure_capture_session")
-    def test_slack_native_workspace_builds_inline_har_browser(
+    def test_slack_native_workspace_builds_wireframe_without_upstream_browser(
         self, _ensure_session, get_endpoint, get_capture, render_workspace
     ):
         endpoint = SimpleNamespace(
@@ -147,7 +171,10 @@ class SlackNativeSniffTests(SimpleTestCase):
             "/admin/polysniffer/sniff/app.slack.com/workspace/native/"
         )
         request.user = SimpleNamespace(
-            is_authenticated=True, is_active=True, is_staff=True
+            is_authenticated=True,
+            is_active=True,
+            is_staff=True,
+            username="michael.oliver",
         )
 
         class _Session(dict):
@@ -162,8 +189,9 @@ class SlackNativeSniffTests(SimpleTestCase):
             sniff_shell(request, "app.slack.com", mode="native")
 
         context = render_workspace.call_args.args[2]
-        build_native.assert_called_once()
-        self.assertEqual(context["native_embed_body"], "NATIVE HAR BROWSER")
+        build_native.assert_not_called()
+        self.assertIn("Slack wireframe", str(context["native_embed_body"]))
+        self.assertTrue(context["wireframe_enabled"])
         self.assertIsNone(context.get("passthrough_embed_body"))
 
     def test_slack_endpoint_resolves_to_handler(self):

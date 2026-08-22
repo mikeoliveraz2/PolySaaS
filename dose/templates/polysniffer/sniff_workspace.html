@@ -75,11 +75,11 @@
         <div class="mode-cards">
             <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
                 <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
-                <p>Forwarder browser + HAR capture only — no green orchestration bar.</p>
+                <p>{% if wireframe_enabled %}Slack discovery wireframe — stable mock page, no orchestration bar.{% else %}Forwarder browser + HAR capture only — no green orchestration bar.{% endif %}</p>
             </div>
             <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
                 <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
-                <p>Handler validation in PolySniffer: green bar + events + consumer binding.</p>
+                <p>{% if wireframe_enabled %}Slack passthrough wireframe — green bar + two canned webhooks.{% else %}Handler validation in PolySniffer: green bar + events + consumer binding.{% endif %}</p>
             </div>
         </div>
         <div class="toolbar">

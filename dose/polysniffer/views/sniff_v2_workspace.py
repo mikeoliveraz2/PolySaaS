@@ -33,6 +33,8 @@ import logging
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -71,6 +73,16 @@ def _mailbox_context(endpoint) -> dict:
     if not callable(hook):
         return {}
     return hook(endpoint) or {}
+
+
+def _wireframe_context(endpoint) -> dict:
+    """Return handler-owned demo surface configuration, if declared."""
+    handler = resolve_handler_for_endpoint(endpoint)
+    hook = getattr(handler, "polysniffer_wireframe_context", None)
+    if not callable(hook):
+        return {}
+    context = hook(endpoint) or {}
+    return context if context.get("enabled") else {}
 
 
 def _serialize_mailbox_event(row) -> dict:
@@ -137,11 +149,28 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     browse_subpath = _native_browse_subpath(endpoint)
     upstream_browse_url = f"{upstream_url}{browse_subpath}" if upstream_url else ""
     active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
+    wireframe = _wireframe_context(endpoint)
 
     app_launch_url = ""
     pt_embed_ctx = None
     native_embed_ctx = None
-    if active_session and active_mode == "native":
+    if active_session and wireframe:
+        wireframe_body = render_to_string(
+            "polysniffer/slack_wireframe.html",
+            {"slack_wireframe_mode": active_mode},
+            request=request,
+        )
+        if active_mode == "native":
+            native_embed_ctx = {"native_embed_body": mark_safe(wireframe_body)}
+        elif active_mode == "passthrough":
+            orch_bar = render_to_string(
+                "polysniffer/sniff_pt_orchestration_bar.html",
+                request=request,
+            )
+            pt_embed_ctx = {
+                "passthrough_embed_body": mark_safe(orch_bar + wireframe_body)
+            }
+    elif active_session and active_mode == "native":
         # FIX 2026-08-21 (owner-approved): Inline Native — embed forwarder HTML in
         # the workspace left pane (no <object>, no iframe). Same pattern as
         # Passthrough inline, without the green orchestration bar.
@@ -210,6 +239,7 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
         "poll_url": poll_url,
         "schema": schema,
         "native_top_level": False,
+        "wireframe_enabled": bool(wireframe),
     }
     if native_embed_ctx:
         context.update(native_embed_ctx)
@@ -237,6 +267,7 @@ def workspace_poll(request, endpoint_host: str):
 
         endpoint = get_endpoint_by_host(endpoint_host, request)
         mailbox_context = _mailbox_context(endpoint)
+        wireframe_context = _wireframe_context(endpoint)
 
         ensure_trafficlog_capture_columns(request)
         _ensure_tenant_schema(tenant)
@@ -305,7 +336,11 @@ def workspace_poll(request, endpoint_host: str):
             ]
 
             mailbox_events = []
-            if mode == "passthrough" and mailbox_context.get("source"):
+            if (
+                mode == "passthrough"
+                and mailbox_context.get("source")
+                and not wireframe_context
+            ):
                 from dose.models import WebhookMailbox
 
                 mailbox_qs = WebhookMailbox.objects.filter(

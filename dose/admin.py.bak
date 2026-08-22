@@ -648,9 +648,12 @@ class PassThroughEndpointAdmin(TenantAwareModelAdmin):
         endpoint_host = urlparse(obj.endpoint_url).netloc
         if not schema or not endpoint_host:
             return ""
+        # FIX 2026-08-21: use _ps_tenant= not schema= — Slack's SPA owns
+        # the query name "schema" (numeric). Passing our tenant as schema=
+        # breaks Native boot (blank pane / lc cookie NaN).
         return (
             f'/admin/polysniffer/sniff/{quote(endpoint_host, safe=":[]")}/?'
-            f'{urlencode({"schema": schema})}'
+            f'{urlencode({"_ps_tenant": schema})}'
         )
 
     def debug_button(self, obj):

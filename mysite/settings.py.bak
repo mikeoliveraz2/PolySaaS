@@ -549,10 +549,12 @@ import os
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    # DebugSessionMiddleware IS the session middleware (subclasses it). Listing
+    # django's SessionMiddleware as well made both save the same session file in
+    # one response — on Windows the second write hits PermissionError (errno 13).
     'mysite.debug_session_middleware.DebugSessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'mysite.csrf_exemption_middleware.CSRFExemptionMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'mysite.middleware.user_request_tracking.UserRequestTrackingMiddleware',

@@ -2,6 +2,7 @@
 # BINGO: Mattermost Composer via Roles Hydration -- 2026-06-11 -- commit 8293f54f
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # Owner-approved 2026-08-01: start local RabbitMQ (docker-compose.local.yml) for Odoo MQ path
+# Owner-approved 2026-08-14: auto-start Docker Desktop + ngrok before RabbitMQ
 # PolySaaS Run All Services
 # Activates venv, starts Waitress WSGI server (Windows), syncs AI peers, starts Mattermost bot
 
@@ -348,6 +349,71 @@ function Test-PortListening {
     return [bool]@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
 }
 
+function Start-DockerDesktopIfNeeded {
+    $dockerProcess = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
+    if ($dockerProcess) {
+        try {
+            docker info 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Docker Desktop already running" -ForegroundColor Green
+                return $true
+            }
+        } catch {}
+    }
+    
+    $dockerPath = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    if (-not (Test-Path $dockerPath)) {
+        Write-Host "WARNING: Docker Desktop not found at $dockerPath" -ForegroundColor Red
+        return $false
+    }
+    
+    Write-Host "Starting Docker Desktop..." -ForegroundColor Green
+    Start-Process $dockerPath
+    Write-Host "  Waiting 30s for Docker to initialize..." -ForegroundColor Gray
+    Start-Sleep -Seconds 30
+    
+    # Wait up to 60s for docker CLI to respond
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            docker info 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Docker Desktop ready" -ForegroundColor Green
+                return $true
+            }
+        } catch {}
+        Start-Sleep -Seconds 3
+    }
+    
+    Write-Host "WARNING: Docker Desktop not responding after 90s" -ForegroundColor Red
+    return $false
+}
+
+function Start-NgrokIfNeeded {
+    param([int]$Port = 8000)
+    
+    $ngrokProcess = Get-Process "ngrok" -ErrorAction SilentlyContinue
+    if ($ngrokProcess) {
+        Write-Host "ngrok already running" -ForegroundColor Green
+        return $true
+    }
+    
+    $ngrok = Get-Command ngrok -ErrorAction SilentlyContinue
+    if (-not $ngrok) {
+        Write-Host "WARNING: ngrok not found in PATH -- skipping tunnel" -ForegroundColor DarkYellow
+        return $false
+    }
+    
+    Write-Host "Starting ngrok tunnel for port $Port..." -ForegroundColor Green
+    Start-Process -FilePath "ngrok.exe" `
+        -ArgumentList "http", $Port `
+        -WindowStyle Hidden
+    
+    Start-Sleep -Seconds 3
+    Write-Host "ngrok tunnel started (check http://127.0.0.1:4040 for public URL)" -ForegroundColor Green
+    return $true
+}
+
 function Start-PolySaaSRabbitMQ {
     param(
         [string]$Root,
@@ -498,7 +564,18 @@ Write-Host ""
 Write-Host "PolySaaS runall -- starting local services (Django is local-only for now)..." -ForegroundColor Cyan
 Write-Host ""
 
+$dockerOk = Start-DockerDesktopIfNeeded
+$ngrokOk = Start-NgrokIfNeeded -Port $WaitressPort
+
 $rabbitStatus = Start-PolySaaSRabbitMQ -Root $ProjectRoot -AmqpPort $RabbitMqAmqpPort -MgmtPort $RabbitMqMgmtPort -ComposeFile $LocalComposeFile
+
+Write-Host "Starting Odoo + Odoo DB (docker compose)..." -ForegroundColor Green
+Push-Location $ProjectRoot
+try {
+    & docker compose -f $LocalComposeFile up -d odoo-db odoo 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+} finally {
+    Pop-Location
+}
 
 Write-Host "Activating virtual environment..." -ForegroundColor Cyan
 $VenvPython = Get-PolySaaSVenvPython -Root $ProjectRoot

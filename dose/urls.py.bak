@@ -44,10 +44,6 @@ from dose.views.atomic_service_names import atomic_service_names
 from dose.views.atomic_service_param_sample import atomic_service_param_sample
 from dose.views.ai_peers_webhook import ai_peers_webhook
 from dose.views.generic_inbound_webhook import generic_inbound_webhook
-from dose.views.slack_wireframe_webhook import (
-    slack_wireframe_status,
-    slack_wireframe_trigger,
-)
 from dose.subscription_views import SubscriptionApiViewSet
 from dose.views.promo_code_views import PromoCodeViewSet, validate_promo_code
 from dose.theme_views import toggle_theme, set_theme, set_display_mode
@@ -95,8 +91,6 @@ urlpatterns = [
     path('api/hubspot/recent-events/', hubspot_recent_events_api, name='api_hubspot_recent_events'),
     path('api/atomic-service-names/', atomic_service_names, name='atomic_service_names'),
     path('api/atomic-service-param-sample/', atomic_service_param_sample, name='atomic_service_param_sample'),
-    path('api/slack-wireframe/trigger/<str:kind>/', slack_wireframe_trigger, name='slack_wireframe_trigger'),
-    path('api/slack-wireframe/status/<int:mailbox_id>/', slack_wireframe_status, name='slack_wireframe_status'),
     path('api/promo-codes/validate/', validate_promo_code, name='validate_promo_code'),
     path('api/orchestration-instruction/<path:action_path>/', get_orchestration_instruction, name='get_orchestration_instruction'),
     path('orchestration/instruction/add/', orchestration_instruction_embed_add, name='orchestration_instruction_embed_add'),

@@ -1,0 +1,46 @@
+(function () {
+    'use strict';
+
+    var script = document.currentScript;
+    var root = script && script.closest('.ps-slack-mock');
+    if (!root || root.dataset.wireframeReady === '1') return;
+    root.dataset.wireframeReady = '1';
+
+    var result = root.querySelector('.ps-slack-mock__result');
+    root.querySelectorAll('.ps-slack-mock__channel').forEach(function (button) {
+        button.addEventListener('click', function () {
+            root.querySelectorAll('.ps-slack-mock__channel').forEach(function (item) {
+                item.classList.remove('is-active');
+            });
+            button.classList.add('is-active');
+            root.querySelector('.ps-slack-mock__channel-title').textContent =
+                button.dataset.channel;
+            result.textContent = 'Viewing #' + button.dataset.channel + ' — wireframe';
+        });
+    });
+
+    root.querySelectorAll('[data-demo]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var kind = button.dataset.demo;
+            var path = kind === 'sale'
+                ? '/events/slack/webhook/sale'
+                : (kind === 'contact'
+                    ? '/events/slack/webhook/contact'
+                    : '/mock/slack/thread/1');
+            var message = kind === 'browse'
+                ? 'Sample thread opened'
+                : kind + ' webhook — canned success';
+            result.textContent = message + ' · ' + path;
+
+            var barPath = document.getElementById('pss-action-path');
+            var barStatus = document.getElementById('pss-orch-status');
+            var barEvent = document.getElementById('pss-orch-event');
+            if (barPath) barPath.textContent = path;
+            if (barStatus) barStatus.textContent = 'POST ' + path + ' — demo success';
+            if (barEvent) {
+                barEvent.style.display = 'inline-block';
+                barEvent.textContent = message;
+            }
+        });
+    });
+})();

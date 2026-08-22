@@ -1,0 +1,184 @@
+"""Create a draft Odoo quotation from a normalized Slack webhook payload."""
+from __future__ import annotations
+
+import json
+import logging
+
+from dose.services.atomic_service_base import AtomicServiceBase
+from dose.services.atomic_service_utils import maybe_save_callback, service_result
+from dose.services.atomic_services_registry import filter_parameters_for_service
+from dose.services.odoo_rpc import (
+    OdooRpcClient,
+    OdooRpcError,
+    load_odoo_rpc_config,
+    public_config,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class OdooCreateQuotation(AtomicServiceBase):
+    atomic_apps = ("odoo",)
+    atomic_category = "write"
+
+    @staticmethod
+    def get_parameters(parameters, key="OdooCreateQuotation"):
+        return filter_parameters_for_service(parameters, key)
+
+    @staticmethod
+    def execute_and_save(request, instruction_row):
+        payload = _extract_quotation_payload(request)
+        partner_name = str(payload.get("partner_name") or "").strip()
+        reference = str(payload.get("order_reference") or "").strip()
+        if not partner_name or not reference:
+            return service_result(
+                "OdooCreateQuotation",
+                status="error",
+                error="missing_partner_or_reference",
+            )
+
+        config = load_odoo_rpc_config(
+            request=request,
+            instruction_row=instruction_row,
+        )
+        pub = public_config(config)
+        try:
+            client = OdooRpcClient.from_config(config)
+            client.authenticate()
+            partner_id = _find_or_create_partner(client, payload)
+            order_id, created = _find_or_create_quotation(
+                client,
+                partner_id,
+                payload,
+            )
+            order = _read_quotation(client, order_id)
+        except OdooRpcError as exc:
+            logger.error("[OdooCreateQuotation] %s: %s", exc.status, exc)
+            result = service_result(
+                "OdooCreateQuotation",
+                status="error",
+                error=exc.status,
+                detail=str(exc),
+                odoo=pub,
+            )
+            maybe_save_callback(
+                request,
+                instruction_row,
+                result,
+                description="OdooCreateQuotation RPC error",
+            )
+            return result
+        except Exception as exc:
+            logger.error("[OdooCreateQuotation] unexpected error: %s", exc)
+            result = service_result(
+                "OdooCreateQuotation",
+                status="error",
+                error="error",
+                detail=str(exc),
+                odoo=pub,
+            )
+            maybe_save_callback(
+                request,
+                instruction_row,
+                result,
+                description="OdooCreateQuotation error",
+            )
+            return result
+
+        result = service_result(
+            "OdooCreateQuotation",
+            status="success",
+            order_id=order_id,
+            order_name=order.get("name") or "",
+            order_state=order.get("state") or "draft",
+            partner_id=partner_id,
+            reference=reference,
+            created=created,
+            odoo=pub,
+            transport=client.transport,
+        )
+        maybe_save_callback(
+            request,
+            instruction_row,
+            result,
+            description=f"Odoo quotation {order.get('name') or order_id}",
+        )
+        return result
+
+
+def _extract_quotation_payload(request) -> dict:
+    data = getattr(request, "mq_message_data", None) if request is not None else None
+    if isinstance(data, dict) and data:
+        nested = data.get("normalized_data")
+        return dict(nested) if isinstance(nested, dict) else dict(data)
+    body = getattr(request, "body", None) if request is not None else None
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    if isinstance(body, str) and body.strip():
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _find_or_create_partner(client: OdooRpcClient, payload: dict) -> int:
+    name = str(payload.get("partner_name") or "").strip()
+    email = str(payload.get("partner_email") or "").strip()
+    partner_ids = []
+    if email:
+        partner_ids = client.execute_kw(
+            "res.partner",
+            "search",
+            [[["email", "=", email]]],
+            {"limit": 1},
+        )
+    if not partner_ids:
+        partner_ids = client.execute_kw(
+            "res.partner",
+            "search",
+            [[["name", "=", name]]],
+            {"limit": 1},
+        )
+    if partner_ids:
+        return int(partner_ids[0])
+    vals = {"name": name, "is_company": False}
+    if email:
+        vals["email"] = email
+    return int(client.execute_kw("res.partner", "create", [vals]))
+
+
+def _find_or_create_quotation(
+    client: OdooRpcClient,
+    partner_id: int,
+    payload: dict,
+) -> tuple[int, bool]:
+    reference = str(payload["order_reference"]).strip()
+    vals = {
+        "partner_id": partner_id,
+        "client_order_ref": reference,
+        "origin": "PolySaaS Slack wireframe",
+        "note": str(payload.get("note") or "Created by PolySaaS").strip(),
+    }
+    order_ids = client.execute_kw(
+        "sale.order",
+        "search",
+        [[["client_order_ref", "=", reference]]],
+        {"limit": 1},
+    )
+    if order_ids:
+        order_id = int(order_ids[0])
+        client.execute_kw("sale.order", "write", [[order_id], vals])
+        return order_id, False
+    return int(client.execute_kw("sale.order", "create", [vals])), True
+
+
+def _read_quotation(client: OdooRpcClient, order_id: int) -> dict:
+    rows = client.execute_kw(
+        "sale.order",
+        "read",
+        [[order_id]],
+        {"fields": ["name", "state"]},
+    )
+    return rows[0] if rows else {"name": "", "state": "draft"}

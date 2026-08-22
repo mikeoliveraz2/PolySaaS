@@ -7,8 +7,8 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 - Date/session: 2026-08-22 EOD, Slack wireframe → live Odoo orchestration
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Sync: pulled `origin/main`; source merged cleanly; this handoff supersedes the stale conflict
-- Starting HEAD: `b97baeec` (branch was one commit ahead of its remote before this EOD commit)
+- Sync: pulled `origin/main`; merge recorded as `fcb6f73b`; source merged cleanly
+- Commit status: final Slack wireframe/Odoo EOD commit follows this handoff update, then push to the tracked remote branch
 - Agent sync check: passed at session startup
 - Server: Waitress restarted after implementation; mailbox consumer started with 1-second polling
 - Policy: Slack demo panes are PolySaaS HTML. Do not load `app.slack.com`, add a Slack iframe, or create a PolySaaS `/auth` workaround.
@@ -76,8 +76,8 @@ The pull from `origin/main` also brought its existing stray-root relay and diagn
 
 ## Validation
 
-- 39 focused Slack mailbox, wireframe, webhook, Odoo partner, and quotation tests passed.
-- Follow-up quotation hardening suite: 6/6 passed.
+- Final merged-tree suite: 40 focused Slack mailbox, wireframe, webhook, Odoo partner, and quotation tests passed.
+- `python manage.py check`: no issues.
 - IDE lint diagnostics: no errors in changed files.
 - Live mailbox results: both actions `processed`, each matched exactly one Instruction, each atomic result returned `status=success`.
 - Live Odoo readback confirmed partner #8 and draft quotation S00001; browser action confirmation produced partner #11 and S00002.

@@ -17,6 +17,16 @@ TRIGGER_ENVELOPE_KIND = "polysaas.trigger.v1"
 SLACK_POLY_ACTION_PATH = "/events/slack/command/poly"
 SLACK_POLY_EVENT_KEY = "slack.command.poly"
 SLACK_TRIGGER_ROUTING_KEY = "polysaas.events.slack.command.poly"
+SLACK_WIREFRAME_ACTIONS = {
+    "contact": (
+        "/events/slack/webhook/contact",
+        "slack.webhook.contact",
+    ),
+    "sale": (
+        "/events/slack/webhook/sale",
+        "slack.webhook.sale",
+    ),
+}
 
 
 def _slack_event_id(payload: dict[str, str]) -> str:
@@ -87,6 +97,61 @@ def publish_slack_command_event(tenant, payload: dict[str, str]) -> dict:
             "success": False,
             "error": f"Failed to write to mailbox: {exc}",
             "event_id": envelope.get("event_id"),
+        }
+
+
+def build_slack_wireframe_envelope(tenant, kind: str, payload: dict) -> dict:
+    """Build a real trigger envelope from the deterministic Slack demo UI."""
+    if kind not in SLACK_WIREFRAME_ACTIONS:
+        raise ValueError("unsupported Slack wireframe event")
+    action_path, event_key = SLACK_WIREFRAME_ACTIONS[kind]
+    event_seed = json.dumps(
+        {
+            "tenant": tenant.schema_name,
+            "kind": kind,
+            "demo_id": payload.get("demo_id", ""),
+        },
+        sort_keys=True,
+    )
+    return {
+        "kind": TRIGGER_ENVELOPE_KIND,
+        "event_id": hashlib.sha256(event_seed.encode("utf-8")).hexdigest(),
+        "correlation_id": str(uuid.uuid4()),
+        "tenant_schema": tenant.schema_name,
+        "source": "slack",
+        "action_path": action_path,
+        "method": "POST",
+        "direction": "REQ",
+        "event_key": event_key,
+        "actor": {"external_user_id": "polysaas-wireframe"},
+        "payload": dict(payload),
+        "received_at": timezone.now().isoformat(),
+    }
+
+
+def publish_slack_wireframe_event(tenant, kind: str, payload: dict) -> dict:
+    """Queue a wireframe action in the same tenant mailbox as real webhooks."""
+    from dose.models import WebhookMailbox
+
+    try:
+        envelope = build_slack_wireframe_envelope(tenant, kind, payload)
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                return {"success": False, "error": "invalid tenant schema"}
+            mailbox = WebhookMailbox.create_from_envelope(
+                envelope,
+                ttl_seconds=300,
+            )
+        return {
+            "success": True,
+            "event_id": envelope["event_id"],
+            "action_path": envelope["action_path"],
+            "mailbox_id": mailbox.id,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Failed to write to mailbox: {exc}",
         }
 
 
