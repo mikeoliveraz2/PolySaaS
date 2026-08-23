@@ -38,16 +38,22 @@
         return '';
     }
 
-    function updateBar(path, status, eventText) {
-        var barPath = document.getElementById('pss-action-path');
+    function updateBar(path, status, eventText, state) {
+        if (window.PolySaaSTransactionBar) {
+            window.PolySaaSTransactionBar.update({
+                path: path,
+                label: status,
+                detail: eventText,
+                state: state || 'idle'
+            });
+            return;
+        }
         var barStatus = document.getElementById('pss-orch-status');
+        var barPath = document.getElementById('pss-action-path');
         var barEvent = document.getElementById('pss-orch-event');
         if (barPath) barPath.textContent = path;
         if (barStatus) barStatus.textContent = status;
-        if (barEvent) {
-            barEvent.style.display = 'inline-block';
-            barEvent.textContent = eventText;
-        }
+        if (barEvent) barEvent.textContent = eventText;
     }
 
     function appendMessage(author, text, opts) {
@@ -101,21 +107,38 @@
         }
     }
 
-    function outcomeText(kind, mailboxResult) {
+    function transactionOutcome(kind, mailboxResult) {
         var orchestration = mailboxResult && mailboxResult.result;
         var atomic = orchestration && orchestration.results && orchestration.results[0];
         if (!atomic) {
-            return orchestration && orchestration.status === 'no_instruction'
-                ? 'No consumer is bound to this webhook'
-                : 'Webhook processed without a consumer result';
+            var noConsumer = orchestration && orchestration.status === 'no_instruction';
+            return {
+                state: 'error',
+                label: noConsumer ? 'NO CONSUMER' : 'NO RESULT',
+                text: noConsumer
+                    ? 'No consumer is bound to this webhook'
+                    : 'Webhook processed without a consumer result'
+            };
         }
         if (atomic.status !== 'success') {
-            return 'Consumer failed: ' + (atomic.detail || atomic.error || 'unknown error');
+            return {
+                state: 'error',
+                label: 'FAILED',
+                text: 'Consumer failed: ' + (atomic.detail || atomic.error || 'unknown error')
+            };
         }
         if (kind === 'contact') {
-            return 'Odoo contact ready — partner #' + atomic.partner_id;
+            return {
+                state: 'success',
+                label: 'SUCCESS',
+                text: 'Odoo contact ready — partner #' + atomic.partner_id
+            };
         }
-        return 'Odoo draft quotation ' + (atomic.order_name || ('#' + atomic.order_id));
+        return {
+            state: 'success',
+            label: 'SUCCESS',
+            text: 'Odoo draft quotation ' + (atomic.order_name || ('#' + atomic.order_id))
+        };
     }
 
     async function waitForMailbox(mailboxId, kind, path) {
@@ -131,13 +154,24 @@
                 throw new Error(data.error || 'Could not read mailbox status');
             }
             if (data.status === 'failed' || data.status === 'expired') {
+                updateBar(
+                    path,
+                    data.status === 'expired' ? 'EXPIRED' : 'FAILED',
+                    data.error || ('Mailbox ' + data.status),
+                    'error'
+                );
                 throw new Error(data.error || ('Mailbox ' + data.status));
             }
+            if (data.status === 'pending') {
+                updateBar(path, 'PENDING', 'Mailbox #' + mailboxId + ' is waiting', 'queued');
+            } else if (data.status === 'claimed') {
+                updateBar(path, 'PROCESSING', 'Consumer is running', 'processing');
+            }
             if (data.status === 'processed') {
-                var text = outcomeText(kind, data);
-                result.textContent = text + ' · ' + path;
-                updateBar(path, 'POST ' + path + ' — processed', text);
-                appendMessage('PolySaaS', text, {bot: true});
+                var outcome = transactionOutcome(kind, data);
+                result.textContent = outcome.text + ' · ' + path;
+                updateBar(path, outcome.label, outcome.text, outcome.state);
+                appendMessage('PolySaaS', outcome.text, {bot: true});
                 await refreshMessages();
                 return;
             }
@@ -200,7 +234,7 @@
             ? root.dataset.saleUrl
             : root.dataset.contactUrl;
         result.textContent = 'Queueing real ' + kind + ' webhook…';
-        updateBar(path, 'POST ' + path + ' — queueing', 'Waiting for mailbox');
+        updateBar(path, 'SUBMITTING', 'Sending transaction to mailbox', 'queueing');
         var response = await fetch(triggerUrl, {
             method: 'POST',
             credentials: 'same-origin',
@@ -216,7 +250,7 @@
             throw new Error(data.error || 'Webhook could not be queued');
         }
         result.textContent = 'Mailbox #' + data.mailbox_id + ' queued · ' + path;
-        updateBar(path, 'POST ' + path + ' — queued', 'Mailbox #' + data.mailbox_id);
+        updateBar(path, 'QUEUED', 'Mailbox #' + data.mailbox_id, 'queued');
         await waitForMailbox(data.mailbox_id, kind, path);
     }
 
@@ -252,8 +286,9 @@
             result.textContent = 'Live webhook failed — ' + error.message;
             updateBar(
                 kind === 'sale' ? '/events/slack/webhook/sale' : '/events/slack/webhook/contact',
-                'POST failed',
-                error.message
+                'FAILED',
+                error.message,
+                'error'
             );
             appendMessage('PolySaaS', 'Live webhook failed — ' + error.message, {bot: true});
         } finally {

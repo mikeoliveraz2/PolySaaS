@@ -867,6 +867,16 @@
                                     <span class="nav-icon">{{ service.icon }}</span>
                                     <span class="nav-text">{{ service.title }}</span>
                                 </a>
+                                {% if service.browser_url %}
+                                <a href="{{ service.browser_url }}"
+                                   class="nav-item"
+                                   target="_blank"
+                                   rel="noopener"
+                                   title="Open the unchanged {{ service.title }} application">
+                                    <span class="nav-icon">↗</span>
+                                    <span class="nav-text">Open real app</span>
+                                </a>
+                                {% endif %}
                             {% endfor %}
                         </div>
                     </div>

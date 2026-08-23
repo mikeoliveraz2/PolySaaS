@@ -1359,11 +1359,13 @@ def facebook_profile_view(request):
     return JsonResponse({'error': 'Unable to fetch profile'}, status=400)
 # Passthrough views
 def passthrough_iframe_view(request):
+    """Retired iframe wrapper — send the browser to the upstream URL top-level."""
     provider = request.GET.get('provider', 'custom')
     from dose.models import PassThroughEndpoint
+    from django.http import HttpResponseRedirect
     endpoint = PassThroughEndpoint.objects.filter(provider=provider).first()
-    passthrough_url = endpoint.endpoint_url if endpoint else 'https://github.com'
-    return render(request, 'passthrough_iframe.html', {'passthrough_url': passthrough_url})
+    passthrough_url = endpoint.endpoint_url if endpoint else '/'
+    return HttpResponseRedirect(passthrough_url)
 
 def passthrough_html_view(request):
     import requests

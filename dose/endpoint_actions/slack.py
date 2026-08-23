@@ -1,0 +1,116 @@
+import uuid
+
+from django.utils import timezone
+
+from dose.webhook_events import publish_slack_wireframe_event
+
+from .base import EndpointAction, EndpointActionAdapter
+
+
+def _payload(kind: str, supplied: dict) -> dict:
+    allowed = (
+        {"name": 120, "email": 120, "phone": 40}
+        if kind == "contact"
+        else {
+            "partner_name": 120,
+            "partner_email": 120,
+            "order_reference": 80,
+            "note": 400,
+        }
+    )
+    unknown = set(supplied) - set(allowed)
+    if unknown:
+        raise ValueError("Unsupported field(s): " + ", ".join(sorted(unknown)))
+    cleaned = {}
+    for field, maximum in allowed.items():
+        value = supplied.get(field, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            raise ValueError(f"{field} must be text")
+        cleaned[field] = value.strip()[:maximum]
+    required = "name" if kind == "contact" else "partner_name"
+    if supplied and not cleaned[required]:
+        raise ValueError(f"{required} is required")
+
+    token = uuid.uuid4().hex[:10]
+    stamp = timezone.now().strftime("%Y%m%d-%H%M%S")
+    if kind == "contact":
+        return {
+            "demo_id": token,
+            "name": cleaned["name"] or f"Slack Contact {stamp}",
+            "email": cleaned["email"] or f"slack.contact.{token}@example.com",
+            "phone": cleaned["phone"] or "+1 555 0100",
+        }
+    return {
+        "demo_id": token,
+        "partner_name": cleaned["partner_name"] or f"Slack Buyer {stamp}",
+        "partner_email": cleaned["partner_email"]
+        or f"slack.buyer.{token}@example.com",
+        "order_reference": cleaned["order_reference"]
+        or f"SLACK-{stamp}-{token[:4]}",
+        "note": cleaned["note"]
+        or "Draft quotation created from the PolySaaS Slack endpoint home.",
+    }
+
+
+class SlackEndpointActionAdapter(EndpointActionAdapter):
+    surface_template = "polysniffer/slack_wireframe.html"
+    default_bookmarks = (
+        {
+            "key": "channel-home",
+            "title": "Channel home",
+            "destination_type": "mock_surface",
+            "target": "slack.channel-home",
+            "icon": "#",
+        },
+        {
+            "key": "new-contact",
+            "title": "New contact",
+            "destination_type": "popup_form",
+            "target": "slack.contact",
+            "icon": "👤",
+        },
+        {
+            "key": "new-sale",
+            "title": "New sale",
+            "destination_type": "popup_form",
+            "target": "slack.sale",
+            "icon": "💼",
+        },
+        {
+            "key": "real-slack",
+            "title": "Open real Slack",
+            "destination_type": "external_path",
+            "target": "/",
+            "icon": "↗",
+        },
+    )
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        slug = (getattr(endpoint, "slug", "") or "").strip().lower()
+        url = (getattr(endpoint, "endpoint_url", "") or "").lower()
+        return slug == "slack" or "slack.com" in url
+
+    def actions(self):
+        return {
+            "slack.contact": EndpointAction(
+                key="slack.contact",
+                kind="popup_form",
+                title="New contact",
+                build_payload=lambda supplied: _payload("contact", supplied),
+                publish=lambda tenant, payload: publish_slack_wireframe_event(
+                    tenant, "contact", payload
+                ),
+            ),
+            "slack.sale": EndpointAction(
+                key="slack.sale",
+                kind="popup_form",
+                title="New sale",
+                build_payload=lambda supplied: _payload("sale", supplied),
+                publish=lambda tenant, payload: publish_slack_wireframe_event(
+                    tenant, "sale", payload
+                ),
+            ),
+        }

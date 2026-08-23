@@ -101,26 +101,31 @@ Dedup: `(tenant_schema, event_id)`. Mailbox TTL: timeout if not consumed.
 
 ## Out of scope unless owner says so
 
-- Slack browser proxy / Native / sign_in capture
 - Mapping localhost:8888 to Slack
 - HubSpot adapter
 - New Instruction schema migration
 - Delayed Slack response_url
-- Changing frozen PolySniffer layout
-- "Should Native open in an external browser?" for Slack — answer is no, question is invalid
+- Changing frozen PolySniffer layout without approval
+- "Should Native open in an external browser?" — **invalid**; Native uses the forwarder (`POLYSNIFFER_NATIVE_FORWARDER.md`)
+
+## Separation from PolySniffer Native
+
+- **PolySniffer Native** (discovery HAR via forwarder) is documented in `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`.
+- **This mailbox model** is production event delivery. Do not conflate the two tracks.
+- Live `/poly` go-live still waits for owner “go”.
 
 ## First implement slice (only if I say go)
 
 - Confirm mailbox persist + TTL + consumer dequeue for /poly.
 - Keep verify → ack → async work.
 - Binding UI: attach consumer to webhook (same surfing pattern).
-- Slack chrome: bar as sibling div or embed — no proxy.
+- Slack chrome: bar as sibling div or embed — production UI; Native sniff pane is separate discovery tooling.
 
-Do not start Slack handler/registry work. Do not edit AI_RULES.md to invent a Native-Slack exception.
+Do not invent a second orchestration engine.
 
 ## Done when
 
 - /poly acks in Slack
 - Mailbox row exists then consumer runs
 - Bar shows success/failure
-- No Slack site in a PolySniffer pane is required
+- Production path does not require Slack inside PolySniffer pane (Native sniff remains optional discovery)

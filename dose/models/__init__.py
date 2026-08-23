@@ -35,3 +35,4 @@ from .app_credential import AppCredential
 from .hubspot_portlet import HubSpotPortletDefinition, UserHubSpotPortlet
 from .founder_signup import FounderSignup
 from .webhook_mailbox import WebhookMailbox
+from .endpoint_bookmark import EndpointBookmark

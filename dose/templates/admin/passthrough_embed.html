@@ -513,8 +513,9 @@ body.polysaas-passthrough-embed-page {
 <script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260629-2"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
 {% if embed_mailbox_poll_url and not embed_slack_wireframe %}
+<script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260823-1"></script>
 <script id="pss-mailbox-bridge"
-        src="{% static 'admin/js/slack_mailbox_bar.js' %}?v=20260822-5"
+        src="{% static 'admin/js/slack_mailbox_bar.js' %}?v=20260823-1"
         data-poll-url="{{ embed_mailbox_poll_url }}"
         data-action-path="{{ embed_mailbox_action_path }}"
         data-method="{{ embed_mailbox_method }}"

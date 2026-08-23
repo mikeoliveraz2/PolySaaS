@@ -16,6 +16,7 @@ from dose.polysniffer.views.sniff_v2 import native_sniff_proxy_by_host
 from dose.polysniffer.views.sniff_v2_workspace import (
     _include_mailbox_in_poll,
     _mailbox_outcome,
+    _mailbox_transaction_state,
     _serialize_mailbox_event,
     sniff_shell,
 )
@@ -83,6 +84,21 @@ class SlackNativeSniffTests(SimpleTestCase):
         self.assertIn("/events/slack/webhook/sale", script)
         self.assertIn("JSON.stringify(payload || {})", script)
         self.assertNotIn("body: '{}'", script)
+        self.assertIn("window.PolySaaSTransactionBar.update", script)
+        self.assertIn("label: noConsumer ? 'NO CONSUMER' : 'NO RESULT'", script)
+        shared_bar = (
+            Path(__file__).parents[1]
+            / "static"
+            / "admin"
+            / "js"
+            / "orchestration_bar.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("bar.dataset.transactionState", shared_bar)
+        self.assertIn("pending: {label: 'PENDING'", shared_bar)
+        self.assertIn("claimed: {label: 'PROCESSING'", shared_bar)
+        self.assertIn("success: {label: 'SUCCESS'", shared_bar)
+        self.assertIn("failed: {label: 'FAILED'", shared_bar)
+        self.assertIn("no_consumer: {label: 'NO CONSUMER'", shared_bar)
 
     def test_production_passthrough_offers_supported_browser_url_copy(self):
         template = (
@@ -143,6 +159,8 @@ class SlackNativeSniffTests(SimpleTestCase):
         )
         self.assertIn("POLYSAAS ORCHESTRATION ACTIVE", html)
         self.assertIn("bind_only=1", html)
+        self.assertIn("event.transaction_state", html)
+        self.assertIn("orchestration_bar.js", html)
         self.assertNotIn("window.open(externalCompanionUrl", html)
         self.assertNotIn("<iframe", html.lower())
         self.assertNotIn("<object", html.lower())
@@ -209,6 +227,31 @@ class SlackNativeSniffTests(SimpleTestCase):
             "S00002",
         )
 
+    def test_mailbox_transaction_state_uses_atomic_result(self):
+        self.assertEqual(_mailbox_transaction_state("pending", {}), "pending")
+        self.assertEqual(_mailbox_transaction_state("claimed", {}), "claimed")
+        self.assertEqual(
+            _mailbox_transaction_state(
+                "processed",
+                {"status": "processed", "matched": 1, "results": [{"status": "success"}]},
+            ),
+            "success",
+        )
+        self.assertEqual(
+            _mailbox_transaction_state(
+                "processed",
+                {"status": "processed", "matched": 1, "results": [{"status": "error"}]},
+            ),
+            "failed",
+        )
+        self.assertEqual(
+            _mailbox_transaction_state(
+                "processed",
+                {"status": "no_instruction", "matched": 0, "results": []},
+            ),
+            "no_consumer",
+        )
+
     def test_wireframe_mailbox_payload_fields_are_kept(self):
         row = SimpleNamespace(
             id=2,
@@ -238,6 +281,7 @@ class SlackNativeSniffTests(SimpleTestCase):
         event = _serialize_mailbox_event(row)
         self.assertEqual(event["payload"]["name"], "Slack Contact")
         self.assertEqual(event["outcome"], "partner #12")
+        self.assertEqual(event["transaction_state"], "success")
         self.assertNotIn("token", event["payload"])
 
     @patch("dose.polysniffer.views.sniff_v2_workspace.render")

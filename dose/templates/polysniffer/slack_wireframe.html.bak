@@ -1,23 +1,95 @@
 {% load static %}
-<div class="ps-slack-mock" data-mode="{{ slack_wireframe_mode|default:'native' }}">
+<div
+    class="ps-slack-mock"
+    data-mode="{{ slack_wireframe_mode|default:'native' }}"
+    data-contact-url="{% url 'dose:slack_wireframe_trigger' 'contact' %}"
+    data-sale-url="{% url 'dose:slack_wireframe_trigger' 'sale' %}"
+    data-status-url="/dose/api/slack-wireframe/status/"
+    data-messages-url="{% url 'dose:slack_wireframe_messages' %}"
+    data-post-url="{% url 'dose:slack_wireframe_post_message' %}"
+>
     <style>
-        .ps-slack-mock { min-height:520px; display:grid; grid-template-columns:210px 1fr; background:#1a1d21; color:#d1d2d3; font:14px Arial,sans-serif; }
+        .ps-slack-mock { position:relative; min-height:520px; display:grid; grid-template-columns:210px 1fr; background:#1a1d21; color:#d1d2d3; font:14px Arial,sans-serif; }
         .ps-slack-mock * { box-sizing:border-box; }
         .ps-slack-mock__sidebar { padding:18px 12px; background:#3f0e40; color:#fff; }
         .ps-slack-mock__workspace { font-size:18px; font-weight:700; margin-bottom:22px; }
         .ps-slack-mock__channel { display:block; width:100%; margin:4px 0; padding:7px 10px; border:0; border-radius:4px; background:transparent; color:#e8dce8; text-align:left; cursor:pointer; }
         .ps-slack-mock__channel.is-active { background:#1164a3; color:#fff; }
-        .ps-slack-mock__main { display:flex; flex-direction:column; min-width:0; }
+        .ps-slack-mock__main { display:flex; flex-direction:column; min-width:0; min-height:520px; }
         .ps-slack-mock__header { padding:15px 20px; border-bottom:1px solid #35373b; font-size:17px; font-weight:700; }
-        .ps-slack-mock__messages { flex:1; padding:22px; }
-        .ps-slack-mock__message { display:flex; gap:12px; margin-bottom:22px; }
-        .ps-slack-mock__avatar { width:38px; height:38px; display:grid; place-items:center; border-radius:7px; background:#2eb67d; color:#101214; font-weight:800; }
+        .ps-slack-mock__messages { flex:1; padding:22px; overflow-y:auto; min-height:220px; }
+        .ps-slack-mock__message { display:flex; gap:12px; margin-bottom:18px; }
+        .ps-slack-mock__avatar { width:38px; height:38px; flex:0 0 38px; display:grid; place-items:center; border-radius:7px; background:#2eb67d; color:#101214; font-weight:800; }
+        .ps-slack-mock__avatar.is-bot { background:#611f69; color:#fff; }
         .ps-slack-mock__name { font-weight:700; color:#fff; }
         .ps-slack-mock__time { margin-left:6px; color:#9a9b9d; font-size:12px; }
+        .ps-slack-mock__body { margin:4px 0 0; white-space:pre-wrap; }
         .ps-slack-mock__actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
         .ps-slack-mock__action { padding:8px 12px; border:1px solid #565856; border-radius:5px; background:#222529; color:#fff; cursor:pointer; }
         .ps-slack-mock__action:hover { border-color:#2eb67d; }
-        .ps-slack-mock__result { margin:0 22px 20px; padding:12px; border:1px solid #35373b; border-radius:5px; background:#222529; color:#86efac; font-family:Consolas,monospace; }
+        .ps-slack-mock__modal {
+            display:none; position:absolute; inset:0; z-index:20;
+            align-items:center; justify-content:center; padding:24px;
+        }
+        .ps-slack-mock__modal.is-open { display:flex; }
+        .ps-slack-mock__modal.is-arming,
+        .ps-slack-mock__modal.is-arming * { pointer-events:none !important; }
+        .ps-slack-mock__modal-backdrop {
+            position:absolute; inset:0; background:rgba(0,0,0,.55);
+        }
+        .ps-slack-mock__modal-dialog {
+            position:relative; z-index:1; width:min(520px,100%);
+            max-height:min(90%,520px); overflow:auto;
+            border-radius:8px; background:#1a1d21;
+            box-shadow:0 12px 40px rgba(0,0,0,.45);
+            border:1px solid #3d4044;
+        }
+        .ps-slack-mock__modal-header {
+            display:flex; align-items:center; justify-content:space-between;
+            gap:12px; padding:16px 20px 8px;
+        }
+        .ps-slack-mock__modal-title { margin:0; font-size:18px; font-weight:800; color:#fff; }
+        .ps-slack-mock__modal-close {
+            width:32px; height:32px; border:0; border-radius:6px;
+            background:transparent; color:#d1d2d3; font-size:22px; line-height:1; cursor:pointer;
+        }
+        .ps-slack-mock__modal-close:hover { background:#222529; color:#fff; }
+        .ps-slack-mock__modal-body { padding:8px 20px 4px; }
+        .ps-slack-mock__modal-hint { margin:0 0 14px; color:#9a9b9d; font-size:13px; }
+        .ps-slack-mock__form label {
+            display:block; margin:0 0 12px; color:#d1d2d3; font-size:13px; font-weight:700;
+        }
+        .ps-slack-mock__form input,
+        .ps-slack-mock__form textarea {
+            display:block; width:100%; margin-top:6px; padding:10px 12px;
+            border:1px solid #565856; border-radius:6px; background:#222529; color:#fff; font:14px Arial,sans-serif;
+        }
+        .ps-slack-mock__form input:focus,
+        .ps-slack-mock__form textarea:focus {
+            outline:none; border-color:#1d9bd1; box-shadow:0 0 0 1px #1d9bd1;
+        }
+        .ps-slack-mock__form textarea { min-height:72px; resize:vertical; font-weight:400; }
+        .ps-slack-mock__modal-footer {
+            display:flex; justify-content:flex-end; gap:8px;
+            padding:12px 20px 16px; border-top:1px solid #35373b; margin-top:8px;
+        }
+        .ps-slack-mock__btn {
+            padding:8px 14px; border-radius:6px; border:1px solid transparent;
+            font:700 13px Arial,sans-serif; cursor:pointer;
+        }
+        .ps-slack-mock__btn--ghost {
+            background:#222529; border-color:#565856; color:#fff;
+        }
+        .ps-slack-mock__btn--ghost:hover { border-color:#9a9b9d; }
+        .ps-slack-mock__btn--primary {
+            background:#007a5a; border-color:#007a5a; color:#fff;
+        }
+        .ps-slack-mock__btn--primary:hover { background:#148567; }
+        .ps-slack-mock__btn:disabled { opacity:.55; cursor:default; }
+        .ps-slack-mock__result { margin:0 22px 12px; padding:12px; border:1px solid #35373b; border-radius:5px; background:#222529; color:#86efac; font-family:Consolas,monospace; }
+        .ps-slack-mock__composer { display:flex; gap:8px; margin:0 22px 18px; }
+        .ps-slack-mock__composer input { flex:1; min-width:0; padding:10px 12px; border:1px solid #565856; border-radius:6px; background:#222529; color:#fff; }
+        .ps-slack-mock__composer button { padding:10px 14px; border:0; border-radius:6px; background:#007a5a; color:#fff; font-weight:700; cursor:pointer; }
         @media (max-width:760px) { .ps-slack-mock { grid-template-columns:1fr; } .ps-slack-mock__sidebar { display:none; } }
     </style>
     <aside class="ps-slack-mock__sidebar">
@@ -28,16 +100,16 @@
     </aside>
     <section class="ps-slack-mock__main">
         <header class="ps-slack-mock__header"># <span class="ps-slack-mock__channel-title">all-polysaas</span></header>
-        <div class="ps-slack-mock__messages">
-            <div class="ps-slack-mock__message">
+        <div class="ps-slack-mock__messages" id="ps-slack-messages">
+            <div class="ps-slack-mock__message" data-seed="1">
                 <div class="ps-slack-mock__avatar">M</div>
                 <div>
                     <div><span class="ps-slack-mock__name">michael.oliver</span><span class="ps-slack-mock__time">demo workspace</span></div>
-                    <p>This is the Slack wireframe. The operator experience is stable while each action is connected to real services.</p>
+                    <p class="ps-slack-mock__body">This is the Slack wireframe. Actions queue real webhooks; results land here as messages.</p>
                     {% if slack_wireframe_mode != "native" %}
                     <div class="ps-slack-mock__actions">
-                        <button type="button" class="ps-slack-mock__action" data-demo="contact">Run contact webhook</button>
-                        <button type="button" class="ps-slack-mock__action" data-demo="sale">Run sale webhook</button>
+                        <button type="button" class="ps-slack-mock__action" data-form="contact">New contact</button>
+                        <button type="button" class="ps-slack-mock__action" data-form="sale">New sale</button>
                     </div>
                     {% else %}
                     <div class="ps-slack-mock__actions">
@@ -48,6 +120,57 @@
             </div>
         </div>
         <div class="ps-slack-mock__result">Ready — {{ slack_wireframe_mode|default:"native" }} wireframe</div>
+        <form class="ps-slack-mock__composer" id="ps-slack-composer">
+            <input type="text" name="message" maxlength="500" placeholder="Message #all-polysaas" autocomplete="off">
+            <button type="submit">Send</button>
+        </form>
     </section>
-    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260822-1"></script>
+    {% if slack_wireframe_mode != "native" %}
+    {# Sink form: modal fields are NOT in a real <form>, but Enter still submits a parent Jazzmin form and reloads the page. Bind fields here so Enter is a no-op. #}
+    <form id="ps-slack-modal-sink" action="#" method="post" onsubmit="return false;" aria-hidden="true" style="display:none"></form>
+    <div class="ps-slack-mock__modal" id="ps-slack-modal-contact" data-kind="contact" role="dialog" aria-modal="true" aria-labelledby="ps-slack-modal-contact-title" hidden>
+        <div class="ps-slack-mock__modal-backdrop"></div>
+        <div class="ps-slack-mock__modal-dialog">
+            <div class="ps-slack-mock__modal-header">
+                <h2 class="ps-slack-mock__modal-title" id="ps-slack-modal-contact-title">New contact</h2>
+                <button type="button" class="ps-slack-mock__modal-close" data-modal-dismiss="contact" aria-label="Close">&times;</button>
+            </div>
+            <div class="ps-slack-mock__form" id="ps-slack-form-contact" data-kind="contact" role="form">
+                <div class="ps-slack-mock__modal-body">
+                    <p class="ps-slack-mock__modal-hint">Create a contact in Odoo from this Slack workspace.</p>
+                    <label>Name<input name="name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Contact" autocomplete="off"></label>
+                    <label>Email<input name="email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="contact@example.com" autocomplete="off"></label>
+                    <label>Phone<input name="phone" form="ps-slack-modal-sink" type="text" maxlength="40" placeholder="+1 555 0100" autocomplete="off"></label>
+                </div>
+                <div class="ps-slack-mock__modal-footer">
+                    <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--ghost" data-modal-dismiss="contact">Cancel</button>
+                    <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--primary" data-form-submit="contact">Create contact</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="ps-slack-mock__modal" id="ps-slack-modal-sale" data-kind="sale" role="dialog" aria-modal="true" aria-labelledby="ps-slack-modal-sale-title" hidden>
+        <div class="ps-slack-mock__modal-backdrop"></div>
+        <div class="ps-slack-mock__modal-dialog">
+            <div class="ps-slack-mock__modal-header">
+                <h2 class="ps-slack-mock__modal-title" id="ps-slack-modal-sale-title">New sale</h2>
+                <button type="button" class="ps-slack-mock__modal-close" data-modal-dismiss="sale" aria-label="Close">&times;</button>
+            </div>
+            <div class="ps-slack-mock__form" id="ps-slack-form-sale" data-kind="sale" role="form">
+                <div class="ps-slack-mock__modal-body">
+                    <p class="ps-slack-mock__modal-hint">Create a draft Odoo quotation from this Slack workspace.</p>
+                    <label>Customer name<input name="partner_name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Buyer" autocomplete="off"></label>
+                    <label>Customer email<input name="partner_email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="buyer@example.com" autocomplete="off"></label>
+                    <label>Order reference<input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off"></label>
+                    <label>Note<textarea name="note" form="ps-slack-modal-sink" maxlength="400" placeholder="Optional note for the draft quotation"></textarea></label>
+                </div>
+                <div class="ps-slack-mock__modal-footer">
+                    <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--ghost" data-modal-dismiss="sale">Cancel</button>
+                    <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--primary" data-form-submit="sale">Create draft quotation</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260823-7"></script>
 </div>

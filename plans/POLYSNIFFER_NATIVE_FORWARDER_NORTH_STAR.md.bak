@@ -25,8 +25,9 @@ flowchart LR
 1. **Native is discovery, not product embed.** Goal: capture the richest unmodified HAR possible (request/response headers, cookies, bodies, JS/assets, redirects, status) while the user walks the normal app flow inside the unified PolySniffer workspace.
 2. **Traffic must cross the forwarder.** A plain browser / Playwright Chromium session that talks to upstream origin directly is invalid for Native, because PolySniffer never sees the true in-proxy HAR the handler must be built from.
 3. **Unified UI across endpoints.** Same workspace shell (mode cards, left browse pane, Live capture, Diff/Export) for Slack, Odoo, Nextcloud, Mattermost, etc. Handler differences stay behind the boundary; the pane UX does not fork per app except where an owner-approved exception is documented.
-4. **Passthrough is built from Native evidence.** After enough HARs, generate/refine the app handler (rewrite, cookie relay, CSP, auth shim, wrap gates). Passthrough may range from screen-scrape HTML proxy to API-only; the **attach orchestration** gesture and **orchestration bar feedback** stay the same pattern.
-5. **Orchestration attachment** happens at key action paths identified during sniffing/surfing: bind webhook → consumer (mailbox model), not “run atomic inside the browse HTTP request.” Communication back to the user is DoseMessage / orchestration bar.
+4. **Passthrough is built from Native evidence.** After enough HARs, generate/refine the app handler (rewrite, cookie relay, CSP, auth shim, wrap gates). Passthrough may range from screen-scrape HTML proxy to API-only.
+5. **Orchestration attachment is Passthrough-only.** Green bar + “Insert Orchestration Instruction” / bind action path → consumer. Native has **no** green bar (Slack included — same as Odoo/Nextcloud/Mattermost Native).
+6. **Native URL** = `/admin/polysniffer/sniff/<host>/native/...` (forwarder capture). **Passthrough URL** = `/admin/polysniffer/sniff/<host>/workspace/passthrough/...` (bar + bind). Do not use `/pt/polysniff/` for Native.
 
 ## What this rejects
 

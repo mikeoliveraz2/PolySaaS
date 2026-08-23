@@ -1,0 +1,160 @@
+# PolySaaS UI, Navigation, and Events
+
+## Product promise
+
+PolySaaS does not fork or modify a customer's SaaS application code. Integration
+is additive: PolySaaS surrounds the stock application with bookmarks, selected
+event APIs, popup forms, mailboxes, consumers, and transaction feedback.
+
+Some integrations still require normal vendor-side administration such as OAuth,
+API credentials, webhook registration, or a Slack slash-command configuration.
+That is integration setup, not a fork or modification of the vendor application.
+
+## Primary navigation model
+
+```text
+Primary UI: mock + bookmarks for every endpoint.
+Secondary: open the full application in a top-level browser.
+Scraper Native/passthrough: specialized tools for apps we already capture.
+```
+
+There is one universal PolySaaS home, not two competing UI models.
+
+### 1. Mock + bookmarks — universal default
+
+Every endpoint gets a PolySaaS-owned look-and-feel surface. It may begin as simple
+HTML and progress through screenshot-backed panels and selectively interactive
+components. It is not the vendor SPA.
+
+Bookmarks are a product feature: curated common places per tenant and endpoint.
+They skip unproductive navigation trees and take operators directly to surfaces
+such as:
+
+- Channel home or Town Square
+- New contact
+- Open deals or new sale
+- Files root
+- Activity / transaction results
+
+A bookmark may:
+
+- show a mock or screenshot-backed surface;
+- open a popup form that submits to a controlled PolySaaS API;
+- fire a controlled API/mailbox event directly when enough context already exists;
+- open a real application URL in a top-level browser.
+
+Bookmarks are the shortlist PolySaaS publishes from discovery. Operators should
+not have to rediscover common places every day.
+
+### 2. Full top-level browser — escape hatch
+
+The real vendor SPA runs in a normal Chrome or Edge tab/window with its normal
+cookies, session, and security model. PolySaaS can open a bookmarked URL and can
+refocus a window it originally opened while it retains that handle. Browser
+security does not allow PolySaaS to discover or focus arbitrary existing tabs.
+
+The PolySaaS shell, green bar, binding controls, and popup forms remain on the
+PolySaaS origin.
+
+### 3. Native / passthrough scraper modes — specialized
+
+Existing Native and passthrough capture modes remain available where they already
+work and are useful, especially for self-hosted or capturable applications.
+Bookmarks make those modes more productive, but scraper modes are not forced into
+a universal navigation solution.
+
+Vendor SaaS applications such as Slack and HubSpot use the universal model:
+mock/bookmark home, real top-level browser when needed, and selected event
+wrappers. PolySaaS does not attempt to own or reconstruct their complete
+navigation trees.
+
+## Uniform shell does not mean identical plumbing
+
+```text
+PolySaaS shell
+  → bookmarks (common places)
+    → look-and-feel panel or top-level real app
+      → selected event
+        → direct action or popup form
+          → PolySaaS API / mailbox
+            → consumer
+              → orchestration bar
+```
+
+The shell is uniform. The implementation behind each bookmark may differ by app:
+mock panel, screenshot, scraper path, real external URL, direct event, or form.
+
+## Selected events
+
+PolySaaS wraps a small, deliberate set of productive events instead of embedding
+or rebuilding the whole application.
+
+### Popup form
+
+Use a popup when the event needs operator input:
+
+```text
+New contact
+  → name, email, phone
+    → PolySaaS API / mailbox
+      → OdooCreatePartner
+```
+
+### Direct action
+
+Use a direct event when existing context is sufficient:
+
+```text
+Create sale from last contact
+  → PolySaaS API / mailbox
+    → sale consumer
+```
+
+The browser calls controlled PolySaaS wrappers. Consumers make vendor API calls
+server-side. The orchestration bar reports submitting, queued, pending,
+processing, success, failure, expiration, or missing-consumer status.
+
+## Slack delivery path
+
+Slack is intentionally gradual:
+
+1. PolySaaS-owned Slack-like chrome and named bookmark surfaces.
+2. Screenshot-backed surfaces where they improve demo fidelity.
+3. Contact and sale popup forms plus direct actions.
+4. Real mailbox, consumers, messaging, and green-bar results.
+5. Real Slack in a top-level browser for full application use.
+6. Additional interactive mock components only where they create product value.
+
+The `/poly` slash command remains a real webhook/mailbox integration. The mock UI
+does not replace that production event path.
+
+## Forbidden approaches
+
+- Embedded Chromium or a PolySaaS-owned browser engine
+- Framing vendor SPAs
+- Iframes as a passthrough shortcut
+- Inventing a PolySaaS `/auth` route for a vendor
+- Rebuilding fake intervening navigation trees
+- Making the universal shell depend on successfully proxying a vendor SPA
+- Arbitrary browser JavaScript or arbitrary URLs stored as executable actions
+- Moving tenant-owned bookmarks, events, or results into `public`
+
+## Agent starter
+
+```text
+Primary UI: mock + bookmarks for every endpoint.
+Secondary: open full top-level browser.
+Scraper Native/passthrough: only where we already capture; bookmarks improve them.
+SaaS like Slack/HubSpot: mock + bookmarks + real browser + event wrappers.
+Reason: we do not modify or take ownership of the customer's home SaaS.
+```
+
+```text
+Bookmarks are a product feature: jump to common places per endpoint.
+Do not require full SPA navigation to reach an action.
+```
+
+## Related architecture
+
+- UI & navigation: `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`
+- Orchestration: `documentation/POLYSAAS_ORCHESTRATION_MODEL.md`

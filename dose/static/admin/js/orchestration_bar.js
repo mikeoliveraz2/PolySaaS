@@ -1,0 +1,50 @@
+(function () {
+    'use strict';
+
+    var states = {
+        idle: {label: 'READY', background: '#1a1a1a', border: '#22c55e', status: '#93c5fd', event: '#166534'},
+        submitting: {label: 'SUBMITTING', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
+        queueing: {label: 'SUBMITTING', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
+        queued: {label: 'QUEUED', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
+        pending: {label: 'PENDING', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
+        processing: {label: 'PROCESSING', background: '#172554', border: '#3b82f6', status: '#bfdbfe', event: '#1d4ed8'},
+        claimed: {label: 'PROCESSING', background: '#172554', border: '#3b82f6', status: '#bfdbfe', event: '#1d4ed8'},
+        success: {label: 'SUCCESS', background: '#052e16', border: '#22c55e', status: '#86efac', event: '#166534'},
+        failed: {label: 'FAILED', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
+        error: {label: 'FAILED', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
+        expired: {label: 'EXPIRED', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
+        no_consumer: {label: 'NO CONSUMER', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
+        processed: {label: 'PROCESSED', background: '#1a1a1a', border: '#22c55e', status: '#93c5fd', event: '#166534'}
+    };
+
+    function update(options) {
+        options = options || {};
+        var state = options.state || 'processed';
+        var visual = states[state] || states.processed;
+        var bar = document.getElementById('polysaas-orchestration-bar');
+        var path = document.getElementById('pss-action-path');
+        var status = document.getElementById('pss-orch-status');
+        var event = document.getElementById('pss-orch-event');
+        if (bar) {
+            bar.dataset.transactionState = state;
+            bar.style.backgroundColor = visual.background;
+            bar.style.borderBottomColor = visual.border;
+        }
+        if (path && options.path !== undefined) path.textContent = options.path || '—';
+        if (status) {
+            status.textContent = options.label || visual.label;
+            status.style.color = visual.status;
+            status.setAttribute('aria-live', 'polite');
+        }
+        if (event) {
+            event.style.display = options.detail ? 'inline-block' : 'none';
+            event.style.backgroundColor = visual.event;
+            event.textContent = options.detail || '';
+        }
+    }
+
+    window.PolySaaSTransactionBar = {
+        states: states,
+        update: update
+    };
+})();

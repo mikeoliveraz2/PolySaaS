@@ -1,0 +1,87 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.test import SimpleTestCase
+from django.urls import reverse
+
+from dose.endpoint_actions import adapter_for_endpoint
+from dose.endpoint_browser import safe_browser_launch_url
+from dose.models.endpoint_bookmark import EndpointBookmark
+
+
+class EndpointBookmarkModelTests(SimpleTestCase):
+    def test_registry_targets_are_declarative_keys(self):
+        bookmark = EndpointBookmark(
+            destination_type=EndpointBookmark.POPUP_FORM,
+            target="slack.contact",
+        )
+        bookmark.clean()
+        bookmark.target = "javascript:alert(1)"
+        with self.assertRaises(ValidationError):
+            bookmark.clean()
+
+    def test_path_targets_must_be_relative(self):
+        bookmark = EndpointBookmark(
+            destination_type=EndpointBookmark.EXTERNAL_PATH,
+            target="/client/team/channel",
+        )
+        bookmark.clean()
+        bookmark.target = "https://evil.example/path"
+        with self.assertRaises(ValidationError):
+            bookmark.clean()
+
+
+class EndpointHomeArchitectureTests(SimpleTestCase):
+    def endpoint(self, url="https://app.slack.com/client/T/C"):
+        return SimpleNamespace(
+            pk=7,
+            id=7,
+            slug="slack",
+            endpoint_url=url,
+            get_menu_title=lambda: "Slack",
+        )
+
+    def test_slack_adapter_exposes_allowlisted_actions(self):
+        adapter = adapter_for_endpoint(self.endpoint())
+        self.assertIsNotNone(adapter)
+        self.assertEqual(adapter.action("slack.contact").kind, "popup_form")
+        with self.assertRaises(ValueError):
+            adapter.action("slack.contact").build_payload({"javascript": "bad"})
+
+    def test_browser_launch_rejects_internal_hosts(self):
+        self.assertEqual(
+            safe_browser_launch_url(self.endpoint("http://odoo:8069/web")),
+            "",
+        )
+        self.assertEqual(
+            safe_browser_launch_url(self.endpoint(), "/client/T/C"),
+            "https://app.slack.com/client/T/C",
+        )
+
+    def test_routes_are_endpoint_scoped(self):
+        self.assertEqual(reverse("dose:endpoint_home", args=(7,)), "/dose/apps/7/")
+        self.assertEqual(
+            reverse("dose:endpoint_action_trigger", args=(7, "slack.contact")),
+            "/dose/api/apps/7/actions/slack.contact/",
+        )
+
+    def test_endpoint_home_uses_no_vendor_frame(self):
+        template = (
+            Path(settings.BASE_DIR) / "dose" / "templates" / "dose" / "endpoint_home.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("bookmarks", template)
+        self.assertIn("Open real app", template)
+        self.assertNotIn("<iframe", template.lower())
+        self.assertNotIn("<object", template.lower())
+
+    def test_capture_curation_requires_explicit_publish(self):
+        source = (
+            Path(settings.BASE_DIR)
+            / "dose"
+            / "views"
+            / "bookmark_curation.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("def publish_bookmark", source)
+        self.assertNotIn("discovered_subpaths", source)

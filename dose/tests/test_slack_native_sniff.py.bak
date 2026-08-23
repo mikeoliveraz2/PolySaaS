@@ -1,18 +1,325 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.http import HttpResponse
+from django.template.loader import render_to_string
 from django.test import RequestFactory
 from django.test import SimpleTestCase
+from django.utils.safestring import mark_safe
 
 from dose.passthrough.handlers.slack_handler import SlackPassthroughHandler
 from dose.passthrough.registry import resolve_handler_for_endpoint
 from dose.polysniffer.handlers.slack_native_sniff import process_slack_native_sniff
 from dose.polysniffer.sniff_forward import forward_sniff_native
 from dose.polysniffer.views.sniff_v2 import native_sniff_proxy_by_host
+from dose.polysniffer.views.sniff_v2_workspace import (
+    _include_mailbox_in_poll,
+    _mailbox_outcome,
+    _mailbox_transaction_state,
+    _serialize_mailbox_event,
+    sniff_shell,
+)
 
 
 class SlackNativeSniffTests(SimpleTestCase):
+    def test_slack_handler_declares_mailbox_action(self):
+        endpoint = SimpleNamespace(
+            endpoint_url="https://app.slack.com/client/T0/C0",
+            slug="slack",
+        )
+        context = SlackPassthroughHandler().polysniffer_mailbox_context(endpoint)
+        self.assertEqual(context["action_path"], "/events/slack/command/poly")
+        self.assertEqual(context["method"], "POST")
+        self.assertEqual(context["direction"], "REQ")
+        self.assertTrue(
+            SlackPassthroughHandler()
+            .polysniffer_wireframe_context(endpoint)["enabled"]
+        )
+
+    def test_slack_handler_bridges_mailbox_to_production_passthrough(self):
+        request = SimpleNamespace(
+            schema_name="polysaasonline",
+            _passthrough_endpoint=SimpleNamespace(
+                endpoint_url="https://app.slack.com/client/T0/C0"
+            ),
+        )
+        context = SlackPassthroughHandler().passthrough_embed_template_context(
+            "app.slack.com", request
+        )
+        self.assertEqual(
+            context["embed_mailbox_poll_url"],
+            "/admin/polysniffer/sniff/app.slack.com/workspace/poll/"
+            "?mode=passthrough&_ps_tenant=polysaasonline",
+        )
+        self.assertEqual(context["embed_mailbox_action_path"], "/events/slack/command/poly")
+        self.assertEqual(context["embed_mailbox_method"], "POST")
+        self.assertEqual(context["embed_mailbox_direction"], "REQ")
+        self.assertEqual(
+            context["embed_external_launch_url"],
+            "https://app.slack.com/client/T0/C0",
+        )
+        self.assertTrue(context["embed_slack_wireframe"])
+        self.assertEqual(context["slack_wireframe_mode"], "sidebar")
+
+    def test_slack_wireframe_has_contact_and_sale_actions(self):
+        html = render_to_string(
+            "polysniffer/slack_wireframe.html",
+            {"slack_wireframe_mode": "passthrough"},
+        )
+        self.assertIn("New contact", html)
+        self.assertIn("New sale", html)
+        self.assertIn('name="name"', html)
+        self.assertIn('name="partner_name"', html)
+        self.assertIn('name="order_reference"', html)
+        self.assertNotIn("<iframe", html.lower())
+        script = (
+            Path(__file__).parents[1]
+            / "static"
+            / "admin"
+            / "js"
+            / "slack_wireframe.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("/events/slack/webhook/contact", script)
+        self.assertIn("/events/slack/webhook/sale", script)
+        self.assertIn("JSON.stringify(payload || {})", script)
+        self.assertNotIn("body: '{}'", script)
+        self.assertIn("bar.dataset.transactionState", script)
+        self.assertIn("'PENDING'", script)
+        self.assertIn("'PROCESSING'", script)
+        self.assertIn("label: 'SUCCESS'", script)
+        self.assertIn("label: 'FAILED'", script)
+        self.assertIn("label: noConsumer ? 'NO CONSUMER' : 'NO RESULT'", script)
+
+    def test_production_passthrough_offers_supported_browser_url_copy(self):
+        template = (
+            Path(__file__).parents[1]
+            / "templates"
+            / "admin"
+            / "passthrough_embed.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Copy Slack URL", template)
+        self.assertIn("Open in content area", template)
+        self.assertIn("Open in Microsoft Edge", template)
+        self.assertIn(
+            'href="microsoft-edge:{{ embed_external_launch_url }}"',
+            template,
+        )
+        self.assertIn('id="pss-slack-embedded-content"', template)
+        self.assertIn(
+            'data-launch-url="{{ embed_external_launch_url }}"',
+            template,
+        )
+        self.assertIn('id="pss-slack-url-value"', template)
+        self.assertIn("Open full screen in new tab", template)
+        self.assertIn("polysaas-passthrough-fullscreen", template)
+        self.assertIn("ps_fullscreen=1", template)
+        self.assertIn("lockPassthroughLayout", template)
+        self.assertIn("translateZ(0)", template)
+        self.assertIn("polysaas-slack-wireframe-embed", template)
+        self.assertIn("polysaas-odoo-embed", template)
+        self.assertIn("content-column default for all passthrough", template)
+        self.assertNotIn("psForceHideSidebar", template)
+        sidebar = (
+            Path(__file__).parents[1]
+            / "templates"
+            / "admin"
+            / "includes"
+            / "custom_sidebar.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("pss-pt-fullscreen", sidebar)
+        self.assertIn("service.fullscreen_url", sidebar)
+        self.assertIn('target="_blank"', sidebar)
+
+    def test_slack_passthrough_shell_has_green_bar_and_mailbox_binding(self):
+        bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html")
+        html = render_to_string(
+            "polysniffer/sniff_workspace.html",
+            {
+                "endpoint_label": "Slack",
+                "endpoint_host": "app.slack.com",
+                "mode": "passthrough",
+                "active_session": SimpleNamespace(id=1, capture_name="slack-pt"),
+                "passthrough_embed_body": mark_safe(bar),
+                "browse_subpath": "/",
+                "schema": "polysaasonline",
+                "poll_url": "/poll/",
+                "diff_url": "/diff/",
+                "export_url": "/export/",
+            },
+        )
+        self.assertIn("POLYSAAS ORCHESTRATION ACTIVE", html)
+        self.assertIn("bind_only=1", html)
+        self.assertIn("event.transaction_state", html)
+        self.assertIn("NO CONSUMER", html)
+        self.assertNotIn("window.open(externalCompanionUrl", html)
+        self.assertNotIn("<iframe", html.lower())
+        self.assertNotIn("<object", html.lower())
+
+    def test_mailbox_event_redacts_slack_secrets(self):
+        row = SimpleNamespace(
+            id=7,
+            source="slack",
+            action_path="/events/slack/command/poly",
+            status="processed",
+            result={"status": "processed", "matched": 1, "executed": 1},
+            error="",
+            created_at=None,
+            processed_at=None,
+            envelope={
+                "event_key": "slack.command.poly",
+                "method": "POST",
+                "direction": "REQ",
+                "payload": {
+                    "command": "/poly",
+                    "text": "Acme Limited",
+                    "user_id": "U1",
+                    "response_url": "https://hooks.slack.com/secret",
+                    "token": "legacy-secret",
+                },
+            },
+        )
+        event = _serialize_mailbox_event(row)
+        self.assertEqual(event["payload"]["text"], "Acme Limited")
+        self.assertNotIn("response_url", event["payload"])
+        self.assertNotIn("token", event["payload"])
+
+    def test_mailbox_poll_includes_wireframe_native_and_passthrough(self):
+        self.assertTrue(
+            _include_mailbox_in_poll(mode="passthrough", wireframe=True, source="slack")
+        )
+        self.assertTrue(
+            _include_mailbox_in_poll(mode="native", wireframe=True, source="slack")
+        )
+        self.assertTrue(
+            _include_mailbox_in_poll(mode="passthrough", wireframe=False, source="slack")
+        )
+        self.assertFalse(
+            _include_mailbox_in_poll(mode="native", wireframe=False, source="slack")
+        )
+        self.assertFalse(
+            _include_mailbox_in_poll(mode="passthrough", wireframe=True, source="")
+        )
+
+    def test_mailbox_outcome_from_atomic_results(self):
+        self.assertEqual(
+            _mailbox_outcome(
+                {"status": "processed", "results": [{"status": "success", "partner_id": 11}]}
+            ),
+            "partner #11",
+        )
+        self.assertEqual(
+            _mailbox_outcome(
+                {
+                    "status": "processed",
+                    "results": [{"status": "success", "order_name": "S00002"}],
+                }
+            ),
+            "S00002",
+        )
+
+    def test_mailbox_transaction_state_uses_atomic_result(self):
+        self.assertEqual(_mailbox_transaction_state("pending", {}), "pending")
+        self.assertEqual(_mailbox_transaction_state("claimed", {}), "claimed")
+        self.assertEqual(
+            _mailbox_transaction_state(
+                "processed",
+                {"status": "processed", "matched": 1, "results": [{"status": "success"}]},
+            ),
+            "success",
+        )
+        self.assertEqual(
+            _mailbox_transaction_state(
+                "processed",
+                {"status": "processed", "matched": 1, "results": [{"status": "error"}]},
+            ),
+            "failed",
+        )
+        self.assertEqual(
+            _mailbox_transaction_state(
+                "processed",
+                {"status": "no_instruction", "matched": 0, "results": []},
+            ),
+            "no_consumer",
+        )
+
+    def test_wireframe_mailbox_payload_fields_are_kept(self):
+        row = SimpleNamespace(
+            id=2,
+            source="slack",
+            action_path="/events/slack/webhook/contact",
+            status="processed",
+            result={
+                "status": "processed",
+                "matched": 1,
+                "executed": 1,
+                "results": [{"status": "success", "partner_id": 12}],
+            },
+            error="",
+            created_at=None,
+            processed_at=None,
+            envelope={
+                "event_key": "slack.webhook.contact",
+                "method": "POST",
+                "direction": "REQ",
+                "payload": {
+                    "name": "Slack Contact",
+                    "email": "a@example.com",
+                    "token": "should-strip",
+                },
+            },
+        )
+        event = _serialize_mailbox_event(row)
+        self.assertEqual(event["payload"]["name"], "Slack Contact")
+        self.assertEqual(event["outcome"], "partner #12")
+        self.assertEqual(event["transaction_state"], "success")
+        self.assertNotIn("token", event["payload"])
+
+    @patch("dose.polysniffer.views.sniff_v2_workspace.render")
+    @patch("dose.polysniffer.views.sniff_v2_workspace.get_sniff_capture_session")
+    @patch("dose.polysniffer.views.sniff_v2_workspace.get_endpoint_by_host")
+    @patch("dose.polysniffer.sniff_session_utils.ensure_capture_session")
+    def test_slack_native_workspace_builds_wireframe_without_upstream_browser(
+        self, _ensure_session, get_endpoint, get_capture, render_workspace
+    ):
+        endpoint = SimpleNamespace(
+            pk=6,
+            endpoint_url="https://app.slack.com/client/T0/C0",
+            starting_uri="/",
+            menu_title="Slack",
+            provider="slack",
+            slug="slack",
+        )
+        get_endpoint.return_value = endpoint
+        get_capture.return_value = SimpleNamespace(pk=1, capture_name="slack-native")
+        render_workspace.return_value = HttpResponse("workspace")
+        request = RequestFactory().get(
+            "/admin/polysniffer/sniff/app.slack.com/workspace/native/"
+        )
+        request.user = SimpleNamespace(
+            is_authenticated=True,
+            is_active=True,
+            is_staff=True,
+            username="michael.oliver",
+        )
+
+        class _Session(dict):
+            modified = False
+
+        request.session = _Session()
+
+        with patch(
+            "dose.polysniffer.sniff_native_embed.build_inline_native_embed_context",
+            return_value={"native_embed_body": "NATIVE HAR BROWSER"},
+        ) as build_native:
+            sniff_shell(request, "app.slack.com", mode="native")
+
+        context = render_workspace.call_args.args[2]
+        build_native.assert_not_called()
+        self.assertIn("Slack wireframe", str(context["native_embed_body"]))
+        self.assertTrue(context["wireframe_enabled"])
+        self.assertIsNone(context.get("passthrough_embed_body"))
+
     def test_slack_endpoint_resolves_to_handler(self):
         endpoint = SimpleNamespace(
             endpoint_url="https://polysaasworkspace.slack.com/sign_in",

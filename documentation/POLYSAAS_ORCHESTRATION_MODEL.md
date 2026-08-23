@@ -1,8 +1,9 @@
-# Proposal: Webhook mailboxes + consumer orchestration
+# Webhook mailboxes + consumer orchestration
 
-**Status: OWNER APPROVED — implement only after I say go**
+**Status: OWNER APPROVED — active architecture**
 
-**Do not invent Slack passthrough, Native sniff, iframes, or /dose/sniff/{id}**
+**UI and navigation are governed by
+`documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`.**
 
 ## Purpose
 
@@ -16,8 +17,11 @@ Unify how events are bound and executed.
 
 1. Webhooks do not run atomics. They accept, persist, timeout.
 2. Tenant for Slack is resolved only from stored team_id mapping.
-3. Slack is API-first. No SlackPassthroughHandler. No slack_native_sniff. No proxy of slack.com or polysaasworkspace.slack.com.
-4. Native remains for self-hosted apps (Odoo, Nextcloud, Mattermost, Dolibarr): raw capture of cookies/assets/traffic to build handlers.
+3. Slack production orchestration is API-first. A Slack handler may provide
+   mock/wireframe context or specialized discovery hooks, but production does
+   not depend on proxying Slack's full SPA.
+4. Native remains a specialized HAR discovery tool for applications where
+   capture is supported. It is not the universal endpoint home.
 5. No iframes unless owner explicitly authorizes.
 6. PolySaaS = port 8000. Nextcloud = 8888. Never mix.
 7. Proposal first. One change → validate → stop.
@@ -35,21 +39,28 @@ User or external UI action
 
 Webhooks deliver triggers. They are not trigger sources and not executors.
 
-## Two surfaces
+## Product surfaces
 
-### 1) Surfing (passthrough / discovered apps)
+### 1) Endpoint home (universal)
 
-- User navigates the real app under the usual PolySaaS look-and-feel.
-- To add orchestration: same pattern as today — stop at a reasonable place.
-- What they attach: identify the **webhook** for that event, then attach a **dynamic action consumer**.
-- Later, when that webhook fires, the mailbox + consumer run. Not the browse request itself.
+- The primary surface is PolySaaS-owned mock/screenshot chrome plus bookmarks.
+- A bookmark can open a controlled form, fire a controlled event, show a mock
+  surface, or open the unchanged real app in a top-level browser.
+- Form/direct actions publish to the same mailbox + consumer pipeline.
 
-### 2) Slack (and similar SaaS)
+### 2) Native / passthrough (specialized)
 
-- Main window: **real Slack** (normal browser or desktop). No PolySaaS proxy.
-- Green bar: PolySaaS chrome as **embedded or separate div** so look-and-feel matches passthrough.
-- Events: slash command / API webhook → mailbox → consumer.
-- Binding UI: pick webhook (e.g. /poly) → attach consumer. Same gesture, no Slack site scraping.
+- Native captures HAR evidence and does not expose orchestration feedback.
+- Passthrough validates app handlers and can bind captured action points.
+- These tools remain available for self-hosted/capturable apps; they are not
+  forced onto vendor SaaS.
+
+### 3) Slack and similar SaaS
+
+- The default PolySaaS surface is mock + bookmarks.
+- The complete vendor application opens in a normal top-level browser.
+- Events use slash commands, webhooks, or controlled PolySaaS wrappers.
+- The green bar remains on the PolySaaS origin.
 
 ## Slack HTTP path (already designed)
 
@@ -105,21 +116,23 @@ Dedup: `(tenant_schema, event_id)`. Mailbox TTL: timeout if not consumed.
 - HubSpot adapter
 - New Instruction schema migration
 - Delayed Slack response_url
-- Changing frozen PolySniffer layout without approval
-- "Should Native open in an external browser?" — **invalid**; Native uses the forwarder (`POLYSNIFFER_NATIVE_FORWARDER.md`)
+- Reconstructing or framing complete vendor SPAs
+- Arbitrary executable bookmark actions
 
 ## Separation from PolySniffer Native
 
-- **PolySniffer Native** (discovery HAR via forwarder) is documented in `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`.
+- **PolySniffer Native** (specialized discovery HAR via forwarder) is documented
+  in `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`.
 - **This mailbox model** is production event delivery. Do not conflate the two tracks.
-- Live `/poly` go-live still waits for owner “go”.
+- Vendor SaaS production does not require Native capture or a passthrough product.
 
-## First implement slice (only if I say go)
+## Implemented Slack slice
 
-- Confirm mailbox persist + TTL + consumer dequeue for /poly.
-- Keep verify → ack → async work.
-- Binding UI: attach consumer to webhook (same surfing pattern).
-- Slack chrome: bar as sibling div or embed — production UI; Native sniff pane is separate discovery tooling.
+- Contact and sale wireframe actions publish real mailbox envelopes.
+- Consumers create an Odoo contact or draft quotation asynchronously.
+- The bar reports queue, processing, success, failure, expiration, and
+  missing-consumer states.
+- `/poly` remains the canonical Slack slash-command event path.
 
 Do not invent a second orchestration engine.
 

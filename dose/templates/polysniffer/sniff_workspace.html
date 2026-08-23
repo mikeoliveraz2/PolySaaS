@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -62,6 +63,9 @@
         .message-event { border-color: #2563eb; }
         .message-event .capture-method { background: #1e40af; }
         .har-muted { opacity: 0.55; }
+        .bookmark-candidates { padding: 8px 10px; border-bottom: 1px solid #374151; font: 0.7rem Consolas, monospace; }
+        .bookmark-candidate { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid #262f3d; }
+        .bookmark-candidate button { padding: 3px 7px; border: 0; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; }
         @media (max-width: 860px) { .split { grid-template-columns: 1fr; } .left-col { border-right: 0; border-bottom: 1px solid #374151; } }
     </style>
 </head>
@@ -89,6 +93,9 @@
             <button type="button" class="btn btn-secondary" onclick="stopSession()">Stop capture</button>
             <a class="btn btn-secondary" href="{{ diff_url }}">Diff</a>
             <a class="btn btn-secondary" href="{{ export_url }}">Export HAR</a>
+            {% if not wireframe_enabled %}
+            <button type="button" class="btn btn-secondary" onclick="loadBookmarkCandidates()">Bookmark candidates</button>
+            {% endif %}
             <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Endpoints</a>
         </div>
         <div class="browser-pane" id="browser-pane">
@@ -104,9 +111,13 @@
     <section class="right-col">
         <header><h2 id="events-pane-title">{% if wireframe_enabled %}Live events{% else %}Live capture{% endif %}</h2></header>
         <div class="stats">Events: <span id="count">0</span> | Last update: <span id="last-update">-</span> | Session: <span id="session-name">{% if active_session %}{{ active_session.capture_name }}{% else %}none{% endif %}</span></div>
+        {% if not wireframe_enabled %}
+        <div class="bookmark-candidates" id="bookmark-candidates" hidden></div>
+        {% endif %}
         <div class="captures" id="captures"><div class="empty">{% if wireframe_enabled %}No webhook or message events yet. Run Contact / Sale or send a thread message.{% else %}No captured requests.{% endif %}</div></div>
     </section>
 </div>
+<script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260823-1"></script>
 <script>
 (function() {
     const csrf = '{{ csrf_token }}';
@@ -118,6 +129,8 @@
        BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21 */
     const schemaQuery = schemaParam ? ('?_ps_tenant=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
+    const bookmarkCandidatesUrl = '{% if endpoint_host %}{% url "dose:bookmark_candidates" endpoint_host %}{% endif %}';
+    const publishBookmarkUrl = '{% if endpoint_host %}{% url "dose:publish_bookmark" endpoint_host %}{% endif %}';
     const wireframeEnabled = {{ wireframe_enabled|yesno:"true,false" }};
     /* Native = workspace/native inline embed (forwarder HTML in left pane; no object/iframe).
        Passthrough = workspace/passthrough (green bar + Insert Instruction / consumer bind). */
@@ -135,6 +148,56 @@
     const emptyCopy = wireframeEnabled
         ? 'No webhook or message events yet. Run Contact / Sale or send a thread message.'
         : 'No captured requests.';
+
+    window.loadBookmarkCandidates = async function() {
+        const panel = document.getElementById('bookmark-candidates');
+        if (!panel) return;
+        panel.hidden = false;
+        panel.textContent = 'Loading navigable GET paths…';
+        try {
+            const response = await fetch(bookmarkCandidatesUrl, {credentials: 'same-origin'});
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'Could not load candidates');
+            panel.innerHTML = '';
+            (data.candidates || []).forEach(function(candidate) {
+                const row = document.createElement('div');
+                row.className = 'bookmark-candidate';
+                const label = document.createElement('span');
+                label.textContent = candidate.path;
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = 'Publish';
+                button.addEventListener('click', function() {
+                    publishCandidate(candidate, button);
+                });
+                row.appendChild(label);
+                row.appendChild(button);
+                panel.appendChild(row);
+            });
+            if (!panel.children.length) panel.textContent = 'No navigable GET paths captured yet.';
+        } catch (error) {
+            panel.textContent = error.message;
+        }
+    };
+
+    async function publishCandidate(candidate, button) {
+        button.disabled = true;
+        try {
+            const response = await fetch(publishBookmarkUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                body: JSON.stringify(candidate)
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'Could not publish bookmark');
+            button.textContent = data.created ? 'Published' : 'Updated';
+        } catch (error) {
+            button.disabled = false;
+            button.textContent = 'Retry';
+            alert(error.message);
+        }
+    }
 
     function clearBrowser() {
         browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
@@ -301,6 +364,20 @@
         document.getElementById('count').textContent = String(++count);
     }
 
+    function updateMailboxBar(event) {
+        const state = event.transaction_state || event.status || 'processed';
+        const detail = event.outcome || event.error ||
+            (state === 'pending' ? ('Mailbox #' + event.id + ' is waiting') :
+            (state === 'claimed' ? 'Consumer is running' : state.replace('_', ' ').toUpperCase()));
+        if (window.PolySaaSTransactionBar) {
+            window.PolySaaSTransactionBar.update({
+                state: state,
+                path: event.action_path || '',
+                detail: detail
+            });
+        }
+    }
+
     function addMailboxEvent(event) {
         if (!event || !event.id) return;
         const key = 'mailbox-' + event.id;
@@ -364,14 +441,7 @@
         document.getElementById('captures').prepend(item);
         document.getElementById('count').textContent = String(++count);
 
-        const barStatus = document.getElementById('pss-orch-status');
-        if (barStatus) {
-            barStatus.textContent = (event.method || 'POST') + ' ' +
-                (event.action_path || '') + ' — ' + (event.status || 'received') +
-                (event.outcome ? (' · ' + event.outcome) : (event.executed ? (' · executed ' + event.executed) : ''));
-        }
-        const barPath = document.getElementById('pss-action-path');
-        if (barPath) barPath.textContent = event.action_path || '';
+        updateMailboxBar(event);
     }
 
     function addMessageEvent(msg) {

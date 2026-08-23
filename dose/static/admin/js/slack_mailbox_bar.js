@@ -111,17 +111,15 @@
     function showEvent(item) {
         if (!item || !item.id) return;
         lastMailboxId = Math.max(lastMailboxId, item.id);
-        var status = document.getElementById('pss-orch-status');
-        if (status) {
-            status.textContent = method + ' ' + actionPath + ' — ' +
-                (item.status || 'received') +
-                (item.executed ? (' · executed ' + item.executed) : '');
-        }
-        var eventNode = document.getElementById('pss-orch-event');
-        if (eventNode) {
-            eventNode.style.display = 'inline-block';
-            eventNode.textContent = (item.event_key || 'Slack event') +
-                ': ' + JSON.stringify(item.payload || {});
+        var state = item.transaction_state || item.status || 'processed';
+        var detail = item.outcome || item.error ||
+            ((item.event_key || 'Event') + ': ' + JSON.stringify(item.payload || {}));
+        if (window.PolySaaSTransactionBar) {
+            window.PolySaaSTransactionBar.update({
+                state: state,
+                path: item.action_path || actionPath,
+                detail: detail
+            });
         }
     }
 
@@ -142,8 +140,14 @@
                 .sort(function (a, b) { return a.id - b.id; })
                 .forEach(showEvent);
         } catch (error) {
-            var status = document.getElementById('pss-orch-status');
-            if (status) status.textContent = 'Slack mailbox unavailable';
+            if (window.PolySaaSTransactionBar) {
+                window.PolySaaSTransactionBar.update({
+                    state: 'failed',
+                    path: actionPath,
+                    label: 'MAILBOX UNAVAILABLE',
+                    detail: error.message
+                });
+            }
         }
     }
 

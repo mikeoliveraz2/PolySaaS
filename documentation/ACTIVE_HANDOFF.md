@@ -5,11 +5,46 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: 2026-08-23 morning → EOD handoff (laptop → office)
+- Date/session: 2026-08-23 EOD — common-denominator UI implementation
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Commit status: session work committed + pushed with this handoff
+- Commit status: common-denominator work included in the EOD commit and pushed
+  to the tracked feature branch
 - Agent sync check: passed
-- Policy unchanged: Slack demo panes are PolySaaS HTML. Do not load `app.slack.com`, add a Slack iframe, or invent a PolySaaS `/auth` workaround.
+- Governing UI: `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`
+- Product policy: primary mock/screenshot + bookmarks; secondary unchanged real
+  app in a top-level tab; Native/passthrough stay specialized.
+
+## Common-denominator UI (2026-08-23 afternoon)
+
+- Added tenant-owned `EndpointBookmark` model, admin, migration, bootstrap, and
+  default-publishing command.
+- Public endpoint homes use `/dose/apps/<endpoint-host>/`; database IDs remain
+  internal.
+- Sidebar primary links open endpoint homes. Secondary arrows open validated
+  real-app HTTP(S) targets with `target="_blank" rel="noopener"`.
+- Slack is the first endpoint adapter: mock surface, contact/sale popup actions,
+  existing mailbox/consumer dispatch, and shared transaction feedback.
+- Added one reusable orchestration bar controller/partial across endpoint home,
+  wireframe, and passthrough validation.
+- Added explicit PolySniffer GET-path candidate review and Publish Bookmark;
+  HAR traffic is never auto-published.
+- Active demo schema is `polysaasonline`. There is no PostgreSQL schema named
+  `olient`; setup commands now reject nonexistent schemas instead of falling
+  through to `public`.
+
+## Common-denominator validation
+
+- `python manage.py check` — passed.
+- `python manage.py makemigrations --check --dry-run` — no changes.
+- 59 focused endpoint, bookmark, passthrough, Native-boundary, architecture,
+  and Slack webhook tests — passed.
+- Authenticated browser: sidebar host routes, Slack endpoint home, allowlisted
+  real-app URL, contact popup, mailbox/consumer, and final `SUCCESS` verified.
+- `polysaasonline` default bookmarks — seeded/updated (4).
+- `python manage.py migrate` — blocked by pre-existing public migration-history
+  drift: `dose.0028_mlprompt` tries to create the already-existing
+  `dose_mlprompt` table. Do not fake migration history without an explicit,
+  audited repair plan.
 
 ## Owner-approved delivery order
 
@@ -83,6 +118,11 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Blockers / risks
 
+- Coordinated migration remains blocked at legacy `dose.0028_mlprompt` because
+  the public table exists but migration history says it is unapplied.
+- Two long-running Waitress instances on port 8000 still serve pre-change code;
+  restart the normal stack before evaluating endpoint-host routes there. The
+  amended implementation was browser-verified on isolated port 8001.
 - Hard-refresh Slack after pull (`?v=20260823-6`) or modal Enter bug can look “still broken”
 - Restart Waitress after pull so `odoo_handler` wrap gate loads
 - Frozen files touched with owner approval this session: `odoo_handler.py`, `urls.py`, passthrough embed/sidebar/forwarding as needed for content-column
@@ -90,11 +130,13 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Next actions (office)
 
-1. `git pull origin cursor/polysniffer-slack-native-capture`
-2. Restart Waitress + mailbox consumer (`.\runall.ps1` if needed)
-3. Hard-refresh Slack wireframe; smoke contact + sale modals end-to-end
-4. Confirm Odoo still opens in content column
-5. Optional polish only after Michael asks — messaging/plumbing are green
+1. Pull `cursor/polysniffer-slack-native-capture` on the office machine.
+2. Repair the legacy public migration history only through a separately audited
+   plan; do not fake `0028` opportunistically.
+3. Restart Waitress + mailbox consumer so port 8000 loads endpoint-host routes.
+4. Smoke sidebar → endpoint home and contact/sale once after the restart.
+5. Add endpoint-specific screenshots/bookmarks incrementally; do not turn
+   Native into the universal product home.
 
 ## Commit scope / exclusions
 

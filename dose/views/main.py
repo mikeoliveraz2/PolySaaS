@@ -899,10 +899,16 @@ def _build_landing_page_context(request):
         seen_hosts.add(host)
 
         title = endpoint.menu_title or host.replace('-', ' ').replace('_', ' ').title()
+        from django.urls import reverse
+        from dose.endpoint_browser import safe_browser_launch_url
+
         passthrough_services.append({
             'title': title,
             'endpoint_host': host,
-            'url': endpoint.get_menu_url(),
+            'endpoint_id': endpoint.id,
+            'url': reverse('dose:endpoint_home', args=(host,)),
+            'browser_url': safe_browser_launch_url(endpoint),
+            'passthrough_url': endpoint.get_menu_url(),
             'icon': endpoint.menu_icon or '🔗',
             'description': endpoint.description or f"Access {title}"
         })

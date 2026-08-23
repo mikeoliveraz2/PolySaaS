@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PolySniffer - {% firstof endpoint_label "Workspace" %}</title>
+    {% if native_embed_head %}{{ native_embed_head }}{% endif %}
+    {% if passthrough_embed_head %}{{ passthrough_embed_head }}{% endif %}
+    {% if passthrough_guard_head %}{{ passthrough_guard_head }}{% endif %}
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; min-height: 100%; background: #111827; color: #e5e7eb; font-family: Georgia, "Times New Roman", serif; }
+        body { min-height: 100vh; display: flex; flex-direction: column; }
+        .topbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 16px; background: #1f2937; border-bottom: 1px solid #374151; }
+        .topbar h1 { margin: 0; font-size: 1rem; color: #34d399; display: inline; }
+        .meta, .live { font: 0.78rem Consolas, monospace; color: #9ca3af; }
+        .topbar .meta { margin-left: 0.5rem; }
+        .live { color: #6ee7b7; text-align: right; }
+        .split { flex: 1; display: grid; grid-template-columns: 1fr 30%; min-height: 0; }
+        .left-col { display: flex; flex-direction: column; padding: 14px; border-right: 1px solid #374151; background: #0b1220; }
+        .right-col { min-width: 0; display: flex; flex-direction: column; background: #171717; }
+        h2 { margin: 0 0 10px; font-size: 0.9rem; color: #d1d5db; }
+        .mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .mode-card { border: 1px solid #374151; border-radius: 6px; padding: 12px; background: #1f2937; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+        .mode-card.selected { border-color: #34d399; }
+        .mode-card.pt.selected { border-color: #60a5fa; }
+        .mode-card p { margin: 0; }
+        .mode-card p, .browser-placeholder p { margin: 0 0 8px; font: 0.72rem/1.4 Consolas, monospace; color: #9ca3af; overflow-wrap: anywhere; }
+        .mode-card p { margin: 0; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 6px 12px; border: 0; border-radius: 5px; color: #fff; font: 600 0.78rem Georgia, serif; cursor: pointer; text-decoration: none; }
+        .btn-native { background: #047857; }
+        .btn-pt { background: #1d4ed8; }
+        .btn-secondary { background: #374151; }
+        .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; margin-bottom: 12px; }
+        .browser-pane { flex: 1; min-height: 0; border: 1px solid #374151; border-radius: 6px; background: #fff; overflow: hidden; }
+        .browser-pane .polysniffer-native-inline { width: 100%; height: 100%; }
+        .browser-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #6b7280; font: 0.8rem Consolas, monospace; background: #111827; }
+        .right-col header { padding: 12px 14px; border-bottom: 2px solid #16a34a; }
+        .right-col header h2 { margin: 0; color: #4ade80; }
+        .stats { padding: 8px 14px; border-bottom: 1px solid #404040; font: 0.75rem Consolas, monospace; color: #a3a3a3; }
+        .stats span { color: #4ade80; }
+        .captures { flex: 1; min-height: 120px; padding: 10px 12px; overflow-y: auto; }
+        .capture-item { margin-bottom: 8px; padding: 10px; border: 1px solid #404040; border-radius: 5px; background: #262626; cursor: pointer; }
+        .capture-row { display: flex; align-items: center; gap: 8px; font: 0.75rem Consolas, monospace; }
+        .capture-method { padding: 2px 6px; background: #1d4ed8; color: #dbeafe; }
+        .capture-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .capture-status { color: #4ade80; }
+        .capture-detail { display: none; margin-top: 8px; overflow-wrap: anywhere; color: #a3a3a3; }
+        .capture-item.open .capture-detail { display: block; }
+        .empty { padding: 24px 12px; text-align: center; color: #737373; }
+        .error-box { margin: 40px auto; max-width: 560px; padding: 24px; border: 1px solid #991b1b; background: #1f2937; color: #fecaca; }
+        a { color: #93c5fd; }
+        .capture-summary { margin-bottom: 10px; font: 0.75rem Consolas, monospace; color: #d1d5db; overflow-wrap: anywhere; }
+        .capture-tree { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .capture-section { margin-bottom: 10px; }
+        .capture-section-title { font: 600 0.7rem Consolas, monospace; color: #4ade80; margin-bottom: 4px; }
+        .capture-section pre { margin: 0; padding: 6px; background: #111827; border: 1px solid #374151; border-radius: 4px; font: 0.7rem Consolas, monospace; color: #9ca3af; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; }
+        .capture-more { font: 0.65rem Consolas, monospace; color: #6ee7b7; margin-top: 2px; }
+        .capture-attach { display: inline-block; margin-top: 8px; margin-right: 8px; padding: 4px 8px; background: #047857; color: #fff; border-radius: 4px; font: 0.7rem Georgia, serif; text-decoration: none; border: 0; cursor: pointer; }
+        .capture-marked { color: #fbbf24; font: 0.7rem Consolas, monospace; margin-top: 6px; }
+        .mailbox-event { border-color: #16a34a; }
+        .message-event { border-color: #2563eb; }
+        .message-event .capture-method { background: #1e40af; }
+        .har-muted { opacity: 0.55; }
+        @media (max-width: 860px) { .split { grid-template-columns: 1fr; } .left-col { border-right: 0; border-bottom: 1px solid #374151; } }
+    </style>
+</head>
+<body>
+{% if error %}
+<div class="error-box"><h2>PolySniffer unavailable</h2><p>{{ error }}</p><p><a href="/admin/dose/passthroughendpoint/">Back to endpoints</a></p></div>
+{% else %}
+<div class="topbar">
+    <div><h1>PolySniffer</h1><span class="meta">{{ endpoint_label }} - {{ endpoint_host }}</span></div>
+    <div class="live" id="session-status">{% if active_session %}Recording #{{ active_session.id }} - {{ active_session.capture_name }}{% else %}No active capture{% endif %}</div>
+</div>
+<div class="split">
+    <section class="left-col">
+        <div class="mode-cards">
+            <div class="mode-card{% if mode == 'native' %} selected{% endif %}" data-mode="native">
+                <button type="button" class="btn btn-native" onclick="startSession('native')">Start Native</button>
+                <p>{% if wireframe_enabled %}Slack discovery wireframe — stable mock page, no orchestration bar.{% else %}Forwarder browser + HAR capture only — no green orchestration bar.{% endif %}</p>
+            </div>
+            <div class="mode-card pt{% if mode == 'passthrough' %} selected{% endif %}" data-mode="passthrough">
+                <button type="button" class="btn btn-pt" onclick="startSession('passthrough')">Start Passthrough</button>
+                <p>{% if wireframe_enabled %}Slack passthrough wireframe — green bar + two canned webhooks.{% else %}Handler validation in PolySniffer: green bar + events + consumer binding.{% endif %}</p>
+            </div>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="btn btn-secondary" onclick="stopSession()">Stop capture</button>
+            <a class="btn btn-secondary" href="{{ diff_url }}">Diff</a>
+            <a class="btn btn-secondary" href="{{ export_url }}">Export HAR</a>
+            <a class="btn btn-secondary" href="/admin/dose/passthroughendpoint/">Endpoints</a>
+        </div>
+        <div class="browser-pane" id="browser-pane">
+            {% if native_embed_body %}
+                {{ native_embed_body }}
+            {% elif passthrough_embed_body %}
+                {{ passthrough_embed_body }}
+            {% else %}
+                <div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>
+            {% endif %}
+        </div>
+    </section>
+    <section class="right-col">
+        <header><h2 id="events-pane-title">{% if wireframe_enabled %}Live events{% else %}Live capture{% endif %}</h2></header>
+        <div class="stats">Events: <span id="count">0</span> | Last update: <span id="last-update">-</span> | Session: <span id="session-name">{% if active_session %}{{ active_session.capture_name }}{% else %}none{% endif %}</span></div>
+        <div class="captures" id="captures"><div class="empty">{% if wireframe_enabled %}No webhook or message events yet. Run Contact / Sale or send a thread message.{% else %}No captured requests.{% endif %}</div></div>
+    </section>
+</div>
+<script>
+(function() {
+    const csrf = '{{ csrf_token }}';
+    const endpointHost = '{{ endpoint_host|escapejs }}';
+    const schemaParam = '{{ schema|escapejs }}';
+    /* FIX 2026-08-20 / 2026-08-21: launch URL carries tenant as _ps_tenant= (not
+       schema= — Slack consumes that name). Prefix is host-keyed
+       /pt/polysniff/<host>/ — same identity as /pt/admin/<host>/; no row id.
+       BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21 */
+    const schemaQuery = schemaParam ? ('?_ps_tenant=' + encodeURIComponent(schemaParam)) : '';
+    const pollUrl = '{{ poll_url|escapejs }}';
+    const wireframeEnabled = {{ wireframe_enabled|yesno:"true,false" }};
+    /* Native = workspace/native inline embed (forwarder HTML in left pane; no object/iframe).
+       Passthrough = workspace/passthrough (green bar + Insert Instruction / consumer bind). */
+    const nativeLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/native{{ browse_subpath|escapejs }}' + schemaQuery;
+    const passthroughLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/passthrough{{ browse_subpath|escapejs }}' + schemaQuery;
+    let currentMode = '{{ mode|escapejs }}';
+    let lastId = 0;
+    let lastMailboxId = 0;
+    let lastMessageId = 0;
+    let count = 0;
+    const seen = new Set();
+
+    const workspaceUrl = '/admin/polysniffer/sniff/' + endpointHost;
+    const browserPane = document.getElementById('browser-pane');
+    const emptyCopy = wireframeEnabled
+        ? 'No webhook or message events yet. Run Contact / Sale or send a thread message.'
+        : 'No captured requests.';
+
+    function clearBrowser() {
+        browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
+        currentMode = '';
+        document.querySelectorAll('.mode-card').forEach(function(card) { card.classList.remove('selected'); });
+    }
+
+    window.startSession = async function(mode) {
+        try {
+            const form = new FormData();
+            form.append('mode', mode);
+            const response = await fetch(workspaceUrl + '/session/start/', {method: 'POST', body: form, credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
+            const data = await response.json();
+            if (!data.ok) throw new Error(data.error || 'Failed to start capture');
+            await storeMmToken();
+            /* Full shell navigation so sniff_shell builds inline embed (Native or PT). */
+            var launch = (mode === 'passthrough') ? passthroughLaunchUrl : nativeLaunchUrl;
+            launch += (launch.indexOf('?') >= 0 ? '&' : '?') + 'ps_sniff=' + Date.now();
+            window.location.href = launch;
+        } catch (error) { alert(error.message); }
+    };
+
+    window.stopSession = async function() {
+        try {
+            const response = await fetch(workspaceUrl + '/session/stop/', {method: 'POST', credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
+            const data = await response.json();
+            if (!data.ok) throw new Error(data.error || 'Failed to stop capture');
+            clearBrowser();
+            lastId = 0;
+            lastMailboxId = 0;
+            lastMessageId = 0;
+            count = 0;
+            seen.clear();
+            document.getElementById('captures').innerHTML = '<div class="empty">' + emptyCopy + '</div>';
+            document.getElementById('count').textContent = '0';
+        } catch (error) { alert(error.message); }
+    };
+
+    async function storeMmToken() {
+        const match = document.cookie.match(/(?:^|; )MMAUTHTOKEN=([^;]+)/);
+        if (!match) return;
+        const token = decodeURIComponent(match[1]);
+        const form = new URLSearchParams();
+        form.append('token', token);
+        try {
+            const r = await fetch(workspaceUrl + '/store-mm-token/', {method: 'POST', body: form, credentials: 'same-origin', headers: {'X-CSRFToken': csrf}});
+            const d = await r.json();
+            console.log('[PolySniffer] store-mm-token:', d.ok);
+        } catch (e) { console.log('[PolySniffer] store-mm-token failed:', e); }
+    }
+
+    function addCapture(capture) {
+        if (wireframeEnabled) return;
+        if (!capture || !capture.id || seen.has(capture.id)) return;
+        seen.add(capture.id);
+        if (typeof capture.id === 'number') lastId = Math.max(lastId, capture.id);
+        const empty = document.querySelector('#captures .empty');
+        if (empty) empty.remove();
+        const item = document.createElement('div');
+        item.className = 'capture-item';
+        const row = document.createElement('div');
+        row.className = 'capture-row';
+        const method = document.createElement('span');
+        method.className = 'capture-method';
+        method.textContent = capture.method || 'GET';
+        const path = document.createElement('span');
+        path.className = 'capture-path';
+        path.textContent = capture.path || capture.client_path || '-';
+        const status = document.createElement('span');
+        status.className = 'capture-status';
+        status.textContent = capture.status_code || '-';
+        row.append(method, path, status);
+
+        const detail = document.createElement('div');
+        detail.className = 'capture-detail';
+        const summary = document.createElement('div');
+        summary.className = 'capture-summary';
+        summary.innerHTML = '<b>' + (capture.method || 'GET') + '</b> ' + (capture.url || '-') +
+            '<br>Client: ' + (capture.client_path || '-') +
+            '<br>' + (capture.captured_at || '-') + ' — ' + (capture.duration_ms || '0') + ' ms' +
+            '<br>Source: ' + (capture.capture_source || '-');
+        detail.appendChild(summary);
+
+        const fmt = function(o) {
+            try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); }
+        };
+        function section(title, content, more) {
+            const div = document.createElement('div');
+            div.className = 'capture-section';
+            const h = document.createElement('div');
+            h.className = 'capture-section-title';
+            h.textContent = title;
+            const pre = document.createElement('pre');
+            pre.textContent = content || '(empty)';
+            div.appendChild(h);
+            div.appendChild(pre);
+            if (more) {
+                const m = document.createElement('div');
+                m.className = 'capture-more';
+                m.textContent = '... (truncated in preview)';
+                div.appendChild(m);
+            }
+            return div;
+        }
+        const tree = document.createElement('div');
+        tree.className = 'capture-tree';
+        const req = document.createElement('div');
+        req.appendChild(section('Headers', fmt(capture.headers), false));
+        req.appendChild(section('Cookies', fmt(capture.cookies), false));
+        req.appendChild(section('Query', fmt(capture.query_params), false));
+        req.appendChild(section('Request body', capture.body_preview, capture.body_more));
+        const res = document.createElement('div');
+        res.appendChild(section('Status', String(capture.status_code || '-'), false));
+        res.appendChild(section('Response headers', fmt(capture.response_headers), false));
+        res.appendChild(section('Response body', capture.response_body_preview, capture.response_body_more));
+        tree.appendChild(req);
+        tree.appendChild(res);
+        detail.appendChild(tree);
+
+        /* Orchestration attach lives on Passthrough only (green bar + consumer bind).
+           Native Live capture is discovery HAR — no Insert Instruction here. */
+        if (currentMode === 'passthrough') {
+            const mark = document.createElement('button');
+            mark.type = 'button';
+            mark.className = 'capture-attach';
+            mark.textContent = 'Mark action path → consumer';
+            mark.onclick = function(ev) {
+                ev.stopPropagation();
+                const key = (capture.method || 'GET') + ' ' + (capture.path || '');
+                let marked = [];
+                try { marked = JSON.parse(sessionStorage.getItem('ps_marked_action_paths') || '[]'); } catch (e) {}
+                if (!marked.some(function(m) { return m.key === key; })) {
+                    marked.push({
+                        key: key,
+                        method: capture.method || 'GET',
+                        path: capture.path || '',
+                        url: capture.url || '',
+                        direction: 'REQ',
+                        marked_at: new Date().toISOString()
+                    });
+                    sessionStorage.setItem('ps_marked_action_paths', JSON.stringify(marked));
+                }
+                const note = document.createElement('div');
+                note.className = 'capture-marked';
+                note.textContent = 'Marked for webhook → consumer bind. Count=' + marked.length;
+                detail.appendChild(note);
+            };
+            detail.appendChild(mark);
+
+            const attach = document.createElement('a');
+            attach.className = 'capture-attach';
+            attach.target = '_blank';
+            attach.textContent = 'Open Instruction draft';
+            attach.href = '/admin/dose/instruction/add/?requestpath=' + encodeURIComponent(capture.path || '') +
+                '&requestmethod=' + encodeURIComponent(capture.method || 'GET') +
+                '&direction=REQ&match_type=path';
+            attach.onclick = function(ev) { ev.stopPropagation(); };
+            detail.appendChild(attach);
+        }
+
+        item.append(row, detail);
+        item.onclick = function() { item.classList.toggle('open'); };
+        document.getElementById('captures').prepend(item);
+        document.getElementById('count').textContent = String(++count);
+    }
+
+    function addMailboxEvent(event) {
+        if (!event || !event.id) return;
+        const key = 'mailbox-' + event.id;
+        if (seen.has(key)) return;
+        seen.add(key);
+        lastMailboxId = Math.max(lastMailboxId, event.id);
+        const empty = document.querySelector('#captures .empty');
+        if (empty) empty.remove();
+
+        const item = document.createElement('div');
+        item.className = 'capture-item mailbox-event';
+        const row = document.createElement('div');
+        row.className = 'capture-row';
+        const method = document.createElement('span');
+        method.className = 'capture-method';
+        method.textContent = event.method || 'POST';
+        const path = document.createElement('span');
+        path.className = 'capture-path';
+        path.textContent = event.action_path || event.event_key || '-';
+        const status = document.createElement('span');
+        status.className = 'capture-status';
+        status.textContent = event.status || '-';
+        row.append(method, path, status);
+
+        const detail = document.createElement('div');
+        detail.className = 'capture-detail';
+        const summary = document.createElement('div');
+        summary.className = 'capture-summary';
+        summary.textContent = (event.source || 'webhook') + ' · ' +
+            (event.direction || 'REQ') + ' · ' + (event.created_at || '-') +
+            (event.outcome ? (' · ' + event.outcome) : '');
+        detail.appendChild(summary);
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify({
+            event_key: event.event_key,
+            payload: event.payload || {},
+            result_status: event.result_status,
+            matched: event.matched,
+            executed: event.executed,
+            outcome: event.outcome || '',
+            error: event.error
+        }, null, 2);
+        detail.appendChild(pre);
+
+        if (!wireframeEnabled) {
+            const attach = document.createElement('a');
+            attach.className = 'capture-attach';
+            attach.target = '_blank';
+            attach.textContent = 'Attach consumer';
+            attach.href = '/admin/dose/instruction/add/?requestpath=' +
+                encodeURIComponent(event.action_path || '') +
+                '&requestmethod=' + encodeURIComponent(event.method || 'POST') +
+                '&direction=' + encodeURIComponent(event.direction || 'REQ') +
+                '&match_type=path&bind_only=1';
+            attach.onclick = function(ev) { ev.stopPropagation(); };
+            detail.appendChild(attach);
+        }
+
+        item.append(row, detail);
+        item.onclick = function() { item.classList.toggle('open'); };
+        document.getElementById('captures').prepend(item);
+        document.getElementById('count').textContent = String(++count);
+
+        const barStatus = document.getElementById('pss-orch-status');
+        if (barStatus) {
+            barStatus.textContent = (event.method || 'POST') + ' ' +
+                (event.action_path || '') + ' — ' + (event.status || 'received') +
+                (event.outcome ? (' · ' + event.outcome) : (event.executed ? (' · executed ' + event.executed) : ''));
+        }
+        const barPath = document.getElementById('pss-action-path');
+        if (barPath) barPath.textContent = event.action_path || '';
+    }
+
+    function addMessageEvent(msg) {
+        if (!msg || !msg.id) return;
+        const key = 'msg-' + msg.id;
+        if (seen.has(key)) return;
+        seen.add(key);
+        lastMessageId = Math.max(lastMessageId, msg.id);
+        const empty = document.querySelector('#captures .empty');
+        if (empty) empty.remove();
+
+        const item = document.createElement('div');
+        item.className = 'capture-item message-event';
+        const row = document.createElement('div');
+        row.className = 'capture-row';
+        const method = document.createElement('span');
+        method.className = 'capture-method';
+        method.textContent = (msg.level || 'info').toUpperCase();
+        const path = document.createElement('span');
+        path.className = 'capture-path';
+        path.textContent = msg.message || '-';
+        const status = document.createElement('span');
+        status.className = 'capture-status';
+        status.textContent = msg.author || 'PolySaaS';
+        row.append(method, path, status);
+
+        const detail = document.createElement('div');
+        detail.className = 'capture-detail';
+        const summary = document.createElement('div');
+        summary.className = 'capture-summary';
+        summary.textContent = (msg.author || 'PolySaaS') + ' · ' + (msg.created_at || '-') +
+            ' · DoseMessage #' + msg.id;
+        detail.appendChild(summary);
+
+        item.append(row, detail);
+        item.onclick = function() { item.classList.toggle('open'); };
+        document.getElementById('captures').prepend(item);
+        document.getElementById('count').textContent = String(++count);
+    }
+
+    async function poll() {
+        try {
+            const query = '?mode=' + encodeURIComponent(currentMode || 'native') +
+                '&since_id=' + lastId +
+                '&mailbox_since_id=' + lastMailboxId +
+                '&messages_since_id=' + lastMessageId;
+            const response = await fetch(pollUrl + query, {credentials: 'same-origin', cache: 'no-store', headers: {'Accept': 'application/json'}});
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Poll failed');
+            if (!wireframeEnabled) {
+                (data.captures || []).sort(function(a, b) { return a.id - b.id; }).forEach(addCapture);
+            }
+            (data.mailbox_events || []).sort(function(a, b) { return a.id - b.id; }).forEach(addMailboxEvent);
+            (data.messages || []).sort(function(a, b) { return a.id - b.id; }).forEach(addMessageEvent);
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            if (data.session_name) document.getElementById('session-name').textContent = data.session_name;
+        } catch (error) { document.getElementById('last-update').textContent = 'error'; }
+    }
+
+    storeMmToken();
+    poll();
+    window.setInterval(poll, 1500);
+})();
+</script>
+{% endif %}
+</body>
+</html>

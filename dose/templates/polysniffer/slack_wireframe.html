@@ -2,9 +2,9 @@
 <div
     class="ps-slack-mock"
     data-mode="{{ slack_wireframe_mode|default:'native' }}"
-    data-contact-url="{% url 'dose:slack_wireframe_trigger' 'contact' %}"
-    data-sale-url="{% url 'dose:slack_wireframe_trigger' 'sale' %}"
-    data-status-url="/dose/api/slack-wireframe/status/"
+    data-contact-url="{% if slack_contact_url %}{{ slack_contact_url }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
+    data-sale-url="{% if slack_sale_url %}{{ slack_sale_url }}{% else %}{% url 'dose:slack_wireframe_trigger' 'sale' %}{% endif %}"
+    data-status-url="{% if endpoint_status_url %}{{ endpoint_status_url }}{% else %}/dose/api/slack-wireframe/status/{% endif %}"
     data-messages-url="{% url 'dose:slack_wireframe_messages' %}"
     data-post-url="{% url 'dose:slack_wireframe_post_message' %}"
 >
@@ -172,5 +172,6 @@
         </div>
     </div>
     {% endif %}
-    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260823-6"></script>
+    <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260823-1"></script>
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260823-8"></script>
 </div>

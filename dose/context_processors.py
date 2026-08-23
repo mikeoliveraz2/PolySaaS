@@ -330,14 +330,21 @@ def admin_navigation(request):
 
             # Deduplicate by hostname
             from urllib.parse import urlparse
-            norm = urlparse(endpoint.endpoint_url).netloc.lower().replace('-', '_')
+            endpoint_host = urlparse(endpoint.endpoint_url).netloc.lower()
+            norm = endpoint_host.replace('-', '_')
             if norm in seen_normalized:
                 print(f"[ADMIN_NAV] Skipping duplicate (hostname '{norm}'): {endpoint.endpoint_url}")
                 continue
             seen_normalized.add(norm)
 
-            # endpoint_url is the sole routing source; starting_uri is only the entry path.
-            url = endpoint.get_menu_url()
+            # Product default is the tenant endpoint home; passthrough is a
+            # specialized destination available from bookmarks/tools.
+            from django.urls import reverse
+            from dose.endpoint_browser import safe_browser_launch_url
+
+            passthrough_url = endpoint.get_menu_url()
+            url = reverse("dose:endpoint_home", args=(endpoint_host,))
+            browser_url = safe_browser_launch_url(endpoint)
             title = endpoint.menu_title or (endpoint.slug or norm).replace('_', ' ').title()
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (slug={endpoint.slug!r}, upstream={endpoint.endpoint_url})")
 
@@ -365,9 +372,11 @@ def admin_navigation(request):
 
             service_data = {
                 'url': url,
-                'fullscreen_url': (
-                    f"{url}{'&' if '?' in url else '?'}ps_fullscreen=1"
-                ),
+                'fullscreen_url': browser_url,
+                'browser_url': browser_url,
+                'passthrough_url': passthrough_url,
+                'endpoint_id': endpoint.id,
+                'endpoint_host': endpoint_host,
                 'title': title,
                 'slug': (endpoint.slug or '').strip(),
                 'description': endpoint.description or '',

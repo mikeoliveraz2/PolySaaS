@@ -111,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -923,6 +923,44 @@ class MappingAdmin(TenantAwareModelAdmin):
     )
 
 
+class EndpointBookmarkAdmin(TenantAwareModelAdmin):
+    list_display = (
+        "title",
+        "endpoint",
+        "destination_type",
+        "target",
+        "sort_order",
+        "is_active",
+    )
+    list_filter = ("destination_type", "is_active")
+    search_fields = ("title", "key", "target", "endpoint__menu_title")
+    ordering = ("endpoint_id", "sort_order", "id")
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        from dose.utils import get_current_tenant
+
+        if not get_current_tenant(request):
+            return self.model.objects.none()
+        return super().get_queryset(request)
+
+    def save_model(self, request, obj, form, change):
+        from django.core.exceptions import PermissionDenied
+        from dose.utils import get_current_tenant
+
+        if not get_current_tenant(request):
+            raise PermissionDenied("Select an active tenant before saving a bookmark.")
+        super().save_model(request, obj, form, change)
+
+    def delete_model(self, request, obj):
+        from django.core.exceptions import PermissionDenied
+        from dose.utils import get_current_tenant
+
+        if not get_current_tenant(request):
+            raise PermissionDenied("Select an active tenant before deleting a bookmark.")
+        super().delete_model(request, obj)
+
+
 # Register existing models
 admin.site.register(Task, TaskAdmin)
 admin.site.register(Instruction, InstructionAdmin)
@@ -930,6 +968,7 @@ admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)
+admin.site.register(EndpointBookmark, EndpointBookmarkAdmin)
 admin.site.register(DoseMessage, DoseMessageAdmin)
 admin.site.register(TrafficLog, TrafficLogAdmin)
 admin.site.register(RequestLog)

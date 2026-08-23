@@ -1,5 +1,9 @@
 # PolySniffer Native → Forwarder → Handler North Star
 
+**Scope: specialized discovery for self-hosted or otherwise capturable apps.**
+The universal customer-facing navigation model is defined in
+`documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`.
+
 ## Locked architectural intent
 
 ```mermaid
@@ -24,15 +28,17 @@ flowchart LR
 
 1. **Native is discovery, not product embed.** Goal: capture the richest unmodified HAR possible (request/response headers, cookies, bodies, JS/assets, redirects, status) while the user walks the normal app flow inside the unified PolySniffer workspace.
 2. **Traffic must cross the forwarder.** A plain browser / Playwright Chromium session that talks to upstream origin directly is invalid for Native, because PolySniffer never sees the true in-proxy HAR the handler must be built from.
-3. **Unified UI across endpoints.** Same workspace shell (mode cards, left browse pane, Live capture, Diff/Export) for Slack, Odoo, Nextcloud, Mattermost, etc. Handler differences stay behind the boundary; the pane UX does not fork per app except where an owner-approved exception is documented.
+3. **Unified tool UI for supported capture endpoints.** The same workspace shell
+   applies where Native capture is offered. Vendor SaaS is not required to use
+   this path; its normal product home is mock + bookmarks + top-level real app.
 4. **Passthrough is built from Native evidence.** After enough HARs, generate/refine the app handler (rewrite, cookie relay, CSP, auth shim, wrap gates). Passthrough may range from screen-scrape HTML proxy to API-only.
-5. **Orchestration attachment is Passthrough-only.** Green bar + “Insert Orchestration Instruction” / bind action path → consumer. Native has **no** green bar (Slack included — same as Odoo/Nextcloud/Mattermost Native).
+5. **Orchestration attachment is Passthrough-only.** Green bar + “Insert Orchestration Instruction” / bind action path → consumer. Native has **no** green bar.
 6. **Native URL** = `/admin/polysniffer/sniff/<host>/native/...` (forwarder capture). **Passthrough URL** = `/admin/polysniffer/sniff/<host>/workspace/passthrough/...` (bar + bind). Do not use `/pt/polysniff/` for Native.
 
 ## What this rejects
 
 - Native launching an external Chromium window as the default capture path (`dose/polysniffer/native_browser_capture.py`, `dose/polysniffer/sniff_session.py`).
-- Treating Slack (or any SaaS under sniff) as “open real Slack outside the proxy” **inside PolySniffer Native**.
+- Making Native/proxy capture the default product navigation for vendor SaaS.
 - Iframes as the default SPA embed (existing rule; workspace uses `<object>` / host-keyed polysniff per current handoff).
 
 ## Current baseline (already on merged branch)
@@ -40,7 +46,8 @@ flowchart LR
 - Host-keyed Native/proxy: `/pt/polysniff/<host>/...` and workspace `/admin/polysniffer/sniff/<host>/`.
 - Capture engine: `dose/polysniffer/har_capture.py` + Live capture poll.
 - Native forward path: `dose/polysniffer/sniff_forward.py` (frozen — ask before edits).
-- Slack proxy-relay handler in progress: `dose/passthrough/handlers/slack_handler.py` — auth stays on-proxy; MessageEvent origin spoof not yet proven; native pane still blank after credentials-ready.
+- Endpoint-specific handlers may provide capture or wireframe hooks without
+  making their vendor SPA a production proxy dependency.
 
 ## Work sequence (piccolo passo)
 
@@ -52,19 +59,20 @@ Update handoff / a short PolySniffer architecture note so agents stop proposing 
 - HAR richness is the success metric for Native.
 - Handler/passthrough is a later product of that HAR, not a parallel guess.
 
-### Step 2 — Prove Native pane through forwarder (current Slack open item)
+### Step 2 — Prove Native pane through forwarder (supported endpoint)
 
 Per `documentation/ACTIVE_HANDOFF.md`:
 
 - Restart Waitress after pull.
-- Open Slack workspace → Start Native → left pane via host-keyed `/pt/polysniff/app.slack.com/?_ps_tenant=...`.
-- Finish/verify MessageEvent origin spoof so auth credentials settle and UI renders.
+- Choose a self-hosted/capturable endpoint → Start Native → browse through the
+  host-keyed forwarder.
 - Validate Live capture rows for `/`, `/auth`, subsequent API/asset traffic (cookies/headers present in detail panel).
-- Stop when pane shows real Slack UI **or** next concrete failure is captured (Network + Console). No BINGO until screenshot proof.
+- Stop when the app UI and HAR evidence are proven or the next concrete failure
+  is captured.
 
 ### Step 3 — HAR fidelity audit (all endpoints, same UI)
 
-Against a known-good self-hosted app (e.g. Nextcloud or Mattermost) and Slack once pane works:
+Against a known-good self-hosted app (e.g. Nextcloud or Mattermost):
 
 - Confirm Capture session records cookies, request/response headers, bodies (within truncate limits), `capture_source=native`.
 - List gaps vs “unmodified HAR” (stripped headers, missing Set-Cookie, truncated JS, WebSocket gaps).
@@ -84,11 +92,15 @@ Once HARs are rich enough:
 
 ### Step 6 — Orchestration mailbox slice (separate track)
 
-Keep webhook mailbox consumer work on the branch; implement production Slack `/poly` mailbox flow only when owner says go (`documentation/POLYSAAS_ORCHESTRATION_MODEL.md`). PolySniffer Native for Slack discovery does **not** replace API-first production events.
+Keep webhook mailbox consumer work separate
+(`documentation/POLYSAAS_ORCHESTRATION_MODEL.md`). Native discovery does not
+replace API-first production events.
 
 ## Immediate next action after plan approval
 
-Resume Step 2 only: verify Slack Native through host-keyed polysniff/forwarder (MessageEvent spoof + pane settle + Live capture proof). No new architecture code until that validates or fails with new evidence.
+Use Native only when discovery is needed for a supported endpoint. Product work
+starts at the endpoint's mock/bookmark home; it does not wait for a vendor SPA
+to render through the forwarder.
 
 ## Related repo docs
 

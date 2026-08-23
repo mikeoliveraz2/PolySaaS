@@ -109,6 +109,24 @@ def _mailbox_outcome(result) -> str:
     return str(result.get("status") or "")
 
 
+def _mailbox_transaction_state(row_status: str, result) -> str:
+    """Normalize mailbox + atomic results for both orchestration bars."""
+    if row_status in ("pending", "claimed", "failed", "expired"):
+        return row_status
+    if row_status != "processed" or not isinstance(result, dict):
+        return row_status or "unknown"
+    if result.get("status") == "no_instruction" or result.get("matched", 0) == 0:
+        return "no_consumer"
+    atomic_results = [
+        item for item in (result.get("results") or []) if isinstance(item, dict)
+    ]
+    if any(item.get("status") in ("error", "failed") for item in atomic_results):
+        return "failed"
+    if any(item.get("status") == "success" for item in atomic_results):
+        return "success"
+    return "processed"
+
+
 def _serialize_mailbox_event(row) -> dict:
     """Expose action evidence without leaking Slack tokens/response URLs."""
     envelope = row.envelope or {}
@@ -145,6 +163,7 @@ def _serialize_mailbox_event(row) -> dict:
         "method": envelope.get("method", "POST"),
         "direction": envelope.get("direction", "REQ"),
         "status": row.status,
+        "transaction_state": _mailbox_transaction_state(row.status, result),
         "result_status": result.get("status", ""),
         "matched": result.get("matched", 0),
         "executed": result.get("executed", len(result.get("results") or [])),

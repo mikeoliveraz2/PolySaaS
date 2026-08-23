@@ -1,0 +1,174 @@
+import json
+from urllib.parse import urlsplit
+
+from django.contrib.auth.decorators import login_required
+from django.db import DatabaseError
+from django.http import Http404, JsonResponse
+from django.shortcuts import render
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST
+
+from dose.endpoint_actions import adapter_for_endpoint
+from dose.endpoint_browser import safe_browser_launch_url
+from dose.polysniffer.sniff_tenant import bind_request_tenant
+from dose.tenant_app_lookup import tenant_schema_search_path
+
+
+def _tenant_endpoint(request, endpoint_host):
+    tenant = bind_request_tenant(request)
+    if not tenant:
+        raise Http404("No active tenant")
+    with tenant_schema_search_path(tenant) as ok:
+        if not ok:
+            raise Http404("Invalid tenant schema")
+        from dose.polysniffer.views.core import get_endpoint_by_host
+
+        endpoint = get_endpoint_by_host(endpoint_host, request)
+    return tenant, endpoint
+
+
+def _endpoint_host(endpoint):
+    return (urlsplit(endpoint.endpoint_url or "").netloc or "").lower()
+
+
+def _bookmark_view(endpoint, bookmark, adapter):
+    destination_type = bookmark.destination_type
+    target = bookmark.target
+    data = {
+        "key": bookmark.key,
+        "title": bookmark.title,
+        "destination_type": destination_type,
+        "target": target,
+        "description": bookmark.description,
+        "icon": bookmark.icon,
+        "url": "",
+    }
+    if destination_type == "external_path":
+        data["url"] = safe_browser_launch_url(endpoint, target)
+    elif destination_type == "passthrough_path":
+        data["url"] = endpoint.get_proxy_prefix().rstrip("/") + target
+    elif destination_type in ("popup_form", "direct_event"):
+        if adapter and adapter.action(target):
+            data["url"] = reverse(
+                "dose:endpoint_action_trigger",
+                args=(_endpoint_host(endpoint), target),
+            )
+        else:
+            data["disabled"] = True
+    return data
+
+
+def _default_bookmark_view(endpoint, definition, adapter):
+    class DefaultBookmark:
+        pass
+
+    bookmark = DefaultBookmark()
+    for key, value in definition.items():
+        setattr(bookmark, key, value)
+    bookmark.description = definition.get("description", "")
+    return _bookmark_view(endpoint, bookmark, adapter)
+
+
+@login_required
+@require_GET
+def endpoint_home(request, endpoint_host: str):
+    tenant, endpoint = _tenant_endpoint(request, endpoint_host)
+    adapter = adapter_for_endpoint(endpoint)
+    with tenant_schema_search_path(tenant):
+        try:
+            rows = list(endpoint.bookmarks.filter(is_active=True))
+        except DatabaseError:
+            rows = []
+    if rows:
+        bookmarks = [_bookmark_view(endpoint, row, adapter) for row in rows]
+    else:
+        bookmarks = [
+            _default_bookmark_view(endpoint, item, adapter)
+            for item in (getattr(adapter, "default_bookmarks", ()) or ())
+        ]
+
+    status_zero = reverse("dose:endpoint_action_status", args=(endpoint_host, 0))
+    context = {
+        "title": endpoint.get_menu_title(),
+        "endpoint": endpoint,
+        "bookmarks": bookmarks,
+        "browser_launch_url": safe_browser_launch_url(endpoint),
+        "surface_template": getattr(adapter, "surface_template", ""),
+        "slack_wireframe_mode": "endpoint_home",
+        "slack_contact_url": reverse(
+            "dose:endpoint_action_trigger", args=(endpoint_host, "slack.contact")
+        )
+        if adapter and adapter.action("slack.contact")
+        else "",
+        "slack_sale_url": reverse(
+            "dose:endpoint_action_trigger", args=(endpoint_host, "slack.sale")
+        )
+        if adapter and adapter.action("slack.sale")
+        else "",
+        "endpoint_status_url": status_zero.rsplit("0/", 1)[0],
+    }
+    return render(request, "dose/endpoint_home.html", context)
+
+
+@login_required
+@require_POST
+def endpoint_action_trigger(request, endpoint_host: str, action_key: str):
+    tenant, endpoint = _tenant_endpoint(request, endpoint_host)
+    adapter = adapter_for_endpoint(endpoint)
+    action = adapter.action(action_key) if adapter else None
+    if action is None:
+        return JsonResponse(
+            {"success": False, "error": "unsupported endpoint action"},
+            status=404,
+        )
+    if len(request.body or b"") > 8192:
+        return JsonResponse(
+            {"success": False, "error": "payload too large"},
+            status=413,
+        )
+    try:
+        supplied = json.loads(request.body or b"{}")
+    except (TypeError, ValueError):
+        supplied = {}
+    if not isinstance(supplied, dict):
+        return JsonResponse(
+            {"success": False, "error": "JSON object required"},
+            status=400,
+        )
+    try:
+        payload = action.build_payload(supplied)
+    except ValueError as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+    result = action.publish(tenant, payload)
+    return JsonResponse(result, status=202 if result.get("success") else 503)
+
+
+@login_required
+@require_GET
+def endpoint_action_status(request, endpoint_host: str, mailbox_id: int):
+    tenant, _endpoint = _tenant_endpoint(request, endpoint_host)
+    from dose.models import WebhookMailbox
+
+    with tenant_schema_search_path(tenant) as ok:
+        if not ok:
+            return JsonResponse(
+                {"success": False, "error": "invalid tenant schema"},
+                status=400,
+            )
+        mailbox = WebhookMailbox.objects.filter(
+            pk=mailbox_id,
+            tenant=tenant,
+        ).first()
+    if mailbox is None:
+        return JsonResponse(
+            {"success": False, "error": "mailbox event not found"},
+            status=404,
+        )
+    return JsonResponse(
+        {
+            "success": True,
+            "status": mailbox.status,
+            "result": mailbox.result,
+            "error": mailbox.error,
+        }
+    )

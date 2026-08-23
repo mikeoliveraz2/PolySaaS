@@ -365,6 +365,9 @@ def admin_navigation(request):
 
             service_data = {
                 'url': url,
+                'fullscreen_url': (
+                    f"{url}{'&' if '?' in url else '?'}ps_fullscreen=1"
+                ),
                 'title': title,
                 'slug': (endpoint.slug or '').strip(),
                 'description': endpoint.description or '',
