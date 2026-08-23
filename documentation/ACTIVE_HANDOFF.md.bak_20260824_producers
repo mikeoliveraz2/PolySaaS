@@ -1,0 +1,65 @@
+# PolySaaS Active Handoff
+
+This file is the canonical startup and end-of-day handoff for the repo.
+Every agent — Copilot, Cursor, and Windsurf — must read it before work.
+
+## Status
+
+- Date/session: 2026-08-24 — Producers / Consumers / Bookmarks slice on endpoint home
+- Branch: `cursor/polysniffer-slack-native-capture`
+- Commit status: Browse session pushed (`5b9e19de`); producers slice local until commit
+- Agent sync check: passed
+- Governing UI: `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`
+- Product policy: primary mock/screenshot + bookmarks; secondary unchanged real
+  app in a top-level tab; Native/passthrough stay specialized.
+- Active demo schema preference: `polysaasonline` (local probes may still see
+  `olient` endpoints).
+
+## This session (2026-08-24) — Producers / Consumers / Bookmarks
+
+Owner brief: pair producers to consumers, hide empty bookmarks, Slack allowlist only.
+
+- **No migration** — derived producers + allowlist (`dose/endpoint_producers.py`).
+- Slack producers allowlisted only: `slack.webhook.contact`, `slack.webhook.sale`.
+- Pair/Unpair persists on Instruction (`eventKey` + `requestpath`); unpair suffixes
+  `#unpaired` so mailbox exact-path match fails (orch does not fire).
+- Home pane order: Bookmarks (if any) → Producers → Consumers; empty bookmarks rail hidden.
+- Consumers show `fed by: {producer names}` when paired.
+- Route (frozen `dose/urls.py`, owner-brief): `api/apps/<host>/producer-pair/`
+- Tests: `dose.tests.test_endpoint_home` — 12 OK
+
+### Prior same-day — Browse [app]
+
+- One header **Browse Odoo** / Mattermost / …; sidebar same labels; new tab.
+- Consumer list homes; green orch bar; pushed as `5b9e19de`.
+
+## Prior session — common-denominator UI (2026-08-23)
+
+- Tenant-owned `EndpointBookmark`, homes at `/dose/apps/<endpoint-host>/`
+- Slack first adapter; shared orchestration bar; PolySniffer Publish Bookmark
+- Messaging / wireframe modals / Odoo content-column wrap — see prior commit
+  `4c804ed0` / EOD `c581e9ec`
+
+## Blockers / risks
+
+- Coordinated migrate still blocked at legacy `dose.0028_mlprompt` (public table
+  exists; history says unapplied). Do not fake without an audited plan.
+- `endpoint_bookmark` may be missing on some schemas until migrate is repaired.
+- After pull: **restart Waitress** so `context_processors` / views reload; then
+  hard-refresh endpoint homes (`endpoint_home.css?v=20260824-6`).
+
+## Next actions
+
+1. Pull this branch on the other machine; restart Waitress + hard-refresh.
+2. Resume endpoint-home polish when ready (bookmarks UX, consumer list, etc.).
+3. Migration history repair for `0028_mlprompt` — separate audited plan only.
+4. Optional: further Slack visual polish (still last).
+
+## Commit scope / exclusions
+
+**Include:** Browse/endpoint-home/orchestration-bar/sidebar changes, tests,
+handoff, `.bak_20260824_*` for those paths.
+
+**Exclude:** `documentation/Capital Raise Project/**`, `media/polysniffer/**`,
+`polysniffer-auth.json`, `polysniffer_evidence/`, `tmp/_probe_*`, `__pycache__`,
+unrelated `.bak` outside this session’s paths.

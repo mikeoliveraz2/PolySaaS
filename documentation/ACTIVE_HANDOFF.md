@@ -1,91 +1,39 @@
 # PolySaaS Active Handoff
 
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
+
 This file is the canonical startup and end-of-day handoff for the repo.
 Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: 2026-08-24 — Browse [app] + endpoint-home consumers polish
+- Date/session: 2026-08-24 — **BINGO** Slack home + producer/consumer pairing
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Commit status: Browse/endpoint-home session committed and pushed to the
-  tracked feature branch
+- Cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md`
 - Agent sync check: passed
-- Governing UI: `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`
-- Product policy: primary mock/screenshot + bookmarks; secondary unchanged real
-  app in a top-level tab; Native/passthrough stay specialized.
-- Active demo schema preference: `polysaasonline` (local probes may still see
-  `olient` endpoints).
+- Tenant of record: **OLIENTR** (Odoo + Slack)
+- GOLD ZIP: `D:\BINGO ZIPS\BINGO_slack_producer_consumer_2026-08-24.zip`
 
-## This session (2026-08-24) — Browse + endpoint home
+## BINGO (this session)
 
-### Browse [app] (canonical labels)
+Allowlisted Slack contact/sale producers pair to Odoo consumers. Slack Browse is
+real top-level Slack (no iframe). Empty bookmark rail stays hidden. Mailbox
+plumbing already in. See BINGO doc for certified / not-this-bingo.
 
-- One header control on endpoint home: precomposed **`browse_button_label`**
-  (`Browse Odoo` / `Browse Mattermost` / …) via `endpoint_app_label()`.
-- Always opens in a **new tab** (`target="_blank"`):
-  - Passthrough apps (Odoo, Mattermost, Nextcloud) → `/pt/admin/…?ps_fullscreen=1`
-  - Non-proxied SPA (Slack / HubSpot `browse_mode=external`) → real vendor URL
-- Sidebar cards show the same **Browse [app]** text (not a lone ↗). CSS allows
-  wrap so labels are readable in the 2-column card grid.
-- Duplicate “Open real…” / Browse bookmarks filtered out of the bookmark row so
-  Browse is not shown twice.
-- Empty bookmarks nav is **hidden** (no blank bordered strip when nothing to show).
+**Next = Slack popups / green bar only.**
 
-### Endpoint home content
+## Sequence still locked
 
-- Main body: clickable list of configured **Instruction consumers** (not full
-  Slack mock as page body).
-- Mock forms remain in hidden host for popup Run / bookmarks.
-- Shared green orchestration bar aligned with classic `#0f0` passthrough look.
-
-### Key files
-
-- `dose/endpoint_browser.py` — `endpoint_app_label`, `endpoint_browse_target`
-- `dose/views/endpoint_home.py` — consumers, browse label, bookmark filter
-- `dose/templates/dose/endpoint_home.html` — header Browse + optional bookmarks
-- `dose/static/admin/css/endpoint_home.css`, `endpoint_home.js`
-- `dose/context_processors.py` — `browse_url` / `browse_app` / `browse_label`
-- `dose/templates/admin/includes/custom_sidebar.html` (+ head CSS)
-- `dose/endpoint_actions/{base,slack}.py`, Slack/HubSpot handlers (`browse_mode` /
-  `prefers_top_level_browser`)
-- `dose/templates/dose/includes/orchestration_bar.html`, `orchestration_bar.js`
-- Tests: `dose/tests/test_endpoint_home.py` (9 OK)
-- `.bak_20260824_*` companions for edited paths
-
-### Validation
-
-- `python scripts/check_agent_sync.py` — passed
-- `python manage.py test dose.tests.test_endpoint_home` — 9 OK
-- Browser: Odoo home shows single **Browse Odoo**; sidebar cards labeled;
-  Waitress restarted after Python context/view changes (templates alone are not enough)
-
-## Prior session — common-denominator UI (2026-08-23)
-
-- Tenant-owned `EndpointBookmark`, homes at `/dose/apps/<endpoint-host>/`
-- Slack first adapter; shared orchestration bar; PolySniffer Publish Bookmark
-- Messaging / wireframe modals / Odoo content-column wrap — see prior commit
-  `4c804ed0` / EOD `c581e9ec`
+Native HAR → passthrough → pair producers to consumers → popups/orch UX.
 
 ## Blockers / risks
 
-- Coordinated migrate still blocked at legacy `dose.0028_mlprompt` (public table
-  exists; history says unapplied). Do not fake without an audited plan.
-- `endpoint_bookmark` may be missing on some schemas until migrate is repaired.
-- After pull: **restart Waitress** so `context_processors` / views reload; then
-  hard-refresh endpoint homes (`endpoint_home.css?v=20260824-6`).
+- Coordinated migrate still blocked at legacy `dose.0028_mlprompt`. Do not fake
+  without an audited plan.
+- After pull: restart Waitress + hard-refresh endpoint homes.
 
-## Next actions
+## Commit exclusions
 
-1. Pull this branch on the other machine; restart Waitress + hard-refresh.
-2. Resume endpoint-home polish when ready (bookmarks UX, consumer list, etc.).
-3. Migration history repair for `0028_mlprompt` — separate audited plan only.
-4. Optional: further Slack visual polish (still last).
-
-## Commit scope / exclusions
-
-**Include:** Browse/endpoint-home/orchestration-bar/sidebar changes, tests,
-handoff, `.bak_20260824_*` for those paths.
-
-**Exclude:** `documentation/Capital Raise Project/**`, `media/polysniffer/**`,
-`polysniffer-auth.json`, `polysniffer_evidence/`, `tmp/_probe_*`, `__pycache__`,
-unrelated `.bak` outside this session’s paths.
+**Exclude:** `documentation/Capital Raise Project/**`, `polysniffer-auth.json`,
+`polysniffer_evidence/`, `tmp/_probe_*`, `__pycache__`.

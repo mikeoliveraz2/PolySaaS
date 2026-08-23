@@ -1,3 +1,5 @@
+// THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+// BINGO: Slack producer/consumer home — 2026-08-24
 (function () {
     'use strict';
 
@@ -90,6 +92,14 @@
             if (launcher) launcher.click();
             return;
         }
+
+        var pairBtn = event.target.closest('[data-pair-producer]');
+        if (pairBtn && root.contains(pairBtn)) {
+            event.preventDefault();
+            openPairDialog(pairBtn);
+            return;
+        }
+
         var button = event.target.closest('[data-bookmark-type]');
         if (!button || button.disabled) return;
         var type = button.dataset.bookmarkType;
@@ -116,4 +126,108 @@
             }));
         }
     });
+
+    var pairDialog = root.querySelector('[data-pair-dialog]');
+    var pairChoices = root.querySelector('[data-pair-choices]');
+    var pairTitle = root.querySelector('[data-pair-title]');
+    var pairSave = root.querySelector('[data-pair-save]');
+    var activeEventKey = '';
+    var initiallyPaired = {};
+
+    function openPairDialog(button) {
+        if (!pairDialog || !pairChoices) return;
+        activeEventKey = button.dataset.eventKey || '';
+        initiallyPaired = {};
+        (button.dataset.pairedIds || '').split(',').forEach(function (id) {
+            id = (id || '').trim();
+            if (id) initiallyPaired[id] = true;
+        });
+        if (pairTitle) {
+            pairTitle.textContent = 'Pair: ' + activeEventKey;
+        }
+        pairChoices.innerHTML = '';
+        root.querySelectorAll('[data-consumer-list] [data-consumer-id]').forEach(function (row) {
+            var id = row.getAttribute('data-consumer-id');
+            var titleEl = row.querySelector('.polysaas-consumer-list__title');
+            var label = document.createElement('label');
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = id;
+            input.checked = !!initiallyPaired[id];
+            label.appendChild(input);
+            label.appendChild(document.createTextNode(' ' + ((titleEl && titleEl.textContent) || ('Consumer #' + id))));
+            pairChoices.appendChild(label);
+        });
+        if (typeof pairDialog.showModal === 'function') {
+            pairDialog.showModal();
+        } else {
+            pairDialog.setAttribute('open', 'open');
+        }
+    }
+
+    if (pairSave) {
+        pairSave.addEventListener('click', function () {
+            var pairUrl = root.dataset.pairUrl || '';
+            if (!pairUrl || !activeEventKey) return;
+            var selected = [];
+            pairChoices.querySelectorAll('input[type="checkbox"]').forEach(function (box) {
+                if (box.checked) selected.push(box.value);
+            });
+            var toPair = selected.filter(function (id) { return !initiallyPaired[id]; });
+            var toUnpair = Object.keys(initiallyPaired).filter(function (id) {
+                return selected.indexOf(id) === -1;
+            });
+            pairSave.disabled = true;
+            Promise.resolve()
+                .then(function () {
+                    if (!toPair.length) return null;
+                    return fetch(pairUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || ''
+                        },
+                        body: JSON.stringify({
+                            action: 'pair',
+                            event_key: activeEventKey,
+                            consumer_ids: toPair
+                        })
+                    }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); });
+                })
+                .then(function (first) {
+                    if (first && (!first.ok || !first.data.success)) {
+                        throw new Error((first.data && first.data.error) || 'Pair failed');
+                    }
+                    if (!toUnpair.length) return null;
+                    return fetch(pairUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || ''
+                        },
+                        body: JSON.stringify({
+                            action: 'unpair',
+                            event_key: activeEventKey,
+                            consumer_ids: toUnpair
+                        })
+                    }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, data: d}; }); });
+                })
+                .then(function (second) {
+                    if (second && (!second.ok || !second.data.success)) {
+                        throw new Error((second.data && second.data.error) || 'Unpair failed');
+                    }
+                    window.location.reload();
+                })
+                .catch(function (error) {
+                    window.alert(error.message || 'Could not save pairing');
+                })
+                .finally(function () {
+                    pairSave.disabled = false;
+                });
+        });
+    }
 })();

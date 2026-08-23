@@ -1,5 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -7,7 +5,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260824-7">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260824-6">
 {% endblock %}
 
 {% block content %}
@@ -15,12 +13,11 @@
     class="polysaas-endpoint-home"
     data-endpoint-home
     data-status-url="{{ endpoint_status_url }}"
-    data-pair-url="{{ producer_pair_url }}"
 >
     <header class="polysaas-endpoint-home__header">
         <div>
             <h1>{{ title }}</h1>
-            <div>{{ endpoint.description|default:"Producers, consumers, and selected actions" }}</div>
+            <div>{{ endpoint.description|default:"Configured consumers and selected actions" }}</div>
         </div>
         {% if browser_launch_url %}
         <a
@@ -64,51 +61,16 @@
 
     {% include "dose/includes/orchestration_bar.html" %}
 
-    <section class="polysaas-endpoint-home__surface" aria-label="Producers and consumers">
-        <div class="polysaas-endpoint-home__panel">
+    <section class="polysaas-endpoint-home__surface" aria-label="Configured consumers">
+        <div class="polysaas-endpoint-home__consumers">
             <div class="polysaas-endpoint-home__consumers-head">
-                <h2>Producers</h2>
-                <p>Events this home can receive — allowlisted Slack contact/sale only; pair to consumers to activate orch.</p>
-            </div>
-            {% if producers %}
-            <ul class="polysaas-consumer-list" data-producer-list>
-                {% for producer in producers %}
-                <li class="polysaas-consumer-list__item">
-                    <div class="polysaas-consumer-list__link">
-                        <span class="polysaas-consumer-list__title">{{ producer.display_name }}</span>
-                        <span class="polysaas-consumer-list__meta">
-                            <code>{{ producer.event_key }}</code>
-                            {% if producer.action_path %} · <code>{{ producer.action_path }}</code>{% endif %}
-                            · {{ producer.paired_count }} consumer{{ producer.paired_count|pluralize }}
-                        </span>
-                        <span class="polysaas-producer-state polysaas-producer-state--{{ producer.state|lower }}">{{ producer.state }}</span>
-                    </div>
-                    {% if producer.pairable %}
-                    <button
-                        type="button"
-                        class="polysaas-consumer-list__run polysaas-producer-pair"
-                        data-pair-producer
-                        data-event-key="{{ producer.event_key }}"
-                        data-paired-ids="{% for cid in producer.paired_consumer_ids %}{{ cid }}{% if not forloop.last %},{% endif %}{% endfor %}"
-                    >Pair…</button>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <div class="polysaas-endpoint-home__empty-note">No producers on this home yet.</div>
-            {% endif %}
-        </div>
-
-        <div class="polysaas-endpoint-home__panel">
-            <div class="polysaas-endpoint-home__consumers-head">
-                <h2>Consumers</h2>
+                <h2>Configured consumers</h2>
                 <p>Instructions bound for this app — click to open, or run a linked form when available.</p>
             </div>
             {% if consumers %}
-            <ul class="polysaas-consumer-list" data-consumer-list>
+            <ul class="polysaas-consumer-list">
                 {% for consumer in consumers %}
-                <li class="polysaas-consumer-list__item" data-consumer-id="{{ consumer.id }}">
+                <li class="polysaas-consumer-list__item">
                     <a class="polysaas-consumer-list__link" href="{{ consumer.admin_url }}">
                         <span class="polysaas-consumer-list__title">{{ consumer.title }}</span>
                         <span class="polysaas-consumer-list__meta">
@@ -117,9 +79,6 @@
                         </span>
                         {% if consumer.event_key %}
                         <span class="polysaas-consumer-list__event">{{ consumer.event_key }}</span>
-                        {% endif %}
-                        {% if consumer.fed_by %}
-                        <span class="polysaas-consumer-list__fed">fed by: {{ consumer.fed_by|join:", " }}</span>
                         {% endif %}
                     </a>
                     {% if consumer.form_key %}
@@ -143,18 +102,6 @@
         </div>
     </section>
 
-    <dialog class="polysaas-pair-dialog" data-pair-dialog>
-        <form method="dialog" class="polysaas-pair-dialog__form">
-            <h3 data-pair-title>Pair producer</h3>
-            <p class="polysaas-pair-dialog__hint">Select consumers on this home. Pairing sets event key + action path so orch can match; uncheck and save to unpair.</p>
-            <div class="polysaas-pair-dialog__list" data-pair-choices></div>
-            <div class="polysaas-pair-dialog__actions">
-                <button type="submit" value="cancel" class="polysaas-pair-dialog__cancel">Cancel</button>
-                <button type="button" class="polysaas-pair-dialog__save" data-pair-save>Save</button>
-            </div>
-        </form>
-    </dialog>
-
     {% if surface_template %}
     <div class="polysaas-endpoint-home__form-host" aria-hidden="true">
         {% include surface_template %}
@@ -166,5 +113,5 @@
 {% block extrajs %}
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-1"></script>
-<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260824-3"></script>
+<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260824-2"></script>
 {% endblock %}

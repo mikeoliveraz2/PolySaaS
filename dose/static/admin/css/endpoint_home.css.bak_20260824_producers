@@ -1,5 +1,3 @@
-/* THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION */
-/* BINGO: Slack producer/consumer home — 2026-08-24 */
 .polysaas-endpoint-home {
     display: grid;
     gap: 16px;
@@ -60,36 +58,19 @@
     cursor: not-allowed;
 }
 .polysaas-endpoint-home__surface {
-    display: grid;
-    gap: 16px;
-    min-height: 0;
+    min-height: 420px;
     overflow: hidden;
     border: 1px solid #374151;
     border-radius: 8px;
-    padding: 16px;
-    background: #111827;
-}
-.polysaas-endpoint-home__panel {
-    display: grid;
-    gap: 12px;
-    color: #e5e7eb;
 }
 .polysaas-endpoint-home__placeholder {
     display: grid;
     place-items: center;
-    min-height: 160px;
-    padding: 24px;
+    min-height: 220px;
+    padding: 32px;
     text-align: center;
-    background: #1a1d21;
+    background: #111827;
     color: #e5e7eb;
-    border-radius: 8px;
-}
-.polysaas-endpoint-home__empty-note {
-    padding: 12px 14px;
-    border: 1px dashed #374151;
-    border-radius: 8px;
-    color: #9ca3af;
-    font-size: 13px;
 }
 .polysaas-endpoint-home__consumers {
     display: grid;
@@ -152,27 +133,6 @@
     font-size: 12px;
     color: #9ca3af;
 }
-.polysaas-consumer-list__fed {
-    font-size: 12px;
-    color: #fbbf24;
-}
-.polysaas-producer-state {
-    display: inline-block;
-    margin-top: 2px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    width: fit-content;
-}
-.polysaas-producer-state--paired {
-    background: #14532d;
-    color: #86efac;
-}
-.polysaas-producer-state--unpaired {
-    background: #3f3f46;
-    color: #d4d4d8;
-}
 .polysaas-consumer-list__run {
     flex: 0 0 auto;
     margin: 8px;
@@ -186,75 +146,6 @@
 }
 .polysaas-consumer-list__run:hover {
     background: #148567;
-}
-.polysaas-producer-pair {
-    background: #2563eb;
-}
-.polysaas-producer-pair:hover {
-    background: #1d4ed8;
-}
-.polysaas-pair-dialog {
-    border: 1px solid #374151;
-    border-radius: 8px;
-    padding: 0;
-    background: #111827;
-    color: #e5e7eb;
-    max-width: 420px;
-    width: calc(100% - 32px);
-}
-.polysaas-pair-dialog::backdrop {
-    background: rgba(0, 0, 0, 0.55);
-}
-.polysaas-pair-dialog__form {
-    display: grid;
-    gap: 12px;
-    padding: 16px;
-}
-.polysaas-pair-dialog__form h3 {
-    margin: 0;
-    color: #fff;
-}
-.polysaas-pair-dialog__hint {
-    margin: 0;
-    font-size: 13px;
-    color: #9ca3af;
-}
-.polysaas-pair-dialog__list {
-    display: grid;
-    gap: 8px;
-    max-height: 240px;
-    overflow: auto;
-}
-.polysaas-pair-dialog__list label {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-    padding: 8px;
-    border: 1px solid #374151;
-    border-radius: 6px;
-    background: #1a1d21;
-    font-size: 13px;
-}
-.polysaas-pair-dialog__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-}
-.polysaas-pair-dialog__cancel,
-.polysaas-pair-dialog__save {
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 0;
-    font-weight: 700;
-    cursor: pointer;
-}
-.polysaas-pair-dialog__cancel {
-    background: #374151;
-    color: #e5e7eb;
-}
-.polysaas-pair-dialog__save {
-    background: #2563eb;
-    color: #fff;
 }
 /* Keep popup forms available without showing the full mock surface. */
 .polysaas-endpoint-home__form-host {

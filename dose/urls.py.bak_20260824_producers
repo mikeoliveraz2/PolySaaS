@@ -2,7 +2,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: UI Cleanup — commit 748e871e
 # BINGO: Font and Theme Toggle — commit 1dcca3bd
-# BINGO: Slack producer/consumer home — 2026-08-24
 # dose/urls.py
 from django.urls import path, include
 from django.views.generic import RedirectView
@@ -55,7 +54,6 @@ from dose.views.endpoint_home import (
     endpoint_action_status,
     endpoint_action_trigger,
     endpoint_home,
-    endpoint_producer_pair,
 )
 from dose.views.bookmark_curation import bookmark_candidates, publish_bookmark
 from dose.subscription_views import SubscriptionApiViewSet
@@ -109,8 +107,6 @@ urlpatterns = [
     path('api/slack-wireframe/status/<int:mailbox_id>/', slack_wireframe_status, name='slack_wireframe_status'),
     path('api/slack-wireframe/messages/', slack_wireframe_messages, name='slack_wireframe_messages'),
     path('api/slack-wireframe/messages/post/', slack_wireframe_post_message, name='slack_wireframe_post_message'),
-    # FIX 2026-08-24 (owner brief — producers/consumers pairing on endpoint home):
-    path('api/apps/<str:endpoint_host>/producer-pair/', endpoint_producer_pair, name='endpoint_producer_pair'),
     path('apps/<str:endpoint_host>/', endpoint_home, name='endpoint_home'),
     path('api/apps/<str:endpoint_host>/actions/<str:action_key>/', endpoint_action_trigger, name='endpoint_action_trigger'),
     path('api/apps/<str:endpoint_host>/status/<int:mailbox_id>/', endpoint_action_status, name='endpoint_action_status'),
