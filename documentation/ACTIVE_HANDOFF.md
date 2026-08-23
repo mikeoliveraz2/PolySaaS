@@ -10,10 +10,10 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 - Date/session: 2026-08-24 — **BINGO** Slack home + producer/consumer pairing
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md`
+- Cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
 - Agent sync check: passed
 - Tenant of record: **OLIENTR** (Odoo + Slack)
-- GOLD ZIP: `D:\BINGO ZIPS\BINGO_slack_producer_consumer_2026-08-24.zip`
+- GOLD ZIP: `D:\BINGO ZIPS\BINGO_slack_producer_consumer_2026-08-24.zip` (create if missing — BINGO ritual)
 
 ## BINGO (this session)
 

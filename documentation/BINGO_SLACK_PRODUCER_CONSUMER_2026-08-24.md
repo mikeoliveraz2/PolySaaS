@@ -24,6 +24,9 @@ Native HAR → passthrough → pair producers to consumers → popups/orch UX.
 ## Handoff
 Tenant: OLIENTR. Apps: Odoo + Slack. Machine of record must commit this file and push before switch.
 
+**Commit**: `28b07da0` on `cursor/polysniffer-slack-native-capture`  
+**GOLD ZIP**: `D:\BINGO ZIPS\BINGO_slack_producer_consumer_2026-08-24.zip`
+
 ## Frozen source files
 | File | Role |
 |------|------|
