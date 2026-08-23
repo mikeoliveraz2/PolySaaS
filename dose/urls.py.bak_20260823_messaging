@@ -45,8 +45,6 @@ from dose.views.atomic_service_param_sample import atomic_service_param_sample
 from dose.views.ai_peers_webhook import ai_peers_webhook
 from dose.views.generic_inbound_webhook import generic_inbound_webhook
 from dose.views.slack_wireframe_webhook import (
-    slack_wireframe_messages,
-    slack_wireframe_post_message,
     slack_wireframe_status,
     slack_wireframe_trigger,
 )
@@ -99,8 +97,6 @@ urlpatterns = [
     path('api/atomic-service-param-sample/', atomic_service_param_sample, name='atomic_service_param_sample'),
     path('api/slack-wireframe/trigger/<str:kind>/', slack_wireframe_trigger, name='slack_wireframe_trigger'),
     path('api/slack-wireframe/status/<int:mailbox_id>/', slack_wireframe_status, name='slack_wireframe_status'),
-    path('api/slack-wireframe/messages/', slack_wireframe_messages, name='slack_wireframe_messages'),
-    path('api/slack-wireframe/messages/post/', slack_wireframe_post_message, name='slack_wireframe_post_message'),
     path('api/promo-codes/validate/', validate_promo_code, name='validate_promo_code'),
     path('api/orchestration-instruction/<path:action_path>/', get_orchestration_instruction, name='get_orchestration_instruction'),
     path('orchestration/instruction/add/', orchestration_instruction_embed_add, name='orchestration_instruction_embed_add'),

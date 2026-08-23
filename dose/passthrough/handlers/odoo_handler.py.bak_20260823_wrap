@@ -224,24 +224,9 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         return True
 
     def should_wrap_in_admin_template(self, request, upstream_path, **kwargs):
-        """Wrap Odoo HTML shells in admin/passthrough_embed (content column).
-
-        Previously always False so raw Odoo filled the browser with no PolySaaS
-        chrome. Assets/API still skip wrap via should_process_html_response.
-        Fullscreen remains available via ?ps_fullscreen=1 (new tab / ↗).
-        """
-        content_type = kwargs.get("content_type")
-        status_code = kwargs.get("status_code", 200)
-        print(
-            f"[ODOO HANDLER] should_wrap_in_admin_template: "
-            f"upstream_path={upstream_path}, status={status_code}, ct={content_type}"
-        )
-        return self.should_process_html_response(
-            request,
-            upstream_path,
-            content_type=content_type,
-            status_code=status_code,
-        )
+        """Keep Odoo's document body intact so its web client can mount."""
+        print(f"[ODOO HANDLER] should_wrap_in_admin_template: upstream_path={upstream_path}, status={kwargs.get('status_code')}, ct={kwargs.get('content_type')}")
+        return False
 
     def passthrough_embed_template_context(self, trigger, request):
         """Provide Odoo-specific template context including the body scope flag."""

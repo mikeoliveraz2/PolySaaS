@@ -61,7 +61,6 @@
                     {% for service in passthrough_services %}
                         {% with slug=service.title|lower %}
                         {# READINESS 2026-08-01 (owner-approved): not-ready cards render as a non-navigating <span> (see context_processors.py for service.ready / app_status). #}
-                        <div class="pss-pt-card-wrap">
                         <{% if service.ready %}a href="{{ service.url }}"{% else %}span{% endif %}
                            class="pss-pt-card{% if service.ready and request.path_info|path_starts_with:service.url %} is-active{% endif %}{% if not service.ready %} pss-pt-card--not-ready{% endif %}"
                            {% if service.ready and request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
@@ -85,15 +84,6 @@
                             <span class="pss-pt-status-dot{% if service.ready %} pss-pt-status-dot--ready{% elif service.app_status == 'error' or service.app_status == 'disabled' %} pss-pt-status-dot--error{% else %} pss-pt-status-dot--pending{% endif %}"></span>
                             <span class="pss-pt-label">{{ service.title }}</span>
                         </{% if service.ready %}a{% else %}span{% endif %}>
-                        {% if service.ready %}
-                        <a class="pss-pt-fullscreen"
-                           href="{{ service.fullscreen_url }}"
-                           target="_blank"
-                           rel="noopener"
-                           title="Open {{ service.title }} full screen in new tab"
-                           aria-label="Open {{ service.title }} full screen in new tab">↗</a>
-                        {% endif %}
-                        </div>
                         {% endwith %}
                     {% endfor %}
                 </div>

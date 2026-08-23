@@ -69,3 +69,73 @@ class SlackWireframeWebhookTests(SimpleTestCase):
         payload = publish.call_args.args[2]
         self.assertTrue(payload["name"].startswith("Slack Contact "))
         self.assertIn("@example.com", payload["email"])
+
+    @patch("dose.views.slack_wireframe_webhook.publish_slack_wireframe_event")
+    @patch("dose.views.slack_wireframe_webhook.bind_request_tenant")
+    def test_contact_form_fields_are_forwarded(
+        self,
+        bind_tenant,
+        publish,
+    ):
+        bind_tenant.return_value = self.tenant
+        publish.return_value = {
+            "success": True,
+            "mailbox_id": 8,
+            "action_path": SLACK_WIREFRAME_ACTIONS["contact"][0],
+        }
+        request = self.factory.post(
+            "/dose/api/slack-wireframe/trigger/contact/",
+            data=json.dumps(
+                {
+                    "name": "Form Contact",
+                    "email": "form.contact@example.com",
+                    "phone": "+1 555 0199",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.user = self.user
+
+        response = slack_wireframe_trigger(request, "contact")
+
+        self.assertEqual(response.status_code, 202)
+        payload = publish.call_args.args[2]
+        self.assertEqual(payload["name"], "Form Contact")
+        self.assertEqual(payload["email"], "form.contact@example.com")
+        self.assertEqual(payload["phone"], "+1 555 0199")
+
+    @patch("dose.views.slack_wireframe_webhook.publish_slack_wireframe_event")
+    @patch("dose.views.slack_wireframe_webhook.bind_request_tenant")
+    def test_sale_form_fields_are_forwarded(
+        self,
+        bind_tenant,
+        publish,
+    ):
+        bind_tenant.return_value = self.tenant
+        publish.return_value = {
+            "success": True,
+            "mailbox_id": 9,
+            "action_path": SLACK_WIREFRAME_ACTIONS["sale"][0],
+        }
+        request = self.factory.post(
+            "/dose/api/slack-wireframe/trigger/sale/",
+            data=json.dumps(
+                {
+                    "partner_name": "Form Buyer",
+                    "partner_email": "form.buyer@example.com",
+                    "order_reference": "SLACK-FORM-001",
+                    "note": "From simple form",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.user = self.user
+
+        response = slack_wireframe_trigger(request, "sale")
+
+        self.assertEqual(response.status_code, 202)
+        payload = publish.call_args.args[2]
+        self.assertEqual(payload["partner_name"], "Form Buyer")
+        self.assertEqual(payload["partner_email"], "form.buyer@example.com")
+        self.assertEqual(payload["order_reference"], "SLACK-FORM-001")
+        self.assertEqual(payload["note"], "From simple form")

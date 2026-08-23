@@ -274,6 +274,8 @@
             event.preventDefault();
             event.stopPropagation();
             if (!isModalArmed()) return;
+            // Backdrop clicks are easy to hit while editing; only X / Cancel close.
+            if (el.classList.contains('ps-slack-mock__modal-backdrop')) return;
             closeForms();
             result.textContent = 'Ready — form cancelled';
         });
@@ -287,27 +289,22 @@
         });
     });
 
-    // Capture-phase: Enter inside an open modal must never submit Jazzmin/composer forms
-    // (that reloads the page and looks like the modal "vanished" mid-fill).
-    document.addEventListener('keydown', function (event) {
-        if (!root.querySelector('.ps-slack-mock__modal.is-open')) return;
-        if (!root.contains(event.target)) return;
-        if (event.key === 'Enter' && event.target && event.target.tagName !== 'TEXTAREA') {
+    // Enter must NOT submit — it was closing the modal mid-fill (e.g. before phone).
+    root.querySelectorAll('.ps-slack-mock__form').forEach(function (form) {
+        form.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter') return;
+            if (event.target && event.target.tagName === 'TEXTAREA') return;
             event.preventDefault();
-            event.stopPropagation();
-        }
-    }, true);
+        });
+    });
 
-    // Composer must not steal Enter / submit while a modal is open.
-    if (composer) {
-        composer.addEventListener('submit', function (event) {
-            if (root.querySelector('.ps-slack-mock__modal.is-open')) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-        }, true);
-    }
-
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        if (!root.querySelector('.ps-slack-mock__modal.is-open')) return;
+        if (!isModalArmed()) return;
+        closeForms();
+        result.textContent = 'Ready — form cancelled';
+    });
     root.querySelectorAll('[data-demo]').forEach(function (button) {
         button.addEventListener('click', function () {
             if (button.dataset.demo !== 'browse') return;

@@ -281,12 +281,6 @@ def _wrap_in_admin_template(request, response, trigger, endpoint, handler=None):
     norm = trigger.strip('/')
     embed_title = norm.split('.')[0].replace('-', ' ').title()
     embed_src = f'/pt/admin/{norm}/'
-    embed_fullscreen_src = f'{embed_src}?ps_fullscreen=1'
-    embed_fullscreen = (request.GET.get('ps_fullscreen') or '').strip().lower() in (
-        '1',
-        'true',
-        'yes',
-    )
     head_content, body_content = _extract_head_and_body(raw_html)
     upstream_root_classes = _extract_upstream_root_classes(raw_html)
     scope_extra_classes = upstream_root_classes
@@ -318,8 +312,6 @@ def _wrap_in_admin_template(request, response, trigger, endpoint, handler=None):
     upstream_path = getattr(request, '_passthrough_upstream_path', '/web')
     template_ctx = {
         'embed_src': embed_src,
-        'embed_fullscreen_src': embed_fullscreen_src,
-        'embed_fullscreen': embed_fullscreen,
         'embed_title': embed_title,
         'embed_head': embed_head,
         'embed_body': embed_body,

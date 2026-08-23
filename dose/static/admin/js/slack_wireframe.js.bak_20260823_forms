@@ -145,174 +145,51 @@
         throw new Error('Consumer did not finish within 20 seconds');
     }
 
-    function formPayload(form) {
-        var data = {};
-        form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
-            if (el.disabled) return;
-            var value = (el.value || '').trim();
-            if (value) data[el.name] = value;
-        });
-        return data;
-    }
-
-    var modalArmedAt = 0;
-    var armTimer = null;
-
-    function isModalArmed() {
-        return Date.now() >= modalArmedAt;
-    }
-
-    function openForm(kind) {
-        closeForms();
-        var modal = root.querySelector('#ps-slack-modal-' + kind);
-        if (!modal) return;
-        // Defer paint until after the opening click fully settles, then arm inputs.
-        window.setTimeout(function () {
-            modal.classList.add('is-open', 'is-arming');
-            modal.removeAttribute('hidden');
-            modalArmedAt = Date.now() + 350;
-            if (armTimer) window.clearTimeout(armTimer);
-            armTimer = window.setTimeout(function () {
-                modal.classList.remove('is-arming');
-                var first = modal.querySelector('input, textarea');
-                if (first) first.focus();
-            }, 350);
-        }, 0);
-    }
-
-    function closeForms() {
-        if (armTimer) {
-            window.clearTimeout(armTimer);
-            armTimer = null;
-        }
-        modalArmedAt = 0;
-        root.querySelectorAll('.ps-slack-mock__modal').forEach(function (modal) {
-            modal.classList.remove('is-open', 'is-arming');
-            modal.setAttribute('hidden', 'hidden');
-        });
-    }
-
-    async function queueWebhook(kind, payload) {
-        var path = kind === 'sale'
-            ? '/events/slack/webhook/sale'
-            : '/events/slack/webhook/contact';
-        var triggerUrl = kind === 'sale'
-            ? root.dataset.saleUrl
-            : root.dataset.contactUrl;
-        result.textContent = 'Queueing real ' + kind + ' webhook…';
-        updateBar(path, 'POST ' + path + ' — queueing', 'Waiting for mailbox');
-        var response = await fetch(triggerUrl, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: JSON.stringify(payload || {})
-        });
-        var data = await response.json();
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Webhook could not be queued');
-        }
-        result.textContent = 'Mailbox #' + data.mailbox_id + ' queued · ' + path;
-        updateBar(path, 'POST ' + path + ' — queued', 'Mailbox #' + data.mailbox_id);
-        await waitForMailbox(data.mailbox_id, kind, path);
-    }
-
-    async function submitKind(kind) {
-        if (!isModalArmed()) return;
-        var form = root.querySelector('#ps-slack-form-' + kind);
-        if (!form) return;
-        var payload = formPayload(form);
-        if (kind === 'contact' && !payload.name) {
-            result.textContent = 'Name is required for contact';
-            return;
-        }
-        if (kind === 'sale' && (!payload.partner_name || !payload.order_reference)) {
-            result.textContent = 'Customer name and order reference are required';
-            return;
-        }
-        var submitBtn = form.querySelector('[data-form-submit="' + kind + '"]');
-        if (submitBtn) submitBtn.disabled = true;
-        try {
-            appendMessage(
-                'you',
-                kind === 'sale'
-                    ? ('New sale: ' + payload.partner_name + ' / ' + payload.order_reference)
-                    : ('New contact: ' + payload.name),
-                {}
-            );
-            await queueWebhook(kind, payload);
-            form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
-                el.value = '';
-            });
-            closeForms();
-        } catch (error) {
-            result.textContent = 'Live webhook failed — ' + error.message;
-            updateBar(
-                kind === 'sale' ? '/events/slack/webhook/sale' : '/events/slack/webhook/contact',
-                'POST failed',
-                error.message
-            );
-            appendMessage('PolySaaS', 'Live webhook failed — ' + error.message, {bot: true});
-        } finally {
-            if (submitBtn) submitBtn.disabled = false;
-        }
-    }
-
-    root.querySelectorAll('[data-form]').forEach(function (button) {
-        button.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-            openForm(button.dataset.form);
-        });
-    });
-
-    root.querySelectorAll('[data-modal-dismiss]').forEach(function (el) {
-        el.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-            if (!isModalArmed()) return;
-            closeForms();
-            result.textContent = 'Ready — form cancelled';
-        });
-    });
-
-    root.querySelectorAll('[data-form-submit]').forEach(function (button) {
-        button.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-            submitKind(button.dataset.formSubmit);
-        });
-    });
-
-    // Capture-phase: Enter inside an open modal must never submit Jazzmin/composer forms
-    // (that reloads the page and looks like the modal "vanished" mid-fill).
-    document.addEventListener('keydown', function (event) {
-        if (!root.querySelector('.ps-slack-mock__modal.is-open')) return;
-        if (!root.contains(event.target)) return;
-        if (event.key === 'Enter' && event.target && event.target.tagName !== 'TEXTAREA') {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    }, true);
-
-    // Composer must not steal Enter / submit while a modal is open.
-    if (composer) {
-        composer.addEventListener('submit', function (event) {
-            if (root.querySelector('.ps-slack-mock__modal.is-open')) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-        }, true);
-    }
-
     root.querySelectorAll('[data-demo]').forEach(function (button) {
-        button.addEventListener('click', function () {
-            if (button.dataset.demo !== 'browse') return;
-            result.textContent = 'Sample thread opened · /mock/slack/thread/1';
-            appendMessage('PolySaaS', 'Sample thread opened in the wireframe.', {bot: true});
+        button.addEventListener('click', async function () {
+            var kind = button.dataset.demo;
+            var path = kind === 'sale'
+                ? '/events/slack/webhook/sale'
+                : (kind === 'contact'
+                    ? '/events/slack/webhook/contact'
+                    : '/mock/slack/thread/1');
+            if (kind === 'browse') {
+                result.textContent = 'Sample thread opened · ' + path;
+                appendMessage('PolySaaS', 'Sample thread opened in the wireframe.', {bot: true});
+                return;
+            }
+
+            var triggerUrl = kind === 'sale'
+                ? root.dataset.saleUrl
+                : root.dataset.contactUrl;
+            button.disabled = true;
+            result.textContent = 'Queueing real ' + kind + ' webhook…';
+            updateBar(path, 'POST ' + path + ' — queueing', 'Waiting for mailbox');
+            try {
+                var response = await fetch(triggerUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: '{}'
+                });
+                var data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Webhook could not be queued');
+                }
+                result.textContent = 'Mailbox #' + data.mailbox_id + ' queued · ' + path;
+                updateBar(path, 'POST ' + path + ' — queued', 'Mailbox #' + data.mailbox_id);
+                await waitForMailbox(data.mailbox_id, kind, path);
+            } catch (error) {
+                result.textContent = 'Live webhook failed — ' + error.message;
+                updateBar(path, 'POST ' + path + ' — failed', error.message);
+                appendMessage('PolySaaS', 'Live webhook failed — ' + error.message, {bot: true});
+            } finally {
+                button.disabled = false;
+            }
         });
     });
 

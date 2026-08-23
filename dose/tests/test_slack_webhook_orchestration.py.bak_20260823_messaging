@@ -172,7 +172,7 @@ class TriggerEnvelopeConsumerTests(SimpleTestCase):
 
         self.assertEqual(result["results"][0]["status"], "error")
         self.assertEqual(result["results"][0]["error"], "atomic failed")
-        feedback_result = create_message.call_args.kwargs["result"]
+        feedback_result = create_message.call_args.args[2]
         self.assertEqual(feedback_result["status"], "error")
 
     @patch("dose.webhook_events.create_orchestration_feedback")

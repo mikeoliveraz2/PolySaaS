@@ -126,10 +126,8 @@
         </form>
     </section>
     {% if slack_wireframe_mode != "native" %}
-    {# Sink form: modal fields are NOT in a real <form>, but Enter still submits a parent Jazzmin form and reloads the page. Bind fields here so Enter is a no-op. #}
-    <form id="ps-slack-modal-sink" action="#" method="post" onsubmit="return false;" aria-hidden="true" style="display:none"></form>
     <div class="ps-slack-mock__modal" id="ps-slack-modal-contact" data-kind="contact" role="dialog" aria-modal="true" aria-labelledby="ps-slack-modal-contact-title" hidden>
-        <div class="ps-slack-mock__modal-backdrop"></div>
+        <div class="ps-slack-mock__modal-backdrop" data-modal-dismiss="contact"></div>
         <div class="ps-slack-mock__modal-dialog">
             <div class="ps-slack-mock__modal-header">
                 <h2 class="ps-slack-mock__modal-title" id="ps-slack-modal-contact-title">New contact</h2>
@@ -138,9 +136,9 @@
             <div class="ps-slack-mock__form" id="ps-slack-form-contact" data-kind="contact" role="form">
                 <div class="ps-slack-mock__modal-body">
                     <p class="ps-slack-mock__modal-hint">Create a contact in Odoo from this Slack workspace.</p>
-                    <label>Name<input name="name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Contact" autocomplete="off"></label>
-                    <label>Email<input name="email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="contact@example.com" autocomplete="off"></label>
-                    <label>Phone<input name="phone" form="ps-slack-modal-sink" type="text" maxlength="40" placeholder="+1 555 0100" autocomplete="off"></label>
+                    <label>Name<input name="name" type="text" required maxlength="120" placeholder="Acme Contact" autocomplete="off"></label>
+                    <label>Email<input name="email" type="email" maxlength="120" placeholder="contact@example.com" autocomplete="off"></label>
+                    <label>Phone<input name="phone" type="text" maxlength="40" placeholder="+1 555 0100" autocomplete="off"></label>
                 </div>
                 <div class="ps-slack-mock__modal-footer">
                     <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--ghost" data-modal-dismiss="contact">Cancel</button>
@@ -150,7 +148,7 @@
         </div>
     </div>
     <div class="ps-slack-mock__modal" id="ps-slack-modal-sale" data-kind="sale" role="dialog" aria-modal="true" aria-labelledby="ps-slack-modal-sale-title" hidden>
-        <div class="ps-slack-mock__modal-backdrop"></div>
+        <div class="ps-slack-mock__modal-backdrop" data-modal-dismiss="sale"></div>
         <div class="ps-slack-mock__modal-dialog">
             <div class="ps-slack-mock__modal-header">
                 <h2 class="ps-slack-mock__modal-title" id="ps-slack-modal-sale-title">New sale</h2>
@@ -159,10 +157,10 @@
             <div class="ps-slack-mock__form" id="ps-slack-form-sale" data-kind="sale" role="form">
                 <div class="ps-slack-mock__modal-body">
                     <p class="ps-slack-mock__modal-hint">Create a draft Odoo quotation from this Slack workspace.</p>
-                    <label>Customer name<input name="partner_name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Buyer" autocomplete="off"></label>
-                    <label>Customer email<input name="partner_email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="buyer@example.com" autocomplete="off"></label>
-                    <label>Order reference<input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off"></label>
-                    <label>Note<textarea name="note" form="ps-slack-modal-sink" maxlength="400" placeholder="Optional note for the draft quotation"></textarea></label>
+                    <label>Customer name<input name="partner_name" type="text" required maxlength="120" placeholder="Acme Buyer" autocomplete="off"></label>
+                    <label>Customer email<input name="partner_email" type="email" maxlength="120" placeholder="buyer@example.com" autocomplete="off"></label>
+                    <label>Order reference<input name="order_reference" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off"></label>
+                    <label>Note<textarea name="note" maxlength="400" placeholder="Optional note for the draft quotation"></textarea></label>
                 </div>
                 <div class="ps-slack-mock__modal-footer">
                     <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--ghost" data-modal-dismiss="sale">Cancel</button>
@@ -172,5 +170,5 @@
         </div>
     </div>
     {% endif %}
-    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260823-6"></script>
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260823-4"></script>
 </div>

@@ -104,25 +104,14 @@ class SlackNativeSniffTests(SimpleTestCase):
             template,
         )
         self.assertIn('id="pss-slack-url-value"', template)
-        self.assertIn("Open full screen in new tab", template)
-        self.assertIn("polysaas-passthrough-fullscreen", template)
-        self.assertIn("ps_fullscreen=1", template)
-        self.assertIn("lockPassthroughLayout", template)
-        self.assertIn("translateZ(0)", template)
         self.assertIn("polysaas-slack-wireframe-embed", template)
         self.assertIn("polysaas-odoo-embed", template)
-        self.assertIn("content-column default for all passthrough", template)
+        self.assertIn(
+            "ALL passthrough sidebar links stay in the admin",
+            template,
+        )
         self.assertNotIn("psForceHideSidebar", template)
-        sidebar = (
-            Path(__file__).parents[1]
-            / "templates"
-            / "admin"
-            / "includes"
-            / "custom_sidebar.html"
-        ).read_text(encoding="utf-8")
-        self.assertIn("pss-pt-fullscreen", sidebar)
-        self.assertIn("service.fullscreen_url", sidebar)
-        self.assertIn('target="_blank"', sidebar)
+        self.assertNotIn("grid-template-columns: 0 1fr", template)
 
     def test_slack_passthrough_shell_has_green_bar_and_mailbox_binding(self):
         bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html")

@@ -13,7 +13,7 @@ ALL upstream HTML (head styles + body) goes in the scope div — nothing in extr
 This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {% endcomment %}
 
-{% block bodyclass %}polysaas-passthrough-embed-page{% if embed_fullscreen %} polysaas-passthrough-fullscreen{% endif %}{% if embed_slack_wireframe %} polysaas-slack-wireframe-embed{% endif %}{% if embed_enable_odoo_body_scope %} polysaas-odoo-embed{% endif %}{% endblock %}
+{% block bodyclass %}polysaas-passthrough-embed-page{% if embed_slack_wireframe %} polysaas-slack-wireframe-embed{% endif %}{% endblock %}
 
 {% block extrahead %}
 {% if embed_polysaas_display_mode %}
@@ -34,14 +34,9 @@ This prevents Mattermost's global CSS from blowing out the sidebar and header.
 {% endif %}
 {{ block.super }}
 <style id="polysaas-passthrough-embed-shield">
-/* Owner-approved 2026-08-23: content-column default for all passthrough.
-   Opt-in full screen: ?ps_fullscreen=1 only. */
-body.polysaas-passthrough-embed-page .admin-main-wrapper,
-body.polysaas-passthrough-embed-page .admin-main-wrapper.admin-content-grid,
-body.polysaas-passthrough-embed-page .admin-content-grid,
-.admin-main-wrapper.polysaas-pt-content-mode {
-    display: grid !important;
-    grid-template-columns: 280px minmax(0, 1fr) !important;
+/* Drop the right-sidebar column — content takes the full available width */
+body.polysaas-passthrough-embed-page .admin-content-grid {
+    grid-template-columns: 280px 1fr !important;
     margin-top: var(--pss-header-h, 64px) !important;
     margin-right: 0 !important;
     margin-bottom: 0 !important;
@@ -51,40 +46,42 @@ body.polysaas-passthrough-embed-page .admin-content-grid,
     max-width: 100% !important;
 }
 body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
-body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 60px 1fr !important;
+}
+
+{% if not embed_slack_wireframe %}
+/* Full-width passthrough: hide the PolySaaS left sidebar so the upstream app fills the viewport */
+body.polysaas-passthrough-embed-page .admin-main-wrapper,
+body.polysaas-passthrough-embed-page .admin-main-wrapper.admin-content-grid,
+body.polysaas-passthrough-embed-page .admin-content-grid {
+    grid-template-columns: 0 1fr !important;
+}
+body.polysaas-passthrough-embed-page #dose-custom-sidebar,
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav,
+body.polysaas-passthrough-embed-page .admin-main-wrapper > .collapsible-nav {
+    display: none !important;
+}
 body.polysaas-passthrough-embed-page .admin-main-wrapper.sidebar-collapse,
 body.polysaas-passthrough-embed-page .admin-main-wrapper.admin-content-grid.sidebar-collapse,
-.admin-main-wrapper.polysaas-pt-content-mode.sidebar-collapse,
-body.polysaas-collapsed .admin-main-wrapper.polysaas-pt-content-mode {
-    grid-template-columns: 60px minmax(0, 1fr) !important;
+body.polysaas-passthrough-embed-page .admin-content-grid.sidebar-collapse,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-main-wrapper,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-main-wrapper.admin-content-grid,
+body.polysaas-passthrough-embed-page.polysaas-collapsed .admin-content-grid {
+    grid-template-columns: 0 1fr !important;
 }
-/* Keep PolySaaS sidebar visible unless explicit fullscreen */
-body.polysaas-passthrough-embed-page:not(.polysaas-passthrough-fullscreen) #dose-custom-sidebar,
-body.polysaas-passthrough-embed-page:not(.polysaas-passthrough-fullscreen) .admin-main-wrapper > .collapsible-nav,
-.admin-main-wrapper.polysaas-pt-content-mode:not(.polysaas-pt-fullscreen-mode) #dose-custom-sidebar {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    z-index: 2000 !important;
-    position: sticky !important;
-    top: var(--pss-header-h, 64px) !important;
-    max-height: calc(100vh - var(--pss-header-h, 64px)) !important;
+{% else %}
+/* Owner-approved 2026-08-23: Slack wireframe stays in the content column with admin chrome */
+body.polysaas-slack-wireframe-embed .admin-main-wrapper,
+body.polysaas-slack-wireframe-embed .admin-main-wrapper.admin-content-grid,
+body.polysaas-slack-wireframe-embed .admin-content-grid {
+    grid-template-columns: 280px 1fr !important;
 }
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-main-wrapper,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-main-wrapper.admin-content-grid,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-content-grid,
-.admin-main-wrapper.polysaas-pt-fullscreen-mode {
-    grid-template-columns: minmax(0, 1fr) !important;
-    margin-top: 0 !important;
-}
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen #dose-custom-sidebar,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-content-grid > .collapsible-nav,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-main-wrapper > .collapsible-nav,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen #jazzy-navbar,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .app-header,
-body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .breadcrumbs,
-.admin-main-wrapper.polysaas-pt-fullscreen-mode #dose-custom-sidebar {
-    display: none !important;
+body.polysaas-slack-wireframe-embed .admin-content-grid.sidebar-collapse,
+body.polysaas-slack-wireframe-embed.polysaas-collapsed .admin-content-grid,
+body.polysaas-slack-wireframe-embed .admin-main-wrapper.sidebar-collapse,
+body.polysaas-slack-wireframe-embed .admin-main-wrapper.admin-content-grid.sidebar-collapse {
+    grid-template-columns: 60px 1fr !important;
 }
 body.polysaas-slack-wireframe-embed .polysaas-passthrough-embed-wrap {
     height: auto !important;
@@ -98,66 +95,26 @@ body.polysaas-slack-wireframe-embed .ps-slack-mock {
     border-radius: 6px;
     overflow: hidden;
 }
+{% endif %}
 body.polysaas-passthrough-embed-page #recent-actions-sidebar {
     display: none !important;
 }
 /* Zero out padding/margin on Jazzmin content wrappers so the app uses the full column */
-body.polysaas-passthrough-embed-page .content .container-fluid,
-body.polysaas-passthrough-embed-page .dose-content-col .container-fluid {
+body.polysaas-passthrough-embed-page .content .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
     max-width: none !important;
 }
-body.polysaas-passthrough-embed-page .content .row,
-body.polysaas-passthrough-embed-page .dose-content-col .row {
+body.polysaas-passthrough-embed-page .content .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
 }
 body.polysaas-passthrough-embed-page .polysaas-passthrough-embed-col {
     padding: 0 !important;
 }
-body.polysaas-passthrough-embed-page .dose-content-col {
-    min-width: 0 !important;
-    position: relative !important;
-    z-index: 1 !important;
-    overflow: hidden !important;
-}
-/* Odoo paints o_web_client / fixed chrome onto document.body — pin it back */
-body.o_web_client,
-body.polysaas-passthrough-embed-page.o_web_client {
-    position: static !important;
-    inset: auto !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-width: 100% !important;
-    overflow: visible !important;
-    display: block !important;
-    transform: none !important;
-}
-/* Contain Odoo fixed/absolute UI inside the content column */
-.polysaas-passthrough-scope {
-    position: relative !important;
-    transform: translateZ(0);
-    isolation: isolate;
-    contain: layout;
-    max-width: 100% !important;
-    overflow: hidden !important;
-}
-.polysaas-passthrough-scope .o_main_navbar,
-.polysaas-passthrough-scope header.o_main_navbar,
-.polysaas-passthrough-scope .o_navbar,
-.polysaas-passthrough-scope .o_web_client {
-    position: relative !important;
-    left: auto !important;
-    right: auto !important;
-    top: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
+body.polysaas-passthrough-embed-page .admin-content-grid > .collapsible-nav {
+    top: var(--pss-header-h, 64px) !important;
+    height: calc(100vh - var(--pss-header-h, 64px)) !important;
 }
 #polysaas-orchestration-bar {
     background-color: #1a1a1a;
@@ -177,10 +134,9 @@ body.polysaas-passthrough-embed-page.o_web_client {
     z-index: 1061;
     pointer-events: auto;
 }
-/* PolySaaS sidebar — always on top of embedded SPAs */
-.admin-content-grid > .collapsible-nav,
-.admin-main-wrapper > #dose-custom-sidebar {
-    z-index: 2000 !important;
+/* PolySaaS sidebar — always on top, never overridden */
+.admin-content-grid > .collapsible-nav {
+    z-index: 1040 !important;
     position: sticky !important;
 }
 /* Jazzmin top navbar */
@@ -344,7 +300,7 @@ body.polysaas-passthrough-embed-page.o_web_client {
     color: #666;
 }
 {% else %}
-/* Mattermost / generic passthrough — stay in content column */
+/* Mattermost / generic passthrough — bingo layout (overflow visible, full SPA height) */
 body.polysaas-passthrough-embed-page {
     overflow: visible !important;
     height: auto !important;
@@ -355,12 +311,10 @@ body.polysaas-passthrough-embed-page {
     width: 100% !important;
     height: calc(100vh - 170px) !important;
     min-height: 400px !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
-    transform: translateZ(0);
-    isolation: isolate;
     contain: layout paint !important;
 }
 {% endif %}
@@ -369,67 +323,6 @@ body.polysaas-passthrough-embed-page {
     display: none !important;
 }
 </style>
-<script>
-(function () {
-    var FULLSCREEN = {{ embed_fullscreen|yesno:"true,false" }};
-    function lockPassthroughLayout() {
-        if (!document.body) return;
-        document.body.classList.add('polysaas-passthrough-embed-page');
-        if (FULLSCREEN) {
-            document.body.classList.add('polysaas-passthrough-fullscreen');
-        } else {
-            document.body.classList.remove('polysaas-passthrough-fullscreen');
-            ['o_web_client', 'o_dark', 'o_light', 'o_rtl', 'o_touch', 'o_no_scroll'].forEach(function (cls) {
-                document.body.classList.remove(cls);
-            });
-            document.body.style.removeProperty('position');
-            document.body.style.removeProperty('inset');
-            document.body.style.removeProperty('top');
-            document.body.style.removeProperty('left');
-            document.body.style.removeProperty('right');
-            document.body.style.removeProperty('bottom');
-            document.body.style.removeProperty('width');
-            document.body.style.removeProperty('height');
-        }
-        var main = document.querySelector('.admin-main-wrapper');
-        if (main) {
-            main.classList.add('admin-content-grid');
-            if (FULLSCREEN) {
-                main.classList.add('polysaas-pt-fullscreen-mode');
-                main.classList.remove('polysaas-pt-content-mode');
-                main.style.setProperty('grid-template-columns', 'minmax(0, 1fr)', 'important');
-            } else {
-                main.classList.add('polysaas-pt-content-mode');
-                main.classList.remove('polysaas-pt-fullscreen-mode');
-                var collapsed = document.body.classList.contains('polysaas-collapsed') ||
-                    main.classList.contains('sidebar-collapse');
-                main.style.setProperty(
-                    'grid-template-columns',
-                    collapsed ? '60px minmax(0, 1fr)' : '280px minmax(0, 1fr)',
-                    'important'
-                );
-            }
-        }
-        var sidebar = document.getElementById('dose-custom-sidebar');
-        if (sidebar && !FULLSCREEN) {
-            sidebar.style.setProperty('display', 'flex', 'important');
-            sidebar.style.setProperty('visibility', 'visible', 'important');
-            sidebar.style.setProperty('z-index', '2000', 'important');
-        }
-    }
-    lockPassthroughLayout();
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', lockPassthroughLayout);
-    }
-    window.addEventListener('load', lockPassthroughLayout);
-    var tries = 0;
-    var timer = window.setInterval(function () {
-        lockPassthroughLayout();
-        tries += 1;
-        if (tries >= 25) window.clearInterval(timer);
-    }, 400);
-})();
-</script>
 {% endblock %}
 
 {% block title %}{{ embed_title }} — {{ site_title|default:_('Django site admin') }}{% endblock %}
@@ -498,13 +391,8 @@ body.polysaas-passthrough-embed-page {
     {% endif %}
 </div>
 <p class="text-muted" style="margin-top:10px;font-size:12px;">
-    {% if embed_fullscreen %}
-        <a href="{{ embed_src }}">{% trans "Open in content area" %}</a>
-    {% else %}
-        {% trans "Open full screen in new tab" %}:
-        <a href="{{ embed_fullscreen_src|default:embed_src }}{% if not embed_fullscreen_src %}?ps_fullscreen=1{% endif %}"
-           target="_blank" rel="noopener">{% trans "Full screen" %}</a>
-    {% endif %}
+    {% trans "Open in full window" %}:
+    <a href="{{ embed_src }}" target="_blank" rel="noopener">{{ embed_src }}</a>
 </p>
 {% endblock %}
 
@@ -809,4 +697,24 @@ body.polysaas-passthrough-embed-page {
     })();
     </script>
     {% endif %}
+    <script>
+    (function () {
+        function psForceHideSidebar() {
+            var sidebar = document.getElementById('dose-custom-sidebar');
+            if (sidebar) {
+                sidebar.style.setProperty('display', 'none', 'important');
+                sidebar.style.setProperty('visibility', 'hidden', 'important');
+            }
+            var main = document.querySelector('.admin-main-wrapper, .admin-content-grid');
+            if (main) {
+                main.style.setProperty('grid-template-columns', '0 1fr', 'important');
+            }
+        }
+        psForceHideSidebar();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', psForceHideSidebar);
+        }
+        window.addEventListener('load', psForceHideSidebar);
+    })();
+    </script>
 {% endblock %}

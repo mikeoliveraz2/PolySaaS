@@ -1,0 +1,59 @@
+{% load static %}
+<div
+    class="ps-slack-mock"
+    data-mode="{{ slack_wireframe_mode|default:'native' }}"
+    data-contact-url="{% url 'dose:slack_wireframe_trigger' 'contact' %}"
+    data-sale-url="{% url 'dose:slack_wireframe_trigger' 'sale' %}"
+    data-status-url="/dose/api/slack-wireframe/status/"
+>
+    <style>
+        .ps-slack-mock { min-height:520px; display:grid; grid-template-columns:210px 1fr; background:#1a1d21; color:#d1d2d3; font:14px Arial,sans-serif; }
+        .ps-slack-mock * { box-sizing:border-box; }
+        .ps-slack-mock__sidebar { padding:18px 12px; background:#3f0e40; color:#fff; }
+        .ps-slack-mock__workspace { font-size:18px; font-weight:700; margin-bottom:22px; }
+        .ps-slack-mock__channel { display:block; width:100%; margin:4px 0; padding:7px 10px; border:0; border-radius:4px; background:transparent; color:#e8dce8; text-align:left; cursor:pointer; }
+        .ps-slack-mock__channel.is-active { background:#1164a3; color:#fff; }
+        .ps-slack-mock__main { display:flex; flex-direction:column; min-width:0; }
+        .ps-slack-mock__header { padding:15px 20px; border-bottom:1px solid #35373b; font-size:17px; font-weight:700; }
+        .ps-slack-mock__messages { flex:1; padding:22px; }
+        .ps-slack-mock__message { display:flex; gap:12px; margin-bottom:22px; }
+        .ps-slack-mock__avatar { width:38px; height:38px; display:grid; place-items:center; border-radius:7px; background:#2eb67d; color:#101214; font-weight:800; }
+        .ps-slack-mock__name { font-weight:700; color:#fff; }
+        .ps-slack-mock__time { margin-left:6px; color:#9a9b9d; font-size:12px; }
+        .ps-slack-mock__actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+        .ps-slack-mock__action { padding:8px 12px; border:1px solid #565856; border-radius:5px; background:#222529; color:#fff; cursor:pointer; }
+        .ps-slack-mock__action:hover { border-color:#2eb67d; }
+        .ps-slack-mock__result { margin:0 22px 20px; padding:12px; border:1px solid #35373b; border-radius:5px; background:#222529; color:#86efac; font-family:Consolas,monospace; }
+        @media (max-width:760px) { .ps-slack-mock { grid-template-columns:1fr; } .ps-slack-mock__sidebar { display:none; } }
+    </style>
+    <aside class="ps-slack-mock__sidebar">
+        <div class="ps-slack-mock__workspace">PolySaaS Slack</div>
+        <button type="button" class="ps-slack-mock__channel is-active" data-channel="all-polysaas"># all-polysaas</button>
+        <button type="button" class="ps-slack-mock__channel" data-channel="sales-demo"># sales-demo</button>
+        <button type="button" class="ps-slack-mock__channel" data-channel="automation-log"># automation-log</button>
+    </aside>
+    <section class="ps-slack-mock__main">
+        <header class="ps-slack-mock__header"># <span class="ps-slack-mock__channel-title">all-polysaas</span></header>
+        <div class="ps-slack-mock__messages">
+            <div class="ps-slack-mock__message">
+                <div class="ps-slack-mock__avatar">M</div>
+                <div>
+                    <div><span class="ps-slack-mock__name">michael.oliver</span><span class="ps-slack-mock__time">demo workspace</span></div>
+                    <p>This is the Slack wireframe. The operator experience is stable while each action is connected to real services.</p>
+                    {% if slack_wireframe_mode != "native" %}
+                    <div class="ps-slack-mock__actions">
+                        <button type="button" class="ps-slack-mock__action" data-demo="contact">Run contact webhook</button>
+                        <button type="button" class="ps-slack-mock__action" data-demo="sale">Run sale webhook</button>
+                    </div>
+                    {% else %}
+                    <div class="ps-slack-mock__actions">
+                        <button type="button" class="ps-slack-mock__action" data-demo="browse">Open sample thread</button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="ps-slack-mock__result">Ready — {{ slack_wireframe_mode|default:"native" }} wireframe</div>
+    </section>
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260822-2"></script>
+</div>

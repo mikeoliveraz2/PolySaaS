@@ -59,9 +59,6 @@
         .capture-attach { display: inline-block; margin-top: 8px; margin-right: 8px; padding: 4px 8px; background: #047857; color: #fff; border-radius: 4px; font: 0.7rem Georgia, serif; text-decoration: none; border: 0; cursor: pointer; }
         .capture-marked { color: #fbbf24; font: 0.7rem Consolas, monospace; margin-top: 6px; }
         .mailbox-event { border-color: #16a34a; }
-        .message-event { border-color: #2563eb; }
-        .message-event .capture-method { background: #1e40af; }
-        .har-muted { opacity: 0.55; }
         @media (max-width: 860px) { .split { grid-template-columns: 1fr; } .left-col { border-right: 0; border-bottom: 1px solid #374151; } }
     </style>
 </head>
@@ -102,9 +99,9 @@
         </div>
     </section>
     <section class="right-col">
-        <header><h2 id="events-pane-title">{% if wireframe_enabled %}Live events{% else %}Live capture{% endif %}</h2></header>
-        <div class="stats">Events: <span id="count">0</span> | Last update: <span id="last-update">-</span> | Session: <span id="session-name">{% if active_session %}{{ active_session.capture_name }}{% else %}none{% endif %}</span></div>
-        <div class="captures" id="captures"><div class="empty">{% if wireframe_enabled %}No webhook or message events yet. Run Contact / Sale or send a thread message.{% else %}No captured requests.{% endif %}</div></div>
+        <header><h2>Live capture</h2></header>
+        <div class="stats">Captured: <span id="count">0</span> | Last update: <span id="last-update">-</span> | Session: <span id="session-name">{% if active_session %}{{ active_session.capture_name }}{% else %}none{% endif %}</span></div>
+        <div class="captures" id="captures"><div class="empty">No captured requests.</div></div>
     </section>
 </div>
 <script>
@@ -118,7 +115,6 @@
        BINGO: PolySniffer Host-Keyed Polysniff URLs — 2026-08-21 */
     const schemaQuery = schemaParam ? ('?_ps_tenant=' + encodeURIComponent(schemaParam)) : '';
     const pollUrl = '{{ poll_url|escapejs }}';
-    const wireframeEnabled = {{ wireframe_enabled|yesno:"true,false" }};
     /* Native = workspace/native inline embed (forwarder HTML in left pane; no object/iframe).
        Passthrough = workspace/passthrough (green bar + Insert Instruction / consumer bind). */
     const nativeLaunchUrl = '/admin/polysniffer/sniff/' + endpointHost + '/workspace/native{{ browse_subpath|escapejs }}' + schemaQuery;
@@ -126,15 +122,11 @@
     let currentMode = '{{ mode|escapejs }}';
     let lastId = 0;
     let lastMailboxId = 0;
-    let lastMessageId = 0;
     let count = 0;
     const seen = new Set();
 
     const workspaceUrl = '/admin/polysniffer/sniff/' + endpointHost;
     const browserPane = document.getElementById('browser-pane');
-    const emptyCopy = wireframeEnabled
-        ? 'No webhook or message events yet. Run Contact / Sale or send a thread message.'
-        : 'No captured requests.';
 
     function clearBrowser() {
         browserPane.innerHTML = '<div class="browser-placeholder">Click Native or Passthrough to start capturing.</div>';
@@ -164,11 +156,9 @@
             if (!data.ok) throw new Error(data.error || 'Failed to stop capture');
             clearBrowser();
             lastId = 0;
-            lastMailboxId = 0;
-            lastMessageId = 0;
             count = 0;
             seen.clear();
-            document.getElementById('captures').innerHTML = '<div class="empty">' + emptyCopy + '</div>';
+            document.getElementById('captures').innerHTML = '<div class="empty">No captured requests.</div>';
             document.getElementById('count').textContent = '0';
         } catch (error) { alert(error.message); }
     };
@@ -187,7 +177,6 @@
     }
 
     function addCapture(capture) {
-        if (wireframeEnabled) return;
         if (!capture || !capture.id || seen.has(capture.id)) return;
         seen.add(capture.id);
         if (typeof capture.id === 'number') lastId = Math.max(lastId, capture.id);
@@ -330,8 +319,7 @@
         const summary = document.createElement('div');
         summary.className = 'capture-summary';
         summary.textContent = (event.source || 'webhook') + ' · ' +
-            (event.direction || 'REQ') + ' · ' + (event.created_at || '-') +
-            (event.outcome ? (' · ' + event.outcome) : '');
+            (event.direction || 'REQ') + ' · ' + (event.created_at || '-');
         detail.appendChild(summary);
         const pre = document.createElement('pre');
         pre.textContent = JSON.stringify({
@@ -340,24 +328,21 @@
             result_status: event.result_status,
             matched: event.matched,
             executed: event.executed,
-            outcome: event.outcome || '',
             error: event.error
         }, null, 2);
         detail.appendChild(pre);
 
-        if (!wireframeEnabled) {
-            const attach = document.createElement('a');
-            attach.className = 'capture-attach';
-            attach.target = '_blank';
-            attach.textContent = 'Attach consumer';
-            attach.href = '/admin/dose/instruction/add/?requestpath=' +
-                encodeURIComponent(event.action_path || '') +
-                '&requestmethod=' + encodeURIComponent(event.method || 'POST') +
-                '&direction=' + encodeURIComponent(event.direction || 'REQ') +
-                '&match_type=path&bind_only=1';
-            attach.onclick = function(ev) { ev.stopPropagation(); };
-            detail.appendChild(attach);
-        }
+        const attach = document.createElement('a');
+        attach.className = 'capture-attach';
+        attach.target = '_blank';
+        attach.textContent = 'Attach consumer';
+        attach.href = '/admin/dose/instruction/add/?requestpath=' +
+            encodeURIComponent(event.action_path || '') +
+            '&requestmethod=' + encodeURIComponent(event.method || 'POST') +
+            '&direction=' + encodeURIComponent(event.direction || 'REQ') +
+            '&match_type=path&bind_only=1';
+        attach.onclick = function(ev) { ev.stopPropagation(); };
+        detail.appendChild(attach);
 
         item.append(row, detail);
         item.onclick = function() { item.classList.toggle('open'); };
@@ -368,64 +353,21 @@
         if (barStatus) {
             barStatus.textContent = (event.method || 'POST') + ' ' +
                 (event.action_path || '') + ' — ' + (event.status || 'received') +
-                (event.outcome ? (' · ' + event.outcome) : (event.executed ? (' · executed ' + event.executed) : ''));
+                (event.executed ? (' · executed ' + event.executed) : '');
         }
         const barPath = document.getElementById('pss-action-path');
         if (barPath) barPath.textContent = event.action_path || '';
     }
 
-    function addMessageEvent(msg) {
-        if (!msg || !msg.id) return;
-        const key = 'msg-' + msg.id;
-        if (seen.has(key)) return;
-        seen.add(key);
-        lastMessageId = Math.max(lastMessageId, msg.id);
-        const empty = document.querySelector('#captures .empty');
-        if (empty) empty.remove();
-
-        const item = document.createElement('div');
-        item.className = 'capture-item message-event';
-        const row = document.createElement('div');
-        row.className = 'capture-row';
-        const method = document.createElement('span');
-        method.className = 'capture-method';
-        method.textContent = (msg.level || 'info').toUpperCase();
-        const path = document.createElement('span');
-        path.className = 'capture-path';
-        path.textContent = msg.message || '-';
-        const status = document.createElement('span');
-        status.className = 'capture-status';
-        status.textContent = msg.author || 'PolySaaS';
-        row.append(method, path, status);
-
-        const detail = document.createElement('div');
-        detail.className = 'capture-detail';
-        const summary = document.createElement('div');
-        summary.className = 'capture-summary';
-        summary.textContent = (msg.author || 'PolySaaS') + ' · ' + (msg.created_at || '-') +
-            ' · DoseMessage #' + msg.id;
-        detail.appendChild(summary);
-
-        item.append(row, detail);
-        item.onclick = function() { item.classList.toggle('open'); };
-        document.getElementById('captures').prepend(item);
-        document.getElementById('count').textContent = String(++count);
-    }
-
     async function poll() {
         try {
             const query = '?mode=' + encodeURIComponent(currentMode || 'native') +
-                '&since_id=' + lastId +
-                '&mailbox_since_id=' + lastMailboxId +
-                '&messages_since_id=' + lastMessageId;
+                '&since_id=' + lastId + '&mailbox_since_id=' + lastMailboxId;
             const response = await fetch(pollUrl + query, {credentials: 'same-origin', cache: 'no-store', headers: {'Accept': 'application/json'}});
             const data = await response.json();
             if (!data.success) throw new Error(data.error || 'Poll failed');
-            if (!wireframeEnabled) {
-                (data.captures || []).sort(function(a, b) { return a.id - b.id; }).forEach(addCapture);
-            }
+            (data.captures || []).sort(function(a, b) { return a.id - b.id; }).forEach(addCapture);
             (data.mailbox_events || []).sort(function(a, b) { return a.id - b.id; }).forEach(addMailboxEvent);
-            (data.messages || []).sort(function(a, b) { return a.id - b.id; }).forEach(addMessageEvent);
             document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
             if (data.session_name) document.getElementById('session-name').textContent = data.session_name;
         } catch (error) { document.getElementById('last-update').textContent = 'error'; }

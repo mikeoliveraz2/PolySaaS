@@ -25,8 +25,6 @@
 # Native = /admin/polysniffer/sniff/<host>/native/ (no green bar).
 # Passthrough = workspace/passthrough with orchestration bar + consumer bind.
 # Do not launch Native via /pt/polysniff/ (that path is passthrough-mode).
-# Owner-approved 2026-08-23: Slack wireframe Live events pane — mailbox +
-# DoseMessage in workspace poll; suppress HAR noise while wireframe is on.
 from __future__ import annotations
 
 import json
@@ -87,28 +85,6 @@ def _wireframe_context(endpoint) -> dict:
     return context if context.get("enabled") else {}
 
 
-def _include_mailbox_in_poll(*, mode: str, wireframe: bool, source: str) -> bool:
-    """Passthrough always; Native only when the Slack wireframe event pane is on."""
-    if not source:
-        return False
-    return mode == "passthrough" or bool(wireframe)
-
-
-def _mailbox_outcome(result) -> str:
-    if not isinstance(result, dict):
-        return ""
-    for atomic in result.get("results") or []:
-        if not isinstance(atomic, dict):
-            continue
-        if atomic.get("partner_id"):
-            return f"partner #{atomic['partner_id']}"
-        if atomic.get("order_name") or atomic.get("order_id"):
-            return str(atomic.get("order_name") or f"order #{atomic.get('order_id')}")
-        if atomic.get("status") in ("error", "failed"):
-            return str(atomic.get("detail") or atomic.get("error") or "error")
-    return str(result.get("status") or "")
-
-
 def _serialize_mailbox_event(row) -> dict:
     """Expose action evidence without leaking Slack tokens/response URLs."""
     envelope = row.envelope or {}
@@ -121,15 +97,6 @@ def _serialize_mailbox_event(row) -> dict:
         "channel_id",
         "channel_name",
         "team_id",
-        # Slack wireframe demo fields
-        "demo_id",
-        "name",
-        "email",
-        "phone",
-        "partner_name",
-        "partner_email",
-        "order_reference",
-        "note",
     }
     payload = {
         key: raw_payload.get(key)
@@ -148,21 +115,10 @@ def _serialize_mailbox_event(row) -> dict:
         "result_status": result.get("status", ""),
         "matched": result.get("matched", 0),
         "executed": result.get("executed", len(result.get("results") or [])),
-        "outcome": _mailbox_outcome(result),
         "error": (row.error or "")[:500],
         "payload": payload,
         "created_at": row.created_at.strftime("%H:%M:%S") if row.created_at else "",
         "processed_at": row.processed_at.strftime("%H:%M:%S") if row.processed_at else "",
-    }
-
-
-def _serialize_dose_message(row) -> dict:
-    return {
-        "id": row.id,
-        "message": row.message,
-        "level": row.level,
-        "author": "PolySaaS" if row.user_id is None else "you",
-        "created_at": row.created_at.strftime("%H:%M:%S") if row.created_at else "",
     }
 
 
@@ -328,13 +284,26 @@ def workspace_poll(request, endpoint_host: str):
             mailbox_since_id = int(request.GET.get("mailbox_since_id", 0))
         except (TypeError, ValueError):
             mailbox_since_id = 0
-        try:
-            messages_since_id = int(request.GET.get("messages_since_id", 0))
-        except (TypeError, ValueError):
-            messages_since_id = 0
 
         session = get_sniff_capture_session(request, endpoint_host)
-        wireframe_mode = bool(wireframe_context)
+        qs = TrafficLog.objects.all()
+        if session:
+            qs = qs.filter(capture_session=session)
+        else:
+            if mode == "passthrough":
+                qs = qs.filter(client_path__contains=f"/pt/admin/{endpoint_host}")
+            else:
+                qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
+
+        if not session:
+            qs = qs.filter(capture_source=mode)
+        if since_id:
+            qs = qs.filter(id__gt=since_id)
+            logs = list(qs.order_by("id")[:100])
+        else:
+            # Initial backfill: newest rows first in UI (client prepends in id order).
+            logs = list(qs.order_by("-id")[:100])
+            logs.reverse()
 
         try:
             def _preview(text):
@@ -343,55 +312,34 @@ def workspace_poll(request, endpoint_host: str):
             def _more(text):
                 return len(text or "") > 500
 
-            captures = []
-            if not wireframe_mode:
-                qs = TrafficLog.objects.all()
-                if session:
-                    qs = qs.filter(capture_session=session)
-                else:
-                    if mode == "passthrough":
-                        qs = qs.filter(client_path__contains=f"/pt/admin/{endpoint_host}")
-                    else:
-                        qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
-
-                if not session:
-                    qs = qs.filter(capture_source=mode)
-                if since_id:
-                    qs = qs.filter(id__gt=since_id)
-                    logs = list(qs.order_by("id")[:100])
-                else:
-                    # Initial backfill: newest rows first in UI (client prepends in id order).
-                    logs = list(qs.order_by("-id")[:100])
-                    logs.reverse()
-
-                captures = [
-                    {
-                        "id": log.id,
-                        "method": log.method,
-                        "url": log.url,
-                        "path": log.path,
-                        "client_path": log.client_path,
-                        "status_code": log.status_code,
-                        "capture_source": log.capture_source,
-                        "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
-                        "duration_ms": log.duration_ms,
-                        "headers": log.headers or {},
-                        "cookies": getattr(log, "cookies", None) or {},
-                        "query_params": log.query_params or {},
-                        "body_preview": _preview(log.body or ""),
-                        "body_more": _more(log.body or ""),
-                        "response_headers": log.response_headers or {},
-                        "response_body_preview": _preview(log.response_body or ""),
-                        "response_body_more": _more(log.response_body or ""),
-                    }
-                    for log in logs
-                ]
+            captures = [
+                {
+                    "id": log.id,
+                    "method": log.method,
+                    "url": log.url,
+                    "path": log.path,
+                    "client_path": log.client_path,
+                    "status_code": log.status_code,
+                    "capture_source": log.capture_source,
+                    "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
+                    "duration_ms": log.duration_ms,
+                    "headers": log.headers or {},
+                    "cookies": getattr(log, "cookies", None) or {},
+                    "query_params": log.query_params or {},
+                    "body_preview": _preview(log.body or ""),
+                    "body_more": _more(log.body or ""),
+                    "response_headers": log.response_headers or {},
+                    "response_body_preview": _preview(log.response_body or ""),
+                    "response_body_more": _more(log.response_body or ""),
+                }
+                for log in logs
+            ]
 
             mailbox_events = []
-            if _include_mailbox_in_poll(
-                mode=mode,
-                wireframe=wireframe_mode,
-                source=mailbox_context.get("source") or "",
+            if (
+                mode == "passthrough"
+                and mailbox_context.get("source")
+                and not wireframe_context
             ):
                 from dose.models import WebhookMailbox
 
@@ -407,32 +355,12 @@ def workspace_poll(request, endpoint_host: str):
 
                 for row in mailbox_rows:
                     mailbox_events.append(_serialize_mailbox_event(row))
-
-            messages = []
-            if wireframe_mode:
-                from django.db.models import Q
-
-                from dose.models import DoseMessage
-
-                msg_qs = DoseMessage.objects.all()
-                user = getattr(request, "user", None)
-                if user is not None and getattr(user, "is_authenticated", False):
-                    msg_qs = msg_qs.filter(Q(user_id=user.pk) | Q(user_id__isnull=True))
-                if messages_since_id:
-                    msg_qs = msg_qs.filter(id__gt=messages_since_id)
-                    msg_rows = list(msg_qs.order_by("id")[:100])
-                else:
-                    msg_rows = list(msg_qs.order_by("-id")[:50])
-                    msg_rows.reverse()
-                messages = [_serialize_dose_message(row) for row in msg_rows]
         except Exception as exc:
             return JsonResponse(
                 {
                     "success": True,
                     "captures": [],
                     "mailbox_events": [],
-                    "messages": [],
-                    "wireframe_enabled": wireframe_mode,
                     "session_active": bool(session),
                     "session_name": session.capture_name if session else "",
                     "mode": mode,
@@ -445,8 +373,6 @@ def workspace_poll(request, endpoint_host: str):
                 "success": True,
                 "captures": captures,
                 "mailbox_events": mailbox_events,
-                "messages": messages,
-                "wireframe_enabled": wireframe_mode,
                 "session_active": bool(session),
                 "session_name": session.capture_name if session else "",
                 "mode": mode,
@@ -458,9 +384,6 @@ def workspace_poll(request, endpoint_host: str):
             {
                 "success": True,
                 "captures": [],
-                "mailbox_events": [],
-                "messages": [],
-                "wireframe_enabled": False,
                 "session_active": False,
                 "session_name": "",
                 "mode": "native",

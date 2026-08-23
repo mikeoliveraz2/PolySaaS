@@ -14,8 +14,6 @@ from dose.polysniffer.handlers.slack_native_sniff import process_slack_native_sn
 from dose.polysniffer.sniff_forward import forward_sniff_native
 from dose.polysniffer.views.sniff_v2 import native_sniff_proxy_by_host
 from dose.polysniffer.views.sniff_v2_workspace import (
-    _include_mailbox_in_poll,
-    _mailbox_outcome,
     _serialize_mailbox_event,
     sniff_shell,
 )
@@ -66,11 +64,8 @@ class SlackNativeSniffTests(SimpleTestCase):
             "polysniffer/slack_wireframe.html",
             {"slack_wireframe_mode": "passthrough"},
         )
-        self.assertIn("New contact", html)
-        self.assertIn("New sale", html)
-        self.assertIn('name="name"', html)
-        self.assertIn('name="partner_name"', html)
-        self.assertIn('name="order_reference"', html)
+        self.assertIn("Run contact webhook", html)
+        self.assertIn("Run sale webhook", html)
         self.assertNotIn("<iframe", html.lower())
         script = (
             Path(__file__).parents[1]
@@ -81,8 +76,6 @@ class SlackNativeSniffTests(SimpleTestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("/events/slack/webhook/contact", script)
         self.assertIn("/events/slack/webhook/sale", script)
-        self.assertIn("JSON.stringify(payload || {})", script)
-        self.assertNotIn("body: '{}'", script)
 
     def test_production_passthrough_offers_supported_browser_url_copy(self):
         template = (
@@ -104,25 +97,6 @@ class SlackNativeSniffTests(SimpleTestCase):
             template,
         )
         self.assertIn('id="pss-slack-url-value"', template)
-        self.assertIn("Open full screen in new tab", template)
-        self.assertIn("polysaas-passthrough-fullscreen", template)
-        self.assertIn("ps_fullscreen=1", template)
-        self.assertIn("lockPassthroughLayout", template)
-        self.assertIn("translateZ(0)", template)
-        self.assertIn("polysaas-slack-wireframe-embed", template)
-        self.assertIn("polysaas-odoo-embed", template)
-        self.assertIn("content-column default for all passthrough", template)
-        self.assertNotIn("psForceHideSidebar", template)
-        sidebar = (
-            Path(__file__).parents[1]
-            / "templates"
-            / "admin"
-            / "includes"
-            / "custom_sidebar.html"
-        ).read_text(encoding="utf-8")
-        self.assertIn("pss-pt-fullscreen", sidebar)
-        self.assertIn("service.fullscreen_url", sidebar)
-        self.assertIn('target="_blank"', sidebar)
 
     def test_slack_passthrough_shell_has_green_bar_and_mailbox_binding(self):
         bar = render_to_string("polysniffer/sniff_pt_orchestration_bar.html")
@@ -173,71 +147,6 @@ class SlackNativeSniffTests(SimpleTestCase):
         event = _serialize_mailbox_event(row)
         self.assertEqual(event["payload"]["text"], "Acme Limited")
         self.assertNotIn("response_url", event["payload"])
-        self.assertNotIn("token", event["payload"])
-
-    def test_mailbox_poll_includes_wireframe_native_and_passthrough(self):
-        self.assertTrue(
-            _include_mailbox_in_poll(mode="passthrough", wireframe=True, source="slack")
-        )
-        self.assertTrue(
-            _include_mailbox_in_poll(mode="native", wireframe=True, source="slack")
-        )
-        self.assertTrue(
-            _include_mailbox_in_poll(mode="passthrough", wireframe=False, source="slack")
-        )
-        self.assertFalse(
-            _include_mailbox_in_poll(mode="native", wireframe=False, source="slack")
-        )
-        self.assertFalse(
-            _include_mailbox_in_poll(mode="passthrough", wireframe=True, source="")
-        )
-
-    def test_mailbox_outcome_from_atomic_results(self):
-        self.assertEqual(
-            _mailbox_outcome(
-                {"status": "processed", "results": [{"status": "success", "partner_id": 11}]}
-            ),
-            "partner #11",
-        )
-        self.assertEqual(
-            _mailbox_outcome(
-                {
-                    "status": "processed",
-                    "results": [{"status": "success", "order_name": "S00002"}],
-                }
-            ),
-            "S00002",
-        )
-
-    def test_wireframe_mailbox_payload_fields_are_kept(self):
-        row = SimpleNamespace(
-            id=2,
-            source="slack",
-            action_path="/events/slack/webhook/contact",
-            status="processed",
-            result={
-                "status": "processed",
-                "matched": 1,
-                "executed": 1,
-                "results": [{"status": "success", "partner_id": 12}],
-            },
-            error="",
-            created_at=None,
-            processed_at=None,
-            envelope={
-                "event_key": "slack.webhook.contact",
-                "method": "POST",
-                "direction": "REQ",
-                "payload": {
-                    "name": "Slack Contact",
-                    "email": "a@example.com",
-                    "token": "should-strip",
-                },
-            },
-        )
-        event = _serialize_mailbox_event(row)
-        self.assertEqual(event["payload"]["name"], "Slack Contact")
-        self.assertEqual(event["outcome"], "partner #12")
         self.assertNotIn("token", event["payload"])
 
     @patch("dose.polysniffer.views.sniff_v2_workspace.render")

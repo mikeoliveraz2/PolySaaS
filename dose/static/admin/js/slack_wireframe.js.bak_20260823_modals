@@ -147,48 +147,29 @@
 
     function formPayload(form) {
         var data = {};
-        form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
-            if (el.disabled) return;
+        Array.prototype.forEach.call(form.elements, function (el) {
+            if (!el.name || el.disabled) return;
+            if (el.type === 'submit' || el.type === 'button') return;
             var value = (el.value || '').trim();
             if (value) data[el.name] = value;
         });
         return data;
     }
 
-    var modalArmedAt = 0;
-    var armTimer = null;
-
-    function isModalArmed() {
-        return Date.now() >= modalArmedAt;
-    }
-
     function openForm(kind) {
-        closeForms();
-        var modal = root.querySelector('#ps-slack-modal-' + kind);
-        if (!modal) return;
-        // Defer paint until after the opening click fully settles, then arm inputs.
-        window.setTimeout(function () {
-            modal.classList.add('is-open', 'is-arming');
-            modal.removeAttribute('hidden');
-            modalArmedAt = Date.now() + 350;
-            if (armTimer) window.clearTimeout(armTimer);
-            armTimer = window.setTimeout(function () {
-                modal.classList.remove('is-arming');
-                var first = modal.querySelector('input, textarea');
-                if (first) first.focus();
-            }, 350);
-        }, 0);
+        root.querySelectorAll('.ps-slack-mock__form').forEach(function (form) {
+            form.classList.toggle('is-open', form.dataset.kind === kind);
+        });
+        var open = root.querySelector('#ps-slack-form-' + kind);
+        if (open) {
+            var first = open.querySelector('input, textarea');
+            if (first) first.focus();
+        }
     }
 
     function closeForms() {
-        if (armTimer) {
-            window.clearTimeout(armTimer);
-            armTimer = null;
-        }
-        modalArmedAt = 0;
-        root.querySelectorAll('.ps-slack-mock__modal').forEach(function (modal) {
-            modal.classList.remove('is-open', 'is-arming');
-            modal.setAttribute('hidden', 'hidden');
+        root.querySelectorAll('.ps-slack-mock__form').forEach(function (form) {
+            form.classList.remove('is-open');
         });
     }
 
@@ -220,93 +201,58 @@
         await waitForMailbox(data.mailbox_id, kind, path);
     }
 
-    async function submitKind(kind) {
-        if (!isModalArmed()) return;
-        var form = root.querySelector('#ps-slack-form-' + kind);
-        if (!form) return;
-        var payload = formPayload(form);
-        if (kind === 'contact' && !payload.name) {
-            result.textContent = 'Name is required for contact';
-            return;
-        }
-        if (kind === 'sale' && (!payload.partner_name || !payload.order_reference)) {
-            result.textContent = 'Customer name and order reference are required';
-            return;
-        }
-        var submitBtn = form.querySelector('[data-form-submit="' + kind + '"]');
-        if (submitBtn) submitBtn.disabled = true;
-        try {
-            appendMessage(
-                'you',
-                kind === 'sale'
-                    ? ('New sale: ' + payload.partner_name + ' / ' + payload.order_reference)
-                    : ('New contact: ' + payload.name),
-                {}
-            );
-            await queueWebhook(kind, payload);
-            form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
-                el.value = '';
-            });
-            closeForms();
-        } catch (error) {
-            result.textContent = 'Live webhook failed — ' + error.message;
-            updateBar(
-                kind === 'sale' ? '/events/slack/webhook/sale' : '/events/slack/webhook/contact',
-                'POST failed',
-                error.message
-            );
-            appendMessage('PolySaaS', 'Live webhook failed — ' + error.message, {bot: true});
-        } finally {
-            if (submitBtn) submitBtn.disabled = false;
-        }
-    }
-
     root.querySelectorAll('[data-form]').forEach(function (button) {
-        button.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
+        button.addEventListener('click', function () {
             openForm(button.dataset.form);
         });
     });
 
-    root.querySelectorAll('[data-modal-dismiss]').forEach(function (el) {
-        el.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-            if (!isModalArmed()) return;
+    root.querySelectorAll('[data-form-cancel]').forEach(function (button) {
+        button.addEventListener('click', function () {
             closeForms();
             result.textContent = 'Ready — form cancelled';
         });
     });
 
-    root.querySelectorAll('[data-form-submit]').forEach(function (button) {
-        button.addEventListener('click', function (event) {
+    root.querySelectorAll('.ps-slack-mock__form').forEach(function (form) {
+        form.addEventListener('submit', async function (event) {
             event.preventDefault();
-            event.stopPropagation();
-            submitKind(button.dataset.formSubmit);
+            var kind = form.dataset.kind;
+            var payload = formPayload(form);
+            if (kind === 'contact' && !payload.name) {
+                result.textContent = 'Name is required for contact';
+                return;
+            }
+            if (kind === 'sale' && (!payload.partner_name || !payload.order_reference)) {
+                result.textContent = 'Customer name and order reference are required';
+                return;
+            }
+            var submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+            try {
+                appendMessage(
+                    'you',
+                    kind === 'sale'
+                        ? ('New sale: ' + payload.partner_name + ' / ' + payload.order_reference)
+                        : ('New contact: ' + payload.name),
+                    {}
+                );
+                await queueWebhook(kind, payload);
+                form.reset();
+                closeForms();
+            } catch (error) {
+                result.textContent = 'Live webhook failed — ' + error.message;
+                updateBar(
+                    kind === 'sale' ? '/events/slack/webhook/sale' : '/events/slack/webhook/contact',
+                    'POST failed',
+                    error.message
+                );
+                appendMessage('PolySaaS', 'Live webhook failed — ' + error.message, {bot: true});
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+            }
         });
     });
-
-    // Capture-phase: Enter inside an open modal must never submit Jazzmin/composer forms
-    // (that reloads the page and looks like the modal "vanished" mid-fill).
-    document.addEventListener('keydown', function (event) {
-        if (!root.querySelector('.ps-slack-mock__modal.is-open')) return;
-        if (!root.contains(event.target)) return;
-        if (event.key === 'Enter' && event.target && event.target.tagName !== 'TEXTAREA') {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    }, true);
-
-    // Composer must not steal Enter / submit while a modal is open.
-    if (composer) {
-        composer.addEventListener('submit', function (event) {
-            if (root.querySelector('.ps-slack-mock__modal.is-open')) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-        }, true);
-    }
 
     root.querySelectorAll('[data-demo]').forEach(function (button) {
         button.addEventListener('click', function () {

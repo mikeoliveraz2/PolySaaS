@@ -9,8 +9,7 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from dose.models import Instruction, MQConfig, RequestLog, UserTenantMembership
-from dose.passthrough.orchestration_hook import _save_callback_data
-from dose.messaging import create_orchestration_feedback
+from dose.passthrough.orchestration_hook import _create_dose_message, _save_callback_data
 from dose.tenant_app_lookup import tenant_schema_search_path
 
 
@@ -260,11 +259,12 @@ def process_trigger_envelope(envelope: dict, tenant) -> dict:
 
             _save_callback_data(request, instruction, result, tenant)
             for user in _feedback_users(tenant):
-                create_orchestration_feedback(
-                    tenant=tenant,
-                    user=user,
-                    instruction=instruction,
-                    result=result,
+                request.user = user
+                _create_dose_message(
+                    request,
+                    instruction,
+                    result,
+                    instruction.executescript or "OrchestratedEvent",
                 )
             results.append(result)
 

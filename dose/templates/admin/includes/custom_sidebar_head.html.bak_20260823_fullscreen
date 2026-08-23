@@ -745,37 +745,6 @@
         width: 100%;
         box-sizing: border-box;
     }
-    .pss-pt-card-wrap {
-        position: relative;
-        min-width: 0;
-        max-width: 100%;
-    }
-    .pss-pt-fullscreen {
-        position: absolute;
-        top: 4px;
-        right: 4px;
-        z-index: 2;
-        width: 22px;
-        height: 22px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.55);
-        color: #e2e8f0;
-        font-size: 12px;
-        line-height: 1;
-        text-decoration: none;
-        opacity: 0.85;
-    }
-    .pss-pt-fullscreen:hover {
-        opacity: 1;
-        background: rgba(37, 99, 235, 0.95);
-        border-color: #93c5fd;
-        color: #fff;
-        text-decoration: none;
-    }
     .pss-pt-card {
         display: flex;
         flex-direction: column;
@@ -953,11 +922,6 @@
         max-width: 52px;
         margin: 0 auto;
         border-radius: 8px;
-    }
-
-    .collapsible-nav.collapsed .pss-pt-fullscreen,
-    #dose-custom-sidebar.collapsed .pss-pt-fullscreen {
-        display: none;
     }
 
     .collapsible-nav.collapsed .pss-pt-card:hover,

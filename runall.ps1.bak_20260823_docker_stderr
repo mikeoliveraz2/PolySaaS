@@ -3,7 +3,6 @@
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # Owner-approved 2026-08-01: start local RabbitMQ (docker-compose.local.yml) for Odoo MQ path
 # Owner-approved 2026-08-14: auto-start Docker Desktop + ngrok before RabbitMQ
-# Owner-approved 2026-08-23: docker compose stderr must not abort runall under ErrorActionPreference=Stop
 # PolySaaS Run All Services
 # Activates venv, starts Waitress WSGI server (Windows), syncs AI peers, starts Mattermost bot
 
@@ -31,26 +30,6 @@ function Stop-ProcessTree {
     $ErrorActionPreference = 'SilentlyContinue'
     & taskkill.exe /T /F /PID $ProcessId 2>$null | Out-Null
     $ErrorActionPreference = 'Stop'
-}
-
-function Invoke-DockerComposeLogged {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$ComposeArgs
-    )
-    # docker compose prints status like "Container ... Running" on stderr.
-    # Under $ErrorActionPreference=Stop that becomes a terminating NativeCommandError.
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & docker @ComposeArgs 2>&1 | ForEach-Object {
-            $line = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.ToString() } else { "$_" }
-            if ($line) { Write-Host "  $line" -ForegroundColor DarkGray }
-        }
-        return $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $prev
-    }
 }
 
 function Get-WaitressPortOwnerPids {
@@ -518,7 +497,7 @@ function Start-PolySaaSRabbitMQ {
 
     Push-Location $Root
     try {
-        $null = Invoke-DockerComposeLogged -ComposeArgs $composeArgs
+        & docker @composeArgs 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
     } finally {
         Pop-Location
     }
@@ -634,7 +613,7 @@ $rabbitStatus = Start-PolySaaSRabbitMQ -Root $ProjectRoot -AmqpPort $RabbitMqAmq
 Write-Host "Starting Odoo + Odoo DB (docker compose)..." -ForegroundColor Green
 Push-Location $ProjectRoot
 try {
-    $null = Invoke-DockerComposeLogged -ComposeArgs @("compose", "-f", $LocalComposeFile, "up", "-d", "odoo-db", "odoo")
+    & docker compose -f $LocalComposeFile up -d odoo-db odoo 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
 } finally {
     Pop-Location
 }
