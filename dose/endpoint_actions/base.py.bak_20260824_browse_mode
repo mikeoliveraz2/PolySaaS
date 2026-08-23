@@ -14,8 +14,6 @@ class EndpointAction:
 class EndpointActionAdapter:
     surface_template = ""
     default_bookmarks = ()
-    # "passthrough" = Browse opens embedded /pt/admin/… ; "external" = top-level app tab
-    browse_mode = "passthrough"
 
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:

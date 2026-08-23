@@ -5,7 +5,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260824-6">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260824-3">
 {% endblock %}
 
 {% block content %}
@@ -25,12 +25,11 @@
             href="{{ browser_launch_url }}"
             target="_blank"
             rel="noopener"
-            title="{{ browse_button_label }} in a new tab"
-        >{{ browse_button_label }}</a>
+            title="Browse {{ app_label }} in a new tab"
+        >Browse {{ app_label }} ↗</a>
         {% endif %}
     </header>
 
-    {% if bookmarks %}
     <nav class="polysaas-endpoint-home__bookmarks" aria-label="{{ title }} bookmarks">
         {% for bookmark in bookmarks %}
             {% if bookmark.destination_type == "external_path" or bookmark.destination_type == "passthrough_path" %}
@@ -55,9 +54,10 @@
                 title="{{ bookmark.description }}"
             ><span>{{ bookmark.icon }}</span>{{ bookmark.title }}</button>
             {% endif %}
+        {% empty %}
+            <span>No bookmarks published yet.</span>
         {% endfor %}
     </nav>
-    {% endif %}
 
     {% include "dose/includes/orchestration_bar.html" %}
 

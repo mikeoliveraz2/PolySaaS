@@ -189,35 +189,13 @@ def endpoint_home(request, endpoint_host: str):
             _default_bookmark_view(endpoint, item, adapter)
             for item in (getattr(adapter, "default_bookmarks", ()) or ())
         ]
+
     app_label = _app_label(endpoint)
     browse = endpoint_browse_target(endpoint)
-    browse_url = (browse.get("url") or "").rstrip("/")
-    # Browse lives once in the header — drop duplicate external/passthrough “open app” bookmarks.
-    filtered = []
-    for bookmark in bookmarks:
-        if bookmark.get("destination_type") in ("external_path", "passthrough_path"):
-            key = (bookmark.get("key") or "").lower()
-            title = (bookmark.get("title") or "").lower()
-            url = (bookmark.get("url") or "").rstrip("/")
-            if (
-                key in ("real-slack", "real-app", "browse", "open-real")
-                or title.startswith("open real")
-                or title.startswith("browse ")
-                or (browse_url and url and (url == browse_url or url in browse_url or browse_url.startswith(url)))
-            ):
-                continue
-        filtered.append(bookmark)
-    bookmarks = filtered
-
     status_zero = reverse("dose:endpoint_action_status", args=(endpoint_host, 0))
-    # Precompose the visible label — avoid Jazzmin/admin `app_label` collisions
-    # and empty-variable “Browse ” buttons when an old process is half-updated.
-    browse_button_label = f"Browse {app_label}"
     context = {
         "title": app_label,
         "app_label": app_label,
-        "browse_app_name": app_label,
-        "browse_button_label": browse_button_label,
         "endpoint": endpoint,
         "bookmarks": bookmarks,
         "consumers": _list_consumers(tenant, endpoint),

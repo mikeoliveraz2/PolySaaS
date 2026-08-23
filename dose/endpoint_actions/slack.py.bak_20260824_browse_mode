@@ -56,7 +56,6 @@ def _payload(kind: str, supplied: dict) -> dict:
 
 class SlackEndpointActionAdapter(EndpointActionAdapter):
     surface_template = "polysniffer/slack_wireframe.html"
-    browse_mode = "external"
     default_bookmarks = (
         {
             "key": "channel-home",
@@ -78,6 +77,13 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
             "destination_type": "popup_form",
             "target": "slack.sale",
             "icon": "💼",
+        },
+        {
+            "key": "real-slack",
+            "title": "Open real Slack",
+            "destination_type": "external_path",
+            "target": "/",
+            "icon": "↗",
         },
     )
 

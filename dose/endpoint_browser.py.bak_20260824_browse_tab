@@ -2,43 +2,6 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from dose.passthrough.registry import resolve_handler_for_endpoint
 
-_CANONICAL_APP_LABELS = (
-    ("mattermost", "Mattermost"),
-    ("nextcloud", "Nextcloud"),
-    ("hubspot", "HubSpot"),
-    ("dolibarr", "Dolibarr"),
-    ("wordpress", "WordPress"),
-    ("odoo", "Odoo"),
-    ("slack", "Slack"),
-    ("gmail", "Gmail"),
-)
-
-
-def endpoint_app_label(endpoint) -> str:
-    """Stable product name for Browse labels: Odoo, Mattermost, Slack, …"""
-    slug = (getattr(endpoint, "slug", "") or "").strip().lower().replace("-", "_")
-    host = (urlsplit(getattr(endpoint, "endpoint_url", "") or "").netloc or "").lower()
-    title = ""
-    if hasattr(endpoint, "get_menu_title"):
-        try:
-            title = (endpoint.get_menu_title() or "").strip()
-        except Exception:
-            title = (getattr(endpoint, "menu_title", "") or "").strip()
-    else:
-        title = (getattr(endpoint, "menu_title", "") or "").strip()
-    blob = f"{slug} {title} {host}".lower()
-    for key, label in _CANONICAL_APP_LABELS:
-        if slug == key or key in blob:
-            return label
-    if title:
-        first = title.split()[0]
-        if first[:1].isupper():
-            return first
-        return title
-    if host:
-        return host.split(".")[0].title()
-    return "app"
-
 
 def safe_browser_launch_url(endpoint, relative_path: str | None = None) -> str:
     """Return a top-level http(s) URL or an empty string for unsafe targets."""
@@ -115,30 +78,13 @@ def _handler_prefers_top_level_browser(handler, endpoint) -> bool:
     return False
 
 
-def _passthrough_browse_url(endpoint) -> str:
-    """Passthrough Browse opens fullscreen in a new tab when possible."""
-    passthrough = ""
-    if hasattr(endpoint, "get_menu_url"):
-        passthrough = endpoint.get_menu_url() or ""
-    if not passthrough and hasattr(endpoint, "get_proxy_prefix"):
-        passthrough = (endpoint.get_proxy_prefix() or "").rstrip("/") + "/"
-    if not passthrough:
-        return ""
-    if "ps_fullscreen=" in passthrough:
-        return passthrough
-    sep = "&" if "?" in passthrough else "?"
-    return f"{passthrough}{sep}ps_fullscreen=1"
-
-
 def endpoint_browse_target(endpoint) -> dict:
     """Resolve Browse [app] for endpoint home.
 
-    Always intended for a new tab/popup. URL depends on app type:
-
-    - Passthrough-capable apps (Odoo, Mattermost, Nextcloud, …): `/pt/admin/…`
-      with fullscreen so the embedded app fills the new tab.
-    - Non-proxied SPAs (Slack, HubSpot, …): real vendor URL (dumb browser);
-      consumers/messages stay on the endpoint home pane.
+    - Passthrough-capable apps (Odoo, Mattermost, Nextcloud, …): same-window
+      `/pt/admin/...` embedded execution.
+    - Non-proxied SPAs (Slack, HubSpot, …): top-level “dumb browser”; messages
+      and consumers stay on the endpoint home pane.
     """
     from dose.endpoint_actions import adapter_for_endpoint
 
@@ -147,29 +93,27 @@ def endpoint_browse_target(endpoint) -> dict:
         mode = (getattr(adapter, "browse_mode", "") or "").strip().lower()
         if mode == "external":
             url = safe_browser_launch_url(endpoint)
-            return {"url": url, "external": True, "mode": "external", "new_tab": True}
+            return {"url": url, "external": True, "mode": "external"}
         if mode == "passthrough":
-            url = _passthrough_browse_url(endpoint)
-            return {"url": url, "external": False, "mode": "passthrough", "new_tab": True}
+            passthrough = ""
+            if hasattr(endpoint, "get_menu_url"):
+                passthrough = endpoint.get_menu_url() or ""
+            if not passthrough and hasattr(endpoint, "get_proxy_prefix"):
+                passthrough = (endpoint.get_proxy_prefix() or "").rstrip("/") + "/"
+            return {"url": passthrough, "external": False, "mode": "passthrough"}
 
     handler = resolve_handler_for_endpoint(endpoint)
     if _handler_prefers_top_level_browser(handler, endpoint):
         url = safe_browser_launch_url(endpoint)
-        return {"url": url, "external": True, "mode": "external", "new_tab": True}
+        return {"url": url, "external": True, "mode": "external"}
 
-    passthrough = _passthrough_browse_url(endpoint)
+    passthrough = ""
+    if hasattr(endpoint, "get_menu_url"):
+        passthrough = endpoint.get_menu_url() or ""
+    if not passthrough and hasattr(endpoint, "get_proxy_prefix"):
+        passthrough = (endpoint.get_proxy_prefix() or "").rstrip("/") + "/"
     if passthrough:
-        return {
-            "url": passthrough,
-            "external": False,
-            "mode": "passthrough",
-            "new_tab": True,
-        }
+        return {"url": passthrough, "external": False, "mode": "passthrough"}
 
     url = safe_browser_launch_url(endpoint)
-    return {
-        "url": url,
-        "external": bool(url),
-        "mode": "external" if url else "none",
-        "new_tab": bool(url),
-    }
+    return {"url": url, "external": bool(url), "mode": "external" if url else "none"}

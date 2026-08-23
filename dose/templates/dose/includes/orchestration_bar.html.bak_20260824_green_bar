@@ -1,0 +1,12 @@
+<div id="polysaas-orchestration-bar" class="polysaas-transaction-bar" data-transaction-state="idle">
+    <div>
+        <strong>● POLYSAAS ORCHESTRATION</strong>
+        <span class="polysaas-transaction-bar__path">
+            Action: <code id="pss-action-path">—</code>
+        </span>
+        <span class="polysaas-transaction-bar__status">
+            Status: <span id="pss-orch-status" aria-live="polite">READY</span>
+        </span>
+        <span id="pss-orch-event" class="polysaas-transaction-bar__event"></span>
+    </div>
+</div>

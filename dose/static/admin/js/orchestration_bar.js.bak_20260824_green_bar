@@ -2,19 +2,19 @@
     'use strict';
 
     var states = {
-        idle: {label: 'READY', background: '#1a1a1a', border: '#0f0', status: '#93c5fd', event: '#166534'},
+        idle: {label: 'READY', background: '#1a1a1a', border: '#22c55e', status: '#93c5fd', event: '#166534'},
         submitting: {label: 'SUBMITTING', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
         queueing: {label: 'SUBMITTING', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
         queued: {label: 'QUEUED', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
         pending: {label: 'PENDING', background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
         processing: {label: 'PROCESSING', background: '#172554', border: '#3b82f6', status: '#bfdbfe', event: '#1d4ed8'},
         claimed: {label: 'PROCESSING', background: '#172554', border: '#3b82f6', status: '#bfdbfe', event: '#1d4ed8'},
-        success: {label: 'SUCCESS', background: '#052e16', border: '#0f0', status: '#86efac', event: '#166534'},
+        success: {label: 'SUCCESS', background: '#052e16', border: '#22c55e', status: '#86efac', event: '#166534'},
         failed: {label: 'FAILED', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
         error: {label: 'FAILED', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
         expired: {label: 'EXPIRED', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
         no_consumer: {label: 'NO CONSUMER', background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'},
-        processed: {label: 'PROCESSED', background: '#1a1a1a', border: '#0f0', status: '#93c5fd', event: '#166534'}
+        processed: {label: 'PROCESSED', background: '#1a1a1a', border: '#22c55e', status: '#93c5fd', event: '#166534'}
     };
 
     function update(options) {

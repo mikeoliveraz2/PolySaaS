@@ -1,0 +1,89 @@
+.polysaas-endpoint-home {
+    display: grid;
+    gap: 16px;
+    padding: 16px;
+}
+.polysaas-endpoint-home__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.polysaas-endpoint-home__header h1 {
+    margin: 0;
+    font-size: 24px;
+}
+.polysaas-endpoint-home__launch {
+    padding: 9px 14px;
+    border-radius: 6px;
+    background: #2563eb;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+}
+.polysaas-endpoint-home__bookmarks {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .06);
+}
+.polysaas-endpoint-bookmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 38px;
+    padding: 8px 12px;
+    border: 1px solid #9ca3af;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+.polysaas-endpoint-bookmark:hover {
+    border-color: #2563eb;
+}
+.polysaas-endpoint-bookmark[disabled] {
+    opacity: .5;
+    cursor: not-allowed;
+}
+.polysaas-endpoint-home__surface {
+    min-height: 420px;
+    overflow: hidden;
+    border: 1px solid #374151;
+    border-radius: 8px;
+}
+.polysaas-endpoint-home__placeholder {
+    display: grid;
+    place-items: center;
+    min-height: 420px;
+    padding: 32px;
+    text-align: center;
+    background: #111827;
+    color: #e5e7eb;
+}
+.polysaas-transaction-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    border-bottom: 3px solid #22c55e;
+    background: #1a1a1a;
+    color: #d1fae5;
+    font: 13px Consolas, monospace;
+}
+.polysaas-transaction-bar__path,
+.polysaas-transaction-bar__status {
+    margin-left: 12px;
+}
+.polysaas-transaction-bar__event {
+    display: none;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 3px;
+}

@@ -66,10 +66,6 @@ class SlackPassthroughHandler(PassthroughHandlerBase):
         """Keep all three Slack demo surfaces deterministic while plumbing grows."""
         return {"enabled": True, "app": "slack"}
 
-    def prefers_top_level_browser(self) -> bool:
-        """Slack SPA is not the embedded Browse target — use a top-level tab."""
-        return True
-
     def passthrough_embed_template_context(self, trigger, request) -> dict:
         """Bridge Slack mailbox events into the production passthrough bar."""
         host = str(trigger or "").strip().strip("/")

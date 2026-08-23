@@ -99,8 +99,7 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
             Path(settings.BASE_DIR) / "dose" / "templates" / "dose" / "endpoint_home.html"
         ).read_text(encoding="utf-8")
         self.assertIn("bookmarks", template)
-        self.assertIn("{{ browse_button_label }}", template)
-        self.assertNotIn("Browse {{ app_label }}", template)
+        self.assertIn("Browse {{ app_label }}", template)
         self.assertIn("Configured consumers", template)
         self.assertIn("consumers", template)
         self.assertIn('target="_blank"', template)

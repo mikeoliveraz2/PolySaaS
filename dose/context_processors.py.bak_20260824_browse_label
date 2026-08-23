@@ -337,21 +337,15 @@ def admin_navigation(request):
                 continue
             seen_normalized.add(norm)
 
-            # Product default is the tenant endpoint home; Browse opens passthrough
-            # or top-level vendor URL in a new tab (see endpoint_browse_target).
+            # Product default is the tenant endpoint home; passthrough is a
+            # specialized destination available from bookmarks/tools.
             from django.urls import reverse
-            from dose.endpoint_browser import (
-                endpoint_app_label,
-                endpoint_browse_target,
-                safe_browser_launch_url,
-            )
+            from dose.endpoint_browser import safe_browser_launch_url
 
             passthrough_url = endpoint.get_menu_url()
             url = reverse("dose:endpoint_home", args=(endpoint_host,))
-            browse = endpoint_browse_target(endpoint)
-            browser_url = browse.get("url") or safe_browser_launch_url(endpoint)
+            browser_url = safe_browser_launch_url(endpoint)
             title = endpoint.menu_title or (endpoint.slug or norm).replace('_', ' ').title()
-            browse_app = endpoint_app_label(endpoint) or title
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (slug={endpoint.slug!r}, upstream={endpoint.endpoint_url})")
 
             # READINESS 2026-08-01 (owner-approved, frozen-file exception): a PassThroughEndpoint
@@ -380,9 +374,6 @@ def admin_navigation(request):
                 'url': url,
                 'fullscreen_url': browser_url,
                 'browser_url': browser_url,
-                'browse_url': browser_url,
-                'browse_app': browse_app,
-                'browse_label': f"Browse {browse_app}",
                 'passthrough_url': passthrough_url,
                 'endpoint_id': endpoint.id,
                 'endpoint_host': endpoint_host,

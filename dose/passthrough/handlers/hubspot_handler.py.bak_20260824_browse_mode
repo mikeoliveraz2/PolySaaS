@@ -108,10 +108,6 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
         ]).lower()
         return 'hubspot' in blob or any(m in blob for m in _HUBSPOT_HOST_MARKERS)
 
-    def prefers_top_level_browser(self) -> bool:
-        """HubSpot SPA Browse opens top-level; home pane keeps consumers/messages."""
-        return True
-
     def should_wrap_in_admin_template(self, request, upstream_path, **kwargs) -> bool:
         low = (upstream_path or '').lower()
         if any(low.startswith(p) for p in _BYPASS_PREFIXES):

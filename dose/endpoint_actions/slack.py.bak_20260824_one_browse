@@ -79,6 +79,13 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
             "target": "slack.sale",
             "icon": "💼",
         },
+        {
+            "key": "real-slack",
+            "title": "Open real Slack",
+            "destination_type": "external_path",
+            "target": "/",
+            "icon": "↗",
+        },
     )
 
     @classmethod

@@ -6,7 +6,7 @@ from django.test import SimpleTestCase
 from django.urls import reverse
 
 from dose.endpoint_actions import adapter_for_endpoint
-from dose.endpoint_browser import endpoint_browse_target, safe_browser_launch_url
+from dose.endpoint_browser import safe_browser_launch_url
 
 
 class EndpointHomeArchitectureTests(SimpleTestCase):
@@ -17,8 +17,6 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
             slug="slack",
             endpoint_url=url,
             get_menu_title=lambda: "Slack",
-            get_menu_url=lambda: "/pt/admin/app.slack.com/",
-            get_proxy_prefix=lambda: "/pt/admin/app.slack.com",
         )
 
     def test_slack_adapter_exposes_allowlisted_actions(self):
@@ -42,45 +40,6 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
             "",
         )
 
-    def test_slack_browse_is_external_dumb_browser(self):
-        target = endpoint_browse_target(self.endpoint())
-        self.assertTrue(target["external"])
-        self.assertTrue(target["new_tab"])
-        self.assertEqual(target["mode"], "external")
-        self.assertTrue(target["url"].startswith("https://app.slack.com"))
-
-    def test_odoo_browse_is_passthrough_in_new_tab(self):
-        endpoint = SimpleNamespace(
-            pk=3,
-            id=3,
-            slug="odoo",
-            endpoint_url="http://localhost:8086/web",
-            get_menu_title=lambda: "Odoo",
-            get_menu_url=lambda: "/pt/admin/localhost:8086/web",
-            get_proxy_prefix=lambda: "/pt/admin/localhost:8086",
-        )
-        target = endpoint_browse_target(endpoint)
-        self.assertFalse(target["external"])
-        self.assertTrue(target["new_tab"])
-        self.assertEqual(target["mode"], "passthrough")
-        self.assertIn("/pt/admin/localhost:8086/web", target["url"])
-        self.assertIn("ps_fullscreen=1", target["url"])
-
-    def test_app_label_is_canonical_product_name(self):
-        from dose.endpoint_browser import endpoint_app_label
-
-        odoo = SimpleNamespace(
-            slug="odoo",
-            endpoint_url="http://localhost:8086/web",
-            get_menu_title=lambda: "Localhost:8086",
-        )
-        self.assertEqual(endpoint_app_label(odoo), "Odoo")
-        mm = SimpleNamespace(
-            slug="mattermost",
-            endpoint_url="https://mm.example.com",
-            get_menu_title=lambda: "Chat",
-        )
-        self.assertEqual(endpoint_app_label(mm), "Mattermost")
     def test_routes_are_endpoint_scoped(self):
         self.assertEqual(
             reverse("dose:endpoint_home", args=("app.slack.com",)),
@@ -99,11 +58,9 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
             Path(settings.BASE_DIR) / "dose" / "templates" / "dose" / "endpoint_home.html"
         ).read_text(encoding="utf-8")
         self.assertIn("bookmarks", template)
-        self.assertIn("{{ browse_button_label }}", template)
-        self.assertNotIn("Browse {{ app_label }}", template)
+        self.assertIn("Browse {{ app_label }}", template)
         self.assertIn("Configured consumers", template)
         self.assertIn("consumers", template)
-        self.assertIn('target="_blank"', template)
         self.assertNotIn("Open real app", template)
         self.assertNotIn("<iframe", template.lower())
         self.assertNotIn("<object", template.lower())

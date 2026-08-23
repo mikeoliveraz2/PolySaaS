@@ -90,15 +90,15 @@
                            href="{{ service.browse_url }}"
                            target="_blank"
                            rel="noopener"
-                           title="Browse {{ service.browse_app|default:service.title }} in a new tab"
-                           aria-label="Browse {{ service.browse_app|default:service.title }} in a new tab">Browse {{ service.browse_app|default:service.title }}</a>
+                           title="{{ service.browse_label }} in a new tab"
+                           aria-label="{{ service.browse_label }} in a new tab">{{ service.browse_label }} ↗</a>
                         {% elif service.ready and service.fullscreen_url %}
                         <a class="pss-pt-browse"
                            href="{{ service.fullscreen_url }}"
                            target="_blank"
                            rel="noopener"
                            title="Browse {{ service.title }} in a new tab"
-                           aria-label="Browse {{ service.title }} in a new tab">Browse {{ service.title }}</a>
+                           aria-label="Browse {{ service.title }} in a new tab">Browse {{ service.title }} ↗</a>
                         {% endif %}
                         </div>
                         {% endwith %}

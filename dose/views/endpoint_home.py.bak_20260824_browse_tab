@@ -9,11 +9,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from dose.endpoint_actions import adapter_for_endpoint
-from dose.endpoint_browser import (
-    endpoint_app_label,
-    endpoint_browse_target,
-    safe_browser_launch_url,
-)
+from dose.endpoint_browser import endpoint_browse_target, safe_browser_launch_url
 from dose.polysniffer.sniff_tenant import bind_request_tenant
 from dose.tenant_app_lookup import tenant_schema_search_path
 
@@ -36,7 +32,14 @@ def _endpoint_host(endpoint):
 
 
 def _app_label(endpoint):
-    return endpoint_app_label(endpoint)
+    title = (endpoint.get_menu_title() or "").strip()
+    if title:
+        return title
+    host = _endpoint_host(endpoint)
+    if host:
+        return host.split(".")[0].title()
+    return "app"
+
 
 def _consumer_affinity_tokens(endpoint):
     """Tokens used to associate Instruction consumers with this endpoint."""
@@ -189,35 +192,13 @@ def endpoint_home(request, endpoint_host: str):
             _default_bookmark_view(endpoint, item, adapter)
             for item in (getattr(adapter, "default_bookmarks", ()) or ())
         ]
+
     app_label = _app_label(endpoint)
     browse = endpoint_browse_target(endpoint)
-    browse_url = (browse.get("url") or "").rstrip("/")
-    # Browse lives once in the header — drop duplicate external/passthrough “open app” bookmarks.
-    filtered = []
-    for bookmark in bookmarks:
-        if bookmark.get("destination_type") in ("external_path", "passthrough_path"):
-            key = (bookmark.get("key") or "").lower()
-            title = (bookmark.get("title") or "").lower()
-            url = (bookmark.get("url") or "").rstrip("/")
-            if (
-                key in ("real-slack", "real-app", "browse", "open-real")
-                or title.startswith("open real")
-                or title.startswith("browse ")
-                or (browse_url and url and (url == browse_url or url in browse_url or browse_url.startswith(url)))
-            ):
-                continue
-        filtered.append(bookmark)
-    bookmarks = filtered
-
     status_zero = reverse("dose:endpoint_action_status", args=(endpoint_host, 0))
-    # Precompose the visible label — avoid Jazzmin/admin `app_label` collisions
-    # and empty-variable “Browse ” buttons when an old process is half-updated.
-    browse_button_label = f"Browse {app_label}"
     context = {
         "title": app_label,
         "app_label": app_label,
-        "browse_app_name": app_label,
-        "browse_button_label": browse_button_label,
         "endpoint": endpoint,
         "bookmarks": bookmarks,
         "consumers": _list_consumers(tenant, endpoint),

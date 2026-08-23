@@ -80,26 +80,14 @@
     }
 
     root.addEventListener('click', function (event) {
-        var runBtn = event.target.closest('[data-form]');
-        if (runBtn && root.contains(runBtn) && !runBtn.closest('.ps-slack-mock')) {
-            event.preventDefault();
-            var formKind = runBtn.dataset.form;
-            var launcher = root.querySelector(
-                '.polysaas-endpoint-home__form-host [data-form="' + formKind + '"]'
-            );
-            if (launcher) launcher.click();
-            return;
-        }
         var button = event.target.closest('[data-bookmark-type]');
         if (!button || button.disabled) return;
         var type = button.dataset.bookmarkType;
         var target = button.dataset.bookmarkTarget || '';
         if (type === 'popup_form') {
             var formKey = target.split('.').pop();
-            var popupLauncher = root.querySelector(
-                '.polysaas-endpoint-home__form-host [data-form="' + formKey + '"]'
-            );
-            if (popupLauncher) popupLauncher.click();
+            var launcher = root.querySelector('[data-form="' + formKey + '"]');
+            if (launcher) launcher.click();
             root.dispatchEvent(new CustomEvent('polysaas:bookmark', {
                 detail: {type: type, target: target}
             }));

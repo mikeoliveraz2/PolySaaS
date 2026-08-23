@@ -381,7 +381,6 @@ def admin_navigation(request):
                 'fullscreen_url': browser_url,
                 'browser_url': browser_url,
                 'browse_url': browser_url,
-                'browse_app': browse_app,
                 'browse_label': f"Browse {browse_app}",
                 'passthrough_url': passthrough_url,
                 'endpoint_id': endpoint.id,

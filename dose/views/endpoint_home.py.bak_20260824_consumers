@@ -9,11 +9,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from dose.endpoint_actions import adapter_for_endpoint
-from dose.endpoint_browser import (
-    endpoint_app_label,
-    endpoint_browse_target,
-    safe_browser_launch_url,
-)
+from dose.endpoint_browser import safe_browser_launch_url
 from dose.polysniffer.sniff_tenant import bind_request_tenant
 from dose.tenant_app_lookup import tenant_schema_search_path
 
@@ -33,105 +29,6 @@ def _tenant_endpoint(request, endpoint_host):
 
 def _endpoint_host(endpoint):
     return (urlsplit(endpoint.endpoint_url or "").netloc or "").lower()
-
-
-def _app_label(endpoint):
-    return endpoint_app_label(endpoint)
-
-def _consumer_affinity_tokens(endpoint):
-    """Tokens used to associate Instruction consumers with this endpoint."""
-    tokens = set()
-    slug = (getattr(endpoint, "slug", "") or "").strip().lower()
-    title = (endpoint.get_menu_title() or "").strip().lower()
-    host = _endpoint_host(endpoint)
-    if slug:
-        tokens.add(slug)
-    if title:
-        tokens.add(title.split()[0])
-    if host:
-        tokens.add(host.split(".")[0])
-    blob = f"{slug} {title} {host}"
-    aliases = {
-        "slack": ("slack",),
-        "odoo": ("odoo",),
-        "mattermost": ("mattermost", "mm"),
-        "nextcloud": ("nextcloud", "nc"),
-        "hubspot": ("hubspot",),
-    }
-    for key, values in aliases.items():
-        if key in blob or any(v in blob for v in values):
-            tokens.update(values)
-            tokens.add(key)
-    return {t for t in tokens if t and len(t) > 1}
-
-
-def _form_key_for_instruction(row):
-    """Map known Slack consumers to wireframe/popup form keys."""
-    event = (row.eventKey or "").strip().lower()
-    path = (row.requestpath or "").strip().lower()
-    if "slack.webhook.contact" in event or path.endswith(
-        "/events/slack/webhook/contact"
-    ):
-        return "contact"
-    if "slack.webhook.sale" in event or path.endswith("/events/slack/webhook/sale"):
-        return "sale"
-    return ""
-
-
-def _list_consumers(tenant, endpoint):
-    from dose.models import Instruction
-
-    tokens = _consumer_affinity_tokens(endpoint)
-    with tenant_schema_search_path(tenant) as ok:
-        if not ok:
-            return []
-        try:
-            rows = list(
-                Instruction.objects.exclude(executescript__isnull=True)
-                .exclude(executescript="")
-                .order_by("requestpath", "id")
-            )
-        except DatabaseError:
-            return []
-
-    matched = []
-    for row in rows:
-        blob = " ".join(
-            [
-                row.requestpath or "",
-                row.eventKey or "",
-                row.description or "",
-                row.executescript or "",
-            ]
-        ).lower()
-        if tokens and not any(tok in blob for tok in tokens):
-            continue
-        matched.append(row)
-    if not matched and rows:
-        # Better an unfiltered tenant list than an empty home.
-        matched = rows
-
-    consumers = []
-    for row in matched:
-        form_key = _form_key_for_instruction(row)
-        consumers.append(
-            {
-                "id": row.id,
-                "title": (row.description or "").strip()
-                or (row.eventKey or "").strip()
-                or (row.executescript or "Consumer"),
-                "event_key": row.eventKey or "",
-                "request_path": row.requestpath or "",
-                "method": row.requestmethod or "",
-                "executescript": row.executescript or "",
-                "admin_url": reverse(
-                    "admin:dose_instruction_change",
-                    args=[row.id],
-                ),
-                "form_key": form_key,
-            }
-        )
-    return consumers
 
 
 def _bookmark_view(endpoint, bookmark, adapter):
@@ -189,41 +86,13 @@ def endpoint_home(request, endpoint_host: str):
             _default_bookmark_view(endpoint, item, adapter)
             for item in (getattr(adapter, "default_bookmarks", ()) or ())
         ]
-    app_label = _app_label(endpoint)
-    browse = endpoint_browse_target(endpoint)
-    browse_url = (browse.get("url") or "").rstrip("/")
-    # Browse lives once in the header — drop duplicate external/passthrough “open app” bookmarks.
-    filtered = []
-    for bookmark in bookmarks:
-        if bookmark.get("destination_type") in ("external_path", "passthrough_path"):
-            key = (bookmark.get("key") or "").lower()
-            title = (bookmark.get("title") or "").lower()
-            url = (bookmark.get("url") or "").rstrip("/")
-            if (
-                key in ("real-slack", "real-app", "browse", "open-real")
-                or title.startswith("open real")
-                or title.startswith("browse ")
-                or (browse_url and url and (url == browse_url or url in browse_url or browse_url.startswith(url)))
-            ):
-                continue
-        filtered.append(bookmark)
-    bookmarks = filtered
 
     status_zero = reverse("dose:endpoint_action_status", args=(endpoint_host, 0))
-    # Precompose the visible label — avoid Jazzmin/admin `app_label` collisions
-    # and empty-variable “Browse ” buttons when an old process is half-updated.
-    browse_button_label = f"Browse {app_label}"
     context = {
-        "title": app_label,
-        "app_label": app_label,
-        "browse_app_name": app_label,
-        "browse_button_label": browse_button_label,
+        "title": endpoint.get_menu_title(),
         "endpoint": endpoint,
         "bookmarks": bookmarks,
-        "consumers": _list_consumers(tenant, endpoint),
-        "browser_launch_url": browse.get("url") or "",
-        "browse_external": bool(browse.get("external")),
-        "browse_mode": browse.get("mode") or "none",
+        "browser_launch_url": safe_browser_launch_url(endpoint),
         "surface_template": getattr(adapter, "surface_template", ""),
         "slack_wireframe_mode": "endpoint_home",
         "slack_contact_url": reverse(

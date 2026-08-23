@@ -210,14 +210,9 @@ def endpoint_home(request, endpoint_host: str):
     bookmarks = filtered
 
     status_zero = reverse("dose:endpoint_action_status", args=(endpoint_host, 0))
-    # Precompose the visible label — avoid Jazzmin/admin `app_label` collisions
-    # and empty-variable “Browse ” buttons when an old process is half-updated.
-    browse_button_label = f"Browse {app_label}"
     context = {
         "title": app_label,
         "app_label": app_label,
-        "browse_app_name": app_label,
-        "browse_button_label": browse_button_label,
         "endpoint": endpoint,
         "bookmarks": bookmarks,
         "consumers": _list_consumers(tenant, endpoint),

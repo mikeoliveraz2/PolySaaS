@@ -22,12 +22,6 @@
     text-decoration: none;
     font-weight: 700;
 }
-.polysaas-endpoint-bookmark--browse {
-    background: #2563eb !important;
-    border-color: #2563eb !important;
-    color: #fff !important;
-    font-weight: 700;
-}
 .polysaas-endpoint-home__bookmarks {
     display: flex;
     gap: 8px;
@@ -66,107 +60,11 @@
 .polysaas-endpoint-home__placeholder {
     display: grid;
     place-items: center;
-    min-height: 220px;
+    min-height: 420px;
     padding: 32px;
     text-align: center;
     background: #111827;
     color: #e5e7eb;
-}
-.polysaas-endpoint-home__consumers {
-    display: grid;
-    gap: 12px;
-    padding: 16px;
-    background: #111827;
-    color: #e5e7eb;
-    min-height: 280px;
-}
-.polysaas-endpoint-home__consumers-head h2 {
-    margin: 0 0 4px;
-    font-size: 18px;
-    color: #fff;
-}
-.polysaas-endpoint-home__consumers-head p {
-    margin: 0;
-    color: #9ca3af;
-    font-size: 13px;
-}
-.polysaas-consumer-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 8px;
-}
-.polysaas-consumer-list__item {
-    display: flex;
-    align-items: stretch;
-    gap: 8px;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    background: #1a1d21;
-    overflow: hidden;
-}
-.polysaas-consumer-list__link {
-    flex: 1;
-    min-width: 0;
-    display: grid;
-    gap: 4px;
-    padding: 12px 14px;
-    color: inherit;
-    text-decoration: none;
-}
-.polysaas-consumer-list__link:hover {
-    background: #222529;
-}
-.polysaas-consumer-list__title {
-    font-weight: 700;
-    color: #fff;
-}
-.polysaas-consumer-list__meta {
-    font: 12px Consolas, monospace;
-    color: #86efac;
-}
-.polysaas-consumer-list__meta code {
-    color: #93c5fd;
-}
-.polysaas-consumer-list__event {
-    font-size: 12px;
-    color: #9ca3af;
-}
-.polysaas-consumer-list__run {
-    flex: 0 0 auto;
-    margin: 8px;
-    padding: 8px 14px;
-    border: 0;
-    border-radius: 6px;
-    background: #007a5a;
-    color: #fff;
-    font-weight: 700;
-    cursor: pointer;
-}
-.polysaas-consumer-list__run:hover {
-    background: #148567;
-}
-/* Keep popup forms available without showing the full mock surface. */
-.polysaas-endpoint-home__form-host {
-    position: fixed;
-    inset: 0;
-    z-index: 4000;
-    pointer-events: none;
-}
-.polysaas-endpoint-home__form-host .ps-slack-mock {
-    position: absolute;
-    inset: 0;
-    min-height: 0;
-    display: block;
-    background: transparent;
-    pointer-events: none;
-}
-.polysaas-endpoint-home__form-host .ps-slack-mock > :not(.ps-slack-mock__modal):not(style):not(script) {
-    display: none !important;
-}
-.polysaas-endpoint-home__form-host .ps-slack-mock__modal {
-    pointer-events: auto;
 }
 .polysaas-transaction-bar,
 #polysaas-orchestration-bar.polysaas-transaction-bar {
