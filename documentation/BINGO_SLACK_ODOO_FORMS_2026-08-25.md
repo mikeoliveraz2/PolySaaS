@@ -1,0 +1,58 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
+
+# BINGO — Slack New Contact / New Sale Odoo forms — 2026-08-25
+
+## Certified
+
+- Slack **New contact** looks like Native Odoo Contacts / New. Save queues mailbox, closes the sheet, and `OdooCreatePartner` writes the partner.
+- Slack **New sale** looks like Native Odoo Quotations / New. Required: Customer + Customer Reference. Save queues mailbox, closes the sheet, and `OdooCreateQuotation` writes a draft quotation.
+- Bookmark clip-art icons: person+book for New contact, shopping bag for New sale (`dose/static/admin/img/slack_bookmark_*.png`).
+- Live **polysaasonline**: sale pairing corrected to `OdooCreateQuotation` on `/events/slack/webhook/sale`. Mailbox `#23` created quotation **S00003** (customer email matched existing My Company partner `#1`).
+- Close-on-queue Save UX; green bar success copy **Shown in Odoo Contacts / Sales**.
+
+## Explicitly not this bingo
+
+- Producer/consumer pairing UI and Browse (already frozen `28b07da0`).
+- Changing email-first partner match (quotation customer can show as My Company when that email exists).
+- HubSpot / full Slack webhook surface.
+
+## Sequence still locked
+
+Native HAR → passthrough → pair producers to consumers → popups/orch UX.
+
+## Validation
+
+- `python scripts/check_agent_sync.py` — passed
+- `python manage.py test dose.tests.test_slack_wireframe_webhooks` — OK
+- Browser: New contact Save → Odoo partner; New sale Save after pairing fix → S00003
+
+## Frozen source files
+
+| File | Role |
+|------|------|
+| `dose/endpoint_actions/slack.py` | Contact/sale payloads + bookmark keys |
+| `dose/templates/polysniffer/slack_wireframe.html` | Odoo contact/sale sheets + clip-art CSS |
+| `dose/static/admin/js/slack_wireframe.js` | Save close-on-queue + bar copy |
+| `dose/tests/test_slack_wireframe_webhooks.py` | Popup/markup tests |
+| `dose/static/admin/img/slack_bookmark_contact.png` | New contact clip art (listed; not bannered) |
+| `dose/static/admin/img/slack_bookmark_sale.png` | New sale clip art (listed; not bannered) |
+| `documentation/ACTIVE_HANDOFF.md` | Handoff |
+| `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md` | This cert |
+
+Plus matching `.bak` copies of the text sources.
+
+## Tenant data (not a source file)
+
+**polysaasonline** instructions after pairing repair:
+
+- contact → `OdooCreatePartner` on `/events/slack/webhook/contact`
+- sale → `OdooCreateQuotation` on `/events/slack/webhook/sale`
+
+## Handoff
+
+Tenant of record: OLIENTR. This machine verified on **polysaasonline**.
+
+**Commit**: _(filled after commit)_  
+**Branch**: `cursor/polysniffer-slack-native-capture`  
+**GOLD ZIP**: `D:\BINGO ZIPS\BINGO_slack_odoo_forms_2026-08-25.zip`

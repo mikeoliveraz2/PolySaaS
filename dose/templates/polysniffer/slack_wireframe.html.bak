@@ -1,3 +1,5 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
 {% load static %}
 <div
     class="ps-slack-mock"
@@ -9,6 +11,18 @@
     data-post-url="{% url 'dose:slack_wireframe_post_message' %}"
 >
     <style>
+        .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span {
+            display:inline-block; width:28px; height:28px; flex:0 0 28px;
+            font-size:0; line-height:0; color:transparent; overflow:hidden;
+            background-position:center; background-repeat:no-repeat; background-size:contain;
+        }
+        .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span {
+            background-image:url("{% static 'admin/img/slack_bookmark_contact.png' %}");
+        }
+        .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span {
+            background-image:url("{% static 'admin/img/slack_bookmark_sale.png' %}");
+        }
         .ps-slack-mock { position:relative; min-height:520px; display:grid; grid-template-columns:210px 1fr; background:#1a1d21; color:#d1d2d3; font:14px Arial,sans-serif; }
         .ps-slack-mock * { box-sizing:border-box; }
         .ps-slack-mock__sidebar { padding:18px 12px; background:#3f0e40; color:#fff; }
@@ -114,34 +128,50 @@
             box-sizing:border-box;
         }
         #ps-slack-modal-contact .ps-odoo-contact__nav {
-            display:flex; align-items:center; gap:14px;
-            padding:0 14px; min-height:40px; background:#714B67; color:#fff; flex:0 0 auto;
-        }
-        #ps-slack-modal-contact .ps-odoo-contact__nav-brand {
-            display:inline-flex; align-items:center; gap:8px;
-            font:700 14px Roboto,"Segoe UI",sans-serif;
-        }
-        #ps-slack-modal-contact .ps-odoo-contact__nav-mark {
-            width:22px; height:22px; border-radius:4px; background:rgba(255,255,255,.18);
-            display:grid; place-items:center; font-size:11px;
+            display:flex; align-items:center; gap:18px;
+            padding:0 16px; min-height:46px; background:#714B67; color:#fff; flex:0 0 auto;
         }
         #ps-slack-modal-contact .ps-odoo-contact__nav-links {
-            display:flex; align-items:center; gap:16px; flex:1;
-            font:600 13px Roboto,"Segoe UI",sans-serif;
+            display:flex; align-items:center; gap:18px; flex:1;
+            font:600 14px Roboto,"Segoe UI",sans-serif;
         }
-        #ps-slack-modal-contact .ps-odoo-contact__nav-links span { opacity:.78; }
+        #ps-slack-modal-contact .ps-odoo-contact__nav-links span { opacity:.8; }
         #ps-slack-modal-contact .ps-odoo-contact__nav-links span.is-on {
-            opacity:1; border-bottom:2px solid #fff; padding-bottom:9px;
+            opacity:1; box-shadow:inset 0 -2px 0 #fff; padding:13px 0;
+        }
+        #ps-slack-modal-contact .ps-odoo-contact__nav-tools {
+            display:flex; align-items:center; gap:12px; margin-left:auto;
+        }
+        #ps-slack-modal-contact .ps-odoo-contact__bell {
+            position:relative; width:22px; height:22px; opacity:.95;
+        }
+        #ps-slack-modal-contact .ps-odoo-contact__badge {
+            position:absolute; top:-4px; right:-6px; min-width:14px; height:14px;
+            border-radius:7px; background:#28a745; color:#fff;
+            font:700 9px Roboto,"Segoe UI",sans-serif; display:grid; place-items:center;
         }
         #ps-slack-modal-contact .ps-odoo-contact__nav-meta {
-            margin-left:auto; font:12px Roboto,"Segoe UI",sans-serif; opacity:.9;
+            font:13px Roboto,"Segoe UI",sans-serif; opacity:.95;
+        }
+        #ps-slack-modal-contact .ps-odoo-contact__who {
+            width:28px; height:28px; border-radius:3px; background:#28a745; color:#fff;
+            display:grid; place-items:center; font:700 14px Roboto,"Segoe UI",sans-serif;
         }
         #ps-slack-modal-contact .ps-odoo-contact__cp {
-            display:flex; align-items:center; justify-content:space-between; gap:12px;
-            padding:8px 16px; background:#f8f9fa; border-bottom:1px solid #dee2e6; flex:0 0 auto;
+            display:flex; align-items:center; gap:12px;
+            padding:8px 16px; background:#fff; border-bottom:1px solid #dee2e6; flex:0 0 auto;
         }
-        #ps-slack-modal-contact .ps-odoo-contact__bc { font-size:13px; color:#6c757d; }
+        #ps-slack-modal-contact .ps-odoo-contact__new {
+            background:#714B67; border:0; color:#fff; border-radius:4px;
+            padding:6px 14px; font:700 13px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-contact .ps-odoo-contact__bc { font-size:13px; color:#212529; font-weight:600; }
         #ps-slack-modal-contact .ps-odoo-contact__bc strong { color:#212529; font-weight:700; }
+        #ps-slack-modal-contact .ps-odoo-contact__search {
+            flex:1; min-width:120px; display:flex; align-items:center; gap:8px;
+            padding:5px 10px; border-bottom:1px solid #ced4da; color:#6c757d;
+            font:13px Roboto,"Segoe UI",sans-serif;
+        }
         #ps-slack-modal-contact .ps-odoo-contact__status {
             flex:1; min-width:0; text-align:right;
             font:12px Consolas,monospace; color:#714B67;
@@ -258,6 +288,131 @@
             #ps-slack-modal-contact .ps-odoo-contact__state { display:none; }
             #ps-slack-modal-contact .ps-odoo-contact__groups { grid-template-columns:1fr; }
         }
+        #ps-slack-modal-sale { padding:16px; }
+        #ps-slack-modal-sale .ps-slack-mock__modal-backdrop { background:rgba(15,17,22,.42); }
+        #ps-slack-modal-sale .ps-slack-mock__modal-dialog {
+            width:min(920px,100%); max-height:min(92vh,760px);
+            display:flex; flex-direction:column; border-radius:3px;
+            background:#f0f0f0; border:0; color:#212529;
+            box-shadow:0 12px 40px rgba(15,17,22,.28);
+            font-family:Roboto,"Segoe UI",Helvetica,Arial,sans-serif; overflow:hidden;
+        }
+        #ps-slack-modal-sale .ps-slack-mock__form label,
+        #ps-slack-modal-sale .ps-slack-mock__form input,
+        #ps-slack-modal-sale .ps-slack-mock__form textarea {
+            all:unset; box-sizing:border-box;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__nav {
+            display:flex; align-items:center; gap:18px;
+            padding:0 16px; min-height:46px; background:#714B67; color:#fff; flex:0 0 auto;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__nav-links {
+            display:flex; align-items:center; gap:18px; flex:1;
+            font:600 14px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__nav-links span { opacity:.8; }
+        #ps-slack-modal-sale .ps-odoo-sale__nav-links span.is-on {
+            opacity:1; box-shadow:inset 0 -2px 0 #fff; padding:13px 0;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__nav-tools {
+            display:flex; align-items:center; gap:12px; margin-left:auto;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__who {
+            width:28px; height:28px; border-radius:3px; background:#28a745; color:#fff;
+            display:grid; place-items:center; font:700 14px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__cp {
+            display:flex; align-items:center; gap:12px;
+            padding:8px 16px; background:#fff; border-bottom:1px solid #dee2e6; flex:0 0 auto;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__new {
+            background:#714B67; border:0; color:#fff; border-radius:4px;
+            padding:6px 14px; font:700 13px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__bc { font-size:13px; color:#212529; font-weight:600; }
+        #ps-slack-modal-sale .ps-odoo-sale__search {
+            flex:1; min-width:80px; padding:5px 10px; border-bottom:1px solid #ced4da;
+            color:#6c757d; font:13px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__status {
+            font:12px Consolas,monospace; color:#714B67;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__cp-actions { display:flex; align-items:center; gap:8px; }
+        #ps-slack-modal-sale .ps-odoo-sale__discard {
+            background:transparent; border:0; color:#6c757d;
+            font:600 13px Roboto,"Segoe UI",sans-serif; cursor:pointer; padding:6px 8px;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__save {
+            background:#714B67; border:0; color:#fff; border-radius:4px;
+            padding:6px 16px; font:700 13px Roboto,"Segoe UI",sans-serif; cursor:pointer;
+            box-shadow:0 1px 2px rgba(113,75,103,.35);
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__save:hover { background:#5e3d56; }
+        #ps-slack-modal-sale .ps-odoo-sale__save:disabled { opacity:.55; cursor:default; }
+        #ps-slack-modal-sale .ps-slack-mock__modal-close {
+            width:28px; height:28px; color:#6c757d; font-size:20px;
+        }
+        #ps-slack-modal-sale .ps-slack-mock__modal-close:hover { background:#e9ecef; color:#212529; }
+        #ps-slack-modal-sale .ps-odoo-sale__canvas { flex:1 1 auto; overflow:auto; padding:10px 16px 16px; }
+        #ps-slack-modal-sale .ps-odoo-sale__sheet {
+            background:#fff; padding:16px 22px 18px;
+            box-shadow:0 1px 6px rgba(0,0,0,.14); border-radius:3px;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__head {
+            display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:8px;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__hint {
+            color:#6c757d; font:13px Roboto,"Segoe UI",sans-serif; margin-bottom:4px;
+        }
+            display:block; width:min(420px,100%); border:0; border-bottom:1px solid #ced4da;
+            padding:4px 0 6px; font:700 22px Roboto,"Segoe UI",sans-serif; color:#212529;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__customer::placeholder { color:#adb5bd; font-weight:500; }
+        #ps-slack-modal-sale .ps-odoo-sale__customer:focus { outline:none; border-bottom-color:#714B67; }
+        #ps-slack-modal-sale .ps-odoo-sale__state {
+            padding:3px 10px; border-radius:10px; background:#714B67; color:#fff;
+            font:700 11px Roboto,"Segoe UI",sans-serif; letter-spacing:.04em;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__tabs {
+            display:flex; gap:18px; border-bottom:1px solid #dee2e6; margin:10px 0 12px;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__tab {
+            padding:8px 0 7px; border:0; background:transparent; color:#6c757d;
+            font:600 13px Roboto,"Segoe UI",sans-serif; cursor:default;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__tab.is-active {
+            color:#714B67; border-bottom:2px solid #714B67;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__groups {
+            display:grid; grid-template-columns:1fr 1fr; gap:8px 40px;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__row {
+            display:grid; grid-template-columns:140px 1fr; gap:10px; align-items:center; min-height:32px;
+            padding:2px 4px; border-radius:3px;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__row:hover { background:#f8f5f7; }
+        #ps-slack-modal-sale .ps-odoo-sale__row--stack { align-items:start; }
+        #ps-slack-modal-sale .ps-odoo-sale__row--stack label { padding-top:6px; }
+        #ps-slack-modal-sale .ps-odoo-sale__row label {
+            margin:0; color:#6c757d; font:13px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__row input,
+        #ps-slack-modal-sale .ps-odoo-sale__row textarea {
+            display:block; width:100%; margin:0; padding:4px 0;
+            border:0; border-bottom:1px solid #ced4da; color:#212529;
+            font:14px Roboto,"Segoe UI",sans-serif;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__row textarea { min-height:72px; white-space:pre-wrap; }
+        #ps-slack-modal-sale .ps-odoo-sale__row input:focus,
+        #ps-slack-modal-sale .ps-odoo-sale__row textarea:focus {
+            outline:none; border-bottom-color:#714B67;
+        }
+        #ps-slack-modal-sale .ps-odoo-sale__row input::placeholder,
+        #ps-slack-modal-sale .ps-odoo-sale__row textarea::placeholder { color:#adb5bd; }
+        #ps-slack-modal-sale .ps-odoo-sale__span { grid-column:1 / -1; }
+        @media (max-width:720px) {
+            #ps-slack-modal-sale .ps-odoo-sale__groups { grid-template-columns:1fr; }
+        }
     </style>
     <aside class="ps-slack-mock__sidebar">
         <div class="ps-slack-mock__workspace">PolySaaS Slack</div>
@@ -299,15 +454,25 @@
         <div class="ps-slack-mock__modal-backdrop"></div>
         <div class="ps-slack-mock__modal-dialog">
             <div class="ps-odoo-contact__nav">
-                <span class="ps-odoo-contact__nav-brand"><span class="ps-odoo-contact__nav-mark">O</span>Contacts</span>
                 <div class="ps-odoo-contact__nav-links">
                     <span class="is-on">Contacts</span>
+                    <span>Contacts</span>
                     <span>Configuration</span>
                 </div>
-                <span class="ps-odoo-contact__nav-meta">My Company</span>
+                <div class="ps-odoo-contact__nav-tools" aria-hidden="true">
+                    <span class="ps-odoo-contact__bell">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6h16v10H7l-3 3V6zm2 2v6h11V8H6z"/></svg>
+                        <span class="ps-odoo-contact__badge">2</span>
+                    </span>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 4a8 8 0 108 8 8 8 0 00-8-8zm.8 4H11v5l4.2 2.5.8-1.3-3.2-1.9z"/></svg>
+                    <span class="ps-odoo-contact__nav-meta">My Company</span>
+                    <span class="ps-odoo-contact__who">K</span>
+                </div>
             </div>
             <div class="ps-odoo-contact__cp">
+                <span class="ps-odoo-contact__new" aria-hidden="true">New</span>
                 <div class="ps-odoo-contact__bc">Contacts / <strong id="ps-slack-modal-contact-title">New</strong></div>
+                <div class="ps-odoo-contact__search" aria-hidden="true">Search...</div>
                 <span class="ps-odoo-contact__status" data-form-status="contact" aria-live="polite"></span>
                 <div class="ps-odoo-contact__cp-actions">
                     <button type="button" class="ps-odoo-contact__discard" data-modal-dismiss="contact">Discard</button>
@@ -377,26 +542,65 @@
     <div class="ps-slack-mock__modal" id="ps-slack-modal-sale" data-kind="sale" role="dialog" aria-modal="true" aria-labelledby="ps-slack-modal-sale-title" hidden>
         <div class="ps-slack-mock__modal-backdrop"></div>
         <div class="ps-slack-mock__modal-dialog">
-            <div class="ps-slack-mock__modal-header">
-                <h2 class="ps-slack-mock__modal-title" id="ps-slack-modal-sale-title">New sale</h2>
-                <button type="button" class="ps-slack-mock__modal-close" data-modal-dismiss="sale" aria-label="Close">&times;</button>
+            <div class="ps-odoo-sale__nav">
+                <div class="ps-odoo-sale__nav-links">
+                    <span class="is-on">Orders</span>
+                    <span>To Invoice</span>
+                    <span>Products</span>
+                    <span>Configuration</span>
+                </div>
+                <div class="ps-odoo-sale__nav-tools" aria-hidden="true">
+                    <span class="ps-odoo-sale__nav-meta">My Company</span>
+                    <span class="ps-odoo-sale__who">K</span>
+                </div>
             </div>
-            <div class="ps-slack-mock__form" id="ps-slack-form-sale" data-kind="sale" role="form">
-                <div class="ps-slack-mock__modal-body">
-                    <p class="ps-slack-mock__modal-hint">Create a draft Odoo quotation from this Slack workspace.</p>
-                    <label>Customer name (required)<input name="partner_name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Buyer" autocomplete="off"></label>
-                    <label>Customer email<input name="partner_email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="buyer@example.com" autocomplete="off"></label>
-                    <label>Order reference (required)<input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off"></label>
-                    <label>Note<textarea name="note" form="ps-slack-modal-sink" maxlength="400" placeholder="Optional note for the draft quotation"></textarea></label>
+            <div class="ps-odoo-sale__cp">
+                <span class="ps-odoo-sale__new" aria-hidden="true">New</span>
+                <div class="ps-odoo-sale__bc">Quotations / <strong id="ps-slack-modal-sale-title">New</strong></div>
+                <div class="ps-odoo-sale__search" aria-hidden="true">Search...</div>
+                <span class="ps-odoo-sale__status" data-form-status="sale" aria-live="polite"></span>
+                <div class="ps-odoo-sale__cp-actions">
+                    <button type="button" class="ps-odoo-sale__discard" data-modal-dismiss="sale">Discard</button>
+                    <button type="button" class="ps-odoo-sale__save" data-form-submit="sale">Save</button>
+                    <button type="button" class="ps-slack-mock__modal-close" data-modal-dismiss="sale" aria-label="Close">&times;</button>
                 </div>
-                <div class="ps-slack-mock__modal-footer">
-                    <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--ghost" data-modal-dismiss="sale">Cancel</button>
-                    <button type="button" class="ps-slack-mock__btn ps-slack-mock__btn--primary" data-form-submit="sale">Create draft quotation</button>
+            </div>
+            <div class="ps-odoo-sale__canvas">
+            <div class="ps-slack-mock__form ps-odoo-sale__sheet" id="ps-slack-form-sale" data-kind="sale" role="form">
+                <div class="ps-odoo-sale__head">
+                    <div>
+                        <div class="ps-odoo-sale__hint">Customer</div>
+                        <input class="ps-odoo-sale__customer" name="partner_name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="e.g. Lumber Inc" autocomplete="off">
+                    </div>
+                    <span class="ps-odoo-sale__state">QUOTATION</span>
                 </div>
+                <div class="ps-odoo-sale__tabs">
+                    <button type="button" class="ps-odoo-sale__tab is-active">Order Lines</button>
+                    <button type="button" class="ps-odoo-sale__tab" tabindex="-1">Other Info</button>
+                </div>
+                <div class="ps-odoo-sale__groups">
+                    <div>
+                        <div class="ps-odoo-sale__row">
+                            <label>Customer email</label>
+                            <input name="partner_email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="buyer@example.com" autocomplete="off">
+                        </div>
+                        <div class="ps-odoo-sale__row">
+                            <label>Customer Reference</label>
+                            <input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off">
+                        </div>
+                    </div>
+                    <div>
+                        <div class="ps-odoo-sale__row ps-odoo-sale__row--stack ps-odoo-sale__span">
+                            <label>Terms and Conditions</label>
+                            <textarea name="note" form="ps-slack-modal-sink" maxlength="400" placeholder="Optional note for the draft quotation"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
             </div>
         </div>
     </div>
     {% endif %}
     <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-2"></script>
-    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260824-5"></script>
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260824-7"></script>
 </div>

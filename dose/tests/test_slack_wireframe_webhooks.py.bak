@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack Odoo contact/sale forms — 2026-08-25
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -63,7 +65,9 @@ class SlackWireframeWebhookTests(SimpleTestCase):
         self.assertIn("Individual", template)
         self.assertIn("Discard", template)
         self.assertIn('data-form-submit="contact"', template)
-        self.assertIn("Customer name (required)", template)
+        self.assertIn("Quotations /", template)
+        self.assertIn("Customer Reference", template)
+        self.assertIn('data-form-submit="sale"', template)
         script = (
             Path(settings.BASE_DIR)
             / "dose"

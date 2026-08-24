@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack Odoo contact/sale forms — 2026-08-25
 import uuid
 
 from django.utils import timezone
@@ -9,7 +11,15 @@ from .base import EndpointAction, EndpointActionAdapter
 
 def _payload(kind: str, supplied: dict) -> dict:
     allowed = (
-        {"name": 120, "email": 120, "phone": 40}
+        {
+            "name": 120,
+            "email": 120,
+            "phone": 40,
+            "street": 120,
+            "city": 80,
+            "zip": 20,
+            "is_company": 8,
+        }
         if kind == "contact"
         else {
             "partner_name": 120,
@@ -36,12 +46,17 @@ def _payload(kind: str, supplied: dict) -> dict:
     token = uuid.uuid4().hex[:10]
     stamp = timezone.now().strftime("%Y%m%d-%H%M%S")
     if kind == "contact":
-        return {
+        payload = {
             "demo_id": token,
             "name": cleaned["name"] or f"Slack Contact {stamp}",
             "email": cleaned["email"] or f"slack.contact.{token}@example.com",
             "phone": cleaned["phone"] or "+1 555 0100",
+            "is_company": cleaned["is_company"].lower() in ("1", "true", "yes", "company"),
         }
+        for field in ("street", "city", "zip"):
+            if cleaned[field]:
+                payload[field] = cleaned[field]
+        return payload
     return {
         "demo_id": token,
         "partner_name": cleaned["partner_name"] or f"Slack Buyer {stamp}",
@@ -70,14 +85,14 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
             "title": "New contact",
             "destination_type": "popup_form",
             "target": "slack.contact",
-            "icon": "👤",
+            "icon": "contact",
         },
         {
             "key": "new-sale",
             "title": "New sale",
             "destination_type": "popup_form",
             "target": "slack.sale",
-            "icon": "💼",
+            "icon": "sale",
         },
     )
 

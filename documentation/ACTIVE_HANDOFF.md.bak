@@ -1,39 +1,32 @@
 # PolySaaS Active Handoff
 
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
+<!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
 
 This file is the canonical startup and end-of-day handoff for the repo.
 Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: 2026-08-24 — **BINGO** Slack home + producer/consumer pairing
+- Date/session: 2026-08-25 — **BINGO** Slack New Contact / New Sale Odoo forms
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
+- Cert: `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md`
+- Prior cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
 - Agent sync check: passed
-- Tenant of record: **OLIENTR** (Odoo + Slack)
-- GOLD ZIP: `D:\BINGO ZIPS\BINGO_slack_producer_consumer_2026-08-24.zip` (create if missing — BINGO ritual)
+- Tenant of record: **OLIENTR** (Odoo + Slack). Verified this session on **polysaasonline**.
+- GOLD ZIP: `D:\BINGO ZIPS\BINGO_slack_odoo_forms_2026-08-25.zip`
 
 ## BINGO (this session)
 
-Allowlisted Slack contact/sale producers pair to Odoo consumers. Slack Browse is
-real top-level Slack (no iframe). Empty bookmark rail stays hidden. Mailbox
-plumbing already in. See BINGO doc for certified / not-this-bingo.
+Slack New contact and New sale use Native Odoo form chrome. Save closes on mailbox queue. Contact → `OdooCreatePartner`. Sale → `OdooCreateQuotation` (pairing repaired on polysaasonline). Clip-art bookmark icons. Live quotation **S00003**.
 
-**Slack popups / green-bar instruction-match copy — done (after BINGO).**
-Frozen BINGO source files were not edited.
+Do not edit frozen files in this commit without Michael/Shela permission.
 
-## After BINGO (2026-08-24)
+## Next
 
-- Shared bar shows instruction-match copy (`POST REQ <path> → consumer`).
-- Slack contact/sale popups remain Slack-shaped overlays with required labels.
-- Mailbox results now include `executescript` for bar/consumer naming.
-- 21 focused tests passed. Interactive browser click-through still needs a
-  signed-in hard-refresh after Waitress restart.
+Leave pairing UI and Browse frozen. Optional later: quotation partner match by name when email already belongs to My Company.
 
-**Next:** more Slack popup/orch polish only if Michael asks; do not reopen
-producer/consumer pairing or Browse.
+After pull: restart Waitress + hard-refresh Slack home (`slack_wireframe.js?v=20260824-7`).
 
 ## Sequence still locked
 
@@ -43,9 +36,9 @@ Native HAR → passthrough → pair producers to consumers → popups/orch UX.
 
 - Coordinated migrate still blocked at legacy `dose.0028_mlprompt`. Do not fake
   without an audited plan.
-- After pull: restart Waitress + hard-refresh endpoint homes.
 
 ## Commit exclusions
 
 **Exclude:** `documentation/Capital Raise Project/**`, `polysniffer-auth.json`,
-`polysniffer_evidence/`, `tmp/_probe_*`, `__pycache__`.
+`polysniffer_evidence/`, `tmp/_probe_*`, `tmp/_odoo_contact_preview.html`,
+`tmp/_make_contact_preview.py`, `__pycache__`.

@@ -1,3 +1,5 @@
+// THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+// BINGO: Slack Odoo contact/sale forms — 2026-08-25
 (function () {
     'use strict';
 
@@ -159,7 +161,7 @@
         return {
             state: 'success',
             label: 'SUCCESS',
-            text: 'Odoo draft quotation ' + (atomic.order_name || ('#' + atomic.order_id)),
+            text: 'Shown in Odoo Sales — ' + (atomic.order_name || ('quotation #' + atomic.order_id)),
             match: match,
             result: orchestration
         };
@@ -242,7 +244,7 @@
             if (armTimer) window.clearTimeout(armTimer);
             armTimer = window.setTimeout(function () {
                 modal.classList.remove('is-arming');
-                var first = modal.querySelector('.ps-odoo-contact__name') ||
+                var first = modal.querySelector('.ps-odoo-contact__name, .ps-odoo-sale__customer') ||
                     modal.querySelector('input:not([type="radio"]):not([type="checkbox"]), textarea');
                 if (first) first.focus();
             }, 350);

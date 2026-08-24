@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack Odoo contact/sale forms — 2026-08-25
 import uuid
 
 from django.utils import timezone
@@ -83,14 +85,14 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
             "title": "New contact",
             "destination_type": "popup_form",
             "target": "slack.contact",
-            "icon": "👤",
+            "icon": "contact",
         },
         {
             "key": "new-sale",
             "title": "New sale",
             "destination_type": "popup_form",
             "target": "slack.sale",
-            "icon": "💼",
+            "icon": "sale",
         },
     )
 
