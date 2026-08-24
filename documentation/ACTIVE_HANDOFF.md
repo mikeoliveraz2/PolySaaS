@@ -21,7 +21,19 @@ Allowlisted Slack contact/sale producers pair to Odoo consumers. Slack Browse is
 real top-level Slack (no iframe). Empty bookmark rail stays hidden. Mailbox
 plumbing already in. See BINGO doc for certified / not-this-bingo.
 
-**Next = Slack popups / green bar only.**
+**Slack popups / green-bar instruction-match copy — done (after BINGO).**
+Frozen BINGO source files were not edited.
+
+## After BINGO (2026-08-24)
+
+- Shared bar shows instruction-match copy (`POST REQ <path> → consumer`).
+- Slack contact/sale popups remain Slack-shaped overlays with required labels.
+- Mailbox results now include `executescript` for bar/consumer naming.
+- 21 focused tests passed. Interactive browser click-through still needs a
+  signed-in hard-refresh after Waitress restart.
+
+**Next:** more Slack popup/orch polish only if Michael asks; do not reopen
+producer/consumer pairing or Browse.
 
 ## Sequence still locked
 

@@ -38,37 +38,22 @@
         return '';
     }
 
-    var barStates = {
-        idle: {background: '#1a1a1a', border: '#22c55e', status: '#93c5fd', event: '#166534'},
-        queueing: {background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
-        queued: {background: '#422006', border: '#f59e0b', status: '#fde68a', event: '#92400e'},
-        processing: {background: '#172554', border: '#3b82f6', status: '#bfdbfe', event: '#1d4ed8'},
-        success: {background: '#052e16', border: '#22c55e', status: '#86efac', event: '#166534'},
-        error: {background: '#450a0a', border: '#ef4444', status: '#fecaca', event: '#991b1b'}
-    };
-
     function updateBar(path, status, eventText, state) {
-        var bar = document.getElementById('polysaas-orchestration-bar');
-        var barPath = document.getElementById('pss-action-path');
+        if (window.PolySaaSTransactionBar) {
+            window.PolySaaSTransactionBar.update({
+                path: path,
+                label: status,
+                detail: eventText,
+                state: state || 'idle'
+            });
+            return;
+        }
         var barStatus = document.getElementById('pss-orch-status');
+        var barPath = document.getElementById('pss-action-path');
         var barEvent = document.getElementById('pss-orch-event');
-        var visual = barStates[state] || barStates.idle;
-        if (bar) {
-            bar.dataset.transactionState = state || 'idle';
-            bar.style.backgroundColor = visual.background;
-            bar.style.borderBottomColor = visual.border;
-        }
         if (barPath) barPath.textContent = path;
-        if (barStatus) {
-            barStatus.textContent = status;
-            barStatus.style.color = visual.status;
-            barStatus.setAttribute('aria-live', 'polite');
-        }
-        if (barEvent) {
-            barEvent.style.display = 'inline-block';
-            barEvent.textContent = eventText;
-            barEvent.style.backgroundColor = visual.event;
-        }
+        if (barStatus) barStatus.textContent = status;
+        if (barEvent) barEvent.textContent = eventText;
     }
 
     function appendMessage(author, text, opts) {

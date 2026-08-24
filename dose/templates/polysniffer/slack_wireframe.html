@@ -47,6 +47,8 @@
         .ps-slack-mock__modal-header {
             display:flex; align-items:center; justify-content:space-between;
             gap:12px; padding:16px 20px 8px;
+            border-bottom:1px solid #3f0e40;
+            background:linear-gradient(180deg,#4a154b 0%,#1a1d21 100%);
         }
         .ps-slack-mock__modal-title { margin:0; font-size:18px; font-weight:800; color:#fff; }
         .ps-slack-mock__modal-close {
@@ -138,7 +140,7 @@
             <div class="ps-slack-mock__form" id="ps-slack-form-contact" data-kind="contact" role="form">
                 <div class="ps-slack-mock__modal-body">
                     <p class="ps-slack-mock__modal-hint">Create a contact in Odoo from this Slack workspace.</p>
-                    <label>Name<input name="name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Contact" autocomplete="off"></label>
+                    <label>Name (required)<input name="name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Contact" autocomplete="off"></label>
                     <label>Email<input name="email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="contact@example.com" autocomplete="off"></label>
                     <label>Phone<input name="phone" form="ps-slack-modal-sink" type="text" maxlength="40" placeholder="+1 555 0100" autocomplete="off"></label>
                 </div>
@@ -159,9 +161,9 @@
             <div class="ps-slack-mock__form" id="ps-slack-form-sale" data-kind="sale" role="form">
                 <div class="ps-slack-mock__modal-body">
                     <p class="ps-slack-mock__modal-hint">Create a draft Odoo quotation from this Slack workspace.</p>
-                    <label>Customer name<input name="partner_name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Buyer" autocomplete="off"></label>
+                    <label>Customer name (required)<input name="partner_name" form="ps-slack-modal-sink" type="text" required maxlength="120" placeholder="Acme Buyer" autocomplete="off"></label>
                     <label>Customer email<input name="partner_email" form="ps-slack-modal-sink" type="email" maxlength="120" placeholder="buyer@example.com" autocomplete="off"></label>
-                    <label>Order reference<input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off"></label>
+                    <label>Order reference (required)<input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off"></label>
                     <label>Note<textarea name="note" form="ps-slack-modal-sink" maxlength="400" placeholder="Optional note for the draft quotation"></textarea></label>
                 </div>
                 <div class="ps-slack-mock__modal-footer">
@@ -172,6 +174,6 @@
         </div>
     </div>
     {% endif %}
-    <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260823-1"></script>
-    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260823-8"></script>
+    <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-2"></script>
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260824-1"></script>
 </div>

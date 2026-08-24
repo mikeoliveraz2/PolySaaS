@@ -1,144 +1,39 @@
 # PolySaaS Active Handoff
 
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
+
 This file is the canonical startup and end-of-day handoff for the repo.
 Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: 2026-08-23 afternoon — common-denominator UI implementation
+- Date/session: 2026-08-24 — **BINGO** Slack home + producer/consumer pairing
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Latest commit: `4c804ed0`; common-denominator work is currently uncommitted
+- Cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
 - Agent sync check: passed
-- Governing UI: `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`
-- Product policy: primary mock/screenshot + bookmarks; secondary unchanged real
-  app in a top-level tab; Native/passthrough stay specialized.
+- Tenant of record: **OLIENTR** (Odoo + Slack)
+- GOLD ZIP: `D:\BINGO ZIPS\BINGO_slack_producer_consumer_2026-08-24.zip` (create if missing — BINGO ritual)
 
-## Common-denominator UI (2026-08-23 afternoon)
+## BINGO (this session)
 
-- Added tenant-owned `EndpointBookmark` model, admin, migration, bootstrap, and
-  default-publishing command.
-- Public endpoint homes use `/dose/apps/<endpoint-host>/`; database IDs remain
-  internal.
-- Sidebar primary links open endpoint homes. Secondary arrows open validated
-  real-app HTTP(S) targets with `target="_blank" rel="noopener"`.
-- Slack is the first endpoint adapter: mock surface, contact/sale popup actions,
-  existing mailbox/consumer dispatch, and shared transaction feedback.
-- Added one reusable orchestration bar controller/partial across endpoint home,
-  wireframe, and passthrough validation.
-- Added explicit PolySniffer GET-path candidate review and Publish Bookmark;
-  HAR traffic is never auto-published.
-- Active demo schema is `polysaasonline`. There is no PostgreSQL schema named
-  `olient`; setup commands now reject nonexistent schemas instead of falling
-  through to `public`.
+Allowlisted Slack contact/sale producers pair to Odoo consumers. Slack Browse is
+real top-level Slack (no iframe). Empty bookmark rail stays hidden. Mailbox
+plumbing already in. See BINGO doc for certified / not-this-bingo.
 
-## Common-denominator validation
+**Next = Slack popups / green bar only.**
 
-- `python manage.py check` — passed.
-- `python manage.py makemigrations --check --dry-run` — no changes.
-- 59 focused endpoint, bookmark, passthrough, Native-boundary, architecture,
-  and Slack webhook tests — passed.
-- Authenticated browser: sidebar host routes, Slack endpoint home, allowlisted
-  real-app URL, contact popup, mailbox/consumer, and final `SUCCESS` verified.
-- `polysaasonline` default bookmarks — seeded/updated (4).
-- `python manage.py migrate` — blocked by pre-existing public migration-history
-  drift: `dose.0028_mlprompt` tries to create the already-existing
-  `dose_mlprompt` table. Do not fake migration history without an explicit,
-  audited repair plan.
+## Sequence still locked
 
-## Owner-approved delivery order
-
-1. Three stable Slack wireframe surfaces — **done**
-2. Real contact webhook + Odoo consumer — **done** (browser verified)
-3. Real sale webhook + draft-quotation consumer — **done** (browser verified; e.g. S00001)
-4. Messaging — **done** (DoseMessage FK fix + wireframe thread/composer)
-5. Wireframe contact/sale forms as Slack-style modals — **done** (presentation only)
-6. Further visual polish to resemble Slack — **still last / optional**
-
-## Verified this session (browser)
-
-- Odoo sidebar click opens in **admin content column** (not full-bleed) after restoring wrap
-- Wireframe **New contact** → Odoo Contacts (partner created)
-- Wireframe **New sale** → Odoo Sales → Quotations (draft quotation)
-- Optional fullscreen remains via sidebar card **↗** / `?ps_fullscreen=1` only
-
-## Odoo content-column fix (critical)
-
-### Mistake (never approved design)
-
-`OdooPassthroughHandler.should_wrap_in_admin_template` had been forced to **`return False`**, so `/web` HTML bypassed `passthrough_embed` and filled the browser. Content column was always the target; that override was unauthorized.
-
-### Fix
-
-- Wrap gate now uses `should_process_html_response` (HTML shells wrap; assets/JSON do not)
-- File: `dose/passthrough/handlers/odoo_handler.py` (owner-approved bugfix on frozen handler)
-
-## Messaging (DoseMessage)
-
-- `DoseMessage.user` → `db_constraint=False` + migration `0062`
-- `dose/messaging.py`: create / feedback / list helpers (no tenant `auth_user` join)
-- Mailbox orchestration feedback via `webhook_events` (frozen `orchestration_hook.py` untouched)
-- Wireframe message GET/POST APIs + thread + composer
-
-## Live events pane
-
-- Wireframe mode right pane: mailbox + DoseMessage poll (HAR suppressed)
-- Fix: `workspace_poll` no longer skipped mailbox when `wireframe_context` set
-
-## Slack wireframe modals (presentation only)
-
-- Existing contact/sale fields + same webhooks; Slack-style modal chrome
-- **Do not** change Odoo forms or real Slack internals
-- Mid-fill “modal vanished” bug: Enter was submitting a **parent Jazzmin form** (page reload). Fixed with:
-  - sink form `ps-slack-modal-sink` + `form=` on fields
-  - capture-phase Enter block while modal open
-  - Create button only submits; Cancel/× close; no Esc / backdrop dismiss
-- Cache bust: `slack_wireframe.js?v=20260823-6`
-
-## Content-column / fullscreen layout
-
-- Default: all passthrough in content column; sidebar visible
-- Fullscreen: new tab with `?ps_fullscreen=1` (sidebar ↗)
-- `context_processors.py` adds `fullscreen_url`; embed/forwarding honor `ps_fullscreen`
-
-## Ops / runall
-
-- `runall.ps1`: Docker Compose stderr no longer aborts under `$ErrorActionPreference=Stop` (`Invoke-DockerComposeLogged`)
-- Wireframe consumers bound on `olient` / `polysaasonline` via `setup_slack_wireframe_consumers`
-
-## Primary files (this session)
-
-- Messaging: `dose_message.py`, `0062_*.py`, `messaging.py`, `webhook_events.py`, wireframe views/urls/tests
-- Layout: `passthrough_embed.html`, `custom_sidebar*.html`, `context_processors.py`, `forwarding.py`
-- Odoo wrap: `odoo_handler.py`
-- Live events: `sniff_v2_workspace.py`, `sniff_workspace.html`
-- Modals: `slack_wireframe.html`, `slack_wireframe.js`
-- `runall.ps1`
-- `.bak_20260823_*` companions
+Native HAR → passthrough → pair producers to consumers → popups/orch UX.
 
 ## Blockers / risks
 
-- Coordinated migration remains blocked at legacy `dose.0028_mlprompt` because
-  the public table exists but migration history says it is unapplied.
-- Two long-running Waitress instances on port 8000 still serve pre-change code;
-  restart the normal stack before evaluating endpoint-host routes there. The
-  amended implementation was browser-verified on isolated port 8001.
-- Hard-refresh Slack after pull (`?v=20260823-6`) or modal Enter bug can look “still broken”
-- Restart Waitress after pull so `odoo_handler` wrap gate loads
-- Frozen files touched with owner approval this session: `odoo_handler.py`, `urls.py`, passthrough embed/sidebar/forwarding as needed for content-column
-- Naive-datetime warnings on callback/instruction dates unchanged
+- Coordinated migrate still blocked at legacy `dose.0028_mlprompt`. Do not fake
+  without an audited plan.
+- After pull: restart Waitress + hard-refresh endpoint homes.
 
-## Next actions (office)
+## Commit exclusions
 
-1. Review and explicitly approve commit/push of the common-denominator slice.
-2. Repair the legacy public migration history only through a separately audited
-   plan; do not fake `0028` opportunistically.
-3. Restart Waitress + mailbox consumer so port 8000 loads endpoint-host routes.
-4. Smoke sidebar → endpoint home and contact/sale once after the restart.
-5. Add endpoint-specific screenshots/bookmarks incrementally; do not turn
-   Native into the universal product home.
-
-## Commit scope / exclusions
-
-**Include:** messaging, layout/content-column, Odoo wrap, live events, wireframe modals, runall Docker fix, tests, handoff, `.bak_20260823_*` for those paths.
-
-**Exclude:** `documentation/Capital Raise Project/**`, `media/polysniffer/**`, `polysniffer-auth.json`, `polysniffer_evidence/`, `tmp/_probe_*`, `__pycache__`.
+**Exclude:** `documentation/Capital Raise Project/**`, `polysniffer-auth.json`,
+`polysniffer_evidence/`, `tmp/_probe_*`, `__pycache__`.

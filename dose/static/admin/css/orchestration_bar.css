@@ -1,0 +1,9 @@
+.polysaas-transaction-bar__match {
+    display: none;
+    margin-left: 8px;
+    color: #fde68a;
+    font-size: 12px;
+}
+.polysaas-transaction-bar__match.is-visible {
+    display: inline;
+}

@@ -247,11 +247,15 @@ def process_trigger_envelope(envelope: dict, tenant) -> dict:
                 "direction": envelope["direction"],
                 "instruction_id": instruction.id,
                 "eventKey": instruction.eventKey or envelope.get("event_key", ""),
+                "executescript": instruction.executescript or "",
             }
             try:
                 atomic_result = instruction.execute_atomic_service(request)
                 if isinstance(atomic_result, dict):
                     result.update(atomic_result)
+                    result["executescript"] = (
+                        instruction.executescript or result.get("executescript") or ""
+                    )
                 elif atomic_result is not None:
                     result["service_result"] = atomic_result
             except Exception as exc:

@@ -17,29 +17,6 @@
         processed: {label: 'PROCESSED', background: '#1a1a1a', border: '#0f0', status: '#93c5fd', event: '#166534'}
     };
 
-    function describeMatch(result, fallbackPath) {
-        result = result || {};
-        var first = (result.results && result.results[0]) || {};
-        var method = (first.method || result.method || 'POST').toUpperCase();
-        var direction = (first.direction || result.direction || 'REQ').toUpperCase();
-        var path = first.path || result.action_path || result.path || fallbackPath || '';
-        var consumer = (first.executescript || result.executescript || '').trim();
-        if (result.status === 'no_instruction' || result.matched === 0) {
-            return 'No instruction match for ' + method + ' ' + (path || 'this action');
-        }
-        if (consumer) {
-            return method + ' ' + direction + ' ' + path + ' → ' + consumer;
-        }
-        var eventKey = (first.eventKey || result.event_key || '').trim();
-        if (eventKey) {
-            return method + ' ' + direction + ' ' + path + ' · ' + eventKey;
-        }
-        if (path) {
-            return method + ' ' + direction + ' ' + path;
-        }
-        return '';
-    }
-
     function update(options) {
         options = options || {};
         var state = options.state || 'processed';
@@ -48,11 +25,6 @@
         var path = document.getElementById('pss-action-path');
         var status = document.getElementById('pss-orch-status');
         var event = document.getElementById('pss-orch-event');
-        var match = document.getElementById('pss-orch-match');
-        var matchText = options.match;
-        if (matchText === undefined && options.result) {
-            matchText = describeMatch(options.result, options.path);
-        }
         if (bar) {
             bar.dataset.transactionState = state;
             bar.style.backgroundColor = visual.background;
@@ -64,15 +36,6 @@
             status.style.color = visual.status;
             status.setAttribute('aria-live', 'polite');
         }
-        if (match) {
-            if (matchText) {
-                match.textContent = matchText;
-                match.classList.add('is-visible');
-            } else if (options.match === '') {
-                match.textContent = '';
-                match.classList.remove('is-visible');
-            }
-        }
         if (event) {
             event.style.display = options.detail ? 'inline-block' : 'none';
             event.style.backgroundColor = visual.event;
@@ -82,7 +45,6 @@
 
     window.PolySaaSTransactionBar = {
         states: states,
-        describeMatch: describeMatch,
         update: update
     };
 })();

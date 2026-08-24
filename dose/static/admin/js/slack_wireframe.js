@@ -38,13 +38,16 @@
         return '';
     }
 
-    function updateBar(path, status, eventText, state) {
+    function updateBar(path, status, eventText, state, extra) {
+        extra = extra || {};
         if (window.PolySaaSTransactionBar) {
             window.PolySaaSTransactionBar.update({
                 path: path,
                 label: status,
                 detail: eventText,
-                state: state || 'idle'
+                state: state || 'idle',
+                result: extra.result,
+                match: extra.match
             });
             return;
         }
@@ -107,37 +110,55 @@
         }
     }
 
+    function matchLine(orchestration, path) {
+        if (window.PolySaaSTransactionBar && window.PolySaaSTransactionBar.describeMatch) {
+            return window.PolySaaSTransactionBar.describeMatch(orchestration, path);
+        }
+        return '';
+    }
+
     function transactionOutcome(kind, mailboxResult) {
         var orchestration = mailboxResult && mailboxResult.result;
         var atomic = orchestration && orchestration.results && orchestration.results[0];
+        var match = matchLine(orchestration, mailboxResult && mailboxResult.action_path);
         if (!atomic) {
-            var noConsumer = orchestration && orchestration.status === 'no_instruction';
+            var noConsumer = orchestration && (
+                orchestration.status === 'no_instruction' || orchestration.matched === 0
+            );
             return {
-                state: 'error',
+                state: noConsumer ? 'no_consumer' : 'error',
                 label: noConsumer ? 'NO CONSUMER' : 'NO RESULT',
                 text: noConsumer
                     ? 'No consumer is bound to this webhook'
-                    : 'Webhook processed without a consumer result'
+                    : 'Webhook processed without a consumer result',
+                match: match,
+                result: orchestration
             };
         }
         if (atomic.status !== 'success') {
             return {
                 state: 'error',
                 label: 'FAILED',
-                text: 'Consumer failed: ' + (atomic.detail || atomic.error || 'unknown error')
+                text: 'Consumer failed: ' + (atomic.detail || atomic.error || 'unknown error'),
+                match: match,
+                result: orchestration
             };
         }
         if (kind === 'contact') {
             return {
                 state: 'success',
                 label: 'SUCCESS',
-                text: 'Odoo contact ready — partner #' + atomic.partner_id
+                text: 'Odoo contact ready — partner #' + atomic.partner_id,
+                match: match,
+                result: orchestration
             };
         }
         return {
             state: 'success',
             label: 'SUCCESS',
-            text: 'Odoo draft quotation ' + (atomic.order_name || ('#' + atomic.order_id))
+            text: 'Odoo draft quotation ' + (atomic.order_name || ('#' + atomic.order_id)),
+            match: match,
+            result: orchestration
         };
     }
 
@@ -163,14 +184,21 @@
                 throw new Error(data.error || ('Mailbox ' + data.status));
             }
             if (data.status === 'pending') {
-                updateBar(path, 'PENDING', 'Mailbox #' + mailboxId + ' is waiting', 'queued');
+                updateBar(path, 'PENDING', 'Mailbox #' + mailboxId + ' is waiting', 'queued', {
+                    match: 'Waiting for consumer on ' + path
+                });
             } else if (data.status === 'claimed') {
-                updateBar(path, 'PROCESSING', 'Consumer is running', 'processing');
+                updateBar(path, 'PROCESSING', 'Consumer is running', 'processing', {
+                    match: 'Matching ' + path
+                });
             }
             if (data.status === 'processed') {
                 var outcome = transactionOutcome(kind, data);
                 result.textContent = outcome.text + ' · ' + path;
-                updateBar(path, outcome.label, outcome.text, outcome.state);
+                updateBar(path, outcome.label, outcome.text, outcome.state, {
+                    match: outcome.match,
+                    result: outcome.result
+                });
                 appendMessage('PolySaaS', outcome.text, {bot: true});
                 await refreshMessages();
                 return;
@@ -234,7 +262,9 @@
             ? root.dataset.saleUrl
             : root.dataset.contactUrl;
         result.textContent = 'Queueing real ' + kind + ' webhook…';
-        updateBar(path, 'SUBMITTING', 'Sending transaction to mailbox', 'queueing');
+        updateBar(path, 'SUBMITTING', 'Sending transaction to mailbox', 'queueing', {
+            match: 'POST REQ ' + path
+        });
         var response = await fetch(triggerUrl, {
             method: 'POST',
             credentials: 'same-origin',
@@ -250,7 +280,9 @@
             throw new Error(data.error || 'Webhook could not be queued');
         }
         result.textContent = 'Mailbox #' + data.mailbox_id + ' queued · ' + path;
-        updateBar(path, 'QUEUED', 'Mailbox #' + data.mailbox_id, 'queued');
+        updateBar(path, 'QUEUED', 'Mailbox #' + data.mailbox_id, 'queued', {
+            match: 'POST REQ ' + path
+        });
         await waitForMailbox(data.mailbox_id, kind, path);
     }
 

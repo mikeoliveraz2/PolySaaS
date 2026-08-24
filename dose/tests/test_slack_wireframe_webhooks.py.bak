@@ -43,33 +43,6 @@ class SlackWireframeWebhookTests(SimpleTestCase):
         self.assertNotEqual(contact["event_id"], sale["event_id"])
         self.assertEqual(contact["tenant_schema"], "olient")
 
-    def test_slack_popups_remain_slack_shaped_and_bar_free_of_iframes(self):
-        from pathlib import Path
-
-        from django.conf import settings
-
-        template = (
-            Path(settings.BASE_DIR)
-            / "dose"
-            / "templates"
-            / "polysniffer"
-            / "slack_wireframe.html"
-        ).read_text(encoding="utf-8")
-        self.assertIn('id="ps-slack-modal-contact"', template)
-        self.assertIn('id="ps-slack-modal-sale"', template)
-        self.assertIn("Name (required)", template)
-        self.assertIn("Customer name (required)", template)
-        self.assertNotIn("<iframe", template.lower())
-        bar = (
-            Path(settings.BASE_DIR)
-            / "dose"
-            / "templates"
-            / "dose"
-            / "includes"
-            / "orchestration_bar.html"
-        ).read_text(encoding="utf-8")
-        self.assertIn("pss-orch-match", bar)
-
     @patch("dose.views.slack_wireframe_webhook.publish_slack_wireframe_event")
     @patch("dose.views.slack_wireframe_webhook.bind_request_tenant")
     def test_authenticated_contact_click_queues_mailbox_event(

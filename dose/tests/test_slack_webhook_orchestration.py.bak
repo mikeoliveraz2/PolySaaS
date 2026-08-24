@@ -150,13 +150,6 @@ class TriggerEnvelopeConsumerTests(SimpleTestCase):
         create_message.assert_called_once()
         self.assertEqual(result["status"], "processed")
         self.assertEqual(result["matched"], 1)
-        self.assertEqual(result["results"][0]["executescript"], "OdooCreatePartner")
-        from dose.orchestration_copy import describe_instruction_match
-
-        self.assertEqual(
-            describe_instruction_match(result),
-            "POST REQ /events/slack/command/poly → OdooCreatePartner",
-        )
 
     @patch("dose.webhook_events.create_orchestration_feedback")
     @patch("dose.webhook_events._feedback_users", return_value=[None])

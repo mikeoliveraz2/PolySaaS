@@ -1,12 +1,9 @@
-{% load static %}
-<link rel="stylesheet" href="{% static 'admin/css/orchestration_bar.css' %}?v=20260824-1">
 <div id="polysaas-orchestration-bar" class="polysaas-transaction-bar" data-transaction-state="idle" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
     <div>
         ● POLYSAAS ORCHESTRATION ACTIVE<br>
         <span class="polysaas-transaction-bar__meta">Action Path: <code id="pss-action-path">—</code></span>
         &nbsp;|&nbsp;
         <span class="polysaas-transaction-bar__meta">Status: <span id="pss-orch-status" aria-live="polite">READY</span></span>
-        <span id="pss-orch-match" class="polysaas-transaction-bar__match"></span>
         <span id="pss-orch-event" class="polysaas-transaction-bar__event"></span>
     </div>
 </div>
