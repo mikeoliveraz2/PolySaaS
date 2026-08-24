@@ -10,7 +10,7 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 - Date/session: 2026-08-25 — **BINGO** Slack New Contact / New Sale Odoo forms
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Cert: `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md`
+- Cert: `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md` (`b28be615`)
 - Prior cert: `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
 - Agent sync check: passed
 - Tenant of record: **OLIENTR** (Odoo + Slack). Verified this session on **polysaasonline**.
