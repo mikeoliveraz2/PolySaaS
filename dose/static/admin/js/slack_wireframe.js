@@ -145,10 +145,13 @@
             };
         }
         if (kind === 'contact') {
+            var partnerName = atomic.name || '';
             return {
                 state: 'success',
                 label: 'SUCCESS',
-                text: 'Odoo contact ready — partner #' + atomic.partner_id,
+                text: partnerName
+                    ? ('Shown in Odoo Contacts — ' + partnerName + ' (#' + atomic.partner_id + ')')
+                    : ('Shown in Odoo Contacts — partner #' + atomic.partner_id),
                 match: match,
                 result: orchestration
             };
@@ -207,10 +210,13 @@
         throw new Error('Consumer did not finish within 20 seconds');
     }
 
-    function formPayload(form) {
+    function formPayload(scope) {
         var data = {};
-        form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
+        if (!scope) return data;
+        scope.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
             if (el.disabled) return;
+            if (el.type === 'radio' && !el.checked) return;
+            if (el.type === 'checkbox' && !el.checked) return;
             var value = (el.value || '').trim();
             if (value) data[el.name] = value;
         });
@@ -236,7 +242,8 @@
             if (armTimer) window.clearTimeout(armTimer);
             armTimer = window.setTimeout(function () {
                 modal.classList.remove('is-arming');
-                var first = modal.querySelector('input, textarea');
+                var first = modal.querySelector('.ps-odoo-contact__name') ||
+                    modal.querySelector('input:not([type="radio"]):not([type="checkbox"]), textarea');
                 if (first) first.focus();
             }, 350);
         }, 0);
@@ -283,24 +290,49 @@
         updateBar(path, 'QUEUED', 'Mailbox #' + data.mailbox_id, 'queued', {
             match: 'POST REQ ' + path
         });
-        await waitForMailbox(data.mailbox_id, kind, path);
+        return {
+            mailboxId: data.mailbox_id,
+            path: path
+        };
+    }
+
+    function setFormStatus(kind, text) {
+        var statusEl = root.querySelector('[data-form-status="' + kind + '"]');
+        if (statusEl) statusEl.textContent = text || '';
     }
 
     async function submitKind(kind) {
-        if (!isModalArmed()) return;
+        var modal = root.querySelector('#ps-slack-modal-' + kind);
         var form = root.querySelector('#ps-slack-form-' + kind);
-        if (!form) return;
-        var payload = formPayload(form);
+        var payload = formPayload(modal || form);
+        var path = kind === 'sale'
+            ? '/events/slack/webhook/sale'
+            : '/events/slack/webhook/contact';
+        var savingLabel = kind === 'sale'
+            ? 'Saving sale to mailbox'
+            : 'Saving contact to mailbox';
         if (kind === 'contact' && !payload.name) {
             result.textContent = 'Name is required for contact';
+            setFormStatus(kind, 'Name is required');
+            updateBar(path, 'FAILED', 'Name is required', 'error');
             return;
         }
         if (kind === 'sale' && (!payload.partner_name || !payload.order_reference)) {
             result.textContent = 'Customer name and order reference are required';
+            setFormStatus(kind, 'Customer and order reference required');
+            updateBar(path, 'FAILED', 'Customer name and order reference are required', 'error');
             return;
         }
-        var submitBtn = form.querySelector('[data-form-submit="' + kind + '"]');
-        if (submitBtn) submitBtn.disabled = true;
+        var submitBtn = root.querySelector('[data-form-submit="' + kind + '"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.dataset.originalLabel = submitBtn.textContent;
+            submitBtn.textContent = 'Saving…';
+        }
+        setFormStatus(kind, 'Saving…');
+        updateBar(path, 'SUBMITTING', savingLabel, 'queueing', {
+            match: 'POST REQ ' + path
+        });
         try {
             appendMessage(
                 'you',
@@ -309,23 +341,52 @@
                     : ('New contact: ' + payload.name),
                 {}
             );
-            await queueWebhook(kind, payload);
-            form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
-                el.value = '';
-            });
+            var queued = await queueWebhook(kind, payload);
+            setFormStatus(kind, queued && queued.mailboxId
+                ? ('Queued mailbox #' + queued.mailboxId)
+                : 'Queued');
+            if (form) {
+                form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
+                    if (el.type === 'radio' || el.type === 'checkbox') return;
+                    el.value = '';
+                });
+            }
             closeForms();
+            if (queued && queued.mailboxId) {
+                await waitForMailbox(queued.mailboxId, kind, queued.path);
+            }
         } catch (error) {
             result.textContent = 'Live webhook failed — ' + error.message;
-            updateBar(
-                kind === 'sale' ? '/events/slack/webhook/sale' : '/events/slack/webhook/contact',
-                'FAILED',
-                error.message,
-                'error'
-            );
+            setFormStatus(kind, error.message);
+            updateBar(path, 'FAILED', error.message, 'error');
             appendMessage('PolySaaS', 'Live webhook failed — ' + error.message, {bot: true});
         } finally {
-            if (submitBtn) submitBtn.disabled = false;
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = submitBtn.dataset.originalLabel || 'Save';
+            }
         }
+    }
+
+    function updateContactAvatar() {
+        var avatar = root.querySelector('[data-contact-avatar]');
+        var nameInput = root.querySelector('.ps-odoo-contact__name');
+        if (!avatar || !nameInput) return;
+        var icon = avatar.querySelector('.ps-odoo-contact__avatar-icon');
+        var letter = avatar.querySelector('.ps-odoo-contact__avatar-letter');
+        var initial = (nameInput.value || '').trim().charAt(0).toUpperCase();
+        if (letter) {
+            letter.textContent = initial;
+            if (initial) letter.removeAttribute('hidden');
+            else letter.setAttribute('hidden', 'hidden');
+        }
+        if (icon) icon.style.display = initial ? 'none' : '';
+    }
+
+    var contactName = root.querySelector('.ps-odoo-contact__name');
+    if (contactName) {
+        contactName.addEventListener('input', updateContactAvatar);
+        updateContactAvatar();
     }
 
     root.querySelectorAll('[data-form]').forEach(function (button) {
@@ -346,12 +407,12 @@
         });
     });
 
-    root.querySelectorAll('[data-form-submit]').forEach(function (button) {
-        button.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
-            submitKind(button.dataset.formSubmit);
-        });
+    root.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-form-submit]');
+        if (!button || !root.contains(button)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        submitKind(button.getAttribute('data-form-submit'));
     });
 
     // Capture-phase: Enter inside an open modal must never submit Jazzmin/composer forms

@@ -57,8 +57,26 @@ class SlackWireframeWebhookTests(SimpleTestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('id="ps-slack-modal-contact"', template)
         self.assertIn('id="ps-slack-modal-sale"', template)
-        self.assertIn("Name (required)", template)
+        self.assertIn("Contacts /", template)
+        self.assertIn("ps-odoo-contact__nav", template)
+        self.assertIn("ps-odoo-contact__state", template)
+        self.assertIn("Individual", template)
+        self.assertIn("Discard", template)
+        self.assertIn('data-form-submit="contact"', template)
         self.assertIn("Customer name (required)", template)
+        script = (
+            Path(settings.BASE_DIR)
+            / "dose"
+            / "static"
+            / "admin"
+            / "js"
+            / "slack_wireframe.js"
+        ).read_text(encoding="utf-8")
+        queue_at = script.index("var queued = await queueWebhook(kind, payload);")
+        close_at = script.index("closeForms();", queue_at)
+        wait_at = script.index("await waitForMailbox(queued.mailboxId", close_at)
+        self.assertLess(queue_at, close_at)
+        self.assertLess(close_at, wait_at)
         self.assertNotIn("<iframe", template.lower())
         bar = (
             Path(settings.BASE_DIR)
@@ -130,6 +148,25 @@ class SlackWireframeWebhookTests(SimpleTestCase):
         self.assertEqual(payload["name"], "Form Contact")
         self.assertEqual(payload["email"], "form.contact@example.com")
         self.assertEqual(payload["phone"], "+1 555 0199")
+
+    def test_contact_adapter_accepts_odoo_native_fields(self):
+        from dose.endpoint_actions.slack import _payload
+
+        payload = _payload(
+            "contact",
+            {
+                "name": "Lumber Inc",
+                "email": "sales@lumber.example",
+                "phone": "+1 555 0140",
+                "street": "12 Mill Rd",
+                "city": "Portland",
+                "zip": "97201",
+                "is_company": "1",
+            },
+        )
+        self.assertEqual(payload["street"], "12 Mill Rd")
+        self.assertEqual(payload["city"], "Portland")
+        self.assertTrue(payload["is_company"])
 
     @patch("dose.views.slack_wireframe_webhook.publish_slack_wireframe_event")
     @patch("dose.views.slack_wireframe_webhook.bind_request_tenant")
