@@ -71,7 +71,7 @@
                                 {% if 'odoo' in slug %}
                                     <img src="{% static 'img/apps/odoo-sidebar-mark.svg' %}" alt="Odoo">
                                 {% elif 'mattermost' in slug %}
-                                    <img src="{% static 'img/apps/mattermost-sidebar-mark.svg' %}" alt="Mattermost">
+                                    <img src="{% static 'img/apps/mattermost-sidebar-mark.svg' %}?v=20260825" alt="Mattermost">
                                 {% elif 'nextcloud' in slug %}
                                     <img src="{% static 'img/apps/nextcloud-logo.svg' %}" alt="Nextcloud">
                                 {% elif 'dolibarr' in slug %}
@@ -85,13 +85,20 @@
                             <span class="pss-pt-status-dot{% if service.ready %} pss-pt-status-dot--ready{% elif service.app_status == 'error' or service.app_status == 'disabled' %} pss-pt-status-dot--error{% else %} pss-pt-status-dot--pending{% endif %}"></span>
                             <span class="pss-pt-label">{{ service.title }}</span>
                         </{% if service.ready %}a{% else %}span{% endif %}>
-                        {% if service.ready %}
-                        <a class="pss-pt-fullscreen"
+                        {% if service.ready and service.browse_url %}
+                        <a class="pss-pt-browse"
+                           href="{{ service.browse_url }}"
+                           target="_blank"
+                           rel="noopener"
+                           title="Browse {{ service.browse_app|default:service.title }} in a new tab"
+                           aria-label="Browse {{ service.browse_app|default:service.title }} in a new tab">Browse {{ service.browse_app|default:service.title }}</a>
+                        {% elif service.ready and service.fullscreen_url %}
+                        <a class="pss-pt-browse"
                            href="{{ service.fullscreen_url }}"
                            target="_blank"
                            rel="noopener"
-                           title="Open {{ service.title }} full screen in new tab"
-                           aria-label="Open {{ service.title }} full screen in new tab">↗</a>
+                           title="Browse {{ service.title }} in a new tab"
+                           aria-label="Browse {{ service.title }} in a new tab">Browse {{ service.title }}</a>
                         {% endif %}
                         </div>
                         {% endwith %}
