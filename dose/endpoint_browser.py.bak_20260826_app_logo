@@ -13,17 +13,6 @@ _CANONICAL_APP_LABELS = (
     ("gmail", "Gmail"),
 )
 
-# Sidebar + endpoint-home marks (static/ relative paths for {% static %}).
-_APP_LOGO_STATIC = {
-    "odoo": "img/apps/odoo-sidebar-mark.png",
-    "mattermost": "img/apps/mattermost-sidebar-mark.png",
-    "nextcloud": "img/apps/nextcloud-logo.svg",
-    "hubspot": "img/apps/hubspot-sidebar-mark.png",
-    "dolibarr": "img/apps/dolibarr-logo.svg",
-    "wordpress": "img/apps/wordpress-logo.svg",
-    "slack": "img/apps/slack-sidebar-mark.png",
-}
-
 
 def endpoint_app_label(endpoint) -> str:
     """Stable product name for Browse labels: Odoo, Mattermost, Slack, …"""
@@ -49,32 +38,6 @@ def endpoint_app_label(endpoint) -> str:
     if host:
         return host.split(".")[0].title()
     return "app"
-
-
-def endpoint_app_logo_key(endpoint) -> str:
-    """Canonical key for logo lookup (odoo, slack, …) or empty."""
-    slug = (getattr(endpoint, "slug", "") or "").strip().lower().replace("-", "_")
-    label = endpoint_app_label(endpoint).strip().lower().replace(" ", "")
-    for key, _label in _CANONICAL_APP_LABELS:
-        if slug == key or key in label or key.replace("_", "") in label:
-            return key
-    if slug in _APP_LOGO_STATIC:
-        return slug
-    return ""
-
-
-def endpoint_app_logo_static(endpoint) -> str:
-    """Static path for the app mark, or empty when unknown."""
-    return _APP_LOGO_STATIC.get(endpoint_app_logo_key(endpoint), "")
-
-
-def logo_static_for_app_name(name: str) -> str:
-    """Resolve logo path from a title/slug string (sidebar cards)."""
-    blob = (name or "").strip().lower().replace("-", "_").replace(" ", "")
-    for key, path in _APP_LOGO_STATIC.items():
-        if key in blob or key.replace("_", "") in blob:
-            return path
-    return ""
 
 
 def safe_browser_launch_url(endpoint, relative_path: str | None = None) -> str:

@@ -67,24 +67,17 @@
                            {% if service.ready and request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            {% if not service.ready %}aria-disabled="true" tabindex="-1"{% endif %}
                            title="{% if service.ready %}{{ service.description|default:service.title }}{% else %}{{ service.title }} is still provisioning ({{ service.app_status }}){% endif %}">
-                            {# FIX 2026-08-26 (owner-approved): app marks via logo_static + Slack/HubSpot #}
                             <div class="pss-pt-logo pss-pt-logo--{{ slug }}">
-                                {% if service.logo_static %}
-                                    <img src="{% static service.logo_static %}" alt="{{ service.title }}">
-                                {% elif 'odoo' in slug %}
-                                    <img src="{% static 'img/apps/odoo-sidebar-mark.png' %}" alt="Odoo">
+                                {% if 'odoo' in slug %}
+                                    <img src="{% static 'img/apps/odoo-sidebar-mark.svg' %}" alt="Odoo">
                                 {% elif 'mattermost' in slug %}
-                                    <img src="{% static 'img/apps/mattermost-sidebar-mark.png' %}" alt="Mattermost">
+                                    <img src="{% static 'img/apps/mattermost-sidebar-mark.svg' %}" alt="Mattermost">
                                 {% elif 'nextcloud' in slug %}
                                     <img src="{% static 'img/apps/nextcloud-logo.svg' %}" alt="Nextcloud">
                                 {% elif 'dolibarr' in slug %}
                                     <img src="{% static 'img/apps/dolibarr-logo.svg' %}" alt="Dolibarr">
                                 {% elif 'wordpress' in slug %}
                                     <img src="{% static 'img/apps/wordpress-logo.svg' %}" alt="WordPress">
-                                {% elif 'slack' in slug %}
-                                    <img src="{% static 'img/apps/slack-sidebar-mark.png' %}" alt="Slack">
-                                {% elif 'hubspot' in slug %}
-                                    <img src="{% static 'img/apps/hubspot-sidebar-mark.png' %}" alt="HubSpot">
                                 {% else %}
                                     {{ service.title|first|upper }}
                                 {% endif %}

@@ -72,7 +72,7 @@
                                 {% if service.logo_static %}
                                     <img src="{% static service.logo_static %}" alt="{{ service.title }}">
                                 {% elif 'odoo' in slug %}
-                                    <img src="{% static 'img/apps/odoo-sidebar-mark.png' %}" alt="Odoo">
+                                    <img src="{% static 'img/apps/odoo-sidebar-mark.svg' %}" alt="Odoo">
                                 {% elif 'mattermost' in slug %}
                                     <img src="{% static 'img/apps/mattermost-sidebar-mark.png' %}" alt="Mattermost">
                                 {% elif 'nextcloud' in slug %}

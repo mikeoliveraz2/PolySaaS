@@ -138,16 +138,10 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
             keys,
             {"slack.webhook.contact", "slack.webhook.sale"},
         )
-        slack = self.endpoint()
         odoo = SimpleNamespace(
             slug="odoo",
             endpoint_url="http://localhost:8086",
             get_menu_title=lambda: "Odoo",
-        )
-        mattermost = SimpleNamespace(
-            slug="mattermost",
-            endpoint_url="http://localhost:8065",
-            get_menu_title=lambda: "Mattermost",
         )
         consumers = [
             {
@@ -175,85 +169,41 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
                 "executescript": "HelloWorld",
             },
         ]
-        # Slack home: allowlist only (not every slack.webhook.*).
-        slack_producers = list_producers(slack, consumers)
+        producers = list_producers(odoo, consumers)
+        producer_keys = [p["event_key"] for p in producers]
         self.assertEqual(
-            [p["event_key"] for p in slack_producers],
+            producer_keys,
             ["slack.webhook.contact", "slack.webhook.sale"],
         )
-        self.assertTrue(all(p["state"] == "Paired" for p in slack_producers))
-        # Other homes must not inherit Slack allowlist rows.
-        self.assertEqual(list_producers(odoo, consumers), [])
-        self.assertEqual(list_producers(mattermost, consumers), [])
+        self.assertTrue(all(p["state"] == "Paired" for p in producers))
 
-    def test_unpaired_allowlist_suppressed_everywhere(self):
-        """No unpaired placeholders — empty consumers ⇒ empty producers on all homes."""
+    def test_unpaired_allowlist_shows_on_slack_home_only(self):
         from dose.endpoint_producers import list_producers
 
         slack = self.endpoint()
-        self.assertEqual(list_producers(slack, []), [])
+        unpaired = list_producers(slack, [])
+        self.assertEqual(len(unpaired), 2)
+        self.assertTrue(all(p["state"] == "Unpaired" for p in unpaired))
         odoo = SimpleNamespace(
             slug="odoo",
             endpoint_url="http://localhost:8086",
             get_menu_title=lambda: "Odoo",
         )
         self.assertEqual(list_producers(odoo, []), [])
-        mattermost = SimpleNamespace(
-            slug="mattermost",
-            endpoint_url="http://localhost:8065",
-            get_menu_title=lambda: "Mattermost",
-        )
-        self.assertEqual(list_producers(mattermost, []), [])
 
     def test_producer_pair_route_exists(self):
         self.assertEqual(
             reverse("dose:endpoint_producer_pair", args=("localhost:8086",)),
             "/dose/api/apps/localhost:8086/producer-pair/",
         )
+    def test_consumer_affinity_recognizes_slack(self):
+        from dose.views.endpoint_home import _app_label, _consumer_affinity_tokens
 
-    def test_consumer_scope_is_per_app(self):
-        from dose.views.endpoint_home import _app_label, _consumer_belongs_to_endpoint
-
-        slack = self.endpoint()
-        slack.get_menu_title = lambda: "Slack"
-        self.assertEqual(_app_label(slack), "Slack")
-        contact = SimpleNamespace(
-            requestpath="/events/slack/webhook/contact",
-            eventKey="slack.webhook.contact",
-            description="Slack wireframe contact consumer",
-            executescript="OdooCreatePartner",
-        )
-        invoice = SimpleNamespace(
-            requestpath="/odoo/accounting/116",
-            eventKey="",
-            description="User viewed Invoicing in Odoo",
-            executescript="HelloWorld",
-        )
-        mm_row = SimpleNamespace(
-            requestpath="/api/v4/posts",
-            eventKey="mattermost.post",
-            description="Mattermost post hook",
-            executescript="HelloWorld",
-        )
-        odoo = SimpleNamespace(
-            slug="odoo",
-            endpoint_url="http://localhost:8086",
-            get_menu_title=lambda: "Odoo",
-        )
-        mattermost = SimpleNamespace(
-            slug="mattermost",
-            endpoint_url="http://localhost:8065",
-            get_menu_title=lambda: "Mattermost",
-        )
-        self.assertTrue(_consumer_belongs_to_endpoint(slack, contact))
-        self.assertFalse(_consumer_belongs_to_endpoint(odoo, contact))
-        self.assertFalse(_consumer_belongs_to_endpoint(mattermost, contact))
-        self.assertTrue(_consumer_belongs_to_endpoint(odoo, invoice))
-        self.assertFalse(_consumer_belongs_to_endpoint(slack, invoice))
-        self.assertFalse(_consumer_belongs_to_endpoint(mattermost, invoice))
-        self.assertTrue(_consumer_belongs_to_endpoint(mattermost, mm_row))
-        self.assertFalse(_consumer_belongs_to_endpoint(slack, mm_row))
-
+        endpoint = self.endpoint()
+        endpoint.get_menu_title = lambda: "Slack"
+        self.assertEqual(_app_label(endpoint), "Slack")
+        tokens = _consumer_affinity_tokens(endpoint)
+        self.assertIn("slack", tokens)
     def test_capture_curation_requires_explicit_publish(self):
         source = (
             Path(settings.BASE_DIR)

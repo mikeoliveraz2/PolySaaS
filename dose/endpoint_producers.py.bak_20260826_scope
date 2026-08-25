@@ -2,14 +2,12 @@
 
 THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 BINGO: Slack producer/consumer home — 2026-08-24
-FIX 2026-08-26 (owner-approved): scope producers/consumers to the current endpoint app.
 
 Pairing persists on Instruction: eventKey + requestpath (mailbox match).
-Slack producers are allowlisted only on the Slack home — no full webhook enumeration.
+Slack producers are allowlisted only — no full webhook enumeration.
 """
 from __future__ import annotations
 
-from dose.endpoint_browser import endpoint_app_logo_key
 from dose.webhook_events import SLACK_WIREFRAME_ACTIONS
 
 # Phase-1 Slack producers only (spec). Paths must match mailbox envelope action_path.
@@ -20,7 +18,6 @@ PRODUCER_ALLOWLIST = (
         "display_name": "Slack new contact",
         "method": "POST",
         "direction": "REQ",
-        "app": "slack",
     },
     {
         "event_key": SLACK_WIREFRAME_ACTIONS["sale"][1],
@@ -28,7 +25,6 @@ PRODUCER_ALLOWLIST = (
         "display_name": "Slack new sale",
         "method": "POST",
         "direction": "REQ",
-        "app": "slack",
     },
 )
 
@@ -40,9 +36,17 @@ def allowlist_entry(event_key: str) -> dict | None:
     return _ALLOWLIST_BY_KEY.get((event_key or "").strip())
 
 
-def endpoint_app_key(endpoint) -> str:
-    """Canonical app key for this home (slack, odoo, mattermost, …)."""
-    return endpoint_app_logo_key(endpoint) or ""
+def _endpoint_is_slack(endpoint) -> bool:
+    slug = (getattr(endpoint, "slug", "") or "").strip().lower()
+    title = ""
+    if hasattr(endpoint, "get_menu_title"):
+        try:
+            title = (endpoint.get_menu_title() or "").strip().lower()
+        except Exception:
+            title = (getattr(endpoint, "menu_title", "") or "").strip().lower()
+    host = (getattr(endpoint, "endpoint_url", "") or "").lower()
+    blob = f"{slug} {title} {host}"
+    return "slack" in blob
 
 
 def consumer_matches_producer(consumer: dict, entry: dict) -> bool:
@@ -61,33 +65,32 @@ def consumer_matches_producer(consumer: dict, entry: dict) -> bool:
 
 
 def list_producers(endpoint, consumers: list[dict]) -> list[dict]:
-    """Build Producers for this home only (never a global dump)."""
+    """Build Producers for the home pane: allowlist + non-Slack derived keys."""
     producers: list[dict] = []
     claimed_keys: set[str] = set()
-    app = endpoint_app_key(endpoint)
+    is_slack = _endpoint_is_slack(endpoint)
 
-    # Slack allowlist rows belong on the Slack home only — and only when Paired
-    # (no unpaired "future" placeholders that raise doubts).
-    if app == "slack":
-        for entry in PRODUCER_ALLOWLIST:
-            paired = [c for c in consumers if consumer_matches_producer(c, entry)]
-            if not paired:
-                continue
-            producers.append(
-                {
-                    "event_key": entry["event_key"],
-                    "action_path": entry["action_path"],
-                    "display_name": entry["display_name"],
-                    "state": "Paired",
-                    "paired_count": len(paired),
-                    "paired_consumer_ids": [c["id"] for c in paired],
-                    "allowlisted": True,
-                    "pairable": True,
-                }
-            )
-            claimed_keys.add(entry["event_key"].lower())
+    for entry in PRODUCER_ALLOWLIST:
+        paired = [c for c in consumers if consumer_matches_producer(c, entry)]
+        # Show when paired (e.g. Odoo home with wireframe consumers) or on Slack
+        # home so unpaired allowlist rows can be Pair'd.
+        if not paired and not is_slack:
+            continue
+        producers.append(
+            {
+                "event_key": entry["event_key"],
+                "action_path": entry["action_path"],
+                "display_name": entry["display_name"],
+                "state": "Paired" if paired else "Unpaired",
+                "paired_count": len(paired),
+                "paired_consumer_ids": [c["id"] for c in paired],
+                "allowlisted": True,
+                "pairable": True,
+            }
+        )
+        claimed_keys.add(entry["event_key"].lower())
 
-    # Derived producers from this home's consumers only (already app-scoped).
+    # Derived producers from consumer event keys that are not Slack webhooks.
     by_key: dict[str, list[dict]] = {}
     for consumer in consumers:
         ek = (consumer.get("event_key") or "").strip()
