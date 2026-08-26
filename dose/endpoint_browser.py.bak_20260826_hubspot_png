@@ -15,10 +15,10 @@ _CANONICAL_APP_LABELS = (
 
 # Sidebar + endpoint-home marks (static/ relative paths for {% static %}).
 _APP_LOGO_STATIC = {
-    "odoo": "img/apps/odoo-sidebar-mark.png",
-    "mattermost": "img/apps/mattermost-sidebar-mark.png",
+    "odoo": "img/apps/odoo-sidebar-mark.svg",
+    "mattermost": "img/apps/mattermost-sidebar-mark.svg",
     "nextcloud": "img/apps/nextcloud-logo.svg",
-    "hubspot": "img/apps/hubspot-sidebar-mark.png",
+    "hubspot": "img/apps/hubspot-sidebar-mark.svg",
     "dolibarr": "img/apps/dolibarr-logo.svg",
     "wordpress": "img/apps/wordpress-logo.svg",
     "slack": "img/apps/slack-sidebar-mark.png",

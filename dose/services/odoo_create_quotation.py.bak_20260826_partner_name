@@ -124,44 +124,25 @@ def _extract_quotation_payload(request) -> dict:
 
 
 def _find_or_create_partner(client: OdooRpcClient, payload: dict) -> int:
-    """Resolve customer by typed name first; never hijack a different email match.
-
-    Email-only reuse previously attached Slack sales to My Company / prior contacts
-    when the operator reused an existing address but typed a new customer name.
-    """
     name = str(payload.get("partner_name") or "").strip()
     email = str(payload.get("partner_email") or "").strip()
-
-    if name:
-        by_name = client.execute_kw(
+    partner_ids = []
+    if email:
+        partner_ids = client.execute_kw(
+            "res.partner",
+            "search",
+            [[["email", "=", email]]],
+            {"limit": 1},
+        )
+    if not partner_ids:
+        partner_ids = client.execute_kw(
             "res.partner",
             "search",
             [[["name", "=", name]]],
             {"limit": 1},
         )
-        if by_name:
-            partner_id = int(by_name[0])
-            if email:
-                client.execute_kw(
-                    "res.partner",
-                    "write",
-                    [[partner_id], {"email": email}],
-                )
-            return partner_id
-
-    if email:
-        rows = client.execute_kw(
-            "res.partner",
-            "search_read",
-            [[["email", "=", email]]],
-            {"fields": ["id", "name"], "limit": 1},
-        )
-        if rows:
-            existing_name = str(rows[0].get("name") or "").strip()
-            if existing_name.lower() == name.lower():
-                return int(rows[0]["id"])
-            # Same email, different name → create a new partner (do not rename).
-
+    if partner_ids:
+        return int(partner_ids[0])
     vals = {"name": name, "is_company": False}
     if email:
         vals["email"] = email

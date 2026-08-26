@@ -342,9 +342,7 @@ def admin_navigation(request):
             from django.urls import reverse
             from dose.endpoint_browser import (
                 endpoint_app_label,
-                endpoint_app_logo_static,
                 endpoint_browse_target,
-                logo_static_for_app_name,
                 safe_browser_launch_url,
             )
 
@@ -354,11 +352,6 @@ def admin_navigation(request):
             browser_url = browse.get("url") or safe_browser_launch_url(endpoint)
             title = endpoint.menu_title or (endpoint.slug or norm).replace('_', ' ').title()
             browse_app = endpoint_app_label(endpoint) or title
-            logo_static = (
-                endpoint_app_logo_static(endpoint)
-                or logo_static_for_app_name(endpoint.slug or "")
-                or logo_static_for_app_name(title)
-            )
             print(f"[ADMIN_NAV] Passthrough service: {title} -> {url} (slug={endpoint.slug!r}, upstream={endpoint.endpoint_url})")
 
             # READINESS 2026-08-01 (owner-approved, frozen-file exception): a PassThroughEndpoint
@@ -395,7 +388,6 @@ def admin_navigation(request):
                 'endpoint_host': endpoint_host,
                 'title': title,
                 'slug': (endpoint.slug or '').strip(),
-                'logo_static': logo_static,
                 'description': endpoint.description or '',
                 'icon': endpoint.menu_icon or '🔗',
                 'ready': ready,

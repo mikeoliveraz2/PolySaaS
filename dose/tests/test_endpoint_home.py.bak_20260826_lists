@@ -186,12 +186,13 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
         self.assertEqual(list_producers(odoo, consumers), [])
         self.assertEqual(list_producers(mattermost, consumers), [])
 
-    def test_unpaired_allowlist_suppressed_everywhere(self):
-        """No unpaired placeholders — empty consumers ⇒ empty producers on all homes."""
+    def test_unpaired_allowlist_shows_on_slack_home_only(self):
         from dose.endpoint_producers import list_producers
 
         slack = self.endpoint()
-        self.assertEqual(list_producers(slack, []), [])
+        unpaired = list_producers(slack, [])
+        self.assertEqual(len(unpaired), 2)
+        self.assertTrue(all(p["state"] == "Unpaired" for p in unpaired))
         odoo = SimpleNamespace(
             slug="odoo",
             endpoint_url="http://localhost:8086",

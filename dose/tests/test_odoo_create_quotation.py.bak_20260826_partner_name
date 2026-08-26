@@ -42,8 +42,8 @@ class OdooCreateQuotationTests(SimpleTestCase):
         client = MagicMock()
         client.transport = "jsonrpc"
         client.execute_kw.side_effect = [
+            [],  # res.partner email search
             [],  # res.partner name search
-            [],  # res.partner email search_read
             42,  # res.partner create
             [],  # sale.order reference search
             84,  # sale.order create
@@ -94,8 +94,7 @@ class OdooCreateQuotationTests(SimpleTestCase):
         client = MagicMock()
         client.transport = "jsonrpc"
         client.execute_kw.side_effect = [
-            [42],  # res.partner name search (Wireframe Buyer)
-            True,  # res.partner write email
+            [42],  # res.partner email search
             [84],  # matching draft quotation search
             True,  # sale.order write
             [{"name": "S00084", "state": "draft"}],
@@ -116,49 +115,6 @@ class OdooCreateQuotationTests(SimpleTestCase):
 
         self.assertEqual(result["order_id"], 84)
         self.assertFalse(result["created"])
-        quotation_search = client.execute_kw.call_args_list[2]
+        quotation_search = client.execute_kw.call_args_list[1]
         self.assertIn(["partner_id", "=", 42], quotation_search.args[2][0])
         self.assertIn(["state", "=", "draft"], quotation_search.args[2][0])
-
-    def test_email_match_with_different_name_creates_new_partner(self):
-        """Do not attach Tom T Hall to Michael Oliver just because emails match."""
-        request = SimpleNamespace(
-            mq_message_data={
-                "partner_name": "Tom T Hall",
-                "partner_email": "mikeoliveraz@gmail.com",
-                "order_reference": "WF-SALE-2",
-            },
-            tenant=None,
-        )
-        client = MagicMock()
-        client.transport = "jsonrpc"
-        client.execute_kw.side_effect = [
-            [],  # name search — Tom T Hall not found
-            [{"id": 8, "name": "Michael Oliver"}],  # email hits prior contact
-            99,  # create Tom T Hall
-            [],  # quotation search
-            100,  # quotation create
-            [{"name": "S00100", "state": "draft"}],
-        ]
-        with patch(
-            "dose.services.odoo_create_quotation.load_odoo_rpc_config",
-            return_value={
-                "url": "http://odoo.test",
-                "db": "odoo",
-                "username": "admin",
-                "password": "secret",
-            },
-        ), patch(
-            "dose.services.odoo_create_quotation.OdooRpcClient.from_config",
-            return_value=client,
-        ):
-            result = OdooCreateQuotation.execute_and_save(request, None)
-
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(result["partner_id"], 99)
-        create_call = client.execute_kw.call_args_list[2]
-        self.assertEqual(create_call.args[0:2], ("res.partner", "create"))
-        self.assertEqual(create_call.args[2][0]["name"], "Tom T Hall")
-        self.assertEqual(
-            create_call.args[2][0]["email"], "mikeoliveraz@gmail.com"
-        )
