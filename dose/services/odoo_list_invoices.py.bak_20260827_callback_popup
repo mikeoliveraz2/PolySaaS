@@ -119,15 +119,7 @@ class OdooListInvoices(AtomicServiceBase):
             invoices=invoices,
             odoo=pub,
         )
-        callback_row = _force_save_callback(request, instruction_row, result)
-        if callback_row is not None:
-            result["callback_id"] = getattr(callback_row, "id", None)
-            result["callback_description"] = getattr(
-                callback_row, "description", None
-            ) or "Odoo customer invoice list (bookmark capture)"
-            result["matching_event_key"] = getattr(
-                callback_row, "matchingEventKey", None
-            ) or "odoo.list_invoices"
+        _force_save_callback(request, instruction_row, result)
         return result
 
 

@@ -86,97 +86,11 @@
                 data.detail || ('Completed ' + (data.action_path || target)),
                 data.action_path || target
             );
-            if (data.popup === 'callback_record') {
-                openCallbackDialog(data);
-            }
             return;
         }
         bar('queued', 'QUEUED', 'Mailbox #' + data.mailbox_id, data.action_path || target);
         await waitForMailbox(data.mailbox_id, data.action_path || target);
     }
-
-    var callbackDialog = root.querySelector('[data-callback-dialog]');
-    var callbackTitle = root.querySelector('[data-callback-title]');
-    var callbackSub = root.querySelector('[data-callback-sub]');
-    var callbackMeta = root.querySelector('[data-callback-meta]');
-    var callbackBody = root.querySelector('[data-callback-body]');
-
-    function esc(value) {
-        return String(value == null ? '' : value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
-    function money(value) {
-        if (value == null || value === '') return '—';
-        var num = Number(value);
-        if (isNaN(num)) return esc(value);
-        return num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
-
-    function openCallbackDialog(data) {
-        if (!callbackDialog || !callbackBody) return;
-        var invoices = Array.isArray(data.invoices) ? data.invoices : [];
-        var count = data.count != null ? data.count : invoices.length;
-        var odoo = data.odoo || {};
-        if (callbackTitle) {
-            callbackTitle.textContent = data.callback_description || 'CallBackData record';
-        }
-        if (callbackSub) {
-            callbackSub.textContent = data.detail || '';
-        }
-        if (callbackMeta) {
-            callbackMeta.innerHTML =
-                '<div><span>Event</span><strong>' + esc(data.matching_event_key || data.action_path || '') + '</strong></div>' +
-                '<div><span>Status</span><strong>' + esc(data.status || 'success') + '</strong></div>' +
-                '<div><span>Callback #</span><strong>' + esc(data.callback_id != null ? data.callback_id : '—') + '</strong></div>' +
-                '<div><span>Count</span><strong>' + esc(count) + '</strong></div>' +
-                '<div><span>Odoo DB</span><strong>' + esc(odoo.db || '—') + '</strong></div>' +
-                '<div><span>Odoo URL</span><strong>' + esc(odoo.url || '—') + '</strong></div>';
-        }
-        if (!invoices.length) {
-            callbackBody.innerHTML =
-                '<div class="polysaas-callback-dialog__empty">' +
-                'No customer invoices were returned. The CallBackData row was still saved with count 0.' +
-                '</div>';
-        } else {
-            var rows = invoices.map(function (inv) {
-                return '<tr>' +
-                    '<td>' + esc(inv.name || ('#' + inv.id)) + '</td>' +
-                    '<td>' + esc(inv.partner_name || '') + '</td>' +
-                    '<td>' + esc(inv.invoice_date || '—') + '</td>' +
-                    '<td class="is-num">' + money(inv.amount_total) + '</td>' +
-                    '<td>' + esc(inv.state || '') + '</td>' +
-                    '<td>' + esc(inv.payment_state || '') + '</td>' +
-                    '</tr>';
-            }).join('');
-            callbackBody.innerHTML =
-                '<div class="polysaas-callback-dialog__table-wrap">' +
-                '<table class="polysaas-callback-dialog__table">' +
-                '<thead><tr>' +
-                '<th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>State</th><th>Payment</th>' +
-                '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-        }
-        callbackDialog.hidden = false;
-        callbackDialog.removeAttribute('hidden');
-        try {
-            callbackDialog.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-        } catch (err) {
-            callbackDialog.scrollIntoView();
-        }
-    }
-
-    function closeCallbackPanel() {
-        if (!callbackDialog) return;
-        callbackDialog.hidden = true;
-        callbackDialog.setAttribute('hidden', 'hidden');
-    }
-
-    root.querySelectorAll('[data-callback-close]').forEach(function (btn) {
-        btn.addEventListener('click', closeCallbackPanel);
-    });
 
     root.addEventListener('click', function (event) {
         var runBtn = event.target.closest('[data-form]');

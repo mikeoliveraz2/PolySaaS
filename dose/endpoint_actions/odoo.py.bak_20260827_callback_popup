@@ -1,0 +1,89 @@
+"""Odoo endpoint-home actions and default bookmarks."""
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from dose.endpoint_browser import endpoint_app_logo_key
+from dose.passthrough.orchestration_log import ensure_tenant_search_path
+
+from .base import EndpointAction, EndpointActionAdapter
+
+
+def _list_invoices_payload(supplied: dict) -> dict:
+    """Direct event needs no form fields; ignore unknown keys quietly."""
+    if not isinstance(supplied, dict):
+        return {}
+    limit = supplied.get("limit")
+    if limit in (None, ""):
+        return {}
+    try:
+        return {"limit": max(1, min(int(limit), 200))}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _publish_list_invoices(tenant, payload: dict) -> dict:
+    """Run OdooListInvoices sync and persist CallBackData for analysis."""
+    from dose.services.odoo_list_invoices import OdooListInvoices
+
+    if not tenant or not getattr(tenant, "schema_name", None):
+        return {"success": False, "error": "no tenant"}
+    if not ensure_tenant_search_path(tenant, "odoo_list_invoices_action"):
+        return {"success": False, "error": "invalid tenant schema"}
+
+    request = SimpleNamespace(
+        tenant=tenant,
+        mq_message_data=dict(payload or {}),
+        body=b"{}",
+        atomic_parameters=[],
+        user=None,
+    )
+    result = OdooListInvoices.execute_and_save(request, None)
+    ok = result.get("status") == "success"
+    count = int(result.get("count") or 0)
+    if ok:
+        detail = f"{count} invoice{'s' if count != 1 else ''} saved to CallBackData"
+    else:
+        detail = (
+            result.get("detail")
+            or result.get("error")
+            or "Could not list Odoo invoices"
+        )
+    return {
+        "success": ok,
+        "sync": True,
+        "status": result.get("status"),
+        "count": count,
+        "detail": detail,
+        "action_path": "odoo.list_invoices",
+        "error": None if ok else detail,
+    }
+
+
+class OdooEndpointActionAdapter(EndpointActionAdapter):
+    browse_mode = "passthrough"
+    default_bookmarks = (
+        {
+            "key": "invoices",
+            "title": "Invoices",
+            "destination_type": "direct_event",
+            "target": "odoo.list_invoices",
+            "icon": "inv",
+            "description": "Fetch current customer invoices into CallBackData",
+        },
+    )
+
+    @classmethod
+    def matches_endpoint(cls, endpoint) -> bool:
+        return endpoint_app_logo_key(endpoint) == "odoo"
+
+    def actions(self):
+        return {
+            "odoo.list_invoices": EndpointAction(
+                key="odoo.list_invoices",
+                kind="direct_event",
+                title="Invoices",
+                build_payload=_list_invoices_payload,
+                publish=_publish_list_invoices,
+            ),
+        }

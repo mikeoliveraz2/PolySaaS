@@ -1,8 +1,7 @@
-from .odoo import OdooEndpointActionAdapter
 from .slack import SlackEndpointActionAdapter
 
 
-_ADAPTERS = (SlackEndpointActionAdapter, OdooEndpointActionAdapter,)
+_ADAPTERS = (SlackEndpointActionAdapter,)
 
 
 def adapter_for_endpoint(endpoint):

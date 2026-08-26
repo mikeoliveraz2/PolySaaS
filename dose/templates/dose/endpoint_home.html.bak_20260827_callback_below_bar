@@ -7,7 +7,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260827-4">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260827-2">
 {% endblock %}
 
 {% block content %}
@@ -100,29 +100,6 @@
 
     {% include "dose/includes/orchestration_bar.html" %}
 
-    <section
-        class="polysaas-callback-panel"
-        data-callback-dialog
-        hidden
-        aria-live="polite"
-        aria-label="CallBackData record"
-    >
-        <div class="polysaas-callback-dialog__panel">
-            <header class="polysaas-callback-dialog__head">
-                <div>
-                    <h3 data-callback-title>CallBackData</h3>
-                    <p class="polysaas-callback-dialog__sub" data-callback-sub></p>
-                </div>
-                <button type="button" class="polysaas-callback-dialog__close" data-callback-close aria-label="Close">&times;</button>
-            </header>
-            <div class="polysaas-callback-dialog__meta" data-callback-meta></div>
-            <div class="polysaas-callback-dialog__body" data-callback-body></div>
-            <div class="polysaas-callback-dialog__actions">
-                <button type="button" class="polysaas-callback-dialog__close-btn" data-callback-close>Close</button>
-            </div>
-        </div>
-    </section>
-
     <section class="polysaas-endpoint-home__surface" aria-label="Producers and consumers">
         {% if producers %}
         <div class="polysaas-endpoint-home__panel">
@@ -205,6 +182,23 @@
         </form>
     </dialog>
 
+    <dialog class="polysaas-callback-dialog" data-callback-dialog>
+        <div class="polysaas-callback-dialog__panel">
+            <header class="polysaas-callback-dialog__head">
+                <div>
+                    <h3 data-callback-title>CallBackData</h3>
+                    <p class="polysaas-callback-dialog__sub" data-callback-sub></p>
+                </div>
+                <button type="button" class="polysaas-callback-dialog__close" data-callback-close aria-label="Close">&times;</button>
+            </header>
+            <div class="polysaas-callback-dialog__meta" data-callback-meta></div>
+            <div class="polysaas-callback-dialog__body" data-callback-body></div>
+            <div class="polysaas-callback-dialog__actions">
+                <button type="button" class="polysaas-callback-dialog__close-btn" data-callback-close>Close</button>
+            </div>
+        </div>
+    </dialog>
+
     {% if surface_template %}
     <div class="polysaas-endpoint-home__form-host" aria-hidden="true">
         {% include surface_template %}
@@ -216,5 +210,5 @@
 {% block extrajs %}
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-1"></script>
-<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260827-3"></script>
+<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260827-2"></script>
 {% endblock %}

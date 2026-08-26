@@ -159,24 +159,28 @@
                 '<th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>State</th><th>Payment</th>' +
                 '</tr></thead><tbody>' + rows + '</tbody></table></div>';
         }
-        callbackDialog.hidden = false;
-        callbackDialog.removeAttribute('hidden');
-        try {
-            callbackDialog.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-        } catch (err) {
-            callbackDialog.scrollIntoView();
+        if (typeof callbackDialog.showModal === 'function') {
+            callbackDialog.showModal();
+        } else {
+            callbackDialog.setAttribute('open', 'open');
         }
     }
 
-    function closeCallbackPanel() {
-        if (!callbackDialog) return;
-        callbackDialog.hidden = true;
-        callbackDialog.setAttribute('hidden', 'hidden');
-    }
-
     root.querySelectorAll('[data-callback-close]').forEach(function (btn) {
-        btn.addEventListener('click', closeCallbackPanel);
+        btn.addEventListener('click', function () {
+            if (!callbackDialog) return;
+            if (typeof callbackDialog.close === 'function') callbackDialog.close();
+            else callbackDialog.removeAttribute('open');
+        });
     });
+    if (callbackDialog) {
+        callbackDialog.addEventListener('click', function (event) {
+            if (event.target === callbackDialog) {
+                if (typeof callbackDialog.close === 'function') callbackDialog.close();
+                else callbackDialog.removeAttribute('open');
+            }
+        });
+    }
 
     root.addEventListener('click', function (event) {
         var runBtn = event.target.closest('[data-form]');

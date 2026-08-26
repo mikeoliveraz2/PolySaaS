@@ -352,23 +352,23 @@
     color: #93c5fd;
 }
 
-/* CallBackData panel — sits under green orch bar; same terminal green look */
-.polysaas-callback-panel {
-    border: 1px solid #0f0;
-    border-radius: 0 0 8px 8px;
-    border-top: 0;
-    background: #1a1a1a;
-    color: #0f0;
-    font: 14px Consolas, monospace;
-    box-shadow: none;
+/* CallBackData popup (Odoo Invoices bookmark) — formatted record, not raw JSON */
+.polysaas-callback-dialog {
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 0;
+    background: #0f172a;
+    color: #e5e7eb;
+    max-width: 920px;
+    width: calc(100% - 32px);
 }
-.polysaas-callback-panel[hidden] {
-    display: none !important;
+.polysaas-callback-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
 }
 .polysaas-callback-dialog__panel {
     display: grid;
-    gap: 12px;
-    padding: 12px 15px 14px;
+    gap: 14px;
+    padding: 16px 18px 18px;
 }
 .polysaas-callback-dialog__head {
     display: flex;
@@ -378,9 +378,8 @@
 }
 .polysaas-callback-dialog__head h3 {
     margin: 0 0 4px;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #0f0;
+    font-size: 1.05rem;
+    color: #f8fafc;
 }
 .polysaas-callback-dialog__sub {
     margin: 0;
@@ -390,91 +389,83 @@
 .polysaas-callback-dialog__close {
     border: 0;
     background: transparent;
-    color: #86efac;
+    color: #94a3b8;
     font-size: 1.4rem;
     line-height: 1;
     cursor: pointer;
 }
-.polysaas-callback-dialog__close:hover {
-    color: #0f0;
-}
 .polysaas-callback-dialog__meta {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 8px;
+    gap: 10px;
 }
 .polysaas-callback-dialog__meta > div {
     display: grid;
     gap: 2px;
     padding: 8px 10px;
-    border-radius: 3px;
-    background: #111;
-    border: 1px solid #166534;
+    border-radius: 6px;
+    background: #111827;
+    border: 1px solid #1f2937;
 }
 .polysaas-callback-dialog__meta span {
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #86efac;
+    color: #94a3b8;
 }
 .polysaas-callback-dialog__meta strong {
     font-size: 0.9rem;
-    color: #0f0;
+    color: #f1f5f9;
     word-break: break-word;
 }
 .polysaas-callback-dialog__table-wrap {
     overflow: auto;
-    max-height: min(42vh, 360px);
-    border: 1px solid #166534;
-    border-radius: 3px;
+    max-height: min(52vh, 420px);
+    border: 1px solid #1f2937;
+    border-radius: 6px;
 }
 .polysaas-callback-dialog__table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.88rem;
-    color: #0f0;
 }
 .polysaas-callback-dialog__table th,
 .polysaas-callback-dialog__table td {
     padding: 8px 10px;
-    border-bottom: 1px solid #166534;
+    border-bottom: 1px solid #1f2937;
     text-align: left;
     white-space: nowrap;
-    color: #0f0;
 }
 .polysaas-callback-dialog__table th {
     position: sticky;
     top: 0;
-    background: #111;
-    color: #86efac;
+    background: #111827;
+    color: #93c5fd;
     font-weight: 600;
 }
 .polysaas-callback-dialog__table td.is-num {
     text-align: right;
     font-variant-numeric: tabular-nums;
-    color: #86efac;
 }
 .polysaas-callback-dialog__empty {
     padding: 18px 12px;
-    border-radius: 3px;
-    background: #111;
-    border: 1px dashed #166534;
-    color: #86efac;
+    border-radius: 6px;
+    background: #111827;
+    border: 1px dashed #334155;
+    color: #cbd5e1;
 }
 .polysaas-callback-dialog__actions {
     display: flex;
     justify-content: flex-end;
 }
 .polysaas-callback-dialog__close-btn {
-    border: 1px solid #0f0;
-    border-radius: 3px;
+    border: 0;
+    border-radius: 6px;
     padding: 8px 14px;
-    background: #111;
-    color: #0f0;
-    font: inherit;
+    background: #2563eb;
+    color: #fff;
     cursor: pointer;
 }
 .polysaas-callback-dialog__close-btn:hover {
-    background: #166534;
-    color: #86efac;
+    background: #1d4ed8;
 }
