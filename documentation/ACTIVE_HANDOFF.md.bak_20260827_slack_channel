@@ -1,0 +1,62 @@
+# PolySaaS Active Handoff
+
+This file is the canonical startup and end-of-day handoff for the repo.
+Every agent — Copilot, Cursor, and Windsurf — must read it before work.
+
+## Status
+
+- Date/session: **2026-08-27 — Canada laptop**
+- Branch: `cursor/polysniffer-slack-native-capture`
+- Prior BINGO certs (still frozen unless owner unlocks):
+  - `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md` (`b28be615`)
+  - `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
+- Agent sync check: passed
+- Tenant of record: **OLIENTR** / schema `olient` (Odoo db `odoo_olient`)
+- Not a BINGO commit
+
+## Completed this session
+
+1. **Odoo Invoices bookmark** — `OdooEndpointActionAdapter` + `odoo.list_invoices` direct_event runs `OdooListInvoices` sync and writes CallBackData.
+2. **CallBackData panel** — opens **inline under the green orch bar** (not a centered modal); terminal-green styling to match the bar; formatted table (not raw JSON).
+3. **Demo company name** — default Odoo `My Company` → **Big Guys Wharehouse** on `odoo_olient`.
+4. **Sample data script** — `python manage.py seed_odoo_sample_data olient` (idempotent customers, products, invoices, quotation). Ran successfully on this laptop.
+5. Tests: `dose.tests.test_odoo_list_invoices` + `dose.tests.test_endpoint_home` green.
+
+## Office after pull
+
+```powershell
+git pull origin cursor/polysniffer-slack-native-capture
+.\runall.ps1
+python manage.py seed_odoo_sample_data olient
+```
+
+Hard-refresh endpoint homes (`endpoint_home.css` / `endpoint_home.js` `?v=20260827-4` / `-3`).
+
+Optional dry-run: `python manage.py seed_odoo_sample_data olient --dry-run`
+
+## Next
+
+1. Confirm Odoo Invoices bookmark + under-bar panel at office after seed.
+2. Optional: teach `InstructionAdmin` to honor create-chip `role=` / `custom_endpoint=1` (ask first — `admin.py` frozen).
+3. Optional: square Odoo sidebar mark if wide PNG still looks cramped.
+
+## Leave alone (owner)
+
+- Browse / orch READY / Pair-Run BINGO-frozen unless unlocked.
+- Do not invent Mattermost/HubSpot fillers for empty homes.
+- Do not restyle producer/consumer cards casually.
+
+## Sequence still locked
+
+Native HAR → passthrough → pair producers to consumers → popups/orch UX.
+
+## Blockers / risks
+
+- Coordinated migrate still blocked at legacy `dose.0028_mlprompt`.
+- Prefer one Waitress + one mailbox consumer after `runall.ps1`.
+
+## Commit exclusions
+
+**Exclude:** `documentation/Capital Raise Project/**`, `polysniffer-auth.json`,
+`polysniffer_evidence/`, `tmp/_probe_*`, `tmp/_smoke_*`, `tmp/waitress_err.txt`,
+`__pycache__`, unused SVG logo drafts unless referenced.

@@ -7,7 +7,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260827-5">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260827-4">
 {% endblock %}
 
 {% block content %}
@@ -96,12 +96,6 @@
             {% endif %}
         {% endfor %}
     </nav>
-    {% endif %}
-
-    {% if surface_template %}
-    <section class="polysaas-endpoint-home__form-host" aria-label="{{ title }} workspace">
-        {% include surface_template %}
-    </section>
     {% endif %}
 
     {% include "dose/includes/orchestration_bar.html" %}
@@ -211,11 +205,16 @@
         </form>
     </dialog>
 
+    {% if surface_template %}
+    <div class="polysaas-endpoint-home__form-host" aria-hidden="true">
+        {% include surface_template %}
+    </div>
+    {% endif %}
 </main>
 {% endblock %}
 
 {% block extrajs %}
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-1"></script>
-<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260827-5"></script>
+<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260827-3"></script>
 {% endblock %}

@@ -292,19 +292,23 @@
     background: #2563eb;
     color: #fff;
 }
-/* Slack (and other) workspace surfaces stay visible — in-channel actions included. */
+/* Keep popup forms available without showing the full mock surface. */
 .polysaas-endpoint-home__form-host {
-    position: relative;
-    z-index: 1;
-    min-height: 0;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid #35373b;
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    pointer-events: none;
 }
 .polysaas-endpoint-home__form-host .ps-slack-mock {
-    position: relative;
-    min-height: 520px;
-    pointer-events: auto;
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    display: block;
+    background: transparent;
+    pointer-events: none;
+}
+.polysaas-endpoint-home__form-host .ps-slack-mock > :not(.ps-slack-mock__modal):not(style):not(script) {
+    display: none !important;
 }
 .polysaas-endpoint-home__form-host .ps-slack-mock__modal {
     pointer-events: auto;

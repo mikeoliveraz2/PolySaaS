@@ -5,7 +5,7 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: **2026-08-27 — Canada laptop**
+- Date/session: **2026-08-27 — Canada laptop → office review**
 - Branch: `cursor/polysniffer-slack-native-capture`
 - Prior BINGO certs (still frozen unless owner unlocks):
   - `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md` (`b28be615`)
@@ -16,11 +16,10 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Completed this session
 
-1. **Odoo Invoices bookmark** — `OdooEndpointActionAdapter` + `odoo.list_invoices` direct_event runs `OdooListInvoices` sync and writes CallBackData.
-2. **CallBackData panel** — opens **inline under the green orch bar** (not a centered modal); terminal-green styling to match the bar; formatted table (not raw JSON).
-3. **Demo company name** — default Odoo `My Company` → **Big Guys Wharehouse** on `odoo_olient`.
-4. **Sample data script** — `python manage.py seed_odoo_sample_data olient` (idempotent customers, products, invoices, quotation). Ran successfully on this laptop.
-5. Tests: `dose.tests.test_odoo_list_invoices` + `dose.tests.test_endpoint_home` green.
+1. **Odoo Invoices bookmark** — CallBackData + panel under green orch bar (`?v=20260827-4` / panel CSS).
+2. **Sample data** — `python manage.py seed_odoo_sample_data olient` (Big Guys Wharehouse, customers, invoices).
+3. **Slack channel wireframe visible again** on Slack endpoint home — in-channel **New contact** / **New sale** (`endpoint_home.css` / template `?v=20260827-5`). Browse Slack remains real Slack (no CRM forms there).
+4. **Plan drafted (not executed):** Slack → Odoo + HubSpot dual-feed (Big Guys Warehouse). Gate = HubSpot write proof. Shela to confirm Private App vs OAuth write scopes. Cursor plan: `slack_hubspot_dual_feed`.
 
 ## Office after pull
 
@@ -30,33 +29,20 @@ git pull origin cursor/polysniffer-slack-native-capture
 python manage.py seed_odoo_sample_data olient
 ```
 
-Hard-refresh endpoint homes (`endpoint_home.css` / `endpoint_home.js` `?v=20260827-4` / `-3`).
+Hard-refresh Slack + Odoo homes (`?v=20260827-5`).
 
-Optional dry-run: `python manage.py seed_odoo_sample_data olient --dry-run`
+## Next (office + Shela)
 
-## Next
+1. Review HubSpot dual-feed plan — **go/no-go after write proof only**.
+2. Shela: HubSpot portal + Private App token vs OAuth reconnect for `contacts.write` (+ `deals.write` if sale).
+3. Confirm Slack home shows channel mock with New contact / New sale.
+4. Confirm Odoo Invoices bookmark + seed data after `seed_odoo_sample_data`.
 
-1. Confirm Odoo Invoices bookmark + under-bar panel at office after seed.
-2. Optional: teach `InstructionAdmin` to honor create-chip `role=` / `custom_endpoint=1` (ask first — `admin.py` frozen).
-3. Optional: square Odoo sidebar mark if wide PNG still looks cramped.
-
-## Leave alone (owner)
+## Leave alone
 
 - Browse / orch READY / Pair-Run BINGO-frozen unless unlocked.
-- Do not invent Mattermost/HubSpot fillers for empty homes.
-- Do not restyle producer/consumer cards casually.
-
-## Sequence still locked
-
-Native HAR → passthrough → pair producers to consumers → popups/orch UX.
-
-## Blockers / risks
-
-- Coordinated migrate still blocked at legacy `dose.0028_mlprompt`.
-- Prefer one Waitress + one mailbox consumer after `runall.ps1`.
+- Do not invent Mattermost fillers; do not HubSpot-home redesign until gate is green.
 
 ## Commit exclusions
 
-**Exclude:** `documentation/Capital Raise Project/**`, `polysniffer-auth.json`,
-`polysniffer_evidence/`, `tmp/_probe_*`, `tmp/_smoke_*`, `tmp/waitress_err.txt`,
-`__pycache__`, unused SVG logo drafts unless referenced.
+**Exclude:** Capital Raise assets, `polysniffer-auth.json`, evidence, `tmp/_probe_*`, unused SVG drafts.
