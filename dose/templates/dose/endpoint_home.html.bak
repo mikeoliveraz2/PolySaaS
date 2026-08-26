@@ -7,7 +7,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260826-4">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260826-3">
 {% endblock %}
 
 {% block content %}
@@ -43,31 +43,6 @@
         >{{ browse_button_label }}</a>
         {% endif %}
     </header>
-
-    <nav class="polysaas-endpoint-home__bookmarks polysaas-endpoint-home__create" aria-label="Create orchestration">
-        {% with app_key=endpoint.slug|default:title|lower %}
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=producer"
-            title="Declare a new producer event for this home"
-        >New producer</a>
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=consumer"
-            title="Add a consumer Instruction for this home"
-        >New consumer</a>
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;custom_endpoint=1"
-            title="Bind a Custom Endpoint URL / API as the service"
-        >Dynamic service based on API</a>
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_atomicservice_add' %}"
-            title="Upload or register a Dynamic / Atomic Service"
-        >Dynamic service</a>
-        {% endwith %}
-    </nav>
 
     {% if bookmarks %}
     <nav class="polysaas-endpoint-home__bookmarks" aria-label="{{ title }} bookmarks">
