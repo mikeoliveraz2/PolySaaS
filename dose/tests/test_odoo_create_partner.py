@@ -1,4 +1,6 @@
 """OdooCreatePartner isolation tests (no live Odoo)."""
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -61,7 +63,7 @@ class OdooCreatePartnerPayloadTests(SimpleTestCase):
         vals = _partner_vals({"name": "Alice", "email": "alice@x.com"})
         self.assertEqual(vals["name"], "Alice")
         self.assertEqual(vals["email"], "alice@x.com")
-        self.assertNotIn("customer_rank", vals)
+        self.assertEqual(vals["customer_rank"], 1)
         self.assertFalse(vals["is_company"])
 
     def test_missing_name_error(self):

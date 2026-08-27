@@ -1,5 +1,6 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
+<!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -7,7 +8,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260827-5">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260828-1">
 {% endblock %}
 
 {% block content %}
@@ -217,5 +218,5 @@
 {% block extrajs %}
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-1"></script>
-<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260827-5"></script>
+<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260828-1"></script>
 {% endblock %}

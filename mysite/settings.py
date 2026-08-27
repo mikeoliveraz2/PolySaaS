@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # BINGO: Nextcloud server-side SSO working — 2026-08-03 — see documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md
 # BINGO: UI Cleanup — commit 748e871e
 # BINGO: Waitress WhiteNoise static / orchestration button — commit 7d05920e
@@ -270,6 +271,9 @@ HUBSPOT_SCOPES = env(
     'HUBSPOT_SCOPES',
     default='crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read tickets',
 )
+# Demo / local Private App token (optional). When set, olient (and other tenants)
+# can hydrate TenantApp.extra_config without a manual store_hubspot_token paste.
+HUBSPOT_PRIVATE_APP_TOKEN = env('HUBSPOT_PRIVATE_APP_TOKEN', default='')
 
 # Optional Fernet key (ASCII, from Fernet.generate_key()) for parameters.Parameter.encrypted_payload.
 # If unset, a key is derived from DJANGO_SECRET_KEY (rotating SECRET_KEY invalidates stored secrets).

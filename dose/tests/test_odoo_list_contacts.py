@@ -1,4 +1,4 @@
-"""OdooListInvoices + Odoo endpoint adapter (no live Odoo)."""
+"""OdooListContacts + contacts bookmark publish (no live Odoo)."""
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 from types import SimpleNamespace
@@ -6,47 +6,28 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from dose.endpoint_actions import adapter_for_endpoint
 from dose.endpoint_actions.odoo import (
     OdooEndpointActionAdapter,
-    _list_invoices_payload,
-    _publish_list_invoices,
+    _list_contacts_payload,
+    _publish_list_contacts,
 )
-from dose.services.odoo_list_invoices import OdooListInvoices
+from dose.services.odoo_list_contacts import OdooListContacts
 from dose.services.odoo_rpc import OdooRpcError
 
 
-class OdooAdapterTests(SimpleTestCase):
-    def test_matches_odoo_only(self):
-        odoo = SimpleNamespace(
-            slug="odoo",
-            endpoint_url="http://localhost:8086",
-            get_menu_title=lambda: "Odoo",
-        )
-        slack = SimpleNamespace(
-            slug="slack",
-            endpoint_url="https://app.slack.com",
-            get_menu_title=lambda: "Slack",
-        )
-        self.assertIsInstance(adapter_for_endpoint(odoo), OdooEndpointActionAdapter)
-        self.assertNotIsInstance(adapter_for_endpoint(slack), OdooEndpointActionAdapter)
-
-    def test_invoices_bookmark_and_action(self):
+class OdooContactsAdapterTests(SimpleTestCase):
+    def test_contacts_bookmark_and_action(self):
         adapter = OdooEndpointActionAdapter()
         keys = [b["key"] for b in adapter.default_bookmarks]
-        self.assertIn("invoices", keys)
         self.assertIn("contacts", keys)
-        self.assertIn("sales", keys)
-        action = adapter.action("odoo.list_invoices")
+        action = adapter.action("odoo.list_contacts")
         self.assertIsNotNone(action)
         self.assertEqual(action.kind, "direct_event")
-        self.assertEqual(_list_invoices_payload({"limit": "25"}), {"limit": 25})
-        self.assertEqual(_list_invoices_payload({}), {})
-        self.assertIsNotNone(adapter.action("odoo.list_contacts"))
-        self.assertIsNotNone(adapter.action("odoo.list_sales"))
+        self.assertEqual(_list_contacts_payload({"limit": "25"}), {"limit": 25})
+        self.assertEqual(_list_contacts_payload({}), {})
 
 
-class OdooListInvoicesTests(SimpleTestCase):
+class OdooListContactsTests(SimpleTestCase):
     def test_success_saves_callback(self):
         request = SimpleNamespace(
             tenant=SimpleNamespace(schema_name="olient"),
@@ -58,23 +39,20 @@ class OdooListInvoicesTests(SimpleTestCase):
         client.transport = "jsonrpc"
         client.execute_kw.return_value = [
             {
-                "id": 7,
-                "name": "INV/2026/0001",
-                "partner_id": [3, "Acme"],
-                "amount_total": 100.0,
-                "amount_untaxed": 90.0,
-                "state": "posted",
-                "move_type": "out_invoice",
-                "invoice_date": "2026-08-01",
-                "payment_state": "not_paid",
+                "id": 5,
+                "name": "Acme Buyer",
+                "email": "buyer@acme.test",
+                "phone": "555-0100",
+                "parent_id": [1, "Acme Corp"],
+                "customer_rank": 1,
             }
         ]
         callback = MagicMock()
-        callback.id = 17
-        callback.description = "Odoo customer invoice list (bookmark capture)"
-        callback.matchingEventKey = "odoo.list_invoices"
+        callback.id = 21
+        callback.description = "Odoo customer contact list (bookmark capture)"
+        callback.matchingEventKey = "odoo.list_contacts"
         with patch(
-            "dose.services.odoo_list_invoices.load_odoo_rpc_config",
+            "dose.services.odoo_list_contacts.load_odoo_rpc_config",
             return_value={
                 "url": "http://odoo.test",
                 "db": "odoo",
@@ -82,7 +60,7 @@ class OdooListInvoicesTests(SimpleTestCase):
                 "password": "x",
             },
         ), patch(
-            "dose.services.odoo_list_invoices.OdooRpcClient.from_config",
+            "dose.services.odoo_list_contacts.OdooRpcClient.from_config",
             return_value=client,
         ), patch(
             "dose.passthrough.orchestration_log.ensure_tenant_search_path",
@@ -91,16 +69,19 @@ class OdooListInvoicesTests(SimpleTestCase):
             "dose.models.CallBackData.objects.create",
             return_value=callback,
         ) as create:
-            result = OdooListInvoices.execute_and_save(request, None)
+            result = OdooListContacts.execute_and_save(request, None)
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["count"], 1)
-        self.assertEqual(result["callback_id"], 17)
-        self.assertEqual(result["invoices"][0]["partner_name"], "Acme")
+        self.assertEqual(result["callback_id"], 21)
+        self.assertEqual(result["contacts"][0]["parent_name"], "Acme Corp")
+        self.assertEqual(result["contacts"][0]["email"], "buyer@acme.test")
         create.assert_called_once()
         kwargs = create.call_args.kwargs
-        self.assertEqual(kwargs["matchingEventKey"], "odoo.list_invoices")
+        self.assertEqual(kwargs["matchingEventKey"], "odoo.list_contacts")
         self.assertEqual(kwargs["callbackdata"]["count"], 1)
+        domain = client.execute_kw.call_args.args[2][0]
+        self.assertEqual(domain, [["customer_rank", ">", 0]])
 
     def test_auth_failed(self):
         request = SimpleNamespace(
@@ -114,7 +95,7 @@ class OdooListInvoicesTests(SimpleTestCase):
             "auth_failed", "nope", url="http://odoo.test"
         )
         with patch(
-            "dose.services.odoo_list_invoices.load_odoo_rpc_config",
+            "dose.services.odoo_list_contacts.load_odoo_rpc_config",
             return_value={
                 "url": "http://odoo.test",
                 "db": "odoo",
@@ -122,10 +103,10 @@ class OdooListInvoicesTests(SimpleTestCase):
                 "password": "x",
             },
         ), patch(
-            "dose.services.odoo_list_invoices.OdooRpcClient.from_config",
+            "dose.services.odoo_list_contacts.OdooRpcClient.from_config",
             return_value=client,
         ):
-            result = OdooListInvoices.execute_and_save(request, None)
+            result = OdooListContacts.execute_and_save(request, None)
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"], "auth_failed")
 
@@ -135,25 +116,25 @@ class OdooListInvoicesTests(SimpleTestCase):
             "dose.endpoint_actions.odoo.ensure_tenant_search_path",
             return_value=True,
         ), patch(
-            "dose.services.odoo_list_invoices.OdooListInvoices.execute_and_save",
+            "dose.services.odoo_list_contacts.OdooListContacts.execute_and_save",
             return_value={
                 "status": "success",
                 "count": 2,
-                "invoices": [
-                    {"name": "INV/1", "partner_name": "Acme"},
-                    {"name": "INV/2", "partner_name": "Beta"},
+                "contacts": [
+                    {"name": "Acme", "email": "a@x.test"},
+                    {"name": "Beta", "email": "b@x.test"},
                 ],
-                "callback_id": 41,
-                "callback_description": "Odoo customer invoice list (bookmark capture)",
-                "matching_event_key": "odoo.list_invoices",
+                "callback_id": 42,
+                "callback_description": "Odoo customer contact list (bookmark capture)",
+                "matching_event_key": "odoo.list_contacts",
                 "odoo": {"db": "odoo_olient", "url": "http://odoo.test"},
             },
         ):
-            out = _publish_list_invoices(tenant, {})
+            out = _publish_list_contacts(tenant, {})
         self.assertTrue(out["success"])
         self.assertTrue(out["sync"])
         self.assertEqual(out["count"], 2)
         self.assertEqual(out["popup"], "callback_record")
-        self.assertEqual(out["list_kind"], "invoices")
-        self.assertEqual(len(out["invoices"]), 2)
+        self.assertEqual(out["list_kind"], "contacts")
+        self.assertEqual(len(out["contacts"]), 2)
         self.assertIn("CallBackData", out["detail"])

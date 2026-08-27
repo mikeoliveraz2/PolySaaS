@@ -3,6 +3,8 @@
 Instruction selector: atomic_apps = ("odoo",), category write.
 Find-or-create by email, then name. Shared RPC lives in odoo_rpc.py.
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 from __future__ import annotations
 
 import json
@@ -161,6 +163,8 @@ def _partner_vals(payload: dict) -> dict:
     vals: dict[str, Any] = {
         "name": str(payload.get("name") or "").strip(),
         "is_company": bool(payload.get("is_company", False)),
+        # Contacts bookmark (and Odoo Customers) filter customer_rank > 0.
+        "customer_rank": 1,
     }
     for src, dest in (
         ("email", "email"),

@@ -1,5 +1,6 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 // BINGO: Slack producer/consumer home — 2026-08-24
+// BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 // FIX 2026-08-27 (owner-approved): sync direct_event (Odoo Invoices → CallBackData).
 (function () {
     'use strict';
@@ -116,11 +117,91 @@
         return num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 
+    function resolveListKind(data) {
+        if (data.list_kind) return data.list_kind;
+        var path = data.action_path || data.matching_event_key || '';
+        if (path.indexOf('list_contacts') !== -1) return 'contacts';
+        if (path.indexOf('list_sales') !== -1) return 'sales';
+        return 'invoices';
+    }
+
+    function renderCallbackTable(kind, rows) {
+        if (kind === 'contacts') {
+            var contactRows = rows.map(function (row) {
+                return '<tr>' +
+                    '<td>' + esc(row.name || ('#' + row.id)) + '</td>' +
+                    '<td>' + esc(row.email || '—') + '</td>' +
+                    '<td>' + esc(row.phone || '—') + '</td>' +
+                    '<td>' + esc(row.parent_name || '—') + '</td>' +
+                    '<td class="is-num">' + esc(row.id != null ? row.id : '—') + '</td>' +
+                    '</tr>';
+            }).join('');
+            return {
+                empty: 'No customer contacts were returned. The CallBackData row was still saved with count 0.',
+                html:
+                    '<div class="polysaas-callback-dialog__table-wrap">' +
+                    '<table class="polysaas-callback-dialog__table">' +
+                    '<thead><tr>' +
+                    '<th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Id</th>' +
+                    '</tr></thead><tbody>' + contactRows + '</tbody></table></div>'
+            };
+        }
+        if (kind === 'sales') {
+            var saleRows = rows.map(function (row) {
+                var note = row.note ? ('<div class="polysaas-callback-dialog__note">' + esc(row.note) + '</div>') : '';
+                return '<tr>' +
+                    '<td>' + esc(row.name || ('#' + row.id)) + note + '</td>' +
+                    '<td>' + esc(row.partner_name || '') + '</td>' +
+                    '<td class="is-num">' + money(row.amount_total) + '</td>' +
+                    '<td>' + esc(row.state || '') + '</td>' +
+                    '<td>' + esc(row.date_order || '—') + '</td>' +
+                    '</tr>';
+            }).join('');
+            return {
+                empty: 'No sales orders were returned. The CallBackData row was still saved with count 0.',
+                html:
+                    '<div class="polysaas-callback-dialog__table-wrap">' +
+                    '<table class="polysaas-callback-dialog__table">' +
+                    '<thead><tr>' +
+                    '<th>Deal / Order</th><th>Customer</th><th>Amount</th><th>Stage</th><th>Created</th>' +
+                    '</tr></thead><tbody>' + saleRows + '</tbody></table></div>'
+            };
+        }
+        var invoiceRows = rows.map(function (inv) {
+            return '<tr>' +
+                '<td>' + esc(inv.name || ('#' + inv.id)) + '</td>' +
+                '<td>' + esc(inv.partner_name || '') + '</td>' +
+                '<td>' + esc(inv.invoice_date || '—') + '</td>' +
+                '<td class="is-num">' + money(inv.amount_total) + '</td>' +
+                '<td>' + esc(inv.state || '') + '</td>' +
+                '<td>' + esc(inv.payment_state || '') + '</td>' +
+                '</tr>';
+        }).join('');
+        return {
+            empty: 'No customer invoices were returned. The CallBackData row was still saved with count 0.',
+            html:
+                '<div class="polysaas-callback-dialog__table-wrap">' +
+                '<table class="polysaas-callback-dialog__table">' +
+                '<thead><tr>' +
+                '<th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>State</th><th>Payment</th>' +
+                '</tr></thead><tbody>' + invoiceRows + '</tbody></table></div>'
+        };
+    }
+
     function openCallbackDialog(data) {
         if (!callbackDialog || !callbackBody) return;
-        var invoices = Array.isArray(data.invoices) ? data.invoices : [];
-        var count = data.count != null ? data.count : invoices.length;
+        var kind = resolveListKind(data);
+        var rows = [];
+        if (kind === 'contacts') {
+            rows = Array.isArray(data.contacts) ? data.contacts : [];
+        } else if (kind === 'sales') {
+            rows = Array.isArray(data.sales) ? data.sales : [];
+        } else {
+            rows = Array.isArray(data.invoices) ? data.invoices : [];
+        }
+        var count = data.count != null ? data.count : rows.length;
         var odoo = data.odoo || {};
+        var hubspot = data.hubspot || {};
         if (callbackTitle) {
             callbackTitle.textContent = data.callback_description || 'CallBackData record';
         }
@@ -128,36 +209,28 @@
             callbackSub.textContent = data.detail || '';
         }
         if (callbackMeta) {
-            callbackMeta.innerHTML =
+            var metaHtml =
                 '<div><span>Event</span><strong>' + esc(data.matching_event_key || data.action_path || '') + '</strong></div>' +
                 '<div><span>Status</span><strong>' + esc(data.status || 'success') + '</strong></div>' +
                 '<div><span>Callback #</span><strong>' + esc(data.callback_id != null ? data.callback_id : '—') + '</strong></div>' +
-                '<div><span>Count</span><strong>' + esc(count) + '</strong></div>' +
-                '<div><span>Odoo DB</span><strong>' + esc(odoo.db || '—') + '</strong></div>' +
-                '<div><span>Odoo URL</span><strong>' + esc(odoo.url || '—') + '</strong></div>';
+                '<div><span>Count</span><strong>' + esc(count) + '</strong></div>';
+            if (hubspot.portal_id || hubspot.token_type) {
+                metaHtml +=
+                    '<div><span>HubSpot portal</span><strong>' + esc(hubspot.portal_id || '—') + '</strong></div>' +
+                    '<div><span>Token</span><strong>' + esc(hubspot.token_type || '—') + '</strong></div>';
+            } else {
+                metaHtml +=
+                    '<div><span>Odoo DB</span><strong>' + esc(odoo.db || '—') + '</strong></div>' +
+                    '<div><span>Odoo URL</span><strong>' + esc(odoo.url || '—') + '</strong></div>';
+            }
+            callbackMeta.innerHTML = metaHtml;
         }
-        if (!invoices.length) {
+        var rendered = renderCallbackTable(kind, rows);
+        if (!rows.length) {
             callbackBody.innerHTML =
-                '<div class="polysaas-callback-dialog__empty">' +
-                'No customer invoices were returned. The CallBackData row was still saved with count 0.' +
-                '</div>';
+                '<div class="polysaas-callback-dialog__empty">' + rendered.empty + '</div>';
         } else {
-            var rows = invoices.map(function (inv) {
-                return '<tr>' +
-                    '<td>' + esc(inv.name || ('#' + inv.id)) + '</td>' +
-                    '<td>' + esc(inv.partner_name || '') + '</td>' +
-                    '<td>' + esc(inv.invoice_date || '—') + '</td>' +
-                    '<td class="is-num">' + money(inv.amount_total) + '</td>' +
-                    '<td>' + esc(inv.state || '') + '</td>' +
-                    '<td>' + esc(inv.payment_state || '') + '</td>' +
-                    '</tr>';
-            }).join('');
-            callbackBody.innerHTML =
-                '<div class="polysaas-callback-dialog__table-wrap">' +
-                '<table class="polysaas-callback-dialog__table">' +
-                '<thead><tr>' +
-                '<th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>State</th><th>Payment</th>' +
-                '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+            callbackBody.innerHTML = rendered.html;
         }
         callbackDialog.hidden = false;
         callbackDialog.removeAttribute('hidden');

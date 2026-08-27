@@ -1,5 +1,6 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 // BINGO: Slack Odoo contact/sale forms — 2026-08-25
+// BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 (function () {
     'use strict';
 
@@ -215,7 +216,7 @@
     function formPayload(scope) {
         var data = {};
         if (!scope) return data;
-        scope.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
+        scope.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (el) {
             if (el.disabled) return;
             if (el.type === 'radio' && !el.checked) return;
             if (el.type === 'checkbox' && !el.checked) return;
@@ -348,8 +349,12 @@
                 ? ('Queued mailbox #' + queued.mailboxId)
                 : 'Queued');
             if (form) {
-                form.querySelectorAll('input[name], textarea[name]').forEach(function (el) {
+                form.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (el) {
                     if (el.type === 'radio' || el.type === 'checkbox') return;
+                    if (el.tagName === 'SELECT') {
+                        el.selectedIndex = 0;
+                        return;
+                    }
                     el.value = '';
                 });
             }

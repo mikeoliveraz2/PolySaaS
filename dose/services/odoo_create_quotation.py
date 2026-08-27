@@ -1,4 +1,6 @@
 """Create a draft Odoo quotation from a normalized Slack webhook payload."""
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 from __future__ import annotations
 
 import json
@@ -162,7 +164,7 @@ def _find_or_create_partner(client: OdooRpcClient, payload: dict) -> int:
                 return int(rows[0]["id"])
             # Same email, different name → create a new partner (do not rename).
 
-    vals = {"name": name, "is_company": False}
+    vals = {"name": name, "is_company": False, "customer_rank": 1}
     if email:
         vals["email"] = email
     return int(client.execute_kw("res.partner", "create", [vals]))

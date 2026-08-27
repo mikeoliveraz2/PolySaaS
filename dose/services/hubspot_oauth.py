@@ -1,6 +1,8 @@
 """
 HubSpot OAuth — per-tenant connection (each subscriber links their own portal).
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 from __future__ import annotations
 
 import logging
@@ -131,9 +133,57 @@ def persist_tokens_on_tenant_app(tenant_app, token_payload: Dict[str, Any]) -> N
 
 
 def get_tenant_hubspot_app(tenant):
-    from dose.tenant_app_lookup import get_tenant_app_in_schema
+    """Return HubSpot TenantApp, hydrating from HUBSPOT_PRIVATE_APP_TOKEN when needed."""
+    from dose.tenant_app_lookup import (
+        ensure_tenant_app_in_schema,
+        get_tenant_app_in_schema,
+        tenant_schema_search_path,
+    )
 
-    return get_tenant_app_in_schema(tenant, "hubspot")
+    ta = get_tenant_app_in_schema(tenant, "hubspot")
+    env_token = (getattr(settings, "HUBSPOT_PRIVATE_APP_TOKEN", "") or "").strip()
+    if ta is None:
+        if not env_token:
+            return None
+        ta, _ = ensure_tenant_app_in_schema(
+            tenant,
+            "hubspot",
+            status="active",
+            extra_config={},
+        )
+        logger.info(
+            "[HubSpotOAuth] created HubSpot TenantApp for schema=%s from env token",
+            getattr(tenant, "schema_name", ""),
+        )
+
+    if not ta:
+        return None
+
+    extra = ta.extra_config if isinstance(ta.extra_config, dict) else {}
+    if extra.get("hs_access_token"):
+        return ta
+    if not env_token:
+        return ta
+
+    extra = dict(extra)
+    extra.update(
+        {
+            "hs_access_token": env_token,
+            "hs_token_type": "private_app",
+            "hs_refresh_token": "",
+            "hs_token_expires_at": "",
+            "hs_portal_id": extra.get("hs_portal_id") or "",
+        }
+    )
+    ta.extra_config = extra
+    ta.status = "active"
+    with tenant_schema_search_path(tenant):
+        ta.save(update_fields=["extra_config", "status"])
+    logger.info(
+        "[HubSpotOAuth] hydrated hs_access_token from env for schema=%s",
+        getattr(tenant, "schema_name", ""),
+    )
+    return ta
 
 
 def tenant_has_hubspot_connection(tenant) -> bool:

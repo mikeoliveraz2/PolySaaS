@@ -1,3 +1,6 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
+
 # PolySaaS Active Handoff
 
 This file is the canonical startup and end-of-day handoff for the repo.
@@ -5,44 +8,48 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: **2026-08-27 — Canada laptop → office review**
+- Date/session: **2026-08-28 — Canada laptop BINGO → office**
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Prior BINGO certs (still frozen unless owner unlocks):
+- **BINGO:** Slack → Odoo + HubSpot dual-feed (`documentation/BINGO_SLACK_HUBSPOT_DUAL_FEED_2026-08-28.md`)
+- Prior BINGO certs (still frozen):
   - `documentation/BINGO_SLACK_ODOO_FORMS_2026-08-25.md` (`b28be615`)
   - `documentation/BINGO_SLACK_PRODUCER_CONSUMER_2026-08-24.md` (`28b07da0`)
 - Agent sync check: passed
-- Tenant of record: **OLIENTR** / schema `olient` (Odoo db `odoo_olient`)
-- Not a BINGO commit
+- Tenant of record: **OLIENTR** / schema `olient`
+- Not leaving WIP unpushed
 
-## Completed this session
+## Completed this session (BINGO)
 
-1. **Odoo Invoices bookmark** — CallBackData + panel under green orch bar (`?v=20260827-4` / panel CSS).
-2. **Sample data** — `python manage.py seed_odoo_sample_data olient` (Big Guys Wharehouse, customers, invoices).
-3. **Slack channel wireframe visible again** on Slack endpoint home — in-channel **New contact** / **New sale** (`endpoint_home.css` / template `?v=20260827-5`). Browse Slack remains real Slack (no CRM forms there).
-4. **Plan drafted (not executed):** Slack → Odoo + HubSpot dual-feed (Big Guys Warehouse). Gate = HubSpot write proof. Shela to confirm Private App vs OAuth write scopes. Cursor plan: `slack_hubspot_dual_feed`.
+1. Odoo list bookmarks: Contacts / Sales / Invoices → CallBackData panel.
+2. HubSpot dual-feed consumers: `HubSpotCreateContact` + `HubSpotCreateDeal` on Slack paths (alongside Odoo).
+3. HubSpot list bookmarks: Contacts / Sales.
+4. Env hydrate: `HUBSPOT_PRIVATE_APP_TOKEN` → TenantApp (requires `contacts.write` + `deals.write`).
+5. Slack sale form: Amount + HubSpot stage fields.
+6. Odoo partner `customer_rank=1` so Contacts bookmark shows Slack-created customers.
+7. Live proof: Contact Moon both systems; Moon Rocks sale Odoo S00004 + HubSpot deal.
 
 ## Office after pull
 
 ```powershell
 git pull origin cursor/polysniffer-slack-native-capture
 .\runall.ps1
-python manage.py seed_odoo_sample_data olient
+python manage.py setup_slack_hubspot_consumers --schema olient
+# Ensure .env has HUBSPOT_PRIVATE_APP_TOKEN (write scopes); never commit .env
 ```
 
-Hard-refresh Slack + Odoo homes (`?v=20260827-5`).
+Hard-refresh endpoint homes (`?v=20260828-1`).
 
-## Next (office + Shela)
+## Next
 
-1. Review HubSpot dual-feed plan — **go/no-go after write proof only**.
-2. Shela: HubSpot portal + Private App token vs OAuth reconnect for `contacts.write` (+ `deals.write` if sale).
-3. Confirm Slack home shows channel mock with New contact / New sale.
-4. Confirm Odoo Invoices bookmark + seed data after `seed_odoo_sample_data`.
+1. Optional: backfill older HubSpot deals display / associations.
+2. Later (not this bingo): HubSpot ↔ Odoo bidirectional.
+3. Do not edit BINGO-frozen files without owner unlock.
 
 ## Leave alone
 
-- Browse / orch READY / Pair-Run BINGO-frozen unless unlocked.
-- Do not invent Mattermost fillers; do not HubSpot-home redesign until gate is green.
+- Browse / orch READY / Pair-Run prior BINGOs unless unlocked.
+- Do not invent Mattermost fillers.
 
 ## Commit exclusions
 
-**Exclude:** Capital Raise assets, `polysniffer-auth.json`, evidence, `tmp/_probe_*`, unused SVG drafts.
+**Exclude:** Capital Raise assets, `polysniffer-auth.json`, evidence, `tmp/_probe_*`, `.env`.

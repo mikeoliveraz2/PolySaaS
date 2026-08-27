@@ -1,6 +1,8 @@
 """
 HubSpot API wrapper — per-tenant OAuth tokens via hubspot-api-client.
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 from __future__ import annotations
 
 import logging
@@ -97,13 +99,77 @@ class HubspotApiService:
         page = api.get_page(limit=limit, properties=props)
         return self._props_list(page.results, props)
 
+    def create_contact(self, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a CRM contact. Requires contacts.write (Private App or OAuth)."""
+        props = {k: v for k, v in (properties or {}).items() if v not in (None, "")}
+        if not props:
+            raise HubspotApiError("create_contact requires at least one property")
+        try:
+            from hubspot.crm.contacts import SimplePublicObjectInputForCreate
+        except ImportError:
+            from hubspot.crm.contacts import SimplePublicObjectInput as SimplePublicObjectInputForCreate
+        api = self.client().crm.contacts.basic_api
+        try:
+            created = api.create(
+                simple_public_object_input_for_create=SimplePublicObjectInputForCreate(
+                    properties=props
+                )
+            )
+        except TypeError:
+            created = api.create(
+                simple_public_object_input=SimplePublicObjectInputForCreate(properties=props)
+            )
+        except Exception as exc:
+            raise HubspotApiError(f"create_contact failed: {exc}") from exc
+        return {
+            "id": getattr(created, "id", None),
+            "properties": getattr(created, "properties", None) or props,
+        }
+
+    def create_deal(self, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a CRM deal. Requires deals.write (Private App or OAuth)."""
+        props = {k: v for k, v in (properties or {}).items() if v not in (None, "")}
+        if not props.get("dealname"):
+            raise HubspotApiError("create_deal requires dealname")
+        try:
+            from hubspot.crm.deals import SimplePublicObjectInputForCreate
+        except ImportError:
+            from hubspot.crm.deals import SimplePublicObjectInput as SimplePublicObjectInputForCreate
+        api = self.client().crm.deals.basic_api
+        try:
+            created = api.create(
+                simple_public_object_input_for_create=SimplePublicObjectInputForCreate(
+                    properties=props
+                )
+            )
+        except TypeError:
+            created = api.create(
+                simple_public_object_input=SimplePublicObjectInputForCreate(properties=props)
+            )
+        except Exception as exc:
+            raise HubspotApiError(f"create_deal failed: {exc}") from exc
+        return {
+            "id": getattr(created, "id", None),
+            "properties": getattr(created, "properties", None) or props,
+        }
+
     def list_companies(self, *, limit: int = 10) -> List[Dict[str, Any]]:
         props = ['name', 'domain', 'phone', 'city', 'industry']
         page = self.client().crm.companies.basic_api.get_page(limit=limit, properties=props)
         return self._props_list(page.results, props)
 
     def list_deals(self, *, limit: int = 10) -> List[Dict[str, Any]]:
-        props = ['dealname', 'amount', 'dealstage', 'closedate', 'pipeline']
+        props = [
+            'dealname',
+            'amount',
+            'dealstage',
+            'closedate',
+            'pipeline',
+            'description',
+            'createdate',
+            'hs_lastmodifieddate',
+            'dealtype',
+        ]
         page = self.client().crm.deals.basic_api.get_page(limit=limit, properties=props)
         return self._props_list(page.results, props)
 

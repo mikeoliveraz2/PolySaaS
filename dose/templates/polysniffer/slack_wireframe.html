@@ -1,5 +1,6 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
+<!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
 {% load static %}
 <div
     class="ps-slack-mock"
@@ -397,13 +398,16 @@
             margin:0; color:#6c757d; font:13px Roboto,"Segoe UI",sans-serif;
         }
         #ps-slack-modal-sale .ps-odoo-sale__row input,
+        #ps-slack-modal-sale .ps-odoo-sale__row select,
         #ps-slack-modal-sale .ps-odoo-sale__row textarea {
             display:block; width:100%; margin:0; padding:4px 0;
             border:0; border-bottom:1px solid #ced4da; color:#212529;
             font:14px Roboto,"Segoe UI",sans-serif;
+            background:#fff;
         }
         #ps-slack-modal-sale .ps-odoo-sale__row textarea { min-height:72px; white-space:pre-wrap; }
         #ps-slack-modal-sale .ps-odoo-sale__row input:focus,
+        #ps-slack-modal-sale .ps-odoo-sale__row select:focus,
         #ps-slack-modal-sale .ps-odoo-sale__row textarea:focus {
             outline:none; border-bottom-color:#714B67;
         }
@@ -588,6 +592,22 @@
                             <label>Customer Reference</label>
                             <input name="order_reference" form="ps-slack-modal-sink" type="text" required maxlength="80" placeholder="SLACK-DEMO-001" autocomplete="off">
                         </div>
+                        <div class="ps-odoo-sale__row">
+                            <label>Amount</label>
+                            <input name="amount" form="ps-slack-modal-sink" type="number" min="0" step="0.01" maxlength="24" placeholder="e.g. 1250.00" autocomplete="off">
+                        </div>
+                        <div class="ps-odoo-sale__row">
+                            <label>HubSpot stage</label>
+                            <select name="deal_stage" form="ps-slack-modal-sink">
+                                <option value="appointmentscheduled">Appointment scheduled</option>
+                                <option value="qualifiedtobuy">Qualified to buy</option>
+                                <option value="presentationscheduled">Presentation scheduled</option>
+                                <option value="decisionmakerboughtin">Decision maker bought-in</option>
+                                <option value="contractsent">Contract sent</option>
+                                <option value="closedwon">Closed won</option>
+                                <option value="closedlost">Closed lost</option>
+                            </select>
+                        </div>
                     </div>
                     <div>
                         <div class="ps-odoo-sale__row ps-odoo-sale__row--stack ps-odoo-sale__span">
@@ -602,5 +622,5 @@
     </div>
     {% endif %}
     <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-2"></script>
-    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260824-7"></script>
+    <script src="{% static 'admin/js/slack_wireframe.js' %}?v=20260828-1"></script>
 </div>

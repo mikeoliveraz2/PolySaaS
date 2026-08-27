@@ -1,5 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack Odoo contact/sale forms — 2026-08-25
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 import uuid
 
 from django.utils import timezone
@@ -25,6 +26,8 @@ def _payload(kind: str, supplied: dict) -> dict:
             "partner_name": 120,
             "partner_email": 120,
             "order_reference": 80,
+            "amount": 24,
+            "deal_stage": 40,
             "note": 400,
         }
     )
@@ -64,6 +67,8 @@ def _payload(kind: str, supplied: dict) -> dict:
         or f"slack.buyer.{token}@example.com",
         "order_reference": cleaned["order_reference"]
         or f"SLACK-{stamp}-{token[:4]}",
+        "amount": cleaned["amount"],
+        "deal_stage": cleaned["deal_stage"] or "appointmentscheduled",
         "note": cleaned["note"]
         or "Draft quotation created from the PolySaaS Slack endpoint home.",
     }
