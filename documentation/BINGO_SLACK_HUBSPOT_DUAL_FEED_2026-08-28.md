@@ -36,7 +36,7 @@ python manage.py setup_slack_hubspot_consumers --schema olient
 ## Commit
 
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Hash: _(filled after commit)_
+- Hash: `7d74bf55`
 - Date: 2026-08-28
 
 ## Frozen source files (this bingo)
