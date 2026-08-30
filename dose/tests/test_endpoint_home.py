@@ -127,7 +127,7 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
         self.assertIn("Dynamic service based on API", template)
         self.assertIn(">Dynamic service</a>", template)
         self.assertIn("endpoint_home.js", template)
-        self.assertIn("?v=20260830-7", template)
+        self.assertIn("?v=20260831-1", template)
         self.assertIn(
             "punched-aluminum.svg",
             (Path(settings.BASE_DIR) / "dose" / "static" / "admin" / "css" / "endpoint_home.css").read_text(encoding="utf-8"),

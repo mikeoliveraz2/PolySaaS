@@ -3,18 +3,16 @@
 /* BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 */
 /* FIX 2026-08-27 (owner-approved): readable header title + create chips; callback popup. */
 /* FIX 2026-08-30 (owner-approved): punched-aluminum field + glass panes/buttons on every endpoint home. */
+/* FIX 2026-08-31 (owner-approved): chrome-framed royal-blue glass chips (skeuomorphic). */
 .polysaas-endpoint-home {
     --ps-pane-fill: linear-gradient(180deg, rgba(248, 249, 251, 0.94) 0%, rgba(214, 218, 224, 0.9) 100%);
     --ps-pane-edge: rgba(255, 255, 255, 0.78);
     --ps-pane-shadow: 0 10px 22px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.88), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
-    --ps-glass-fill:
-        radial-gradient(ellipse 14px 18px at 12% 38%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0) 72%),
-        radial-gradient(ellipse 12px 16px at 88% 62%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 70%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.1) 40%, rgba(255, 255, 255, 0.04) 58%, rgba(120, 124, 130, 0.12) 100%);
-    --ps-glass-blue:
-        radial-gradient(ellipse 14px 18px at 12% 38%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 72%),
-        radial-gradient(ellipse 12px 16px at 88% 62%, rgba(180, 210, 255, 0.45) 0%, rgba(255, 255, 255, 0) 70%),
-        linear-gradient(180deg, rgba(170, 205, 255, 0.38) 0%, rgba(80, 140, 230, 0.16) 50%, rgba(40, 90, 180, 0.18) 100%);
+    --ps-chrome: linear-gradient(145deg, #ffffff 0%, #d5d9df 16%, #8c929a 38%, #f3f5f7 52%, #6a6f77 78%, #eceef1 100%);
+    --ps-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.14) 36%, transparent 48%);
+    --ps-glass-blue: linear-gradient(180deg, #6eb4ff 0%, #3d8ef5 44%, #1a4fc4 48%, #143ea3 100%);
+    --ps-glass-fill: linear-gradient(180deg, #9aa3ad 0%, #6d7580 44%, #3d434b 48%, #2b3036 100%);
+    --ps-glass-green: linear-gradient(180deg, #7de3a8 0%, #2fbf6a 44%, #15803d 48%, #166534 100%);
     display: grid;
     gap: 8px;
     padding: 10px;
@@ -100,38 +98,42 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     line-height: 1.35;
     color: #4b5563 !important;
 }
+.polysaas-endpoint-home__launch,
+.polysaas-endpoint-bookmark,
+.polysaas-endpoint-home .ps-slack-mock__action,
+.polysaas-consumer-list__run,
+.polysaas-pair-dialog__cancel,
+.polysaas-pair-dialog__save {
+    border: 3px solid transparent;
+    background-origin: border-box;
+    background-clip: padding-box, padding-box, border-box;
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.28),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.42);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
 .polysaas-endpoint-home__launch {
     box-sizing: border-box;
     min-width: 176px;
-    height: 32px;
+    height: 34px;
     padding: 0 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
     border-radius: 999px;
-    border: 1px solid rgba(40, 44, 50, 0.35);
-    background-color: rgba(80, 140, 230, 0.18);
-    background-image: var(--ps-glass-blue);
-    color: #102a4c !important;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
+    color: #fff !important;
     text-decoration: none;
     font-weight: 700;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.75),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.12);
 }
 .polysaas-endpoint-home__launch:hover {
-    background-color: rgba(80, 140, 230, 0.26);
-    color: #102a4c !important;
+    filter: brightness(1.06);
+    color: #fff !important;
 }
 .polysaas-endpoint-bookmark--browse {
-    background-color: rgba(80, 140, 230, 0.18) !important;
-    background-image: var(--ps-glass-blue) !important;
-    border-color: rgba(40, 44, 50, 0.35) !important;
-    color: #102a4c !important;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome) !important;
+    color: #fff !important;
     font-weight: 700;
 }
 .polysaas-endpoint-home__bookmarks {
@@ -152,13 +154,11 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     gap: 6px;
     flex: 0 0 176px;
     width: 176px;
-    height: 32px;
+    height: 34px;
     padding: 0 8px;
-    border: 1px solid rgba(40, 44, 50, 0.32);
     border-radius: 999px;
-    background-color: rgba(255, 255, 255, 0.16);
-    background-image: var(--ps-glass-fill);
-    color: #f4f5f7 !important;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
+    color: #fff !important;
     font-size: 12px;
     font-weight: 700;
     line-height: 1.15;
@@ -168,24 +168,16 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: pointer;
-    isolation: isolate;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 .polysaas-endpoint-home__create {
     background: linear-gradient(180deg, rgba(42, 46, 52, 0.88) 0%, rgba(22, 24, 28, 0.94) 100%);
 }
 .polysaas-endpoint-bookmark--create {
-    background-color: rgba(255, 255, 255, 0.16);
-    background-image: var(--ps-glass-fill);
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
 }
 .polysaas-endpoint-bookmark:hover,
 .polysaas-endpoint-home .ps-slack-mock__action:hover {
-    background-color: rgba(255, 255, 255, 0.26);
+    filter: brightness(1.06);
 }
 .polysaas-endpoint-bookmark[disabled] {
     opacity: .5;
@@ -312,31 +304,24 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     align-self: center;
     margin: 4px;
     min-width: 72px;
-    height: 28px;
+    height: 32px;
     padding: 0 10px;
     font-size: 12px;
-    border: 1px solid rgba(40, 44, 50, 0.32);
     border-radius: 999px;
-    background-color: rgba(34, 197, 94, 0.16);
-    background-image: var(--ps-glass-fill);
-    color: #052e16;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-green), var(--ps-chrome);
+    color: #fff;
     font-weight: 700;
     cursor: pointer;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 .polysaas-consumer-list__run:hover {
-    background-color: rgba(34, 197, 94, 0.24);
+    filter: brightness(1.06);
 }
 .polysaas-producer-pair {
-    background-color: rgba(80, 140, 230, 0.18);
-    background-image: var(--ps-glass-blue);
-    color: #102a4c;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
+    color: #fff;
 }
 .polysaas-producer-pair:hover {
-    background-color: rgba(80, 140, 230, 0.26);
+    filter: brightness(1.06);
 }
 .polysaas-pair-dialog {
     border: 1px solid rgba(255, 255, 255, 0.75);
@@ -388,25 +373,18 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 }
 .polysaas-pair-dialog__cancel,
 .polysaas-pair-dialog__save {
-    padding: 8px 16px;
+    padding: 6px 16px;
+    min-height: 32px;
     border-radius: 999px;
-    border: 1px solid rgba(40, 44, 50, 0.32);
     font-weight: 700;
     cursor: pointer;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+    color: #fff;
 }
 .polysaas-pair-dialog__cancel {
-    background-color: rgba(255, 255, 255, 0.16);
-    background-image: var(--ps-glass-fill);
-    color: #1f2937;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-fill), var(--ps-chrome);
 }
 .polysaas-pair-dialog__save {
-    background-color: rgba(80, 140, 230, 0.18);
-    background-image: var(--ps-glass-blue);
-    color: #102a4c;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
 }
 /* Slack (and other) workspace surfaces stay visible — in-channel actions included. */
 .polysaas-endpoint-home__form-host {

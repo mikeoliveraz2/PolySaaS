@@ -8,7 +8,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260830-6">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260830-7">
 {% endblock %}
 
 {% block content %}

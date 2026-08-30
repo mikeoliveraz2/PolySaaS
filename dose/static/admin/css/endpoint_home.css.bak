@@ -140,6 +140,8 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     flex-wrap: wrap;
     align-items: center;
     padding: 6px 10px;
+    background: linear-gradient(180deg, rgba(42, 46, 52, 0.88) 0%, rgba(22, 24, 28, 0.94) 100%);
+    border-color: rgba(0, 0, 0, 0.35);
 }
 .polysaas-endpoint-bookmark,
 .polysaas-endpoint-home .ps-slack-mock__action {
@@ -156,7 +158,7 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     border-radius: 999px;
     background-color: rgba(255, 255, 255, 0.16);
     background-image: var(--ps-glass-fill);
-    color: #1f2937 !important;
+    color: #f4f5f7 !important;
     font-size: 12px;
     font-weight: 700;
     line-height: 1.15;
@@ -175,7 +177,7 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
         inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 .polysaas-endpoint-home__create {
-    background: var(--ps-pane-fill);
+    background: linear-gradient(180deg, rgba(42, 46, 52, 0.88) 0%, rgba(22, 24, 28, 0.94) 100%);
 }
 .polysaas-endpoint-bookmark--create {
     background-color: rgba(255, 255, 255, 0.16);
