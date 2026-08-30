@@ -1,5 +1,6 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
+<!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -7,7 +8,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260826-3">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260830-6">
 {% endblock %}
 
 {% block content %}
@@ -17,7 +18,7 @@
     data-status-url="{{ endpoint_status_url }}"
     data-pair-url="{{ producer_pair_url }}"
 >
-    <header class="polysaas-endpoint-home__header">
+    <header class="polysaas-endpoint-home__header polysaas-endpoint-home__pane">
         <div class="polysaas-endpoint-home__title-row">
             {% if app_logo_static %}
             <img
@@ -44,8 +45,33 @@
         {% endif %}
     </header>
 
+    <nav class="polysaas-endpoint-home__bookmarks polysaas-endpoint-home__create polysaas-endpoint-home__pane" aria-label="Create orchestration">
+        {% with app_key=endpoint.slug|default:title|lower %}
+        <a
+            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=producer"
+            title="Declare a new producer event for this home"
+        >New producer</a>
+        <a
+            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=consumer"
+            title="Add a consumer Instruction for this home"
+        >New consumer</a>
+        <a
+            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;custom_endpoint=1"
+            title="Bind a Custom Endpoint URL / API as the service"
+        >Dynamic service based on API</a>
+        <a
+            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+            href="{% url 'admin:dose_atomicservice_add' %}"
+            title="Upload or register a Dynamic / Atomic Service"
+        >Dynamic service</a>
+        {% endwith %}
+    </nav>
+
     {% if bookmarks %}
-    <nav class="polysaas-endpoint-home__bookmarks" aria-label="{{ title }} bookmarks">
+    <nav class="polysaas-endpoint-home__bookmarks polysaas-endpoint-home__pane" aria-label="{{ title }} bookmarks">
         {% for bookmark in bookmarks %}
             {% if bookmark.destination_type == "external_path" or bookmark.destination_type == "passthrough_path" %}
                 {% if bookmark.url %}
@@ -73,11 +99,40 @@
     </nav>
     {% endif %}
 
+    {% if surface_template %}
+    <section class="polysaas-endpoint-home__form-host polysaas-endpoint-home__pane" aria-label="{{ title }} workspace">
+        {% include surface_template %}
+    </section>
+    {% endif %}
+
     {% include "dose/includes/orchestration_bar.html" %}
+
+    <section
+        class="polysaas-callback-panel"
+        data-callback-dialog
+        hidden
+        aria-live="polite"
+        aria-label="CallBackData record"
+    >
+        <div class="polysaas-callback-dialog__panel">
+            <header class="polysaas-callback-dialog__head">
+                <div>
+                    <h3 data-callback-title>CallBackData</h3>
+                    <p class="polysaas-callback-dialog__sub" data-callback-sub></p>
+                </div>
+                <button type="button" class="polysaas-callback-dialog__close" data-callback-close aria-label="Close">&times;</button>
+            </header>
+            <div class="polysaas-callback-dialog__meta" data-callback-meta></div>
+            <div class="polysaas-callback-dialog__body" data-callback-body></div>
+            <div class="polysaas-callback-dialog__actions">
+                <button type="button" class="polysaas-callback-dialog__close-btn" data-callback-close>Close</button>
+            </div>
+        </div>
+    </section>
 
     <section class="polysaas-endpoint-home__surface" aria-label="Producers and consumers">
         {% if producers %}
-        <div class="polysaas-endpoint-home__panel">
+        <div class="polysaas-endpoint-home__panel polysaas-endpoint-home__pane">
             <div class="polysaas-endpoint-home__consumers-head">
                 <h2>Producers</h2>
                 <p>Events this {{ title }} home receives — live bindings only.</p>
@@ -110,7 +165,7 @@
         {% endif %}
 
         {% if consumers %}
-        <div class="polysaas-endpoint-home__panel">
+        <div class="polysaas-endpoint-home__panel polysaas-endpoint-home__pane">
             <div class="polysaas-endpoint-home__consumers-head">
                 <h2>Consumers</h2>
                 <p>Instructions bound for {{ title }} — click to open, or run a linked form when available.</p>
@@ -157,16 +212,11 @@
         </form>
     </dialog>
 
-    {% if surface_template %}
-    <div class="polysaas-endpoint-home__form-host" aria-hidden="true">
-        {% include surface_template %}
-    </div>
-    {% endif %}
 </main>
 {% endblock %}
 
 {% block extrajs %}
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-1"></script>
-<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260824-3"></script>
+<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260828-1"></script>
 {% endblock %}

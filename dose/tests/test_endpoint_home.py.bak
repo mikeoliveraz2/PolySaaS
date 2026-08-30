@@ -122,6 +122,23 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
         self.assertIn("Producers", template)
         self.assertIn("Consumers", template)
         self.assertIn("{% if bookmarks %}", template)
+        self.assertIn("New producer", template)
+        self.assertIn("New consumer", template)
+        self.assertIn("Dynamic service based on API", template)
+        self.assertIn(">Dynamic service</a>", template)
+        self.assertIn("endpoint_home.js", template)
+        self.assertIn("?v=20260830-6", template)
+        self.assertIn(
+            "punched-aluminum.svg",
+            (Path(settings.BASE_DIR) / "dose" / "static" / "admin" / "css" / "endpoint_home.css").read_text(encoding="utf-8"),
+        )
+        self.assertIn("polysaas-endpoint-home__pane", template)
+        self.assertTrue(
+            (Path(settings.BASE_DIR) / "dose" / "static" / "admin" / "img" / "punched-aluminum.svg").is_file()
+        )
+        self.assertIn("polysaas-endpoint-home__form-host", template)
+        self.assertIn("data-callback-dialog", template)
+        self.assertIn("polysaas-callback-panel", template)
         self.assertNotIn("No bookmarks published yet", template)
         self.assertIn("fed by:", template)
         self.assertIn("consumers", template)
