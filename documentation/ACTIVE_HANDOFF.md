@@ -8,10 +8,12 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: **2026-09-01 — Unified Endpoint Workspace (Phases 1–3 complete)**
+- Date/session: **2026-09-01 — Unified Endpoint Workspace (BINGO complete)**
 - Branch: `cursor/polysniffer-slack-native-capture`
-- **Not a BINGO.** Awaiting stakeholder review of the new layout.
+- **BINGO declared:** 8cdd6306 `BINGO: Unified Endpoint Workspace — 2026-09-01`
+- BINGO doc: `documentation/BINGO_UNIFIED_ENDPOINT_WORKSPACE_2026-09-01.md`
 - Model doc: `documentation/POLYSAAS_ENDPOINT_WORKSPACE_MODEL.md` (new, authoritative)
+- All 16 source/markup/test files frozen with banners per `.cursor/rules/bingo-freeze.mdc`
 
 ### Unfreeze scope (owner-approved 2026-09-01, Michael + Shela + Gemini)
 
