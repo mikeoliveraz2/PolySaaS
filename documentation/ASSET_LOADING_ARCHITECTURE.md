@@ -1,3 +1,10 @@
+<!-- SUPERSEDED — see AI_RULES.md section 3 -->
+
+> **SUPERSEDED (2026-09-01).** The direct upstream asset hotlinking recommended
+> below contradicts `AI_RULES.md` section 3. Assets are served through the
+> passthrough, not hotlinked from the upstream origin.
+> Retained for historical context — do not implement from this document.
+
 # Correct Asset Loading Architecture
 
 ## Flow Diagram

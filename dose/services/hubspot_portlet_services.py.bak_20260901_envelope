@@ -1,6 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Unified Endpoint Workspace — 2026-09-01
-
 """
 HubSpot portlet atomic services — orchestration + UCM data loaders.
 """
@@ -9,7 +6,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from dose.endpoint_data.envelope import columns_from_rows
 from dose.services.atomic_service_base import AtomicServiceBase
 from dose.services.atomic_services_registry import filter_parameters_for_service
 from dose.services.atomic_service_utils import maybe_save_callback, service_result, tenant_from_request
@@ -40,8 +36,6 @@ def _load_portlet_rows(request, object_key: str, *, limit: int = 10) -> Dict[str
             object_type=object_key,
             count=len(rows),
             rows=rows,
-            # Portlet object types are open-ended, so columns come from the rows.
-            columns=columns_from_rows(rows),
         )
     except HubspotNotConnected as exc:
         return service_result('HubSpotPortlet', status='error', error=str(exc), connect_url='/dose/hubspot/oauth/start/')

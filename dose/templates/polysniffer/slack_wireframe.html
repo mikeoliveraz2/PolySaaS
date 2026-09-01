@@ -1,12 +1,13 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
 <!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
+<!-- BINGO: Unified Endpoint Workspace — 2026-09-01 -->
 {% load static %}
 <div
     class="ps-slack-mock"
     data-mode="{{ slack_wireframe_mode|default:'native' }}"
-    data-contact-url="{% if slack_contact_url %}{{ slack_contact_url }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
-    data-sale-url="{% if slack_sale_url %}{{ slack_sale_url }}{% else %}{% url 'dose:slack_wireframe_trigger' 'sale' %}{% endif %}"
+    data-contact-url="{% if action_urls.slack_contact %}{{ action_urls.slack_contact }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
+    data-sale-url="{% if action_urls.slack_sale %}{{ action_urls.slack_sale }}{% else %}{% url 'dose:slack_wireframe_trigger' 'sale' %}{% endif %}"
     data-status-url="{% if endpoint_status_url %}{{ endpoint_status_url }}{% else %}/dose/api/slack-wireframe/status/{% endif %}"
     data-messages-url="{% url 'dose:slack_wireframe_messages' %}"
     data-post-url="{% url 'dose:slack_wireframe_post_message' %}"

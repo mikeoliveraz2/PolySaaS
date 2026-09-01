@@ -1,6 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack producer/consumer home — 2026-08-24
-# BINGO: Unified Endpoint Workspace — 2026-09-01
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -125,10 +124,10 @@ class EndpointHomeArchitectureTests(SimpleTestCase):
         self.assertIn("{% if bookmarks %}", template)
         self.assertIn("New producer", template)
         self.assertIn("New consumer", template)
-        self.assertIn("Dynamic service — API", template)
-        self.assertIn("Dynamic service — upload", template)
+        self.assertIn("Dynamic service based on API", template)
+        self.assertIn(">Dynamic service</a>", template)
         self.assertIn("endpoint_home.js", template)
-        self.assertIn("?v=20260901-1", template)
+        self.assertIn("?v=20260831-1", template)
         self.assertIn(
             "punched-aluminum.svg",
             (Path(settings.BASE_DIR) / "dose" / "static" / "admin" / "css" / "endpoint_home.css").read_text(encoding="utf-8"),

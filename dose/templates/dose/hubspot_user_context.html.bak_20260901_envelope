@@ -1,5 +1,3 @@
-<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Unified Endpoint Workspace — 2026-09-01 -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 {% block title %}HubSpot User Context Manager{% endblock %}
@@ -58,7 +56,6 @@
 {% endblock %}
 
 {% block extrajs %}
-<script src="{% static 'admin/js/endpoint_table.js' %}?v=20260901-1"></script>
 <script>
 (function() {
     const grid = document.getElementById('hcm-grid');
@@ -79,7 +76,13 @@
                     el.textContent = data.error || 'No records';
                     return;
                 }
-                el.innerHTML = window.PolySaaSTable.render(data);
+                const keys = Object.keys(data.rows[0]).filter(k => k !== 'id');
+                let html = '<table><thead><tr>' + keys.map(k => '<th>' + k + '</th>').join('') + '</tr></thead><tbody>';
+                data.rows.forEach(row => {
+                    html += '<tr>' + keys.map(k => '<td>' + (row[k] || '') + '</td>').join('') + '</tr>';
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
             })
             .catch(() => { el.textContent = 'Load failed'; });
     }

@@ -4,8 +4,6 @@
 /* FIX 2026-08-27 (owner-approved): readable header title + create chips; callback popup. */
 /* FIX 2026-08-30 (owner-approved): punched-aluminum field + glass panes/buttons on every endpoint home. */
 /* FIX 2026-08-31 (owner-approved): chrome-framed royal-blue glass chips (skeuomorphic). */
-/* FIX 2026-09-01 (owner-approved): region order Identity/Bar/Data/Actions/Wiring; Wiring collapsed. */
-/* BINGO: Unified Endpoint Workspace — 2026-09-01 */
 .polysaas-endpoint-home {
     --ps-pane-fill: linear-gradient(180deg, rgba(248, 249, 251, 0.94) 0%, rgba(214, 218, 224, 0.9) 100%);
     --ps-pane-edge: rgba(255, 255, 255, 0.78);
@@ -59,86 +57,6 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     border-radius: 12px;
     box-shadow: var(--ps-pane-shadow);
     min-height: 48px;
-}
-
-/* Region 3 — Data is the body of the workspace. */
-.polysaas-endpoint-home__data {
-    display: grid;
-    gap: 8px;
-}
-.polysaas-endpoint-home__data-hint {
-    padding: 14px 16px;
-}
-.polysaas-endpoint-home__data-hint h2 {
-    margin: 0 0 2px;
-    font-size: 15px;
-    color: #111827;
-}
-.polysaas-endpoint-home__data-hint p {
-    margin: 0 0 8px;
-    font-size: 12px;
-    color: #4b5563;
-}
-.polysaas-endpoint-home__panel-keys {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-.polysaas-endpoint-home__panel-keys li {
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.08);
-    border: 1px solid rgba(15, 23, 42, 0.12);
-    font-size: 11px;
-    font-weight: 700;
-    color: #374151;
-}
-/* When a record is showing, the placeholder steps aside. */
-.polysaas-callback-panel:not([hidden]) ~ .polysaas-endpoint-home__data-hint {
-    display: none;
-}
-
-/* Regions 4 and 5 — Actions overflow and Wiring, both collapsed by default. */
-.polysaas-endpoint-home__overflow {
-    padding: 6px 10px;
-}
-.polysaas-endpoint-home__overflow > summary,
-.polysaas-endpoint-home__wiring > summary {
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 700;
-    color: #374151;
-    list-style: none;
-}
-.polysaas-endpoint-home__overflow > summary::-webkit-details-marker,
-.polysaas-endpoint-home__wiring > summary::-webkit-details-marker {
-    display: none;
-}
-.polysaas-endpoint-home__overflow > summary::before,
-.polysaas-endpoint-home__wiring > summary::before {
-    content: "▸ ";
-}
-.polysaas-endpoint-home__overflow[open] > summary::before,
-.polysaas-endpoint-home__wiring[open] > summary::before {
-    content: "▾ ";
-}
-.polysaas-endpoint-home__overflow-body {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding-top: 8px;
-}
-.polysaas-endpoint-home__wiring {
-    padding: 6px 10px;
-    border-radius: 12px;
-    background: rgba(248, 249, 251, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-}
-.polysaas-endpoint-home__wiring[open] > summary {
-    margin-bottom: 8px;
 }
 .polysaas-endpoint-home__header {
     display: flex;
@@ -234,13 +152,10 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    /* Sizes to the label: a fixed 176px basis clipped "Dynamic service …". */
-    flex: 0 0 auto;
-    width: auto;
-    min-width: 176px;
-    max-width: 100%;
+    flex: 0 0 176px;
+    width: 176px;
     height: 34px;
-    padding: 0 16px;
+    padding: 0 8px;
     border-radius: 999px;
     background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
     color: #fff !important;
@@ -354,8 +269,7 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 }
 .polysaas-consumer-list__meta {
     font: 12px Consolas, monospace;
-    /* Darkened for the light pane; the #86efac elsewhere sits on #111 terminals. */
-    color: #15803d;
+    color: #86efac;
 }
 .polysaas-consumer-list__meta code {
     color: #93c5fd;
@@ -366,8 +280,7 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 }
 .polysaas-consumer-list__fed {
     font-size: 12px;
-    /* Darkened for the light pane (was #fbbf24, a dark-panel amber). */
-    color: #b45309;
+    color: #fbbf24;
 }
 .polysaas-producer-state {
     display: inline-block;

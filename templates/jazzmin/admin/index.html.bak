@@ -1,0 +1,346 @@
+<!-- templates/jazzmin/admin/index.html — extends Jazzmin's admin/index.html (app_list + recent actions) -->
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .dashboard-section { margin-bottom: 32px; padding: 16px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .widget { padding: 16px; border: 1px solid #ddd; border-radius: 8px; margin: 8px 0; cursor: pointer; transition: all 0.3s; }
+        .widget:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.2); transform: translateY(-2px); }
+
+        /* Layout for reorganized dashboard */
+        #dashboard-wrapper {
+            display: flex;
+            gap: 20px;
+        }
+
+        #dashboard-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        #dashboard-sidebar {
+            width: 320px;
+            position: sticky;
+            top: 20px;
+            align-self: flex-start;
+        }
+
+        /* ── Passthrough App Cards ── */
+        .ps-app-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 18px;
+            padding: 16px 12px;
+        }
+        .ps-app-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 14px 10px;
+            border-radius: 14px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.25s ease;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .ps-app-card:hover {
+            background: rgba(255,255,255,0.13);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            text-decoration: none;
+            color: inherit;
+        }
+        .ps-app-logo {
+            width: 75px;
+            height: 75px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 10px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+        }
+        .ps-app-logo.odoo { background: linear-gradient(135deg, #9c5acc 0%, #714b67 100%); }
+        .ps-app-logo.mattermost { background: linear-gradient(135deg, #1668ca 0%, #0058cc 100%); }
+        .ps-app-logo.nextcloud { background: linear-gradient(135deg, #0082c9 0%, #006aa8 100%); }
+        .ps-app-logo.dolibarr { background: linear-gradient(135deg, #f47b20 0%, #d66a18 100%); }
+        .ps-app-logo.wordpress { background: linear-gradient(135deg, #21759b 0%, #1a5c7a 100%); }
+        .ps-app-logo.liferay { background: linear-gradient(135deg, #0b63ce 0%, #094ca0 100%); }
+        .ps-app-logo.polysysmon { background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%); }
+        .ps-app-logo.monitor { background: linear-gradient(135deg, #6c757d 0%, #545b62 100%); }
+        .ps-app-logo.generic { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); }
+        .ps-app-label {
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.3;
+            color: inherit;
+        }
+
+        /* ── Sidebar injection ── */
+        .ps-sidebar-apps {
+            padding: 10px 8px;
+            border-bottom: 1px solid #3f474e;
+            margin-bottom: 8px;
+        }
+        .ps-sidebar-apps .ps-app-cards {
+            gap: 10px;
+            padding: 4px 2px;
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .ps-sidebar-apps .ps-app-card {
+            padding: 10px 6px 8px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .ps-sidebar-apps .ps-app-card:hover { background: rgba(255,255,255,0.12); }
+        .ps-sidebar-apps .ps-app-logo {
+            width: 75px;
+            height: 75px;
+            font-size: 22px;
+            margin-bottom: 7px;
+        }
+        .ps-sidebar-apps .ps-app-logo-img img {
+            border-radius: 8px;
+        }
+        .ps-sidebar-apps .ps-app-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #c2c7d0;
+            display: block;
+            text-align: center;
+        }
+        .ps-sidebar-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #adb5bd;
+            padding: 0 4px 8px;
+        }
+
+        /* ── App Admin Credentials Card ── */
+        .ps-creds-card { font-size: 13px; }
+        .ps-creds-card .table { margin-bottom: 0; }
+        .ps-creds-card .table th { border-top: 0; font-weight: 600; font-size: 12px; color: #6c757d; }
+        .ps-creds-card .table td { vertical-align: middle; }
+        .ps-creds-pwd {
+            font-family: monospace; font-size: 12px;
+            background: #f1f3f5; padding: 2px 6px;
+            border-radius: 4px; color: #495057;
+            cursor: pointer; user-select: all;
+        }
+        .ps-creds-pwd:hover { background: #e9ecef; }
+        .ps-creds-note { font-size: 11px; color: #868e96; margin-top: 8px; }
+        .ps-sidebar-title { margin: 0; }
+
+        /* ── App logo images (override gradient + text) ── */
+        .ps-app-logo-img {
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 4px !important;
+            overflow: hidden;
+        }
+        .ps-app-logo-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 0;
+            display: block;
+            filter: drop-shadow(0 3px 6px rgba(0,0,0,0.18));
+        }
+    </style>
+    {# Do not reparent .container-fluid here — it breaks Bootstrap grid when wrapped in admin-main-wrapper + custom_sidebar grid #}
+{% endblock %}
+
+{% block content %}
+    {# ── Passthrough App Cards ── #}
+    {% if request.passthrough_endpoints %}
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="m-0"><i class="fas fa-external-link-alt" aria-hidden="true"></i> Your Applications</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="ps-app-cards" id="ps-dashboard-apps">
+                {% for ep in request.passthrough_endpoints %}
+                    {% if ep.show_in_menu and ep.menu_title %}
+                        {# APPROVED BY USER: link goes directly to /pt/admin/{hostname}/ — no trigger_path, no embed view #}
+                        {% with app_slug=ep.trigger_path|default:''|lower|cut:'/'|cut:'pt'|cut:'admin'|cut:'_' %}
+                        {% with hostname=ep.endpoint_url|default:''|cut:'https://'|cut:'http://'|cut:'/' %}
+                        <a href="/pt/admin/{{ hostname }}/" class="ps-app-card"
+                           title="{{ ep.description|default:ep.menu_title }}">
+                            <div class="ps-app-logo {% if app_slug in 'odoo,mattermost,nextcloud,dolibarr,wordpress,liferay' %}ps-app-logo-img{% else %}{{ app_slug|default:'generic' }}{% endif %}">
+                                {% if app_slug == 'odoo' %}
+                                    <img src="{% static 'img/apps/odoo-logo.svg' %}" alt="Odoo">
+                                {% elif app_slug == 'mattermost' %}
+                                    <img src="{% static 'img/apps/mattermost-logo.svg' %}" alt="Mattermost">
+                                {% elif app_slug == 'nextcloud' %}
+                                    <img src="{% static 'img/apps/nextcloud-logo.svg' %}" alt="Nextcloud">
+                                {% elif app_slug == 'dolibarr' %}
+                                    <img src="{% static 'img/apps/dolibarr-logo.svg' %}" alt="Dolibarr">
+                                {% elif app_slug == 'wordpress' %}
+                                    <img src="{% static 'img/apps/wordpress-logo.svg' %}" alt="WordPress">
+                                {% elif app_slug == 'liferay' %}
+                                    <img src="{% static 'img/apps/liferay-logo.svg' %}" alt="Liferay">
+                                {% else %}
+                                    {{ ep.menu_title|first|upper }}
+                                {% endif %}
+                            </div>
+                            <span class="ps-app-label">{{ ep.menu_title }}</span>
+                        </a>
+                        {% endwith %}{# hostname #}
+                        {% endwith %}{# app_slug #}
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── App Admin Credentials (staff only, hidden by default) ── #}
+    {% if request.user.is_staff %}
+    <div id="ps-creds-wrapper" style="display:none;">
+        <div class="card mb-3 ps-creds-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="m-0"><i class="fas fa-key" aria-hidden="true"></i> App Admin Credentials</h5>
+                <span class="badge badge-secondary">dev helper</span>
+            </div>
+            <div class="card-body p-0">
+                {% load app_creds_tags %}
+                {% get_app_credentials as app_creds %}
+                {% if app_creds %}
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>App</th><th>Username</th><th>Password</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for cred in app_creds %}
+                        <tr>
+                            <td>{{ cred.app_name|title }}</td>
+                            <td><code>{{ cred.username|default:"—" }}</code></td>
+                            <td>
+                                {% if cred.password %}
+                                <span class="ps-creds-pwd" onclick="navigator.clipboard.writeText(this.innerText);this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">{{ cred.password }}</span>
+                                {% else %}
+                                <em class="text-muted">—</em>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="p-3 text-muted">
+                    <p class="mb-1">No app credentials configured yet.</p>
+                    <p class="mb-0 small">Add them in <strong>Admin → Dose → App credentials</strong>.</p>
+                </div>
+                {% endif %}
+                <p class="ps-creds-note px-3 pb-2 mb-0">Manage via <strong>Admin → Dose → App credentials</strong>. Click password to copy. <span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Both username and password are <strong>case-sensitive</strong>.</span></p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Model admin (apps / CRUD) first — this is what "Admin home" in the sidebar refers to. #}
+    {{ block.super }}
+
+    {# Shortcut cards (same visual language as Jazzmin model cards) — dashboards + orchestration + help. #}
+    {# PolySaaS AI chat: sidebar → HOME → PolySaaS AI (dedicated /admin/polysaas-ai/ page in the same content column as passthrough). #}
+    <div class="row mt-3">
+        <div class="col-md-6 col-lg-4">
+            <div class="card mb-3 h-100 border-primary">
+                <div class="card-header">
+                    <h5 class="m-0 text-primary"><i class="fas fa-th-large" aria-hidden="true"></i> Dose workspace</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Tenant home, navigation panels, DoseAI entry, and user-facing tools.</p>
+                    <a href="{% url 'dose:dashboard' %}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-external-link-alt" aria-hidden="true"></i> Open workspace
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card mb-3 h-100 border-secondary" style="border-color: #6b5596 !important;">
+                <div class="card-header text-white" style="background: linear-gradient(135deg, #5a67d8 0%, #6b5596 100%);">
+                    <h5 class="m-0"><i class="fas fa-network-wired" aria-hidden="true"></i> Dynamic Orchestration</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">Instructions, atomic services, and live flow demos — not the same as model CRUD above.</p>
+                    <a href="{% url 'dose:orchestration_dashboard' %}" class="btn btn-sm text-white" style="background: linear-gradient(135deg, #5a67d8 0%, #6b5596 100%); font-weight: 600;">
+                        <i class="fas fa-rocket" aria-hidden="true"></i> Open orchestration dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card mb-3 h-100">
+                <div class="card-header">
+                    <h5 class="m-0"><i class="fas fa-life-ring" aria-hidden="true"></i> Platform help</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">LLM router, OpenClaw options, env vars, and smoke tests (staff).</p>
+                    <a href="/help/" class="btn btn-outline-secondary btn-sm">Help home</a>
+                    <a href="/help/llm-router/" class="btn btn-outline-secondary btn-sm ms-1">LLM router</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script>
+(function() {
+    /* Inject passthrough app cards into Jazzmin sidebar */
+    var sidebar = document.querySelector('.main-sidebar .nav-sidebar') || document.querySelector('.nav-sidebar');
+    if (!sidebar) return;
+
+    var dashboardCards = document.getElementById('ps-dashboard-apps');
+    if (!dashboardCards) return;
+
+    /* Avoid duplicates */
+    if (sidebar.querySelector('.ps-sidebar-apps')) return;
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'ps-sidebar-apps';
+    wrapper.innerHTML = '<p class="ps-sidebar-title">Apps</p>' +
+        '<div class="ps-app-cards">' + dashboardCards.innerHTML + '</div>';
+    sidebar.insertBefore(wrapper, sidebar.firstChild);
+
+    /* ── Toggle credentials card from footer ── */
+    var footer = document.querySelector('.main-footer');
+    var credsWrapper = document.getElementById('ps-creds-wrapper');
+    if (footer && credsWrapper) {
+        /* Find the copyright text and wrap the © symbol in a hidden trigger */
+        var autoescapeDiv = footer.querySelector('.autoescape, [class*="footer"]');
+        /* Fallback: just inject a tiny trigger dot before the version text */
+        var versionDiv = footer.querySelector('.float-right');
+        if (versionDiv) {
+            var trigger = document.createElement('span');
+            trigger.className = 'ps-creds-trigger';
+            trigger.title = 'Show dev credentials';
+            trigger.innerHTML = '&middot;';
+            trigger.style.cursor = 'pointer';
+            trigger.style.opacity = '0.35';
+            trigger.style.marginRight = '6px';
+            trigger.style.fontSize = '18px';
+            trigger.style.lineHeight = '1';
+            trigger.style.verticalAlign = 'middle';
+            trigger.addEventListener('click', function() {
+                var isHidden = credsWrapper.style.display === 'none';
+                credsWrapper.style.display = isHidden ? 'block' : 'none';
+                trigger.style.opacity = isHidden ? '1' : '0.35';
+            });
+            versionDiv.insertBefore(trigger, versionDiv.firstChild);
+        }
+    }
+})();
+</script>
+{% endblock %}

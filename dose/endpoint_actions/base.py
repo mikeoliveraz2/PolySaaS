@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Unified Endpoint Workspace — 2026-09-01
 from dataclasses import dataclass
 from typing import Callable
 
@@ -11,11 +13,23 @@ class EndpointAction:
     build_payload: Callable
 
 
+@dataclass(frozen=True)
+class EndpointPanel:
+    """A data card on the endpoint workspace, described by what it lists."""
+
+    key: str
+    title: str
+    object_type: str
+    action: str
+
+
 class EndpointActionAdapter:
     surface_template = ""
     default_bookmarks = ()
-    # "passthrough" = Browse opens embedded /pt/admin/… ; "external" = top-level app tab
-    browse_mode = "passthrough"
+    # "passthrough" = Browse opens embedded /pt/admin/… ; "external" = top-level app tab.
+    # Defaults to external: proxy Browse is only correct for apps we already
+    # capture, so an adapter must opt in rather than inherit it by accident.
+    browse_mode = "external"
 
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:
@@ -26,3 +40,70 @@ class EndpointActionAdapter:
 
     def action(self, key: str) -> EndpointAction | None:
         return self.actions().get((key or "").strip().lower())
+
+    def panels(self) -> tuple[EndpointPanel, ...]:
+        """Data cards for this endpoint, derived from its direct_event bookmarks.
+
+        Adapters may override to control ordering or add panels that no
+        bookmark drives.
+        """
+        from dose.endpoint_data.envelope import object_meta
+
+        resolved = []
+        for bookmark in self.default_bookmarks:
+            if bookmark.get("destination_type") != "direct_event":
+                continue
+            target = bookmark.get("target") or ""
+            action = self.actions().get(target)
+            object_type = _object_type_for_target(target)
+            if not object_type:
+                continue
+            meta = object_meta(object_type)
+            resolved.append(
+                EndpointPanel(
+                    key=bookmark.get("key") or target,
+                    title=meta.get("title") or (action.title if action else target),
+                    object_type=object_type,
+                    action=target,
+                )
+            )
+        return tuple(resolved)
+
+    def profile(self) -> dict:
+        """Declarative description of the workspace for this endpoint.
+
+        The template renders from this rather than branching on app identity.
+        """
+        return {
+            "browse_mode": self.browse_mode,
+            "surface_template": self.surface_template,
+            "actions": [
+                {"key": action.key, "kind": action.kind, "title": action.title}
+                for action in self.actions().values()
+            ],
+            "panels": [
+                {
+                    "key": panel.key,
+                    "title": panel.title,
+                    "object_type": panel.object_type,
+                    "action": panel.action,
+                }
+                for panel in self.panels()
+            ],
+            "bookmarks": [dict(bookmark) for bookmark in self.default_bookmarks],
+        }
+
+
+def _object_type_for_target(target: str) -> str:
+    """Map a list action target onto the object type its rows describe."""
+    if not target:
+        return ""
+    tail = target.rsplit(".", 1)[-1]
+    for object_type, suffix in (
+        ("invoice", "list_invoices"),
+        ("contact", "list_contacts"),
+        ("sale", "list_sales"),
+    ):
+        if tail == suffix:
+            return object_type
+    return ""

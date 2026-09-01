@@ -222,17 +222,6 @@ def endpoint_home(request, endpoint_host: str):
     producers = list_producers(endpoint, consumers)
     annotate_consumers_fed_by(consumers, producers)
 
-    # Profile-driven: the view no longer names any vendor action. Dots are not
-    # addressable in Django template lookups, so keys are underscored.
-    endpoint_profile = adapter.profile() if adapter else {}
-    action_urls = {
-        (action.get("key") or "").replace(".", "_"): reverse(
-            "dose:endpoint_action_trigger", args=(endpoint_host, action.get("key"))
-        )
-        for action in endpoint_profile.get("actions", [])
-        if action.get("key")
-    }
-
     status_zero = reverse("dose:endpoint_action_status", args=(endpoint_host, 0))
     # Precompose the visible label — avoid Jazzmin/admin `app_label` collisions
     # and empty-variable “Browse ” buttons when an old process is half-updated.
@@ -250,10 +239,18 @@ def endpoint_home(request, endpoint_host: str):
         "browser_launch_url": browse.get("url") or "",
         "browse_external": bool(browse.get("external")),
         "browse_mode": browse.get("mode") or "none",
-        "surface_template": endpoint_profile.get("surface_template", ""),
+        "surface_template": getattr(adapter, "surface_template", ""),
         "slack_wireframe_mode": "endpoint_home",
-        "endpoint_profile": endpoint_profile,
-        "action_urls": action_urls,
+        "slack_contact_url": reverse(
+            "dose:endpoint_action_trigger", args=(endpoint_host, "slack.contact")
+        )
+        if adapter and adapter.action("slack.contact")
+        else "",
+        "slack_sale_url": reverse(
+            "dose:endpoint_action_trigger", args=(endpoint_host, "slack.sale")
+        )
+        if adapter and adapter.action("slack.sale")
+        else "",
         "endpoint_status_url": status_zero.rsplit("0/", 1)[0],
         "producer_pair_url": reverse(
             "dose:endpoint_producer_pair", args=(endpoint_host,)

@@ -1,3 +1,11 @@
+<!-- SUPERSEDED — see documentation/POLYSAAS_ENDPOINT_WORKSPACE_MODEL.md -->
+
+> **SUPERSEDED (2026-09-01).** The iframe passthrough types described below were
+> retired on 2026-08-13 (`BINGO_NEXTCLOUD_JAZZMIN_PANEL_NO_IFRAME_2026-08-13.md`).
+> Iframes are prohibited by `.cursor/rules/passthrough-no-iframes.mdc`. For the
+> current endpoint model see `POLYSAAS_ENDPOINT_WORKSPACE_MODEL.md`.
+> Retained for historical context — do not implement from this document.
+
 # PolySaaS Architecture Document
 
 **Version:** 1.0

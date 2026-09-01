@@ -1,3 +1,11 @@
+<!-- SUPERSEDED — see documentation/BINGO_NEXTCLOUD_JAZZMIN_PANEL_NO_IFRAME_2026-08-13.md -->
+
+> **SUPERSEDED (2026-09-01).** This BINGO certified an iframe passthrough route
+> that was **retired on 2026-08-13** by
+> `BINGO_NEXTCLOUD_JAZZMIN_PANEL_NO_IFRAME_2026-08-13.md`. Iframes are now
+> prohibited by `.cursor/rules/passthrough-no-iframes.mdc`. This document reads
+> as current but is not. Retained as history — do not restore this design.
+
 # BINGO — PolySniffer 2.0 Passthrough Workspace Iframe
 
 **Date:** 2026-06-24  

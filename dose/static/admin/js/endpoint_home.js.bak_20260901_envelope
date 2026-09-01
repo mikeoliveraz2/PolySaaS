@@ -102,30 +102,103 @@
     var callbackMeta = root.querySelector('[data-callback-meta]');
     var callbackBody = root.querySelector('[data-callback-body]');
 
-    // BINGO: Unified Endpoint Workspace — 2026-09-01
-    var table = window.PolySaaSTable;
-    var esc = table.esc;
+    function esc(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
 
-    /* Envelope for a direct_event result. Falls back to the deprecated
-     * per-vendor keys so an older payload still renders. */
-    function resolveEnvelope(data) {
-        if (data.envelope && Array.isArray(data.envelope.rows)) return data.envelope;
-        var legacy = data.list_kind
-            || (String(data.action_path || data.matching_event_key || '').indexOf('list_contacts') !== -1 && 'contacts')
-            || (String(data.action_path || data.matching_event_key || '').indexOf('list_sales') !== -1 && 'sales')
-            || 'invoices';
+    function money(value) {
+        if (value == null || value === '') return '—';
+        var num = Number(value);
+        if (isNaN(num)) return esc(value);
+        return num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function resolveListKind(data) {
+        if (data.list_kind) return data.list_kind;
+        var path = data.action_path || data.matching_event_key || '';
+        if (path.indexOf('list_contacts') !== -1) return 'contacts';
+        if (path.indexOf('list_sales') !== -1) return 'sales';
+        return 'invoices';
+    }
+
+    function renderCallbackTable(kind, rows) {
+        if (kind === 'contacts') {
+            var contactRows = rows.map(function (row) {
+                return '<tr>' +
+                    '<td>' + esc(row.name || ('#' + row.id)) + '</td>' +
+                    '<td>' + esc(row.email || '—') + '</td>' +
+                    '<td>' + esc(row.phone || '—') + '</td>' +
+                    '<td>' + esc(row.parent_name || '—') + '</td>' +
+                    '<td class="is-num">' + esc(row.id != null ? row.id : '—') + '</td>' +
+                    '</tr>';
+            }).join('');
+            return {
+                empty: 'No customer contacts were returned. The CallBackData row was still saved with count 0.',
+                html:
+                    '<div class="polysaas-callback-dialog__table-wrap">' +
+                    '<table class="polysaas-callback-dialog__table">' +
+                    '<thead><tr>' +
+                    '<th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Id</th>' +
+                    '</tr></thead><tbody>' + contactRows + '</tbody></table></div>'
+            };
+        }
+        if (kind === 'sales') {
+            var saleRows = rows.map(function (row) {
+                var note = row.note ? ('<div class="polysaas-callback-dialog__note">' + esc(row.note) + '</div>') : '';
+                return '<tr>' +
+                    '<td>' + esc(row.name || ('#' + row.id)) + note + '</td>' +
+                    '<td>' + esc(row.partner_name || '') + '</td>' +
+                    '<td class="is-num">' + money(row.amount_total) + '</td>' +
+                    '<td>' + esc(row.state || '') + '</td>' +
+                    '<td>' + esc(row.date_order || '—') + '</td>' +
+                    '</tr>';
+            }).join('');
+            return {
+                empty: 'No sales orders were returned. The CallBackData row was still saved with count 0.',
+                html:
+                    '<div class="polysaas-callback-dialog__table-wrap">' +
+                    '<table class="polysaas-callback-dialog__table">' +
+                    '<thead><tr>' +
+                    '<th>Deal / Order</th><th>Customer</th><th>Amount</th><th>Stage</th><th>Created</th>' +
+                    '</tr></thead><tbody>' + saleRows + '</tbody></table></div>'
+            };
+        }
+        var invoiceRows = rows.map(function (inv) {
+            return '<tr>' +
+                '<td>' + esc(inv.name || ('#' + inv.id)) + '</td>' +
+                '<td>' + esc(inv.partner_name || '') + '</td>' +
+                '<td>' + esc(inv.invoice_date || '—') + '</td>' +
+                '<td class="is-num">' + money(inv.amount_total) + '</td>' +
+                '<td>' + esc(inv.state || '') + '</td>' +
+                '<td>' + esc(inv.payment_state || '') + '</td>' +
+                '</tr>';
+        }).join('');
         return {
-            status: data.status || 'success',
-            rows: Array.isArray(data[legacy]) ? data[legacy] : [],
-            columns: [],
-            empty_message: 'Nothing was returned. The CallBackData row was still saved with count 0.'
+            empty: 'No customer invoices were returned. The CallBackData row was still saved with count 0.',
+            html:
+                '<div class="polysaas-callback-dialog__table-wrap">' +
+                '<table class="polysaas-callback-dialog__table">' +
+                '<thead><tr>' +
+                '<th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>State</th><th>Payment</th>' +
+                '</tr></thead><tbody>' + invoiceRows + '</tbody></table></div>'
         };
     }
 
     function openCallbackDialog(data) {
         if (!callbackDialog || !callbackBody) return;
-        var envelope = resolveEnvelope(data);
-        var rows = envelope.rows;
+        var kind = resolveListKind(data);
+        var rows = [];
+        if (kind === 'contacts') {
+            rows = Array.isArray(data.contacts) ? data.contacts : [];
+        } else if (kind === 'sales') {
+            rows = Array.isArray(data.sales) ? data.sales : [];
+        } else {
+            rows = Array.isArray(data.invoices) ? data.invoices : [];
+        }
         var count = data.count != null ? data.count : rows.length;
         var odoo = data.odoo || {};
         var hubspot = data.hubspot || {};
@@ -152,15 +225,12 @@
             }
             callbackMeta.innerHTML = metaHtml;
         }
+        var rendered = renderCallbackTable(kind, rows);
         if (!rows.length) {
             callbackBody.innerHTML =
-                '<div class="polysaas-callback-dialog__empty">' +
-                esc(envelope.empty_message || 'Nothing was returned.') + '</div>';
+                '<div class="polysaas-callback-dialog__empty">' + rendered.empty + '</div>';
         } else {
-            callbackBody.innerHTML = table.render(envelope, {
-                wrapClass: 'polysaas-callback-dialog__table-wrap',
-                tableClass: 'polysaas-callback-dialog__table'
-            });
+            callbackBody.innerHTML = rendered.html;
         }
         callbackDialog.hidden = false;
         callbackDialog.removeAttribute('hidden');

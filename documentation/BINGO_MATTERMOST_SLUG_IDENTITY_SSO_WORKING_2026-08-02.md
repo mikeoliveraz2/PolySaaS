@@ -1,6 +1,14 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 -->
 
+<!-- SUPERSEDED — see documentation/passthrough/tenant-endpoint-source-of-truth.md -->
+
+> **SUPERSEDED (2026-09-01).** The slug routing described here was superseded by
+> `documentation/passthrough/tenant-endpoint-source-of-truth.md` ("Each tenant's
+> `PassThroughEndpoint` row is the only source of truth"). Team-slug routing is
+> also prohibited by `.cursor/rules/mattermost-passthrough-no-team.mdc`.
+> Retained as history — do not restore slug or team routing from this document.
+
 # BINGO: Mattermost Slug Identity + SSO Town Square Working
 
 **Date:** 2026-08-02  
