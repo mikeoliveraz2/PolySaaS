@@ -8,14 +8,30 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: **2026-09-01 — Unified Endpoint Workspace (BINGO complete)**
+- Date/session: **2026-09-02 — Geronimo Chat Integration (Phases 1–5 complete)**
 - Branch: `cursor/polysniffer-slack-native-capture`
-- **BINGO declared:** 8cdd6306 `BINGO: Unified Endpoint Workspace — 2026-09-01`
-- BINGO doc: `documentation/BINGO_UNIFIED_ENDPOINT_WORKSPACE_2026-09-01.md`
-- Model doc: `documentation/POLYSAAS_ENDPOINT_WORKSPACE_MODEL.md` (new, authoritative)
-- All 16 source/markup/test files frozen with banners per `.cursor/rules/bingo-freeze.mdc`
+- Previous BINGO: 8cdd6306 `BINGO: Unified Endpoint Workspace — 2026-09-01`
+- Latest commit: 7b9fff95 `Geronimo Chat Integration — Endpoint Homes (Phases 1–5)`
+- Docs: `documentation/GERONIMO_CHAT_INTEGRATION.md` (new, comprehensive guide)
+- Chat dock integrated into endpoint homes; 170+ preset prompts; page context enhanced; 15 tests pass
 
-### Unfreeze scope (owner-approved 2026-09-01, Michael + Shela + Gemini)
+### Current Work (2026-09-02): Geronimo Chat Integration
+
+**Phases 1–5 complete.** Chat dock now appears on Odoo/Nextcloud/Mattermost endpoint homes with curated preset prompts.
+
+Changes:
+- New files: `dose/ai_prompts/{__init__,prompt_library}.py`, `test_geronimo_integration.py`, `GERONIMO_CHAT_INTEGRATION.md`
+- Modified: `base.py` (added `chat_prompts()`, `chat_context_hint()`), `odoo.py` (populate prompts), `views/endpoint_home.py`
+  (pass to template), `endpoint_home.html` (include dock), `polysaas_ai_page_context.js` (endpoint context collection)
+- All files frozen with BINGO banners (Geronimo Chat Integration — 2026-09-02)
+- 9 files changed, 1000+ insertions
+- Tests: 15 new (all pass). Full suite clean (same pre-existing failures as before).
+
+**Preset prompts:** Odoo (invoices/contacts/sales), Nextcloud (files), Mattermost (channels/teams).
+**Data flow:** User clicks preset or types query → JS collects endpoint context → LLM responds grounded in visible data.
+**Next:** Expand to HubSpot, Slack, full Nextcloud/Mattermost coverage (same pattern).
+
+### Previous Unfreeze scope (owner-approved 2026-09-01, Michael + Shela + Gemini)
 
 Authorized to edit, under four standing conditions:
 
