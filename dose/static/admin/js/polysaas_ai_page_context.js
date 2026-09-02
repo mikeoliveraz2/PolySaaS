@@ -1,5 +1,6 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 // BINGO: PolySaaS AI Context-Aware Chat — commit fd9febb8
+// BINGO: Geronimo Chat Integration — 2026-09-02
 /**
  * PolySaaS AI — collect rich page context for Geronimo (Gemini co-pilot).
  * Used by polysaas_ai_chat_dock.html and polysaas_ai_chat.html on each send.
@@ -53,6 +54,68 @@
         };
     }
 
+    function collectEndpointContext(dockEl) {
+        // Endpoint home page context: extract data panel structure, action names, MQ state
+        var endpointCtx = {};
+        
+        // Endpoint name (from page title or breadcrumb)
+        var titleEl = document.querySelector('.polysaas-endpoint-home__title');
+        if (titleEl) endpointCtx.endpoint_name = text(titleEl);
+        
+        // Data panel structure (columns and row count from endpoint_table.js context)
+        var dataEls = document.querySelectorAll('[data-polysaas-panel]');
+        if (dataEls.length > 0) {
+            endpointCtx.data_panels = [];
+            dataEls.forEach(function(el) {
+                var panelKey = el.getAttribute('data-polysaas-panel');
+                var table = el.querySelector('table');
+                var columns = [];
+                var rowCount = 0;
+                if (table) {
+                    var headerRow = table.querySelector('thead tr');
+                    if (headerRow) {
+                        var cells = headerRow.querySelectorAll('th');
+                        cells.forEach(function(th) {
+                            columns.push(text(th));
+                        });
+                    }
+                    var bodyRows = table.querySelectorAll('tbody tr');
+                    rowCount = bodyRows.length;
+                }
+                endpointCtx.data_panels.push({
+                    key: panelKey,
+                    columns: columns,
+                    row_count: rowCount,
+                });
+            });
+        }
+        
+        // Available actions (bookmarks and quick buttons)
+        var bookmarkEls = document.querySelectorAll('[data-polysaas-bookmark]');
+        if (bookmarkEls.length > 0) {
+            endpointCtx.actions = [];
+            bookmarkEls.forEach(function(el) {
+                var key = el.getAttribute('data-polysaas-bookmark');
+                var label = text(el.querySelector('[data-polysaas-bookmark-label]') || el);
+                endpointCtx.actions.push({ key: key, label: label });
+            });
+        }
+        
+        // MQ orchestration state (producer/consumer status)
+        var producersEl = document.querySelector('[data-polysaas-producers]');
+        var consumersEl = document.querySelector('[data-polysaas-consumers]');
+        if (producersEl || consumersEl) {
+            endpointCtx.orchestration_context = {
+                has_producers: !!producersEl,
+                producer_count: producersEl ? producersEl.querySelectorAll('[data-producer]').length : 0,
+                has_consumers: !!consumersEl,
+                consumer_count: consumersEl ? consumersEl.querySelectorAll('[data-consumer]').length : 0,
+            };
+        }
+        
+        return endpointCtx;
+    }
+
     function collectPageContext(dockEl) {
         var pathname = global.location.pathname || '';
         var search = global.location.search || '';
@@ -85,9 +148,15 @@
             },
             collected_at: new Date().toISOString(),
         };
+        
+        // Add endpoint-specific context if available (endpoint home page)
+        var endpointCtx = collectEndpointContext(dockEl);
+        if (Object.keys(endpointCtx).length > 0) {
+            ctx.endpoint = endpointCtx;
+        }
 
         try {
-            return JSON.stringify(ctx).slice(0, 1800);
+            return JSON.stringify(ctx).slice(0, 2000);
         } catch (e) {
             return (pathname + search).slice(0, 500);
         }

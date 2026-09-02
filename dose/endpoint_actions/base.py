@@ -1,5 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Unified Endpoint Workspace — 2026-09-01
+# BINGO: Geronimo Chat Integration — 2026-09-02
 from dataclasses import dataclass
 from typing import Callable
 
@@ -69,6 +70,28 @@ class EndpointActionAdapter:
             )
         return tuple(resolved)
 
+    def chat_prompts(self) -> list:
+        """Geronimo chat preset prompts for this endpoint.
+        
+        Subclasses may override to provide endpoint-specific preset questions
+        that users can click to quickly ask common questions about the data.
+        
+        Returns:
+            List of dicts with keys: label, template, category, icon (optional)
+        """
+        return []
+
+    def chat_context_hint(self) -> str:
+        """Hint for the LLM describing what data is available on this endpoint.
+        
+        Subclasses may override to provide context about the endpoint's data model,
+        helping the LLM understand how to analyze the visible rows/columns.
+        
+        Returns:
+            Context hint string or empty string.
+        """
+        return ""
+
     def profile(self) -> dict:
         """Declarative description of the workspace for this endpoint.
 
@@ -91,6 +114,8 @@ class EndpointActionAdapter:
                 for panel in self.panels()
             ],
             "bookmarks": [dict(bookmark) for bookmark in self.default_bookmarks],
+            "chat_prompts": self.chat_prompts(),
+            "chat_context_hint": self.chat_context_hint(),
         }
 
 

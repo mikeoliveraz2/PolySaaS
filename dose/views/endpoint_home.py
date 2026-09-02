@@ -1,6 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack producer/consumer home — 2026-08-24
 # FIX 2026-08-26 (owner-approved): scope producers/consumers to the current endpoint app.
+# BINGO: Geronimo Chat Integration — 2026-09-02
 import json
 from urllib.parse import urlsplit
 
@@ -237,6 +238,11 @@ def endpoint_home(request, endpoint_host: str):
     # Precompose the visible label — avoid Jazzmin/admin `app_label` collisions
     # and empty-variable “Browse ” buttons when an old process is half-updated.
     browse_button_label = f"Browse {app_label}"
+    
+    # Geronimo chat prompts and context hint for this endpoint
+    chat_prompts = endpoint_profile.get("chat_prompts", [])
+    chat_context_hint = endpoint_profile.get("chat_context_hint", "")
+    
     context = {
         "title": app_label,
         "app_label": app_label,
@@ -258,6 +264,8 @@ def endpoint_home(request, endpoint_host: str):
         "producer_pair_url": reverse(
             "dose:endpoint_producer_pair", args=(endpoint_host,)
         ),
+        "chat_prompts": chat_prompts,
+        "chat_context_hint": chat_context_hint,
     }
     return render(request, "dose/endpoint_home.html", context)
 

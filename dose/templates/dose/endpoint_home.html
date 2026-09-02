@@ -2,6 +2,7 @@
 <!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
 <!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
 <!-- BINGO: Unified Endpoint Workspace — 2026-09-01 -->
+<!-- BINGO: Geronimo Chat Integration — 2026-09-02 -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -234,6 +235,10 @@
     </dialog>
 
 </main>
+
+{# Geronimo chat dock for this endpoint. Context includes current data panel structure and MQ state. #}
+{% include "admin/includes/polysaas_ai_chat_dock.html" %}
+
 {% endblock %}
 
 {% block extrajs %}

@@ -2,6 +2,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # FIX 2026-09-01 (owner-approved): three copied publishers replaced by shared ListSpec.
+# BINGO: Geronimo Chat Integration — 2026-09-02
 from __future__ import annotations
 
 from dose.endpoint_browser import endpoint_app_logo_key
@@ -110,6 +111,22 @@ class OdooEndpointActionAdapter(EndpointActionAdapter):
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:
         return endpoint_app_logo_key(endpoint) == "odoo"
+
+    def chat_prompts(self) -> list:
+        """Geronimo chat preset prompts for Odoo endpoints."""
+        from dose.ai_prompts.prompt_library import get_prompts_for_endpoint
+
+        # Return prompts for the current data panel (if any).
+        # For simplicity, return invoices prompts as default.
+        # In a more sophisticated implementation, this could be context-aware
+        # based on which panel is currently being viewed.
+        return get_prompts_for_endpoint("odoo.invoices")
+
+    def chat_context_hint(self) -> str:
+        """Context hint for LLM about Odoo invoice data."""
+        from dose.ai_prompts.prompt_library import get_context_hint_for_endpoint
+
+        return get_context_hint_for_endpoint("odoo.invoices")
 
     def actions(self):
         return {
