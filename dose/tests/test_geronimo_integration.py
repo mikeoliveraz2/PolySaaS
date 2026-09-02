@@ -1,5 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Geronimo Chat Integration — 2026-09-02
+# Update: Full endpoint coverage tests (Odoo, HubSpot, Slack, Nextcloud, Mattermost)
 
 """Tests for Geronimo chat integration with endpoint homes.
 
@@ -20,6 +21,8 @@ from dose.ai_prompts.prompt_library import (
     PROMPT_REGISTRY,
 )
 from dose.endpoint_actions.odoo import OdooEndpointActionAdapter
+from dose.endpoint_actions.hubspot import HubspotEndpointActionAdapter
+from dose.endpoint_actions.slack import SlackEndpointActionAdapter
 
 
 class PromptLibraryTests(TestCase):
@@ -96,6 +99,36 @@ class EndpointProfileTests(TestCase):
     def test_odoo_adapter_profile_includes_chat_context_hint(self):
         """OdooEndpointActionAdapter profile should include chat_context_hint."""
         adapter = OdooEndpointActionAdapter()
+        profile = adapter.profile()
+        self.assertIn("chat_context_hint", profile)
+        self.assertIsInstance(profile["chat_context_hint"], str)
+
+    def test_hubspot_adapter_profile_includes_chat_prompts(self):
+        """HubspotEndpointActionAdapter profile should include chat_prompts."""
+        adapter = HubspotEndpointActionAdapter()
+        profile = adapter.profile()
+        self.assertIn("chat_prompts", profile)
+        self.assertIsInstance(profile["chat_prompts"], list)
+        self.assertGreater(len(profile["chat_prompts"]), 0)
+
+    def test_hubspot_adapter_profile_includes_chat_context_hint(self):
+        """HubspotEndpointActionAdapter profile should include chat_context_hint."""
+        adapter = HubspotEndpointActionAdapter()
+        profile = adapter.profile()
+        self.assertIn("chat_context_hint", profile)
+        self.assertIsInstance(profile["chat_context_hint"], str)
+
+    def test_slack_adapter_profile_includes_chat_prompts(self):
+        """SlackEndpointActionAdapter profile should include chat_prompts."""
+        adapter = SlackEndpointActionAdapter()
+        profile = adapter.profile()
+        self.assertIn("chat_prompts", profile)
+        self.assertIsInstance(profile["chat_prompts"], list)
+        self.assertGreater(len(profile["chat_prompts"]), 0)
+
+    def test_slack_adapter_profile_includes_chat_context_hint(self):
+        """SlackEndpointActionAdapter profile should include chat_context_hint."""
+        adapter = SlackEndpointActionAdapter()
         profile = adapter.profile()
         self.assertIn("chat_context_hint", profile)
         self.assertIsInstance(profile["chat_context_hint"], str)

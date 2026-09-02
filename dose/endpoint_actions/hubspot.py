@@ -2,6 +2,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # FIX 2026-09-01 (owner-approved): shared ListSpec publisher; Browse corrected to external.
+# BINGO: Geronimo Chat Integration — 2026-09-02
 from __future__ import annotations
 
 from dose.endpoint_browser import endpoint_app_logo_key
@@ -86,6 +87,20 @@ class HubspotEndpointActionAdapter(EndpointActionAdapter):
     @classmethod
     def matches_endpoint(cls, endpoint) -> bool:
         return endpoint_app_logo_key(endpoint) == "hubspot"
+
+    def chat_prompts(self) -> list:
+        """Geronimo chat preset prompts for HubSpot endpoints."""
+        from dose.ai_prompts.prompt_library import get_prompts_for_endpoint
+
+        # Return prompts for the current data panel (if any).
+        # For simplicity, return contacts prompts as default.
+        return get_prompts_for_endpoint("hubspot.contacts")
+
+    def chat_context_hint(self) -> str:
+        """Context hint for LLM about HubSpot contact data."""
+        from dose.ai_prompts.prompt_library import get_context_hint_for_endpoint
+
+        return get_context_hint_for_endpoint("hubspot.contacts")
 
     def actions(self):
         return {

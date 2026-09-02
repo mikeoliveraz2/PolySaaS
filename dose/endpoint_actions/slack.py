@@ -1,6 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack Odoo contact/sale forms — 2026-08-25
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
+# BINGO: Geronimo Chat Integration — 2026-09-02
 import uuid
 
 from django.utils import timezone
@@ -106,6 +107,19 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
         slug = (getattr(endpoint, "slug", "") or "").strip().lower()
         url = (getattr(endpoint, "endpoint_url", "") or "").lower()
         return slug == "slack" or "slack.com" in url
+
+    def chat_prompts(self) -> list:
+        """Geronimo chat preset prompts for Slack endpoints."""
+        from dose.ai_prompts.prompt_library import get_prompts_for_endpoint
+
+        # Return prompts for Slack channels.
+        return get_prompts_for_endpoint("slack.channels")
+
+    def chat_context_hint(self) -> str:
+        """Context hint for LLM about Slack channel data."""
+        from dose.ai_prompts.prompt_library import get_context_hint_for_endpoint
+
+        return get_context_hint_for_endpoint("slack.channels")
 
     def actions(self):
         return {

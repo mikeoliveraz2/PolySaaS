@@ -1,6 +1,9 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Geronimo Chat Integration — 2026-09-02
+
 """Geronimo chat preset prompts per endpoint.
 
-Each endpoint (Odoo, Nextcloud, Mattermost) has curated preset questions
+Each endpoint (Odoo, Nextcloud, Mattermost, HubSpot, Slack) has curated preset questions
 that guide users toward common tasks. Presets are rendered as quick buttons
 in the Geronimo dock; clicking one injects the question into the chat input.
 
@@ -174,6 +177,126 @@ MATTERMOST_TEAMS_PROMPTS = [
     },
 ]
 
+HUBSPOT_CONTACTS_PROMPTS = [
+    {
+        "label": "Summarize",
+        "template": "Give me a summary of these contacts — total count, key properties, engagement status.",
+        "category": "data_exploration",
+        "icon": "fas fa-chart-pie",
+    },
+    {
+        "label": "Recent activity",
+        "template": "Which contacts have recent activity? Show last interaction date and type.",
+        "category": "analysis",
+        "icon": "fas fa-clock",
+    },
+    {
+        "label": "Engagement status",
+        "template": "Group contacts by engagement (high, medium, low). Show count and characteristics.",
+        "category": "analysis",
+        "icon": "fas fa-signal",
+    },
+    {
+        "label": "Find inactive",
+        "template": "Which contacts are inactive or haven't been contacted in 90+ days?",
+        "category": "analysis",
+        "icon": "fas fa-user-slash",
+    },
+    {
+        "label": "By lifecycle stage",
+        "template": "Break down contacts by lifecycle stage (subscriber, lead, MQL, SQL, customer, evangelist, other).",
+        "category": "data_exploration",
+        "icon": "fas fa-funnel",
+    },
+]
+
+HUBSPOT_DEALS_PROMPTS = [
+    {
+        "label": "Pipeline summary",
+        "template": "Summarize the deals pipeline — total deals, sum by stage, average deal value.",
+        "category": "data_exploration",
+        "icon": "fas fa-funnel",
+    },
+    {
+        "label": "At risk deals",
+        "template": "Which deals are at risk or stalled? Show stage, owner, and days in current stage.",
+        "category": "analysis",
+        "icon": "fas fa-exclamation-circle",
+    },
+    {
+        "label": "Top deals",
+        "template": "Show the top 10 deals by amount. Include stage, owner, and close date.",
+        "category": "data_exploration",
+        "icon": "fas fa-star",
+    },
+    {
+        "label": "Close date outlook",
+        "template": "What deals are closing this month or next? Show by week.",
+        "category": "analysis",
+        "icon": "fas fa-calendar-check",
+    },
+    {
+        "label": "Win/loss analysis",
+        "template": "What's the win rate? Show won vs. lost deals by owner and stage.",
+        "category": "analysis",
+        "icon": "fas fa-trophy",
+    },
+]
+
+SLACK_CHANNELS_PROMPTS = [
+    {
+        "label": "Channel activity",
+        "template": "Summarize recent activity in this channel — message count, active members, sentiment.",
+        "category": "data_exploration",
+        "icon": "fas fa-chart-bar",
+    },
+    {
+        "label": "Top contributors",
+        "template": "Who are the most active members in this channel? Show message counts and activity frequency.",
+        "category": "analysis",
+        "icon": "fas fa-users",
+    },
+    {
+        "label": "Recent discussions",
+        "template": "What are the recent discussion threads? Summarize main topics and any open questions.",
+        "category": "data_exploration",
+        "icon": "fas fa-comments",
+    },
+    {
+        "label": "Engagement rate",
+        "template": "What's the member engagement? Show active members vs. lurkers and total conversation count.",
+        "category": "analysis",
+        "icon": "fas fa-user-check",
+    },
+]
+
+SLACK_TEAMS_PROMPTS = [
+    {
+        "label": "Team snapshot",
+        "template": "Summarize this Slack team — member count, channel count, activity level, health.",
+        "category": "data_exploration",
+        "icon": "fas fa-chart-pie",
+    },
+    {
+        "label": "Member status",
+        "template": "Show team member list with status (active, away, disabled). Highlight inactive members.",
+        "category": "analysis",
+        "icon": "fas fa-user-shield",
+    },
+    {
+        "label": "Channel activity",
+        "template": "List the most active channels. Show message count, member count, and recent activity.",
+        "category": "data_exploration",
+        "icon": "fas fa-list",
+    },
+    {
+        "label": "Growth analysis",
+        "template": "How is the team growing? Show member onboarding trends and channel creation rate.",
+        "category": "analysis",
+        "icon": "fas fa-chart-line",
+    },
+]
+
 
 # Registry: maps endpoint action keys to their preset prompts
 PROMPT_REGISTRY = {
@@ -186,6 +309,12 @@ PROMPT_REGISTRY = {
     # Mattermost
     "mattermost.channels": MATTERMOST_CHANNELS_PROMPTS,
     "mattermost.teams": MATTERMOST_TEAMS_PROMPTS,
+    # HubSpot
+    "hubspot.contacts": HUBSPOT_CONTACTS_PROMPTS,
+    "hubspot.deals": HUBSPOT_DEALS_PROMPTS,
+    # Slack
+    "slack.channels": SLACK_CHANNELS_PROMPTS,
+    "slack.teams": SLACK_TEAMS_PROMPTS,
 }
 
 
@@ -243,6 +372,26 @@ def get_context_hint_for_endpoint(endpoint_key: str) -> str:
         "mattermost.teams": (
             "You are analyzing a Mattermost team. Data includes: member list, channel list, member status, and recent "
             "activity across all channels. Use this to assess team structure, member availability, and overall team health."
+        ),
+        # HubSpot
+        "hubspot.contacts": (
+            "You are analyzing HubSpot contacts. Each row includes: contact name, email, phone, company, lifecycle stage, "
+            "lead status, last activity date, and custom properties. Use this to analyze contact engagement, segmentation, "
+            "and sales readiness."
+        ),
+        "hubspot.deals": (
+            "You are analyzing HubSpot deals. Each row includes: deal name, amount, stage (negotiation, qualified to buy, "
+            "decision maker bought-in, etc.), close date, owner, and associated contacts. Use this to analyze pipeline health, "
+            "sales velocity, and forecast accuracy."
+        ),
+        # Slack
+        "slack.channels": (
+            "You are analyzing a Slack channel. Data includes: channel name, member list, message count, creation date, topic, "
+            "and member activity. Use this to assess channel health, engagement, and conversation trends."
+        ),
+        "slack.teams": (
+            "You are analyzing a Slack team (workspace). Data includes: member list, channel list, member status, and recent "
+            "activity across all channels. Use this to assess team structure, member availability, communication patterns, and workspace health."
         ),
     }
     return hints.get(endpoint_key, "")
