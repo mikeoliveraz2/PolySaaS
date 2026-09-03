@@ -663,3 +663,93 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     background: #166534;
     color: #86efac;
 }
+
+/* Geronimo first-visit nudge (Option B: stacked, below Wiring) */
+.polysaas-geronimo-nudge {
+    background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%);
+    border: 1px solid #0284c7;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.polysaas-geronimo-nudge__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.polysaas-geronimo-nudge__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0c4a6e;
+}
+
+.polysaas-geronimo-nudge__title i {
+    font-size: 1.1rem;
+}
+
+.polysaas-geronimo-nudge__close {
+    background: transparent;
+    border: none;
+    color: #0c4a6e;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.polysaas-geronimo-nudge__close:hover {
+    opacity: 1;
+}
+
+.polysaas-geronimo-nudge__hint {
+    font-size: 0.9rem;
+    color: #0369a1;
+    margin: 8px 0;
+}
+
+.polysaas-geronimo-nudge__actions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.polysaas-geronimo-nudge__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: linear-gradient(145deg, #ffffff 0%, #e0e7ff 100%);
+    border: 1px solid #818cf8;
+    border-radius: 6px;
+    color: #312e81;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.polysaas-geronimo-nudge__btn:hover {
+    background: linear-gradient(145deg, #e0e7ff 0%, #c7d2fe 100%);
+    border-color: #6366f1;
+    transform: translateY(-1px);
+}
+
+.polysaas-geronimo-nudge__btn i {
+    font-size: 0.95rem;
+}
+
+/* Hide nudge after dismissal (will be set by JS) */
+body.geronimo-nudge-dismissed .polysaas-geronimo-nudge {
+    display: none;
+}

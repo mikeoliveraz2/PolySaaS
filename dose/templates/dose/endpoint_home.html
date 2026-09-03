@@ -231,6 +231,40 @@
         </form>
     </dialog>
 
+    {% if is_first_visit %}
+    <section class="polysaas-geronimo-nudge polysaas-endpoint-home__pane" data-geronimo-nudge>
+        <div class="polysaas-geronimo-nudge__header">
+            <span class="polysaas-geronimo-nudge__title">
+                <i class="fas fa-lightbulb" aria-hidden="true"></i> Quick Start with Geronimo
+            </span>
+            <button type="button" class="polysaas-geronimo-nudge__close" data-dismiss-nudge aria-label="Dismiss nudge">
+                <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
+        </div>
+        <p class="polysaas-geronimo-nudge__hint">Three ways to get started:</p>
+        <ul class="polysaas-geronimo-nudge__actions">
+            <li>
+                <button type="button" class="polysaas-geronimo-nudge__btn polysaas-geronimo-nudge__btn--data" data-nudge-action="open-data">
+                    <i class="fas fa-chart-bar" aria-hidden="true"></i>
+                    Open {{ title }}
+                </button>
+            </li>
+            <li>
+                <button type="button" class="polysaas-geronimo-nudge__btn polysaas-geronimo-nudge__btn--browse" data-nudge-action="browse-app">
+                    <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                    Browse {{ title }}
+                </button>
+            </li>
+            <li>
+                <button type="button" class="polysaas-geronimo-nudge__btn polysaas-geronimo-nudge__btn--wire" data-nudge-action="pair-consumer">
+                    <i class="fas fa-link" aria-hidden="true"></i>
+                    Pair Orchestration
+                </button>
+            </li>
+        </ul>
+    </section>
+    {% endif %}
+
 </main>
 
 {# Geronimo chat dock for this endpoint. Context includes current data panel structure and MQ state. #}

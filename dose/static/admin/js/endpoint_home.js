@@ -331,3 +331,72 @@
         });
     }
 })();
+
+// Geronimo first-visit nudge (Option B: dismiss + action routing)
+(function () {
+    'use strict';
+
+    var nudgeEl = document.querySelector('[data-geronimo-nudge]');
+    if (!nudgeEl) return;
+
+    // Restore dismissal state from session storage
+    if (sessionStorage.getItem('geronimo_nudge_dismissed')) {
+        document.body.classList.add('geronimo-nudge-dismissed');
+    }
+
+    // Handle close button
+    var closeBtn = nudgeEl.querySelector('[data-dismiss-nudge]');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.body.classList.add('geronimo-nudge-dismissed');
+            sessionStorage.setItem('geronimo_nudge_dismissed', '1');
+            // Mark nudge as seen in the session
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                credentials: 'same-origin',
+                body: JSON.stringify({action: 'mark_nudge_seen'})
+            }).catch(function() { /* silently fail */ });
+        });
+    }
+
+    // Handle action buttons
+    nudgeEl.querySelectorAll('[data-nudge-action]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var action = this.dataset.nudgeAction;
+            
+            // Mark nudge as seen
+            document.body.classList.add('geronimo-nudge-dismissed');
+            sessionStorage.setItem('geronimo_nudge_dismissed', '1');
+
+            if (action === 'open-data') {
+                // Scroll to first data panel
+                var firstPanel = document.querySelector('[data-polysaas-panel]');
+                if (firstPanel) {
+                    firstPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } else if (action === 'browse-app') {
+                // Click the Browse button
+                var browseBtn = document.querySelector('.polysaas-endpoint-home__launch');
+                if (browseBtn) {
+                    browseBtn.click();
+                }
+            } else if (action === 'pair-consumer') {
+                // Open pair dialog and scroll to Wiring section
+                var wiringSection = document.querySelector('[data-pair-dialog]');
+                if (wiringSection) {
+                    wiringSection.showModal();
+                } else {
+                    // Fallback: scroll to Wiring details
+                    var wiringDetails = document.querySelector('details[data-polysaas-wiring]');
+                    if (wiringDetails) {
+                        wiringDetails.open = true;
+                        wiringDetails.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            }
+        });
+    });
+})();

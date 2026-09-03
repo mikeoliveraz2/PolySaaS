@@ -243,6 +243,9 @@ def endpoint_home(request, endpoint_host: str):
     chat_prompts = endpoint_profile.get("chat_prompts", [])
     chat_context_hint = endpoint_profile.get("chat_context_hint", "")
     
+    # First-visit nudge tracking (per session)
+    is_first_visit = not request.session.get("geronimo_nudge_seen", False)
+    
     context = {
         "title": app_label,
         "app_label": app_label,
@@ -266,6 +269,7 @@ def endpoint_home(request, endpoint_host: str):
         ),
         "chat_prompts": chat_prompts,
         "chat_context_hint": chat_context_hint,
+        "is_first_visit": is_first_visit,
     }
     return render(request, "dose/endpoint_home.html", context)
 

@@ -76,7 +76,8 @@ def _payload(kind: str, supplied: dict) -> dict:
 
 
 class SlackEndpointActionAdapter(EndpointActionAdapter):
-    surface_template = "polysniffer/slack_wireframe.html"
+    # Use unified endpoint_home.html (not custom surface_template)
+    # surface_template = "polysniffer/slack_wireframe.html"  # DEPRECATED 2026-09-03
     browse_mode = "external"
     default_bookmarks = (
         {
@@ -107,6 +108,26 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
         slug = (getattr(endpoint, "slug", "") or "").strip().lower()
         url = (getattr(endpoint, "endpoint_url", "") or "").lower()
         return slug == "slack" or "slack.com" in url
+
+    def panels(self):
+        """Slack unified workspace: teams and channels as data panels."""
+        from .base import EndpointPanel
+        
+        # Slack shows teams and channels as data exploration panels
+        return (
+            EndpointPanel(
+                key="teams",
+                title="Teams",
+                object_type="team",
+                action="slack.teams",
+            ),
+            EndpointPanel(
+                key="channels",
+                title="Channels",
+                object_type="channel",
+                action="slack.channels",
+            ),
+        )
 
     def chat_prompts(self) -> list:
         """Geronimo chat preset prompts for Slack endpoints."""
