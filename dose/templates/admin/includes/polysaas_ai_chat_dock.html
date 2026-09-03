@@ -162,7 +162,7 @@
         </div>
     </div>
 </div>
-<script src="{% static 'admin/js/polysaas_ai_page_context.js' %}?v=20260613-geronimo"></script>
+<script src="{% static 'admin/js/polysaas_ai_page_context.js' %}?v=20260903-geronimo-branded"></script>
 <script>
 (function () {
     var SK_HISTORY_LEGACY = 'pss_admin_llm_v1_history';
@@ -208,7 +208,10 @@
             if (v === 'floating' || v === 'inline') return v;
             if (sessionStorage.getItem(SK_DOCK_OPEN_LEGACY) === '1') return 'floating';
         } catch (e) {}
-        return 'inline';
+        // Endpoint homes: default to floating (branded panel is separate tool)
+        // Other pages: default to inline (integrated into content)
+        var isEndpointHome = document.querySelector('[data-endpoint-home]') !== null;
+        return isEndpointHome ? 'floating' : 'inline';
     }
 
     function persistLayout(mode) {
