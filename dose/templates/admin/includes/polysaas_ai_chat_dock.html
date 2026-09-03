@@ -52,26 +52,19 @@
         overflow: hidden;
         position: relative;
     }
-    /* Geronimo AI watermark — 30-degree diagonal, via inline div (not pseudo-element) */
+    /* Geronimo AI watermark — 30-degree diagonal, simple text overlay */
     .pss-ai-watermark {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 200%;
-        height: 200%;
-        font-size: 2.5rem;
+        font-size: 3rem;
         font-weight: 900;
-        color: rgba(59, 130, 246, 0.12);
-        text-align: center;
+        color: rgba(59, 130, 246, 0.25);
         transform: translate(-50%, -50%) rotate(-30deg);
         pointer-events: none;
         z-index: 0;
-        line-height: 1.4;
         white-space: nowrap;
-        letter-spacing: 2px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        letter-spacing: 3px;
     }
     #pssAdminAiChatDockPanel > :not(.pss-ai-watermark) {
         position: relative;
