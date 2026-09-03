@@ -49,39 +49,37 @@
         border: 2px solid #3b82f6;
         border-radius: 14px;
         box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08);
-        overflow: visible;
+        overflow: hidden;
         position: relative;
     }
-    /* Geronimo AI watermark — 30-degree diagonal */
-    #pssAdminAiChatDockPanel::before {
-        content: "Geronimo AI";
+    /* Geronimo AI watermark — 30-degree diagonal, via inline div (not pseudo-element) */
+    .pss-ai-watermark {
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 150%;
-        height: 150%;
-        font-size: 2.2rem;
+        width: 200%;
+        height: 200%;
+        font-size: 2.5rem;
         font-weight: 900;
-        color: rgba(59, 130, 246, 0.15);
+        color: rgba(59, 130, 246, 0.12);
         text-align: center;
         transform: translate(-50%, -50%) rotate(-30deg);
         pointer-events: none;
         z-index: 0;
         line-height: 1.4;
         white-space: nowrap;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
         display: flex;
         align-items: center;
         justify-content: center;
     }
-    #pssAdminAiChatDockPanel > * {
+    #pssAdminAiChatDockPanel > :not(.pss-ai-watermark) {
         position: relative;
         z-index: 1;
     }
     #pssAdminAiChatDock.pss-ai-floating #pssAdminAiChatDockPanel {
         box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
         max-height: min(72vh, 640px);
-        overflow: hidden;
     }
     #pssAdminAiChatDockHeader {
         display: flex;
@@ -137,6 +135,7 @@
 <div id="pssAdminAiChatDock" class="admin-llm-router-chat-dock" aria-label="PolySaaS AI chat"
     {% if request.tenant %}data-tenant-name="{{ request.tenant.name|escapejs }}" data-tenant-slug="{{ request.tenant.slug|escapejs }}"{% endif %}>
     <div id="pssAdminAiChatDockPanel" role="region" aria-label="PolySaaS AI">
+        <div class="pss-ai-watermark">Geronimo AI</div>
         <div id="pssAdminAiChatDockHeader">
             <span style="font-size: 0.95rem; color: #fff;">
                 <i class="fas fa-wand-magic-sparkles" aria-hidden="true" style="margin-right: 6px;"></i>
