@@ -8,6 +8,22 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
+- Date/session: **2026-09-03 — Geronimo watermark and simplified chat mode**
+- Branch: `cursor/polysniffer-slack-native-capture`
+- Latest remote before this session: `96ea3fbe` `Watermark: 26px font (smaller), 7 instances (more), darker response area`
+- Current session: included in the commit containing this handoff
+- Validation: `python scripts/check_agent_sync.py`, `python manage.py check`, IDE lint, and `git diff --check` all pass
+
+### Current Work (2026-09-03): Geronimo visual refinement
+
+- Replaced the oversized single watermark treatment with a shared 18px repeating `Geronimo AI` SVG pattern.
+- Applied the same watermark directly to the panel, response region, input region, and footer so opaque child backgrounds no longer hide it.
+- Set the response region darker than the input region and restored dark response text for readability.
+- Removed the Standard / ML Studio radio controls from the compact Geronimo dock.
+- The dock now always submits `mode: "standard"`; the full-page AI interface and backend ML Studio support were not changed.
+- Files: `dose/templates/admin/includes/polysaas_ai_chat_dock.html` and its required `.bak`.
+- Human check: hard-refresh an endpoint home and confirm watermark density, response/input contrast, and the absence of mode radio buttons.
+
 - Date/session: **2026-09-02 — Geronimo Chat Integration (Phases 1–5 complete)**
 - Branch: `cursor/polysniffer-slack-native-capture`
 - Previous BINGO: 8cdd6306 `BINGO: Unified Endpoint Workspace — 2026-09-01`
