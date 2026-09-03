@@ -36,19 +36,43 @@
         right: 16px;
         bottom: 16px;
         z-index: 10050;
-        width: min(400px, calc(100vw - 32px));
+        width: min(380px, calc(100vw - 32px));
     }
     #pssAdminAiChatDockPanel {
         display: flex;
         flex-direction: column;
         width: 100%;
-        max-height: min(72vh, 680px);
-        background: var(--bs-body-bg, #fff);
+        max-height: min(68vh, 620px);
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
         color: var(--bs-body-color, #212529);
-        border: 1px solid rgba(37, 99, 235, 0.35);
-        border-radius: 12px;
-        box-shadow: 0 4px 24px rgba(15, 23, 42, 0.1);
+        border: 2px solid #3b82f6;
+        border-radius: 14px;
+        box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08);
         overflow: hidden;
+        position: relative;
+    }
+    /* Geronimo AI watermark — 30-degree diagonal */
+    #pssAdminAiChatDockPanel::before {
+        content: "Geronimo AI";
+        position: absolute;
+        top: -40%;
+        left: -10%;
+        width: 150%;
+        height: 150%;
+        font-size: 3rem;
+        font-weight: 900;
+        color: rgba(59, 130, 246, 0.08);
+        text-align: center;
+        transform: rotate(-30deg);
+        pointer-events: none;
+        z-index: 0;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    #pssAdminAiChatDockPanel > * {
+        position: relative;
+        z-index: 1;
     }
     #pssAdminAiChatDock.pss-ai-floating #pssAdminAiChatDockPanel {
         box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
@@ -59,11 +83,12 @@
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        padding: 10px 12px;
+        padding: 12px 14px;
         flex-wrap: wrap;
-        background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
-        border-bottom: 1px solid rgba(37, 99, 235, 0.2);
-        font-weight: 600;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        border-bottom: 1px solid rgba(37, 99, 235, 0.3);
+        font-weight: 700;
+        color: #fff;
     }
     html[data-ps-theme="darkly"] #pssAdminAiChatDockHeader,
     html[data-ps-theme="cyborg"] #pssAdminAiChatDockHeader,
@@ -108,14 +133,16 @@
     {% if request.tenant %}data-tenant-name="{{ request.tenant.name|escapejs }}" data-tenant-slug="{{ request.tenant.slug|escapejs }}"{% endif %}>
     <div id="pssAdminAiChatDockPanel" role="region" aria-label="PolySaaS AI">
         <div id="pssAdminAiChatDockHeader">
-            <span><i class="fas fa-robot text-info" aria-hidden="true"></i> Geronimo · PolySaaS AI</span>
-            <span class="d-flex flex-wrap align-items-center" style="gap:6px;">
-                <a href="{% url 'admin_polysaas_ai' %}" class="btn btn-sm btn-outline-primary py-0" style="font-size:0.7rem;">Full page</a>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pssAdminAiChatPopoutBtn" style="font-size:0.7rem;" title="Float over the admin UI">
-                    <i class="fas fa-external-link-alt" aria-hidden="true"></i> Pop out
+            <span style="font-size: 0.95rem; color: #fff;">
+                <i class="fas fa-wand-magic-sparkles" aria-hidden="true" style="margin-right: 6px;"></i>
+                <strong>Geronimo</strong>
+            </span>
+            <span class="d-flex flex-wrap align-items-center" style="gap:4px;">
+                <button type="button" class="btn btn-sm py-0" id="pssAdminAiChatDockToPageBtn" style="font-size:0.65rem; background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.4); display: none;" title="Dock to page">
+                    <i class="fas fa-compress-alt" aria-hidden="true"></i>
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pssAdminAiChatDockToPageBtn" style="font-size:0.7rem;display:none;" title="Return chat into the page column">
-                    <i class="fas fa-compress-alt" aria-hidden="true"></i> Dock to page
+                <button type="button" class="btn btn-sm py-0" id="pssAdminAiChatPopoutBtn" style="font-size:0.65rem; background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.4);" title="Undock">
+                    <i class="fas fa-arrow-expand" aria-hidden="true"></i>
                 </button>
             </span>
         </div>
@@ -126,10 +153,10 @@
                 <label class="me-2 mb-0"><input type="radio" name="pssDockAiMode" value="standard" checked> Standard</label>
                 <label class="mb-0"><input type="radio" name="pssDockAiMode" value="ml_studio"> ML Studio</label>
             </div>
-            <textarea id="pssAdminAiChatDockInput" class="form-control form-control-sm" rows="2" placeholder="Message… (Enter to send, Shift+Enter for newline)" autocomplete="off"></textarea>
+            <textarea id="pssAdminAiChatDockInput" class="form-control form-control-sm" rows="2" placeholder="Message… (Enter to send, Shift+Enter for newline)" autocomplete="off" style="border: 1px solid #3b82f6;"></textarea>
             <div class="d-flex justify-content-between align-items-center mt-2" style="gap:8px;">
-                <button type="button" class="btn btn-info btn-sm" id="pssAdminAiChatDockSend"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="pssAdminAiChatDockClear">Clear</button>
+                <button type="button" class="btn btn-sm" id="pssAdminAiChatDockSend" style="background: #3b82f6; color: #fff; border: none; font-weight: 600;"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="pssAdminAiChatDockClear" style="font-size: 0.8rem;">Clear</button>
             </div>
             <p id="pssAdminAiChatDockMeta" class="mb-0"></p>
         </div>
