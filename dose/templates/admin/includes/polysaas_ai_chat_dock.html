@@ -99,7 +99,7 @@
         overflow-y: auto;
         padding: 10px 12px;
         font-size: 0.8125rem;
-        background: var(--bs-body-bg, #fff);
+        background: #f9fafb;
     }
     #pssAdminAiChatDock.pss-ai-inline #pssAdminAiChatDockLog {
         min-height: 200px;
@@ -122,6 +122,8 @@
         min-height: 64px;
         resize: vertical;
         font-size: 0.8125rem;
+        background: #e8eaee;
+        color: #1a202c;
     }
     #pssAdminAiChatDockMeta { font-size: 0.7rem; color: #64748b; margin-top: 6px; min-height: 1em; }
 </style>
@@ -482,7 +484,7 @@
             var watermark = document.createElement('div');
             watermark.className = 'pss-ai-watermark';
             watermark.textContent = 'Geronimo AI';
-            watermark.style.cssText = 'position:absolute;top:50%;left:50%;font-size:3rem;font-weight:900;color:rgba(59,130,246,0.5);text-shadow:0 0 4px rgba(59,130,246,0.4);transform:translate(-50%,-50%) rotate(-30deg);pointer-events:none;z-index:0;white-space:nowrap;letter-spacing:3px;';
+            watermark.style.cssText = 'position:absolute;top:50%;left:50%;font-size:6rem;font-weight:900;color:rgba(59,130,246,0.55);text-shadow:0 0 8px rgba(59,130,246,0.5);transform:translate(-50%,-50%) rotate(-30deg);pointer-events:none;z-index:0;white-space:nowrap;letter-spacing:4px;line-height:1;';
             panel.insertBefore(watermark, panel.firstChild);
         }
     }, 100);
