@@ -55,20 +55,23 @@
     #pssAdminAiChatDockPanel::before {
         content: "Geronimo AI";
         position: absolute;
-        top: -40%;
-        left: -10%;
-        width: 150%;
-        height: 150%;
-        font-size: 3rem;
+        top: 50%;
+        left: 50%;
+        width: 200%;
+        height: 200%;
+        font-size: 2.5rem;
         font-weight: 900;
-        color: rgba(59, 130, 246, 0.08);
+        color: rgba(59, 130, 246, 0.12);
         text-align: center;
-        transform: rotate(-30deg);
+        transform: translate(-50%, -50%) rotate(-30deg);
         pointer-events: none;
         z-index: 0;
-        line-height: 1.2;
+        line-height: 1.4;
         white-space: nowrap;
-        overflow: hidden;
+        letter-spacing: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     #pssAdminAiChatDockPanel > * {
         position: relative;
