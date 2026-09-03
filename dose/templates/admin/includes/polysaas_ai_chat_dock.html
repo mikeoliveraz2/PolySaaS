@@ -128,7 +128,6 @@
 <div id="pssAdminAiChatDock" class="admin-llm-router-chat-dock" aria-label="PolySaaS AI chat"
     {% if request.tenant %}data-tenant-name="{{ request.tenant.name|escapejs }}" data-tenant-slug="{{ request.tenant.slug|escapejs }}"{% endif %}>
     <div id="pssAdminAiChatDockPanel" role="region" aria-label="PolySaaS AI">
-        <div class="pss-ai-watermark">Geronimo AI</div>
         <div id="pssAdminAiChatDockHeader">
             <span style="font-size: 0.95rem; color: #fff;">
                 <i class="fas fa-wand-magic-sparkles" aria-hidden="true" style="margin-right: 6px;"></i>
@@ -159,7 +158,7 @@
         </div>
     </div>
 </div>
-<script src="{% static 'admin/js/polysaas_ai_page_context.js' %}?v=20260903-geronimo-branded"></script>
+<script src="{% static 'admin/js/polysaas_ai_page_context.js' %}?v=20260903-watermark-v4"></script>
 <script>
 (function () {
     var SK_HISTORY_LEGACY = 'pss_admin_llm_v1_history';
@@ -475,5 +474,17 @@
             setLayout('inline');
         }
     });
+
+    // Add watermark via JS to ensure it always renders
+    window.setTimeout(function () {
+        var panel = document.getElementById('pssAdminAiChatDockPanel');
+        if (panel && !document.querySelector('.pss-ai-watermark')) {
+            var watermark = document.createElement('div');
+            watermark.className = 'pss-ai-watermark';
+            watermark.textContent = 'Geronimo AI';
+            watermark.style.cssText = 'position:absolute;top:50%;left:50%;font-size:3rem;font-weight:900;color:rgba(59,130,246,0.3);transform:translate(-50%,-50%) rotate(-30deg);pointer-events:none;z-index:0;white-space:nowrap;letter-spacing:3px;';
+            panel.insertBefore(watermark, panel.firstChild);
+        }
+    }, 100);
 })();
 </script>
