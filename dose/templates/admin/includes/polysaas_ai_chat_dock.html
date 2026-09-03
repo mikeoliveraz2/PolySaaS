@@ -30,6 +30,7 @@
         border-left: 0;
         border-right: 0;
         box-shadow: none;
+        overflow: hidden;
     }
     #pssAdminAiChatDock.pss-ai-floating {
         position: fixed;
@@ -48,7 +49,7 @@
         border: 2px solid #3b82f6;
         border-radius: 14px;
         box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08);
-        overflow: hidden;
+        overflow: visible;
         position: relative;
     }
     /* Geronimo AI watermark — 30-degree diagonal */
@@ -57,18 +58,18 @@
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 200%;
-        height: 200%;
-        font-size: 2.5rem;
+        width: 150%;
+        height: 150%;
+        font-size: 2.2rem;
         font-weight: 900;
-        color: rgba(59, 130, 246, 0.12);
+        color: rgba(59, 130, 246, 0.15);
         text-align: center;
         transform: translate(-50%, -50%) rotate(-30deg);
         pointer-events: none;
         z-index: 0;
         line-height: 1.4;
         white-space: nowrap;
-        letter-spacing: 2px;
+        letter-spacing: 1px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -80,6 +81,7 @@
     #pssAdminAiChatDock.pss-ai-floating #pssAdminAiChatDockPanel {
         box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
         max-height: min(72vh, 640px);
+        overflow: hidden;
     }
     #pssAdminAiChatDockHeader {
         display: flex;
