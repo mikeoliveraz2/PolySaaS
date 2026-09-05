@@ -49,6 +49,8 @@ urlpatterns = [
     path('tenant/llm-router/chat-api/', tenant_llm_router_chat_api, name='tenant_llm_router_chat_api'),
     # Single PolySaaS login — admin login redirects to allauth (post-login → /dose/home/).
     path('admin/login/', RedirectView.as_view(url='/accounts/login/', query_string=False)),
+    # Compatibility for stale Jazzmin profile links cached before the admin URL fix.
+    path('profile/', RedirectView.as_view(url='/admin/dose/userprofile/', query_string=False)),
     path('admin/', admin.site.urls),
     # Slack slash command — first-ack only
     path('hooks/slack/commands/', slack_slash_command, name='slack_slash_command'),

@@ -8,23 +8,60 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: **2026-09-04 — Fix Geronimo LLM model (claude-sonnet-4-6)**
+- Date/session: **2026-09-06 — Slack → Odoo Contact Creation Flow**
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Latest commit before this session: `bea51827` `Refine Geronimo watermark and simplify chat mode`
+- Latest commit before this session: `acd5e1f7` `Fix Geronimo LLM model availability (claude-sonnet-4-6)`
 - Current session: included in the commit containing this handoff
-- Validation: `python scripts/check_agent_sync.py`, `python manage.py check`, and model availability check all pass
+- Validation: `python scripts/check_agent_sync.py`, `python manage.py check`, and 18 new tests all pass
 
-### Current Work (2026-09-04): Geronimo LLM model fix
+### Current Work (2026-09-06): Slack → Odoo Contact Creation Flow
+
+**Objective:** Implement webhook-driven flow where Slack message triggers Odoo contact creation.
+
+**Design:** Deterministic parsing (no LLM in hot path), producer/consumer pattern, green bar feedback, error display.
+
+**Message format:** `New contact: Name, email, Company` (case-insensitive, whitespace-tolerant)
+
+**Components built:**
+1. **Webhook endpoint** (`dose/views/slack_events_webhook.py`) — handles Slack Events API, URL verification, signature verification, contact parsing
+2. **Envelope builder** (`dose/webhook_events.py`) — `build_slack_contact_envelope`, `publish_slack_contact_event`
+3. **URL routing** (`mysite/urls.py`) — `/hooks/slack/events/`
+4. **Instruction seeding** (`dose/management/commands/seed_slack_contact_orchestration.py`) — creates `slack.message.contact` instruction
+5. **Enhanced feedback** (`dose/messaging.py`) — Slack → Odoo narrative in green bar
+6. **Comprehensive tests** (`dose/tests/test_slack_contact_creation.py`) — 18 tests, all passing
+
+**Integration:** Reuses frozen `OdooCreatePartner` atomic service (BINGO 2026-08-28). Follows existing producer/consumer pattern. Mailbox consumer processes envelopes.
+
+**Files changed:**
+- `dose/views/slack_events_webhook.py` (new, 184 lines)
+- `dose/webhook_events.py` (+ `.bak`)
+- `mysite/urls.py` (+ `.bak`)
+- `dose/management/commands/seed_slack_contact_orchestration.py` (new, 140 lines)
+- `dose/messaging.py` (+ `.bak`)
+- `dose/tests/test_slack_contact_creation.py` (new, 400+ lines, 18 tests)
+- `documentation/SLACK_CONTACT_CREATION_FLOW.md` (new, comprehensive guide)
+
+**Validation:**
+- `python manage.py check` — No issues
+- `python manage.py test dose.tests.test_slack_contact_creation --keepdb --noinput` — 18/18 passed
+- All new code follows frozen-file protection rules (no edits to frozen services)
+
+**Next steps:**
+1. Run `python manage.py seed_slack_contact_orchestration olient` to create instruction
+2. Configure Slack Events API subscription to `message.channels`
+3. Set webhook URL to `https://your-domain/hooks/slack/events/`
+4. Test with: `New contact: Jane Doe, jane@acme.com, Acme Corp`
+5. Verify green bar shows: `✓ Slack → Odoo: created contact 'Jane Doe' (jane@acme.com) — partner #42`
+
+---
+
+### Previous session (2026-09-04): Geronimo LLM model fix
 
 **Issue:** Geronimo was configured for unavailable model `claude-sonnet-4-20250514`, causing 404 errors from Anthropic API.
 
 **Fix:** Updated `mysite/settings.py` `LLM_ROUTER_ADMIN_CHAT_MODEL` default from `claude-sonnet-4-20250514` → `claude-sonnet-4-6` (verified available in account via `/v1/models` endpoint).
 
-**Root cause:** Model name was outdated; Anthropic account provides `claude-sonnet-4-6`, `claude-sonnet-5`, `claude-opus-5`, and others but not the configured model.
-
 **Files changed:** `mysite/settings.py` (+ `.bak`)
-
-**Validation:** Configuration loads correctly; Django check passes; Geronimo should now respond to chat queries.
 
 ---
 

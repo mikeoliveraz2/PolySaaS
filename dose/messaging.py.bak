@@ -45,25 +45,8 @@ def feedback_text_for_result(instruction, result: dict, service_name: str) -> tu
         return f"Consumer failed: {detail}", level
 
     if isinstance(result, dict):
-        # Slack → Odoo contact creation (enhanced narrative)
-        event_key = getattr(instruction, "eventKey", "") or ""
-        if event_key == "slack.message.contact" and result.get("partner_id"):
-            name = result.get("name", "contact")
-            email = result.get("email", "")
-            partner_id = result.get("partner_id")
-            created = result.get("created", False)
-            action = "created" if created else "updated"
-            msg = f"✓ Slack → Odoo: {action} contact '{name}'"
-            if email:
-                msg += f" ({email})"
-            msg += f" — partner #{partner_id}"
-            return msg, level
-        
-        # Generic partner creation
         if result.get("partner_id"):
             return f"Odoo contact ready — partner #{result['partner_id']}", level
-        
-        # Quotation creation
         if result.get("order_name") or result.get("order_id"):
             name = result.get("order_name") or f"#{result.get('order_id')}"
             return f"Odoo draft quotation {name}", level

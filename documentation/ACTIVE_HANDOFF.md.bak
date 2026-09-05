@@ -8,13 +8,27 @@ Every agent — Copilot, Cursor, and Windsurf — must read it before work.
 
 ## Status
 
-- Date/session: **2026-09-03 — Geronimo watermark and simplified chat mode**
+- Date/session: **2026-09-04 — Fix Geronimo LLM model (claude-sonnet-4-6)**
 - Branch: `cursor/polysniffer-slack-native-capture`
-- Latest remote before this session: `96ea3fbe` `Watermark: 26px font (smaller), 7 instances (more), darker response area`
+- Latest commit before this session: `bea51827` `Refine Geronimo watermark and simplify chat mode`
 - Current session: included in the commit containing this handoff
-- Validation: `python scripts/check_agent_sync.py`, `python manage.py check`, IDE lint, and `git diff --check` all pass
+- Validation: `python scripts/check_agent_sync.py`, `python manage.py check`, and model availability check all pass
 
-### Current Work (2026-09-03): Geronimo visual refinement
+### Current Work (2026-09-04): Geronimo LLM model fix
+
+**Issue:** Geronimo was configured for unavailable model `claude-sonnet-4-20250514`, causing 404 errors from Anthropic API.
+
+**Fix:** Updated `mysite/settings.py` `LLM_ROUTER_ADMIN_CHAT_MODEL` default from `claude-sonnet-4-20250514` → `claude-sonnet-4-6` (verified available in account via `/v1/models` endpoint).
+
+**Root cause:** Model name was outdated; Anthropic account provides `claude-sonnet-4-6`, `claude-sonnet-5`, `claude-opus-5`, and others but not the configured model.
+
+**Files changed:** `mysite/settings.py` (+ `.bak`)
+
+**Validation:** Configuration loads correctly; Django check passes; Geronimo should now respond to chat queries.
+
+---
+
+### Previous session (2026-09-03): Geronimo visual refinement
 
 - Replaced the oversized single watermark treatment with a shared 18px repeating `Geronimo AI` SVG pattern.
 - Applied the same watermark directly to the panel, response region, input region, and footer so opaque child backgrounds no longer hide it.

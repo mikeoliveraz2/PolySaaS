@@ -1,0 +1,737 @@
+<!--
+  WordPress Custom HTML block version.
+  Paste this entire file's contents into one Custom HTML block.
+  Every CSS selector is scoped under .geronimo-page so it cannot
+  leak into your theme, and every id is prefixed with "geronimo-"
+  so it cannot collide with other blocks or plugins on the page.
+-->
+<style>
+  .geronimo-page{
+    --ink: #12161d;
+    --panel: #1a2029;
+    --panel-raised: #212936;
+    --border: #2a3341;
+    --teal: #5eead4;
+    --blue: #5b8def;
+    --amber: #e8a94c;
+    --text: #e8ecf3;
+    --text-muted: #8a94a6;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+
+    margin:0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+  }
+
+  .geronimo-page, .geronimo-page *{ box-sizing: border-box; }
+  .geronimo-page a{ color: inherit; text-decoration: none; }
+
+  .geronimo-page .wrap{
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  /* ---------- top chrome ---------- */
+  .geronimo-page .chrome-bar{
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .geronimo-page .chrome-inner{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 16px 32px;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  .geronimo-page .chrome-left{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .geronimo-page .dot{
+    width:7px; height:7px; border-radius:50%;
+    background: var(--teal);
+    box-shadow: 0 0 8px var(--teal);
+    display:inline-block;
+  }
+  .geronimo-page .chrome-tag{
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  /* ---------- hero ---------- */
+  .geronimo-page .hero{
+    padding: 96px 0 88px;
+    display:grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 64px;
+    align-items: center;
+  }
+  .geronimo-page .hero h1{
+    font-size: 52px;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    margin: 0 0 24px;
+    font-weight: 600;
+  }
+  .geronimo-page .hero h1 span{
+    color: var(--teal);
+  }
+  .geronimo-page .hero p.lede{
+    font-size: 18px;
+    color: var(--text-muted);
+    max-width: 46ch;
+    margin: 0 0 32px;
+  }
+  .geronimo-page .hero-meta{
+    display:flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .geronimo-page .meta-item{
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .geronimo-page .meta-item strong{
+    display:block;
+    font-size: 15px;
+    color: var(--text);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  /* ---------- chat mockup ---------- */
+  .geronimo-page .mock{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
+  }
+  .geronimo-page .mock-header{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-raised);
+  }
+  .geronimo-page .mock-title{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .geronimo-page .mock-title .glyph{
+    width: 20px; height:20px;
+    border-radius: 5px;
+    background: linear-gradient(135deg, var(--blue), var(--teal));
+    flex-shrink:0;
+  }
+  .geronimo-page .mock-body{
+    padding: 18px 16px;
+    height: 300px;
+    overflow: hidden;
+    font-size: 13.5px;
+  }
+  .geronimo-page .msg{ margin-bottom: 16px; }
+  .geronimo-page .msg .who{
+    font-size: 11.5px;
+    text-transform: none;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .geronimo-page .msg.user .who{ color: var(--blue); }
+  .geronimo-page .msg.assistant .who{ color: var(--teal); }
+  .geronimo-page .msg p{ margin: 0; color: var(--text); }
+  .geronimo-page .msg .context-chip{
+    display:inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--amber);
+    background: rgba(232,169,76,0.1);
+    border: 1px solid rgba(232,169,76,0.3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  .geronimo-page .mock-input{
+    display:flex;
+    gap:8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--panel-raised);
+  }
+  .geronimo-page .mock-input .field{
+    flex:1;
+    background: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .geronimo-page .mock-input .send{
+    background: var(--blue);
+    color: #0c1420;
+    border:none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .geronimo-page .mock-footer{
+    padding: 8px 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ---------- sections ---------- */
+  .geronimo-page section{
+    padding: 72px 0;
+    border-top: 1px solid var(--border);
+  }
+  .geronimo-page .section-head{
+    display:grid;
+    grid-template-columns: 320px 1fr;
+    gap: 48px;
+    margin-bottom: 44px;
+  }
+  .geronimo-page .section-head h2{
+    font-size: 30px;
+    letter-spacing: -0.01em;
+    margin: 0;
+    font-weight: 600;
+  }
+  .geronimo-page .section-head .desc{
+    color: var(--text-muted);
+    font-size: 16px;
+    max-width: 56ch;
+    padding-top: 6px;
+  }
+
+  .geronimo-page .feature-grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow:hidden;
+  }
+  .geronimo-page .feature-cell{
+    background: var(--panel);
+    padding: 28px 26px;
+  }
+  .geronimo-page .feature-cell h3{
+    font-size: 16px;
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .geronimo-page .feature-cell p{
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0;
+  }
+  .geronimo-page .feature-cell .k{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--teal);
+    display:block;
+    margin-bottom: 12px;
+  }
+
+  /* ---------- model swap panel ---------- */
+  .geronimo-page .swap-panel{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+  .geronimo-page .model-list{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+  }
+  .geronimo-page .model-row{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    padding: 13px 14px;
+    border-radius: 7px;
+    font-size: 14px;
+  }
+  .geronimo-page .model-row.active{
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+  }
+  .geronimo-page .model-row .id{
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .geronimo-page .model-row.active .id{ color: var(--teal); }
+  .geronimo-page .model-row .badge{
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text-muted);
+  }
+  .geronimo-page .swap-copy p{
+    color: var(--text-muted);
+    font-size: 15px;
+  }
+  .geronimo-page .swap-copy ul{
+    list-style:none;
+    margin: 20px 0 0;
+    padding:0;
+  }
+  .geronimo-page .swap-copy li{
+    display:flex;
+    gap:10px;
+    font-size: 14.5px;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  .geronimo-page .swap-copy li::before{
+    content:'';
+    width:5px; height:5px;
+    border-radius:50%;
+    background: var(--blue);
+    margin-top: 8px;
+    flex-shrink:0;
+  }
+
+  /* ---------- display modes toggle demo ---------- */
+  .geronimo-page .mode-toggle{
+    display:inline-flex;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    margin-bottom: 28px;
+  }
+  .geronimo-page .mode-toggle button{
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    font-family: var(--sans);
+    padding: 8px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .geronimo-page .mode-toggle button.on{
+    background: var(--blue);
+    color: #0c1420;
+    font-weight: 600;
+  }
+
+  .geronimo-page .demo-stage{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    height: 340px;
+    position: relative;
+    overflow:hidden;
+  }
+  .geronimo-page .demo-app{
+    position:absolute;
+    inset: 0;
+    display:grid;
+    grid-template-columns: 130px 1fr;
+  }
+  .geronimo-page .demo-app .side{
+    background: var(--panel-raised);
+    border-right: 1px solid var(--border);
+    padding: 16px 12px;
+  }
+  .geronimo-page .demo-app .side .line{
+    height: 8px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-bottom: 10px;
+    width: 70%;
+  }
+  .geronimo-page .demo-app .main{
+    padding: 16px 20px;
+  }
+  .geronimo-page .demo-app .main .block{
+    height: 12px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-bottom: 12px;
+  }
+  .geronimo-page .demo-app .main .block.w60{ width: 60%; }
+  .geronimo-page .demo-app .main .block.w80{ width: 80%; }
+  .geronimo-page .demo-app .main .block.w40{ width: 40%; }
+
+  .geronimo-page .demo-chat{
+    position:absolute;
+    background: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 20px 40px -12px rgba(0,0,0,0.7);
+    transition: all 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    display:flex;
+    flex-direction: column;
+    overflow:hidden;
+  }
+  .geronimo-page .demo-chat .bar{
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .geronimo-page .demo-chat .bar .glyph2{
+    width: 14px; height:14px;
+    border-radius:4px;
+    background: linear-gradient(135deg, var(--blue), var(--teal));
+  }
+  .geronimo-page .demo-chat .body2{
+    flex:1;
+    padding: 10px 12px;
+  }
+  .geronimo-page .demo-chat .body2 .b{
+    height: 7px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-bottom: 8px;
+  }
+  .geronimo-page .demo-chat .body2 .b.short{ width: 55%; }
+
+  /* overlay position */
+  .geronimo-page .demo-stage[data-mode="overlay"] .demo-chat{
+    right: 18px;
+    bottom: 18px;
+    width: 230px;
+    height: 260px;
+  }
+  /* panel position */
+  .geronimo-page .demo-stage[data-mode="panel"] .demo-chat{
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 260px;
+    height: auto;
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-right: none;
+  }
+  .geronimo-page .demo-stage[data-mode="panel"] .demo-app{
+    grid-template-columns: 130px 1fr 260px;
+  }
+  .geronimo-page .demo-stage[data-mode="panel"] .demo-app .main{
+    grid-column: 2;
+  }
+
+  .geronimo-page .mode-caption{
+    margin-top: 18px;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .geronimo-page .mode-caption strong{ color: var(--text); }
+
+  /* ---------- footprint section ---------- */
+  .geronimo-page .footprint-grid{
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .geronimo-page .fp-card{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align:center;
+  }
+  .geronimo-page .fp-card .icon{
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    background: var(--panel-raised);
+    margin: 0 auto 10px;
+  }
+  .geronimo-page .fp-card span{
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* ---------- footer cta ---------- */
+  .geronimo-page .cta{
+    text-align: left;
+    padding: 88px 0 96px;
+  }
+  .geronimo-page .cta h2{
+    font-size: 34px;
+    max-width: 20ch;
+    margin: 0 0 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .geronimo-page .cta p{
+    color: var(--text-muted);
+    font-size: 16px;
+    max-width: 52ch;
+    margin: 0 0 28px;
+  }
+  .geronimo-page .cta-row{
+    display:flex;
+    gap: 14px;
+  }
+  .geronimo-page .btn-primary{
+    background: var(--blue);
+    color: #0c1420;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 7px;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .geronimo-page .btn-secondary{
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 12px 22px;
+    border-radius: 7px;
+    font-size: 14.5px;
+    cursor: pointer;
+  }
+
+  .geronimo-page footer{
+    border-top: 1px solid var(--border);
+    padding: 28px 0;
+  }
+  .geronimo-page footer .wrap{
+    display:flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 880px){
+    .geronimo-page .hero{ grid-template-columns: 1fr; }
+    .geronimo-page .section-head{ grid-template-columns: 1fr; gap: 16px; }
+    .geronimo-page .feature-grid{ grid-template-columns: 1fr; }
+    .geronimo-page .swap-panel{ grid-template-columns: 1fr; }
+    .geronimo-page .footprint-grid{ grid-template-columns: repeat(2,1fr); }
+    .geronimo-page .hero h1{ font-size: 38px; }
+    .geronimo-page .demo-stage[data-mode="panel"] .demo-app{ grid-template-columns: 90px 1fr 180px; }
+    .geronimo-page .demo-stage[data-mode="panel"] .demo-chat{ width: 180px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .geronimo-page .demo-chat{ transition: none; }
+  }
+</style>
+
+<div class="geronimo-page">
+
+  <div class="chrome-bar">
+    <div class="chrome-inner">
+      <div class="chrome-left">
+        <span class="dot"></span>
+        PolySaaS Online — Feature Overview
+      </div>
+      <div class="chrome-tag">/admin/geronimo/</div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <section class="hero" style="border-top:none;">
+      <div>
+        <h1>The chat box that already knows<br>which <span>admin page</span> you're on.</h1>
+        <p class="lede">Geronimo sits on every screen in the PolySaaS admin interface. It sees the page you're working from, answers with that context built in, and can run research through any LLM or through your own Django models.</p>
+        <div class="hero-meta">
+          <div class="meta-item"><strong>Every admin page</strong>Not a separate tool to open</div>
+          <div class="meta-item"><strong>Any LLM</strong>Swap models per tenant or per task</div>
+          <div class="meta-item"><strong>Two layouts</strong>Overlay or full-width panel</div>
+        </div>
+      </div>
+
+      <div class="mock">
+        <div class="mock-header">
+          <div class="mock-title"><span class="glyph"></span>Geronimo</div>
+          <span class="dot"></span>
+        </div>
+        <div class="mock-body">
+          <div class="msg user">
+            <div class="who">You</div>
+            <p>What can I configure from here?</p>
+          </div>
+          <div class="msg assistant">
+            <div class="who">Geronimo</div>
+            <p>You're on the Slack passthrough page for PolySaaSOnline. From here you can rename the app, restrict it by role, and wire it into an orchestration action.</p>
+            <span class="context-chip">context: /dose/apps/slack/</span>
+          </div>
+        </div>
+        <div class="mock-input">
+          <div class="field">Message... (Enter to send, Shift+Enter for newline)</div>
+          <div class="send">Send</div>
+        </div>
+        <div class="mock-footer">anthropic / claude-sonnet-4-6 · standard</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Built around the page you're already on</h2>
+        <p class="desc">Geronimo doesn't wait to be told what you're looking at. It reads the admin context automatically and shapes every answer around it.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-cell">
+          <span class="k">CONTEXT</span>
+          <h3>Page-aware by default</h3>
+          <p>Ask it "what can I do here" on any screen and it answers for that screen — the passthrough app, the dashboard, the admin panel, whatever's open.</p>
+        </div>
+        <div class="feature-cell">
+          <span class="k">RESEARCH</span>
+          <h3>LLM lookups on demand</h3>
+          <p>When a question needs outside knowledge, Geronimo can run the research through its configured model and bring the answer back into the same thread.</p>
+        </div>
+        <div class="feature-cell">
+          <span class="k">DATA</span>
+          <h3>Reads your own models</h3>
+          <p>Beyond outside research, it can query the Django ML and application components behind PolySaaS to answer with your actual data.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Point it at any model</h2>
+        <p class="desc">Each Geronimo instance is configured independently. Change the underlying LLM per tenant, per team, or per admin section — without touching the interface.</p>
+      </div>
+      <div class="swap-panel">
+        <div class="model-list">
+          <div class="model-row active">
+            <span>Claude Sonnet</span>
+            <span class="id">anthropic / claude-sonnet-4-6</span>
+          </div>
+          <div class="model-row">
+            <span>GPT-4</span>
+            <span class="id">openai / gpt-4</span>
+          </div>
+          <div class="model-row">
+            <span>Local model</span>
+            <span class="id">self-hosted / llama-70b</span>
+          </div>
+          <div class="model-row">
+            <span>PolySaaS ML component</span>
+            <span class="badge">django-native</span>
+          </div>
+        </div>
+        <div class="swap-copy">
+          <p>Configuration lives at the admin level, not the code level.</p>
+          <ul>
+            <li>Assign a different provider to different tenants without a deploy</li>
+            <li>Fall back to a self-hosted model where data can't leave the network</li>
+            <li>Route a question straight to a Django ML component instead of an external LLM when that's the faster, more accurate path</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Overlay when you need it, panel when you don't</h2>
+        <p class="desc">Geronimo can float over the page for quick questions, or expand into a full-width panel for longer working sessions. Try switching below.</p>
+      </div>
+
+      <div class="mode-toggle">
+        <button id="geronimo-btn-overlay" class="on" onclick="geronimoSetMode('overlay')">Overlay</button>
+        <button id="geronimo-btn-panel" onclick="geronimoSetMode('panel')">Full-width panel</button>
+      </div>
+
+      <div class="demo-stage" id="geronimo-stage" data-mode="overlay">
+        <div class="demo-app">
+          <div class="side">
+            <div class="line" style="width:85%"></div>
+            <div class="line" style="width:60%"></div>
+            <div class="line" style="width:70%"></div>
+            <div class="line" style="width:50%"></div>
+          </div>
+          <div class="main">
+            <div class="block w40"></div>
+            <div class="block w80"></div>
+            <div class="block w60"></div>
+            <div class="block w80"></div>
+            <div class="block w40"></div>
+          </div>
+        </div>
+        <div class="demo-chat">
+          <div class="bar"><span class="glyph2"></span>Geronimo</div>
+          <div class="body2">
+            <div class="b" style="width:80%"></div>
+            <div class="b short"></div>
+            <div class="b" style="width:65%"></div>
+          </div>
+        </div>
+      </div>
+      <p class="mode-caption" id="geronimo-mode-caption"><strong>Overlay:</strong> stays out of the way of the page underneath — best for a quick check mid-task.</p>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Available everywhere in the shell</h2>
+        <p class="desc">One Geronimo instance, present across the interface — not a plugin you add to individual apps.</p>
+      </div>
+      <div class="footprint-grid">
+        <div class="fp-card"><div class="icon"></div><span>Passthrough apps</span></div>
+        <div class="fp-card"><div class="icon"></div><span>Admin panel</span></div>
+        <div class="fp-card"><div class="icon"></div><span>Dashboard</span></div>
+        <div class="fp-card"><div class="icon"></div><span>Orchestration bar</span></div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <h2>Turn it on for your tenant</h2>
+      <p>Geronimo is configured from the admin panel — pick a model, set a display mode, and it's live across every page your team already uses.</p>
+      <div class="cta-row">
+        <button class="btn-primary">Open Admin Panel</button>
+        <button class="btn-secondary">Read the API Docs</button>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <span>PolySaaS Online</span>
+      <span>Geronimo AI · /dose/api/passthroughendpoints/</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  function geronimoSetMode(mode){
+    document.getElementById('geronimo-stage').setAttribute('data-mode', mode);
+    document.getElementById('geronimo-btn-overlay').classList.toggle('on', mode === 'overlay');
+    document.getElementById('geronimo-btn-panel').classList.toggle('on', mode === 'panel');
+    var caption = document.getElementById('geronimo-mode-caption');
+    if(mode === 'overlay'){
+      caption.innerHTML = '<strong>Overlay:</strong> stays out of the way of the page underneath — best for a quick check mid-task.';
+    } else {
+      caption.innerHTML = '<strong>Full-width panel:</strong> takes a dedicated column alongside the page — best for longer research or multi-step orchestration work.';
+    }
+  }
+</script>

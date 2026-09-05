@@ -28,6 +28,9 @@ SLACK_WIREFRAME_ACTIONS = {
         "slack.webhook.sale",
     ),
 }
+SLACK_CONTACT_ACTION_PATH = "/events/slack/message/contact"
+SLACK_CONTACT_EVENT_KEY = "slack.message.contact"
+SLACK_CONTACT_ROUTING_KEY = "polysaas.events.slack.message.contact"
 
 
 def _slack_event_id(payload: dict[str, str]) -> str:
@@ -214,6 +217,82 @@ def _feedback_users(tenant) -> list:
     from django.contrib.auth import get_user_model
 
     return list(get_user_model().objects.filter(pk__in=users))
+
+
+def build_slack_contact_envelope(tenant, payload: dict) -> dict:
+    """
+    Build envelope for Slack message → Odoo contact creation.
+    
+    Payload should contain: name, email, company, plus Slack metadata.
+    """
+    event_seed = json.dumps(
+        {
+            "tenant": tenant.schema_name,
+            "slack_team_id": payload.get("slack_team_id", ""),
+            "slack_message_ts": payload.get("slack_message_ts", ""),
+            "slack_channel_id": payload.get("slack_channel_id", ""),
+        },
+        sort_keys=True,
+    )
+    event_id = hashlib.sha256(event_seed.encode("utf-8")).hexdigest()
+    
+    return {
+        "kind": TRIGGER_ENVELOPE_KIND,
+        "event_id": event_id,
+        "correlation_id": str(uuid.uuid4()),
+        "tenant_schema": tenant.schema_name,
+        "source": "slack",
+        "action_path": SLACK_CONTACT_ACTION_PATH,
+        "method": "POST",
+        "direction": "REQ",
+        "event_key": SLACK_CONTACT_EVENT_KEY,
+        "actor": {
+            "external_user_id": payload.get("slack_user_id", ""),
+            "team_id": payload.get("slack_team_id", ""),
+        },
+        "payload": {
+            "name": payload.get("name", ""),
+            "email": payload.get("email", ""),
+            "company": payload.get("company", ""),
+            "slack_user_id": payload.get("slack_user_id", ""),
+            "slack_channel_id": payload.get("slack_channel_id", ""),
+            "slack_message_ts": payload.get("slack_message_ts", ""),
+        },
+        "received_at": timezone.now().isoformat(),
+    }
+
+
+def publish_slack_contact_event(tenant, payload: dict) -> dict:
+    """
+    Publish Slack contact creation event to webhook mailbox.
+    
+    Returns immediately after mailbox write (no blocking RabbitMQ publish).
+    """
+    from dose.models import WebhookMailbox
+    
+    try:
+        envelope = build_slack_contact_envelope(tenant, payload)
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                return {"success": False, "error": "invalid tenant schema"}
+            
+            mailbox = WebhookMailbox.create_from_envelope(
+                envelope,
+                ttl_seconds=300,
+            )
+            
+            return {
+                "success": True,
+                "event_id": envelope["event_id"],
+                "action_path": envelope["action_path"],
+                "mailbox_id": mailbox.id,
+            }
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Failed to write to mailbox: {exc}",
+            "event_id": envelope.get("event_id") if 'envelope' in locals() else None,
+        }
 
 
 def process_trigger_envelope(envelope: dict, tenant) -> dict:
