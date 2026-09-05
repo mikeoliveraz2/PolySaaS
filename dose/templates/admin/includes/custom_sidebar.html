@@ -61,12 +61,13 @@
                     {% for service in passthrough_services %}
                         {% with slug=service.title|lower %}
                         {# READINESS 2026-08-01 (owner-approved): not-ready cards render as a non-navigating <span> (see context_processors.py for service.ready / app_status). #}
+                        {# FIX 2026-09-06 (Shela feedback): Icon → Browse (real app), button below → Control Panel #}
                         <div class="pss-pt-card-wrap">
-                        <{% if service.ready %}a href="{{ service.url }}"{% else %}span{% endif %}
+                        <{% if service.ready %}a href="{{ service.browse_url }}" target="_blank" rel="noopener"{% else %}span{% endif %}
                            class="pss-pt-card{% if service.ready and request.path_info|path_starts_with:service.url %} is-active{% endif %}{% if not service.ready %} pss-pt-card--not-ready{% endif %}"
                            {% if service.ready and request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
                            {% if not service.ready %}aria-disabled="true" tabindex="-1"{% endif %}
-                           title="{% if service.ready %}{{ service.description|default:service.title }}{% else %}{{ service.title }} is still provisioning ({{ service.app_status }}){% endif %}">
+                           title="{% if service.ready %}Browse {{ service.browse_app|default:service.title }} in a new tab{% else %}{{ service.title }} is still provisioning ({{ service.app_status }}){% endif %}">
                             {# FIX 2026-08-26 (owner-approved): app marks via logo_static + Slack/HubSpot #}
                             <div class="pss-pt-logo pss-pt-logo--{{ slug }}">
                                 {% if service.logo_static %}
@@ -92,20 +93,11 @@
                             <span class="pss-pt-status-dot{% if service.ready %} pss-pt-status-dot--ready{% elif service.app_status == 'error' or service.app_status == 'disabled' %} pss-pt-status-dot--error{% else %} pss-pt-status-dot--pending{% endif %}"></span>
                             <span class="pss-pt-label">{{ service.title }}</span>
                         </{% if service.ready %}a{% else %}span{% endif %}>
-                        {% if service.ready and service.browse_url %}
+                        {% if service.ready and service.url %}
                         <a class="pss-pt-browse"
-                           href="{{ service.browse_url }}"
-                           target="_blank"
-                           rel="noopener"
-                           title="Browse {{ service.browse_app|default:service.title }} in a new tab"
-                           aria-label="Browse {{ service.browse_app|default:service.title }} in a new tab">Browse {{ service.browse_app|default:service.title }}</a>
-                        {% elif service.ready and service.fullscreen_url %}
-                        <a class="pss-pt-browse"
-                           href="{{ service.fullscreen_url }}"
-                           target="_blank"
-                           rel="noopener"
-                           title="Browse {{ service.title }} in a new tab"
-                           aria-label="Browse {{ service.title }} in a new tab">Browse {{ service.title }}</a>
+                           href="{{ service.url }}"
+                           title="Open {{ service.title }} control panel"
+                           aria-label="Open {{ service.title }} control panel">Control Panel</a>
                         {% endif %}
                         </div>
                         {% endwith %}
