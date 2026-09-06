@@ -24,6 +24,7 @@ from dose.admin_views import (
 from dose.views.main import pt_dose_generic_passthrough_view
 from dose.views.slack_slash_command import slack_slash_command
 from dose.views.slack_events_webhook import slack_events_webhook
+from dose.views.mattermost_events_webhook import mattermost_events_webhook
 from dose.polysniffer.views import mattermost_static_proxy
 from llm_router.admin_chat import (
     admin_llm_router_chat_api,
@@ -57,6 +58,8 @@ urlpatterns = [
     path('hooks/slack/commands/', slack_slash_command, name='slack_slash_command'),
     # Slack Events API — contact creation from messages
     path('hooks/slack/events/', slack_events_webhook, name='slack_events_webhook'),
+    # Mattermost Outgoing Webhook — contact creation from messages (parallel to Slack)
+    path('hooks/mattermost/events/', mattermost_events_webhook, name='mattermost_events_webhook'),
     path('dose/', include('dose.urls')),
     path('accounts/', include('allauth.urls')),
 

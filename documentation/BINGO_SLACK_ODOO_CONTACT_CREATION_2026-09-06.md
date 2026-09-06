@@ -1,7 +1,8 @@
 # BINGO: Slack → Odoo Contact Creation Flow
 **Date:** 2026-09-06  
 **Session:** Sunday Evening (Laptop)  
-**Commit:** (to be filled after commit)
+**Commit:** e9f5f20f  
+**Branch:** cursor/polysniffer-slack-native-capture
 
 ## What Was Achieved
 
