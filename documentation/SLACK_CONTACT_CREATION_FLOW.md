@@ -1,3 +1,6 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+     BINGO: Slack → Odoo Contact Creation — 2026-09-06 -->
+
 # Slack → Odoo Contact Creation Flow
 
 **Date:** 2026-09-06  

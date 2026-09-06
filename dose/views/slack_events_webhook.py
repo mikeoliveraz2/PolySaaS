@@ -1,3 +1,6 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Slack → Odoo Contact Creation — 2026-09-06
+
 """Slack Events API webhook endpoint for contact creation from messages."""
 from __future__ import annotations
 
