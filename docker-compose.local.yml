@@ -89,6 +89,10 @@ services:
       MM_SERVICESETTINGS_ENABLEDEVELOPER: "true"
       MM_SERVICESETTINGS_ENABLETESTING: "true"
       MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: "true"
+      # CORS configuration for PolySaaS passthrough (allow localhost:8000)
+      MM_SERVICESETTINGS_ALLOWCORSFROM: "http://localhost:8000"
+      MM_SERVICESETTINGS_CORSALLOWCREDENTIALS: "true"
+      MM_SERVICESETTINGS_CORSDEBUG: "true"
     ports:
       - "8065:8065"
     volumes:

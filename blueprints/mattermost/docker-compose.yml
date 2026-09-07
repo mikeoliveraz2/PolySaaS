@@ -9,6 +9,10 @@ services:
       MM_SQLSETTINGS_DRIVERNAME: postgres
       MM_SQLSETTINGS_DATASOURCE: postgres://${DB_USER:-mm}:${DB_PASSWORD}@${DB_HOST:-mm-db}:${DB_PORT:-5432}/${DB_NAME:-mattermost}?sslmode=disable&connect_timeout=10
       MM_SERVICESETTINGS_SITEURL: https://${SUBDOMAIN}.${DOMAIN}
+      # CORS configuration for PolySaaS passthrough (allow localhost:8000)
+      MM_SERVICESETTINGS_ALLOWCORSFROM: "http://localhost:8000"
+      MM_SERVICESETTINGS_CORSALLOWCREDENTIALS: "true"
+      MM_SERVICESETTINGS_CORSDEBUG: "true"
       TENANT_SLUG: ${TENANT_SLUG}
       DOMAIN: ${DOMAIN}
       SUBDOMAIN: ${SUBDOMAIN}
