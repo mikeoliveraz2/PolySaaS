@@ -1,0 +1,67 @@
+services:
+  mattermost:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polysaas/mattermost:${TENANT_SLUG}
+    restart: unless-stopped
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://${DB_USER:-mm}:${DB_PASSWORD}@${DB_HOST:-mm-db}:${DB_PORT:-5432}/${DB_NAME:-mattermost}?sslmode=disable&connect_timeout=10
+      MM_SERVICESETTINGS_SITEURL: https://${SUBDOMAIN}.${DOMAIN}
+      TENANT_SLUG: ${TENANT_SLUG}
+      DOMAIN: ${DOMAIN}
+      SUBDOMAIN: ${SUBDOMAIN}
+    depends_on:
+      mm-db:
+        condition: service_healthy
+    volumes:
+      - mm_data_${TENANT_SLUG}:/mattermost/data
+      - mm_config_${TENANT_SLUG}:/mattermost/config
+      - mm_logs_${TENANT_SLUG}:/mattermost/logs
+      - mm_plugins_${TENANT_SLUG}:/mattermost/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${MM_PORT:-8065}/api/v4/system/ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+      - ${TRAEFIK_NETWORK:-proxy}
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-true}
+      - traefik.http.routers.mattermost-${TENANT_SLUG}.rule=Host(`${SUBDOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.mattermost-${TENANT_SLUG}.entrypoints=websecure
+      - traefik.http.routers.mattermost-${TENANT_SLUG}.tls=true
+      - traefik.http.services.mattermost-${TENANT_SLUG}.loadbalancer.server.port=${MM_PORT:-8065}
+
+  mm-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-mattermost}
+      POSTGRES_USER: ${DB_USER:-mm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mm_db_${TENANT_SLUG}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-proxy}
+
+volumes:
+  mm_data_${TENANT_SLUG}:
+  mm_config_${TENANT_SLUG}:
+  mm_logs_${TENANT_SLUG}:
+  mm_plugins_${TENANT_SLUG}:
+  mm_db_${TENANT_SLUG}:
