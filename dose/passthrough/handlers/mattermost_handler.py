@@ -1,5 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost passthrough restored — PolySaaSOline Town Square — 2026-09-07
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: PolySaaS → Mattermost one-way theme sync — commit 10427a4d
 # BINGO: Demo Tenant MM Token Bind — commit 7d05920e
@@ -1543,14 +1544,14 @@ try {{
         return login_id, password, team_name
 
     def _mm_proxy_prefix_from_request(self, request, endpoint=None) -> str:
-        """Use the request's exact host segment, falling back to the endpoint row."""
+        """Build /pt/admin|<dose>/<slug> from the request (slug identity; keep shell)."""
         parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         if len(parts) >= 3 and parts[0] == 'pt' and parts[1] in ('admin', 'dose'):
             return f"/pt/{parts[1]}/{parts[2]}"
         ep = endpoint or getattr(request, '_passthrough_endpoint', None)
-        if ep is not None and hasattr(ep, 'get_proxy_prefix'):
-            return ep.get_proxy_prefix().rstrip('/')
-        return '/pt/admin'
+        slug = (getattr(ep, 'slug', None) or 'mattermost')
+        slug = str(slug).strip().strip('/') or 'mattermost'
+        return f"/pt/admin/{slug}"
 
     def process_html_response(self, html_str, request, endpoint_url=None, *args, **kwargs):
         print(f"[MattermostPassthroughHandler] process_html_response called, path={request.path_info}, html_len={len(html_str)}")
@@ -1980,16 +1981,6 @@ try {{
         if browser_token:
             print(f"[MM_AUTH] Browser cookie shortcut: returning MMAUTHTOKEN len={len(browser_token)}")
             return {'mmauthtoken': browser_token, 'MMAUTHTOKEN': browser_token}
-
-        # Fallback to a token previously saved from the browser (PolySniffer workspace save).
-        try:
-            extra = self._get_tenantapp_extra_config(request) or {}
-            saved = (extra.get('mmauthtoken') or extra.get('mm_session_token') or '').strip()
-            if saved:
-                print(f"[MM_AUTH] TenantApp saved token fallback len={len(saved)}")
-                return {'mmauthtoken': saved, 'MMAUTHTOKEN': saved}
-        except Exception as _exc:
-            print(f"[MM_AUTH] TenantApp token fallback error: {_exc}")
 
         _path_parts = (getattr(request, 'path_info', '') or '').strip('/').split('/')
         _trigger = _path_parts[2] if len(_path_parts) >= 3 else 'mattermost'
@@ -2758,29 +2749,6 @@ try {{
     var PS_MM_THEME_DARK_JSON = {mm_theme_dark_js};
     var PS_MM_THEME_LIGHT_JSON = {mm_theme_light_js};
     console.log('[PolySaaS MM] PolySaaS display_mode (one-way theme sync):', PS_DISPLAY_MODE);
-
-    // Patch querySelector to escape colons in HTML5 IDs (prevents SyntaxError for #:...: selectors)
-    (function() {{
-        var _origDQS = Document.prototype.querySelector;
-        var _origDQSA = Document.prototype.querySelectorAll;
-        var _origEQS = Element.prototype.querySelector;
-        var _origEQSA = Element.prototype.querySelectorAll;
-        function _mmEscapeIdSelector(sel) {{
-            if (typeof sel !== 'string' || sel.indexOf('#') !== 0) return sel;
-            var end = 1;
-            while (end < sel.length) {{
-                var ch = sel.charAt(end);
-                if (ch === ' ' || ch === '>' || ch === '.' || ch === '[' || ch === ':' || ch === '#' || ch === '~' || ch === '+' || ch === '(') break;
-                end++;
-            }}
-            var id = sel.substring(1, end).replace(/:/g, '\\:');
-            return '#' + id + sel.substring(end);
-        }}
-        Document.prototype.querySelector = function(sel) {{ try {{ return _origDQS.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] querySelector guard', e); return null; }} }};
-        Document.prototype.querySelectorAll = function(sel) {{ try {{ return _origDQSA.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] querySelectorAll guard', e); return []; }} }};
-        Element.prototype.querySelector = function(sel) {{ try {{ return _origEQS.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] el querySelector guard', e); return null; }} }};
-        Element.prototype.querySelectorAll = function(sel) {{ try {{ return _origEQSA.call(this, _mmEscapeIdSelector(sel)); }} catch(e) {{ console.warn('[PolySaaS MM] el querySelectorAll guard', e); return []; }} }};
-    }})();
 
     // Error capture to diagnose composer crash
     window.onerror = function(msg, src, line, col, err) {{

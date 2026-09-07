@@ -1,181 +1,48 @@
-# Active Handoff — 2026-09-07 (Monday Morning, Laptop)
+# Active Handoff — 2026-09-07 (BINGO, Laptop)
+
+This file is the canonical startup and end-of-day handoff. Every agent must read it before editing or answering.
 
 ## Session Summary
-**Mattermost Adapter:** Complete implementation (code-complete, testing blocked)
+**BINGO:** Mattermost passthrough restored for PolySaaSOline Town Square (2026-09-07). Slack → Odoo left intact.
 
 ## What Was Completed
 
-### Mattermost → Odoo Adapter (Parallel to Slack)
-Successfully implemented complete adapter layer that mirrors Slack functionality while reusing 100% of downstream infrastructure.
+- Restored `mattermost_handler.py` + `middleware.py` from Mattermost BINGO `8100b79a`
+- Fixed PolySaaSOline TenantApp token (was expired `ebojaniy…` on the wrong tenant)
+- Pointed landing team at existing `polysaas-team` (not missing `polysaas-dev-team`)
+- Michael verified live: Town Square + onboarding modal under `/pt/admin/mattermost/`
+- Certification: `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
 
-**Files Created:**
-- `dose/mattermost/__init__.py`
-- `dose/mattermost/auth.py` - Token verification + tenant lookup
-- `dose/mattermost/normalizer.py` - Payload → canonical schema transformation
-- `dose/mattermost/feedback.py` - Post feedback to Mattermost channels
-- `dose/views/mattermost_events_webhook.py` - Webhook endpoint
-- `dose/management/commands/seed_mattermost_orchestration.py` - Seed command
-- `dose/tests/test_mattermost_adapter.py` - Comprehensive test suite (16 tests)
-- `documentation/MATTERMOST_ADAPTER_BUILD_SPEC.md` - Detailed specification
-- `documentation/MATTERMOST_ADAPTER_IMPLEMENTATION_2026-09-07.md` - Implementation summary
+## Frozen — do not edit without owner
 
-**Files Modified:**
-- `mysite/urls.py` - Added `/hooks/mattermost/events/` route
-
-### Architecture Highlights
-- **Canonical Event Schema:** Both Slack and Mattermost normalize to SAME schema
-- **Shared Infrastructure:** SAME RabbitMQ exchange, routing keys, consumers, Odoo atomic services
-- **Only Different:** Webhook auth (token vs HMAC), payload parsing, feedback API
-- **Code Reuse:** 100% of orchestration, mailbox, and Odoo integration code
-
-### Orchestration Configuration
-✅ **Instruction seeded:** `mattermost.message.contact` (pk=7)
-- Routes to `OdooCreatePartner` (same atomic service as Slack)
-- Uses routing key `contact.new` (same as Slack)
-
-## Current State
-
-### What's Working
-- ✅ Complete Mattermost adapter code
-- ✅ Token authentication implemented
-- ✅ Payload normalizer (Mattermost → canonical schema)
-- ✅ RabbitMQ publishing (reuses Slack infrastructure)
-- ✅ Feedback poster (Mattermost REST API)
-- ✅ Seed command functional
-- ✅ Comprehensive test suite (all passing)
-- ✅ Orchestration Instruction seeded
-
-### What's Blocked
-- ⚠️ **End-to-end testing blocked:** Cannot access Mattermost to configure Outgoing Webhook
-  - Mattermost passthrough stuck in loading loop
-  - Direct login doesn't work (SSO-only configuration)
-  - Need to fix passthrough issue or find alternative access method
-
-## Technical Implementation
-
-### Message Flow (Identical to Slack)
 ```
-Mattermost Message: "New contact: Jane Doe, jane@acme.com, Acme Corp"
-    ↓
-Mattermost Webhook POST → /hooks/mattermost/events/
-    ↓
-Token verification (simple comparison vs Slack's HMAC)
-    ↓
-Normalize to canonical schema (SAME as Slack produces)
-    ↓
-Publish to RabbitMQ with routing key "contact.new" (SAME as Slack)
-    ↓
-[UNCHANGED] Mailbox consumer polls
-    ↓
-[UNCHANGED] Orchestration hook fires Instruction
-    ↓
-[UNCHANGED] OdooCreatePartner atomic service
-    ↓
-[UNCHANGED] Feedback text generation
-    ↓
-Post feedback to Mattermost channel (Mattermost API)
+THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 ```
 
-### Configuration Requirements (Not Yet Applied)
+- `dose/passthrough/handlers/mattermost_handler.py`
+- `dose/passthrough/middleware.py`
+- Slack → Odoo BINGO `e9f5f20f` (unchanged)
 
-**TenantApp.extra_config needs:**
-```json
-{
-  "mm_team_id": "mattermost-team-id",
-  "mm_webhook_token": "webhook-secret-token",
-  "mm_server_url": "https://mm.polysaas.online",
-  "mm_bot_token": "bearer-bot-token"
-}
-```
+## Next (≈20 min) — Mattermost webhook onto Slack topic
 
-**Mattermost Outgoing Webhook needs:**
-- Callback URL: `http://localhost:8000/hooks/mattermost/events/`
-- Trigger Words: `New contact:`
-- Content Type: `application/json`
-- Channel: Select target channel
+Do **not** touch the frozen handler/middleware.
 
-## Next Actions
+1. Keep `/hooks/mattermost/events/` as a thin adapter
+2. Parse `New contact: Name, email, Company`
+3. Call existing `publish_slack_contact_event()` — same mailbox / `slack.message.contact` / OdooCreatePartner
+4. Configure Mattermost Outgoing Webhook + `mm_webhook_token` / `mm_team_id` on PolySaaSOline
+5. Post the contact line in Town Square and confirm the Odoo partner
 
-### Immediate (When Mattermost Access Restored)
-1. **Fix Mattermost passthrough loading issue** OR find alternative access method
-2. **Configure Mattermost Outgoing Webhook** with settings above
-3. **Update TenantApp.extra_config** with team_id and tokens
-4. **Test message:** "New contact: Jane Doe, jane@acme.com, Acme Corp"
-5. **Verify** contact created in Odoo + feedback posted to Mattermost
-6. **Create BINGO document** if test succeeds
-
-### Alternative Testing Approaches
-- Access Mattermost via CLI (if server access available)
-- Configure webhook via Mattermost API
-- Direct database configuration
-- Fix passthrough loading issue first
-
-### Future Work
-- Add `sale.new` event type (trivial - just add trigger word)
-- Slash command support (`/createcontact`)
-- Interactive dialog support
-- Multi-channel configuration
-
-## Blockers / Risks
-
-**Critical Blocker:**
-- Cannot access Mattermost to complete webhook configuration
-- Passthrough interface stuck in loading loop
-- Direct login rejected (SSO-only)
-
-**Workaround:** Code is complete and tested. Configuration can be done via alternative methods (CLI, API, database) once access is restored.
-
-## Statistics
-
-### Mattermost Adapter
-- **Files Created:** 9
-- **Files Modified:** 1  
-- **Lines Added:** ~2,000
-- **Implementation Time:** ~4 hours
-- **Tests:** 16 test cases (all passing)
-- **Code Reuse:** 100% of RabbitMQ/orchestration/Odoo infrastructure
-
-### Comparison: Slack vs Mattermost
-| Component | Slack Status | Mattermost Status | Shared? |
-|---|---|---|---|
-| Webhook endpoint | ✅ Working | ✅ Complete | ❌ Different |
-| Authentication | ✅ HMAC | ✅ Token | ❌ Different |
-| Normalizer | ✅ Working | ✅ Complete | ❌ Different |
-| Canonical schema | ✅ Defined | ✅ SAME | ✅ **SHARED** |
-| Message parsers | ✅ Working | ✅ SAME code | ✅ **SHARED** |
-| RabbitMQ | ✅ Working | ✅ SAME | ✅ **SHARED** |
-| Orchestration | ✅ Working | ✅ SAME | ✅ **SHARED** |
-| Odoo consumer | ✅ Working | ✅ SAME | ✅ **SHARED** |
-| Feedback text | ✅ Working | ✅ SAME | ✅ **SHARED** |
-| Feedback delivery | ✅ Slack API | ✅ Mattermost API | ❌ Different |
-| End-to-end test | ✅ Verified | ⚠️ Blocked | - |
+Slack files stay frozen. No second producer.
 
 ## Current Branch & Commit
 
 - **Branch:** cursor/polysniffer-slack-native-capture
-- **Latest Commit:** 55bb8612 (Mattermost Adapter: Complete implementation)
-- **Previous Commit:** e9f5f20f (BINGO: Slack → Odoo Contact Creation)
+- **Mattermost BINGO today:** see `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
+- **Slack BINGO:** e9f5f20f
 
-## Files to Retain
-
-All Mattermost adapter files are code-complete and ready for production:
-- `dose/mattermost/` module (auth, normalizer, feedback)
-- `dose/views/mattermost_events_webhook.py`
-- `dose/management/commands/seed_mattermost_orchestration.py`
-- `dose/tests/test_mattermost_adapter.py`
-- Documentation files
-
-## Session End Status
-
-**Status:** ✅ Mattermost Adapter Code Complete  
-**Testing:** ⚠️ Blocked by Mattermost access issue  
-**Validation:** Unit tests passing, integration tests passing, end-to-end blocked  
-**Documentation:** Complete  
-**Ready for:** Configuration + testing (once Mattermost access restored)
+## Blockers
+None for passthrough. Webhook E2E not done yet.
 
 ---
-
-**Key Achievement:** Built complete Mattermost adapter in 4 hours by reusing 100% of Slack's downstream infrastructure. Only the adapter layer (webhook + feedback) is different - everything else is shared code.
-
----
-*This handoff was created by Cursor Agent on 2026-09-07 at 8:30 AM (UTC+8)*
+*Updated 2026-09-07 after live Town Square verification (PolySaaSOline / michael.oliver).*
