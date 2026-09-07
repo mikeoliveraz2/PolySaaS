@@ -74,8 +74,25 @@ body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-main
 body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-main-wrapper.admin-content-grid,
 body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-content-grid,
 .admin-main-wrapper.polysaas-pt-fullscreen-mode {
-    grid-template-columns: minmax(0, 1fr) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
     margin-top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+}
+body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-main-wrapper > .dose-content-col,
+body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .content,
+body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .container-fluid,
+body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .polysaas-passthrough-embed-wrap,
+body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .polysaas-passthrough-scope,
+.admin-main-wrapper.polysaas-pt-fullscreen-mode > .dose-content-col {
+    grid-column: auto !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
 }
 body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen #dose-custom-sidebar,
 body.polysaas-passthrough-embed-page.polysaas-passthrough-fullscreen .admin-content-grid > .collapsible-nav,
@@ -315,8 +332,10 @@ body.polysaas-passthrough-embed-page.o_web_client {
 
 /* User menu / systray dropdowns must float above content */
 .polysaas-passthrough-scope .o-dropdown,
+.polysaas-passthrough-scope .o-dropdown--menu,
 .polysaas-passthrough-scope .dropdown-menu {
-    z-index: 200 !important;
+    z-index: 4000 !important;
+    overflow: visible !important;
 }
 
 /* Do NOT rewrite fixed positioning on the navbar — only on overlays/modals */
@@ -397,7 +416,17 @@ body.polysaas-passthrough-embed-page {
             if (FULLSCREEN) {
                 main.classList.add('polysaas-pt-fullscreen-mode');
                 main.classList.remove('polysaas-pt-content-mode');
-                main.style.setProperty('grid-template-columns', 'minmax(0, 1fr)', 'important');
+                main.style.setProperty('display', 'flex', 'important');
+                main.style.setProperty('flex-direction', 'column', 'important');
+                main.style.setProperty('grid-template-columns', 'none', 'important');
+                var contentCol = main.querySelector(':scope > .dose-content-col');
+                if (contentCol) {
+                    contentCol.style.setProperty('grid-column', 'auto', 'important');
+                    contentCol.style.setProperty('width', '100%', 'important');
+                    contentCol.style.setProperty('max-width', 'none', 'important');
+                }
+                var fsSidebar = document.getElementById('dose-custom-sidebar');
+                if (fsSidebar) fsSidebar.style.setProperty('display', 'none', 'important');
             } else {
                 main.classList.add('polysaas-pt-content-mode');
                 main.classList.remove('polysaas-pt-fullscreen-mode');
@@ -513,8 +542,9 @@ body.polysaas-passthrough-embed-page {
 <script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260629-2"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
 {% if embed_mailbox_poll_url and not embed_slack_wireframe %}
+<script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260823-1"></script>
 <script id="pss-mailbox-bridge"
-        src="{% static 'admin/js/slack_mailbox_bar.js' %}?v=20260822-5"
+        src="{% static 'admin/js/slack_mailbox_bar.js' %}?v=20260823-1"
         data-poll-url="{{ embed_mailbox_poll_url }}"
         data-action-path="{{ embed_mailbox_action_path }}"
         data-method="{{ embed_mailbox_method }}"
@@ -538,9 +568,23 @@ body.polysaas-passthrough-embed-page {
         }
         _snapshotJazzmin();
 
+        function _isOdooOverlay(node) {
+            if (!node || node.nodeType !== 1) return false;
+            var cls = '';
+            try { cls = (node.className && typeof node.className === 'string') ? node.className : (node.getAttribute('class') || ''); } catch (e) { cls = ''; }
+            if (!cls) return false;
+            if (cls.indexOf('o-dropdown') !== -1) return true;
+            if (cls.indexOf('o-overlay') !== -1) return true;
+            if (cls.indexOf('o_app_menu_sidebar') !== -1) return true;
+            if (cls.indexOf('o-Tooltip') !== -1) return true;
+            if (cls.indexOf('popover') !== -1 && cls.indexOf('o_') !== -1) return true;
+            return false;
+        }
+
         function _isJazzmin(node) {
             if (_jazzmin.has(node)) return true;
             if (!node || !node.classList) return false;
+            if (_isOdooOverlay(node)) return true;
             var c = node.classList;
             if (c.contains('wrapper') || c.contains('app-wrapper') ||
                 c.contains('app-footer') || c.contains('main-footer') ||
@@ -554,7 +598,7 @@ body.polysaas-passthrough-embed-page {
             if (!node || node.nodeType !== 1) return false;
             var scope = getScope();
             if (scope && (node === scope || scope.contains(node))) return false;
-            if (_isJazzmin(node)) return false;
+            if (_isJazzmin(node) || _isOdooOverlay(node)) return false;
             if (node.classList && (
                 node.classList.contains('o_web_client') ||
                 node.classList.contains('o_main_navbar') ||
@@ -682,7 +726,7 @@ body.polysaas-passthrough-embed-page {
         }
 
         function _redirectToScope(parent, node, insertFn) {
-            if (parent !== document.body || !node || !_isOdooMount(node) || _isJazzmin(node)) {
+            if (parent !== document.body || !node || !_isOdooMount(node) || _isJazzmin(node) || _isOdooOverlay(node)) {
                 return false;
             }
             var scope = getScope();
@@ -717,8 +761,12 @@ body.polysaas-passthrough-embed-page {
             Element.prototype.prepend = function () {
                 var nodes = Array.prototype.slice.call(arguments);
                 if (this === document.body && nodes.length) {
+                    var steal = false;
+                    for (var pi = 0; pi < nodes.length; pi++) {
+                        if (_isOdooMount(nodes[pi]) && !_isOdooOverlay(nodes[pi]) && !_isJazzmin(nodes[pi])) steal = true;
+                    }
                     var scope = getScope();
-                    if (scope) {
+                    if (scope && steal) {
                         console.log('[PolySaaS Embed] Redirect body.prepend to scope');
                         _origPrepend.apply(scope, nodes);
                         _ensureWebClientShell(scope);

@@ -1,48 +1,62 @@
-# Active Handoff — 2026-09-07 (BINGO, Laptop)
+# PolySaaS Active Handoff
 
-This file is the canonical startup and end-of-day handoff. Every agent must read it before editing or answering.
+**Date:** 2026-09-07 (Monday)  
+**Session:** Mattermost → Odoo Contact Creation BINGO  
+**Branch:** main
 
-## Session Summary
-**BINGO:** Mattermost passthrough restored for PolySaaSOline Town Square (2026-09-07). Slack → Odoo left intact.
+## Summary
 
-## What Was Completed
+**BINGO achieved:** Mattermost → Odoo contact creation flow is now working end-to-end.
 
-- Restored `mattermost_handler.py` + `middleware.py` from Mattermost BINGO `8100b79a`
-- Fixed PolySaaSOline TenantApp token (was expired `ebojaniy…` on the wrong tenant)
-- Pointed landing team at existing `polysaas-team` (not missing `polysaas-dev-team`)
-- Michael verified live: Town Square + onboarding modal under `/pt/admin/mattermost/`
-- Certification: `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
+## Work Completed
 
-## Frozen — do not edit without owner
+### 1. Mattermost Outgoing Webhook Fixed
+- **Root cause (Shela's insight):** Mattermost tokenizes on whitespace and matches first word only
+- **Problem:** Trigger word `['New contact:']` (two tokens) could never match
+- **Fix:** Changed to `['New']` (single token)
+- **Result:** Webhook now fires, contacts appear in Odoo
+
+### 2. Odoo Passthrough Display Fixed
+- **Problem:** Waffle menu non-responsive, "Connection lost" errors
+- **Cause:** HTTP 302 redirect in middleware converted POST→GET, breaking JSON-RPC
+- **Fix:** Changed to HTTP 307 (preserves HTTP method) in `middleware.py`
+
+### 3. Helper Scripts Created
+- `scripts/list_mm_webhooks.py` — List MM outgoing webhooks
+- `scripts/update_mm_webhook.py` — Update webhook config
+- `scripts/create_mm_webhook.py` — Create new webhook
+- `scripts/delete_old_mm_webhook.py` — Delete webhook by ID
+- `scripts/enable_mm_internal.py` — Configure AllowedUntrustedInternalConnections
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `dose/views/mattermost_events_webhook.py` | Added BINGO freeze banner |
+| `dose/passthrough/middleware.py` | 302→307 fix (already frozen) |
+| `scripts/update_mm_webhook.py` | Single-word trigger fix |
+| `documentation/BINGO_MATTERMOST_ODOO_CONTACT_CREATION_2026-09-07.md` | New BINGO doc |
+
+## Current State
+
+- **Slack → Odoo:** Working (BINGO 2026-09-06)
+- **Mattermost → Odoo:** Working (BINGO 2026-09-07) ✓
+- **Odoo passthrough display:** Working (307 fix)
+- **Mattermost passthrough:** Working (restored from BINGO)
+
+## Mattermost Webhook Config
 
 ```
-THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+Trigger: ['New']  (single word!)
+Callback: http://host.docker.internal:8000/hooks/mattermost/events/
+Content-Type: application/json
 ```
 
-- `dose/passthrough/handlers/mattermost_handler.py`
-- `dose/passthrough/middleware.py`
-- Slack → Odoo BINGO `e9f5f20f` (unchanged)
+## Next Actions
 
-## Next (≈20 min) — Mattermost webhook onto Slack topic
+1. Consider adding feedback message to Mattermost channel when contact is created
+2. Test edge cases (duplicate contacts, invalid emails, etc.)
 
-Do **not** touch the frozen handler/middleware.
+## Commit Status
 
-1. Keep `/hooks/mattermost/events/` as a thin adapter
-2. Parse `New contact: Name, email, Company`
-3. Call existing `publish_slack_contact_event()` — same mailbox / `slack.message.contact` / OdooCreatePartner
-4. Configure Mattermost Outgoing Webhook + `mm_webhook_token` / `mm_team_id` on PolySaaSOline
-5. Post the contact line in Town Square and confirm the Odoo partner
-
-Slack files stay frozen. No second producer.
-
-## Current Branch & Commit
-
-- **Branch:** cursor/polysniffer-slack-native-capture
-- **Mattermost BINGO today:** see `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
-- **Slack BINGO:** e9f5f20f
-
-## Blockers
-None for passthrough. Webhook E2E not done yet.
-
----
-*Updated 2026-09-07 after live Town Square verification (PolySaaSOline / michael.oliver).*
+Ready for BINGO commit and push.

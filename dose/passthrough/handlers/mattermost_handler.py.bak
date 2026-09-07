@@ -1,5 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost passthrough restored — PolySaaSOline Town Square — 2026-09-07
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: PolySaaS → Mattermost one-way theme sync — commit 10427a4d
 # BINGO: Demo Tenant MM Token Bind — commit 7d05920e

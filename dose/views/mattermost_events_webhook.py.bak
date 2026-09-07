@@ -1,6 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost → Odoo Contact Creation — 2026-09-07
-
 """
 Mattermost Outgoing Webhook → same contact mailbox/topic as Slack.
 
@@ -30,9 +27,8 @@ CONTACT_PATTERN = re.compile(
 )
 
 
-def _find_mattermost_tenant(team_id: str, request_token: str = ""):
-    """Find tenant by mm_team_id, requiring webhook token when many tenants share a team id."""
-    matches = []
+def _find_mattermost_tenant(team_id: str):
+    """Find tenant + Mattermost TenantApp by extra_config.mm_team_id."""
     for tenant in Tenant.objects.exclude(schema_name__iexact='public').filter(is_active=True):
         with tenant_schema_search_path(tenant) as ok:
             if not ok:
@@ -45,20 +41,9 @@ def _find_mattermost_tenant(team_id: str, request_token: str = ""):
                 ).first()
             except Exception:
                 app = None
-            if not app:
-                continue
-            expected = (app.extra_config or {}).get('mm_webhook_token', '')
-            if request_token and expected:
-                if hmac.compare_digest(request_token, expected):
-                    matches.append((tenant, app))
-            elif not request_token:
-                matches.append((tenant, app))
-    if not matches:
-        return None, None
-    for tenant, app in matches:
-        if tenant.schema_name == 'polysaasonline':
-            return tenant, app
-    return matches[0]
+            if app:
+                return tenant, app
+    return None, None
 
 
 def _parse_contact_message(text: str) -> dict | None:
@@ -95,10 +80,17 @@ def mattermost_events_webhook(request):
     if not team_id:
         return JsonResponse({'error': 'Missing team_id'}, status=400)
 
-    tenant, mm_app = _find_mattermost_tenant(team_id, request_token)
+    tenant, mm_app = _find_mattermost_tenant(team_id)
     if not mm_app:
         logger.warning("Unknown Mattermost team_id: %s", team_id)
         return HttpResponseForbidden('Unknown Mattermost workspace.')
+
+    expected_token = (mm_app.extra_config or {}).get('mm_webhook_token', '')
+    if not request_token or not expected_token or not hmac.compare_digest(
+        request_token, expected_token
+    ):
+        logger.warning("Invalid Mattermost webhook token for team_id %s", team_id)
+        return HttpResponseForbidden('Invalid webhook token.')
 
     contact_data = _parse_contact_message(payload.get('text', ''))
     if not contact_data:

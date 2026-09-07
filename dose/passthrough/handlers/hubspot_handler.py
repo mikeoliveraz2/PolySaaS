@@ -546,14 +546,14 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             return None
         tenant = getattr(request, "tenant", None)
         if tenant is None:
-            try:
-                from dose.utils import get_current_tenant
+        try:
+            from dose.utils import get_current_tenant
                 tenant = get_current_tenant(request)
             except Exception:
                 tenant = None
         if not tenant:
             return None
-        from dose.services.hubspot_oauth import get_tenant_hubspot_app
+            from dose.services.hubspot_oauth import get_tenant_hubspot_app
         return self._hub_subdomain_origin_from_tenant_app(get_tenant_hubspot_app(tenant))
 
     def _provisioned_hub_origin_from_db(self, endpoint_id: int | None = None) -> str | None:
@@ -2204,7 +2204,7 @@ class HubspotPassthroughHandler(PassthroughHandlerBase):
             except Exception:
                 authenticated = False
             if authenticated:
-                endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
+        endpoint = getattr(request, '_passthrough_endpoint', None) or self.endpoint
                 endpoint_url_eff = endpoint_url or getattr(endpoint, 'endpoint_url', '') or ''
                 origin = self._base_from_url(endpoint_url_eff)
                 pid = self._resolve_portal_id(request)

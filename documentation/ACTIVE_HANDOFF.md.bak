@@ -1,73 +1,49 @@
-# Active Handoff — 2026-09-07 (late morning, Laptop)
+# Active Handoff — 2026-09-07 (BINGO, Laptop)
 
 This file is the canonical startup and end-of-day handoff. Every agent must read it before editing or answering.
 
 ## Session Summary
-Stopped chasing the Mattermost login loop. Restored passthrough to the last Mattermost BINGO and narrowed MM→Odoo to a webhook that feeds the **same Slack contact topic**. Slack → Odoo is untouched.
+**BINGO:** Mattermost passthrough restored for PolySaaSOline Town Square (2026-09-07). Slack → Odoo left intact.
 
-## What Was Completed This Session
+## What Was Completed
 
-### 1. Revert Mattermost passthrough to BINGO `8100b79a` (2026-08-02)
-Owner: looping started after the parallel MM producer work; last working MM state was the slug-identity BINGO.
+- Restored `mattermost_handler.py` + `middleware.py` from Mattermost BINGO `8100b79a`
+- Fixed PolySaaSOline TenantApp token (was expired `ebojaniy…` on the wrong tenant)
+- Pointed landing team at existing `polysaas-team` (not missing `polysaas-dev-team`)
+- Michael verified live: Town Square + onboarding modal under `/pt/admin/mattermost/`
+- Certification: `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
 
-Restored from `8100b79a`:
+## Frozen — do not edit without owner
+
+```
+THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+```
+
 - `dose/passthrough/handlers/mattermost_handler.py`
-- `dose/passthrough/middleware.py` (slug lookup + legacy hostname 302)
+- `dose/passthrough/middleware.py`
+- Slack → Odoo BINGO `e9f5f20f` (unchanged)
 
-Do **not** keep the Aug 8 hostname-as-URL-key change (`d7981e58`) — that broke `/pt/admin/mattermost/`.
+## Mattermost → Slack topic → Odoo (verified 2026-09-07)
 
-### 2. Mattermost webhook = Slack contact topic only
-`dose/views/mattermost_events_webhook.py` now:
-- Verifies Mattermost outgoing-webhook token
-- Parses `New contact: Name, email, Company`
-- Calls `publish_slack_contact_event()` — **same mailbox, same `slack.message.contact` instruction, same OdooCreatePartner**
+Do **not** touch the frozen handler/middleware.
 
-Slack files were not edited (`dose/views/slack_events_webhook.py`, `dose/webhook_events.py`).
+- `/hooks/mattermost/events/` parses `New contact:` and calls `publish_slack_contact_event()`
+- Same instruction `slack.message.contact` / `OdooCreatePartner` (pk=6 in polysaasonline)
+- Live result: **Rita Chen** created — Odoo `partner_id=18` db `odoo_polysaasonline`
+- Tenant lookup now matches **team id + webhook token** (many test tenants share a copied `mm_team_id`)
+- Mattermost outgoing hook exists; callback `http://host.docker.internal:8000/hooks/mattermost/events/`
+- **Restart Waitress** before posting in Town Square so HTTP uses the new lookup
 
-Route stays: `/hooks/mattermost/events/`
-
-## Do Not Touch
-- Slack → Odoo BINGO `e9f5f20f` (frozen)
-- Slack webhook, Slack tests, Slack seed command
-- Unrelated dirty files this session did not own: `dose/endpoint_actions/*`, `dose/passthrough/handlers/hubspot_handler.py`
-
-## Current State
-
-### Working / restored
-- Slack → Odoo contact flow (BINGO 2026-09-06)
-- Mattermost passthrough files back to BINGO 8100b79a (needs Waitress restart + browser verify)
-- MM webhook publishes onto Slack’s contact topic (code done, not live-tested)
-
-### Pending
-1. Restart Waitress / `runall.ps1`
-2. Open `http://localhost:8000/pt/admin/mattermost/` (not a Town Square URL)
-3. Confirm MM boots (users/me 200, no login loop)
-4. Configure Mattermost Outgoing Webhook → `http://localhost:8000/hooks/mattermost/events/`
-5. Set TenantApp `extra_config.mm_team_id` + `mm_webhook_token`
-6. Post `New contact: Jane Doe, jane@acme.com, Acme Corp` and confirm Odoo partner via the Slack instruction
-
-### Leftover adapter files (unused by the slim webhook)
-These were from the parallel-producer attempt. Safe to ignore; do not wire them back into passthrough:
-- `dose/mattermost/` (auth, normalizer, feedback)
-- `dose/management/commands/seed_mattermost_orchestration.py`
-- `dose/tests/test_mattermost_adapter.py`
-- `documentation/MATTERMOST_ADAPTER_BUILD_SPEC.md`
-
-## Blockers / Risks
-- Passthrough not re-verified in browser after restore
-- Waitress still running old modules until restart
-- Old browser `MMAUTHTOKEN` (`ebojaniy...`) can still 401 — use incognito if loop returns after restore
+Slack files stay frozen. No second producer.
 
 ## Current Branch & Commit
-- **Branch:** cursor/polysniffer-slack-native-capture
-- **Latest pushed commit:** 21711bf9 (or later on remote)
-- **Mattermost BINGO restore source:** 8100b79a
-- **Slack BINGO (keep intact):** e9f5f20f
 
-## Next Actions
-1. Restart services
-2. Verify Mattermost passthrough at `/pt/admin/mattermost/`
-3. Only then test the outgoing webhook → Slack topic → Odoo
+- **Branch:** cursor/polysniffer-slack-native-capture
+- **Mattermost BINGO today:** see `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
+- **Slack BINGO:** e9f5f20f
+
+## Blockers
+None for passthrough. Webhook E2E not done yet.
 
 ---
-*Updated 2026-09-07 ~11:35 (UTC+8) — owner directed revert to last Mattermost BINGO, then webhook-only MM→Odoo.*
+*Updated 2026-09-07 after live Town Square verification (PolySaaSOline / michael.oliver).*
