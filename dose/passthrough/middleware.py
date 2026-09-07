@@ -1,5 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Mattermost passthrough restored — PolySaaSOline Town Square — 2026-09-07
+# BINGO: Mattermost passthrough restored — PolySaaSOline Town Square — 2026-09-07 — commit b4b6be03
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: Mattermost Composer via Roles Hydration — 2026-06-11 — commit 8293f54f
 # BINGO: PolySniffer 2.0 Passthrough Workspace Iframe — 2026-06-24

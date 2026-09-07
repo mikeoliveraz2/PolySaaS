@@ -6,7 +6,7 @@
 **Date:** 2026-09-07  
 **Verified by:** Michael (live browser, tenant PolySaaSOline / michael.oliver)  
 **Branch:** `cursor/polysniffer-slack-native-capture`  
-**Commit:** *(filled after commit)*
+**Commit:** `b4b6be03` (`b4b6be03d3b278fc849779a78e632428335ce71d`)
 
 ## What this certifies
 
