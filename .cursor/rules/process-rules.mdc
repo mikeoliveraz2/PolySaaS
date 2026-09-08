@@ -59,6 +59,7 @@ After a commit is made with documentation and a bingo/completion statement, all 
 
 - **Every file in the BINGO commit must be annotated** with the freeze banner (see `bingo-freeze.mdc`):
   `THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION`
+- **Screenshot proof is required** in the BINGO doc (`documentation/assets/` + embedded images) — see `bingo-freeze.mdc`
 - Do NOT modify committed+documented files without the user's explicit permission
 - Treat bingo documents as certification that the associated code has been tested
 - Ask before touching any file that was part of a documented commit or that carries the freeze banner

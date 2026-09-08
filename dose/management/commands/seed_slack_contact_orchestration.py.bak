@@ -70,7 +70,7 @@ class Command(BaseCommand):
             "action_path": "/events/slack/message/contact",
             "direction": "REQ",
             "method_filter": "POST",
-            "description": "Slack message → Odoo contact creation (format: 'newpolysaascontact Name, email, Company')",
+            "description": "Slack message → Odoo contact creation (format: 'New contact: Name, email, Company')",
             "executescript": "OdooCreatePartner",
             "save_callbackdata": True,
         }
@@ -130,7 +130,7 @@ class Command(BaseCommand):
             "  2. Set webhook URL to: https://your-domain/hooks/slack/events/"
         )
         self.stdout.write(
-            "  3. Post a message in Slack: 'newpolysaascontact Jane Doe, jane@acme.com, Acme Corp'"
+            "  3. Post a message in Slack: 'New contact: Jane Doe, jane@acme.com, Acme Corp'"
         )
         self.stdout.write(
             "  4. Check Odoo Contacts to verify the new contact was created"

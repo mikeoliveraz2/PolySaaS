@@ -66,7 +66,7 @@ class Command(BaseCommand):
             "action_path": "/events/mattermost/contact.new",
             "direction": "REQ",
             "method_filter": "POST",
-            "description": "Mattermost message → Odoo contact creation (format: 'New contact: Name, email, Company')",
+            "description": "Mattermost message → Odoo contact creation (format: 'newpolysaascontact Name, email, Company')",
             "executescript": "OdooCreatePartner",
             "save_callbackdata": True,
         }
@@ -126,10 +126,10 @@ class Command(BaseCommand):
             "  2. Set webhook URL to: https://your-domain/hooks/mattermost/events/"
         )
         self.stdout.write(
-            "  3. Set trigger words: 'New contact:'"
+            "  3. Set trigger words: 'newpolysaascontact'"
         )
         self.stdout.write(
-            "  4. Post a message in Mattermost: 'New contact: Jane Doe, jane@acme.com, Acme Corp'"
+            "  4. Post a message in Mattermost: 'newpolysaascontact Jane Doe, jane@acme.com, Acme Corp'"
         )
         self.stdout.write(
             "  5. Check Odoo Contacts to verify the new contact was created"

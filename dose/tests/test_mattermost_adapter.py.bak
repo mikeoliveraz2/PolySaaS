@@ -52,7 +52,7 @@ class MattermostParserTest(TestCase):
 
     def test_parse_contact_valid(self):
         """Valid contact format should parse correctly."""
-        text = "newpolysaascontact John Smith, john@example.com, Example Corp"
+        text = "New contact: John Smith, john@example.com, Example Corp"
         result = parse_contact_message(text)
 
         self.assertIsNotNone(result)
@@ -62,7 +62,7 @@ class MattermostParserTest(TestCase):
 
     def test_parse_contact_case_insensitive(self):
         """Parser should be case-insensitive."""
-        text = "newpolysaascontact Jane Doe, jane@test.com, Test Inc"
+        text = "new CONTACT: Jane Doe, jane@test.com, Test Inc"
         result = parse_contact_message(text)
 
         self.assertIsNotNone(result)
@@ -75,7 +75,7 @@ class MattermostParserTest(TestCase):
 
     def test_parse_contact_missing_email(self):
         """Missing email should return None."""
-        text = "newpolysaascontact John Smith, , Example Corp"
+        text = "New contact: John Smith, , Example Corp"
         result = parse_contact_message(text)
         self.assertIsNone(result)
 
@@ -108,7 +108,7 @@ class MattermostNormalizerTest(TestCase):
     def test_normalize_contact_message(self):
         """Contact message should normalize to canonical schema."""
         payload = {
-            'text': 'newpolysaascontact Alice Smith, alice@example.com, Example Inc',
+            'text': 'New contact: Alice Smith, alice@example.com, Example Inc',
             'channel_id': 'ch123',
             'channel_name': 'town-square',
             'user_id': 'u456',
@@ -116,7 +116,7 @@ class MattermostNormalizerTest(TestCase):
             'timestamp': 1234567890,
             'post_id': 'p789',
             'team_id': 't012',
-            'trigger_word': 'newpolysaascontact',
+            'trigger_word': 'New contact:',
         }
 
         result = normalize_mattermost_webhook(payload, self.mock_tenant)
@@ -260,7 +260,7 @@ class MattermostWebhookEndpointTest(TestCase):
             data=json.dumps({
                 'team_id': 't123',
                 'token': 'correct_token',
-                'text': 'newpolysaascontact Test User, test@example.com, Test Co',
+                'text': 'New contact: Test User, test@example.com, Test Co',
                 'channel_id': 'ch123',
                 'user_id': 'u456',
                 'timestamp': 1234567890

@@ -1,0 +1,36 @@
+"""
+Shared contact message format for Slack / Mattermost producers.
+
+Canonical line (first token is the Mattermost outgoing-webhook trigger):
+
+    newpolysaascontact Name, email, Company
+
+Optional colon after the trigger is accepted.
+"""
+from __future__ import annotations
+
+import re
+
+CONTACT_TRIGGER = "newpolysaascontact"
+
+CONTACT_PATTERN = re.compile(
+    rf'^{CONTACT_TRIGGER}:?\s*([^,]+),\s*([^,]+@[^,]+\.[^,]+),\s*(.+)$',
+    re.IGNORECASE,
+)
+
+
+def parse_contact_message(text: str) -> dict | None:
+    """Parse 'newpolysaascontact Name, email, Company' → {name, email, company}."""
+    match = CONTACT_PATTERN.match((text or "").strip())
+    if not match:
+        return None
+    name = match.group(1).strip()
+    email = match.group(2).strip()
+    company = match.group(3).strip()
+    if not name or not email or not company:
+        return None
+    return {
+        "name": name[:100],
+        "email": email[:100],
+        "company": company[:100],
+    }

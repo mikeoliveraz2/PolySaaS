@@ -1,5 +1,4 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: HubSpot → Odoo Contact Creation — 2026-09-08 (shared newpolysaascontact format)
 # BINGO: Slack → Odoo Contact Creation — 2026-09-06
 
 """Slack Events API webhook endpoint for contact creation from messages."""
@@ -8,19 +7,23 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
 
 from django.http import HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from dose.contact_message_format import parse_contact_message
 from dose.models import Tenant, TenantApp
 from dose.tenant_app_lookup import tenant_schema_search_path
 from dose.webhook_events import publish_slack_contact_event
 
 
 MAX_AGE_SECONDS = 300
+CONTACT_PATTERN = re.compile(
+    r'^New contact:\s*([^,]+),\s*([^,]+@[^,]+\.[^,]+),\s*(.+)$',
+    re.IGNORECASE
+)
 
 
 def _find_slack_tenant(team_id: str):
@@ -58,8 +61,26 @@ def _verify_slack_signature(signing_secret: str, timestamp: str, raw_body: bytes
 
 
 def _parse_contact_message(text: str) -> dict | None:
-    """Parse 'newpolysaascontact Name, email, Company' (shared format)."""
-    return parse_contact_message(text)
+    """
+    Parse contact format: 'New contact: Name, email, Company'
+    Returns dict with name, email, company or None if format doesn't match.
+    """
+    match = CONTACT_PATTERN.match(text.strip())
+    if not match:
+        return None
+    
+    name = match.group(1).strip()
+    email = match.group(2).strip()
+    company = match.group(3).strip()
+    
+    if not name or not email or not company:
+        return None
+    
+    return {
+        'name': name[:100],  # Odoo res.partner.name limit
+        'email': email[:100],
+        'company': company[:100],
+    }
 
 
 @csrf_exempt

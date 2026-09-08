@@ -1,49 +1,70 @@
-# Active Handoff — 2026-09-07 (BINGO, Laptop)
+# Active Handoff
 
-This file is the canonical startup and end-of-day handoff. Every agent must read it before editing or answering.
+This file is the canonical startup and end-of-day handoff for PolySaaS.
+Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-## Session Summary
-**BINGO:** Mattermost passthrough restored for PolySaaSOline Town Square (2026-09-07). Slack → Odoo left intact.
+**Date:** 2026-09-08 (Tuesday)  
+**Session:** Demo prep — HubSpot producer + unified trigger `newpolysaascontact`  
+**Branch:** main  
+**Latest bingo:** `c1242694` Mattermost → Odoo contact creation (2026-09-07)
 
-## What Was Completed
+## Current goal
 
-- Restored `mattermost_handler.py` + `middleware.py` from Mattermost BINGO `8100b79a`
-- Fixed PolySaaSOline TenantApp token (was expired `ebojaniy…` on the wrong tenant)
-- Pointed landing team at existing `polysaas-team` (not missing `polysaas-dev-team`)
-- Michael verified live: Town Square + onboarding modal under `/pt/admin/mattermost/`
-- Certification: `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
+Passthrough demo video prep: Odoo consumes new contacts from **Slack**, **Mattermost**, and **HubSpot** (webhook), one shared path.
 
-## Frozen — do not edit without owner
+## Unified contact format
 
 ```
-THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+newpolysaascontact Name, email, Company
 ```
 
-- `dose/passthrough/handlers/mattermost_handler.py`
-- `dose/passthrough/middleware.py`
-- Slack → Odoo BINGO `e9f5f20f` (unchanged)
+Optional colon after trigger is accepted. Mattermost outgoing webhook trigger word: `newpolysaascontact` (single token).
 
-## Mattermost → Slack topic → Odoo (verified 2026-09-07)
+## Architecture (all three → same topic)
 
-Do **not** touch the frozen handler/middleware.
+```
+Slack message / Mattermost message / HubSpot contact.creation webhook
+    ↓
+publish_slack_contact_event()
+    ↓ topic: slack.message.contact
+OdooCreatePartner (unchanged)
+```
 
-- `/hooks/mattermost/events/` parses `New contact:` and calls `publish_slack_contact_event()`
-- Same instruction `slack.message.contact` / `OdooCreatePartner` (pk=6 in polysaasonline)
-- Live result: **Rita Chen** created — Odoo `partner_id=18` db `odoo_polysaasonline`
-- Tenant lookup now matches **team id + webhook token** (many test tenants share a copied `mm_team_id`)
-- Mattermost outgoing hook exists; callback `http://host.docker.internal:8000/hooks/mattermost/events/`
-- **Restart Waitress** before posting in Town Square so HTTP uses the new lookup
+HubSpot URL (existing): `POST /dose/webhook/hubspot/<tenant_slug>/`  
+→ `HubSpotToOdooContactSync` now **queues mailbox** (no direct XML-RPC).
 
-Slack files stay frozen. No second producer.
+## Status
 
-## Current Branch & Commit
+| Source → Odoo | Status |
+|---------------|--------|
+| Slack | Parser updated to `newpolysaascontact` — retest |
+| Mattermost | Parser + live trigger updated to `newpolysaascontact` — retest |
+| HubSpot | Mailbox publish wired — needs live workflow POST + Odoo row proof |
 
-- **Branch:** cursor/polysniffer-slack-native-capture
-- **Mattermost BINGO today:** see `documentation/BINGO_MATTERMOST_PASSTHROUGH_RESTORED_2026-09-07.md`
-- **Slack BINGO:** e9f5f20f
+## Files touched this session
 
-## Blockers
-None for passthrough. Webhook E2E not done yet.
+- `dose/contact_message_format.py` (new shared parser)
+- `dose/views/slack_events_webhook.py` / `mattermost_events_webhook.py`
+- `dose/services/hubspot_to_odoo_contact_sync.py` (publish to mailbox)
+- `scripts/update_mm_webhook.py`
+- tests updated
 
----
-*Updated 2026-09-07 after live Town Square verification (PolySaaSOline / michael.oliver).*
+## Next actions
+
+1. Retest Slack + Mattermost with `newpolysaascontact Jane Doe, jane@acme.com, Acme Corp`
+2. POST sample HubSpot payload to `/dose/webhook/hubspot/olient/` (or polysaasonline slug) and confirm Odoo row
+3. Configure HubSpot workflow “Send HTTP request” with contact properties in body
+4. Commit/push when Michael approves
+
+## HubSpot workflow body (v3 flat)
+
+```json
+{
+  "properties": {
+    "firstname": "{{contact.firstname}}",
+    "lastname": "{{contact.lastname}}",
+    "email": "{{contact.email}}",
+    "company": "{{contact.company}}"
+  }
+}
+```

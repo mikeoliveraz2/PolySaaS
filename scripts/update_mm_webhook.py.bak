@@ -28,14 +28,15 @@ def main():
         print(f'Updating webhook {WEBHOOK_ID}...')
         print(f'New callback: {NEW_CALLBACK}')
         
-        # Single-token trigger shared with Slack: newpolysaascontact Name, email, Company
+        # FIXED: Single-word trigger - MM tokenizes on whitespace, so "New contact:" never matches
+        # The first word of "New contact: Name, email, Co" is just "New"
         resp = requests.put(
             f'{mm_url}/api/v4/hooks/outgoing/{WEBHOOK_ID}',
             json={
                 'id': WEBHOOK_ID,
                 'callback_urls': [NEW_CALLBACK],
                 'display_name': 'PolySaaS Contact Webhook',
-                'trigger_words': ['newpolysaascontact'],
+                'trigger_words': ['New'],  # Single token! MM matches first word only
                 'trigger_when': 0,  # 0 = exact match on first word
                 'content_type': 'application/json',
             },

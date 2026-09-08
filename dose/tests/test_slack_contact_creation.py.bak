@@ -32,21 +32,21 @@ class SlackContactParsingTests(TestCase):
     """Test deterministic contact format parsing."""
 
     def test_parse_valid_contact_message(self):
-        """Parse 'newpolysaascontact Name, email, Company' format."""
-        text = "newpolysaascontact Jane Doe, jane@acme.com, Acme Corp"
+        """Parse 'New contact: Name, email, Company' format."""
+        text = "New contact: Jane Doe, jane@acme.com, Acme Corp"
         result = _parse_contact_message(text)
-
+        
         self.assertIsNotNone(result)
         self.assertEqual(result["name"], "Jane Doe")
         self.assertEqual(result["email"], "jane@acme.com")
         self.assertEqual(result["company"], "Acme Corp")
 
     def test_parse_case_insensitive(self):
-        """Trigger is case-insensitive; optional colon accepted."""
+        """'new contact' and 'NEW CONTACT' both work."""
         texts = [
-            "newpolysaascontact Bob Smith, bob@test.com, Test Inc",
-            "NEWPOLYSAASCONTACT Bob Smith, bob@test.com, Test Inc",
-            "newpolysaascontact: Bob Smith, bob@test.com, Test Inc",
+            "new contact: Bob Smith, bob@test.com, Test Inc",
+            "NEW CONTACT: Bob Smith, bob@test.com, Test Inc",
+            "New Contact: Bob Smith, bob@test.com, Test Inc",
         ]
         for text in texts:
             result = _parse_contact_message(text)
@@ -55,9 +55,9 @@ class SlackContactParsingTests(TestCase):
 
     def test_parse_with_extra_whitespace(self):
         """Handle extra spaces around fields."""
-        text = "newpolysaascontact  Jane Doe  ,  jane@acme.com  ,  Acme Corp  "
+        text = "New contact:  Jane Doe  ,  jane@acme.com  ,  Acme Corp  "
         result = _parse_contact_message(text)
-
+        
         self.assertIsNotNone(result)
         self.assertEqual(result["name"], "Jane Doe")
         self.assertEqual(result["email"], "jane@acme.com")
@@ -67,13 +67,13 @@ class SlackContactParsingTests(TestCase):
         """Messages not matching format return None."""
         invalid_texts = [
             "Just a normal message",
-            "New contact: Jane Doe, jane@acme.com, Acme Corp",  # old trigger
-            "newpolysaascontact Jane Doe",  # Missing commas/fields
-            "newpolysaascontact Jane Doe, jane@acme.com",  # Missing company
-            "newpolysaascontact , jane@acme.com, Acme Corp",  # Missing name
-            "newpolysaascontact Jane Doe, , Acme Corp",  # Missing email
-            "newpolysaascontact Jane Doe, jane@acme.com, ",  # Missing company
-            "newpolysaascontact Jane Doe, not-an-email, Acme Corp",  # Invalid email
+            "Contact: Jane Doe, jane@acme.com",  # Missing "New"
+            "New contact Jane Doe",  # Missing colons/commas
+            "New contact: Jane Doe, jane@acme.com",  # Missing company
+            "New contact: , jane@acme.com, Acme Corp",  # Missing name
+            "New contact: Jane Doe, , Acme Corp",  # Missing email
+            "New contact: Jane Doe, jane@acme.com, ",  # Missing company
+            "New contact: Jane Doe, not-an-email, Acme Corp",  # Invalid email
         ]
         for text in invalid_texts:
             result = _parse_contact_message(text)
@@ -84,10 +84,10 @@ class SlackContactParsingTests(TestCase):
         long_name = "A" * 150
         long_email = "test" + "x" * 100 + "@example.com"
         long_company = "C" * 150
-
-        text = f"newpolysaascontact {long_name}, {long_email}, {long_company}"
+        
+        text = f"New contact: {long_name}, {long_email}, {long_company}"
         result = _parse_contact_message(text)
-
+        
         self.assertIsNotNone(result)
         self.assertEqual(len(result["name"]), 100)
         self.assertEqual(len(result["email"]), 100)
@@ -280,7 +280,7 @@ class SlackEventsWebhookTests(TestCase):
             "team_id": "T99999",
             "event": {
                 "type": "message",
-                "text": "newpolysaascontact Jane Doe, jane@acme.com, Acme Corp",
+                "text": "New contact: Jane Doe, jane@acme.com, Acme Corp",
                 "user": "U12345",
                 "channel": "C67890",
                 "ts": "1234567890.123456",
@@ -368,7 +368,7 @@ class SlackEventsWebhookTests(TestCase):
             "team_id": "T99999",
             "event": {
                 "type": "message",
-                "text": "newpolysaascontact Bot Contact, bot@test.com, Bot Corp",
+                "text": "New contact: Bot Contact, bot@test.com, Bot Corp",
                 "bot_id": "B12345",  # Bot message
                 "channel": "C67890",
                 "ts": "1234567890.123456",

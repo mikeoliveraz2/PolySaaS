@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-07  
 **Status:** VERIFIED WORKING  
-**Commit:** c1242694
+**Commit:** (pending)
 
 ## What Was Verified
 
@@ -19,19 +19,6 @@
 **Root Cause (identified by Shela):** Mattermost tokenizes messages on whitespace and matches the **first word only** against trigger words. The configured trigger `['New contact:']` (two tokens with a space) could never match because the first word of `"New contact: Name..."` is just `"New"`.
 
 **Solution:** Changed trigger word from `['New contact:']` to `['New']` (single token).
-
-## Lock the trigger (Shela)
-
-Use **one word**, no space. Mattermost matches the **first token only**.
-
-| Trigger | Message |
-|---------|---------|
-| `New` | `New contact: Jane Doe, jane@acme.com, Acme Corp` |
-| or `polycontact` | `polycontact Jane Doe, jane@acme.com, Acme Corp` |
-
-`polycontact` is safer so normal “New …” chat doesn’t create partners. Parser can keep Slack-style `New contact: Name, email, Company` **after** the first word, or require `polycontact` + the same comma fields.
-
-**Live config as of this BINGO:** trigger = `New` (verified working). Optional hardening to `polycontact` is a follow-up, not required for this bingo.
 
 ## Architecture
 

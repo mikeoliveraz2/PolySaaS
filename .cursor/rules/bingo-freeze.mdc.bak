@@ -20,12 +20,11 @@ Optional second line (recommended): `BINGO: <short name> — commit <hash>`
 ## Required steps at BINGO time
 
 1. Write or update the BINGO doc in `documentation/BINGO_*.md` (commit hash, date, what was verified).
-2. **Screenshot proof (required)** — every BINGO doc must include at least one dated screenshot proving the verified behavior in the product UI (not only logs or prose). Save images under `documentation/assets/` with a stable name tied to the bingo (e.g. `BINGO_<short-name>_<YYYY-MM-DD>_*.png|jpg`) and embed them in the markdown with a short caption. If multiple sides of a flow matter (e.g. HubSpot → Odoo), include a screenshot for each side when practical. Do not declare BINGO complete with “verified in chat” alone.
-3. **Annotate every file in the commit** with the freeze banner (see formats below).
-4. Commit code + doc + annotations + screenshot assets together (or annotations in an immediate follow-up commit before push).
-5. Pull → commit → push per process rules.
-6. **Create a BINGO ZIP** — zip the entire project folder and save it to `D:\BINGO ZIPS\BINGO_<short-name>_<YYYY-MM-DD>.zip`. This is the gold-master restore point. If git alone cannot restore exact behavior (e.g. a file outside the commit changed state), the ZIP is the authoritative source of truth.
-7. **Retain at most 4 GOLD ZIPs** — after the new zip is created successfully, delete the oldest `BINGO_*.zip` files in `D:\BINGO ZIPS` until only **four** remain (see retention script below).
+2. **Annotate every file in the commit** with the freeze banner (see formats below).
+3. Commit code + doc + annotations together (or annotations in an immediate follow-up commit before push).
+4. Pull → commit → push per process rules.
+5. **Create a BINGO ZIP** — zip the entire project folder and save it to `D:\BINGO ZIPS\BINGO_<short-name>_<YYYY-MM-DD>.zip`. This is the gold-master restore point. If git alone cannot restore exact behavior (e.g. a file outside the commit changed state), the ZIP is the authoritative source of truth.
+6. **Retain at most 4 GOLD ZIPs** — after the new zip is created successfully, delete the oldest `BINGO_*.zip` files in `D:\BINGO ZIPS` until only **four** remain (see retention script below).
 
 ## BINGO ZIP — exact command
 
