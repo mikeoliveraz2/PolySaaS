@@ -1,0 +1,258 @@
+# PolySaaS DigitalOcean production stack (phase 1)
+# Usage (on droplet):
+#   cd /opt/polysaas
+#   cp deploy/digitalocean/.env.example deploy/digitalocean/.env   # fill secrets
+#   docker compose -f deploy/digitalocean/docker-compose.yml --env-file deploy/digitalocean/.env up -d --build
+#
+# Hostnames (DNS A → droplet floating IP):
+#   app.polysaas.online  → django
+#   mm.polysaas.online   → mattermost
+#   odoo.polysaas.online → odoo
+
+name: polysaas-do
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: polysaas-do-traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL:-admin@polysaas.online}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - do_letsencrypt:/letsencrypt
+    networks:
+      - polysaas-do
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@polysaas.online}
+
+  core-postgres:
+    image: postgres:16-alpine
+    container_name: polysaas-do-core-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-dosedbsaas}
+      POSTGRES_USER: ${DB_USER:-dosedbadmin}
+      POSTGRES_PASSWORD: ${DOSE_DB_PASSWORD:?set DOSE_DB_PASSWORD}
+    volumes:
+      - do_core_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-dosedbadmin} -d ${DB_NAME:-dosedbsaas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - polysaas-do
+
+  redis:
+    image: redis:7-alpine
+    container_name: polysaas-do-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - do_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - polysaas-do
+
+  django:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.django
+    image: polysaas-django:do
+    container_name: polysaas-do-django
+    restart: unless-stopped
+    depends_on:
+      core-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: mysite.settings_hosted
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY}
+      DEBUG: ${DEBUG:-False}
+      DATABASE_URL: postgresql://${DB_USER:-dosedbadmin}:${DOSE_DB_PASSWORD}@core-postgres:5432/${DB_NAME:-dosedbsaas}
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-app.polysaas.online,.polysaas.online}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-https://app.polysaas.online}
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
+      PORT: "8000"
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+      MATTERMOST_URL: ${MATTERMOST_URL:-https://mm.polysaas.online}
+      HUBSPOT_PRIVATE_APP_TOKEN: ${HUBSPOT_PRIVATE_APP_TOKEN:-}
+    volumes:
+      - do_django_media:/app/var/media_root
+    networks:
+      - polysaas-do
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=polysaas-do
+      - traefik.http.routers.django.rule=Host(`${APP_HOST:-app.polysaas.online}`)
+      - traefik.http.routers.django.entrypoints=websecure
+      - traefik.http.routers.django.tls=true
+      - traefik.http.routers.django.tls.certresolver=letsencrypt
+      - traefik.http.services.django.loadbalancer.server.port=8000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    command: ["web"]
+
+  mailbox-consumer:
+    image: polysaas-django:do
+    container_name: polysaas-do-mailbox-consumer
+    restart: unless-stopped
+    depends_on:
+      django:
+        condition: service_started
+      core-postgres:
+        condition: service_healthy
+    environment:
+      DJANGO_SETTINGS_MODULE: mysite.settings_hosted
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY}
+      DATABASE_URL: postgresql://${DB_USER:-dosedbadmin}:${DOSE_DB_PASSWORD}@core-postgres:5432/${DB_NAME:-dosedbsaas}
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-app.polysaas.online,.polysaas.online}
+      MAILBOX_POLL_INTERVAL: ${MAILBOX_POLL_INTERVAL:-1.0}
+      MAILBOX_BATCH_SIZE: ${MAILBOX_BATCH_SIZE:-10}
+    networks:
+      - polysaas-do
+    command: ["consumer"]
+
+  mattermost-db:
+    image: postgres:16-alpine
+    container_name: polysaas-do-mattermost-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${MATTERMOST_DB_NAME:-mattermost}
+      POSTGRES_USER: ${MATTERMOST_DB_USER:-mattermost}
+      POSTGRES_PASSWORD: ${MATTERMOST_DB_PASSWORD:?set MATTERMOST_DB_PASSWORD}
+    volumes:
+      - do_mattermost_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MATTERMOST_DB_USER:-mattermost} -d ${MATTERMOST_DB_NAME:-mattermost}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - polysaas-do
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: polysaas-do-mattermost
+    restart: unless-stopped
+    depends_on:
+      mattermost-db:
+        condition: service_healthy
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://${MATTERMOST_DB_USER:-mattermost}:${MATTERMOST_DB_PASSWORD}@mattermost-db:5432/${MATTERMOST_DB_NAME:-mattermost}?sslmode=disable&connect_timeout=10
+      MM_SERVICESETTINGS_SITEURL: ${MATTERMOST_URL:-https://mm.polysaas.online}
+      MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: "true"
+      MM_SERVICESETTINGS_ALLOWCORSFROM: ${MM_CORS_ORIGINS:-https://app.polysaas.online}
+      MM_SERVICESETTINGS_CORSALLOWCREDENTIALS: "true"
+      MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS: ${MM_ALLOWED_INTERNAL:-django localhost 127.0.0.1}
+      MM_SERVICESETTINGS_ENABLEOUTGOINGWEBHOOKS: "true"
+    volumes:
+      - do_mattermost_config:/mattermost/config
+      - do_mattermost_data:/mattermost/data
+      - do_mattermost_logs:/mattermost/logs
+      - do_mattermost_plugins:/mattermost/plugins
+    networks:
+      - polysaas-do
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=polysaas-do
+      - traefik.http.routers.mattermost.rule=Host(`${MM_HOST:-mm.polysaas.online}`)
+      - traefik.http.routers.mattermost.entrypoints=websecure
+      - traefik.http.routers.mattermost.tls=true
+      - traefik.http.routers.mattermost.tls.certresolver=letsencrypt
+      - traefik.http.services.mattermost.loadbalancer.server.port=8065
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8065/api/v4/system/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+  odoo-db:
+    image: postgres:16-alpine
+    container_name: polysaas-do-odoo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ODOO_DB_NAME:-polysaas_odoo}
+      POSTGRES_USER: ${ODOO_DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:?set ODOO_DB_PASSWORD}
+    volumes:
+      - do_odoo_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ODOO_DB_USER:-odoo} -d ${ODOO_DB_NAME:-polysaas_odoo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - polysaas-do
+
+  odoo:
+    image: odoo:18.0
+    container_name: polysaas-do-odoo
+    restart: unless-stopped
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    environment:
+      HOST: odoo-db
+      PORT: "5432"
+      USER: ${ODOO_DB_USER:-odoo}
+      PASSWORD: ${ODOO_DB_PASSWORD:?set ODOO_DB_PASSWORD}
+    volumes:
+      - do_odoo_data:/var/lib/odoo
+      - ../../docker/odoo/addons:/mnt/extra-addons
+    networks:
+      - polysaas-do
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=polysaas-do
+      - traefik.http.routers.odoo.rule=Host(`${ODOO_HOST:-odoo.polysaas.online}`)
+      - traefik.http.routers.odoo.entrypoints=websecure
+      - traefik.http.routers.odoo.tls=true
+      - traefik.http.routers.odoo.tls.certresolver=letsencrypt
+      - traefik.http.services.odoo.loadbalancer.server.port=8069
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/health || curl -fsS http://127.0.0.1:8069/web/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
+networks:
+  polysaas-do:
+    name: polysaas-do
+    driver: bridge
+
+volumes:
+  do_letsencrypt:
+  do_core_pg:
+  do_redis:
+  do_django_media:
+  do_mattermost_pg:
+  do_mattermost_config:
+  do_mattermost_data:
+  do_mattermost_logs:
+  do_mattermost_plugins:
+  do_odoo_pg:
+  do_odoo_data:

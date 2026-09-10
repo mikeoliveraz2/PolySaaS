@@ -4,67 +4,25 @@ This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
 **Date:** 2026-09-08 (Tuesday)  
-**Session:** Demo prep — HubSpot producer + unified trigger `newpolysaascontact`  
-**Branch:** main  
-**Latest bingo:** `c1242694` Mattermost → Odoo contact creation (2026-09-07)
+**Session:** HubSpot → Odoo contact BINGO + unified `newpolysaascontact`  
+**Branch:** main
 
-## Current goal
+## Completed
 
-Passthrough demo video prep: Odoo consumes new contacts from **Slack**, **Mattermost**, and **HubSpot** (webhook), one shared path.
+- HubSpot contact.creation workflow → FlowLink webhook → mailbox → Odoo (charlie Tuna proven)
+- Shared chat trigger: `newpolysaascontact Name, email, Company` (Slack + Mattermost)
+- Restored BINGO screenshot-proof requirement in `.cursor/rules/bingo-freeze.mdc`
+- BINGO doc: `documentation/BINGO_HUBSPOT_ODOO_CONTACT_CREATION_2026-09-08.md` (+ assets)
 
-## Unified contact format
+## Demo video ready
 
-```
-newpolysaascontact Name, email, Company
-```
+| Source | Format / path |
+|--------|----------------|
+| Slack | `newpolysaascontact Name, email, Company` |
+| Mattermost | same + outgoing trigger `newpolysaascontact` |
+| HubSpot | Create contact → workflow → `/dose/webhook/hubspot/polysaasonline/` |
 
-Optional colon after trigger is accepted. Mattermost outgoing webhook trigger word: `newpolysaascontact` (single token).
+## Next
 
-## Architecture (all three → same topic)
-
-```
-Slack message / Mattermost message / HubSpot contact.creation webhook
-    ↓
-publish_slack_contact_event()
-    ↓ topic: slack.message.contact
-OdooCreatePartner (unchanged)
-```
-
-HubSpot URL (existing): `POST /dose/webhook/hubspot/<tenant_slug>/`  
-→ `HubSpotToOdooContactSync` now **queues mailbox** (no direct XML-RPC).
-
-## Status
-
-| Source → Odoo | Status |
-|---------------|--------|
-| Slack | Parser updated to `newpolysaascontact` — retest |
-| Mattermost | Parser + live trigger updated to `newpolysaascontact` — retest |
-| HubSpot | Mailbox publish wired — needs live workflow POST + Odoo row proof |
-
-## Files touched this session
-
-- `dose/contact_message_format.py` (new shared parser)
-- `dose/views/slack_events_webhook.py` / `mattermost_events_webhook.py`
-- `dose/services/hubspot_to_odoo_contact_sync.py` (publish to mailbox)
-- `scripts/update_mm_webhook.py`
-- tests updated
-
-## Next actions
-
-1. Retest Slack + Mattermost with `newpolysaascontact Jane Doe, jane@acme.com, Acme Corp`
-2. POST sample HubSpot payload to `/dose/webhook/hubspot/olient/` (or polysaasonline slug) and confirm Odoo row
-3. Configure HubSpot workflow “Send HTTP request” with contact properties in body
-4. Commit/push when Michael approves
-
-## HubSpot workflow body (v3 flat)
-
-```json
-{
-  "properties": {
-    "firstname": "{{contact.firstname}}",
-    "lastname": "{{contact.lastname}}",
-    "email": "{{contact.email}}",
-    "company": "{{contact.company}}"
-  }
-}
-```
+- Film passthrough demo
+- Optional: capture fresh Odoo screenshot with charlie Tuna kanban card only
