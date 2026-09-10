@@ -3,26 +3,37 @@
 This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-**Date:** 2026-09-08 (Tuesday)  
-**Session:** HubSpot → Odoo contact BINGO + unified `newpolysaascontact`  
+**Date:** 2026-09-10 (Thursday)  
+**Session:** DigitalOcean deploy package (phase 1 core stack)  
 **Branch:** main
 
 ## Completed
 
-- HubSpot contact.creation workflow → FlowLink webhook → mailbox → Odoo (charlie Tuna proven)
-- Shared chat trigger: `newpolysaascontact Name, email, Company` (Slack + Mattermost)
-- Restored BINGO screenshot-proof requirement in `.cursor/rules/bingo-freeze.mdc`
-- BINGO doc: `documentation/BINGO_HUBSPOT_ODOO_CONTACT_CREATION_2026-09-08.md` (+ assets)
+- Added `deploy/digitalocean/` production Compose stack: Traefik + Django + mailbox-consumer + core Postgres + Redis + Mattermost + Odoo
+- Scripts: provision (doctl), bootstrap droplet, bringup, DNS checklist, dump/migrate, smoke
+- Runbook: `documentation/deployment/DIGITALOCEAN_DEPLOY_RUNBOOK.md`
+- Hostnames: `app` / `mm` / `odoo`.polysaas.online (apex WordPress unchanged)
 
-## Demo video ready
+## Blocked on operator
 
-| Source | Format / path |
-|--------|----------------|
-| Slack | `newpolysaascontact Name, email, Company` |
-| Mattermost | same + outgoing trigger `newpolysaascontact` |
-| HubSpot | Create contact → workflow → `/dose/webhook/hubspot/polysaasonline/` |
+Live Droplet create needs `DIGITALOCEAN_ACCESS_TOKEN` + SSH key fingerprint (not present on this machine). Run:
+
+```powershell
+$env:DIGITALOCEAN_ACCESS_TOKEN = "dop_v1_..."
+$env:DO_SSH_KEY_FINGERPRINT = "..."
+.\deploy\digitalocean\scripts\provision-droplet.ps1
+```
+
+Then follow the runbook steps 2–7.
+
+## Prior bingo still valid
+
+- Slack / Mattermost / HubSpot → Odoo contacts (`newpolysaascontact` + HubSpot FlowLink)
+- Latest HubSpot bingo: `11a0d627`
 
 ## Next
 
-- Film passthrough demo
-- Optional: capture fresh Odoo screenshot with charlie Tuna kanban card only
+1. Provision DO droplet with token  
+2. DNS A records → floating IP  
+3. `bringup.sh` + migrate demo dumps  
+4. Retarget Slack/HubSpot webhooks to `https://app.polysaas.online/...`

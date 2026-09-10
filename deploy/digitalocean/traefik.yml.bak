@@ -25,10 +25,10 @@ providers:
 certificatesResolvers:
   letsencrypt:
     acme:
-      # TLS-ALPN-01 — avoids conflict with entrypoint HTTP→HTTPS redirect
       email: admin@polysaas.online
       storage: /letsencrypt/acme.json
-      tlsChallenge: {}
+      httpChallenge:
+        entryPoint: web
 
 log:
   level: INFO

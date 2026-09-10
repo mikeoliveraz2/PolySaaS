@@ -57,7 +57,7 @@ chmod 600 /opt/polysaas/deploy/digitalocean/.env
 
 ---
 
-## 3. DNS (before HTTPS / Let’s Encrypt works)
+## 3. DNS (before HTTPS works)
 
 ```bash
 bash /opt/polysaas/deploy/digitalocean/scripts/dns-checklist.sh <FLOATING_IP>
@@ -72,8 +72,6 @@ Create A records:
 | `odoo` | A | floating IP |
 
 Wait for `dig +short app.polysaas.online` to return the floating IP.
-
-Traefik uses **TLS-ALPN-01** (`tlsChallenge`) on port 443 (see `deploy/digitalocean/traefik.yml`). Ports 80 and 443 must be open; HTTP still redirects to HTTPS.
 
 ---
 

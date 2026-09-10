@@ -15,11 +15,6 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
-
 # Ensure ACME file mode inside Traefik volume (first boot)
 VOL_NAME=$(docker volume ls --format '{{.Name}}' | grep -E 'do_letsencrypt$' | head -n1 || true)
 if [[ -z "${VOL_NAME}" ]]; then
