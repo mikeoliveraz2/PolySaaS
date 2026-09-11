@@ -51,12 +51,12 @@ cat <<'EOF'
 
 After restore, retarget PassThroughEndpoint / TenantApp URLs in Django:
 
-  Mattermost endpoint_url → http://mattermost:8065   (server-side) or https://mm.polysaas.online
-  Odoo endpoint_url       → http://odoo:8069         (server-side) or https://odoo.polysaas.online
+  Mattermost endpoint_url → http://mattermost:8065   (server-side) or https://mm.prod-polysaas.cloud
+  Odoo endpoint_url       → http://odoo:8069         (server-side) or https://odoo.prod-polysaas.cloud
 
 Update external webhooks:
-  HubSpot FlowLink → https://app.polysaas.online/dose/webhook/hubspot/polysaasonline/
-  Slack Events     → https://app.polysaas.online/hooks/slack/events/
+  HubSpot FlowLink → https://app.prod-polysaas.cloud/dose/webhook/hubspot/polysaasonline/
+  Slack Events     → https://app.prod-polysaas.cloud/hooks/slack/events/
 
 Mattermost outgoing webhook callback:
   http://django:8000/hooks/mattermost/events/

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Smoke checks against prod-polysaas.cloud (run from laptop or VPS).
+# Smoke checks against production hostnames (run from laptop or VPS).
 set -euo pipefail
 
-APP_HOST="${APP_HOST:-https://app.prod-polysaas.cloud}"
-MM_HOST="${MM_HOST:-https://mm.prod-polysaas.cloud}"
-ODOO_HOST="${ODOO_HOST:-https://odoo.prod-polysaas.cloud}"
+APP_HOST="${APP_HOST:-https://app.polysaas.online}"
+MM_HOST="${MM_HOST:-https://mm.polysaas.online}"
+ODOO_HOST="${ODOO_HOST:-https://odoo.polysaas.online}"
 
 fail=0
 check() {

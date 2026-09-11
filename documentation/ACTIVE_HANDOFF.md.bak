@@ -3,40 +3,40 @@
 This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-**Date:** 2026-09-10 (Thursday)  
-**Session:** DigitalOcean deploy package (phase 1 core stack)  
+**Date:** 2026-09-12 (Saturday)  
+**Session:** Hostinger VPS live — Dokploy  
 **Branch:** main  
-**Latest commit:** `7b9c7cf9` (DO stack + Traefik tlsChallenge / bringup `.env` source)
+**Latest commit:** `f4cee1a9` (Hostinger package `54773689`)
+
+## Live infra (operator confirmed)
+
+| Item | Value |
+|------|-------|
+| Provider | Hostinger VPS |
+| Orchestration | **Dokploy** (not bare Traefik-only bootstrap) |
+| VPS IP | `187.53.138.235` |
+| Domain | `prod-polysaas.cloud` |
+| SSH key (laptop) | `~/.ssh/id_ed25519_hostinger` — **not yet authorized** on VPS (Permission denied for root/ubuntu/deploy) |
 
 ## Completed (repo)
 
-- `deploy/digitalocean/` Compose: Traefik + Django + mailbox-consumer + core Postgres + Redis + Mattermost + Odoo
-- Scripts: provision (doctl), bootstrap, bringup, DNS checklist, dump/migrate, retarget, smoke
-- Runbook: `documentation/deployment/DIGITALOCEAN_DEPLOY_RUNBOOK.md`
-- Hostnames: `app` / `mm` / `odoo`.polysaas.online (apex WordPress unchanged)
-- Pushed to `origin/main` so droplet bootstrap can `git clone` / `git pull`
+- [`deploy/hostinger/`](../deploy/hostinger/) Compose + scripts + [`HOSTINGER_DEPLOY_RUNBOOK.md`](deployment/HOSTINGER_DEPLOY_RUNBOOK.md)
+- Original plan hostnames were `*.polysaas.online` — **live domain is now `prod-polysaas.cloud`** (env/compose hostnames need retarget before bring-up)
 
-## Blocked on operator (live cloud)
+## Next
 
-No `DIGITALOCEAN_ACCESS_TOKEN` / `DO_SSH_KEY_FINGERPRINT` in this environment — cannot create Droplet, DNS, bring-up, restore, or smoke against production yet.
-
-```powershell
-$env:DIGITALOCEAN_ACCESS_TOKEN = "dop_v1_..."
-$env:DO_SSH_KEY_FINGERPRINT = "..."   # doctl compute ssh-key list
-$env:DO_REGION = "sgp1"
-.\deploy\digitalocean\scripts\provision-droplet.ps1
-```
-
-Then runbook §§2–7 (bootstrap → DNS → bringup → migrate → smoke).
+1. Add laptop public key to VPS / Dokploy SSH access (or confirm which key Dokploy used)
+2. Decide subdomain map under `prod-polysaas.cloud`, e.g. `app` / `mm` / `odoo`
+3. Deploy stack via Dokploy (compose project) or SSH + `bringup.sh` — avoid double Traefik if Dokploy already terminates TLS
+4. Migrate data + retarget Slack/HubSpot webhooks to production URLs
+5. Smoke tests
 
 ## Prior bingo still valid
 
 - Slack / Mattermost / HubSpot → Odoo contacts (`newpolysaascontact` + HubSpot FlowLink)
 - Latest HubSpot bingo: `11a0d627`
 
-## Next
+## Parked
 
-1. Michael: paste DO token + SSH key fingerprint (or set env vars) so agent can finish provision→smoke  
-2. DNS A records → floating IP  
-3. `bringup.sh` + migrate demo dumps  
-4. Retarget Slack/HubSpot webhooks to `https://app.polysaas.online/...`
+- DigitalOcean / AWS
+- Apex `polysaas.online` WordPress unchanged

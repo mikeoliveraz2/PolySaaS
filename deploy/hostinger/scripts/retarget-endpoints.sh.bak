@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Print Django / webhook retarget hints after Dokploy bring-up.
+# Print Django / webhook retarget hints after Hostinger bring-up.
 set -euo pipefail
 
 cat <<'EOF'
-Retarget PassThroughEndpoint / TenantApp after Hostinger + Dokploy bring-up
-==========================================================================
+Retarget PassThroughEndpoint / TenantApp after Hostinger bring-up
+=================================================================
 
 Prefer Docker-internal URLs for server-side passthrough fetches:
 
@@ -13,26 +13,27 @@ Prefer Docker-internal URLs for server-side passthrough fetches:
 
 Public SiteURL / browser URLs:
 
-  Mattermost SiteURL      = https://mm.prod-polysaas.cloud
-  Odoo public             = https://odoo.prod-polysaas.cloud
-  Django app              = https://app.prod-polysaas.cloud
+  Mattermost SiteURL      = https://mm.polysaas.online
+  Odoo public             = https://odoo.polysaas.online
 
 External producers (update in vendor consoles):
 
   Slack Events Request URL =
-    https://app.prod-polysaas.cloud/hooks/slack/events/
+    https://app.polysaas.online/hooks/slack/events/
 
   HubSpot FlowLink Target URL =
-    https://app.prod-polysaas.cloud/dose/webhook/hubspot/polysaasonline/
+    https://app.polysaas.online/dose/webhook/hubspot/polysaasonline/
 
   Mattermost outgoing webhook callback (from MM container) =
     http://django:8000/hooks/mattermost/events/
   Trigger word = newpolysaascontact
   AllowedUntrustedInternalConnections must include: django
 
-Django shell example (on VPS / via Dokploy terminal):
+Django shell example (on VPS):
 
   docker compose -f deploy/hostinger/docker-compose.yml --env-file deploy/hostinger/.env \
     run --rm --entrypoint "" django python manage.py shell
+
+  # Then set search_path to tenant and update PassThroughEndpoint.endpoint_url
 
 EOF

@@ -1,30 +1,26 @@
 #!/usr/bin/env bash
-# Print DNS A records required for Traefik Let's Encrypt (Hostinger VPS).
+# Print DNS A records for Dokploy / Hostinger (prod-polysaas.cloud).
 set -euo pipefail
 
-VPS_IP="${1:-${VPS_IP:-}}"
-if [[ -z "$VPS_IP" ]]; then
-  echo "Usage: $0 <vps-ip>"
-  echo "Or set VPS_IP=..."
-  exit 1
-fi
+VPS_IP="${1:-${VPS_IP:-187.53.138.235}}"
 
 cat <<EOF
-Add these DNS A records (TTL 300) at your DNS provider for polysaas.online:
+Add these DNS A records (TTL 300) for prod-polysaas.cloud → Hostinger VPS:
 
-  app.polysaas.online    A    $VPS_IP
-  mm.polysaas.online     A    $VPS_IP
-  odoo.polysaas.online   A    $VPS_IP
+  app.prod-polysaas.cloud    A    $VPS_IP
+  mm.prod-polysaas.cloud     A    $VPS_IP
+  odoo.prod-polysaas.cloud   A    $VPS_IP
 
-Leave apex polysaas.online on the current WordPress host (phase 1).
+(Optional) apex / www for Dokploy panel if you use them separately.
+
+Leave polysaas.online WordPress apex unchanged (phase 1).
 
 After propagation:
-  dig +short app.polysaas.online
-  dig +short mm.polysaas.online
-  dig +short odoo.polysaas.online
+  dig +short app.prod-polysaas.cloud
+  dig +short mm.prod-polysaas.cloud
+  dig +short odoo.prod-polysaas.cloud
 
 Expect each to return: $VPS_IP
 
-Then Traefik will obtain certs via TLS-ALPN-01 (port 443) on first HTTPS request.
-Ensure Hostinger / UFW firewall allows 22, 80, and 443.
+Dokploy Traefik issues Let's Encrypt certs once DNS points here (ports 80/443 open).
 EOF

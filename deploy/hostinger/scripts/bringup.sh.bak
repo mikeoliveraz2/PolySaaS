@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Bring up PolySaaS Hostinger stack under Dokploy Traefik (run on VPS).
-# Prefer deploying this compose via Dokploy UI; this script is for SSH bring-up.
+# Bring up PolySaaS Hostinger stack (run on vps from repo root or any cwd).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,16 +20,22 @@ set -a
 source "$ENV_FILE"
 set +a
 
-if ! docker network inspect dokploy-network >/dev/null 2>&1; then
-  echo "ERROR: external network dokploy-network not found."
-  echo "Dokploy must be installed first (it creates dokploy-network)."
-  exit 1
+# Ensure ACME file mode inside Traefik volume (first boot)
+VOL_NAME=$(docker volume ls --format '{{.Name}}' | grep -E 'host_letsencrypt$' | head -n1 || true)
+if [[ -z "${VOL_NAME}" ]]; then
+  echo "==> Creating letsencrypt volume via compose config"
+  "${COMPOSE[@]}" up -d traefik || true
+  VOL_NAME=$(docker volume ls --format '{{.Name}}' | grep -E 'host_letsencrypt$' | head -n1 || true)
+fi
+if [[ -n "${VOL_NAME}" ]]; then
+  docker run --rm -v "${VOL_NAME}:/letsencrypt" alpine:3.20 \
+    sh -c 'touch /letsencrypt/acme.json && chmod 600 /letsencrypt/acme.json'
 fi
 
 echo "==> Building Django image"
 "${COMPOSE[@]}" build django
 
-echo "==> Starting stack (no local Traefik — Dokploy owns :80/:443)"
+echo "==> Starting stack"
 "${COMPOSE[@]}" up -d
 
 echo "==> Waiting for core-postgres"
@@ -49,9 +54,9 @@ echo "==> Status"
 
 echo ""
 echo "Next:"
-echo "  1. DNS A records app/mm/odoo.prod-polysaas.cloud → \${VPS_IP:-187.53.138.235}"
-echo "  2. curl -fsS https://app.prod-polysaas.cloud/health/"
+echo "  1. Confirm DNS A records for app/mm/odoo → VPS IP"
+echo "  2. curl -fsS https://app.polysaas.online/health/"
 echo "  3. Create superuser:  ${COMPOSE[*]} run --rm --entrypoint \"\" django python manage.py createsuperuser"
-echo "  4. Bootstrap Mattermost admin (mm.prod-polysaas.cloud)"
-echo "  5. Create/restore Odoo DB (odoo.prod-polysaas.cloud)"
+echo "  4. Bootstrap Mattermost admin in browser (mm.polysaas.online)"
+echo "  5. Create/restore Odoo DB (odoo.polysaas.online)"
 echo "  6. scripts/migrate-data.sh + scripts/smoke-test.sh"

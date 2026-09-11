@@ -3,36 +3,39 @@
 This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-**Date:** 2026-09-11 (Friday)  
-**Session:** Hostinger VPS deploy package (phase 1 core stack)  
+**Date:** 2026-09-12 (Saturday)  
+**Session:** Hostinger + Dokploy — domain retarget  
 **Branch:** main  
-**Latest commit:** `54773689`
+
+## Live infra
+
+| Item | Value |
+|------|-------|
+| Provider | Hostinger VPS |
+| Orchestration | **Dokploy** |
+| VPS IP | `187.53.138.235` |
+| Domain | `prod-polysaas.cloud` |
+| Hosts | `app` / `mm` / `odoo`.prod-polysaas.cloud |
+| SSH (`id_ed25519_hostinger`) | **Not authorized yet** on VPS |
 
 ## Completed (repo)
 
-- Production target pivoted to **Hostinger KVM 4** VPS (DigitalOcean / AWS parked)
-- Added [`deploy/hostinger/`](../deploy/hostinger/): Traefik + Django + mailbox-consumer + core Postgres + Redis + Mattermost + Odoo
-- Scripts: `provision-vps.ps1` (hPanel checklist), `bootstrap-vps.sh`, bringup, DNS, dump/migrate, retarget, smoke
-- Runbook: [`documentation/deployment/HOSTINGER_DEPLOY_RUNBOOK.md`](deployment/HOSTINGER_DEPLOY_RUNBOOK.md)
-- Hostnames unchanged: `app` / `mm` / `odoo`.polysaas.online (apex WordPress unchanged)
-- `Dockerfile.django` entrypoint now copies `deploy/hostinger/entrypoint-django.sh`
-- Cost budget: ~$13/mo intro / ~$29/mo renewal for KVM 4 (+ free weekly backups)
+- [`deploy/hostinger/docker-compose.yml`](../deploy/hostinger/docker-compose.yml) adapted for **Dokploy**:
+  - Removed local Traefik service (Dokploy owns TLS)
+  - External `dokploy-network` + internal `polysaas-hostinger`
+  - No `container_name`
+  - Hostnames → `*.prod-polysaas.cloud`
+- Scripts / runbook / `.env.example` updated for new domain
 
-## Operator next (live Hostinger)
+## Next (operator)
 
-1. Order KVM 4 + Ubuntu Docker template — run `.\deploy\hostinger\scripts\provision-vps.ps1`
-2. SSH → `bootstrap-vps.sh` → fill `.env`
-3. DNS A records `app`/`mm`/`odoo` → VPS IP
-4. `bringup.sh` → migrate dumps → retarget Slack/HubSpot → `smoke-test.sh`
-5. Update this handoff with **VPS_IP**, region, and snapshot date
+1. Authorize laptop SSH public key on VPS / Dokploy
+2. DNS A records for `app`/`mm`/`odoo`.prod-polysaas.cloud → `187.53.138.235`
+3. Create Dokploy Compose app from `deploy/hostinger/docker-compose.yml` + filled env
+4. Migrate data + retarget Slack/HubSpot → `https://app.prod-polysaas.cloud/...`
+5. Smoke tests
 
 ## Prior bingo still valid
 
-- Slack / Mattermost / HubSpot → Odoo contacts (`newpolysaascontact` + HubSpot FlowLink)
+- Slack / Mattermost / HubSpot → Odoo (`newpolysaascontact` + HubSpot FlowLink)
 - Latest HubSpot bingo: `11a0d627`
-- `deploy/digitalocean/` remains in repo as historical only
-
-## Parked
-
-- DigitalOcean live provision (token friction)
-- AWS exploration (superseded by Hostinger)
