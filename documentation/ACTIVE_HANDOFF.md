@@ -3,40 +3,36 @@
 This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-**Date:** 2026-09-10 (Thursday)  
-**Session:** DigitalOcean deploy package (phase 1 core stack)  
+**Date:** 2026-09-11 (Friday)  
+**Session:** Hostinger VPS deploy package (phase 1 core stack)  
 **Branch:** main  
-**Latest commit:** `7b9c7cf9` (DO stack + Traefik tlsChallenge / bringup `.env` source)
+**Latest commit:** (pending push this session)
 
 ## Completed (repo)
 
-- `deploy/digitalocean/` Compose: Traefik + Django + mailbox-consumer + core Postgres + Redis + Mattermost + Odoo
-- Scripts: provision (doctl), bootstrap, bringup, DNS checklist, dump/migrate, retarget, smoke
-- Runbook: `documentation/deployment/DIGITALOCEAN_DEPLOY_RUNBOOK.md`
-- Hostnames: `app` / `mm` / `odoo`.polysaas.online (apex WordPress unchanged)
-- Pushed to `origin/main` so droplet bootstrap can `git clone` / `git pull`
+- Production target pivoted to **Hostinger KVM 4** VPS (DigitalOcean / AWS parked)
+- Added [`deploy/hostinger/`](../deploy/hostinger/): Traefik + Django + mailbox-consumer + core Postgres + Redis + Mattermost + Odoo
+- Scripts: `provision-vps.ps1` (hPanel checklist), `bootstrap-vps.sh`, bringup, DNS, dump/migrate, retarget, smoke
+- Runbook: [`documentation/deployment/HOSTINGER_DEPLOY_RUNBOOK.md`](deployment/HOSTINGER_DEPLOY_RUNBOOK.md)
+- Hostnames unchanged: `app` / `mm` / `odoo`.polysaas.online (apex WordPress unchanged)
+- `Dockerfile.django` entrypoint now copies `deploy/hostinger/entrypoint-django.sh`
+- Cost budget: ~$13/mo intro / ~$29/mo renewal for KVM 4 (+ free weekly backups)
 
-## Blocked on operator (live cloud)
+## Operator next (live Hostinger)
 
-No `DIGITALOCEAN_ACCESS_TOKEN` / `DO_SSH_KEY_FINGERPRINT` in this environment — cannot create Droplet, DNS, bring-up, restore, or smoke against production yet.
-
-```powershell
-$env:DIGITALOCEAN_ACCESS_TOKEN = "dop_v1_..."
-$env:DO_SSH_KEY_FINGERPRINT = "..."   # doctl compute ssh-key list
-$env:DO_REGION = "sgp1"
-.\deploy\digitalocean\scripts\provision-droplet.ps1
-```
-
-Then runbook §§2–7 (bootstrap → DNS → bringup → migrate → smoke).
+1. Order KVM 4 + Ubuntu Docker template — run `.\deploy\hostinger\scripts\provision-vps.ps1`
+2. SSH → `bootstrap-vps.sh` → fill `.env`
+3. DNS A records `app`/`mm`/`odoo` → VPS IP
+4. `bringup.sh` → migrate dumps → retarget Slack/HubSpot → `smoke-test.sh`
+5. Update this handoff with **VPS_IP**, region, and snapshot date
 
 ## Prior bingo still valid
 
 - Slack / Mattermost / HubSpot → Odoo contacts (`newpolysaascontact` + HubSpot FlowLink)
 - Latest HubSpot bingo: `11a0d627`
+- `deploy/digitalocean/` remains in repo as historical only
 
-## Next
+## Parked
 
-1. Michael: paste DO token + SSH key fingerprint (or set env vars) so agent can finish provision→smoke  
-2. DNS A records → floating IP  
-3. `bringup.sh` + migrate demo dumps  
-4. Retarget Slack/HubSpot webhooks to `https://app.polysaas.online/...`
+- DigitalOcean live provision (token friction)
+- AWS exploration (superseded by Hostinger)

@@ -32,7 +32,7 @@ COPY active_urls ./active_urls
 COPY middleware ./middleware
 COPY static ./static
 COPY templates ./templates
-COPY deploy/digitalocean/entrypoint-django.sh /entrypoint-django.sh
+COPY deploy/hostinger/entrypoint-django.sh /entrypoint-django.sh
 
 RUN mkdir -p /app/var/static_root /app/var/media_root \
     && chmod +x /entrypoint-django.sh \
@@ -50,3 +50,4 @@ EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint-django.sh"]
 CMD ["web"]
+

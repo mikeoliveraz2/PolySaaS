@@ -14,11 +14,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    curl \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-install-recommends --no-cache-dir -r requirements.txt
 
 COPY manage.py test_decompression_view.py ./
 COPY mysite ./mysite
@@ -31,13 +32,21 @@ COPY active_urls ./active_urls
 COPY middleware ./middleware
 COPY static ./static
 COPY templates ./templates
+COPY deploy/digitalocean/entrypoint-django.sh /entrypoint-django.sh
 
 RUN mkdir -p /app/var/static_root /app/var/media_root \
+    && chmod +x /entrypoint-django.sh \
     && adduser --disabled-password --gecos '' --uid 1000 django \
-    && chown -R django:django /app/var
+    && chown -R django:django /app /entrypoint-django.sh
 
+# Collect static at build (Whitenoise); secrets not required for collectstatic with hosted settings if DEBUG path allowed
 USER django
+RUN DJANGO_SECRET_KEY=build-only-not-for-runtime \
+    ALLOWED_HOSTS=localhost \
+    DATABASE_URL=sqlite:///tmp/build.db \
+    python manage.py collectstatic --noinput || true
+
 EXPOSE 8000
 
-# Hosted runtimes may set PORT; local default 8000.
-CMD ["sh", "-c", "exec python -m gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-30} --access-logfile - --error-logfile - mysite.wsgi:application"]
+ENTRYPOINT ["/entrypoint-django.sh"]
+CMD ["web"]

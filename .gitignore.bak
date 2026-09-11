@@ -9,9 +9,6 @@ __pycache__/
 deploy/digitalocean/restore/*.sql
 deploy/digitalocean/restore/*.sql.gz
 deploy/digitalocean/.env
-deploy/hostinger/restore/*.sql
-deploy/hostinger/restore/*.sql.gz
-deploy/hostinger/.env
 .worktree-path
 .env.railway.local
 .env.wordpress
