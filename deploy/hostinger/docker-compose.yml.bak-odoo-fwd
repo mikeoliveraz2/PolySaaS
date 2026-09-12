@@ -211,11 +211,7 @@ services:
       - traefik.http.routers.polysaas-odoo.entrypoints=websecure
       - traefik.http.routers.polysaas-odoo.tls=true
       - traefik.http.routers.polysaas-odoo.tls.certresolver=letsencrypt
-      - traefik.http.routers.polysaas-odoo.middlewares=odoo-fwdheaders
-      - traefik.http.middlewares.odoo-fwdheaders.headers.customrequestheaders.X-Forwarded-Proto=https
-      - traefik.http.middlewares.odoo-fwdheaders.headers.customrequestheaders.X-Forwarded-Host=${ODOO_HOST:-odoo.prod-polysaas.cloud}
       - traefik.http.services.polysaas-odoo.loadbalancer.server.port=8069
-      - traefik.http.services.polysaas-odoo.loadbalancer.passHostHeader=true
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/health || curl -fsS http://127.0.0.1:8069/web/login || exit 1"]
       interval: 30s
