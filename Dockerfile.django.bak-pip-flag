@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-install-recommends --no-cache-dir -r requirements.txt
 
 COPY manage.py test_decompression_view.py ./
 COPY mysite ./mysite
