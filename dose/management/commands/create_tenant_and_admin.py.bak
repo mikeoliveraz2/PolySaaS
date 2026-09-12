@@ -163,7 +163,7 @@ class Command(BaseCommand):
         else:
             if existing is not None:
                 raise CommandError(
-                    f"Tenant slug={slug!r} already exists (pk={existing.pk}). "
+                    f"Tenant slug={slug!r} already exists (id={existing.id}). "
                     "Use --add-admin-only to add another admin to that tenant."
                 )
             created_tenant = True
@@ -175,7 +175,7 @@ class Command(BaseCommand):
                 tenant.save()
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"Tenant created: pk={tenant.pk} name={tenant.name!r} schema={tenant.schema_name!r}"
+                        f"Tenant created: id={tenant.id} name={tenant.name!r} schema={tenant.schema_name!r}"
                     )
                 )
 
@@ -229,10 +229,10 @@ class Command(BaseCommand):
                 user=user,
                 defaults={"tenant": tenant},
             )
-            if profile.tenant_id != tenant.pk:
+            if profile.tenant_id != tenant.id:
                 other = profile.tenant
                 raise CommandError(
-                    f"User {admin_username!r} already has UserProfile for tenant pk={other.pk} "
+                    f"User {admin_username!r} already has UserProfile for tenant id={other.id} "
                     f"({other.slug!r}). Use a different --admin-username or remove that profile first."
                 )
 
