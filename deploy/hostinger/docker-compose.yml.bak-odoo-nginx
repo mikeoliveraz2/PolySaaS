@@ -196,29 +196,12 @@ services:
       PORT: "5432"
       USER: ${ODOO_DB_USER:-odoo}
       PASSWORD: ${ODOO_DB_PASSWORD:?set ODOO_DB_PASSWORD}
-    # Traefik terminates TLS. proxy_mode required; public traffic hits odoo-edge (nginx) first.
+    # Traefik terminates TLS. proxy_mode + forwarded Host/Proto required for CSRF cookies.
     command: ["odoo", "--config=/etc/odoo/odoo.conf", "--proxy-mode"]
     volumes:
       - host_odoo_data:/var/lib/odoo
       - ../../docker/odoo/addons:/mnt/extra-addons
       - ./odoo.proxy.conf:/etc/odoo/odoo.conf:ro
-    networks:
-      - polysaas-internal
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/health || curl -fsS http://127.0.0.1:8069/web/login || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 30
-      start_period: 120s
-
-  # Public edge for Odoo: forces X-Forwarded-* so CSRF cookies get Secure under HTTPS.
-  odoo-edge:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    depends_on:
-      - odoo
-    volumes:
-      - ./odoo-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - polysaas-internal
       - dokploy-network
@@ -229,14 +212,17 @@ services:
       - traefik.http.routers.polysaas-odoo.entrypoints=websecure
       - traefik.http.routers.polysaas-odoo.tls=true
       - traefik.http.routers.polysaas-odoo.tls.certresolver=letsencrypt
-      - traefik.http.services.polysaas-odoo.loadbalancer.server.port=80
+      - traefik.http.routers.polysaas-odoo.middlewares=odoo-fwdheaders
+      - traefik.http.middlewares.odoo-fwdheaders.headers.customrequestheaders.X-Forwarded-Proto=https
+      - traefik.http.middlewares.odoo-fwdheaders.headers.customrequestheaders.X-Forwarded-Host=${ODOO_HOST:-odoo.prod-polysaas.cloud}
+      - traefik.http.services.polysaas-odoo.loadbalancer.server.port=8069
       - traefik.http.services.polysaas-odoo.loadbalancer.passHostHeader=true
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/web/login || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8069/web/health || curl -fsS http://127.0.0.1:8069/web/login || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 30
+      start_period: 120s
 
 networks:
   polysaas-internal:
