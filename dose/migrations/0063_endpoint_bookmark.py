@@ -5,20 +5,26 @@ from django.db import migrations, models
 
 
 def create_endpoint_bookmark_table(apps, schema_editor):
+    # RunPython receives from_state.apps; EndpointBookmark is only added in
+    # state_operations, so apps.get_model() fails. Use the live model.
+    from dose.models import EndpointBookmark
+
     with schema_editor.connection.cursor() as cursor:
         cursor.execute("SELECT current_schema()")
         schema = cursor.fetchone()[0]
     if schema == "public":
         return
-    table = "endpoint_bookmark"
+    table = EndpointBookmark._meta.db_table
     if table not in schema_editor.connection.introspection.table_names():
-        schema_editor.create_model(apps.get_model("dose", "EndpointBookmark"))
+        schema_editor.create_model(EndpointBookmark)
 
 
 def drop_endpoint_bookmark_table(apps, schema_editor):
-    table = "endpoint_bookmark"
+    from dose.models import EndpointBookmark
+
+    table = EndpointBookmark._meta.db_table
     if table in schema_editor.connection.introspection.table_names():
-        schema_editor.delete_model(apps.get_model("dose", "EndpointBookmark"))
+        schema_editor.delete_model(EndpointBookmark)
 
 
 class Migration(migrations.Migration):
