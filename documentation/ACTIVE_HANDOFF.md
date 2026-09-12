@@ -4,7 +4,7 @@ This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
 **Date:** 2026-09-12 (Saturday)  
-**Session:** Hostinger + Dokploy — domain retarget  
+**Session:** Hostinger + Dokploy — Odoo HTTPS login **BINGO**  
 **Branch:** main  
 
 ## Live infra
@@ -16,26 +16,29 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 | VPS IP | `187.53.138.235` |
 | Domain | `prod-polysaas.cloud` |
 | Hosts | `app` / `mm` / `odoo`.prod-polysaas.cloud |
-| SSH (`id_ed25519_hostinger`) | **Not authorized yet** on VPS |
+| DNS A records | **DONE** — all three → `187.53.138.235` |
+| SSH (`id_ed25519_hostinger`) | Laptop still saw Permission denied earlier; use Dokploy UI when SSH fails |
 
-## Completed (repo)
+## BINGO this session
 
-- [`deploy/hostinger/docker-compose.yml`](../deploy/hostinger/docker-compose.yml) adapted for **Dokploy**:
-  - Removed local Traefik service (Dokploy owns TLS)
-  - External `dokploy-network` + internal `polysaas-hostinger`
-  - No `container_name`
-  - Hostnames → `*.prod-polysaas.cloud`
-- Scripts / runbook / `.env.example` updated for new domain
+- **Hostinger Odoo HTTPS login** — `documentation/BINGO_HOSTINGER_ODOO_HTTPS_LOGIN_2026-09-12.md`
+- Verified: browser login → Odoo Apps; curl GET→POST → `303 /odoo`
+- Frozen: `deploy/hostinger/docker-compose.yml`, `odoo-nginx.conf`, `odoo.proxy.conf`
 
-## Next (operator)
+## Also completed (not separate BINGO)
 
-1. Authorize laptop SSH public key on VPS / Dokploy
-2. DNS A records for `app`/`mm`/`odoo`.prod-polysaas.cloud → `187.53.138.235`
-3. Create Dokploy Compose app from `deploy/hostinger/docker-compose.yml` + filled env
-4. Migrate data + retarget Slack/HubSpot → `https://app.prod-polysaas.cloud/...`
-5. Smoke tests
+- Django core on Hostinger: migrate, superuser, tenant/`olient` bootstrap (earlier same day)
+- Odoo DB init (`odoo -i base`), `web.base.url` = `https://odoo.prod-polysaas.cloud`
+
+## Next actions
+
+1. Rotate Odoo admin password (bootstrap password was temporary).
+2. Wire PolySaaS passthrough to in-compose `http://odoo:8069`.
+3. Mattermost public routing / health on `mm.prod-polysaas.cloud`.
+4. Confirm laptop SSH to VPS if needed for ops outside Dokploy.
 
 ## Prior bingo still valid
 
 - Slack / Mattermost / HubSpot → Odoo (`newpolysaascontact` + HubSpot FlowLink)
 - Latest HubSpot bingo: `11a0d627`
+- Font/theme toggle bingo: `1dcca3bd`
