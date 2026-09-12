@@ -196,8 +196,6 @@ services:
       PORT: "5432"
       USER: ${ODOO_DB_USER:-odoo}
       PASSWORD: ${ODOO_DB_PASSWORD:?set ODOO_DB_PASSWORD}
-    # Traefik terminates TLS; without proxy_mode, login CSRF/session cookies break over HTTPS.
-    command: ["odoo", "--proxy-mode"]
     volumes:
       - host_odoo_data:/var/lib/odoo
       - ../../docker/odoo/addons:/mnt/extra-addons
