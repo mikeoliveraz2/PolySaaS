@@ -10,6 +10,7 @@
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
 # FIX 2026-09-13 (owner-approved): Hostinger HTTPS — never send browser to http://mattermost:8065;
 #      rewrite /static/ onto /pt/admin/<slug>/static/ (same-origin) so Mixed Content / app /static 404s stop.
+# FIX 2026-09-13 (owner-approved): matches_endpoint also claims mm.* host/slug (mm.prod-polysaas.cloud).
 # NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
 # SECURITY FIX 2026-07-30 (owner-approved): removed TenantApp.public_bundles and raw-SQL
 # "SET search_path TO public" writes that leaked tenant-owned TenantApp rows/credentials
@@ -47,7 +48,17 @@ class MattermostPassthroughHandler:
         url = str(getattr(endpoint, "endpoint_url", "") or "").lower()
         slug = str(getattr(endpoint, "slug", "") or "").lower()
         trigger = str(getattr(endpoint, "trigger_path", "") or "").lower()
-        return "mattermost" in url or "mattermost" in slug or "mattermost" in trigger
+        if "mattermost" in url or "mattermost" in slug or "mattermost" in trigger:
+            return True
+        # Hostinger public host slug (mm.prod-polysaas.cloud) has no "mattermost" substring.
+        from urllib.parse import urlparse
+        netloc = (urlparse(url).netloc or "").lower() if url else ""
+        host = netloc.split(":")[0]
+        if host.startswith("mm.") or slug.startswith("mm.") or slug == "mm":
+            return True
+        if host == "mattermost" or ":8065" in netloc or slug.endswith(":8065"):
+            return True
+        return False
 
     def _mattermost_non_embeddable_path(self, upstream_path: str) -> bool:
         path = upstream_path or "/"
