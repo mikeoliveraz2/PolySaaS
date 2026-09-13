@@ -21,7 +21,7 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 
 ## BINGO this session
 
-- **Hostinger Odoo HTTPS login** — `documentation/BINGO_HOSTINGER_ODOO_HTTPS_LOGIN_2026-09-12.md`
+- **Hostinger Odoo HTTPS login** — `documentation/BINGO_HOSTINGER_ODOO_HTTPS_LOGIN_2026-09-12.md` (commit `89aedefa`)
 - Verified: browser login → Odoo Apps; curl GET→POST → `303 /odoo`
 - Frozen: `deploy/hostinger/docker-compose.yml`, `odoo-nginx.conf`, `odoo.proxy.conf`
 
