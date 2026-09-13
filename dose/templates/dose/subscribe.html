@@ -6,8 +6,8 @@
      match validation, so a typo/autocaps/autofill mismatch at signup can no longer silently
      lock in a password the user didn't intend (see subscription_views.py plaintext-log fix too). -->
 <!-- BINGO: Signup Password Security Fix — pso15 end-to-end verified — 2026-08-02 -->
-<!-- FIX 2026-09-13 (owner-approved): strip coming-soon apps; only Odoo + Mattermost +
-     External BYOL SaaS application / Two / Three (stored only — no BYOL provisioning). -->
+<!-- FIX 2026-09-13 (owner-approved): selectable = Odoo + MatterMost + External BYOL 1/2/3;
+     show Nextcloud/Dolibarr/PolySysMon/Liferay/WordPress as coming soon (not selectable). -->
 {% extends "dose/dosebase.html" %}
 {% load static %}
 {% block title %}PolySaaS Online{% endblock %}
@@ -292,9 +292,10 @@
             <span id="slot-count-label" style="font-size:0.82em; color:#888; margin-left:0.5em;"></span>
         </h4>
         <small style="display: block; color: #666; margin-bottom: 0.75em;">
-            Pick the applications you need. Odoo counts as <strong>2 slots</strong>; Mattermost and each External BYOL SaaS option count as 1.
-            A plan that fits will be recommended below.
-            Odoo and Mattermost are set up after subscribe. External BYOL SaaS slots are recorded only — you bring your own license; PolySaaS generates the handler later.
+            Pick the applications you need. Odoo counts as <strong>2 slots</strong>; MatterMost counts as 1;
+            External BYOL packages count as 1, 2, or 3 slots. A plan that fits will be recommended below.
+            Odoo and MatterMost are set up after subscribe. External BYOL SaaS is recorded only — you bring your own license; PolySaaS generates the handler later.
+            Other apps below are listed for roadmap visibility but are not selectable yet.
         </small>
         <div class="app-checkbox-row">
             <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" data-app-slots="2">
@@ -315,6 +316,26 @@
         <div class="app-checkbox-row">
             <input type="checkbox" id="enable-external-saas-3" name="enable_external_saas_3" class="app-checkbox byol-saas-option" data-app-slots="3">
             <label for="enable-external-saas-3">Three External BYOL SaaS applications <span class="app-slot-label">(3 slots)</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-nextcloud">Nextcloud File Storage <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-dolibarr">Dolibarr ERP/CRM <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
+            <label for="enable-polysysmon">PolySysMon <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-liferay">Liferay <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
+            <label for="enable-wordpress">WordPress CMS <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
         </div>
         <div id="slot-advisory"></div>
     </div>
@@ -1210,6 +1231,13 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_external_saas_1: !!document.getElementById('enable-external-saas-1').checked,
         enable_external_saas_2: !!document.getElementById('enable-external-saas-2').checked,
         enable_external_saas_3: !!document.getElementById('enable-external-saas-3').checked,
+        enable_nextcloud: false,
+        enable_dolibarr: false,
+        enable_hubspot: false,
+        enable_wordpress: false,
+        enable_liferay: false,
+        enable_monitor_logger: false,
+        enable_polysysmon: false,
     };
 
     try {

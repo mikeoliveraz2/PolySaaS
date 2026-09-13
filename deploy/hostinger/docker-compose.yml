@@ -2,6 +2,8 @@
 # BINGO: Hostinger Odoo HTTPS Login — commit 89aedefa
 # FIX 2026-09-13 (owner-approved): Mattermost healthcheck disabled (no curl in image)
 #      so Traefik can publish mm.prod-polysaas.cloud.
+# FIX 2026-09-13 (owner-approved): pass Stripe keys into Django for /dose/subscribe/
+#      (STRIPE_PUBLISHABLE_KEY / STRIPE_SECRET_KEY from Dokploy .env).
 #
 # PolySaaS Hostinger + Dokploy production stack (phase 1)
 #
@@ -77,6 +79,13 @@ services:
       GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
       MATTERMOST_URL: ${MATTERMOST_URL:-https://mm.prod-polysaas.cloud}
       HUBSPOT_PRIVATE_APP_TOKEN: ${HUBSPOT_PRIVATE_APP_TOKEN:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_TEST_SECRET_KEY: ${STRIPE_TEST_SECRET_KEY:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      STRIPE_PRICE_ID_POLYSAAS_1: ${STRIPE_PRICE_ID_POLYSAAS_1:-}
+      STRIPE_PRICE_ID_POLYSAAS_3: ${STRIPE_PRICE_ID_POLYSAAS_3:-}
+      STRIPE_PRICE_ID_POLYSAAS_UNLIMITED: ${STRIPE_PRICE_ID_POLYSAAS_UNLIMITED:-}
     volumes:
       - host_django_media:/app/var/media_root
     networks:

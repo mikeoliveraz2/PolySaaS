@@ -1,5 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Hostinger Odoo HTTPS Login — commit 89aedefa
+# FIX 2026-09-13 (owner-approved): Mattermost healthcheck disabled (no curl in image)
+#      so Traefik can publish mm.prod-polysaas.cloud.
 #
 # PolySaaS Hostinger + Dokploy production stack (phase 1)
 #
@@ -164,12 +166,10 @@ services:
       - traefik.http.routers.polysaas-mattermost.tls=true
       - traefik.http.routers.polysaas-mattermost.tls.certresolver=letsencrypt
       - traefik.http.services.polysaas-mattermost.loadbalancer.server.port=8065
+    # Official MM image has no curl/bash — curl healthcheck left the container
+    # permanently unhealthy and Traefik never published mm.prod-polysaas.cloud.
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8065/api/v4/system/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 20
-      start_period: 90s
+      disable: true
 
   odoo-db:
     image: postgres:16-alpine
