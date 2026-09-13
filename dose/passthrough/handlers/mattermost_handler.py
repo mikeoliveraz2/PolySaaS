@@ -318,8 +318,15 @@ window.location.replace('/');
         if not m:
             return False
         seg = m.group(1).lower()
-        # Slug identity (preferred) or legacy hostname:port bookmarks.
-        return seg == 'mattermost' or 'mattermost' in seg or seg.endswith(':8065')
+        # Slug identity (preferred), public host slug (mm.prod-…), or legacy hostname:port.
+        return (
+            seg == 'mattermost'
+            or 'mattermost' in seg
+            or seg.endswith(':8065')
+            or seg.startswith('mm.')
+            or seg.endswith('.cloud')
+            or '.' in seg  # host-style slugs e.g. mm.prod-polysaas.cloud
+        )
 
     _cors_patched = False  # class-level flag: only patch once per process
 
@@ -2257,10 +2264,11 @@ try {{
             for s in skip:
                 if path.startswith(s):
                     return m.group(0)
-            return f'{m.group(1)}={m.group(2)}{pfx}{path}{m.group(2)}'
+            # Include closing quote in the match (group 4) so we do not leave "".
+            return f'{m.group(1)}={m.group(2)}{pfx}{path}{m.group(4)}'
 
         html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*)',
+            r'(src|href)=(["\'])(/static/[^"\']*)(\2)',
             _root_static,
             html_str,
             flags=re.IGNORECASE,
@@ -2273,8 +2281,8 @@ try {{
                 continue
             esc = re.escape(origin)
             html_str = re.sub(
-                r'(src|href)=(["\'])' + esc + r'/static/([^"\']*)',
-                lambda m, _pfx=pfx: f'{m.group(1)}={m.group(2)}{_pfx}/static/{m.group(3)}{m.group(2)}',
+                r'(src|href)=(["\'])' + esc + r'/static/([^"\']*)(\2)',
+                lambda m, _pfx=pfx: f'{m.group(1)}={m.group(2)}{_pfx}/static/{m.group(3)}{m.group(4)}',
                 html_str,
                 flags=re.IGNORECASE,
             )

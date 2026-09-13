@@ -8,6 +8,8 @@
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # Prior BINGO: Mattermost SSO Passthrough Working — 2026-06-07
 # Prior BINGO: Mattermost Login Bridge Auto SSO — 2026-05-31
+# FIX 2026-09-13 (owner-approved): Hostinger HTTPS — never send browser to http://mattermost:8065;
+#      rewrite /static/ onto /pt/admin/<slug>/static/ (same-origin) so Mixed Content / app /static 404s stop.
 # NO CHANGES WITHOUT OWNER PERMISSION (Michael / Shela)
 # SECURITY FIX 2026-07-30 (owner-approved): removed TenantApp.public_bundles and raw-SQL
 # "SET search_path TO public" writes that leaked tenant-owned TenantApp rows/credentials
@@ -1617,31 +1619,9 @@ try {{
             flags=re.IGNORECASE,
         )
 
-        # Load static files DIRECTLY from Mattermost origin to avoid Django dev
-        # server concurrency limits (ERR_CONNECTION_REFUSED on many chunks).
-        # Only API calls and form POSTs go through the proxy.
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-
-        # Keep absolute upstream-origin static URLs as-is (already direct)
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
+        # Same-origin static proxy (HTTPS-safe). Never leave assets on http://mattermost:8065
+        # or bare /static/ on the PolySaaS host.
+        html_str = self._rewrite_static_urls_to_proxy(html_str, proxy_prefix, base_origin)
 
         # Rewrite window.basename so React Router uses proxy prefix as its base
         html_str = re.sub(
@@ -2261,18 +2241,57 @@ try {{
     def _strip_meta_redirects(self, html):
         return re.sub(r'<meta\s+http-equiv\s*=\s*["\']refresh["\'][^>]*>', "", html, flags=re.IGNORECASE)
 
+    def _rewrite_static_urls_to_proxy(self, html_str, proxy_prefix, base_origin=None):
+        """Rewrite MM /static assets onto same-origin /pt/admin/<slug>/static/.
+
+        Never leave the browser on http://mattermost:8065 (Mixed Content under HTTPS
+        PolySaaS) or bare /static/ on app.prod (Django 404 HTML / wrong MIME).
+        """
+        if not html_str or not proxy_prefix:
+            return html_str
+        pfx = proxy_prefix.rstrip('/')
+        skip = ('/static/admin/', '/static/vendor/', '/static/jazzmin/', '/static/img/')
+
+        def _root_static(m):
+            path = m.group(3)
+            for s in skip:
+                if path.startswith(s):
+                    return m.group(0)
+            return f'{m.group(1)}={m.group(2)}{pfx}{path}{m.group(2)}'
+
+        html_str = re.sub(
+            r'(src|href)=(["\'])(/static/[^"\']*)',
+            _root_static,
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        origins = []
+        if base_origin:
+            origins.append(base_origin.rstrip('/'))
+        for origin in origins:
+            if not origin:
+                continue
+            esc = re.escape(origin)
+            html_str = re.sub(
+                r'(src|href)=(["\'])' + esc + r'/static/([^"\']*)',
+                lambda m, _pfx=pfx: f'{m.group(1)}={m.group(2)}{_pfx}/static/{m.group(3)}{m.group(2)}',
+                html_str,
+                flags=re.IGNORECASE,
+            )
+        return html_str
+
     def _strip_csp(self, html):
         """Remove Mattermost CSP meta tags (any attribute order) so PolySaaS shims can run."""
         # http-equiv first (upstream default)
         html = re.sub(
-            r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>',
+            r'<meta\s+http-equiv\s*=\s*["\']Content-Security-Policy(?:-Report-Only)?["\'][^>]*>',
             '',
             html,
             flags=re.IGNORECASE,
         )
         # content= before http-equiv, or other attribute order
         html = re.sub(
-            r'<meta\b[^>]*\bhttp-equiv\s*=\s*["\']Content-Security-Policy["\'][^>]*>',
+            r'<meta\b[^>]*\bhttp-equiv\s*=\s*["\']Content-Security-Policy(?:-Report-Only)?["\'][^>]*>',
             '',
             html,
             flags=re.IGNORECASE,
@@ -2304,25 +2323,7 @@ try {{
             html_str,
             flags=re.IGNORECASE,
         )
-        html_str = re.sub(
-            r'(src|href)=(["\'])([^"\']*?[\w.-]+\.(js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json|map)(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        html_str = re.sub(
-            r'(src|href)=(["\'])(/static/[^"\']*(?:\?[^"\']*)?)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        _abs_static = re.escape(base_origin) + r'/static/'
-        html_str = re.sub(
-            r'(src|href)=(["\'])' + _abs_static + r'([^"\']*)',
-            lambda m: f'{m.group(1)}={m.group(2)}{base_origin}/static/{m.group(3)}{m.group(2)}',
-            html_str,
-            flags=re.IGNORECASE,
-        )
+        html_str = self._rewrite_static_urls_to_proxy(html_str, proxy_prefix, base_origin)
         html_str = re.sub(
             r"(window\.basename\s*=\s*)['\"][^'\"]*['\"]",
             lambda m: m.group(1) + f"'{proxy_prefix}'",
@@ -2352,7 +2353,7 @@ try {{
     var _serverToken = {token_js};
     var MMAUTHTOKEN = (_serverToken && String(_serverToken).length > 8) ? _serverToken : '';
     var O = window.location.origin;
-    try {{ window.__webpack_public_path__ = B + '/static/'; }} catch(_wpp) {{}}
+    try {{ window.__webpack_public_path__ = PROXY + '/static/'; }} catch(_wpp) {{}}
     var _f = window.fetch;
     function _mmTokenPresent() {{
         return (MMAUTHTOKEN || _serverToken || '').trim().length > 8;
@@ -2475,9 +2476,9 @@ try {{
                 path = path.slice(PROXY.length);
             }}
             if (!_isMmStaticAsset(path)) return url;
-            var upstream = B + (path.charAt(0) === '/' ? path : '/' + path);
+            var upstream = (O + PROXY) + (path.charAt(0) === '/' ? path : '/' + path);
             if (upstream !== url) {{
-                console.log('[PolySaaS MM] guard chunk->upstream: ' + upstream.slice(-70));
+                console.log('[PolySaaS MM] guard chunk->proxy: ' + upstream.slice(-70));
             }}
             return upstream;
         }}
@@ -2797,9 +2798,9 @@ try {{
                 path = path.slice(PROXY.length);
             }}
             if (!_isMmStaticAsset(path)) return url;
-            var upstream = B + (path.charAt(0) === '/' ? path : '/' + path);
+            var upstream = (O + PROXY) + (path.charAt(0) === '/' ? path : '/' + path);
             if (upstream !== url) {{
-                console.log('[PolySaaS MM] chunk->upstream: ' + upstream.slice(-70));
+                console.log('[PolySaaS MM] chunk->proxy: ' + upstream.slice(-70));
             }}
             return upstream;
         }}
@@ -2830,7 +2831,7 @@ try {{
                 }});
             }}
         }} catch(_ss) {{}}
-        console.log('[PolySaaS MM] Chunk redirect installed, upstream=' + B);
+        console.log('[PolySaaS MM] Chunk redirect installed, proxy=' + PROXY + ' (server=' + B + ')');
     }})();
     var MM_USER_ID = {user_id_js};
     var MM_USERNAME = {username_js};
@@ -2850,7 +2851,8 @@ try {{
     }}
     function _mmUpstreamApi(path) {{
         if (!path || path.charAt(0) !== '/') path = '/' + (path || '');
-        return B + path;
+        // Same-origin proxy — never http://mattermost:8065 from an HTTPS PolySaaS page.
+        return O + PROXY + path;
     }}
     function _mmIsUpstreamUrl(url) {{
         if (typeof url !== 'string' || !url) return false;
@@ -2929,6 +2931,10 @@ try {{
         }}).catch(function() {{ return resp; }});
     }}
 
+    function _mmProxyUrl(path) {{
+        if (!path || path.charAt(0) !== '/') path = '/' + (path || '');
+        return O + PROXY + path;
+    }}
     function _mmRewriteFetchUrl(url) {{
         if (typeof url !== 'string' || !url) return url;
         var path = url;
@@ -2937,11 +2943,13 @@ try {{
         }} else if (url.indexOf(B) === 0) {{
             path = url.slice(B.length);
             if (!path.startsWith('/')) path = '/' + path;
+            // Keep API/static on same-origin proxy when B is an internal http URL
+            // (HTTPS PolySaaS page must never fetch http://mattermost:8065).
             if (_mmShouldRouteDirect(path)) {{
-                return B + path;
+                return (B.indexOf('http:') === 0) ? _mmProxyUrl(path) : (B + path);
             }}
             if (/\.(js|css)(\?|$)/i.test(path)) {{
-                return B + path;
+                return _mmProxyUrl(path);
             }}
         }}
         if (PROXY && path.indexOf(PROXY + '/static/') === 0) {{
@@ -2951,7 +2959,7 @@ try {{
             path = path.slice(PROXY.length) || '/';
         }}
         if (_mmShouldRouteDirect(path)) {{
-            return B + path;
+            return (B.indexOf('http:') === 0) ? _mmProxyUrl(path) : (B + path);
         }}
         var _isPluginStatic = path.indexOf('/static/plugins/') === 0 &&
             /\.(js|css|woff2?|ttf|eot|svg|map|json)(\?|$)/i.test(path);
@@ -2960,8 +2968,8 @@ try {{
             path.indexOf('/static/admin/') === -1 &&
             path.indexOf('/static/vendor/') === -1 &&
             path.indexOf('/static/jazzmin/') === -1) {{
-            if (url.indexOf(O) === 0 || url.charAt(0) === '/') {{
-                return B + (path.charAt(0) === '/' ? path : '/' + path);
+            if (url.indexOf(O) === 0 || url.charAt(0) === '/' || url.indexOf(B) === 0) {{
+                return _mmProxyUrl(path.charAt(0) === '/' ? path : '/' + path);
             }}
         }}
         return url;
@@ -3244,7 +3252,7 @@ try {{
         }} catch(_bl) {{
             window.basename = PROXY;
         }}
-        window.__webpack_public_path__ = B + '/static/';
+        window.__webpack_public_path__ = PROXY + '/static/';
     }}
     _mmInstallBasenameLock();
 
