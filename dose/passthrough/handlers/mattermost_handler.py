@@ -1,6 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Hostinger Mattermost passthrough Town Square — 2026-09-13 — see documentation/BINGO_HOSTINGER_MM_PASSTHROUGH_2026-09-13.md
+# BINGO: Hostinger Mattermost passthrough Town Square — 2026-09-13 — commit c94bd17b — see documentation/BINGO_HOSTINGER_MM_PASSTHROUGH_2026-09-13.md
 # BINGO: Mattermost passthrough restored — PolySaaSOline Town Square — 2026-09-07 — commit b4b6be03
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: PolySaaS → Mattermost one-way theme sync — commit 10427a4d

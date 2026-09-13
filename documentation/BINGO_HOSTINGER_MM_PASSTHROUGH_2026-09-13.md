@@ -4,7 +4,7 @@
 **Date:** 2026-09-13 (Sunday)  
 **Branch:** main  
 **Certification commits (code):** `c3e8cfa6`, `c31479a3`, `7201b356`, `cec81578`  
-**Doc / freeze commit:** (this commit)
+**Doc / freeze commit:** `c94bd17b`
 
 ## What was verified
 
