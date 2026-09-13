@@ -185,20 +185,24 @@ PLAN_MAX_APPS = {
     'polysaas-unlimited': None,
 }
 
-# Subscribe form keys: Odoo, WordPress & PolySysMon each consume 2 slots toward PLAN_MAX_APPS
+# Subscribe form keys: Odoo & BYOL package sizes consume slots toward PLAN_MAX_APPS
 PLAN_BUNDLED_APP_SLOTS = {
     'enable_odoo': 2,
     'enable_wordpress': 2,
     'enable_polysysmon': 2,
+    'enable_external_saas_1': 1,
+    'enable_external_saas_2': 2,
+    'enable_external_saas_3': 3,
 }
 
-# Subscribe page: only these bundled apps can be selected at signup (others shown disabled).
+# Subscribe page: only these can be selected at signup.
+# External BYOL SaaS packages are recorded only — no tenant provisioning.
 SUBSCRIBE_ENABLED_BUNDLED_APPS = (
     'enable_odoo',
-    'enable_nextcloud',
-    'enable_dolibarr',
     'enable_mattermost',
-    'enable_hubspot',
+    'enable_external_saas_1',
+    'enable_external_saas_2',
+    'enable_external_saas_3',
 )
 
 # TenantApp.app_name values: same weights for in-product limits

@@ -192,13 +192,14 @@ PLAN_BUNDLED_APP_SLOTS = {
     'enable_polysysmon': 2,
 }
 
-# Subscribe page: only these bundled apps can be selected at signup (others shown disabled).
+# Subscribe page: only these can be selected at signup (others shown disabled).
+# External SaaS (BYOL) slots are recorded only — no tenant provisioning.
 SUBSCRIBE_ENABLED_BUNDLED_APPS = (
     'enable_odoo',
-    'enable_nextcloud',
-    'enable_dolibarr',
     'enable_mattermost',
-    'enable_hubspot',
+    'enable_external_saas_1',
+    'enable_external_saas_2',
+    'enable_external_saas_3',
 )
 
 # TenantApp.app_name values: same weights for in-product limits
@@ -322,7 +323,7 @@ LLM_ROUTER_ADMIN_BASE_SYSTEM_PROMPT = env.str("LLM_ROUTER_ADMIN_BASE_SYSTEM_PROM
 # BINGO: PolySaaS AI Context-Aware Chat — commit fd9febb8
 # PolySaaS AI chat (Geronimo) — default Gemini for context-aware co-pilot demo
 LLM_ROUTER_ADMIN_CHAT_PROVIDER = env("LLM_ROUTER_ADMIN_CHAT_PROVIDER", default="anthropic")
-LLM_ROUTER_ADMIN_CHAT_MODEL = env("LLM_ROUTER_ADMIN_CHAT_MODEL", default="claude-sonnet-4-20250514")
+LLM_ROUTER_ADMIN_CHAT_MODEL = env("LLM_ROUTER_ADMIN_CHAT_MODEL", default="claude-sonnet-4-6")
 # Phase 2: tenant MLPrompt.key — refine (two-step LLM) or inject (single-call) for admin chat.
 LLM_ROUTER_ML_STUDIO_REFINE_KEY = env("LLM_ROUTER_ML_STUDIO_REFINE_KEY", default="polysaas_admin_chat_refine")
 LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM = env.bool("LLM_ROUTER_ML_STUDIO_REFINE_USE_LLM", default=True)

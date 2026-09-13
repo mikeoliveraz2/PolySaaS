@@ -5,6 +5,8 @@
 # FIX 2026-08-02 (owner-approved): stopped logging the raw signup password in plaintext
 # (was in the "[DEBUG] Creating user: ..." warning log). Only length is logged now.
 # BINGO: Signup Password Security Fix — pso15 end-to-end verified — 2026-08-02
+# FIX 2026-09-13 (owner-approved): External BYOL SaaS 1/2/3 packages selectable at signup;
+# stored only, no tenant provisioners. Enabled apps: Odoo + MatterMost + BYOL packages.
 
 """
 Subscription / Stripe signup API — saga pattern.
@@ -73,13 +75,24 @@ _BUNDLED_APP_LABELS = {
     'enable_odoo': 'Odoo ERP',
     'enable_nextcloud': 'Nextcloud',
     'enable_dolibarr': 'Dolibarr',
-    'enable_mattermost': 'Mattermost',
+    'enable_mattermost': 'MatterMost',
     'enable_wordpress': 'WordPress',
     'enable_liferay': 'Liferay',
     'enable_monitor_logger': 'Monitor Logger',
     'enable_polysysmon': 'PolySysMon',
     'enable_hubspot': 'HubSpot',
+    'enable_external_saas_1': 'External BYOL SaaS application',
+    'enable_external_saas_2': 'Two External BYOL SaaS applications',
+    'enable_external_saas_3': 'Three External BYOL SaaS applications',
 }
+
+# BYOL slots: stored on the subscription only — never run through tenant provisioners.
+_EXTERNAL_BYOL_APP_KEYS = frozenset({
+    'enable_external_saas_1',
+    'enable_external_saas_2',
+    'enable_external_saas_3',
+})
+
 
 
 def _validate_and_apply_promo_code(promo_code_input, plan_tier, user_count):
@@ -153,11 +166,15 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
             'This path skipped live card billing — use the normal subscribe flow for a Stripe trial.'
         )
 
-    labels = [_BUNDLED_APP_LABELS[k] for k in selected_apps if k in _BUNDLED_APP_LABELS]
-    if labels and provisioning_results:
+    byol_keys = [k for k in selected_apps if k in _EXTERNAL_BYOL_APP_KEYS]
+    provisionable_keys = [k for k in selected_apps if k not in _EXTERNAL_BYOL_APP_KEYS]
+    byol_labels = [_BUNDLED_APP_LABELS[k] for k in byol_keys if k in _BUNDLED_APP_LABELS]
+    provisionable_labels = [_BUNDLED_APP_LABELS[k] for k in provisionable_keys if k in _BUNDLED_APP_LABELS]
+
+    if provisionable_labels and provisioning_results:
         ok_apps = []
         failed = []
-        for app_key in selected_apps:
+        for app_key in provisionable_keys:
             label = _BUNDLED_APP_LABELS.get(app_key, app_key)
             row = provisioning_results.get(app_key) or {}
             if row.get('success'):
@@ -172,12 +189,12 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
             parts.append('Setup failed: ' + '; '.join(failed) + '.')
         if not ok_apps and not failed:
             parts.append(
-                f'You selected: {", ".join(labels)}. Setup did not complete — check PolySaaS admin for status.'
+                f'You selected: {", ".join(provisionable_labels)}. Setup did not complete — check PolySaaS admin for status.'
             )
         provisioning_notice = ' '.join(parts)
-    elif labels:
+    elif provisionable_labels:
         provisioning_notice = (
-            f'You selected these bundled applications: {", ".join(labels)}. '
+            f'You selected these bundled applications: {", ".join(provisionable_labels)}. '
             'They are being set up now; check your PolySaaS admin for status if anything is missing.'
         )
     else:
@@ -185,6 +202,12 @@ def _subscriber_facing_messages(selected_apps, *, tenant_name='', stripe_trial_s
             'You did not choose any bundled applications on this form. '
             'You can add them later from your PolySaaS admin when you are ready.'
         )
+
+    if byol_labels:
+        provisioning_notice = (
+            f'{provisioning_notice} External SaaS (BYOL) reserved: {", ".join(byol_labels)}. '
+            'You provision those apps; PolySaaS will generate the handler only — no automatic setup.'
+        ).strip()
 
     return {
         'trial_welcome': trial_welcome,
@@ -363,6 +386,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             'enable_mattermost', 'enable_wordpress',
             'enable_liferay', 'enable_monitor_logger', 'enable_polysysmon',
             'enable_hubspot',
+            'enable_external_saas_1', 'enable_external_saas_2', 'enable_external_saas_3',
         ]
         enabled_apps = set(getattr(settings, 'SUBSCRIBE_ENABLED_BUNDLED_APPS', app_keys))
         selected_apps = [k for k in app_keys if data.get(k) and k in enabled_apps]
@@ -371,8 +395,18 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             labels = [_BUNDLED_APP_LABELS.get(k, k) for k in rejected_apps]
             return Response(
                 {'error': (
-                    f'These bundled applications are not available at signup yet: '
-                    f'{", ".join(labels)}. Please choose from Odoo, Nextcloud, Dolibarr, Mattermost, or HubSpot.'
+                    f'These applications are not available at signup yet: '
+                    f'{", ".join(labels)}. Please choose from Odoo, MatterMost, '
+                    f'or External BYOL SaaS application (1 / 2 / 3).'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        byol_selected = [k for k in selected_apps if k in _EXTERNAL_BYOL_APP_KEYS]
+        if len(byol_selected) > 1:
+            return Response(
+                {'error': (
+                    'Choose only one External BYOL SaaS package '
+                    '(1, 2, or 3 applications), not more than one.'
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -629,6 +663,9 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
 
         for app_key, provisioner in provisioners:
             if not data.get(app_key):
+                continue
+            if app_key in _EXTERNAL_BYOL_APP_KEYS:
+                # BYOL: never provision — subscriber owns the app; PolySaaS handler only later.
                 continue
             kwargs = dict(base)
             app_name = app_key.replace('enable_', '')
