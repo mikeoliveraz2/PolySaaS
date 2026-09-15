@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # BINGO: Nextcloud server-side SSO working — 2026-08-03 — see documentation/BINGO_NEXTCLOUD_SSO_WORKING_2026-08-03.md
 # BINGO: UI Cleanup — commit 748e871e
@@ -169,6 +170,8 @@ STRIPE_PRICE_IDS = {
     'polysaas-1': env('STRIPE_PRICE_ID_POLYSAAS_1', default=STRIPE_PRICE_ID),
     'polysaas-3': env('STRIPE_PRICE_ID_POLYSAAS_3', default=''),
     'polysaas-unlimited': env('STRIPE_PRICE_ID_POLYSAAS_UNLIMITED', default=''),
+    # Optional dedicated Stripe Price; if empty, subscribe uses price_data at $10/mo.
+    'founders-beta': env('STRIPE_PRICE_ID_FOUNDERS_BETA', default=''),
 }
 
 # Per-user/month price for each plan (display only — actual billing is in Stripe)
@@ -176,6 +179,8 @@ PLAN_PRICES = {
     'polysaas-1': 26.00,
     'polysaas-3': 49.00,
     'polysaas-unlimited': 99.00,
+    # Founders Beta: fixed $10/mo for 6 months, then normal subscription rates.
+    'founders-beta': 10.00,
 }
 
 # Max bundled or external applications per plan (counted in "slots" below)
@@ -183,7 +188,14 @@ PLAN_MAX_APPS = {
     'polysaas-1': 1,
     'polysaas-3': 3,
     'polysaas-unlimited': None,
+    # All bundled apps included; up to 3 external BYOL slots handled separately.
+    'founders-beta': None,
 }
+
+# Founders Beta Circle (subscribe + Lemon Squeezy legacy pages)
+FOUNDERS_BETA_PRICE_USD = 10.00
+FOUNDERS_BETA_MONTHS = 6
+FOUNDERS_BETA_PLAN_TIER = 'founders-beta'
 
 # Subscribe form keys: Odoo & BYOL package sizes consume slots toward PLAN_MAX_APPS
 PLAN_BUNDLED_APP_SLOTS = {

@@ -1,4 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Founders Beta \ + Mattermost CP — 2026-09-16 -->
 <!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
 <!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
 <!-- BINGO: Unified Endpoint Workspace — 2026-09-01 -->
@@ -6,23 +7,27 @@
 <div
     class="ps-slack-mock"
     data-mode="{{ slack_wireframe_mode|default:'native' }}"
-    data-contact-url="{% if action_urls.slack_contact %}{{ action_urls.slack_contact }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
-    data-sale-url="{% if action_urls.slack_sale %}{{ action_urls.slack_sale }}{% else %}{% url 'dose:slack_wireframe_trigger' 'sale' %}{% endif %}"
+    data-contact-url="{% if action_urls.mattermost_contact %}{{ action_urls.mattermost_contact }}{% elif action_urls.slack_contact %}{{ action_urls.slack_contact }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
+    data-sale-url="{% if action_urls.mattermost_sale %}{{ action_urls.mattermost_sale }}{% elif action_urls.slack_sale %}{{ action_urls.slack_sale }}{% else %}{% url 'dose:slack_wireframe_trigger' 'sale' %}{% endif %}"
     data-status-url="{% if endpoint_status_url %}{{ endpoint_status_url }}{% else %}/dose/api/slack-wireframe/status/{% endif %}"
     data-messages-url="{% url 'dose:slack_wireframe_messages' %}"
     data-post-url="{% url 'dose:slack_wireframe_post_message' %}"
 >
     <style>
         .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span,
-        .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span {
+        .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="mattermost.contact"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="mattermost.sale"] > span {
             display:inline-block; width:28px; height:28px; flex:0 0 28px;
             font-size:0; line-height:0; color:transparent; overflow:hidden;
             background-position:center; background-repeat:no-repeat; background-size:contain;
         }
-        .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span {
+        .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="mattermost.contact"] > span {
             background-image:url("{% static 'admin/img/slack_bookmark_contact.png' %}");
         }
-        .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span {
+        .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="mattermost.sale"] > span {
             background-image:url("{% static 'admin/img/slack_bookmark_sale.png' %}");
         }
         .ps-slack-mock { position:relative; min-height:520px; display:grid; grid-template-columns:210px 1fr; background:#1a1d21; color:#d1d2d3; font:14px Arial,sans-serif; }

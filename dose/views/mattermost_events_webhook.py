@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # BINGO: HubSpot → Odoo Contact Creation — 2026-09-08
 # BINGO: Mattermost → Odoo Contact Creation — 2026-09-07
 
@@ -27,28 +28,36 @@ logger = logging.getLogger(__name__)
 
 
 def _find_mattermost_tenant(team_id: str, request_token: str = ""):
-    """Find tenant by mm_team_id, requiring webhook token when many tenants share a team id."""
+    """Find tenant by mm_team_id or mm_shared_team_id; require webhook token when set."""
     matches = []
     for tenant in Tenant.objects.exclude(schema_name__iexact='public').filter(is_active=True):
         with tenant_schema_search_path(tenant) as ok:
             if not ok:
                 continue
             try:
-                app = TenantApp.objects.filter(
-                    app_name='mattermost',
-                    extra_config__mm_team_id=team_id,
-                    status__in=('active', 'provisioning'),
-                ).first()
+                apps = list(
+                    TenantApp.objects.filter(
+                        app_name='mattermost',
+                        status__in=('active', 'provisioning'),
+                    )
+                )
             except Exception:
-                app = None
-            if not app:
-                continue
-            expected = (app.extra_config or {}).get('mm_webhook_token', '')
-            if request_token and expected:
-                if hmac.compare_digest(request_token, expected):
+                apps = []
+            for app in apps:
+                extra = app.extra_config or {}
+                team_ids = {
+                    (extra.get('mm_team_id') or '').strip(),
+                    (extra.get('mm_shared_team_id') or '').strip(),
+                }
+                team_ids.discard('')
+                if team_id not in team_ids:
+                    continue
+                expected = (extra.get('mm_webhook_token') or '').strip()
+                if request_token and expected:
+                    if hmac.compare_digest(request_token, expected):
+                        matches.append((tenant, app))
+                elif not request_token:
                     matches.append((tenant, app))
-            elif not request_token:
-                matches.append((tenant, app))
     if not matches:
         return None, None
     for tenant, app in matches:

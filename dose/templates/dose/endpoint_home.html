@@ -1,5 +1,6 @@
-{# UNFROZEN 2026-09-02 for UX refinement (Shela/Michael: AI-first nudge, not primary) #}
-{# Previous BINGOs: Slack home (2026-08-24), dual-feed (2026-08-28), workspace (2026-09-01), Geronimo (2026-09-02) #}
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16 -->
+<!-- Previous BINGOs: Slack home (2026-08-24), dual-feed (2026-08-28), workspace (2026-09-01), Geronimo (2026-09-02) -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -7,7 +8,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260901-1">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260916-1">
 {% endblock %}
 
 {% block content %}
@@ -50,6 +51,41 @@
         {% if surface_template %}
         <div class="polysaas-endpoint-home__form-host polysaas-endpoint-home__pane">
             {% include surface_template %}
+        </div>
+        {% elif action_urls.mattermost_contact or action_urls.slack_contact %}
+        {# Bookmarks open New contact / New sale; include sheets only (hide wireframe chrome). #}
+        <div class="polysaas-endpoint-home__form-host polysaas-endpoint-home__form-host--modals-only" aria-hidden="true">
+            {% include "polysniffer/slack_wireframe.html" %}
+            <style>
+                /* Must follow wireframe <style> so purple mock never paints on Control Panel. */
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock {
+                    min-height: 0 !important;
+                    height: 0 !important;
+                    width: 0 !important;
+                    overflow: visible !important;
+                    display: block !important;
+                    background: transparent !important;
+                    grid-template-columns: none !important;
+                    pointer-events: none !important;
+                }
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__sidebar,
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__main,
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__result,
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__composer {
+                    display: none !important;
+                    visibility: hidden !important;
+                    height: 0 !important;
+                    width: 0 !important;
+                    overflow: hidden !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__modal {
+                    position: fixed !important;
+                    inset: 0 !important;
+                    pointer-events: auto !important;
+                }
+            </style>
         </div>
         {% endif %}
 

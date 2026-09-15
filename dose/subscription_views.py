@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # BINGO: Odoo invoicing orchestration on subscribe — commit 7d05920e
 # BINGO: Mattermost SSO Passthrough v23 — commit dd0790cd
 # BINGO: Production Preview demo — provisioning_results API — 2026-06-15
@@ -7,6 +8,8 @@
 # BINGO: Signup Password Security Fix — pso15 end-to-end verified — 2026-08-02
 # FIX 2026-09-13 (owner-approved): External BYOL SaaS 1/2/3 packages selectable at signup;
 # stored only, no tenant provisioners. Enabled apps: Odoo + MatterMost + BYOL packages.
+# FIX 2026-09-15 (owner-approved): Founders Beta on subscribe — exclusive $10/mo for 6 months;
+# all bundled apps + up to 3 external BYOL; other plan options disabled when selected.
 
 """
 Subscription / Stripe signup API — saga pattern.
@@ -344,16 +347,17 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                                 status=status.HTTP_400_BAD_REQUEST)
 
         plan_tier = data.get('plan_tier', 'polysaas-1')
-        if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited'):
+        if plan_tier not in ('polysaas-1', 'polysaas-3', 'polysaas-unlimited', 'founders-beta'):
             plan_tier = 'polysaas-1'
-        user_count = normalize_user_count(data.get('user_count', 1))
+        is_founders_beta = plan_tier == 'founders-beta'
+        user_count = 1 if is_founders_beta else normalize_user_count(data.get('user_count', 1))
 
         # ── Promo code handling (new feature) ────────────────────────
         promo_code_input = data.get('promo_code', '').strip()
         promo_code_obj = None
         pricing = build_subscription_pricing(plan_tier, user_count=user_count)
-        
-        if promo_code_input:
+
+        if promo_code_input and not is_founders_beta:
             is_valid, promo_result, promo_pricing = _validate_and_apply_promo_code(
                 promo_code_input, plan_tier, user_count
             )
@@ -364,7 +368,11 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )
             promo_code_obj = promo_result
             pricing = promo_pricing
-
+        elif promo_code_input and is_founders_beta:
+            return Response(
+                {'error': 'Promo codes do not apply to the Founders Beta plan ($10/mo fixed).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         submitted_amount = None
         if data.get('amount') not in (None, ''):
             try:
@@ -391,7 +399,7 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
         enabled_apps = set(getattr(settings, 'SUBSCRIBE_ENABLED_BUNDLED_APPS', app_keys))
         selected_apps = [k for k in app_keys if data.get(k) and k in enabled_apps]
         rejected_apps = [k for k in app_keys if data.get(k) and k not in enabled_apps]
-        if rejected_apps:
+        if rejected_apps and not is_founders_beta:
             labels = [_BUNDLED_APP_LABELS.get(k, k) for k in rejected_apps]
             return Response(
                 {'error': (
@@ -401,8 +409,12 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if (is_founders_beta):
+            # Exclusive plan: fixed $10/mo. Bundled apps included; BYOL entitlement
+            # (up to 3) is granted by the plan — ignore any app toggles from the form.
+            selected_apps = ['enable_odoo', 'enable_mattermost', 'enable_external_saas_3']
         byol_selected = [k for k in selected_apps if k in _EXTERNAL_BYOL_APP_KEYS]
-        if len(byol_selected) > 1:
+        if len(byol_selected) > 1 and not is_founders_beta:
             return Response(
                 {'error': (
                     'Choose only one External BYOL SaaS package '
@@ -412,8 +424,16 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
             )
         max_apps = getattr(settings, 'PLAN_MAX_APPS', {}).get(plan_tier)
         slot_weights = getattr(settings, 'PLAN_BUNDLED_APP_SLOTS', {})
-        slot_count = sum(slot_weights.get(k, 1) for k in selected_apps)
-
+        # Founders Beta: only count BYOL package toward the "up to 3 external" rule.
+        if is_founders_beta:
+            slot_count = sum(slot_weights.get(k, 1) for k in byol_selected)
+            if slot_count > 3:
+                return Response(
+                    {'error': 'Founders Beta allows up to three external BYOL applications.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            slot_count = sum(slot_weights.get(k, 1) for k in selected_apps)
         if (plan_tier == 'polysaas-3'
                 and data.get('enable_wordpress')
                 and data.get('enable_polysysmon')):
@@ -453,16 +473,36 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                 customer = stripe.Customer.create(source=token, name=card_name, email=email)
                 stripe_customer_id = customer.id
 
-                sub_items = [{'price': stripe_price, 'quantity': user_count}]
+                if is_founders_beta and not stripe_price:
+                    # Fixed $10/mo without a pre-created Stripe Price ID.
+                    unit_amount = int(pricing['estimated_monthly_total'] * 100)
+                    sub_items = [{
+                        'price_data': {
+                            'currency': 'usd',
+                            'unit_amount': unit_amount,
+                            'recurring': {'interval': 'month'},
+                            'product_data': {
+                                'name': 'PolySaaS Founders Beta',
+                                'metadata': {
+                                    'plan_tier': 'founders-beta',
+                                    'founders_beta_months': str(
+                                        getattr(settings, 'FOUNDERS_BETA_MONTHS', 6)
+                                    ),
+                                },
+                            },
+                        },
+                        'quantity': 1,
+                    }]
+                else:
+                    sub_items = [{'price': stripe_price, 'quantity': user_count}]
                 needs_storage = data.get('enable_nextcloud') or data.get('enable_wordpress')
                 storage_price_id = getattr(settings, 'STRIPE_PRICE_ID_STORAGE', '')
-                if needs_storage and storage_price_id:
+                if needs_storage and storage_price_id and not is_founders_beta:
                     sub_items.append({'price': storage_price_id})
 
                 stripe_kwargs = {
                     'customer': customer.id,
                     'items': sub_items,
-                    'trial_period_days': getattr(settings, 'STRIPE_TRIAL_PERIOD_DAYS', 14),
                     'metadata': {
                         'plan_tier': plan_tier,
                         'tenant_name': tenant_name or '',
@@ -471,7 +511,17 @@ class SubscriptionApiViewSet(viewsets.ModelViewSet):
                         'estimated_monthly_total': str(pricing['estimated_monthly_total']),
                     },
                 }
-                if promo_code_obj:
+                if is_founders_beta:
+                    stripe_kwargs['metadata']['founders_beta_months'] = str(
+                        getattr(settings, 'FOUNDERS_BETA_MONTHS', 6)
+                    )
+                    # Promo rate already applied — no trial stacking.
+                    stripe_kwargs['trial_period_days'] = 0
+                else:
+                    stripe_kwargs['trial_period_days'] = getattr(
+                        settings, 'STRIPE_TRIAL_PERIOD_DAYS', 14
+                    )
+                if promo_code_obj and not is_founders_beta:
                     stripe_kwargs['discounts'] = [{'coupon': _ensure_stripe_coupon(promo_code_obj)}]
 
                 stripe_sub = stripe.Subscription.create(**stripe_kwargs)

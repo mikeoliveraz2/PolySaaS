@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: UI Cleanup — commit 748e871e
 # FIX 2026-08-02 (owner-approved): _build_landing_page_context()'s _endpoint_visible() used
@@ -1402,6 +1403,10 @@ def subscribe_view(request):
         'PRICE_1': plan_prices.get('polysaas-1', 26.00),
         'PRICE_3': plan_prices.get('polysaas-3', 49.00),
         'PRICE_UNLIMITED': plan_prices.get('polysaas-unlimited', 99.00),
+        'PRICE_FOUNDERS_BETA': plan_prices.get(
+            'founders-beta', getattr(settings, 'FOUNDERS_BETA_PRICE_USD', 10.00)
+        ),
+        'FOUNDERS_BETA_MONTHS': getattr(settings, 'FOUNDERS_BETA_MONTHS', 6),
         # Prefer dicts + |json_script in template (escapejs on JSON breaks JSON.parse).
         'plan_prices': plan_prices,
         'plan_max_apps': plan_max_apps,

@@ -1,4 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16 -->
 <!-- BINGO: UI Cleanup — commit 748e871e -->
 <!-- BINGO: Subscribe Behavior Enhanced — commit c9339777 -->
 <!-- BINGO: Production Preview demo — provisioning failure feedback — 2026-06-15 -->
@@ -6,8 +7,10 @@
      match validation, so a typo/autocaps/autofill mismatch at signup can no longer silently
      lock in a password the user didn't intend (see subscription_views.py plaintext-log fix too). -->
 <!-- BINGO: Signup Password Security Fix — pso15 end-to-end verified — 2026-08-02 -->
-<!-- FIX 2026-09-13 (owner-approved): strip coming-soon apps; only Odoo + Mattermost +
-     External BYOL SaaS application / Two / Three (stored only — no BYOL provisioning). -->
+<!-- FIX 2026-09-13 (owner-approved): selectable = Odoo + MatterMost + External BYOL 1/2/3;
+     show Nextcloud/Dolibarr/PolySysMon/Liferay/WordPress as coming soon (not selectable). -->
+<!-- FIX 2026-09-15 (owner-approved): Founders Beta plan — $10/mo for 6 months; exclusive
+     selection locks other plans; all bundled apps + up to 3 external BYOL. -->
 {% extends "dose/dosebase.html" %}
 {% load static %}
 {% block title %}PolySaaS Online{% endblock %}
@@ -16,7 +19,7 @@
 
 <style>
     .subscription-form {
-        max-width: 440px;
+        max-width: 720px;
         margin: 2em auto;
         padding: 2em;
         background: #fff;
@@ -237,7 +240,9 @@
 
 <h2 style="text-align:center; margin-bottom:0.25em;">Subscribe to PolySaaS</h2>
 <p style="text-align:center; font-size:1.05em; margin-bottom:1.5em; color:#555;">
-    All plans include a <strong>14-day free trial</strong>. Upgrade anytime.
+    All standard plans include a <strong>14-day free trial</strong>.
+    Or join the <strong>Founders Beta</strong> at a fixed <strong>$10/mo for 6 months</strong>
+    (all bundled apps + up to 3 external BYOL), then continue at normal subscription rates.
 </p>
 
 <form id="subscription-form" class="subscription-form" method="post" action="" novalidate>
@@ -292,9 +297,12 @@
             <span id="slot-count-label" style="font-size:0.82em; color:#888; margin-left:0.5em;"></span>
         </h4>
         <small style="display: block; color: #666; margin-bottom: 0.75em;">
-            Pick the applications you need. Odoo counts as <strong>2 slots</strong>; Mattermost and each External BYOL SaaS option count as 1.
-            A plan that fits will be recommended below.
-            Odoo and Mattermost are set up after subscribe. External BYOL SaaS slots are recorded only — you bring your own license; PolySaaS generates the handler later.
+            Pick the applications you need. Odoo counts as <strong>2 slots</strong>; MatterMost counts as 1;
+            External BYOL packages count as 1, 2, or 3 slots. A plan that fits will be recommended below.
+            Odoo and MatterMost are set up after subscribe. External BYOL SaaS is recorded only — you bring your own license; PolySaaS generates the handler later.
+            Other apps below are listed for roadmap visibility but are not selectable yet.
+            <strong>Founders Beta</strong> locks every other option and bills a fixed <strong>$10/mo</strong>
+            (all bundled apps + entitlement to up to 3 external BYOL). After 6 months, normal rates apply.
         </small>
         <div class="app-checkbox-row">
             <input type="checkbox" id="enable-odoo" name="enable_odoo" class="app-checkbox" data-app-slots="2">
@@ -316,6 +324,26 @@
             <input type="checkbox" id="enable-external-saas-3" name="enable_external_saas_3" class="app-checkbox byol-saas-option" data-app-slots="3">
             <label for="enable-external-saas-3">Three External BYOL SaaS applications <span class="app-slot-label">(3 slots)</span></label>
         </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-nextcloud" name="enable_nextcloud" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-nextcloud">Nextcloud File Storage <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-dolibarr" name="enable_dolibarr" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-dolibarr">Dolibarr ERP/CRM <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-polysysmon" name="enable_polysysmon" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
+            <label for="enable-polysysmon">PolySysMon <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-liferay" name="enable_liferay" class="app-checkbox" disabled aria-disabled="true">
+            <label for="enable-liferay">Liferay <span class="app-slot-label">(1 slot)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
+        <div class="app-checkbox-row app-unavailable">
+            <input type="checkbox" id="enable-wordpress" name="enable_wordpress" class="app-checkbox" data-app-slots="2" disabled aria-disabled="true">
+            <label for="enable-wordpress">WordPress CMS <span class="app-slot-label">(2 slots)</span> <span class="app-coming-soon">— coming soon</span></label>
+        </div>
         <div id="slot-advisory"></div>
     </div>
 
@@ -324,6 +352,18 @@
         <h4 style="margin: 0 0 0.25em; color: #333; font-size: 1.1em;">Choose Your Plan</h4>
         <p id="plan-suggestion" style="font-size:0.92em; color:#555; margin: 0 0 0.75em;"></p>
         <div class="plan-cards">
+            <div class="plan-card plan-card--founders" data-tier="founders-beta" data-price="{{ PRICE_FOUNDERS_BETA }}">
+                <div class="plan-badge" style="display:inline-block;background:#6d28d9;color:#fff;font-size:0.72em;padding:0.2em 0.55em;border-radius:999px;margin-bottom:0.35em;">FOUNDERS BETA</div>
+                <h3>Founders Beta</h3>
+                <div class="plan-price">${{ PRICE_FOUNDERS_BETA }}<span>/mo · {{ FOUNDERS_BETA_MONTHS }} months</span></div>
+                <ul class="plan-features">
+                    <li>All bundled apps included</li>
+                    <li>Up to 3 external BYOL apps</li>
+                    <li>Fixed $10/mo — other options locked</li>
+                    <li>Then normal subscription rates</li>
+                </ul>
+                <button type="button" class="plan-select-btn" onclick="selectPlan('founders-beta')">Select</button>
+            </div>
             <div class="plan-card" data-tier="polysaas-1" data-price="{{ PRICE_1 }}">
                 <h3>PolySaaS-1</h3>
                 <div class="plan-price">${{ PRICE_1 }}<span>/user/mo</span></div>
@@ -452,6 +492,7 @@
    Subscribe page logic — apps-first flow
    ================================================================ */
 var APP_LIMITS, PLAN_PRICES;
+var foundersBetaActive = false;
 (function () {
     function readJsonScript(id, fallback) {
         var el = document.getElementById(id);
@@ -459,11 +500,11 @@ var APP_LIMITS, PLAN_PRICES;
         try { return JSON.parse(el.textContent); }
         catch (e) { return fallback; }
     }
-    APP_LIMITS = readJsonScript('ps-plan-max-apps', {
-        'polysaas-1': 1, 'polysaas-3': 3, 'polysaas-unlimited': null
-    });
     PLAN_PRICES = readJsonScript('ps-plan-prices', {
-        'polysaas-1': 26, 'polysaas-3': 49, 'polysaas-unlimited': 99
+        'polysaas-1': 26, 'polysaas-3': 49, 'polysaas-unlimited': 99, 'founders-beta': 10
+    });
+    APP_LIMITS = readJsonScript('ps-plan-max-apps', {
+        'polysaas-1': 1, 'polysaas-3': 3, 'polysaas-unlimited': null, 'founders-beta': null
     });
 })();
 
@@ -495,6 +536,9 @@ function cheapestPlanForSlots(slots) {
 }
 
 function updateSlotAdvisory() {
+    if (foundersBetaActive || document.getElementById('plan-tier').value === 'founders-beta') {
+        return;
+    }
     var slots = totalSelectedSlots();
     var adv = document.getElementById('slot-advisory');
     var label = document.getElementById('slot-count-label');
@@ -523,6 +567,9 @@ function updateSlotAdvisory() {
 }
 
 function suggestAndSelectPlan() {
+    if (foundersBetaActive || document.getElementById('plan-tier').value === 'founders-beta') {
+        return;
+    }
     var slots = totalSelectedSlots();
     var recommended = cheapestPlanForSlots(slots);
     var suggestion = document.getElementById('plan-suggestion');
@@ -595,8 +642,126 @@ function selectPlan(tier) {
     card.classList.add('selected');
     card.querySelector('.plan-select-btn').textContent = 'Selected';
 
+    if (tier === 'founders-beta') {
+        enterFoundersBetaMode();
+    } else {
+        exitFoundersBetaMode();
+    }
+
     clearPromoCode();
     checkFormFields();
+}
+
+function enterFoundersBetaMode() {
+    foundersBetaActive = true;
+    // Lock other plans — Founders Beta is exclusive; fee fixed at $10.
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        var tier = card.getAttribute('data-tier');
+        var btn = card.querySelector('.plan-select-btn');
+        if (tier === 'founders-beta') {
+            card.style.opacity = '';
+            card.style.pointerEvents = '';
+            if (btn) btn.disabled = false;
+            return;
+        }
+        card.style.opacity = '0.45';
+        card.style.pointerEvents = 'none';
+        if (btn) btn.disabled = true;
+    });
+    // No other options: lock all app checkboxes. Bundled Odoo + MatterMost included.
+    // BYOL entitlement (up to 3) is part of the plan — not a selectable add-on at signup.
+    document.querySelectorAll('.app-checkbox').forEach(function(cb) {
+        if (cb.id === 'enable-odoo' || cb.id === 'enable-mattermost') {
+            cb.checked = true;
+            cb.disabled = true;
+            return;
+        }
+        cb.checked = false;
+        cb.disabled = true;
+    });
+    var userCount = document.getElementById('user-count');
+    if (userCount) {
+        userCount.value = '1';
+        userCount.readOnly = true;
+        userCount.style.background = '#eee';
+        userCount.style.cursor = 'not-allowed';
+    }
+    var promo = document.getElementById('promo-code');
+    if (promo) {
+        promo.value = '';
+        promo.disabled = true;
+        promo.placeholder = 'Not available on Founders Beta';
+    }
+    document.getElementById('amount').value = PLAN_PRICES['founders-beta'] || 10;
+    var amountEl = document.getElementById('amount');
+    if (amountEl) {
+        amountEl.readOnly = true;
+        amountEl.style.background = '#eee';
+    }
+    var suggestion = document.getElementById('plan-suggestion');
+    if (suggestion) {
+        suggestion.innerHTML = '<strong>Founders Beta selected.</strong> Fee is fixed at <strong>$' +
+            (PLAN_PRICES['founders-beta'] || 10) + '/mo for 6 months</strong>. ' +
+            'All other plan, seat, promo, and app options are disabled. ' +
+            'Includes all bundled apps and entitlement to up to 3 external BYOL apps.';
+    }
+    var adv = document.getElementById('slot-advisory');
+    if (adv) {
+        adv.style.display = '';
+        adv.className = 'info';
+        adv.innerHTML = 'Founders Beta locks all other options. Fee stays <strong>$' +
+            (PLAN_PRICES['founders-beta'] || 10) + '/mo</strong> (1 seat).';
+    }
+    updatePriceDisplay();
+}
+
+function exitFoundersBetaMode() {
+    foundersBetaActive = false;
+    document.querySelectorAll('.app-checkbox').forEach(function(cb) {
+        if (cb.closest('.app-unavailable')) {
+            cb.disabled = true;
+            cb.checked = false;
+            return;
+        }
+        cb.disabled = false;
+    });
+    var userCount = document.getElementById('user-count');
+    if (userCount) {
+        userCount.readOnly = false;
+        userCount.style.background = '';
+        userCount.style.cursor = '';
+    }
+    var promo = document.getElementById('promo-code');
+    if (promo) {
+        promo.disabled = false;
+        promo.placeholder = 'Enter promo code (e.g., EARLY, BUILDER)';
+    }
+    var amountEl = document.getElementById('amount');
+    if (amountEl) {
+        amountEl.readOnly = false;
+        amountEl.style.background = '';
+    }
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        card.style.opacity = '';
+        card.style.pointerEvents = '';
+        var btn = card.querySelector('.plan-select-btn');
+        if (btn) btn.disabled = false;
+    });
+    updateSlotAdvisory();
+    // Refresh which standard plans fit current slots (do not auto-jump tiers).
+    var slots = totalSelectedSlots();
+    document.querySelectorAll('.plan-card').forEach(function(card) {
+        var tier = card.getAttribute('data-tier');
+        if (tier === 'founders-beta') return;
+        var lim = APP_LIMITS[tier];
+        var tooSmall = (lim !== null && lim !== undefined && slots > lim);
+        var btn = card.querySelector('.plan-select-btn');
+        if (tooSmall) {
+            card.style.opacity = '0.5';
+            card.style.pointerEvents = 'none';
+            if (btn) btn.disabled = true;
+        }
+    });
 }
 
 /* ── Promo code validation ──────────────────────────────────── */
@@ -659,6 +824,20 @@ function getVolumeDiscountRate(userCount) {
 
 function buildLocalPricingPreview() {
     var tier = document.getElementById('plan-tier').value;
+    if (tier === 'founders-beta') {
+        var foundersPrice = PLAN_PRICES['founders-beta'] || 10;
+        return {
+            tier: tier,
+            userCount: 1,
+            basePricePerUser: foundersPrice,
+            volumeDiscountPercent: 0,
+            discountedPricePerUser: foundersPrice,
+            subtotal: foundersPrice,
+            promoDiscount: 0,
+            total: foundersPrice,
+            effectivePricePerUser: foundersPrice
+        };
+    }
     var basePrice = PLAN_PRICES[tier] || 26;
     var userCount = getUserCount();
     var volumeRate = getVolumeDiscountRate(userCount);
@@ -684,6 +863,13 @@ function buildLocalPricingPreview() {
 function renderPricingSummary(pricing) {
     var summary = document.getElementById('pricing-summary');
     if (!summary) return;
+    if (pricing.tier === 'founders-beta') {
+        summary.innerHTML =
+            '<strong>Founders Beta:</strong> fixed <strong>$' + pricing.total.toFixed(2) +
+            '/mo for 6 months</strong> (1 seat). All other options disabled. ' +
+            'Includes all bundled apps + up to 3 external BYOL. After 6 months, normal rates apply.';
+        return;
+    }
     var userWord = pricing.userCount === 1 ? 'user' : 'users';
     summary.innerHTML =
         '<strong>Pricing summary:</strong> ' + pricing.userCount + ' ' + userWord +
@@ -1210,6 +1396,13 @@ document.getElementById('subscription-form').addEventListener('submit', async fu
         enable_external_saas_1: !!document.getElementById('enable-external-saas-1').checked,
         enable_external_saas_2: !!document.getElementById('enable-external-saas-2').checked,
         enable_external_saas_3: !!document.getElementById('enable-external-saas-3').checked,
+        enable_nextcloud: false,
+        enable_dolibarr: false,
+        enable_hubspot: false,
+        enable_wordpress: false,
+        enable_liferay: false,
+        enable_monitor_logger: false,
+        enable_polysysmon: false,
     };
 
     try {

@@ -1,5 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 """
 Founder Beta Circle provisioning service.
 Creates tenant, admin user, and subscriptions after Lemon Squeezy payment.

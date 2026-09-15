@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # dose/polysniffer/views/mattermost_static_proxy.py
 # Stream Mattermost /static/* through Django (same origin as embed).
@@ -66,17 +67,25 @@ def mattermost_static_proxy(request, path, slug='', trigger=''):
     if ".." in path or path.startswith("/"):
         return HttpResponse("Invalid path", status=400)
 
-    # URL segment is the exact host from the tenant endpoint_url record.
+    # URL segment is the passthrough slug (/pt/admin/<slug>/static/...).
+    # Hostinger often uses slug == hostname (mm.prod-polysaas.cloud); local uses
+    # slug "mattermost" with endpoint_url http://localhost:8065 — match slug first.
     seg = (slug or trigger or "mattermost").strip()
     base = ""
     try:
         from urllib.parse import urlparse
         from dose.models import PassThroughEndpoint
         ep = None
+        seg_l = seg.lower()
         for candidate in PassThroughEndpoint.objects.filter(is_enabled=True):
-            if urlparse(candidate.endpoint_url or "").netloc.lower() == seg.lower():
+            if (candidate.slug or "").strip().lower() == seg_l:
                 ep = candidate
                 break
+        if ep is None:
+            for candidate in PassThroughEndpoint.objects.filter(is_enabled=True):
+                if urlparse(candidate.endpoint_url or "").netloc.lower() == seg_l:
+                    ep = candidate
+                    break
         if ep and ep.endpoint_url:
             p = urlparse(ep.endpoint_url)
             if p.scheme and p.netloc:

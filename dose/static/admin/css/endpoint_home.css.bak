@@ -1,20 +1,21 @@
 /* THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION */
+/* BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16 */
 /* BINGO: Slack producer/consumer home — 2026-08-24 */
 /* BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 */
 /* FIX 2026-08-27 (owner-approved): readable header title + create chips; callback popup. */
 /* FIX 2026-08-30 (owner-approved): punched-aluminum field + glass panes/buttons on every endpoint home. */
+/* FIX 2026-08-31 (owner-approved): chrome-framed royal-blue glass chips (skeuomorphic). */
+/* FIX 2026-09-01 (owner-approved): region order Identity/Bar/Data/Actions/Wiring; Wiring collapsed. */
+/* BINGO: Unified Endpoint Workspace — 2026-09-01 */
 .polysaas-endpoint-home {
     --ps-pane-fill: linear-gradient(180deg, rgba(248, 249, 251, 0.94) 0%, rgba(214, 218, 224, 0.9) 100%);
     --ps-pane-edge: rgba(255, 255, 255, 0.78);
     --ps-pane-shadow: 0 10px 22px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.88), inset 0 -1px 0 rgba(0, 0, 0, 0.08);
-    --ps-glass-fill:
-        radial-gradient(ellipse 14px 18px at 12% 38%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0) 72%),
-        radial-gradient(ellipse 12px 16px at 88% 62%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 70%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.1) 40%, rgba(255, 255, 255, 0.04) 58%, rgba(120, 124, 130, 0.12) 100%);
-    --ps-glass-blue:
-        radial-gradient(ellipse 14px 18px at 12% 38%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 72%),
-        radial-gradient(ellipse 12px 16px at 88% 62%, rgba(180, 210, 255, 0.45) 0%, rgba(255, 255, 255, 0) 70%),
-        linear-gradient(180deg, rgba(170, 205, 255, 0.38) 0%, rgba(80, 140, 230, 0.16) 50%, rgba(40, 90, 180, 0.18) 100%);
+    --ps-chrome: linear-gradient(145deg, #ffffff 0%, #d5d9df 16%, #8c929a 38%, #f3f5f7 52%, #6a6f77 78%, #eceef1 100%);
+    --ps-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.14) 36%, transparent 48%);
+    --ps-glass-blue: linear-gradient(180deg, #6eb4ff 0%, #3d8ef5 44%, #1a4fc4 48%, #143ea3 100%);
+    --ps-glass-fill: linear-gradient(180deg, #9aa3ad 0%, #6d7580 44%, #3d434b 48%, #2b3036 100%);
+    --ps-glass-green: linear-gradient(180deg, #7de3a8 0%, #2fbf6a 44%, #15803d 48%, #166534 100%);
     display: grid;
     gap: 8px;
     padding: 10px;
@@ -60,6 +61,86 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     box-shadow: var(--ps-pane-shadow);
     min-height: 48px;
 }
+
+/* Region 3 — Data is the body of the workspace. */
+.polysaas-endpoint-home__data {
+    display: grid;
+    gap: 8px;
+}
+.polysaas-endpoint-home__data-hint {
+    padding: 14px 16px;
+}
+.polysaas-endpoint-home__data-hint h2 {
+    margin: 0 0 2px;
+    font-size: 15px;
+    color: #111827;
+}
+.polysaas-endpoint-home__data-hint p {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: #4b5563;
+}
+.polysaas-endpoint-home__panel-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.polysaas-endpoint-home__panel-keys li {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    font-size: 11px;
+    font-weight: 700;
+    color: #374151;
+}
+/* When a record is showing, the placeholder steps aside. */
+.polysaas-callback-panel:not([hidden]) ~ .polysaas-endpoint-home__data-hint {
+    display: none;
+}
+
+/* Regions 4 and 5 — Actions overflow and Wiring, both collapsed by default. */
+.polysaas-endpoint-home__overflow {
+    padding: 6px 10px;
+}
+.polysaas-endpoint-home__overflow > summary,
+.polysaas-endpoint-home__wiring > summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+    list-style: none;
+}
+.polysaas-endpoint-home__overflow > summary::-webkit-details-marker,
+.polysaas-endpoint-home__wiring > summary::-webkit-details-marker {
+    display: none;
+}
+.polysaas-endpoint-home__overflow > summary::before,
+.polysaas-endpoint-home__wiring > summary::before {
+    content: "▸ ";
+}
+.polysaas-endpoint-home__overflow[open] > summary::before,
+.polysaas-endpoint-home__wiring[open] > summary::before {
+    content: "▾ ";
+}
+.polysaas-endpoint-home__overflow-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+}
+.polysaas-endpoint-home__wiring {
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: rgba(248, 249, 251, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.polysaas-endpoint-home__wiring[open] > summary {
+    margin-bottom: 8px;
+}
 .polysaas-endpoint-home__header {
     display: flex;
     align-items: center;
@@ -100,38 +181,42 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     line-height: 1.35;
     color: #4b5563 !important;
 }
+.polysaas-endpoint-home__launch,
+.polysaas-endpoint-bookmark,
+.polysaas-endpoint-home .ps-slack-mock__action,
+.polysaas-consumer-list__run,
+.polysaas-pair-dialog__cancel,
+.polysaas-pair-dialog__save {
+    border: 3px solid transparent;
+    background-origin: border-box;
+    background-clip: padding-box, padding-box, border-box;
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.28),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.42);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
 .polysaas-endpoint-home__launch {
     box-sizing: border-box;
     min-width: 176px;
-    height: 32px;
+    height: 34px;
     padding: 0 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
     border-radius: 999px;
-    border: 1px solid rgba(40, 44, 50, 0.35);
-    background-color: rgba(80, 140, 230, 0.18);
-    background-image: var(--ps-glass-blue);
-    color: #102a4c !important;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
+    color: #fff !important;
     text-decoration: none;
     font-weight: 700;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.75),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.12);
 }
 .polysaas-endpoint-home__launch:hover {
-    background-color: rgba(80, 140, 230, 0.26);
-    color: #102a4c !important;
+    filter: brightness(1.06);
+    color: #fff !important;
 }
 .polysaas-endpoint-bookmark--browse {
-    background-color: rgba(80, 140, 230, 0.18) !important;
-    background-image: var(--ps-glass-blue) !important;
-    border-color: rgba(40, 44, 50, 0.35) !important;
-    color: #102a4c !important;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome) !important;
+    color: #fff !important;
     font-weight: 700;
 }
 .polysaas-endpoint-home__bookmarks {
@@ -150,15 +235,16 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    flex: 0 0 176px;
-    width: 176px;
-    height: 32px;
-    padding: 0 8px;
-    border: 1px solid rgba(40, 44, 50, 0.32);
+    /* Sizes to the label: a fixed 176px basis clipped "Dynamic service …". */
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 176px;
+    max-width: 100%;
+    height: 34px;
+    padding: 0 16px;
     border-radius: 999px;
-    background-color: rgba(255, 255, 255, 0.16);
-    background-image: var(--ps-glass-fill);
-    color: #f4f5f7 !important;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
+    color: #fff !important;
     font-size: 12px;
     font-weight: 700;
     line-height: 1.15;
@@ -168,24 +254,16 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: pointer;
-    isolation: isolate;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 .polysaas-endpoint-home__create {
     background: linear-gradient(180deg, rgba(42, 46, 52, 0.88) 0%, rgba(22, 24, 28, 0.94) 100%);
 }
 .polysaas-endpoint-bookmark--create {
-    background-color: rgba(255, 255, 255, 0.16);
-    background-image: var(--ps-glass-fill);
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
 }
 .polysaas-endpoint-bookmark:hover,
 .polysaas-endpoint-home .ps-slack-mock__action:hover {
-    background-color: rgba(255, 255, 255, 0.26);
+    filter: brightness(1.06);
 }
 .polysaas-endpoint-bookmark[disabled] {
     opacity: .5;
@@ -277,7 +355,8 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 }
 .polysaas-consumer-list__meta {
     font: 12px Consolas, monospace;
-    color: #86efac;
+    /* Darkened for the light pane; the #86efac elsewhere sits on #111 terminals. */
+    color: #15803d;
 }
 .polysaas-consumer-list__meta code {
     color: #93c5fd;
@@ -288,7 +367,8 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 }
 .polysaas-consumer-list__fed {
     font-size: 12px;
-    color: #fbbf24;
+    /* Darkened for the light pane (was #fbbf24, a dark-panel amber). */
+    color: #b45309;
 }
 .polysaas-producer-state {
     display: inline-block;
@@ -312,31 +392,24 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     align-self: center;
     margin: 4px;
     min-width: 72px;
-    height: 28px;
+    height: 32px;
     padding: 0 10px;
     font-size: 12px;
-    border: 1px solid rgba(40, 44, 50, 0.32);
     border-radius: 999px;
-    background-color: rgba(34, 197, 94, 0.16);
-    background-image: var(--ps-glass-fill);
-    color: #052e16;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-green), var(--ps-chrome);
+    color: #fff;
     font-weight: 700;
     cursor: pointer;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 .polysaas-consumer-list__run:hover {
-    background-color: rgba(34, 197, 94, 0.24);
+    filter: brightness(1.06);
 }
 .polysaas-producer-pair {
-    background-color: rgba(80, 140, 230, 0.18);
-    background-image: var(--ps-glass-blue);
-    color: #102a4c;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
+    color: #fff;
 }
 .polysaas-producer-pair:hover {
-    background-color: rgba(80, 140, 230, 0.26);
+    filter: brightness(1.06);
 }
 .polysaas-pair-dialog {
     border: 1px solid rgba(255, 255, 255, 0.75);
@@ -388,25 +461,18 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 }
 .polysaas-pair-dialog__cancel,
 .polysaas-pair-dialog__save {
-    padding: 8px 16px;
+    padding: 6px 16px;
+    min-height: 32px;
     border-radius: 999px;
-    border: 1px solid rgba(40, 44, 50, 0.32);
     font-weight: 700;
     cursor: pointer;
-    backdrop-filter: blur(7px) saturate(140%);
-    -webkit-backdrop-filter: blur(7px) saturate(140%);
-    filter: drop-shadow(1px 3px 4px rgba(20, 24, 32, 0.28));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+    color: #fff;
 }
 .polysaas-pair-dialog__cancel {
-    background-color: rgba(255, 255, 255, 0.16);
-    background-image: var(--ps-glass-fill);
-    color: #1f2937;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-fill), var(--ps-chrome);
 }
 .polysaas-pair-dialog__save {
-    background-color: rgba(80, 140, 230, 0.18);
-    background-image: var(--ps-glass-blue);
-    color: #102a4c;
+    background-image: var(--ps-glass-sheen), var(--ps-glass-blue), var(--ps-chrome);
 }
 /* Slack (and other) workspace surfaces stay visible — in-channel actions included. */
 .polysaas-endpoint-home__form-host {
@@ -422,6 +488,36 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     pointer-events: auto;
 }
 .polysaas-endpoint-home__form-host .ps-slack-mock__modal {
+    pointer-events: auto;
+}
+/* Mattermost/Slack Control Panel: keep Odoo popup sheets, hide purple wireframe chrome. */
+.polysaas-endpoint-home__form-host--modals-only {
+    position: fixed;
+    inset: 0;
+    z-index: 2400;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    pointer-events: none;
+}
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock {
+    min-height: 0;
+    height: 100%;
+    display: block;
+    background: transparent;
+    pointer-events: none;
+}
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__sidebar,
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__main,
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__result {
+    display: none !important;
+}
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__modal {
+    position: fixed;
+    inset: 0;
     pointer-events: auto;
 }
 .polysaas-transaction-bar,
@@ -597,4 +693,94 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
 .polysaas-callback-dialog__close-btn:hover {
     background: #166534;
     color: #86efac;
+}
+
+/* Geronimo first-visit nudge (Option B: stacked, below Wiring) */
+.polysaas-geronimo-nudge {
+    background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%);
+    border: 1px solid #0284c7;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.polysaas-geronimo-nudge__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.polysaas-geronimo-nudge__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0c4a6e;
+}
+
+.polysaas-geronimo-nudge__title i {
+    font-size: 1.1rem;
+}
+
+.polysaas-geronimo-nudge__close {
+    background: transparent;
+    border: none;
+    color: #0c4a6e;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.polysaas-geronimo-nudge__close:hover {
+    opacity: 1;
+}
+
+.polysaas-geronimo-nudge__hint {
+    font-size: 0.9rem;
+    color: #0369a1;
+    margin: 8px 0;
+}
+
+.polysaas-geronimo-nudge__actions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.polysaas-geronimo-nudge__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: linear-gradient(145deg, #ffffff 0%, #e0e7ff 100%);
+    border: 1px solid #818cf8;
+    border-radius: 6px;
+    color: #312e81;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.polysaas-geronimo-nudge__btn:hover {
+    background: linear-gradient(145deg, #e0e7ff 0%, #c7d2fe 100%);
+    border-color: #6366f1;
+    transform: translateY(-1px);
+}
+
+.polysaas-geronimo-nudge__btn i {
+    font-size: 0.95rem;
+}
+
+/* Hide nudge after dismissal (will be set by JS) */
+body.geronimo-nudge-dismissed .polysaas-geronimo-nudge {
+    display: none;
 }

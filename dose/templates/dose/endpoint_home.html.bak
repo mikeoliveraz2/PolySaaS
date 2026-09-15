@@ -1,6 +1,6 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
-<!-- BINGO: Slack producer/consumer home — 2026-08-24 -->
-<!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
+<!-- BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16 -->
+<!-- Previous BINGOs: Slack home (2026-08-24), dual-feed (2026-08-28), workspace (2026-09-01), Geronimo (2026-09-02) -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -8,7 +8,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260830-7">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260916-1">
 {% endblock %}
 
 {% block content %}
@@ -31,7 +31,7 @@
             {% endif %}
             <div class="polysaas-endpoint-home__title-text">
                 <h1 class="polysaas-endpoint-home__title">{{ title }}</h1>
-                <div class="polysaas-endpoint-home__lede">{{ endpoint.description|default:"Producers, consumers, and selected actions" }}</div>
+                <div class="polysaas-endpoint-home__lede">{{ endpoint.description|default:"Live records, actions, and orchestration" }}</div>
             </div>
         </div>
         {% if browser_launch_url %}
@@ -45,33 +45,88 @@
         {% endif %}
     </header>
 
-    <nav class="polysaas-endpoint-home__bookmarks polysaas-endpoint-home__create polysaas-endpoint-home__pane" aria-label="Create orchestration">
-        {% with app_key=endpoint.slug|default:title|lower %}
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=producer"
-            title="Declare a new producer event for this home"
-        >New producer</a>
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=consumer"
-            title="Add a consumer Instruction for this home"
-        >New consumer</a>
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;custom_endpoint=1"
-            title="Bind a Custom Endpoint URL / API as the service"
-        >Dynamic service based on API</a>
-        <a
-            class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
-            href="{% url 'admin:dose_atomicservice_add' %}"
-            title="Upload or register a Dynamic / Atomic Service"
-        >Dynamic service</a>
-        {% endwith %}
-    </nav>
+    {% include "dose/includes/orchestration_bar.html" %}
+
+    <section class="polysaas-endpoint-home__data" aria-label="{{ title }} data">
+        {% if surface_template %}
+        <div class="polysaas-endpoint-home__form-host polysaas-endpoint-home__pane">
+            {% include surface_template %}
+        </div>
+        {% elif action_urls.mattermost_contact or action_urls.slack_contact %}
+        {# Bookmarks open New contact / New sale; include sheets only (hide wireframe chrome). #}
+        <div class="polysaas-endpoint-home__form-host polysaas-endpoint-home__form-host--modals-only" aria-hidden="true">
+            {% include "polysniffer/slack_wireframe.html" %}
+            <style>
+                /* Must follow wireframe <style> so purple mock never paints on Control Panel. */
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock {
+                    min-height: 0 !important;
+                    height: 0 !important;
+                    width: 0 !important;
+                    overflow: visible !important;
+                    display: block !important;
+                    background: transparent !important;
+                    grid-template-columns: none !important;
+                    pointer-events: none !important;
+                }
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__sidebar,
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__main,
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__result,
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__composer {
+                    display: none !important;
+                    visibility: hidden !important;
+                    height: 0 !important;
+                    width: 0 !important;
+                    overflow: hidden !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+                .polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__modal {
+                    position: fixed !important;
+                    inset: 0 !important;
+                    pointer-events: auto !important;
+                }
+            </style>
+        </div>
+        {% endif %}
+
+        <section
+            class="polysaas-callback-panel"
+            data-callback-dialog
+            hidden
+            aria-live="polite"
+            aria-label="CallBackData record"
+        >
+            <div class="polysaas-callback-dialog__panel">
+                <header class="polysaas-callback-dialog__head">
+                    <div>
+                        <h3 data-callback-title>CallBackData</h3>
+                        <p class="polysaas-callback-dialog__sub" data-callback-sub></p>
+                    </div>
+                    <button type="button" class="polysaas-callback-dialog__close" data-callback-close aria-label="Close">&times;</button>
+                </header>
+                <div class="polysaas-callback-dialog__meta" data-callback-meta></div>
+                <div class="polysaas-callback-dialog__body" data-callback-body></div>
+                <div class="polysaas-callback-dialog__actions">
+                    <button type="button" class="polysaas-callback-dialog__close-btn" data-callback-close>Close</button>
+                </div>
+            </div>
+        </section>
+
+        {% if endpoint_profile.panels %}
+        <div class="polysaas-endpoint-home__data-hint polysaas-endpoint-home__pane" data-data-hint>
+            <h2>{{ title }} data</h2>
+            <p>Run an action to load live records here.</p>
+            <ul class="polysaas-endpoint-home__panel-keys">
+                {% for panel in endpoint_profile.panels %}
+                <li>{{ panel.title }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </section>
 
     {% if bookmarks %}
-    <nav class="polysaas-endpoint-home__bookmarks polysaas-endpoint-home__pane" aria-label="{{ title }} bookmarks">
+    <nav class="polysaas-endpoint-home__bookmarks polysaas-endpoint-home__pane" aria-label="{{ title }} actions">
         {% for bookmark in bookmarks %}
             {% if bookmark.destination_type == "external_path" or bookmark.destination_type == "passthrough_path" %}
                 {% if bookmark.url %}
@@ -80,9 +135,9 @@
                     href="{{ bookmark.url }}"
                     {% if bookmark.destination_type == "external_path" %}target="_blank" rel="noopener"{% endif %}
                     title="{{ bookmark.description }}"
-                ><span>{{ bookmark.icon }}</span>{{ bookmark.title }}</a>
+                >{{ bookmark.title }}</a>
                 {% else %}
-                <button class="polysaas-endpoint-bookmark" type="button" disabled>{{ bookmark.icon }} {{ bookmark.title }}</button>
+                <button class="polysaas-endpoint-bookmark" type="button" disabled>{{ bookmark.title }}</button>
                 {% endif %}
             {% else %}
             <button
@@ -93,44 +148,43 @@
                 data-action-url="{{ bookmark.url }}"
                 {% if bookmark.disabled %}disabled{% endif %}
                 title="{{ bookmark.description }}"
-            ><span>{{ bookmark.icon }}</span>{{ bookmark.title }}</button>
+            >{{ bookmark.title }}</button>
             {% endif %}
         {% endfor %}
     </nav>
     {% endif %}
 
-    {% if surface_template %}
-    <section class="polysaas-endpoint-home__form-host polysaas-endpoint-home__pane" aria-label="{{ title }} workspace">
-        {% include surface_template %}
-    </section>
-    {% endif %}
-
-    {% include "dose/includes/orchestration_bar.html" %}
-
-    <section
-        class="polysaas-callback-panel"
-        data-callback-dialog
-        hidden
-        aria-live="polite"
-        aria-label="CallBackData record"
-    >
-        <div class="polysaas-callback-dialog__panel">
-            <header class="polysaas-callback-dialog__head">
-                <div>
-                    <h3 data-callback-title>CallBackData</h3>
-                    <p class="polysaas-callback-dialog__sub" data-callback-sub></p>
-                </div>
-                <button type="button" class="polysaas-callback-dialog__close" data-callback-close aria-label="Close">&times;</button>
-            </header>
-            <div class="polysaas-callback-dialog__meta" data-callback-meta></div>
-            <div class="polysaas-callback-dialog__body" data-callback-body></div>
-            <div class="polysaas-callback-dialog__actions">
-                <button type="button" class="polysaas-callback-dialog__close-btn" data-callback-close>Close</button>
-            </div>
+    <details class="polysaas-endpoint-home__overflow polysaas-endpoint-home__pane">
+        <summary>Create&hellip;</summary>
+        <div class="polysaas-endpoint-home__overflow-body">
+            {% with app_key=endpoint.slug|default:title|lower %}
+            <a
+                class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+                href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=producer"
+                title="Declare a new producer event for this home"
+            >New producer</a>
+            <a
+                class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+                href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;role=consumer"
+                title="Add a consumer Instruction for this home"
+            >New consumer</a>
+            <a
+                class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+                href="{% url 'admin:dose_instruction_add' %}?app={{ app_key }}&amp;custom_endpoint=1"
+                title="Bind a Custom Endpoint URL / API as the service"
+            >Dynamic service — API</a>
+            <a
+                class="polysaas-endpoint-bookmark polysaas-endpoint-bookmark--create"
+                href="{% url 'admin:dose_atomicservice_add' %}"
+                title="Upload or register a Dynamic / Atomic Service"
+            >Dynamic service — upload</a>
+            {% endwith %}
         </div>
-    </section>
+    </details>
 
-    <section class="polysaas-endpoint-home__surface" aria-label="Producers and consumers">
+    <details class="polysaas-endpoint-home__wiring">
+        <summary>Wiring — producers and consumers</summary>
+        <section class="polysaas-endpoint-home__surface" aria-label="Producers and consumers">
         {% if producers %}
         <div class="polysaas-endpoint-home__panel polysaas-endpoint-home__pane">
             <div class="polysaas-endpoint-home__consumers-head">
@@ -198,7 +252,8 @@
             </ul>
         </div>
         {% endif %}
-    </section>
+        </section>
+    </details>
 
     <dialog class="polysaas-pair-dialog" data-pair-dialog>
         <form method="dialog" class="polysaas-pair-dialog__form">
@@ -212,11 +267,50 @@
         </form>
     </dialog>
 
+    {% if is_first_visit %}
+    <section class="polysaas-geronimo-nudge polysaas-endpoint-home__pane" data-geronimo-nudge>
+        <div class="polysaas-geronimo-nudge__header">
+            <span class="polysaas-geronimo-nudge__title">
+                <i class="fas fa-lightbulb" aria-hidden="true"></i> Quick Start with Geronimo
+            </span>
+            <button type="button" class="polysaas-geronimo-nudge__close" data-dismiss-nudge aria-label="Dismiss nudge">
+                <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
+        </div>
+        <p class="polysaas-geronimo-nudge__hint">Three ways to get started:</p>
+        <ul class="polysaas-geronimo-nudge__actions">
+            <li>
+                <button type="button" class="polysaas-geronimo-nudge__btn polysaas-geronimo-nudge__btn--data" data-nudge-action="open-data">
+                    <i class="fas fa-chart-bar" aria-hidden="true"></i>
+                    Open {{ title }}
+                </button>
+            </li>
+            <li>
+                <button type="button" class="polysaas-geronimo-nudge__btn polysaas-geronimo-nudge__btn--browse" data-nudge-action="browse-app">
+                    <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                    Browse {{ title }}
+                </button>
+            </li>
+            <li>
+                <button type="button" class="polysaas-geronimo-nudge__btn polysaas-geronimo-nudge__btn--wire" data-nudge-action="pair-consumer">
+                    <i class="fas fa-link" aria-hidden="true"></i>
+                    Pair Orchestration
+                </button>
+            </li>
+        </ul>
+    </section>
+    {% endif %}
+
 </main>
+
+{# Geronimo chat dock for this endpoint. Context includes current data panel structure and MQ state. #}
+{% include "admin/includes/polysaas_ai_chat_dock.html" %}
+
 {% endblock %}
 
 {% block extrajs %}
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260824-1"></script>
-<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260828-1"></script>
+<script src="{% static 'admin/js/endpoint_table.js' %}?v=20260901-1"></script>
+<script src="{% static 'admin/js/endpoint_home.js' %}?v=20260901-1"></script>
 {% endblock %}

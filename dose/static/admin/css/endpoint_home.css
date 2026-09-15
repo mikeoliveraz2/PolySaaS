@@ -1,4 +1,5 @@
 /* THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION */
+/* BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16 */
 /* BINGO: Slack producer/consumer home — 2026-08-24 */
 /* BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 */
 /* FIX 2026-08-27 (owner-approved): readable header title + create chips; callback popup. */
@@ -487,6 +488,36 @@ body:has(.polysaas-endpoint-home) .dose-content-col .card-body {
     pointer-events: auto;
 }
 .polysaas-endpoint-home__form-host .ps-slack-mock__modal {
+    pointer-events: auto;
+}
+/* Mattermost/Slack Control Panel: keep Odoo popup sheets, hide purple wireframe chrome. */
+.polysaas-endpoint-home__form-host--modals-only {
+    position: fixed;
+    inset: 0;
+    z-index: 2400;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    pointer-events: none;
+}
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock {
+    min-height: 0;
+    height: 100%;
+    display: block;
+    background: transparent;
+    pointer-events: none;
+}
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__sidebar,
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__main,
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__result {
+    display: none !important;
+}
+.polysaas-endpoint-home__form-host--modals-only .ps-slack-mock__modal {
+    position: fixed;
+    inset: 0;
     pointer-events: auto;
 }
 .polysaas-transaction-bar,

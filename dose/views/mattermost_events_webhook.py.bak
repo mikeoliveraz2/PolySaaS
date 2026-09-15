@@ -1,4 +1,5 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: HubSpot → Odoo Contact Creation — 2026-09-08
 # BINGO: Mattermost → Odoo Contact Creation — 2026-09-07
 
 """
@@ -12,22 +13,17 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-import re
 
 from django.http import HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from dose.contact_message_format import parse_contact_message
 from dose.models import Tenant, TenantApp
 from dose.tenant_app_lookup import tenant_schema_search_path
 from dose.webhook_events import publish_slack_contact_event
 
 logger = logging.getLogger(__name__)
-
-CONTACT_PATTERN = re.compile(
-    r'^New contact:\s*([^,]+),\s*([^,]+@[^,]+\.[^,]+),\s*(.+)$',
-    re.IGNORECASE,
-)
 
 
 def _find_mattermost_tenant(team_id: str, request_token: str = ""):
@@ -62,25 +58,14 @@ def _find_mattermost_tenant(team_id: str, request_token: str = ""):
 
 
 def _parse_contact_message(text: str) -> dict | None:
-    match = CONTACT_PATTERN.match((text or '').strip())
-    if not match:
-        return None
-    name = match.group(1).strip()
-    email = match.group(2).strip()
-    company = match.group(3).strip()
-    if not name or not email or not company:
-        return None
-    return {
-        'name': name[:100],
-        'email': email[:100],
-        'company': company[:100],
-    }
+    """Parse 'newpolysaascontact Name, email, Company' (shared format)."""
+    return parse_contact_message(text)
 
 
 @csrf_exempt
 @require_POST
 def mattermost_events_webhook(request):
-    """Outgoing webhook: 'New contact: Name, email, Company' → Slack contact topic."""
+    """Outgoing webhook: 'newpolysaascontact Name, email, Company' → Slack contact topic."""
     try:
         if request.content_type == 'application/json':
             payload = json.loads(request.body)
