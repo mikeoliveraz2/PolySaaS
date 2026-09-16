@@ -65,6 +65,11 @@ urlpatterns = [
 
     path('error', mattermost_error_recover_view, name='mattermost_error_recover'),
 
+    # Marketing short URL — WordPress CTAs often use /subscribe/ without the /dose/ prefix.
+    # FIX 2026-09-17 (owner-reported 404): redirect to the real subscribe view.
+    path('subscribe/', RedirectView.as_view(url='/dose/subscribe/', permanent=False)),
+    path('subscribe', RedirectView.as_view(url='/dose/subscribe/', permanent=False)),
+
     path('', RedirectView.as_view(url='/dose/home/'), name='home'),
 ]
 

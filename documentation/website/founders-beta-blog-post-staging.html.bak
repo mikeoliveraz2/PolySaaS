@@ -2,9 +2,13 @@
   Blog post target (live): https://polysaas.online/newpromo/
   WP Admin → Posts → edit that post
 
-  Subscribe CTA (Django app):
+  1) Change TITLE to:
+     Founders Beta: $10/mo for 6 Months — All Bundled Apps + Up to 3 BYOL
+  2) Replace the entire post body with the HTML below (Custom HTML or Code editor).
+  3) Update / Publish
+
+  Subscribe CTA must point at the Django app (not WordPress):
   https://app.prod-polysaas.cloud/dose/subscribe/
-  (short /subscribe/ redirects there after Hostinger rebuild)
 -->
 
 <p>We are updating the <strong>Founders Beta Circle</strong> offer for the first 100 beta users.</p>
@@ -16,13 +20,17 @@
 </p>
 
 <p>
-  While Founders Beta is selected on Subscribe, other plans, seats, promos, and app options stay locked
+  While Founders Beta is selected on
+  <a href="https://app.prod-polysaas.cloud/dose/subscribe/"><strong>Subscribe</strong></a>,
+  other plans, seats, promos, and app options stay locked
   and the fee stays fixed at <strong>$10/month</strong>.
 </p>
 
 <p>
   <strong>This replaces the prior $100 one-time / 1-year promo.</strong>
-  Sign up on the PolySaaS Subscribe page, choose <strong>Founders Beta</strong>, and pay via Stripe.
+  Sign up on the
+  <a href="https://app.prod-polysaas.cloud/dose/subscribe/"><strong>PolySaaS Subscribe page</strong></a>,
+  choose <strong>Founders Beta</strong>, and pay via Stripe.
 </p>
 
 <h3>Why we are doing this</h3>
@@ -32,15 +40,9 @@
   <li><strong>Honest feedback:</strong> we want complaints and ideas — they shape the roadmap.</li>
 </ul>
 
-<p style="margin:1.25rem 0 0.75rem 0;">
-  <a href="https://polysaas.online/founders-beta-circle/"
-     style="display:inline-block;margin:0 0.5rem 0.75rem 0;padding:0.85rem 1.35rem;background:#e5e7eb;color:#1f2937;text-decoration:none;border-radius:6px;font-weight:700;">
-    Read the Founders Beta details
-  </a>
-  <a href="https://app.prod-polysaas.cloud/dose/subscribe/"
-     style="display:inline-block;margin:0 0 0.75rem 0;padding:0.85rem 1.35rem;background:#6d28d9;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">
-    Start Founders Beta — $10/mo
-  </a>
+<p>
+  <a href="https://polysaas.online/founders-beta-circle/"><strong>Read the Founders Beta details →</strong></a><br>
+  <a href="https://app.prod-polysaas.cloud/dose/subscribe/"><strong>Start Founders Beta — $10/mo →</strong></a>
 </p>
 
 <p>Best regards,<br>

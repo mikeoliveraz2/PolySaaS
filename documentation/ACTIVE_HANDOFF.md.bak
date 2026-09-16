@@ -3,9 +3,10 @@
 This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-**Date:** 2026-09-16 (Tuesday)  
-**Session:** Founders Beta $10 + Stripe live + Mattermost Control Panel (no wireframe) **BINGO**  
+**Date:** 2026-09-16 (Wednesday)  
+**Session:** WordPress home SaaS card shots + Founders/legal staging (live edit on polysaas.online)  
 **Branch:** main  
+**Latest related commit:** `694a6186` (Founders Beta + Mattermost CP BINGO); this push adds WP staging/scripts + live Odoo-shot note  
 
 ## Live infra
 
@@ -16,15 +17,17 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 | VPS IP | `187.53.138.235` |
 | Domain | `prod-polysaas.cloud` |
 | Hosts | `app` / `mm` / `odoo`.prod-polysaas.cloud |
+| WordPress (marketing) | **polysaas.online** (edit target). Azure-nightingale is staging only — do not remigrate unless asked. |
 
-## BINGO this session
+## Completed this session
 
-- **Founders Beta $10/mo (6 months) + Mattermost CP no-wireframe** — `documentation/BINGO_FOUNDERS_BETA_AND_MATTERMOST_CP_2026-09-16.md`
-- Subscribe: exclusive Founders tier locks other options; fee fixed at $10; Stripe live keys in gitignored `.env` / Hostinger `.env` + `.env.enc`
-- Mattermost Control Panel: purple Slack wireframe removed; header + orch bar restored; New contact / New sale via bookmarks
+- Restored azure staging quality pass earlier (home copy, Founders, legal, MM/HS card shots), then Migrate Guru direction issues noted.
+- **Live only (no remigrate):** inserted Odoo home-card shots on polysaas.online page `1313` using existing media `odoo-cpanel-scaled.png` + `odoo-browser-scaled.png` (`data-polysaas-shots="odoo"`). Mattermost + HubSpot shots already present.
+- Repo: WordPress staging HTML/MD under `documentation/website/`, sync helpers `scripts/wp_sync_founders_beta_page.py` + `scripts/wp_sync_legal_pages.py`, capital-raise notes.
 
-## Prior bingo still valid
+## BINGO still valid
 
+- Founders Beta $10 + Mattermost CP — `BINGO_FOUNDERS_BETA_AND_MATTERMOST_CP_2026-09-16.md` (`694a6186`)
 - Hostinger Mattermost passthrough — `BINGO_HOSTINGER_MM_PASSTHROUGH_2026-09-13.md`
 - Hostinger Odoo HTTPS login — `BINGO_HOSTINGER_ODOO_HTTPS_LOGIN_2026-09-12.md`
 
@@ -32,7 +35,7 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 
 1. Hard-refresh Mattermost CP to confirm wireframe gone; smoke-test New contact / New sale bookmarks.
 2. Dokploy: confirm live Stripe env vars deployed; optional $1 Founders smoke charge.
-3. Update polysaas.online blog Founders copy ($100 → $10/mo) once `.env.wordpress` is available.
+3. Optional: sync azure staging home Odoo shots to match live (edit azure only — no Migrate Guru unless explicitly requested).
 4. Rotate Odoo admin password (prior ops item).
 
 ## Ops reminder
