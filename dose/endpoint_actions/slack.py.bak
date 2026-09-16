@@ -1,5 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Slack Odoo contact/sale forms — 2026-08-25
+# BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
+# BINGO: Geronimo Chat Integration — 2026-09-02
 import uuid
 
 from django.utils import timezone
@@ -25,6 +27,8 @@ def _payload(kind: str, supplied: dict) -> dict:
             "partner_name": 120,
             "partner_email": 120,
             "order_reference": 80,
+            "amount": 24,
+            "deal_stage": 40,
             "note": 400,
         }
     )
@@ -64,13 +68,16 @@ def _payload(kind: str, supplied: dict) -> dict:
         or f"slack.buyer.{token}@example.com",
         "order_reference": cleaned["order_reference"]
         or f"SLACK-{stamp}-{token[:4]}",
+        "amount": cleaned["amount"],
+        "deal_stage": cleaned["deal_stage"] or "appointmentscheduled",
         "note": cleaned["note"]
         or "Draft quotation created from the PolySaaS Slack endpoint home.",
     }
 
 
 class SlackEndpointActionAdapter(EndpointActionAdapter):
-    surface_template = "polysniffer/slack_wireframe.html"
+    # Use unified endpoint_home.html (not custom surface_template)
+    # surface_template = "polysniffer/slack_wireframe.html"  # DEPRECATED 2026-09-03
     browse_mode = "external"
     default_bookmarks = (
         {
@@ -101,6 +108,39 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
         slug = (getattr(endpoint, "slug", "") or "").strip().lower()
         url = (getattr(endpoint, "endpoint_url", "") or "").lower()
         return slug == "slack" or "slack.com" in url
+
+    def panels(self):
+        """Slack unified workspace: teams and channels as data panels."""
+        from .base import EndpointPanel
+        
+        # Slack shows teams and channels as data exploration panels
+        return (
+            EndpointPanel(
+                key="teams",
+                title="Teams",
+                object_type="team",
+                action="slack.teams",
+            ),
+            EndpointPanel(
+                key="channels",
+                title="Channels",
+                object_type="channel",
+                action="slack.channels",
+            ),
+        )
+
+    def chat_prompts(self) -> list:
+        """Geronimo chat preset prompts for Slack endpoints."""
+        from dose.ai_prompts.prompt_library import get_prompts_for_endpoint
+
+        # Return prompts for Slack channels.
+        return get_prompts_for_endpoint("slack.channels")
+
+    def chat_context_hint(self) -> str:
+        """Context hint for LLM about Slack channel data."""
+        from dose.ai_prompts.prompt_library import get_context_hint_for_endpoint
+
+        return get_context_hint_for_endpoint("slack.channels")
 
     def actions(self):
         return {
