@@ -3,8 +3,8 @@
 This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
-**Date:** 2026-09-17 (Thursday)  
-**Session:** Fix Founders promo subscribe CTAs (buttons + `/subscribe/` redirect)  
+**Date:** 2026-09-19 (Saturday)  
+**Session:** Marketing subscribe redirects + sidebar UX authority clarification  
 **Branch:** main  
 
 ## Live infra
@@ -20,9 +20,15 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 
 ## Completed this session
 
-- Live WP `/newpromo/` + `/founders-beta-circle/`: CTAs are **buttons** pointing at `https://app.prod-polysaas.cloud/dose/subscribe/` (works now).
-- Repo: `mysite/urls.py` adds `/subscribe/` → `/dose/subscribe/` redirect (needs **Dokploy Rebuild** before short URL stops 404ing).
-- Staging HTML under `documentation/website/` updated to match.
+- **WP public path to subscribe (live polysaas.online):**
+  - Nav + home Sign Up CTAs → `https://app.prod-polysaas.cloud/dose/subscribe/`
+  - `/sign-up/` and `/dose/subscribe/` pages redirect to that app URL
+- **Sidebar:** intentional Shela split remains (commit `6d936312`): icon → Browse (new tab); **Control Panel** link → endpoint home. An unauthorized agent attempt to remove the CP link was **reverted**; `.bak` synced to match current HTML.
+- Cleaned untracked `documentation/website/_tmp_*` / `_inj_*` scratch files (not committed).
+
+## Authority note (production)
+
+Passthrough sidebar Browse + Control Panel split was authorized by **Shela** (2026-09-06). Do **not** change frozen admin sidebar UX without Michael/Shela explicit approval. All production code changes require approval first.
 
 ## BINGO still valid
 
@@ -32,11 +38,10 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 
 ## Next actions
 
-1. **Dokploy Rebuild** Django image so `/subscribe/` redirects to `/dose/subscribe/`.
-2. Hard-refresh Mattermost CP; smoke-test New contact / New sale bookmarks.
-3. Optional: $1 Founders smoke charge after Stripe env confirmed.
-4. Rotate Odoo admin password (prior ops item).
+1. Finish Odoo/Mattermost provision for Founders tenant (PolySaaS Online) so tiles are `active` (Control Panel appears / clickable). Wire `ODOO_SHARED_URL=http://odoo:8069` + `MATTERMOST_ADMIN_TOKEN` in Dokploy if still missing.
+2. Dokploy **Rebuild** only when code changes need baking (sidebar HTML unchanged vs last ship for CP split).
+3. Optional: $1 Founders smoke after Stripe confirmed.
 
 ## Ops reminder
 
-Django on Hostinger is **image-baked** — after pushing, Dokploy must **Rebuild** (not only Deploy) when code changes. Env-only Stripe updates need container recreate with new env.
+Django on Hostinger is **image-baked** — after pushing, Dokploy must **Rebuild** (not only Deploy) when code changes. Env-only updates need container recreate with new env.
