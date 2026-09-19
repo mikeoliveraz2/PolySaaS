@@ -1,4 +1,5 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- FIX 2026-09-19 (owner): Browse icon + Control Panel button are one unit (always both; dim when not ready) -->
 <!-- BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md -->
 <!-- BINGO: Font and Theme Toggle — commit 1dcca3bd -->
 <!-- BINGO: UI Cleanup — commit 748e871e -->
@@ -62,7 +63,8 @@
                         {% with slug=service.title|lower %}
                         {# READINESS 2026-08-01 (owner-approved): not-ready cards render as a non-navigating <span> (see context_processors.py for service.ready / app_status). #}
                         {# FIX 2026-09-06 (Shela feedback): Icon → Browse (real app), button below → Control Panel #}
-                        <div class="pss-pt-card-wrap">
+                        {# FIX 2026-09-19 (owner): Browse icon + Control Panel are ONE UNIT — always both; ready=clickable, not-ready=dimmed/non-clickable. Never one without the other. #}
+                        <div class="pss-pt-card-wrap{% if not service.ready %} pss-pt-card-wrap--not-ready{% endif %}">
                         <{% if service.ready %}a href="{{ service.browse_url }}" target="_blank" rel="noopener"{% else %}span{% endif %}
                            class="pss-pt-card{% if service.ready and request.path_info|path_starts_with:service.url %} is-active{% endif %}{% if not service.ready %} pss-pt-card--not-ready{% endif %}"
                            {% if service.ready and request.path_info|path_starts_with:service.url %}aria-current="page"{% endif %}
@@ -98,6 +100,10 @@
                            href="{{ service.url }}"
                            title="Open {{ service.title }} control panel"
                            aria-label="Open {{ service.title }} control panel">Control Panel</a>
+                        {% else %}
+                        <span class="pss-pt-browse pss-pt-browse--not-ready"
+                              aria-disabled="true"
+                              title="{{ service.title }} is still provisioning ({{ service.app_status }})">Control Panel</span>
                         {% endif %}
                         </div>
                         {% endwith %}

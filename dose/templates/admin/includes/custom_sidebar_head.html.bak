@@ -1,4 +1,5 @@
 {# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION #}
+{# FIX 2026-09-19 (owner): Browse + Control Panel always rendered as one unit; not-ready dims both #}
 {# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md #}
 {# Owner-approved 2026-08-02: ready vs not-ready passthrough card contrast (brand colors + green ready ring) #}
 {# BINGO: UI Cleanup — commit 748e871e #}
@@ -798,6 +799,20 @@
         border-color: #93c5fd;
         color: #fff;
         text-decoration: none;
+    }
+    /* Unit: not-ready Control Panel stays visible but non-interactive (matches card dim) */
+    span.pss-pt-browse--not-ready,
+    .pss-pt-card-wrap--not-ready .pss-pt-browse--not-ready {
+        cursor: not-allowed;
+        opacity: 0.45;
+        filter: grayscale(1);
+        pointer-events: none;
+        background: rgba(255,255,255,0.06);
+        border-color: rgba(255,255,255,0.12);
+        color: rgba(219, 234, 254, 0.55);
+    }
+    .pss-pt-card-wrap--not-ready {
+        opacity: 1; /* children carry their own dim; wrap stays layout-stable */
     }
     .pss-pt-card {
         display: flex;

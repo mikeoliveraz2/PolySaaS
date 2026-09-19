@@ -1,9 +1,12 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # BINGO: Hostinger Odoo HTTPS Login — commit 89aedefa
 # FIX 2026-09-13 (owner-approved): Mattermost healthcheck disabled (no curl in image)
 #      so Traefik can publish mm.prod-polysaas.cloud.
 # FIX 2026-09-13 (owner-approved): pass Stripe keys into Django for /dose/subscribe/
 #      (STRIPE_PUBLISHABLE_KEY / STRIPE_SECRET_KEY from Dokploy .env).
+# FIX 2026-09-19 (owner): pass ODOO_SHARED_URL (+ master/db) into Django so Founders/subscribe
+#      Odoo provision hits http://odoo:8069 instead of localhost.
 #
 # PolySaaS Hostinger + Dokploy production stack (phase 1)
 #
@@ -82,10 +85,22 @@ services:
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_TEST_SECRET_KEY: ${STRIPE_TEST_SECRET_KEY:-}
+      STRIPE_LIVE_SECRET_KEY: ${STRIPE_LIVE_SECRET_KEY:-}
+      STRIPE_LIVE_MODE: ${STRIPE_LIVE_MODE:-false}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
       STRIPE_PRICE_ID_POLYSAAS_1: ${STRIPE_PRICE_ID_POLYSAAS_1:-}
       STRIPE_PRICE_ID_POLYSAAS_3: ${STRIPE_PRICE_ID_POLYSAAS_3:-}
       STRIPE_PRICE_ID_POLYSAAS_UNLIMITED: ${STRIPE_PRICE_ID_POLYSAAS_UNLIMITED:-}
+      STRIPE_PRICE_ID_FOUNDERS_BETA: ${STRIPE_PRICE_ID_FOUNDERS_BETA:-}
+      STRIPE_PRICE_ID_STORAGE: ${STRIPE_PRICE_ID_STORAGE:-}
+      # Odoo provisioner — must reach the compose `odoo` service (not localhost)
+      ODOO_SHARED_URL: ${ODOO_SHARED_URL:-http://odoo:8069}
+      ODOO_SHARED_DB: ${ODOO_SHARED_DB:-polysaas_odoo}
+      ODOO_MASTER_PASSWORD: ${ODOO_MASTER_PASSWORD:-admin}
+      ODOO_XMLRPC_ADMIN_LOGIN: ${ODOO_XMLRPC_ADMIN_LOGIN:-admin}
+      ODOO_XMLRPC_ADMIN_PASSWORD: ${ODOO_XMLRPC_ADMIN_PASSWORD:-}
+      MATTERMOST_ADMIN_TOKEN: ${MATTERMOST_ADMIN_TOKEN:-}
     volumes:
       - host_django_media:/app/var/media_root
     networks:
