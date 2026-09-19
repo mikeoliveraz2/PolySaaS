@@ -52,6 +52,10 @@ This keeps Copilot, Cursor, and Windsurf synchronized on the same current state 
 - No unilateral changes to working code without explicit approval.
 - If a file appears recently changed, check recency before editing.
 - No iframes by default in passthrough flows; use proxy/rewrite approaches first.
+- UI & navigation: `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`.
+- Orchestration: `documentation/POLYSAAS_ORCHESTRATION_MODEL.md`.
+- Primary endpoint UI is mock + bookmarks; the real app opens in a top-level
+  browser; Native/passthrough remain specialized tools.
 - Pull before continuing work, then commit and push when changes are ready.
 - Never leave finished work uncommitted or unpushed without explicit note.
 - Use the repo’s freeze and backup rules as applicable.

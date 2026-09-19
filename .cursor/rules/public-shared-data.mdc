@@ -1,29 +1,43 @@
 ---
-description: When to store data in public schema — single source of truth shared across all tenants
+description: public is ONLY for platform-wide shared data — never tenant-owned rows
 alwaysApply: true
 ---
 
 # Public schema — cross-tenant shared data
 
-PolySaaS uses PostgreSQL schemas per tenant. **Tenant schemas** remain where **user-driven, tenant-owned** data lives (see `tenant-isolation.mdc`).
+PolySaaS uses PostgreSQL schemas per tenant. **Tenant schemas** are where **user-driven, tenant-owned** data lives (see `tenant-isolation.mdc`).
+
+## HARD RULE
+
+**No tenant-owned data should ever be stored in `public`.**
+
+`public` is not a dumping ground, not a default, and not “safer for agents.” If a row belongs to one subscriber, it belongs in **that tenant’s schema**. Do not “fix” isolation by adding `tenant_id` columns in `public`.
 
 ## When `public` is correct
 
-Use the **`public`** schema for data that must be **identical for every tenant** and should exist **once** on the platform — **no duplication** across tenant schemas.
+Use the **`public`** schema **only** for data that must be **identical for every tenant** and should exist **once** on the platform — **no duplication** across tenant schemas — and that is **not owned by a subscriber**.
 
-- **Single source of truth** for definitions, global catalogs, or platform-wide configuration that all tenants read the same way.
-- **Not** a substitute for tenant isolation: anything **owned by one subscriber** (their instructions, mappings, endpoints, logs, etc.) stays in that tenant’s schema.
+Examples that belong in `public`:
+- Tenant registry (`dose_tenant`)
+- Django auth users
+- User↔tenant membership / profiles used for login routing
+- Platform-wide catalogs or config that every tenant reads the same way (documented, intentional)
+
+Examples that must **never** be stored in `public`:
+- `PassThroughEndpoint`, `TenantApp`, Instructions, Mappings, CallBackData, MQConfig, TrafficLog, bookmarks, orchestration results for a specific tenant
 
 ## Design checklist
 
-1. **Is this row conceptually owned by one tenant?** → Store in **tenant schema** only.
-2. **Must every tenant see the exact same rows with no per-tenant fork?** → **`public`** is appropriate, with explicit access patterns (clear `search_path`, `using`, or a small service layer) so code does not accidentally mix tenant and global scope.
+1. **Is this row conceptually owned by one tenant?** → Store in **tenant schema** only. Never `public`.
+2. **Must every tenant see the exact same rows with no per-tenant fork, and is it not subscriber-owned?** → **`public`** may be appropriate, with explicit access patterns so code does not mix scopes.
+3. **Tempted to add `tenant_id` on a `public` table?** → Wrong design. Use a tenant schema instead.
 
 ## Migrations
 
-If a shared table lives only in `public`, migrations still run in the coordinated multi-schema flow the project uses; only **`public`** will contain the physical table. Do not create redundant copies of the same logical table in each tenant schema unless there is a deliberate isolation requirement.
+If a shared table lives only in `public`, migrations still run in the coordinated multi-schema flow; only **`public`** will contain that physical table. Do not create redundant copies of the same **platform** table in each tenant schema unless there is a deliberate isolation requirement — and never put **tenant-owned** copies into `public`.
 
 ## Relationship to tenant isolation
 
 - **User interactions** with **tenant-owned** data → **tenant schema** (unchanged).
 - **Shared reference / platform-wide** data → **`public`**, one copy, documented and intentional.
+- **Never** use `public` as a fallback for missing tenant rows.

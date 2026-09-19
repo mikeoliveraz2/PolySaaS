@@ -1,0 +1,29 @@
+---
+description: When to store data in public schema — single source of truth shared across all tenants
+alwaysApply: true
+---
+
+# Public schema — cross-tenant shared data
+
+PolySaaS uses PostgreSQL schemas per tenant. **Tenant schemas** remain where **user-driven, tenant-owned** data lives (see `tenant-isolation.mdc`).
+
+## When `public` is correct
+
+Use the **`public`** schema for data that must be **identical for every tenant** and should exist **once** on the platform — **no duplication** across tenant schemas.
+
+- **Single source of truth** for definitions, global catalogs, or platform-wide configuration that all tenants read the same way.
+- **Not** a substitute for tenant isolation: anything **owned by one subscriber** (their instructions, mappings, endpoints, logs, etc.) stays in that tenant’s schema.
+
+## Design checklist
+
+1. **Is this row conceptually owned by one tenant?** → Store in **tenant schema** only.
+2. **Must every tenant see the exact same rows with no per-tenant fork?** → **`public`** is appropriate, with explicit access patterns (clear `search_path`, `using`, or a small service layer) so code does not accidentally mix tenant and global scope.
+
+## Migrations
+
+If a shared table lives only in `public`, migrations still run in the coordinated multi-schema flow the project uses; only **`public`** will contain the physical table. Do not create redundant copies of the same logical table in each tenant schema unless there is a deliberate isolation requirement.
+
+## Relationship to tenant isolation
+
+- **User interactions** with **tenant-owned** data → **tenant schema** (unchanged).
+- **Shared reference / platform-wide** data → **`public`**, one copy, documented and intentional.

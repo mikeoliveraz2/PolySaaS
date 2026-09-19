@@ -24,9 +24,6 @@ Before editing or answering, read the current handoff and the active rules:
 
 ## Protection rules
 
-- **No tenant-owned data should ever be stored in `public`.** Use the tenant
-  schema. Do not invent `tenant_id` columns in `public` to “simplify” isolation.
-  See `AI_RULES.md` §2 and `.cursor/rules/tenant-isolation.mdc`.
 - No iframe-based passthrough by default.
 - Keep the architecture and rules aligned across Copilot, Cursor, and Windsurf.
 - Do not silently diverge from the documented project process.

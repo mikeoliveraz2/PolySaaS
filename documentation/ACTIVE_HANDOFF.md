@@ -16,6 +16,9 @@ Every agent must read this file before editing or answering.
   `PassthroughAuthMiddleware._inject_app_token` set `search_path` to `public`
   on `/pt/admin/mattermost/`, so PT core looked up the endpoint in the wrong
   schema. Fixed to query `TenantApp` in the tenant schema and keep search_path.
+- **Reinforced owner rule across agent sync files:** No tenant-owned data should
+  ever be stored in `public`; no `tenant_id` multi-tenancy in shared tables.
+  Enforced via `scripts/check_agent_sync.py` phrases.
 
 ## Next (Hostinger)
 1. Commit/push `dose/middleware/passthrough_auth.py` fix; Dokploy **Rebuild** django.

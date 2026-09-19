@@ -43,8 +43,6 @@ This keeps Copilot, Cursor, and Windsurf synchronized with the same content and 
 
 - Pull before continuing work whenever appropriate.
 - Never silently diverge from the repo’s documented rules.
-- **No tenant-owned data should ever be stored in `public`.** Schema-per-tenant
-  only; no `tenant_id` multi-tenancy in shared tables.
 - No iframe-based passthrough by default.
 - Ask before editing areas that may be active or recently modified.
 - Keep Copilot, Cursor, and Windsurf synchronized on the same handoff and rules.

@@ -49,6 +49,9 @@ This keeps Copilot, Cursor, and Windsurf synchronized on the same current state 
 
 ## Project process rules
 
+- **No tenant-owned data should ever be stored in `public`.** Schema-per-tenant
+  is the design; do not add `tenant_id` isolation in `public` or fall back there.
+  See `.cursor/rules/tenant-isolation.mdc` and `AI_RULES.md` §2.
 - No unilateral changes to working code without explicit approval.
 - If a file appears recently changed, check recency before editing.
 - No iframes by default in passthrough flows; use proxy/rewrite approaches first.

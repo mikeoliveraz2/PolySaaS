@@ -1,5 +1,5 @@
 ---
-description: Tenant schema isolation — tenant-owned data lives in the tenant schema; public is for system + intentional cross-tenant shared data
+description: Tenant schema isolation — tenant-owned data NEVER in public; no tenant_id design
 alwaysApply: true
 ---
 
@@ -7,17 +7,39 @@ alwaysApply: true
 
 PolySaaS is a multi-tenant Django application using PostgreSQL schema-based isolation.
 
+## HARD RULE — Owner directive (do not “improve”)
+
+**No tenant-owned data is ever stored in `public`.** Not as a shortcut, not for debugging, not “just this once,” not because an AI thinks a `tenant_id` column is cleaner.
+
+The author chose **schema-per-tenant**. That is the product architecture. Agents must follow it, not reinvent multi-tenancy with:
+
+- rows in `public` filtered by `tenant_id` / `tenant_fk`
+- “shared” tables in `public` that actually hold one subscriber’s Instructions, PassThroughEndpoints, TenantApp, logs, mappings, etc.
+- `SET search_path TO public` (or `public` alone) before querying tenant-owned models, then leaving it there
+- silent fallbacks that read tenant data from `public` when the tenant schema is empty
+
+**If you catch yourself about to put tenant data in `public` or add `tenant_id` to isolate rows — STOP. You are wrong. Use the tenant schema.**
+
+Incident reminder (2026-09-19): `PassthroughAuthMiddleware` set `search_path` to `public` on `/pt/admin/mattermost/`, so passthrough looked up `PassThroughEndpoint` in the wrong schema and 404’d while the row correctly lived in `polysaas`. That class of bug is forbidden.
+
 ## The Rule
 
-**All user interactions with tenant-owned data use the user’s tenant schema.** Rows that belong to one subscriber (their business data) are created and read there, not duplicated per tenant in `public`.
+**All user interactions with tenant-owned data use the user’s tenant schema.** Rows that belong to one subscriber (their business data) are created and read there, not duplicated per tenant in `public`, and not keyed by tenant ID in a shared table.
 
-**Exception (by design):** Data that must be **shared across all tenants** with **one source of truth** may live in **`public`** — see **`public-shared-data.mdc`**. That is not tenant-owned data; it is platform-wide or global reference data.
+**Narrow exception (by design):** Data that must be **shared across all tenants** with **one source of truth** and is **not owned by any subscriber** may live in **`public`** — see **`public-shared-data.mdc`**. That is platform/global reference data only (e.g. Tenant registry, User, membership). When in doubt, it is tenant-owned → tenant schema.
 
 ## How It Works
 
-- Each tenant has a dedicated PostgreSQL schema (e.g. `olient` for Oliver Enterprises).
+- Each tenant has a dedicated PostgreSQL schema (e.g. `olient` for Oliver Enterprises, `polysaas` for PolySaaS Online on Hostinger).
 - The `SessionTenantMiddleware` sets `search_path` based on the logged-in user's tenant.
-- The **`public`** schema holds shared system tables (e.g. Tenant, User) and **intentional** cross-tenant tables when you choose a single global copy (see **`public-shared-data.mdc`**). Tenant-specific data such as Instructions, Mappings, PassThroughEndpoints, CallBackData, MQConfig, TrafficLog for that tenant, etc., stays in **that tenant’s schema**, not in `public`.
+- The **`public`** schema holds shared **system** tables (Tenant, User, membership) and only intentional platform-wide shared data (`public-shared-data.mdc`).
+- Tenant-specific data stays in **that tenant’s schema**: Instructions, Mappings, PassThroughEndpoints, CallBackData, MQConfig, TrafficLog, TenantApp, bookmarks, etc.
+
+## search_path discipline
+
+- Before any ORM/SQL on tenant-owned models: `SET search_path TO "<tenant_schema>", public`.
+- `public` in the path is for resolving **system** tables (User, Tenant), **not** for storing tenant business rows.
+- After a temporary switch to `public` (e.g. to look up `Tenant`), **restore** the tenant schema before continuing. Never leave the connection on `public`-only for the rest of a `/pt/` or admin request that needs tenant rows.
 
 ## Migrations Must Hit All Schemas
 
@@ -32,12 +54,12 @@ from django.db import connection
 
 SCHEMA = 'olient'  # or resolve from Tenant model
 with connection.cursor() as cur:
-    cur.execute(f"SET search_path TO {SCHEMA},public;")
+    cur.execute(f'SET search_path TO "{SCHEMA}", public;')
 ```
 
 ## When Creating Demo/Seed Data
 
-1. Identify the target tenant (e.g. `olient`)
+1. Identify the target tenant (e.g. `olient`, `polysaas`)
 2. Set search_path BEFORE any ORM operations
 3. Verify records exist in the correct schema after creation
 
@@ -58,6 +80,7 @@ These models live in tenant schemas, NOT public:
 |--------|------|
 | `public` | Public Tenant (system only) |
 | `olient` | Oliver Enterprises (primary demo tenant) |
+| `polysaas` | PolySaaS Online (Hostinger Founders) |
 
 ## WordPress Editing Target
 

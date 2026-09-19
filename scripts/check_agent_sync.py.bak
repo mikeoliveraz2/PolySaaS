@@ -19,13 +19,11 @@ REQUIRED = {
         "EOD handoff rule",
         "Daily startup rule",
         "shared source of truth",
-        "No tenant-owned data should ever be stored in `public`",
     ],
     ".github/copilot-instructions.md": [
         "Always read first",
         "EOD requirement",
         "No iframe-based passthrough by default",
-        "No tenant-owned data should ever be stored in `public`",
     ],
     "documentation/ACTIVE_HANDOFF.md": [
         "Active Handoff",
@@ -41,22 +39,10 @@ REQUIRED = {
         "Do NOT use iframes for passthrough by default",
         "Never suggest iframes as the easy default",
     ],
-    ".cursor/rules/tenant-isolation.mdc": [
-        "No tenant-owned data is ever stored in `public`",
-        "schema-per-tenant",
-    ],
-    ".cursor/rules/public-shared-data.mdc": [
-        "No tenant-owned data should ever be stored in `public`",
-    ],
     ".windsurf/workflows/push.md": [
         "Startup checks (read before work)",
         "EOD requirement",
         "No iframe-based passthrough by default",
-        "No tenant-owned data should ever be stored in `public`",
-    ],
-    "AI_RULES.md": [
-        "No tenant-owned data should ever be stored in `public`",
-        "schema-per-tenant",
     ],
 }
 

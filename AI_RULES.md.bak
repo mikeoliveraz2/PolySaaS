@@ -48,7 +48,25 @@ All AI assistants working on this repository MUST read this file before making c
 ## 5. Slack integration — API-first production + Native sniff discovery
 
 - **Production orchestration:** Slack is API-first (slash command / webhooks → mailbox → consumer). See `documentation/POLYSAAS_ORCHESTRATION_MODEL.md`. Do not treat production Slack as a finished passthrough product.
-- **PolySniffer Native (discovery):** Slack (and other apps) may be browsed through the **forwarder / host-keyed** `/pt/polysniff/<host>/` so TrafficLog/HAR captures cookies, headers, bodies, and assets for handler construction. See `documentation/architecture/POLYSNIFFER_NATIVE_FORWARDER.md`.
-- Native must **not** use an external Chromium session that talks to Slack’s origin directly — that bypasses HAR capture at the forwarder boundary.
-- Unified PolySniffer workspace UI applies; no iframes as default SPA embed.
-- Inbound `/hooks/slack/commands/` (`/poly`) remains the production trigger path; implement mailbox go-live only when the owner says go.
+- **Product UI:** Slack uses a PolySaaS-owned mock/bookmark home and opens real
+  Slack in a normal top-level browser. Production must not depend on rendering
+  the complete Slack SPA through PolySaaS.
+- **PolySniffer Native (discovery):** Native remains a specialized forwarder/HAR
+  tool where capture is supported. It is not the default Slack or vendor-SaaS
+  product surface.
+- Inbound `/hooks/slack/commands/` (`/poly`) remains the production trigger path.
+
+## 6. UI and navigation
+
+- Governing document:
+  `documentation/POLYSAAS_UI_NAVIGATION_AND_EVENTS.md`.
+- Primary UI for every endpoint: PolySaaS mock/screenshot surface + bookmarks.
+- Secondary UI: unchanged real application in a normal top-level browser.
+- Native/passthrough remain specialized discovery/validation tools.
+- Bookmark actions must be declarative and allowlisted. Never store executable
+  JavaScript or unrestricted absolute URLs. Real-app URLs may use only the
+  endpoint's configured host and HTTP(S) policy.
+- Browser-facing endpoint homes use the exact endpoint host resolved in the
+  active tenant schema. Database row IDs are internal only.
+- Tenant-owned bookmarks, events, and results live only in the active tenant
+  schema; never silently fall back to `public`.

@@ -13,15 +13,24 @@ All AI assistants working on this repository MUST read this file before making c
 
 ## 2. PostgreSQL schema architecture
 
-- The `public` schema is for shared/global tables only:
+**HARD RULE (owner):** No tenant-owned data should ever be stored in `public`.
+Do not reintroduce `tenant_id`-based multi-tenancy in shared tables. Isolation is
+**schema-per-tenant**, not row-level filtering in `public`. See
+`.cursor/rules/tenant-isolation.mdc` and `.cursor/rules/public-shared-data.mdc`.
+
+- The `public` schema is for shared/global **system** tables only:
   - `auth_user`
   - `dose_tenant`
   - `dose_userprofile`
   - `dose_usertenantmembership`
   - subscriptions and public site config
-- Everything else lives in tenant-specific schemas.
+- Everything else (PassThroughEndpoint, TenantApp, Instructions, mappings, logs,
+  bookmarks, etc.) lives in tenant-specific schemas — never in `public`.
 - Admin `ModelAdmin` for user/tenant must force `public` schema.
 - All other model admins must use `TenantAwareModelAdmin` and set `search_path` to the tenant schema.
+- Never leave `search_path` on `public`-only before querying tenant-owned models
+  (e.g. on `/pt/admin/<slug>/`). Restore `"<tenant>", public` after any temporary
+  switch to `public`.
 
 ## 3. General guardrails
 
