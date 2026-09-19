@@ -7,6 +7,8 @@
 #      (STRIPE_PUBLISHABLE_KEY / STRIPE_SECRET_KEY from Dokploy .env).
 # FIX 2026-09-19 (owner): pass ODOO_SHARED_URL (+ master/db) into Django so Founders/subscribe
 #      Odoo provision hits http://odoo:8069 instead of localhost.
+# FIX 2026-09-19 (owner): pass MATTERMOST_DB_* into Django for recover_mattermost_admin_token
+#      (reset admin + create PAT without mmctl / Mattermost UI shell).
 #
 # PolySaaS Hostinger + Dokploy production stack (phase 1)
 #
@@ -101,6 +103,11 @@ services:
       ODOO_XMLRPC_ADMIN_LOGIN: ${ODOO_XMLRPC_ADMIN_LOGIN:-admin}
       ODOO_XMLRPC_ADMIN_PASSWORD: ${ODOO_XMLRPC_ADMIN_PASSWORD:-}
       MATTERMOST_ADMIN_TOKEN: ${MATTERMOST_ADMIN_TOKEN:-}
+      # Mattermost DB — used by recover_mattermost_admin_token (no mmctl/UI needed)
+      MATTERMOST_DB_HOST: ${MATTERMOST_DB_HOST:-mattermost-db}
+      MATTERMOST_DB_NAME: ${MATTERMOST_DB_NAME:-mattermost}
+      MATTERMOST_DB_USER: ${MATTERMOST_DB_USER:-mattermost}
+      MATTERMOST_DB_PASSWORD: ${MATTERMOST_DB_PASSWORD:?set MATTERMOST_DB_PASSWORD}
     volumes:
       - host_django_media:/app/var/media_root
     networks:

@@ -4,7 +4,7 @@ This file is the canonical startup and end-of-day handoff for PolySaaS.
 Every agent (Copilot, Cursor, Windsurf) must read it before work and update it at EOD.
 
 **Date:** 2026-09-19 (Saturday)  
-**Session:** Marketing subscribe redirects + sidebar UX authority clarification  
+**Session:** Sidebar Browse+CP unit + Odoo provision Hostinger wiring  
 **Branch:** main  
 
 ## Live infra
@@ -16,32 +16,35 @@ Every agent (Copilot, Cursor, Windsurf) must read it before work and update it a
 | VPS IP | `187.53.138.235` |
 | Domain | `prod-polysaas.cloud` |
 | Hosts | `app` / `mm` / `odoo`.prod-polysaas.cloud |
-| WordPress (marketing) | **polysaas.online** (edit target). Azure-nightingale is staging only — do not remigrate unless asked. |
+| WordPress (marketing) | **polysaas.online** |
 
 ## Completed this session
 
-- **WP public path to subscribe (live polysaas.online):**
-  - Nav + home Sign Up CTAs → `https://app.prod-polysaas.cloud/dose/subscribe/`
-  - `/sign-up/` and `/dose/subscribe/` pages redirect to that app URL
-- **Sidebar:** intentional Shela split remains (commit `6d936312`): icon → Browse (new tab); **Control Panel** link → endpoint home. An unauthorized agent attempt to remove the CP link was **reverted**; `.bak` synced to match current HTML.
-- Cleaned untracked `documentation/website/_tmp_*` / `_inj_*` scratch files (not committed).
+- **WP:** Sign Up / `/dose/subscribe/` → `https://app.prod-polysaas.cloud/dose/subscribe/`
+- **Sidebar (owner-approved):** Browse icon + Control Panel are **one unit** — always both visible; ready = clickable; not ready = dimmed / non-clickable. Shela destinations unchanged (icon→Browse, button→CP).
+- **Hostinger compose:** Django now gets `ODOO_SHARED_URL` (default `http://odoo:8069`), `ODOO_SHARED_DB`, `ODOO_MASTER_PASSWORD`, plus `MATTERMOST_ADMIN_TOKEN` passthrough.
+- **odoo.proxy.conf:** `admin_passwd = admin` so DB manager matches `ODOO_MASTER_PASSWORD` default.
 
-## Authority note (production)
+## Why Founders Odoo looked broken
 
-Passthrough sidebar Browse + Control Panel split was authorized by **Shela** (2026-09-06). Do **not** change frozen admin sidebar UX without Michael/Shela explicit approval. All production code changes require approval first.
+Provision Step 1 created PassThroughEndpoint (icon). Step 2 hit `localhost:8086` inside Django → failed → TenantApp not `active` → CP link was hidden (unit bug). Yesterday’s working Odoo was already `active`.
+
+## Next (Hostinger ops — after push)
+
+1. Dokploy Environment: ensure `ODOO_SHARED_URL=http://odoo:8069` (compose default also works after Rebuild).
+2. **Rebuild** Django image (not Deploy-only) so templates + compose env bake in.
+3. Open Terminal on **django** container:
+   ```bash
+   python manage.py repair_tenant_odoo polysaasonline
+   ```
+   (If slug differs, list tenants first. Pass `--email` if `odoo_login` missing.)
+4. Hard-refresh admin — Odoo unit should show Control Panel; when `active`, both clickable.
+
+## Authority
+
+No sidebar design changes without Michael/Shela explicit approval. Browse+CP unit rule is owner-mandated.
 
 ## BINGO still valid
 
-- Founders Beta $10 + Mattermost CP — `BINGO_FOUNDERS_BETA_AND_MATTERMOST_CP_2026-09-16.md` (`694a6186`)
-- Hostinger Mattermost passthrough — `BINGO_HOSTINGER_MM_PASSTHROUGH_2026-09-13.md`
-- Hostinger Odoo HTTPS login — `BINGO_HOSTINGER_ODOO_HTTPS_LOGIN_2026-09-12.md`
-
-## Next actions
-
-1. Finish Odoo/Mattermost provision for Founders tenant (PolySaaS Online) so tiles are `active` (Control Panel appears / clickable). Wire `ODOO_SHARED_URL=http://odoo:8069` + `MATTERMOST_ADMIN_TOKEN` in Dokploy if still missing.
-2. Dokploy **Rebuild** only when code changes need baking (sidebar HTML unchanged vs last ship for CP split).
-3. Optional: $1 Founders smoke after Stripe confirmed.
-
-## Ops reminder
-
-Django on Hostinger is **image-baked** — after pushing, Dokploy must **Rebuild** (not only Deploy) when code changes. Env-only updates need container recreate with new env.
+- Founders Beta $10 + Mattermost CP — `694a6186`
+- Hostinger MM passthrough / Odoo HTTPS login BINGOs unchanged
