@@ -4,25 +4,17 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-19 (Saturday)
-**Session:** Mattermost Browse 404 — search_path clobber
+**Session:** BINGO — Mattermost Browse search_path (FROZEN)
 **Branch:** main
 
 ## Done
-- Hostinger tenant for PolySaaS Online is schema `polysaas` (not polysaasonline).
-- Odoo provisioned for `polysaas` (active + Control Panel).
-- Sidebar Browse+CP unit; ODOO_SHARED_URL wiring.
-- `recover_mattermost_admin_token` + django `MATTERMOST_DB_*`; MM provisioned for polysaasadmin.
-- **Root cause of Browse "No enabled PassThroughEndpoint with slug mattermost":**
-  `PassthroughAuthMiddleware._inject_app_token` set `search_path` to `public`
-  on `/pt/admin/mattermost/`, so PT core looked up the endpoint in the wrong
-  schema. Fixed to query `TenantApp` in the tenant schema and keep search_path.
-- **Reinforced owner rule across agent sync files:** No tenant-owned data should
-  ever be stored in `public`; no `tenant_id` multi-tenancy in shared tables.
-  Enforced via `scripts/check_agent_sync.py` phrases.
+- Hostinger Founders tenant schema `polysaas`; Odoo + Mattermost provisioned.
+- Browse 404 root cause: `PassthroughAuthMiddleware` clobbered `search_path` to `public`.
+- Fix `a0bc2367`; tenant-data-in-public rules reinforced `feb5a3d2`.
+- **BINGO FROZEN:** `documentation/BINGO_MM_BROWSE_SEARCHPATH_TENANT_SCHEMA_2026-09-19.md`
+  — `dose/middleware/passthrough_auth.py` must not be edited without owner permission.
+- GOLD ZIP: `D:\BINGO ZIPS\BINGO_MM_BROWSE_SEARCHPATH_2026-09-19.zip`
 
-## Next (Hostinger)
-1. Commit/push `dose/middleware/passthrough_auth.py` fix; Dokploy **Rebuild** django.
-2. Hard-refresh admin → click Mattermost logo (Browse) — expect Town Square, not 404.
-3. Optional: Dokploy persist `MATTERMOST_ADMIN_TOKEN`; change temp MM admin password.
-4. If Browse still 404 after rebuild: in django shell, list/create
-   `PassThroughEndpoint(slug='mattermost')` in schema `polysaas`.
+## Next
+1. Optional: persist `MATTERMOST_ADMIN_TOKEN` in Dokploy; rotate temp MM admin password.
+2. Do **not** touch frozen passthrough_auth without Michael/Shela approval.

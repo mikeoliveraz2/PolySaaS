@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Browse search_path — 2026-09-19 — commit 927ea37c — see documentation/BINGO_MM_BROWSE_SEARCHPATH_TENANT_SCHEMA_2026-09-19.md
 """
 Passthrough authentication middleware (POL-2 / R-2).
 
@@ -127,9 +129,14 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
 
     def _inject_app_token(self, request):
         """
-        Look up the app trigger from the path, find the TenantApp,
-        and inject the app-specific auth token if one is stored.
-        Uses raw SQL to query public schema directly.
+        Look up the app slug from the path, find TenantApp in the *tenant*
+        schema, and inject the app-specific auth token if one is stored.
+
+        FIX 2026-09-19: Never SET search_path to public here. That left
+        ExternalPassthroughMiddleware querying PassThroughEndpoint in public
+        after /pt/admin/mattermost/ — "No enabled PassThroughEndpoint with
+        slug mattermost" while the row lived in the tenant schema. TenantApp
+        is tenant-scoped; query it there and keep search_path on the tenant.
         """
         parts = request.path.strip('/').split('/')
         if len(parts) < 3 or parts[0] != 'pt':
@@ -141,24 +148,23 @@ class PassthroughAuthMiddleware(MiddlewareMixin):
             return
 
         try:
-            import json
             from django.db import connection
+            from dose.models import TenantApp
 
-            extra_config = None
+            schema = (
+                getattr(request, 'schema_name', None)
+                or getattr(connection, 'schema_name', None)
+                or ''
+            ).strip()
+            if not schema or schema.lower() == 'public':
+                return
+
             with connection.cursor() as cur:
-                cur.execute("SET search_path TO public,pg_catalog")
-                cur.execute(
-                    """SELECT extra_config FROM dose_tenantapp
-                       WHERE app_name = %s AND status = 'active'
-                       LIMIT 1""",
-                    [trigger],
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    cfg = row[0]
-                    extra_config = json.loads(cfg) if isinstance(cfg, str) else cfg
+                cur.execute(f'SET search_path TO "{schema}", public')
 
-            if not extra_config:
+            ta = TenantApp.objects.filter(app_name=trigger, status='active').first()
+            extra_config = (ta.extra_config if ta else None) or {}
+            if not isinstance(extra_config, dict):
                 return
 
             app_token = extra_config.get(token_key)

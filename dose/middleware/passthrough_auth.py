@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost Browse search_path — 2026-09-19 — commit 927ea37c — see documentation/BINGO_MM_BROWSE_SEARCHPATH_TENANT_SCHEMA_2026-09-19.md
 """
 Passthrough authentication middleware (POL-2 / R-2).
 
