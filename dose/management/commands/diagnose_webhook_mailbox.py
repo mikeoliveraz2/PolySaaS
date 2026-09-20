@@ -1,0 +1,96 @@
+"""
+Diagnose / seed WebhookMailbox for a tenant schema.
+
+  python manage.py diagnose_webhook_mailbox --schema polysaas
+  python manage.py diagnose_webhook_mailbox --schema polysaas --seed
+"""
+from __future__ import annotations
+
+import uuid
+
+from django.core.management.base import BaseCommand
+from django.db import connection
+from django.utils import timezone
+
+from dose.models import Tenant
+from dose.models.webhook_mailbox import CAPTURE_MAILBOX_TTL_SECONDS, WebhookMailbox
+from dose.tenant_app_lookup import tenant_schema_search_path
+
+
+class Command(BaseCommand):
+    help = "Count WebhookMailbox rows per schema; optional --seed writes one test row."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--schema", default="polysaas", help="Tenant schema_name")
+        parser.add_argument(
+            "--seed",
+            action="store_true",
+            help="Insert one processed passthrough test row into this schema",
+        )
+
+    def handle(self, *args, **options):
+        schema = (options["schema"] or "polysaas").strip()
+        seed = bool(options["seed"])
+
+        with connection.cursor() as cur:
+            cur.execute("SET search_path TO public")
+        tenant = Tenant.objects.filter(schema_name=schema).first()
+        if not tenant:
+            self.stderr.write(self.style.ERROR(f"No Tenant with schema_name={schema!r}"))
+            return
+
+        # Does table exist in this schema?
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = %s AND table_name = 'webhook_mailbox'
+                ORDER BY ordinal_position
+                """,
+                [schema],
+            )
+            cols = [r[0] for r in cur.fetchall()]
+        self.stdout.write(f"schema={schema} tenant={tenant.name} slug={tenant.slug}")
+        self.stdout.write(f"  webhook_mailbox columns: {cols or '(TABLE MISSING)'}")
+
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                self.stderr.write(self.style.ERROR("search_path failed"))
+                return
+            count = WebhookMailbox.objects.count()
+            self.stdout.write(f"  row count: {count}")
+            for row in WebhookMailbox.objects.all()[:10]:
+                self.stdout.write(
+                    f"    #{row.id} status={row.status} source={row.source} "
+                    f"topic={row.topic!r} path={row.action_path!r}"
+                )
+
+            if seed:
+                if "topic" not in cols:
+                    self.stderr.write(self.style.ERROR(
+                        "column topic missing — run: python manage.py migrate"
+                    ))
+                    return
+                envelope = {
+                    "kind": "polysaas.capture.v1",
+                    "event_id": uuid.uuid4().hex,
+                    "correlation_id": str(uuid.uuid4()),
+                    "tenant_schema": schema,
+                    "source": "passthrough",
+                    "action_path": "/odoo/action-384",
+                    "method": "GET",
+                    "direction": "RES",
+                    "event_key": "diagnose_seed",
+                    "topic": "RES.odoo.action-384.diagnose",
+                    "payload": {"capture": "diagnose_seed", "at": timezone.now().isoformat()},
+                    "received_at": timezone.now().isoformat(),
+                }
+                row = WebhookMailbox.create_from_envelope(
+                    envelope,
+                    ttl_seconds=CAPTURE_MAILBOX_TTL_SECONDS,
+                    status="processed",
+                    result={"seed": True, "topic": envelope["topic"]},
+                )
+                self.stdout.write(self.style.SUCCESS(
+                    f"  SEED OK id={row.id} — refresh Admin → Webhook mailboxes"
+                ))

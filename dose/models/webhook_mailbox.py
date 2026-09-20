@@ -158,6 +158,7 @@ class WebhookMailbox(models.Model):
             result: optional result payload when status=processed
         """
         from dose.models import Tenant
+        import uuid as uuid_mod
 
         tenant = Tenant.objects.get(schema_name=envelope['tenant_schema'])
         expires_at = timezone.now() + timedelta(seconds=ttl_seconds)
@@ -166,10 +167,13 @@ class WebhookMailbox(models.Model):
             or (envelope.get('payload') or {}).get('topic')
             or ''
         )
+        cid = envelope['correlation_id']
+        if not isinstance(cid, uuid_mod.UUID):
+            cid = uuid_mod.UUID(str(cid))
         row = cls(
             tenant=tenant,
             event_id=envelope['event_id'],
-            correlation_id=envelope['correlation_id'],
+            correlation_id=cid,
             envelope=envelope,
             action_path=envelope['action_path'],
             source=envelope['source'],
