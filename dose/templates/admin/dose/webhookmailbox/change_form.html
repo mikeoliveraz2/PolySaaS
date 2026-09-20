@@ -1,0 +1,22 @@
+{% extends "admin/change_form.html" %}
+
+{% block field_sets %}
+{% if mailbox_records_table %}
+<div class="card card-primary card-outline" style="margin-bottom:1rem;">
+  <div class="card-header">
+    <h3 class="card-title" style="margin:0;font-size:1.1rem;">Published inventory records</h3>
+  </div>
+  <div class="card-body" style="padding:12px;">
+    <pre style="margin:0;max-height:40rem;overflow:auto;white-space:pre;background:#111;color:#e8e8e8;padding:12px;border-radius:6px;font-size:12px;line-height:1.35;">{{ mailbox_records_table }}</pre>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-warning" style="margin-bottom:1rem;">
+  No <code>records[]</code> on this mailbox row.
+  Go back and click a row whose <strong>Payload</strong> column says
+  <em>N record(s)</em> (for example <em>10 record(s) — Cable tie pack</em>),
+  not the navigate <em>get_response</em> / action-384 row.
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

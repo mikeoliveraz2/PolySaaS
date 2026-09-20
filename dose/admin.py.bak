@@ -340,7 +340,14 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
             return ''
         if isinstance(value, (list, tuple)) and len(value) >= 2:
             return str(value[1])
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict):
+            if 'display_name' in value:
+                return str(value.get('display_name') or '')
+            if 'name' in value:
+                return str(value.get('name') or '')
+            import json
+            return json.dumps(value, default=str)
+        if isinstance(value, list):
             import json
             return json.dumps(value, default=str)
         return str(value)
@@ -365,14 +372,16 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                 )
                 if isinstance(sample, (list, tuple)) and len(sample) >= 2:
                     sample = sample[1]
+                if isinstance(sample, dict):
+                    sample = sample.get('display_name') or sample.get('name') or ''
             text = f'{n} record(s)' + (f' — {sample}' if sample else '')
             return text if len(text) <= 72 else text[:69] + '…'
-        note = None
+        # Navigate / empty captures — label clearly so demos open the right row
         if isinstance(payload, dict):
-            note = payload.get('note') or payload.get('capture')
-            data = payload.get('data')
-            if note is None and isinstance(data, dict):
-                note = data.get('note') or data.get('capture_mode') or data.get('path')
+            data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
+            if data.get('capture_mode') == 'navigate' or payload.get('capture') == 'get_response':
+                return 'no records (navigate only)'
+            note = payload.get('note') or payload.get('capture') or data.get('note')
             text = str(note) if note else json.dumps(payload, default=str)
         else:
             text = str(payload)
@@ -382,14 +391,14 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     @admin.display(description='Published records')
     def published_payload(self, obj):
         """
-        Plain-text table inside <pre> so Jazzmin/escaping cannot hide the rows.
+        Plain text only (no HTML). Jazzmin often escapes/hides HTML from
+        readonly callables; a plain string always shows in the change form.
         """
         import json
-        from django.utils.html import format_html
 
         payload = self._extract_published_payload(obj)
         if payload is None:
-            return '— (no payload in envelope)'
+            return '(no payload in envelope)'
 
         records = self._records_from_payload(payload)
         captured_at = (
@@ -400,22 +409,16 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
 
         if records is None:
             text = json.dumps(payload, indent=2, default=str)
-            if len(text) > 40_000:
-                text = text[:40_000] + '\n… truncated …'
-            return format_html(
-                '<pre style="max-height:28rem;overflow:auto;white-space:pre-wrap;'
-                'word-break:break-word;background:#111;color:#e8e8e8;'
-                'padding:12px;border-radius:6px;font-size:12px;">'
+            if len(text) > 20_000:
+                text = text[:20_000] + '\n… truncated …'
+            return (
                 'No records[] in this capture.\n'
-                'If this is a navigate/seed row, open Inventory Products again\n'
-                'after setup_odoo_inventory_capture so CapturePostResponse runs.\n\n'
-                '{}'
-                '</pre>',
-                text,
+                'Open a row whose list Payload column says \"N record(s)\" '
+                '(e.g. product.template/web_search_read), not navigate-only.\n\n'
+                + text
             )
 
         cols = self._record_table_columns(records)
-        # Build monospace ASCII table (always visible even if HTML is escaped).
         widths = []
         for c in cols:
             w = len(c)
@@ -433,6 +436,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
 
         lines = [
             f'{len(records)} record(s) · captured {captured_at or "—"} · topic {obj.topic or ""}',
+            f'path {obj.action_path or ""}',
             '',
             fmt_row(cols),
             '-+-'.join('-' * w for w in widths),
@@ -444,13 +448,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                 lines.append(str(row)[:120])
         if len(records) > 200:
             lines.append(f'… {len(records) - 200} more not shown')
-
-        return format_html(
-            '<pre style="max-height:36rem;overflow:auto;white-space:pre;'
-            'background:#111;color:#e8e8e8;padding:12px;border-radius:6px;'
-            'font-size:12px;line-height:1.35;">{}</pre>',
-            '\n'.join(lines),
-        )
+        return '\n'.join(lines)
 
     @admin.display(description='Topic')
     def topic_short(self, obj):
