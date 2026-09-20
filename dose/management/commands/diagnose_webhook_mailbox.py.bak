@@ -90,6 +90,7 @@ class Command(BaseCommand):
                     ttl_seconds=CAPTURE_MAILBOX_TTL_SECONDS,
                     status="processed",
                     result={"seed": True, "topic": envelope["topic"]},
+                    tenant=tenant,
                 )
                 self.stdout.write(self.style.SUCCESS(
                     f"  SEED OK id={row.id} — refresh Admin → Webhook mailboxes"

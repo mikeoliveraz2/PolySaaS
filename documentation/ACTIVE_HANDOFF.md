@@ -4,17 +4,15 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-20 (Sunday)
-**Session:** Restore WebhookMailbox db_table
+**Session:** Mailbox admin shows published payload (demo)
 **Branch:** main
 
 ## Done
-- Dropped tenant FK (0065) — migrate OK on public/olient/polysaas.
-- Seed failed: ORM used default `dose_webhookmailbox`; real table is
-  `webhook_mailbox` (set in 0061). Restored `Meta.db_table`.
+- WebhookMailboxAdmin: **Published data** section + list **Payload** column
+  (reads `envelope.payload`, falls back to `result`).
+- Capture enroll `result` now stores full `data` / meta for browse.
+- Seed includes payload in `result`.
 
 ## Next (Hostinger)
-Rebuild django (no migrate needed), then:
-```bash
-python manage.py diagnose_webhook_mailbox --schema polysaas --seed
-```
-Expect SEED OK. Then Inventory → mailbox.
+Rebuild django. Open existing rows — Published data should show payload.
+Re-seed or hit Inventory for a fresh row with richer `result`.

@@ -146,11 +146,14 @@ def _enroll_capture_mailbox(request, instruction_row, topic: str, message: dict,
         },
         "received_at": dj_timezone.now().isoformat(),
     }
+    # Same body subscribers would pull — keep it on result for admin/demo browse.
     result_summary = {
         "topic": topic,
         "capture": message.get("capture"),
         "publish_result": publish_result,
-        "data_preview_chars": len(json.dumps(message.get("data"), default=str)[:500]),
+        "data": message.get("data"),
+        "response_meta": message.get("response_meta"),
+        "request_meta": message.get("request_meta"),
     }
 
     try:

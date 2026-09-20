@@ -89,7 +89,11 @@ class Command(BaseCommand):
                     envelope,
                     ttl_seconds=CAPTURE_MAILBOX_TTL_SECONDS,
                     status="processed",
-                    result={"seed": True, "topic": envelope["topic"]},
+                    result={
+                        "seed": True,
+                        "topic": envelope["topic"],
+                        "payload": envelope["payload"],
+                    },
                     tenant=tenant,
                 )
                 self.stdout.write(self.style.SUCCESS(
