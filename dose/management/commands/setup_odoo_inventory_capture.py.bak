@@ -19,9 +19,6 @@ INVENTORY_CAPTURE_PATHS = (
     ("product.product/web_search_read", "odoo_inventory_product_product"),
     ("product.template/web_search_read", "odoo_inventory_product_template"),
     ("stock.quant/web_search_read", "odoo_inventory_stock_quant"),
-    ("product.product/search_read", "odoo_inventory_product_product_sr"),
-    ("product.template/search_read", "odoo_inventory_product_template_sr"),
-    ("stock.quant/search_read", "odoo_inventory_stock_quant_sr"),
 )
 
 

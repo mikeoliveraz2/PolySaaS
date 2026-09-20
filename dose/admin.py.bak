@@ -221,8 +221,8 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         ('Published data', {
             'fields': ['published_payload'],
             'description': (
-                'What was written to the mailbox for async consumers '
-                '(envelope.payload). This is the demo-visible capture body.'
+                'Inventory/product rows captured from the Odoo list response '
+                '(result.records), shown as a table when present.'
             ),
         }),
         ('Identity', {
@@ -252,16 +252,80 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
             return obj.result
         return None
 
-    @staticmethod
-    def _records_from_payload(payload):
+    @classmethod
+    def _records_from_payload(cls, payload):
+        """Find Odoo list rows wherever they sit in the capture payload."""
+        if payload is None:
+            return None
+        if isinstance(payload, list):
+            return payload if payload and isinstance(payload[0], dict) else None
         if not isinstance(payload, dict):
             return None
-        if isinstance(payload.get('records'), list):
-            return payload['records']
+
+        # Direct / normalized shapes
+        for key in ('records',):
+            val = payload.get(key)
+            if isinstance(val, list) and (not val or isinstance(val[0], dict)):
+                return val
+
+        # Nested under data (common mailbox shape)
         data = payload.get('data')
-        if isinstance(data, dict) and isinstance(data.get('records'), list):
-            return data['records']
+        if isinstance(data, dict):
+            found = cls._records_from_payload(data)
+            if found is not None:
+                return found
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return data
+
+        # Raw JSON-RPC: result.records
+        result = payload.get('result')
+        if isinstance(result, dict):
+            recs = result.get('records')
+            if isinstance(recs, list):
+                return recs
         return None
+
+    @staticmethod
+    def _record_table_columns(records):
+        """Prefer inventory-ish fields; fall back to first row keys."""
+        preferred = (
+            'id',
+            'default_code',
+            'display_name',
+            'name',
+            'qty_available',
+            'virtual_available',
+            'quantity',
+            'inventory_quantity',
+            'location_id',
+            'product_id',
+            'list_price',
+            'uom_id',
+            'type',
+            'categ_id',
+        )
+        if not records or not isinstance(records[0], dict):
+            return list(preferred[:6])
+        present = set()
+        for row in records[:50]:
+            if isinstance(row, dict):
+                present.update(row.keys())
+        cols = [c for c in preferred if c in present]
+        if not cols:
+            cols = list(records[0].keys())[:8]
+        return cols
+
+    @staticmethod
+    def _cell_text(value):
+        if value is None:
+            return ''
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            # Odoo many2one: [id, "Name"]
+            return str(value[1])
+        if isinstance(value, (dict, list)):
+            import json
+            return json.dumps(value, default=str)
+        return str(value)
 
     @admin.display(description='Payload')
     def payload_preview(self, obj):
@@ -273,14 +337,16 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         if records is not None:
             n = len(records)
             sample = ''
-            if records:
-                first = records[0] if isinstance(records[0], dict) else {}
+            if records and isinstance(records[0], dict):
+                first = records[0]
                 sample = (
                     first.get('display_name')
                     or first.get('name')
                     or first.get('default_code')
                     or ''
                 )
+                if isinstance(sample, (list, tuple)) and len(sample) >= 2:
+                    sample = sample[1]
             text = f'{n} record(s)' + (f' — {sample}' if sample else '')
             return text if len(text) <= 72 else text[:69] + '…'
         note = None
@@ -295,38 +361,86 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         text = ' '.join(text.split())
         return text if len(text) <= 72 else text[:69] + '…'
 
-    @admin.display(description='Published payload')
+    @admin.display(description='Published records')
     def published_payload(self, obj):
         import json
-        from django.utils.html import format_html
+        from django.utils.html import format_html, format_html_join
 
         payload = self._extract_published_payload(obj)
         if payload is None:
             return '— (no payload in envelope)'
-        # Prefer the records list for demo readability.
+
         records = self._records_from_payload(payload)
-        if records is not None:
-            display = {
-                'record_count': len(records),
-                'records': records,
-                'captured_at': (
-                    obj.envelope.get('received_at')
-                    if isinstance(obj.envelope, dict)
-                    else None
-                ),
-                'topic': obj.topic,
-                'action_path': obj.action_path,
-            }
-            text = json.dumps(display, indent=2, default=str)
-        else:
+        captured_at = (
+            obj.envelope.get('received_at')
+            if isinstance(obj.envelope, dict)
+            else None
+        )
+
+        if records is None:
             text = json.dumps(payload, indent=2, default=str)
-        if len(text) > 80_000:
-            text = text[:80_000] + '\n… truncated for admin display …'
+            if len(text) > 80_000:
+                text = text[:80_000] + '\n… truncated for admin display …'
+            return format_html(
+                '<p style="opacity:.85;margin:0 0 8px;">No <code>records[]</code> found '
+                'in this capture (navigate/metadata only). Raw payload:</p>'
+                '<pre style="max-height:24rem;overflow:auto;white-space:pre-wrap;'
+                'word-break:break-word;background:#111;color:#e8e8e8;'
+                'padding:12px;border-radius:6px;font-size:12px;line-height:1.4;">{}</pre>',
+                text,
+            )
+
+        cols = self._record_table_columns(records)
+        header = format_html_join(
+            '',
+            '<th style="text-align:left;padding:6px 10px;border-bottom:1px solid #444;'
+            'white-space:nowrap;">{}</th>',
+            ((c,) for c in cols),
+        )
+
+        def row_cells(row):
+            if not isinstance(row, dict):
+                return (str(row),)
+            return tuple(self._cell_text(row.get(c)) for c in cols)
+
+        body = format_html_join(
+            '',
+            '<tr>{}</tr>',
+            (
+                (
+                    format_html_join(
+                        '',
+                        '<td style="padding:6px 10px;border-bottom:1px solid #333;'
+                        'vertical-align:top;max-width:14rem;overflow:hidden;'
+                        'text-overflow:ellipsis;">{}</td>',
+                        ((cell,) for cell in row_cells(row)),
+                    ),
+                )
+                for row in records[:200]
+            ),
+        )
+        more = ''
+        if len(records) > 200:
+            more = format_html(
+                '<p style="margin:8px 0 0;opacity:.8;">… {} more record(s) not shown</p>',
+                len(records) - 200,
+            )
+
         return format_html(
-            '<pre style="max-height:32rem;overflow:auto;white-space:pre-wrap;'
-            'word-break:break-word;background:#111;color:#e8e8e8;'
-            'padding:12px;border-radius:6px;font-size:12px;line-height:1.4;">{}</pre>',
-            text,
+            '<p style="margin:0 0 10px;"><strong>{} record(s)</strong>'
+            ' · captured {} · topic <code>{}</code></p>'
+            '<div style="max-height:36rem;overflow:auto;border:1px solid #333;'
+            'border-radius:6px;background:#111;">'
+            '<table style="width:100%;border-collapse:collapse;color:#e8e8e8;'
+            'font-size:12px;line-height:1.35;">'
+            '<thead><tr style="background:#1a1a1a;">{}</tr></thead>'
+            '<tbody>{}</tbody></table></div>{}',
+            len(records),
+            captured_at or '—',
+            obj.topic or '',
+            header,
+            body,
+            more,
         )
 
     @admin.display(description='Topic')
