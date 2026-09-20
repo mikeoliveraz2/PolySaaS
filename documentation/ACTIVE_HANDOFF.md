@@ -4,22 +4,18 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-20 (Sunday)
-**Session:** Fix mailbox records visibility (truncate + admin table)
+**Session:** Mailbox records visible — open the right row
 **Branch:** main
 
-## Done
-- `_truncate` no longer strips `records[]` (was turning large Odoo lists into
-  `_preview` only — admin then showed no records).
-- Admin **Published records** uses a plain-text table in `<pre>` (Jazzmin-safe).
-- Diagnose `--seed` writes sample inventory `records[]`; `--dump` shows shape.
-- Capture Instructions also match `search_read`.
+## Status
+Live dump proves capture works:
+- Rows with `product.template/web_search_read` have **records=10** (real inventory).
+- Rows with `/odoo/action-384` are navigate-only (**records=None**) — ignore those.
+- SEED row has records=3.
 
-## Next (Hostinger)
-```bash
-# Rebuild, then:
-python manage.py setup_odoo_inventory_capture --schema polysaas
-python manage.py diagnose_webhook_mailbox --schema polysaas --seed
-python manage.py diagnose_webhook_mailbox --schema polysaas --dump
-```
-Open the newest SEED row in Admin — expect a table with PS-INV-01..03.
-Then reload Odoo Inventory Products via passthrough for a live capture.
+Admin now returns **plain text** published records (no HTML) so Jazzmin shows them.
+List Payload column labels navigate rows as `no records (navigate only)`.
+
+## Next
+Rebuild → open mailbox row whose Payload says `10 record(s)` or `3 record(s)`,
+NOT `no records (navigate only)`.
