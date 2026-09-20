@@ -4,16 +4,16 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-20 (Sunday)
-**Session:** Odoo inventory sample seed command
+**Session:** Webhook mailbox admin browser
 **Branch:** main
 
 ## Done
-- Prior: Mattermost Browse search_path BINGO frozen (`b8b827cd`).
-- New: `python manage.py seed_odoo_inventory` — 10 storable SKUs (`PS-INV-01`..`10`)
-  with on-hand qty via stock.quant (Odoo 18 `is_storable`).
+- `seed_odoo_inventory` pushed (`ac80162b`).
+- Jazzmin admin: **Webhook mailboxes** (`WebhookMailboxAdmin`) — browse
+  pending/claimed/processed/failed/expired envelopes (readonly; no add).
 
 ## Next (Hostinger)
-1. Dokploy Rebuild django if needed so the new command is in the image.
-2. `python manage.py seed_odoo_inventory --schema polysaas`
-3. Confirm Odoo Inventory shows `PS-INV-*` on-hand.
-4. Resume week orchestration cases (GET extract, correlation, mid-stream refine, AI UI).
+1. Rebuild django → Admin → Dose Tenant Management → **Webhook mailboxes**.
+2. Note: `CaptureGetResponse` still lands in **Call Back Data** (+ MQ), not
+   WebhookMailbox — mailbox UI is for Slack/HubSpot-style webhook envelopes.
+3. Continue week orchestration demos (GET / correlation / mid-stream / AI UI).
