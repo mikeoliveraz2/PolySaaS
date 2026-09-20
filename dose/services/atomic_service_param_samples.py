@@ -87,6 +87,16 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
             'and write-free enrolls Webhook mailbox (processed, 7d useful TTL → dead_letter).'
         ),
     },
+    'CapturePostResponse': {
+        'publish': True,
+        'max_chars': 100000,
+        'mailbox_ttl_seconds': 604800,
+        'note': (
+            'Use with Instruction direction=RES, requestmethod=POST. '
+            'Captures POST response body (e.g. Odoo web_search_read result.records) '
+            'before SPA render; enrolls mailbox with product/list rows.'
+        ),
+    },
     'CapturePostRequest': {
         'publish': True,
         'max_chars': 100000,

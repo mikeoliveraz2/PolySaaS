@@ -252,12 +252,37 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
             return obj.result
         return None
 
+    @staticmethod
+    def _records_from_payload(payload):
+        if not isinstance(payload, dict):
+            return None
+        if isinstance(payload.get('records'), list):
+            return payload['records']
+        data = payload.get('data')
+        if isinstance(data, dict) and isinstance(data.get('records'), list):
+            return data['records']
+        return None
+
     @admin.display(description='Payload')
     def payload_preview(self, obj):
         import json
         payload = self._extract_published_payload(obj)
         if payload is None:
             return '—'
+        records = self._records_from_payload(payload)
+        if records is not None:
+            n = len(records)
+            sample = ''
+            if records:
+                first = records[0] if isinstance(records[0], dict) else {}
+                sample = (
+                    first.get('display_name')
+                    or first.get('name')
+                    or first.get('default_code')
+                    or ''
+                )
+            text = f'{n} record(s)' + (f' — {sample}' if sample else '')
+            return text if len(text) <= 72 else text[:69] + '…'
         note = None
         if isinstance(payload, dict):
             note = payload.get('note') or payload.get('capture')
@@ -278,7 +303,23 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         payload = self._extract_published_payload(obj)
         if payload is None:
             return '— (no payload in envelope)'
-        text = json.dumps(payload, indent=2, default=str)
+        # Prefer the records list for demo readability.
+        records = self._records_from_payload(payload)
+        if records is not None:
+            display = {
+                'record_count': len(records),
+                'records': records,
+                'captured_at': (
+                    obj.envelope.get('received_at')
+                    if isinstance(obj.envelope, dict)
+                    else None
+                ),
+                'topic': obj.topic,
+                'action_path': obj.action_path,
+            }
+            text = json.dumps(display, indent=2, default=str)
+        else:
+            text = json.dumps(payload, indent=2, default=str)
         if len(text) > 80_000:
             text = text[:80_000] + '\n… truncated for admin display …'
         return format_html(

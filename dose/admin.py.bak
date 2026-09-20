@@ -191,18 +191,18 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         'status',
         'source',
         'topic_short',
+        'payload_preview',
         'action_path_short',
         'event_id_short',
-        'correlation_id',
         'created_at',
         'expires_at',
-        'processed_at',
     )
     list_filter = ('status', 'source', 'created_at')
     search_fields = ('action_path', 'event_id', 'source', 'topic', 'correlation_id', 'error')
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
     readonly_fields = (
+        'published_payload',
         'event_id',
         'correlation_id',
         'envelope',
@@ -218,11 +218,15 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         'result',
     )
     fieldsets = [
-        ('Identity', {
-            'fields': ['event_id', 'correlation_id', 'source', 'status'],
+        ('Published data', {
+            'fields': ['published_payload'],
+            'description': (
+                'What was written to the mailbox for async consumers '
+                '(envelope.payload). This is the demo-visible capture body.'
+            ),
         }),
-        ('Trigger / topic', {
-            'fields': ['action_path', 'topic', 'envelope'],
+        ('Identity', {
+            'fields': ['event_id', 'correlation_id', 'source', 'status', 'topic', 'action_path'],
         }),
         ('Lifecycle', {
             'fields': ['created_at', 'expires_at', 'claimed_at', 'processed_at'],
@@ -231,10 +235,58 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                 'dead_letter, then purge after 14 days.'
             ),
         }),
-        ('Outcome', {
-            'fields': ['result', 'error'],
+        ('Outcome / raw', {
+            'fields': ['result', 'error', 'envelope'],
+            'classes': ['collapse'],
         }),
     ]
+
+    @staticmethod
+    def _extract_published_payload(obj):
+        """Prefer envelope.payload; fall back to result for older rows."""
+        env = obj.envelope if isinstance(obj.envelope, dict) else {}
+        payload = env.get('payload')
+        if payload is not None:
+            return payload
+        if obj.result is not None:
+            return obj.result
+        return None
+
+    @admin.display(description='Payload')
+    def payload_preview(self, obj):
+        import json
+        payload = self._extract_published_payload(obj)
+        if payload is None:
+            return '—'
+        note = None
+        if isinstance(payload, dict):
+            note = payload.get('note') or payload.get('capture')
+            data = payload.get('data')
+            if note is None and isinstance(data, dict):
+                note = data.get('note') or data.get('capture_mode') or data.get('path')
+            text = str(note) if note else json.dumps(payload, default=str)
+        else:
+            text = str(payload)
+        text = ' '.join(text.split())
+        return text if len(text) <= 72 else text[:69] + '…'
+
+    @admin.display(description='Published payload')
+    def published_payload(self, obj):
+        import json
+        from django.utils.html import format_html
+
+        payload = self._extract_published_payload(obj)
+        if payload is None:
+            return '— (no payload in envelope)'
+        text = json.dumps(payload, indent=2, default=str)
+        if len(text) > 80_000:
+            text = text[:80_000] + '\n… truncated for admin display …'
+        return format_html(
+            '<pre style="max-height:32rem;overflow:auto;white-space:pre-wrap;'
+            'word-break:break-word;background:#111;color:#e8e8e8;'
+            'padding:12px;border-radius:6px;font-size:12px;line-height:1.4;">{}</pre>',
+            text,
+        )
 
     @admin.display(description='Topic')
     def topic_short(self, obj):
