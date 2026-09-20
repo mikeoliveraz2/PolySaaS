@@ -147,20 +147,37 @@ class WebhookMailbox(models.Model):
         self.save(update_fields=['status', 'processed_at', 'error'])
 
     @classmethod
-    def create_from_envelope(cls, envelope, ttl_seconds=300, *, status='pending', result=None):
+    def create_from_envelope(
+        cls,
+        envelope,
+        ttl_seconds=300,
+        *,
+        status='pending',
+        result=None,
+        tenant=None,
+    ):
         """
         Create a mailbox entry from a canonical envelope.
 
-        Args:
-            envelope: dict (trigger or capture)
-            ttl_seconds: useful retention (default 300s for webhook consume)
-            status: initial status (pending for webhooks; processed for captures)
-            result: optional result payload when status=processed
+        ``Tenant`` lives only in ``public``. Never look it up while search_path
+        is on a tenant schema — some schemas have a shadow empty ``dose_tenant``
+        table that would make ``Tenant.objects.get`` raise DoesNotExist.
+        Pass ``tenant=`` when the caller already has it (preferred).
         """
-        from dose.models import Tenant
+        from django.db import connection
         import uuid as uuid_mod
+        from dose.models import Tenant
 
-        tenant = Tenant.objects.get(schema_name=envelope['tenant_schema'])
+        schema = envelope['tenant_schema']
+        if tenant is None:
+            with connection.cursor() as cur:
+                cur.execute("SET search_path TO public")
+            tenant = Tenant.objects.get(schema_name=schema)
+
+        # Writes belong in the tenant schema.
+        with connection.cursor() as cur:
+            cur.execute(f'SET search_path TO "{schema}", public')
+
         expires_at = timezone.now() + timedelta(seconds=ttl_seconds)
         topic = (
             (envelope.get('topic') or '')

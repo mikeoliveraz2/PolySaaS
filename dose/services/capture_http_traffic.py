@@ -162,6 +162,7 @@ def _enroll_capture_mailbox(request, instruction_row, topic: str, message: dict,
                 ttl_seconds=ttl,
                 status="processed",
                 result=result_summary,
+                tenant=tenant,
             )
         return {
             "success": True,

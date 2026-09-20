@@ -314,13 +314,19 @@ class CaptureGetResponse(AtomicServiceBase):
             "eventKey": getattr(instruction_row, "eventKey", None),
         }
 
+        # Mailbox first (write-free). Never block enroll on MQ failures.
+        mailbox_result = _enroll_capture_mailbox(
+            request, instruction_row, topic, message, publish_result=None,
+        )
         publish_result = None
         if publish:
-            publish_result = _publish(topic, message)
-
-        mailbox_result = _enroll_capture_mailbox(
-            request, instruction_row, topic, message, publish_result,
-        )
+            try:
+                publish_result = _publish(topic, message)
+            except Exception as pub_exc:
+                logger.warning("[CaptureGetResponse] MQ publish failed: %s", pub_exc)
+                publish_result = {"status": "error", "error": str(pub_exc)}
+            if isinstance(mailbox_result, dict) and mailbox_result.get("success"):
+                mailbox_result = {**mailbox_result, "publish_result": publish_result}
 
         result = service_result(
             "CaptureGetResponse",
@@ -390,13 +396,16 @@ class CapturePostRequest(AtomicServiceBase):
             "eventKey": getattr(instruction_row, "eventKey", None),
         }
 
+        mailbox_result = _enroll_capture_mailbox(
+            request, instruction_row, topic, message, publish_result=None,
+        )
         publish_result = None
         if publish:
-            publish_result = _publish(topic, message)
-
-        mailbox_result = _enroll_capture_mailbox(
-            request, instruction_row, topic, message, publish_result,
-        )
+            try:
+                publish_result = _publish(topic, message)
+            except Exception as pub_exc:
+                logger.warning("[CapturePostRequest] MQ publish failed: %s", pub_exc)
+                publish_result = {"status": "error", "error": str(pub_exc)}
 
         result = service_result(
             "CapturePostRequest",
