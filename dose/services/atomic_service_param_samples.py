@@ -80,19 +80,21 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
     'CaptureGetResponse': {
         'publish': True,
         'max_chars': 100000,
+        'mailbox_ttl_seconds': 604800,
         'note': (
             'Use with Instruction direction=RES, requestmethod=GET. '
-            'Captures upstream response body and publishes to RabbitMQ as '
-            'RES.{action_path}.{username} (e.g. RES.odoo.contacts.pso13).'
+            'Captures upstream response, publishes RES.{action_path}.{username} to MQ, '
+            'and write-free enrolls Webhook mailbox (processed, 7d useful TTL → dead_letter).'
         ),
     },
     'CapturePostRequest': {
         'publish': True,
         'max_chars': 100000,
+        'mailbox_ttl_seconds': 604800,
         'note': (
             'Use with Instruction direction=REQ, requestmethod=POST. '
-            'Captures outbound POST body and publishes to RabbitMQ as '
-            'REQ.{action_path}.{username} (e.g. REQ.odoo.contacts.pso13).'
+            'Captures outbound POST, publishes REQ.{action_path}.{username} to MQ, '
+            'and write-free enrolls Webhook mailbox (processed, 7d useful TTL → dead_letter).'
         ),
     },
     'AtomicServiceSendApprovalEmail': {

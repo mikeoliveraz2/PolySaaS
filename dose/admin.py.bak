@@ -111,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -182,6 +182,76 @@ class CallBackDataAdmin(TenantAwareModelAdmin):
         from django.contrib import messages
         messages.add_message(request, messages.INFO, "Viewing CallBackData details.")
         return super().change_view(request, object_id, form_url, extra_context)
+
+
+class WebhookMailboxAdmin(TenantAwareModelAdmin):
+    """Browse dumb webhook mailbox envelopes (pending → processed / failed / expired)."""
+
+    list_display = (
+        'status',
+        'source',
+        'action_path_short',
+        'event_id_short',
+        'correlation_id',
+        'created_at',
+        'expires_at',
+        'processed_at',
+    )
+    list_filter = ('status', 'source', 'created_at')
+    search_fields = ('action_path', 'event_id', 'source', 'correlation_id', 'error')
+    ordering = ('-created_at',)
+    date_hierarchy = 'created_at'
+    readonly_fields = (
+        'tenant',
+        'event_id',
+        'correlation_id',
+        'envelope',
+        'action_path',
+        'source',
+        'status',
+        'created_at',
+        'expires_at',
+        'claimed_at',
+        'processed_at',
+        'error',
+        'result',
+    )
+    fieldsets = [
+        ('Identity', {
+            'fields': ['tenant', 'event_id', 'correlation_id', 'source', 'status'],
+        }),
+        ('Trigger', {
+            'fields': ['action_path', 'envelope'],
+        }),
+        ('Lifecycle', {
+            'fields': ['created_at', 'expires_at', 'claimed_at', 'processed_at'],
+        }),
+        ('Outcome', {
+            'fields': ['result', 'error'],
+        }),
+    ]
+
+    @admin.display(description='Action path')
+    def action_path_short(self, obj):
+        path = obj.action_path or ''
+        return path if len(path) <= 60 else path[:57] + '…'
+
+    @admin.display(description='Event id')
+    def event_id_short(self, obj):
+        eid = obj.event_id or ''
+        return eid[:12] + ('…' if len(eid) > 12 else '')
+
+    def has_add_permission(self, request):
+        # Mailbox rows are written by webhooks/consumers, not hand-entered.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Allow open/inspect; all fields are readonly.
+        return True
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(getattr(request.user, 'is_superuser', False))
+
 
 class TaskAdmin(TenantAwareModelAdmin):
     fieldsets = [
@@ -965,6 +1035,7 @@ class EndpointBookmarkAdmin(TenantAwareModelAdmin):
 admin.site.register(Task, TaskAdmin)
 admin.site.register(Instruction, InstructionAdmin)
 admin.site.register(CallBackData, CallBackDataAdmin)
+admin.site.register(WebhookMailbox, WebhookMailboxAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)

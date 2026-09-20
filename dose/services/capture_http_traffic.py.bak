@@ -164,6 +164,8 @@ class CaptureGetResponse(AtomicServiceBase):
     Passthrough wiring: orchestration_hook sets request._upstream_response
     before calling execute_and_save(request, instruction_row).
     """
+    atomic_apps = ()
+    atomic_category = "capture"
 
     @staticmethod
     def get_parameters(parameters, key="CaptureGetResponse"):
@@ -239,6 +241,8 @@ class CapturePostRequest(AtomicServiceBase):
     Capture data on a POST as it goes upstream
     (Instruction: direction=REQ, requestmethod=POST).
     """
+    atomic_apps = ()
+    atomic_category = "capture"
 
     @staticmethod
     def get_parameters(parameters, key="CapturePostRequest"):

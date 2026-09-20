@@ -90,6 +90,91 @@ def _publish(topic: str, message: dict) -> dict:
     return EndpointDataExtractor._publish_to_mq(topic, message)
 
 
+def _enroll_capture_mailbox(request, instruction_row, topic: str, message: dict, publish_result) -> dict:
+    """
+    Write-free mailbox enroll for captures (mailbox/topic pattern).
+
+    Always attempts a WebhookMailbox row with the MQ topic and a useful TTL.
+    Does not depend on Instruction.save_callbackdata. Status=processed so the
+    webhook consumer does not re-run capture envelopes.
+    """
+    import uuid
+
+    from django.utils import timezone as dj_timezone
+
+    from dose.models import WebhookMailbox
+    from dose.models.webhook_mailbox import CAPTURE_MAILBOX_TTL_SECONDS
+    from dose.services.atomic_service_utils import tenant_from_request
+    from dose.tenant_app_lookup import tenant_schema_search_path
+
+    tenant = tenant_from_request(request)
+    if tenant is None:
+        try:
+            from dose.utils import get_current_tenant
+            tenant = get_current_tenant(request)
+        except Exception:
+            tenant = None
+    if tenant is None or not getattr(tenant, "schema_name", None):
+        logger.warning("[Capture] mailbox enroll skipped — no tenant on request")
+        return {"success": False, "error": "no_tenant"}
+
+    cfg = instruction_config(instruction_row)
+    ttl = int(cfg.get("mailbox_ttl_seconds") or CAPTURE_MAILBOX_TTL_SECONDS)
+
+    correlation_id = str(uuid.uuid4())
+    event_id = uuid.uuid4().hex
+    envelope = {
+        "kind": "polysaas.capture.v1",
+        "event_id": event_id,
+        "correlation_id": correlation_id,
+        "tenant_schema": tenant.schema_name,
+        "source": "passthrough",
+        "action_path": message.get("action_path") or "",
+        "method": message.get("method") or "",
+        "direction": message.get("direction") or "",
+        "event_key": message.get("eventKey") or getattr(instruction_row, "eventKey", None) or "",
+        "topic": topic,
+        "actor": {"username": message.get("username") or "anonymous"},
+        "payload": {
+            "capture": message.get("capture"),
+            "topic": topic,
+            "data": message.get("data"),
+            "response_meta": message.get("response_meta"),
+            "request_meta": message.get("request_meta"),
+            "instruction_id": message.get("instruction_id"),
+            "publish_result": publish_result,
+        },
+        "received_at": dj_timezone.now().isoformat(),
+    }
+    result_summary = {
+        "topic": topic,
+        "capture": message.get("capture"),
+        "publish_result": publish_result,
+        "data_preview_chars": len(json.dumps(message.get("data"), default=str)[:500]),
+    }
+
+    try:
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                return {"success": False, "error": "invalid tenant schema"}
+            row = WebhookMailbox.create_from_envelope(
+                envelope,
+                ttl_seconds=ttl,
+                status="processed",
+                result=result_summary,
+            )
+        return {
+            "success": True,
+            "mailbox_id": row.id,
+            "event_id": event_id,
+            "topic": topic,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        }
+    except Exception as exc:
+        logger.warning("[Capture] mailbox enroll failed: %s", exc, exc_info=True)
+        return {"success": False, "error": str(exc)}
+
+
 def _extract_upstream_response_payload(request) -> Tuple[Any, dict]:
     """
     Passthrough orch hook sets request._upstream_response (requests.Response).
@@ -223,6 +308,10 @@ class CaptureGetResponse(AtomicServiceBase):
         if publish:
             publish_result = _publish(topic, message)
 
+        mailbox_result = _enroll_capture_mailbox(
+            request, instruction_row, topic, message, publish_result,
+        )
+
         result = service_result(
             "CaptureGetResponse",
             topic=topic,
@@ -230,6 +319,7 @@ class CaptureGetResponse(AtomicServiceBase):
             response_meta=meta,
             data_preview=_truncate(captured, max_chars=500),
             publish_result=publish_result,
+            mailbox_result=mailbox_result,
         )
         if hasattr(request, "method"):
             maybe_save_callback(request, instruction_row, result)
@@ -294,6 +384,10 @@ class CapturePostRequest(AtomicServiceBase):
         if publish:
             publish_result = _publish(topic, message)
 
+        mailbox_result = _enroll_capture_mailbox(
+            request, instruction_row, topic, message, publish_result,
+        )
+
         result = service_result(
             "CapturePostRequest",
             topic=topic,
@@ -301,6 +395,7 @@ class CapturePostRequest(AtomicServiceBase):
             request_meta=meta,
             data_preview=_truncate(captured, max_chars=500),
             publish_result=publish_result,
+            mailbox_result=mailbox_result,
         )
         maybe_save_callback(request, instruction_row, result)
         return result

@@ -78,12 +78,14 @@ class WebhookMailbox(models.Model):
     
     class Meta:
         db_table = 'webhook_mailbox'
+        verbose_name = 'Webhook mailbox'
+        verbose_name_plural = 'Webhook mailboxes'
         unique_together = [('tenant', 'event_id')]
         indexes = [
             models.Index(fields=['tenant', 'status', 'expires_at'], name='mailbox_consumer_idx'),
             models.Index(fields=['status', 'created_at'], name='mailbox_status_idx'),
         ]
-        ordering = ['created_at']
+        ordering = ['-created_at']
     
     def __str__(self):
         return f"Mailbox[{self.event_id[:8]}] {self.source} {self.action_path} ({self.status})"
