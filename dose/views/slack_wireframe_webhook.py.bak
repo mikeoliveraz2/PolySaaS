@@ -150,12 +150,19 @@ def _demo_payload(kind: str, supplied: dict) -> dict:
     token = uuid.uuid4().hex[:10]
     stamp = timezone.now().strftime("%Y%m%d-%H%M%S")
     if kind == "contact":
-        return {
+        payload = {
             "demo_id": token,
             "name": supplied.get("name") or f"Slack Contact {stamp}",
             "email": supplied.get("email") or f"slack.contact.{token}@example.com",
             "phone": supplied.get("phone") or "+1 555 0100",
+            "is_company": str(supplied.get("is_company") or "").lower()
+            in ("1", "true", "yes", "company"),
         }
+        for field in ("street", "city", "zip"):
+            value = (supplied.get(field) or "").strip()
+            if value:
+                payload[field] = value[:120]
+        return payload
     return {
         "demo_id": token,
         "partner_name": supplied.get("partner_name") or f"Slack Buyer {stamp}",

@@ -203,7 +203,6 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
     readonly_fields = (
-        'tenant',
         'event_id',
         'correlation_id',
         'envelope',
@@ -220,7 +219,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     )
     fieldsets = [
         ('Identity', {
-            'fields': ['tenant', 'event_id', 'correlation_id', 'source', 'status'],
+            'fields': ['event_id', 'correlation_id', 'source', 'status'],
         }),
         ('Trigger / topic', {
             'fields': ['action_path', 'topic', 'envelope'],

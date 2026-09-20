@@ -190,6 +190,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     list_display = (
         'status',
         'source',
+        'topic_short',
         'action_path_short',
         'event_id_short',
         'correlation_id',
@@ -198,7 +199,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         'processed_at',
     )
     list_filter = ('status', 'source', 'created_at')
-    search_fields = ('action_path', 'event_id', 'source', 'correlation_id', 'error')
+    search_fields = ('action_path', 'event_id', 'source', 'topic', 'correlation_id', 'error')
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
     readonly_fields = (
@@ -208,6 +209,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         'envelope',
         'action_path',
         'source',
+        'topic',
         'status',
         'created_at',
         'expires_at',
@@ -220,16 +222,25 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         ('Identity', {
             'fields': ['tenant', 'event_id', 'correlation_id', 'source', 'status'],
         }),
-        ('Trigger', {
-            'fields': ['action_path', 'envelope'],
+        ('Trigger / topic', {
+            'fields': ['action_path', 'topic', 'envelope'],
         }),
         ('Lifecycle', {
             'fields': ['created_at', 'expires_at', 'claimed_at', 'processed_at'],
+            'description': (
+                'expires_at = end of useful retention; after that rows move to '
+                'dead_letter, then purge after 14 days.'
+            ),
         }),
         ('Outcome', {
             'fields': ['result', 'error'],
         }),
     ]
+
+    @admin.display(description='Topic')
+    def topic_short(self, obj):
+        topic = obj.topic or ''
+        return topic if len(topic) <= 48 else topic[:45] + '…'
 
     @admin.display(description='Action path')
     def action_path_short(self, obj):

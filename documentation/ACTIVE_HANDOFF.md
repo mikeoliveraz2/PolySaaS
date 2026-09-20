@@ -4,18 +4,21 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-20 (Sunday)
-**Session:** Fix mailbox Tenant shadow lookup
+**Session:** Drop WebhookMailbox.tenant FK (schema isolation)
 **Branch:** main
 
 ## Done
-- Root cause of seed/enroll failure: `Tenant.objects.get` under
-  `search_path=polysaas,public` hit a **shadow empty** `polysaas.dose_tenant`.
-- `create_from_envelope(..., tenant=)` — use caller’s Tenant; never look up
-  Tenant while on tenant-only path without forcing public.
+- Seed failed: FK `webhook_mailbox_tenant_id → dose_tenant_slug` against
+  empty shadow `polysaas.dose_tenant` (Tenant lives in `public` only).
+- Migration `0065_webhookmailbox_drop_tenant_fk`: removed `tenant` FK;
+  `event_id` unique within schema; consumer index is status+expires_at.
+- `create_from_envelope` no longer stores Tenant; schema from envelope only.
+- Call sites that filtered `tenant=` on mailbox rows updated.
 
 ## Next (Hostinger)
 ```bash
-# Rebuild django first, then:
+# Rebuild django (pulls migration), then:
+python manage.py migrate
 python manage.py diagnose_webhook_mailbox --schema polysaas --seed
 ```
-Refresh Webhook mailboxes — expect SEED row. Then re-hit Inventory.
+Expect SEED row in Webhook mailboxes. Then Inventory → mailbox enroll.

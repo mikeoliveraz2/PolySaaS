@@ -364,7 +364,10 @@ def endpoint_action_status(request, endpoint_host: str, mailbox_id: int):
                 {"success": False, "error": "invalid tenant schema"},
                 status=400,
             )
-        mailbox = WebhookMailbox.objects.filter(pk=mailbox_id).first()
+        mailbox = WebhookMailbox.objects.filter(
+            pk=mailbox_id,
+            tenant=tenant,
+        ).first()
     if mailbox is None:
         return JsonResponse(
             {"success": False, "error": "mailbox event not found"},

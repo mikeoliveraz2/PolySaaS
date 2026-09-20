@@ -55,10 +55,7 @@ def slack_wireframe_status(request, mailbox_id: int):
                 {"success": False, "error": "invalid tenant schema"},
                 status=400,
             )
-        mailbox = WebhookMailbox.objects.filter(
-            pk=mailbox_id,
-            tenant=tenant,
-        ).first()
+        mailbox = WebhookMailbox.objects.filter(pk=mailbox_id).first()
         if not mailbox:
             return JsonResponse(
                 {"success": False, "error": "mailbox event not found"},
