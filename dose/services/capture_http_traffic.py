@@ -276,12 +276,22 @@ class CaptureGetResponse(AtomicServiceBase):
         publish = cfg.get("publish", True)
 
         data, meta = _extract_upstream_response_payload(request)
+        # Client-side SPA navigate (orchestration-navigate API) has no upstream body.
+        # Still capture path metadata and enroll the mailbox — otherwise green-bar
+        # matches do nothing visible in Webhook mailboxes.
         if data is None and meta.get("source") == "missing":
-            return service_result(
-                "CaptureGetResponse",
-                status="skipped",
-                reason="no_upstream_response",
-            )
+            action_path = _action_path(request, instruction_row)
+            data = {
+                "capture_mode": "navigate",
+                "path": action_path or getattr(request, "path", ""),
+                "note": "no upstream response body (client-side navigation)",
+            }
+            meta = {
+                "status_code": None,
+                "content_type": "application/json",
+                "source": "navigate_no_upstream",
+                "body_kind": "json",
+            }
 
         captured = _truncate(data, max_chars=max_chars)
         action_path = _action_path(request, instruction_row)
