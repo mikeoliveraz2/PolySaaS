@@ -6,6 +6,9 @@ Mailbox/topic pattern:
   - ``expires_at`` = end of useful retention.
   - After useful life: move to ``dead_letter`` (inspectable).
   - Later: purge dead letters (hard delete).
+
+Isolation is by PostgreSQL schema (search_path). There is no Tenant FK —
+Tenant lives only in ``public``; tenant schemas must not reference it.
 """
 from django.db import models
 from django.utils import timezone
@@ -25,12 +28,12 @@ class WebhookMailbox(models.Model):
     Captures enroll as processed (topic + payload) for browse/correlation.
     """
 
-    # Identity
-    tenant = models.ForeignKey('dose.Tenant', on_delete=models.CASCADE)
+    # Identity (schema-scoped; no Tenant FK — see module docstring)
     event_id = models.CharField(
         max_length=64,
         db_index=True,
-        help_text="Stable hash for deduplication (tenant-scoped)",
+        unique=True,
+        help_text="Stable hash for deduplication (unique within tenant schema)",
     )
     correlation_id = models.UUIDField(
         help_text="UUID for tracing across systems",
@@ -48,17 +51,17 @@ class WebhookMailbox(models.Model):
     source = models.CharField(
         max_length=50,
         db_index=True,
-        help_text="Source system: slack, hubspot, passthrough, etc",
+        help_text="Trigger source (slack, hubspot, odoo, capture_get, ...)",
     )
     topic = models.CharField(
         max_length=500,
         blank=True,
         default='',
         db_index=True,
-        help_text="MQ/routing topic (e.g. RES.odoo.action-384.user)",
+        help_text="Optional topic / subject for browse (e.g. capture path)",
     )
 
-    # State machine
+    # Lifecycle
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('claimed', 'Claimed'),
@@ -73,35 +76,21 @@ class WebhookMailbox(models.Model):
         default='pending',
         db_index=True,
     )
-
-    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     expires_at = models.DateTimeField(
         db_index=True,
-        help_text="End of useful retention — then dead_letter",
+        help_text="End of useful retention; after this → dead_letter",
     )
     claimed_at = models.DateTimeField(null=True, blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
-
-    # Result
-    error = models.TextField(
-        blank=True,
-        default='',
-        help_text="Error message if status=failed",
-    )
-    result = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Processing result from consumer or capture summary",
-    )
+    error = models.TextField(blank=True, default='')
+    result = models.JSONField(null=True, blank=True)
 
     class Meta:
-        db_table = 'webhook_mailbox'
         verbose_name = 'Webhook mailbox'
         verbose_name_plural = 'Webhook mailboxes'
-        unique_together = [('tenant', 'event_id')]
         indexes = [
-            models.Index(fields=['tenant', 'status', 'expires_at'], name='mailbox_consumer_idx'),
+            models.Index(fields=['status', 'expires_at'], name='mailbox_consumer_idx'),
             models.Index(fields=['status', 'created_at'], name='mailbox_status_idx'),
         ]
         ordering = ['-created_at']
@@ -159,22 +148,14 @@ class WebhookMailbox(models.Model):
         """
         Create a mailbox entry from a canonical envelope.
 
-        ``Tenant`` lives only in ``public``. Never look it up while search_path
-        is on a tenant schema — some schemas have a shadow empty ``dose_tenant``
-        table that would make ``Tenant.objects.get`` raise DoesNotExist.
-        Pass ``tenant=`` when the caller already has it (preferred).
+        Writes into ``envelope['tenant_schema']`` via search_path.
+        ``tenant=`` is accepted for caller convenience but never stored —
+        isolation is schema-only (no Tenant FK on this table).
         """
         from django.db import connection
         import uuid as uuid_mod
-        from dose.models import Tenant
 
         schema = envelope['tenant_schema']
-        if tenant is None:
-            with connection.cursor() as cur:
-                cur.execute("SET search_path TO public")
-            tenant = Tenant.objects.get(schema_name=schema)
-
-        # Writes belong in the tenant schema.
         with connection.cursor() as cur:
             cur.execute(f'SET search_path TO "{schema}", public')
 
@@ -188,7 +169,6 @@ class WebhookMailbox(models.Model):
         if not isinstance(cid, uuid_mod.UUID):
             cid = uuid_mod.UUID(str(cid))
         row = cls(
-            tenant=tenant,
             event_id=envelope['event_id'],
             correlation_id=cid,
             envelope=envelope,
@@ -204,11 +184,10 @@ class WebhookMailbox(models.Model):
         return row
 
     @classmethod
-    def dequeue_pending(cls, tenant, limit=10):
-        """Pending rows still within useful retention (never dead_letter)."""
+    def dequeue_pending(cls, tenant=None, limit=10):
+        """Pending rows still within useful retention (current schema only)."""
         now = timezone.now()
         return cls.objects.filter(
-            tenant=tenant,
             status='pending',
             expires_at__gt=now,
         ).order_by('created_at')[:limit]

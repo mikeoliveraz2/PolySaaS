@@ -87,6 +87,7 @@ class WebhookMailbox(models.Model):
     result = models.JSONField(null=True, blank=True)
 
     class Meta:
+        db_table = 'webhook_mailbox'
         verbose_name = 'Webhook mailbox'
         verbose_name_plural = 'Webhook mailboxes'
         indexes = [
