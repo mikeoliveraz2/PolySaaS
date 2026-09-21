@@ -71,6 +71,7 @@ from dose.views.founder_views import (
     founders_signup_api,
     lemon_squeezy_webhook,
 )
+from dose.views.stripe_webhook import stripe_webhook
 
 try:
     from rest_framework.routers import DefaultRouter
@@ -97,6 +98,8 @@ urlpatterns = [
     path('api/restore-mm-credentials/', restore_mm_credentials, name='restore_mm_credentials'),
     path('', include(_subscription_urls)),
     path('webhook/ai-peers/', ai_peers_webhook, name='ai_peers_webhook'),
+    # Platform Stripe billing webhooks (not tenant-scoped generic inbound).
+    path('webhook/stripe/', stripe_webhook, name='stripe_webhook'),
     path('webhook/<str:source>/<slug:tenant_slug>/', generic_inbound_webhook, name='generic_inbound_webhook'),
     # --- RESTORED ENDPOINTS FOR ADMIN UI ---
     path('api/display-settings/', DisplaySettingsView.as_view(), name='display_settings'),
