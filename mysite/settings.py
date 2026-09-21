@@ -126,6 +126,7 @@ JAZZMIN_SETTINGS = {
         "dose.navigationitem": "fas fa-link",  # NavigationItem
     "dose.dashboardbutton": "fas fa-chart-line",  # DashboardButton (graph)
     "dose.ignorepath": "fas fa-ban",  # IgnorePath
+    "captured_topics.capturedtopic": "fas fa-stream",
     "sites.site": "fas fa-building",  # Sites
     "socialaccount.socialaccount": "fab fa-google",  # Social Accounts (Google)
     "socialaccount.socialtoken": "fas fa-cookie",  # Social Tokens (Cookie)
@@ -144,6 +145,21 @@ JAZZMIN_SETTINGS = {
         "dose.mldataset",
         "dose.deepseekprompt",
         "dose.mlprompt",
+        # Captured Topics lives in its own sidebar section (captured_topics)
+        "dose.webhookmailbox",
+    ],
+    # Sidebar app order: Captured Topics immediately after Authentication and Authorization
+    "order_with_respect_to": [
+        "auth",
+        "captured_topics",
+        "dose",
+        "ml_studio",
+        "parameters",
+        "alerts",
+        "oauth2_provider",
+        "account",
+        "socialaccount",
+        "sites",
     ],
     # Hide entire apps that should not be visible in the tenant admin interface
     "hide_apps": ["djstripe"],
@@ -396,6 +412,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',  # PATCHED: Enable Google OAuth2
     'rest_framework',
     'dose.apps.DoseConfig',
+    'captured_topics.apps.CapturedTopicsConfig',  # Captured Topics — own sidebar section
     'llm_router.apps.LlmRouterConfig',  # In-process LLM routing (OpenClaw-style Option 1)
     'ml_studio',  # Machine Learning Studio - grouped ML models
     'parameters.apps.ParametersConfig',

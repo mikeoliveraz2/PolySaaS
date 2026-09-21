@@ -25,7 +25,8 @@ class WebhookMailbox(models.Model):
     """
     Mailbox for webhook events and passthrough captures.
     Webhooks persist envelopes here; consumers dequeue pending rows.
-    Captures enroll as processed (topic + payload) for browse/correlation.
+    Captures enroll as pending (topic + payload) until Topic browser Consume
+drains them into typed history tables.
     """
 
     # Identity (schema-scoped; no Tenant FK — see module docstring)
@@ -88,8 +89,8 @@ class WebhookMailbox(models.Model):
 
     class Meta:
         db_table = 'webhook_mailbox'
-        verbose_name = 'Webhook mailbox'
-        verbose_name_plural = 'Webhook mailboxes'
+        verbose_name = 'Topic'
+        verbose_name_plural = 'Topics'
         indexes = [
             models.Index(fields=['status', 'expires_at'], name='mailbox_consumer_idx'),
             models.Index(fields=['status', 'created_at'], name='mailbox_status_idx'),

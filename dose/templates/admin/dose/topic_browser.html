@@ -1,68 +1,34 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
-<div class="container-fluid" style="max-width: 1200px; margin-top: 1rem;">
-  <h1>Topics</h1>
-  <p>
-    One place for every topic. Each row is a temporary queue (one data type).
-    <strong>Browse queue</strong> peeks envelopes; <strong>History</strong> is what
-    Consume wrote for that topic. Scales to many topics — no separate admin per type.
-  </p>
+<div class="container-fluid" style="max-width: 900px; margin-top: 1rem;">
+  <h1>Captured Topics</h1>
   {% if messages %}
   <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
   {% endif %}
-  <p class="text-muted">
-    <a href="{% url 'admin:dose_webhookmailbox_changelist' %}?raw=1">Raw envelopes (all topics mixed)</a>
-    — debug only; prefer Browse queue per topic.
-  </p>
-  <table class="table table-striped table-sm">
-    <thead>
-      <tr>
-        <th>Topic</th>
-        <th>Type</th>
-        <th>Pending</th>
-        <th>Processed</th>
-        <th>Total</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
+  <table class="table table-sm" style="margin-top: 1rem;">
     <tbody>
       {% for t in topics %}
       <tr>
-        <td><code>{{ t.topic }}</code></td>
-        <td>{{ t.family_label }}</td>
-        <td>{{ t.pending }}</td>
-        <td>{{ t.processed }}</td>
-        <td>{{ t.total }}</td>
-        <td style="white-space: nowrap;">
-          <a class="btn btn-sm btn-outline-primary"
+        <td style="vertical-align: middle; padding: 0.75rem 0.5rem;">
+          <span title="{{ t.description }}" style="cursor: help; font-weight: 600;">
+            {{ t.name }}
+          </span>
+        </td>
+        <td style="vertical-align: middle; text-align: right; white-space: nowrap; padding: 0.75rem 0.5rem;">
+          <a class="btn btn-sm btn-primary"
              href="{% url 'admin:dose_webhookmailbox_topic_detail' %}?topic={{ t.topic|urlencode }}">
-            Browse queue
+            Browse Topic
           </a>
-          {% if t.family != "unknown" %}
+          {% if t.has_history %}
           <a class="btn btn-sm btn-outline-secondary"
              href="{% url 'admin:dose_webhookmailbox_topic_history' %}?topic={{ t.topic|urlencode }}">
-            History
+            Topic History
           </a>
-          {% endif %}
-          {% if t.consumable %}
-          <form method="post" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="topic" value="{{ t.topic }}">
-            <input type="hidden" name="action" value="consume">
-            <button type="submit" class="btn btn-sm btn-primary">Consume</button>
-          </form>
-          {% elif t.processed > 0 and t.family != "unknown" %}
-          <form method="post" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="topic" value="{{ t.topic }}">
-            <input type="hidden" name="action" value="requeue">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Re-queue</button>
-          </form>
           {% endif %}
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="6">No topics yet.</td></tr>
+      <tr><td colspan="2">No captured topics yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

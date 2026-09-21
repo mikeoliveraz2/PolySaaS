@@ -4,28 +4,24 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-21 (Monday)
-**Session:** Topics + Consume → history (not “report”)
+**Session:** Single Topics admin hub (scalable)
 **Branch:** main
 
-## Done
-- Topic list at `/admin/dose/webhookmailbox/topics/` — click a topic to browse envelopes.
-- Topic detail: peek envelopes, **Consume → history**, **Re-queue processed → pending**.
-- History tables (renamed from report): Inventory / SNMP / Maintenance.
-  Models: `InventoryProductHistory`, `SnmpTelemetryHistory`, `MaintenanceEquipmentHistory`.
-  Migrations: `0066` then `0067_topic_history_rename`.
+## Design (owner)
+- **One Admin widget: Topics** — not one ModelAdmin per history type.
+- Each topic row: **Browse queue** | **History** | Consume / Re-queue.
+- 100 topics = 100 rows in one list. No sidebar explosion.
 
-## How to use
-1. Topics page = temporary queues (list).
-2. Click a topic = browse that queue.
-3. Consume = move pending into history.
-4. History changelists = permanent analysis store.
+## Done
+- Webhook mailboxes changelist redirects to Topics hub.
+- Sidebar label: **Topics** (was Webhook mailboxes).
+- Separate Inventory/SNMP/Maintenance history ModelAdmins removed from admin.
+- Per-topic History view under the same hub.
+- Migrations 0066/0067 still create the history tables (backend only).
 
 ## Hostinger
-```text
-python manage.py migrate
-```
-Then open Topics → click `RES.product.template…` → Re-queue if needed → Consume → Inventory history.
+Deploy + migrate. Open Admin → **Topics**.
 
 ## Do not
-- Call history tables “reports.”
-- Put tenant-owned history in `public`.
+- Re-add per-type history ModelAdmins to the sidebar.
+- Call history “report.”

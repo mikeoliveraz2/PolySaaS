@@ -248,52 +248,15 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         return tenant
 
     def topic_browser_view(self, request):
-        """One scalable Topics widget: browse queue + history per topic."""
-        from django.contrib import messages
-        from django.shortcuts import redirect, render
-        from django.urls import reverse
-        from urllib.parse import quote
+        """Captured Topics — name + Browse Topic + Topic History only."""
+        from django.shortcuts import render
 
-        from dose.services.topic_consume import consume_topic, list_topics, requeue_topic
+        from dose.services.topic_consume import list_topics
 
-        tenant = self._set_topic_tenant_path(request)
-
-        if request.method == 'POST':
-            topic = (request.POST.get('topic') or '').strip()
-            action = (request.POST.get('action') or '').strip()
-            if action == 'requeue' and topic:
-                result = requeue_topic(topic)
-                messages.success(
-                    request,
-                    f"Re-queued {result.get('updated', 0)} on {topic!r} → pending.",
-                )
-            elif action == 'consume' and topic:
-                try:
-                    limit = int(request.POST.get('limit') or 100)
-                except (TypeError, ValueError):
-                    limit = 100
-                result = consume_topic(
-                    topic, limit=limit, also_feed_odoo=True, tenant=tenant
-                )
-                if result.get('ok'):
-                    messages.success(
-                        request,
-                        (
-                            f"Consumed {topic!r}: "
-                            f"claimed={result.get('claimed')} "
-                            f"written={result.get('written')}"
-                        ),
-                    )
-                else:
-                    messages.error(
-                        request,
-                        f"Consume failed: {result.get('error') or result}",
-                    )
-            return redirect(reverse('admin:dose_webhookmailbox_topics'))
-
+        self._set_topic_tenant_path(request)
         context = {
             **self.admin_site.each_context(request),
-            'title': 'Topics',
+            'title': 'Captured Topics',
             'topics': list_topics(),
             'opts': self.model._meta,
         }
