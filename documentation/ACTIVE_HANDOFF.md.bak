@@ -3,37 +3,30 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
-**Date:** 2026-09-21 (Monday) — continuing  
-**Session:** Cross-app Capture contacts (Odoo + Mattermost) → Captured Topics  
+**Date:** 2026-09-22 (Tuesday)  
+**Session:** Capture contacts on Slack + HubSpot Control Panels  
 **Branch:** main  
-**Prior BINGO:** `documentation/BINGO_CAPTURED_TOPICS_CONSUME_HISTORY_2026-09-21.md` (`7a6913b4`)
+**Prior BINGO:** Captured Topics Consume — `7a6913b4`
 
-## In progress / just built
+## Completed
 
-Cross-app **Capture contacts** (GET-style list → mailbox → Consume → `ContactHistory`):
+**Capture contacts** now on all four apps:
 
-- `dose/services/contact_capture.py` — normalize + enroll `RES.<app>.contacts.<actor>`
-- `dose/services/odoo_capture_contacts.py` — paginated Odoo `res.partner` customers
-- `dose/services/mattermost_list_contacts.py` — paginated `GET /api/v4/users`
-- `dose/endpoint_actions/contact_capture_publish.py` — Control Panel publishers
-- Bookmarks: Odoo + Mattermost **Capture contacts**
-- `ContactHistory` + migration `0068_contact_history`
-- `FAMILY_CONTACTS` in `topic_consume.py` (owner-approved freeze edit)
+| App | Action | Topic |
+|-----|--------|--------|
+| Odoo | `odoo.capture_contacts` | `RES.odoo.contacts.*` |
+| Mattermost | `mattermost.capture_contacts` | `RES.mattermost.contacts.*` |
+| HubSpot | `hubspot.capture_contacts` | `RES.hubspot.contacts.*` |
+| Slack | `slack.capture_contacts` | `RES.slack.contacts.*` |
 
-## How to use
+Shared path: list → mailbox enroll → Consume → `ContactHistory` (`source_app`).
 
-1. `python manage.py migrate` (all schemas)
-2. Odoo / Mattermost Control Panel → **Capture contacts**
-3. Admin → **Captured Topics** → Browse → **Consume to History**
-4. Topic History shows `source_app`, name, email, …
+## Slack note
+
+Needs bot token on `TenantApp.extra_config.bot_token` (xoxb-…) with `users:read` (+ `users:read.email` for emails). Falls back to `SLACK_BOT_TOKEN` setting/env.
 
 ## Next
 
-1. Migrate + smoke-test Capture contacts on `polysaas` / `olient`
-2. Type 2 SNMP video (deferred from morning plan)
-3. Later apps: Slack / HubSpot capture_contacts using same enroll helper
-
-## Frozen note
-
-Captured Topics consume/history files were edited with owner approval for contacts family.
-Do not reopen unrelated frozen files without permission.
+1. `migrate` if `0068_contact_history` not applied yet
+2. Smoke-test Capture contacts on each Control Panel
+3. Type 2 SNMP video

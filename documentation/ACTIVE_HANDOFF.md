@@ -4,29 +4,38 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-22 (Tuesday)  
-**Session:** Capture contacts on Slack + HubSpot Control Panels  
+**Session:** Slack + HubSpot PassThroughEndpoint setup (not install)  
 **Branch:** main  
-**Prior BINGO:** Captured Topics Consume — `7a6913b4`
 
-## Completed
+## Clarification
 
-**Capture contacts** now on all four apps:
+Capture contacts does **not** install Slack/HubSpot. Setup = tenant-schema **PassThroughEndpoint** rows with SaaS URLs so Control Panel appears, plus credentials on **TenantApp**.
 
-| App | Action | Topic |
-|-----|--------|--------|
-| Odoo | `odoo.capture_contacts` | `RES.odoo.contacts.*` |
-| Mattermost | `mattermost.capture_contacts` | `RES.mattermost.contacts.*` |
-| HubSpot | `hubspot.capture_contacts` | `RES.hubspot.contacts.*` |
-| Slack | `slack.capture_contacts` | `RES.slack.contacts.*` |
+## Done
 
-Shared path: list → mailbox enroll → Consume → `ContactHistory` (`source_app`).
+- Extended `setup_default_passthrough_endpoints` with:
+  - `--hubspot-url` default `https://app.hubspot.com`
+  - `--slack-url` default `https://app.slack.com`
+- Capture contacts actions already on all four apps (`cfb7fa1e`)
 
-## Slack note
+## Run per tenant
 
-Needs bot token on `TenantApp.extra_config.bot_token` (xoxb-…) with `users:read` (+ `users:read.email` for emails). Falls back to `SLACK_BOT_TOKEN` setting/env.
+```text
+python manage.py setup_default_passthrough_endpoints --tenant-slug polysaasonline
+python manage.py setup_default_passthrough_endpoints --tenant-slug olient
+```
+
+(Use the actual Tenant.slug values for `polysaas` / `olient` schemas.)
+
+## Credentials still required for Capture
+
+| App | Needs |
+|-----|--------|
+| HubSpot | OAuth on TenantApp (`hs_access_token`) |
+| Slack | `TenantApp.extra_config.bot_token` (xoxb-…) with users:read |
 
 ## Next
 
-1. `migrate` if `0068_contact_history` not applied yet
-2. Smoke-test Capture contacts on each Control Panel
+1. Run setup command on target tenants
+2. Smoke-test Capture contacts from each Control Panel
 3. Type 2 SNMP video

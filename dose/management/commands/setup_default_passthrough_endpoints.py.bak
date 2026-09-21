@@ -220,66 +220,10 @@ class Command(BaseCommand):
                 wordpress_ep.save()
                 self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {wordpress_url}"))
 
-        # 7. HubSpot PassThroughEndpoint (SaaS — Control Panel / Capture contacts)
-        hubspot_url = (options['hubspot_url'] or '').rstrip('/')
-        hubspot_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='hubspot',
-            defaults={
-                'endpoint_url': hubspot_url,
-                'description': 'HubSpot CRM — Control Panel (Browse opens real HubSpot)',
-                'is_enabled': True,
-                'passthrough_type': 'scraper',
-                'integration_mode': 'web_api',
-                'api_endpoint': 'https://api.hubapi.com',
-                'show_in_menu': True,
-                'menu_title': 'HubSpot',
-                'menu_icon': 'hubspot',
-                'menu_sort_order': 15,
-                'starting_uri': '/',
-            }
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"✓ Created HubSpot PassThroughEndpoint: {hubspot_url}"))
-        else:
-            self.stdout.write(self.style.SUCCESS(f"✓ HubSpot PassThroughEndpoint already exists: {hubspot_ep.endpoint_url}"))
-            if hubspot_ep.endpoint_url != hubspot_url:
-                hubspot_ep.endpoint_url = hubspot_url
-                hubspot_ep.save()
-                self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {hubspot_url}"))
-
-        # 8. Slack PassThroughEndpoint (SaaS — Control Panel / Capture contacts)
-        slack_url = (options['slack_url'] or '').rstrip('/')
-        slack_ep, created = PassThroughEndpoint.objects.update_or_create(
-            slug='slack',
-            defaults={
-                'endpoint_url': slack_url,
-                'description': 'Slack — Control Panel (Browse opens real Slack)',
-                'is_enabled': True,
-                'passthrough_type': 'scraper',
-                'integration_mode': 'web_api',
-                'api_endpoint': 'https://slack.com/api',
-                'show_in_menu': True,
-                'menu_title': 'Slack',
-                'menu_icon': 'slack',
-                'menu_sort_order': 16,
-                'starting_uri': '/',
-            }
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"✓ Created Slack PassThroughEndpoint: {slack_url}"))
-        else:
-            self.stdout.write(self.style.SUCCESS(f"✓ Slack PassThroughEndpoint already exists: {slack_ep.endpoint_url}"))
-            if slack_ep.endpoint_url != slack_url:
-                slack_ep.endpoint_url = slack_url
-                slack_ep.save()
-                self.stdout.write(self.style.SUCCESS(f"  Updated URL to: {slack_url}"))
-
         self.stdout.write("\n" + "="*60)
         self.stdout.write(self.style.SUCCESS("Default Passthrough Endpoints Setup Complete!"))
         self.stdout.write("="*60)
         self.stdout.write(f"\nEndpoints configured:")
-        self.stdout.write(f"  HubSpot:    /pt/admin/hubspot/ -> {hubspot_ep.endpoint_url}")
-        self.stdout.write(f"  Slack:      /pt/admin/slack/ -> {slack_ep.endpoint_url}")
         self.stdout.write(f"  Odoo:       /pt/admin/odoo/ -> {odoo_ep.endpoint_url}")
         self.stdout.write(f"  Mattermost: /pt/admin/mattermost/ -> {mattermost_ep.endpoint_url}")
         self.stdout.write(f"  NextCloud:  /pt/admin/nextcloud/ -> {nextcloud_ep.endpoint_url}")
@@ -288,7 +232,6 @@ class Command(BaseCommand):
         self.stdout.write(f"  WordPress:  /pt/admin/wordpress/ -> {wordpress_ep.endpoint_url}")
         self.stdout.write("\nThese will appear in the sidebar for tenants with active TenantApp records.")
         self.stdout.write("\nTenantApp records are created automatically during subscription when users select these apps.")
-        self.stdout.write("\nCapture contacts: HubSpot needs OAuth on TenantApp; Slack needs extra_config.bot_token.")
         self.stdout.write("\nNext steps:")
         self.stdout.write("1. Ensure all services are running at the configured URLs")
         self.stdout.write("2. Test subscription flow to verify provisioning")
