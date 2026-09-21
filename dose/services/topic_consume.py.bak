@@ -25,8 +25,37 @@ FAMILY_LABELS = {
     FAMILY_INVENTORY: "Inventory products",
     FAMILY_SNMP: "SNMP telemetry",
     FAMILY_MAINTENANCE: "Maintenance equipment",
-    FAMILY_UNKNOWN: "Unknown (no consume handler)",
+    FAMILY_UNKNOWN: "Other captured traffic",
 }
+
+FAMILY_DESCRIPTIONS = {
+    FAMILY_INVENTORY: "Odoo inventory / product list captures in this topic queue.",
+    FAMILY_SNMP: "SNMP device telemetry captures in this topic queue.",
+    FAMILY_MAINTENANCE: "Maintenance equipment captures in this topic queue.",
+    FAMILY_UNKNOWN: "Captured traffic with no Consume handler yet.",
+}
+
+
+def topic_display_name(topic: str, family: str) -> str:
+    """Short human name for the Captured Topics list."""
+    t = (topic or "").strip().lower()
+    if family == FAMILY_INVENTORY and "product.product" in t:
+        return "Inventory variants"
+    if family == FAMILY_INVENTORY:
+        return "Inventory products"
+    if family == FAMILY_SNMP:
+        return "SNMP telemetry"
+    if family == FAMILY_MAINTENANCE:
+        return "Maintenance equipment"
+    if "action-" in t:
+        return "Odoo action capture"
+    return FAMILY_LABELS.get(family, "Captured topic")
+
+
+def topic_description(topic: str, family: str) -> str:
+    """Tooltip: short description plus full topic key."""
+    base = FAMILY_DESCRIPTIONS.get(family, "Captured topic.")
+    return f"{base} Topic key: {topic}"
 
 
 def classify_topic(topic: str, *, source: str = "", action_path: str = "") -> str:
@@ -157,12 +186,7 @@ def list_topics() -> list[dict]:
     rows = (
         WebhookMailbox.objects.exclude(topic="")
         .values("topic")
-        .annotate(
-            total=Count("id"),
-            pending=Count("id", filter=Q(status="pending")),
-            processed=Count("id", filter=Q(status="processed")),
-            failed=Count("id", filter=Q(status="failed")),
-        )
+        .annotate(total=Count("id"))
         .order_by("topic")
     )
     out = []
@@ -173,12 +197,10 @@ def list_topics() -> list[dict]:
             {
                 "topic": topic,
                 "family": family,
+                "name": topic_display_name(topic, family),
+                "description": topic_description(topic, family),
                 "family_label": FAMILY_LABELS.get(family, family),
-                "total": row["total"],
-                "pending": row["pending"],
-                "processed": row["processed"],
-                "failed": row["failed"],
-                "consumable": family != FAMILY_UNKNOWN and row["pending"] > 0,
+                "has_history": family != FAMILY_UNKNOWN,
             }
         )
     return out

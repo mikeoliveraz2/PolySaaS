@@ -261,6 +261,72 @@ def requeue_topic(topic: str) -> dict:
     return {"ok": True, "topic": topic, "updated": updated}
 
 
+def consume_envelope(mailbox_id: int, *, also_feed_odoo: bool = True, tenant=None) -> dict:
+    """
+    Consume one mailbox envelope into history (any status with a known family).
+
+    Used by the per-row "Consume to History" button on Browse Topic.
+    """
+    from dose.models import WebhookMailbox
+
+    try:
+        entry = WebhookMailbox.objects.get(pk=int(mailbox_id))
+    except (WebhookMailbox.DoesNotExist, TypeError, ValueError):
+        return {"ok": False, "error": "mailbox_not_found", "written": 0}
+
+    topic = (entry.topic or "").strip()
+    family = classify_topic(
+        topic,
+        source=entry.source or "",
+        action_path=entry.action_path or "",
+    )
+    if family == FAMILY_UNKNOWN:
+        return {
+            "ok": False,
+            "error": "no_handler_for_topic",
+            "topic": topic,
+            "family": family,
+            "written": 0,
+        }
+
+    try:
+        entry.mark_claimed()
+        n = _consume_one(entry, family)
+        entry.mark_processed(
+            {
+                "consume": True,
+                "family": family,
+                "rows_written": n,
+                "consumed_at": timezone.now().isoformat(),
+                "per_row": True,
+            }
+        )
+    except Exception as exc:
+        logger.exception("[TopicConsume] mailbox=%s failed", mailbox_id)
+        try:
+            entry.mark_failed(str(exc))
+        except Exception:
+            pass
+        return {"ok": False, "error": str(exc), "topic": topic, "written": 0}
+
+    odoo_feed = None
+    if also_feed_odoo and family == FAMILY_SNMP and n and tenant is not None:
+        try:
+            odoo_feed = _feed_odoo_from_snmp_history(topic, tenant=tenant)
+        except Exception as exc:
+            odoo_feed = {"ok": False, "error": str(exc)}
+
+    return {
+        "ok": True,
+        "topic": topic,
+        "family": family,
+        "family_label": FAMILY_LABELS.get(family, family),
+        "mailbox_id": entry.id,
+        "written": n,
+        "odoo_feed": odoo_feed,
+    }
+
+
 def consume_topic(
     topic: str,
     *,
