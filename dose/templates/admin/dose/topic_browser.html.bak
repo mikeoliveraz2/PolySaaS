@@ -1,36 +1,78 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
-<div class="container-fluid" style="max-width: 900px; margin-top: 1rem;">
+<style>
+  .ct-wrap {
+    max-width: 900px;
+    margin-top: 1rem;
+    color: var(--bs-body-color, #212529);
+  }
+  .ct-wrap h1 {
+    color: var(--bs-body-color, #212529);
+    margin-bottom: 1rem;
+  }
+  html[data-bs-theme="dark"] .ct-wrap,
+  html[data-bs-theme="dark"] .ct-wrap h1,
+  html[data-ps-theme="dark"] .ct-wrap,
+  html[data-ps-theme="dark"] .ct-wrap h1 {
+    color: var(--bs-body-color, #f8f9fa);
+  }
+  .ct-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--bs-border-color, rgba(127,127,127,0.25));
+  }
+  .ct-row:last-child { border-bottom: 0; }
+  .ct-name {
+    font-weight: 600;
+    cursor: help;
+    min-width: 0;
+    color: var(--bs-body-color, #212529);
+  }
+  html[data-bs-theme="dark"] .ct-name,
+  html[data-ps-theme="dark"] .ct-name {
+    color: var(--bs-body-color, #f8f9fa);
+  }
+  .ct-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+  .ct-actions .btn { min-width: 7.5rem; text-align: center; }
+  .ct-actions .btn.disabled,
+  .ct-actions .btn:disabled {
+    opacity: 0.45;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+</style>
+<div class="container-fluid ct-wrap">
   <h1>Captured Topics</h1>
   {% if messages %}
   <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
   {% endif %}
-  <table class="table table-sm" style="margin-top: 1rem;">
-    <tbody>
-      {% for t in topics %}
-      <tr>
-        <td style="vertical-align: middle; padding: 0.75rem 0.5rem;">
-          <span title="{{ t.description }}" style="cursor: help; font-weight: 600;">
-            {{ t.name }}
-          </span>
-        </td>
-        <td style="vertical-align: middle; text-align: right; white-space: nowrap; padding: 0.75rem 0.5rem;">
-          <a class="btn btn-sm btn-primary"
-             href="{% url 'admin:dose_webhookmailbox_topic_detail' %}?topic={{ t.topic|urlencode }}">
-            Browse Topic
-          </a>
-          {% if t.has_history %}
-          <a class="btn btn-sm btn-outline-secondary"
-             href="{% url 'admin:dose_webhookmailbox_topic_history' %}?topic={{ t.topic|urlencode }}">
-            Topic History
-          </a>
-          {% endif %}
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="2">No captured topics yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div>
+    {% for t in topics %}
+    <div class="ct-row">
+      <span class="ct-name" title="{{ t.description }}">{{ t.name }}</span>
+      <div class="ct-actions">
+        <a class="btn btn-sm btn-primary"
+           href="{% url 'admin:dose_webhookmailbox_topic_detail' %}?topic={{ t.topic|urlencode }}">
+          Browse Topic
+        </a>
+        {% if t.has_history %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{% url 'admin:dose_webhookmailbox_topic_history' %}?topic={{ t.topic|urlencode }}">
+          Topic History
+        </a>
+        {% else %}
+        <button type="button" class="btn btn-sm btn-outline-secondary disabled" disabled title="No history for this topic type">
+          Topic History
+        </button>
+        {% endif %}
+      </div>
+    </div>
+    {% empty %}
+    <p class="text-muted">No captured topics yet.</p>
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}

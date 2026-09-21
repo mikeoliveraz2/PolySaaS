@@ -1,9 +1,44 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
 <style>
-  .ct-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(127,127,127,0.25); }
+  /* Own panel owns both bg + fg — Jazzmin dark theme often leaves a white
+     content card while inheriting light text from the shell. */
+  .ct-panel {
+    max-width: 900px;
+    margin-top: 1rem;
+    padding: 1rem 1.25rem 1.25rem;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: #212529;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html[data-bs-theme="dark"] .ct-panel,
+  html[data-ps-theme="dark"] .ct-panel,
+  body.dark-mode .ct-panel {
+    background: var(--bs-body-bg, #2b3035);
+    color: var(--bs-body-color, #f8f9fa);
+    border-color: var(--bs-border-color, #495057);
+  }
+  .ct-panel h1 {
+    margin: 0 0 1rem;
+    color: inherit;
+    font-size: 1.5rem;
+  }
+  .ct-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.28);
+  }
   .ct-row:last-child { border-bottom: 0; }
-  .ct-name { font-weight: 600; cursor: help; min-width: 0; }
+  .ct-name {
+    font-weight: 600;
+    cursor: help;
+    min-width: 0;
+    color: inherit;
+  }
   .ct-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
   .ct-actions .btn { min-width: 7.5rem; text-align: center; }
   .ct-actions .btn.disabled,
@@ -13,12 +48,12 @@
     cursor: not-allowed;
   }
 </style>
-<div class="container-fluid" style="max-width: 900px; margin-top: 1rem;">
-  <h1>Captured Topics</h1>
-  {% if messages %}
-  <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
-  {% endif %}
-  <div style="margin-top: 1rem;">
+<div class="container-fluid">
+  <div class="ct-panel">
+    <h1>Captured Topics</h1>
+    {% if messages %}
+    <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
+    {% endif %}
     {% for t in topics %}
     <div class="ct-row">
       <span class="ct-name" title="{{ t.description }}">{{ t.name }}</span>
@@ -40,7 +75,7 @@
       </div>
     </div>
     {% empty %}
-    <p class="text-muted">No captured topics yet.</p>
+    <p class="text-muted mb-0">No captured topics yet.</p>
     {% endfor %}
   </div>
 </div>
