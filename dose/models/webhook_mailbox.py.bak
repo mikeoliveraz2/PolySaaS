@@ -169,6 +169,10 @@ class WebhookMailbox(models.Model):
         cid = envelope['correlation_id']
         if not isinstance(cid, uuid_mod.UUID):
             cid = uuid_mod.UUID(str(cid))
+        # Always persist a browseable summary so Outcome/admin demos show data.
+        if result is None:
+            result = envelope.get('payload') if isinstance(envelope, dict) else None
+
         row = cls(
             event_id=envelope['event_id'],
             correlation_id=cid,

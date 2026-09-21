@@ -205,8 +205,8 @@ def _enroll_capture_mailbox(request, instruction_row, topic: str, message: dict,
     Write-free mailbox enroll for captures (mailbox/topic pattern).
 
     Always attempts a WebhookMailbox row with the MQ topic and a useful TTL.
-    Does not depend on Instruction.save_callbackdata. Status=processed so the
-    webhook consumer does not re-run capture envelopes.
+    Does not depend on Instruction.save_callbackdata. Status=pending so Topic
+    browser Consume can drain captures into typed report tables.
     """
     import uuid
 
@@ -285,7 +285,7 @@ def _enroll_capture_mailbox(request, instruction_row, topic: str, message: dict,
             row = WebhookMailbox.create_from_envelope(
                 envelope,
                 ttl_seconds=ttl,
-                status="processed",
+                status="pending",
                 result=result_summary,
                 tenant=tenant,
             )

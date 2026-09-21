@@ -180,17 +180,14 @@ def start_consumer_background():
 
 def cleanup_expired_mailbox_entries():
     """
-    Cleanup task to mark expired pending entries.
-    Should be called periodically (e.g., every 5 minutes).
-    
-    Returns:
-        int: number of entries expired
+    Move past-useful mailbox rows to dead_letter (inspectable).
+    Call periodically (e.g. with maintain_webhook_mailboxes or consumer loop).
     """
     try:
-        expired_count = WebhookMailbox.expire_old_entries()
-        if expired_count > 0:
-            logger.info(f"Marked {expired_count} mailbox entries as expired")
-        return expired_count
+        dead_count = WebhookMailbox.expire_old_entries()
+        if dead_count > 0:
+            logger.info(f"Moved {dead_count} mailbox entries to dead_letter")
+        return dead_count
     except Exception as exc:
         logger.error(f"Failed to cleanup expired mailbox entries: {exc}", exc_info=True)
         return 0

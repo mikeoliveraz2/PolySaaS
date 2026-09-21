@@ -1,0 +1,393 @@
+"""
+Topic consume — drain typed temporary mailbox topics into report tables.
+
+Admin Topic browser lists topics; Consume moves pending envelopes for one topic
+into the matching reporting table, then marks those mailbox rows processed.
+"""
+from __future__ import annotations
+
+import logging
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+from django.db import transaction
+from django.db.models import Count, Q
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+FAMILY_INVENTORY = "inventory_product"
+FAMILY_SNMP = "snmp_telemetry"
+FAMILY_MAINTENANCE = "maintenance_equipment"
+FAMILY_UNKNOWN = "unknown"
+
+FAMILY_LABELS = {
+    FAMILY_INVENTORY: "Inventory products",
+    FAMILY_SNMP: "SNMP telemetry",
+    FAMILY_MAINTENANCE: "Maintenance equipment",
+    FAMILY_UNKNOWN: "Unknown (no consume handler)",
+}
+
+
+def classify_topic(topic: str, *, source: str = "", action_path: str = "") -> str:
+    t = (topic or "").lower()
+    s = (source or "").lower()
+    ap = (action_path or "").lower()
+    blob = f"{t} {s} {ap}"
+    if "snmp" in blob:
+        return FAMILY_SNMP
+    if "maintenance" in blob:
+        return FAMILY_MAINTENANCE
+    if any(
+        x in blob
+        for x in (
+            "product.template",
+            "product.product",
+            "stock.quant",
+            "odoo_inventory",
+            "inventory",
+            "product.",
+        )
+    ):
+        return FAMILY_INVENTORY
+    return FAMILY_UNKNOWN
+
+
+def list_topics() -> list[dict]:
+    """Aggregate mailbox rows by topic (current search_path / tenant schema)."""
+    from dose.models import WebhookMailbox
+
+    rows = (
+        WebhookMailbox.objects.exclude(topic="")
+        .values("topic")
+        .annotate(
+            total=Count("id"),
+            pending=Count("id", filter=Q(status="pending")),
+            processed=Count("id", filter=Q(status="processed")),
+            failed=Count("id", filter=Q(status="failed")),
+        )
+        .order_by("topic")
+    )
+    out = []
+    for row in rows:
+        topic = row["topic"] or ""
+        family = classify_topic(topic)
+        out.append(
+            {
+                "topic": topic,
+                "family": family,
+                "family_label": FAMILY_LABELS.get(family, family),
+                "total": row["total"],
+                "pending": row["pending"],
+                "processed": row["processed"],
+                "failed": row["failed"],
+                "consumable": family != FAMILY_UNKNOWN and row["pending"] > 0,
+            }
+        )
+    # Also show empty-topic pending? skip — force a topic on enroll.
+    return out
+
+
+def consume_topic(
+    topic: str,
+    *,
+    limit: int = 100,
+    also_feed_odoo: bool = True,
+    tenant=None,
+) -> dict:
+    """
+    Drain pending mailbox rows for ``topic`` into the typed report table.
+
+    Returns counts: claimed, written, failed, family, errors[].
+    """
+    from dose.models import WebhookMailbox
+
+    topic = (topic or "").strip()
+    if not topic:
+        return {"ok": False, "error": "missing_topic", "written": 0}
+
+    pending = list(
+        WebhookMailbox.objects.filter(
+            topic=topic,
+            status="pending",
+            expires_at__gt=timezone.now(),
+        ).order_by("created_at")[: max(1, int(limit))]
+    )
+    if not pending:
+        return {
+            "ok": True,
+            "topic": topic,
+            "family": classify_topic(topic),
+            "claimed": 0,
+            "written": 0,
+            "failed": 0,
+            "message": "no pending rows",
+        }
+
+    sample = pending[0]
+    family = classify_topic(
+        topic,
+        source=sample.source or "",
+        action_path=sample.action_path or "",
+    )
+    if family == FAMILY_UNKNOWN:
+        return {
+            "ok": False,
+            "topic": topic,
+            "family": family,
+            "error": "no_handler_for_topic",
+            "claimed": 0,
+            "written": 0,
+        }
+
+    written = 0
+    failed = 0
+    errors: list[str] = []
+    odoo_feed = None
+
+    for entry in pending:
+        try:
+            entry.mark_claimed()
+            n = _consume_one(entry, family)
+            written += n
+            entry.mark_processed(
+                {
+                    "consume": True,
+                    "family": family,
+                    "rows_written": n,
+                    "consumed_at": timezone.now().isoformat(),
+                }
+            )
+        except Exception as exc:
+            failed += 1
+            errors.append(f"mailbox#{entry.id}: {exc}")
+            logger.exception("[TopicConsume] mailbox=%s failed", entry.id)
+            try:
+                entry.mark_failed(str(exc))
+            except Exception:
+                pass
+
+    if also_feed_odoo and family == FAMILY_SNMP and written and tenant is not None:
+        try:
+            odoo_feed = _feed_odoo_from_snmp_reports(topic, tenant=tenant)
+        except Exception as exc:
+            logger.warning("[TopicConsume] Odoo feed after SNMP consume: %s", exc)
+            odoo_feed = {"ok": False, "error": str(exc)}
+
+    return {
+        "ok": failed == 0,
+        "topic": topic,
+        "family": family,
+        "family_label": FAMILY_LABELS.get(family, family),
+        "claimed": len(pending),
+        "written": written,
+        "failed": failed,
+        "errors": errors[:20],
+        "odoo_feed": odoo_feed,
+    }
+
+
+def _consume_one(entry, family: str) -> int:
+    if family == FAMILY_INVENTORY:
+        return _write_inventory(entry)
+    if family == FAMILY_SNMP:
+        return _write_snmp(entry)
+    if family == FAMILY_MAINTENANCE:
+        return _write_maintenance(entry)
+    raise ValueError(f"unsupported family {family}")
+
+
+def _payload_records(entry) -> list[dict]:
+    env = entry.envelope if isinstance(entry.envelope, dict) else {}
+    payload = env.get("payload")
+    if payload is None and isinstance(entry.result, dict):
+        payload = entry.result
+    if not isinstance(payload, dict):
+        return []
+    records = payload.get("records")
+    if isinstance(records, list) and records:
+        return [r for r in records if isinstance(r, dict)]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        # SNMP single-device envelope
+        if data.get("device_mac") or data.get("metrics"):
+            return [data]
+        nested = data.get("records")
+        if isinstance(nested, list):
+            return [r for r in nested if isinstance(r, dict)]
+    return []
+
+
+def _write_inventory(entry) -> int:
+    from dose.models.topic_report import InventoryProductReport
+
+    records = _payload_records(entry)
+    if not records:
+        # Still acknowledge empty capture
+        return 0
+    n = 0
+    with transaction.atomic():
+        for rec in records:
+            odoo_id = rec.get("id")
+            try:
+                odoo_id = int(odoo_id) if odoo_id is not None else None
+            except (TypeError, ValueError):
+                odoo_id = None
+            price = rec.get("list_price")
+            list_price = None
+            if price is not None and price != "":
+                try:
+                    list_price = Decimal(str(price))
+                except (InvalidOperation, ValueError):
+                    list_price = None
+            InventoryProductReport.objects.create(
+                topic=entry.topic or "",
+                source_event_id=entry.event_id or "",
+                source_mailbox_id=entry.id,
+                odoo_id=odoo_id,
+                name=str(rec.get("name") or rec.get("display_name") or "")[:255],
+                default_code=str(rec.get("default_code") or "")[:128],
+                list_price=list_price,
+                raw_record=rec,
+            )
+            n += 1
+    return n
+
+
+def _write_snmp(entry) -> int:
+    from dose.models.topic_report import SnmpTelemetryReport
+
+    records = _payload_records(entry)
+    if not records:
+        env = entry.envelope if isinstance(entry.envelope, dict) else {}
+        payload = env.get("payload") if isinstance(env.get("payload"), dict) else {}
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        if data:
+            records = [data]
+    n = 0
+    with transaction.atomic():
+        for rec in records:
+            metrics = rec.get("metrics") if isinstance(rec.get("metrics"), dict) else {}
+            SnmpTelemetryReport.objects.create(
+                topic=entry.topic or "",
+                source_event_id=entry.event_id or "",
+                source_mailbox_id=entry.id,
+                device_mac=str(rec.get("device_mac") or "")[:64],
+                device_name=str(rec.get("device_name") or "")[:255],
+                ip_address=str(rec.get("ip_address") or "")[:64],
+                status=str(metrics.get("status") or rec.get("status") or "")[:32],
+                cpu_utilization=_float_or_none(metrics.get("cpu_utilization")),
+                temperature_c=_float_or_none(metrics.get("temperature_c")),
+                raw_record=rec,
+            )
+            n += 1
+            # Mirror into maintenance report when anomalous
+            status = str(metrics.get("status") or "").lower()
+            temp = _float_or_none(metrics.get("temperature_c"))
+            if status in ("down", "critical", "offline", "error") or (
+                temp is not None and temp >= 60
+            ):
+                from dose.models.topic_report import MaintenanceEquipmentReport
+
+                MaintenanceEquipmentReport.objects.create(
+                    topic=entry.topic or "",
+                    source_event_id=entry.event_id or "",
+                    source_mailbox_id=entry.id,
+                    equipment_name=str(rec.get("device_name") or "")[:255],
+                    serial_no=str(rec.get("device_mac") or "")[:128],
+                    category="Network / SNMP",
+                    anomaly=True,
+                    request_name=f"SNMP alert: {rec.get('device_name') or rec.get('device_mac')} ({status or 'hot'})"[:255],
+                    raw_record=rec,
+                )
+    return n
+
+
+def _write_maintenance(entry) -> int:
+    from dose.models.topic_report import MaintenanceEquipmentReport
+
+    records = _payload_records(entry)
+    n = 0
+    with transaction.atomic():
+        for rec in records:
+            MaintenanceEquipmentReport.objects.create(
+                topic=entry.topic or "",
+                source_event_id=entry.event_id or "",
+                source_mailbox_id=entry.id,
+                equipment_name=str(rec.get("name") or rec.get("device_name") or "")[:255],
+                serial_no=str(rec.get("serial_no") or rec.get("device_mac") or "")[:128],
+                category=str(rec.get("category") or "")[:128],
+                anomaly=bool(rec.get("anomaly")),
+                request_name=str(rec.get("request_name") or "")[:255],
+                raw_record=rec,
+            )
+            n += 1
+    return n
+
+
+def _float_or_none(val: Any):
+    if val is None or val == "":
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _feed_odoo_from_snmp_reports(topic: str, *, tenant) -> dict:
+    """
+    Optional Type 1: after SNMP consume, upsert Odoo maintenance from
+    recent report rows for this topic.
+    """
+    from django.db import connection
+
+    from dose.models.topic_report import SnmpTelemetryReport
+    from dose.services.odoo_rpc import OdooRpcClient, OdooRpcError, load_odoo_rpc_config
+    from dose.services.snmp_to_odoo_maintenance import SnmpToOdooMaintenance
+
+    recent = list(
+        SnmpTelemetryReport.objects.filter(topic=topic).order_by("-consumed_at")[:50]
+    )
+    if not recent:
+        return {"ok": True, "equipment": 0, "requests": 0}
+
+    class _Req:
+        tenant = None
+        body = b""
+
+    req = _Req()
+    req.tenant = tenant
+    # Ensure tenant schema for report reads already set; Odoo config may touch public.
+    with connection.cursor() as cur:
+        cur.execute(f'SET search_path TO "{tenant.schema_name}", public')
+
+    try:
+        config = load_odoo_rpc_config(request=req)
+        client = OdooRpcClient.from_config(config)
+        client.authenticate()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+    category_id = SnmpToOdooMaintenance._ensure_category(client)
+    eq = 0
+    reqs = 0
+    for row in recent:
+        rec = row.raw_record if isinstance(row.raw_record, dict) else {}
+        mac = row.device_mac or rec.get("device_mac") or ""
+        name = row.device_name or rec.get("device_name") or mac
+        if not mac and not name:
+            continue
+        try:
+            eid = SnmpToOdooMaintenance._upsert_equipment(
+                client, name=name, mac=mac or name, category_id=category_id, payload=rec
+            )
+            eq += 1
+            metrics = rec.get("metrics") if isinstance(rec.get("metrics"), dict) else {}
+            if SnmpToOdooMaintenance._is_anomaly(metrics, 60):
+                SnmpToOdooMaintenance._create_request(
+                    client, equipment_id=eid, payload=rec, metrics=metrics
+                )
+                reqs += 1
+        except OdooRpcError as exc:
+            return {"ok": False, "error": str(exc), "equipment": eq, "requests": reqs}
+    return {"ok": True, "equipment": eq, "requests": reqs}

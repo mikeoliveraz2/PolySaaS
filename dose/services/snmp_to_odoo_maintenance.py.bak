@@ -1,11 +1,12 @@
 """
-SnmpToOdooMaintenance — dumb webhook enroll onto SNMP topic (pending).
+SnmpToOdooMaintenance — Type 2 mailbox capture + Type 1 Odoo Maintenance feed.
 
 POST /dose/webhook/snmp/<tenant_slug>/
-  → enroll WebhookMailbox as pending on topic RES.snmp.telemetry.<slug>
-  → Admin Topic browser → Consume drains to report tables (+ optional Odoo feed)
+  → enroll WebhookMailbox (raw SNMP history)
+  → upsert maintenance.equipment (by device_mac → serial_no)
+  → on anomaly: create maintenance.request
 
-Odoo maintenance.equipment / request writes run on Consume, not in this accept path.
+Demo: run Week 1 then Week 2 feeds immediately (different data, not calendar wait).
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ EQUIPMENT_CATEGORY_NAME = "Network / SNMP"
 
 
 class SnmpToOdooMaintenance(AtomicServiceBase):
-    """SNMP JSON → pending topic mailbox (Consume → report + optional Odoo)."""
+    """SNMP JSON → mailbox + Odoo maintenance.equipment / maintenance.request."""
 
     atomic_apps = ("odoo",)
     atomic_category = "integration"
@@ -53,14 +54,37 @@ class SnmpToOdooMaintenance(AtomicServiceBase):
                 reason="empty_or_invalid_json",
             )
 
+        cfg = instruction_config(instruction_row)
+        temp_critical = int(cfg.get("temp_critical_c", DEFAULT_TEMP_CRITICAL))
+        create_requests = bool(cfg.get("create_requests", True))
+
         mailbox = SnmpToOdooMaintenance._enroll_mailbox(
             tenant, payload, instruction_row
         )
-        if not mailbox.get("success"):
+
+        try:
+            odoo = SnmpToOdooMaintenance._feed_odoo(
+                request,
+                payload,
+                instruction_row=instruction_row,
+                temp_critical=temp_critical,
+                create_requests=create_requests,
+            )
+        except OdooRpcError as exc:
+            logger.error("[SNMP→Odoo] RPC failed: %s", exc)
             return service_result(
                 "SnmpToOdooMaintenance",
                 status="error",
-                error=mailbox.get("error") or "mailbox_enroll_failed",
+                error=str(exc),
+                mailbox=mailbox,
+                odoo=exc.as_dict(),
+            )
+        except Exception as exc:
+            logger.exception("[SNMP→Odoo] unexpected failure")
+            return service_result(
+                "SnmpToOdooMaintenance",
+                status="error",
+                error=str(exc),
                 mailbox=mailbox,
             )
 
@@ -68,7 +92,8 @@ class SnmpToOdooMaintenance(AtomicServiceBase):
             "SnmpToOdooMaintenance",
             status="ok",
             mailbox=mailbox,
-            note="enrolled_pending — use Topic browser Consume to drain",
+            odoo=odoo,
+            anomaly=bool(odoo.get("request_id")),
         )
 
     @staticmethod
@@ -143,19 +168,18 @@ class SnmpToOdooMaintenance(AtomicServiceBase):
             with tenant_schema_search_path(tenant) as ok:
                 if not ok:
                     return {"success": False, "error": "invalid tenant schema"}
-            row = WebhookMailbox.create_from_envelope(
-                envelope,
-                ttl_seconds=CAPTURE_MAILBOX_TTL_SECONDS,
-                status="pending",
-                result={
-                    "snmp": True,
-                    "pending_consume": True,
-                    "device_mac": payload.get("device_mac"),
-                    "records": envelope["payload"]["records"],
-                    "record_count": 1,
-                },
-                tenant=tenant,
-            )
+                row = WebhookMailbox.create_from_envelope(
+                    envelope,
+                    ttl_seconds=CAPTURE_MAILBOX_TTL_SECONDS,
+                    status="processed",
+                    result={
+                        "snmp": True,
+                        "device_mac": payload.get("device_mac"),
+                        "records": envelope["payload"]["records"],
+                        "record_count": 1,
+                    },
+                    tenant=tenant,
+                )
             return {
                 "success": True,
                 "mailbox_id": row.id,

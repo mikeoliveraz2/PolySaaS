@@ -25,7 +25,8 @@ class WebhookMailbox(models.Model):
     """
     Mailbox for webhook events and passthrough captures.
     Webhooks persist envelopes here; consumers dequeue pending rows.
-    Captures enroll as processed (topic + payload) for browse/correlation.
+    Captures enroll as pending (topic + payload) until Topic browser Consume
+drains them into typed report tables.
     """
 
     # Identity (schema-scoped; no Tenant FK — see module docstring)

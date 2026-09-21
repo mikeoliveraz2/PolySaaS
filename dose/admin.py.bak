@@ -205,7 +205,6 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
     readonly_fields = (
-        'published_payload',
         'event_id',
         'correlation_id',
         'envelope',
@@ -221,13 +220,8 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         'result',
     )
     fieldsets = [
-        ('Published data', {
-            'fields': ['published_payload'],
-            'description': (
-                'Inventory rows also appear in the banner above when present. '
-                'Open list rows whose Payload says N record(s).'
-            ),
-        }),
+        # Records render in the theme-aware banner (change_form.html), not Jazzmin's
+        # unthemed readonly widget (white box / light text).
         ('Identity', {
             'fields': ['event_id', 'correlation_id', 'source', 'status', 'topic', 'action_path'],
         }),

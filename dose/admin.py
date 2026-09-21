@@ -111,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox, InventoryProductReport, SnmpTelemetryReport, MaintenanceEquipmentReport
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -204,6 +204,72 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     search_fields = ('action_path', 'event_id', 'source', 'topic', 'correlation_id', 'error')
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                'topics/',
+                self.admin_site.admin_view(self.topic_browser_view),
+                name='dose_webhookmailbox_topics',
+            ),
+        ]
+        return custom + urls
+
+    def topic_browser_view(self, request):
+        """Topic-first browser with Consume → report tables."""
+        from django.contrib import messages
+        from django.shortcuts import redirect, render
+        from django.urls import reverse
+
+        from dose.admin_base import resolve_request_tenant
+        from dose.services.topic_consume import consume_topic, list_topics
+
+        tenant = resolve_request_tenant(request)
+        if tenant is not None:
+            from django.db import connection
+            with connection.cursor() as cur:
+                cur.execute(f'SET search_path TO "{tenant.schema_name}", public;')
+
+        if request.method == 'POST':
+            topic = (request.POST.get('topic') or '').strip()
+            try:
+                limit = int(request.POST.get('limit') or 100)
+            except (TypeError, ValueError):
+                limit = 100
+            result = consume_topic(
+                topic, limit=limit, also_feed_odoo=True, tenant=tenant
+            )
+            if result.get('ok'):
+                messages.success(
+                    request,
+                    (
+                        f"Consumed topic {topic!r}: "
+                        f"claimed={result.get('claimed')} "
+                        f"written={result.get('written')} "
+                        f"family={result.get('family_label')}"
+                        + (
+                            f" odoo={result.get('odoo_feed')}"
+                            if result.get('odoo_feed')
+                            else ''
+                        )
+                    ),
+                )
+            else:
+                messages.error(
+                    request,
+                    f"Consume failed for {topic!r}: {result.get('error') or result}",
+                )
+            return redirect(reverse('admin:dose_webhookmailbox_topics'))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Topic browser',
+            'topics': list_topics(),
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/dose/topic_browser.html', context)
+
     readonly_fields = (
         'event_id',
         'correlation_id',
@@ -1353,6 +1419,68 @@ admin.site.register(Task, TaskAdmin)
 admin.site.register(Instruction, InstructionAdmin)
 admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(WebhookMailbox, WebhookMailboxAdmin)
+
+
+class InventoryProductReportAdmin(TenantAwareModelAdmin):
+    list_display = (
+        'name', 'default_code', 'list_price', 'odoo_id', 'topic_short', 'consumed_at',
+    )
+    list_filter = ('consumed_at',)
+    search_fields = ('name', 'default_code', 'topic', 'source_event_id')
+    ordering = ('-consumed_at',)
+    readonly_fields = (
+        'topic', 'source_event_id', 'source_mailbox_id', 'odoo_id',
+        'name', 'default_code', 'list_price', 'raw_record', 'consumed_at',
+    )
+
+    @admin.display(description='Topic')
+    def topic_short(self, obj):
+        t = obj.topic or ''
+        return t if len(t) <= 48 else t[:45] + '…'
+
+
+class SnmpTelemetryReportAdmin(TenantAwareModelAdmin):
+    list_display = (
+        'device_name', 'device_mac', 'status', 'temperature_c',
+        'cpu_utilization', 'topic_short', 'consumed_at',
+    )
+    list_filter = ('status', 'consumed_at')
+    search_fields = ('device_name', 'device_mac', 'topic', 'source_event_id')
+    ordering = ('-consumed_at',)
+    readonly_fields = (
+        'topic', 'source_event_id', 'source_mailbox_id', 'device_mac',
+        'device_name', 'ip_address', 'status', 'cpu_utilization',
+        'temperature_c', 'raw_record', 'consumed_at',
+    )
+
+    @admin.display(description='Topic')
+    def topic_short(self, obj):
+        t = obj.topic or ''
+        return t if len(t) <= 48 else t[:45] + '…'
+
+
+class MaintenanceEquipmentReportAdmin(TenantAwareModelAdmin):
+    list_display = (
+        'equipment_name', 'serial_no', 'category', 'anomaly',
+        'request_name', 'topic_short', 'consumed_at',
+    )
+    list_filter = ('anomaly', 'consumed_at')
+    search_fields = ('equipment_name', 'serial_no', 'topic', 'request_name')
+    ordering = ('-consumed_at',)
+    readonly_fields = (
+        'topic', 'source_event_id', 'source_mailbox_id', 'equipment_name',
+        'serial_no', 'category', 'anomaly', 'request_name', 'raw_record', 'consumed_at',
+    )
+
+    @admin.display(description='Topic')
+    def topic_short(self, obj):
+        t = obj.topic or ''
+        return t if len(t) <= 48 else t[:45] + '…'
+
+
+admin.site.register(InventoryProductReport, InventoryProductReportAdmin)
+admin.site.register(SnmpTelemetryReport, SnmpTelemetryReportAdmin)
+admin.site.register(MaintenanceEquipmentReport, MaintenanceEquipmentReportAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)

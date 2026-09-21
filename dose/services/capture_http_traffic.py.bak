@@ -59,8 +59,71 @@ def _parse_body(raw: Any) -> Tuple[Any, str]:
 
 
 def _truncate(data: Any, max_chars: int = _MAX_CAPTURE_CHARS) -> Any:
+    """
+    Cap payload size without destroying list ``records``.
+
+    Large Odoo list responses used to become ``{_truncated, _preview}`` which
+    stripped ``records[]`` and made the mailbox demo useless.
+    """
     if data is None:
         return None
+
+    # Prefer keeping records[] intact (mailbox history / admin table).
+    if isinstance(data, dict) and isinstance(data.get("records"), list):
+        records = list(data["records"])
+        keep = {
+            k: v for k, v in data.items() if k != "records"
+        }
+        keep["record_count"] = len(records)
+        # Slim rows first if needed
+        slim_keys = (
+            "id",
+            "default_code",
+            "display_name",
+            "name",
+            "qty_available",
+            "virtual_available",
+            "quantity",
+            "inventory_quantity",
+            "location_id",
+            "product_id",
+            "list_price",
+            "uom_id",
+            "type",
+            "categ_id",
+            "barcode",
+        )
+
+        def _slim_row(row):
+            if not isinstance(row, dict):
+                return row
+            slim = {k: row[k] for k in slim_keys if k in row}
+            return slim or {k: row[k] for k in list(row.keys())[:12]}
+
+        slim_records = [_slim_row(r) for r in records]
+        candidate = {**keep, "records": slim_records}
+        dumped = json.dumps(candidate, default=str)
+        if len(dumped) <= max_chars:
+            return candidate
+        # Drop rows until under budget (keep newest/first N).
+        for n in (100, 50, 25, 10, 5, 1):
+            candidate = {
+                **keep,
+                "records": slim_records[:n],
+                "record_count": len(records),
+                "_records_truncated": len(records) > n,
+                "_records_shown": min(n, len(slim_records)),
+            }
+            if len(json.dumps(candidate, default=str)) <= max_chars:
+                return candidate
+        return {
+            **keep,
+            "records": slim_records[:1],
+            "record_count": len(records),
+            "_records_truncated": True,
+            "_records_shown": 1,
+        }
+
     if isinstance(data, (dict, list)):
         dumped = json.dumps(data, default=str)
         if len(dumped) <= max_chars:
@@ -78,11 +141,11 @@ def _truncate(data: Any, max_chars: int = _MAX_CAPTURE_CHARS) -> Any:
 
 def _normalize_list_payload(data: Any) -> Any:
     """
-    Surface Odoo web_search_read (and similar) records for mailbox history.
+    Surface Odoo web_search_read / search_read records for mailbox history.
 
     Odoo JSON-RPC list loads look like:
       {"jsonrpc": "2.0", "id": …, "result": {"records": […], "length": N}}
-    Those ``records`` are the product/quant rows rendered on screen.
+    or sometimes ``result`` is already a list of rows.
     """
     if not isinstance(data, dict):
         return data
@@ -95,6 +158,14 @@ def _normalize_list_payload(data: Any) -> Any:
             "length": result.get("length", len(records)),
             "record_count": len(records),
             "source": "odoo_web_search_read",
+        }
+    # Some Odoo call_kw methods return result as a bare list of dicts.
+    if isinstance(result, list) and result and isinstance(result[0], dict):
+        return {
+            "records": result,
+            "length": len(result),
+            "record_count": len(result),
+            "source": "odoo_result_list",
         }
     if isinstance(data.get("records"), list):
         records = data.get("records") or []

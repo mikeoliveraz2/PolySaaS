@@ -128,6 +128,21 @@ class WebhookMailboxConsumer:
             f"{mailbox_entry.source} {mailbox_entry.action_path} (event_id={mailbox_entry.event_id[:16]}...)"
         )
         
+        # Topic-drain envelopes (captures / SNMP) stay pending for Admin Consume.
+        envelope = mailbox_entry.envelope if isinstance(mailbox_entry.envelope, dict) else {}
+        kind = str(envelope.get("kind") or "")
+        if kind in ("polysaas.capture.v1",) or str(mailbox_entry.source or "") in (
+            "passthrough",
+            "snmp",
+        ):
+            logger.debug(
+                "Skipping topic-drain mailbox %s (%s/%s) — use Topic browser Consume",
+                mailbox_entry.id,
+                kind,
+                mailbox_entry.source,
+            )
+            return
+
         # Check if expired
         if mailbox_entry.is_expired():
             logger.warning(f"Mailbox entry {mailbox_entry.id} has expired, skipping")
@@ -141,7 +156,6 @@ class WebhookMailboxConsumer:
         
         # Process the trigger envelope
         try:
-            envelope = mailbox_entry.envelope
             result = process_trigger_envelope(envelope, tenant)
             
             logger.info(
