@@ -1,6 +1,7 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 // BINGO: Slack Odoo contact/sale forms — 2026-08-25
 // BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
+// Owner-approved 2026-09-22: contact path from data-contact-path (Odoo CP orch).
 (function () {
     'use strict';
 
@@ -267,7 +268,7 @@
     async function queueWebhook(kind, payload) {
         var path = kind === 'sale'
             ? '/events/slack/webhook/sale'
-            : '/events/slack/webhook/contact';
+            : (root.dataset.contactPath || '/events/slack/webhook/contact');
         var triggerUrl = kind === 'sale'
             ? root.dataset.saleUrl
             : root.dataset.contactUrl;
@@ -310,7 +311,7 @@
         var payload = formPayload(modal || form);
         var path = kind === 'sale'
             ? '/events/slack/webhook/sale'
-            : '/events/slack/webhook/contact';
+            : (root.dataset.contactPath || '/events/slack/webhook/contact');
         var savingLabel = kind === 'sale'
             ? 'Saving sale to mailbox'
             : 'Saving contact to mailbox';

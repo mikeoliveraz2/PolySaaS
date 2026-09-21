@@ -88,7 +88,9 @@ def publish_slack_command_event(tenant, payload: dict[str, str]) -> dict:
                 return {"success": False, "error": "invalid tenant schema"}
             
             # Write to mailbox with 5 minute TTL
-            mailbox = WebhookMailbox.create_from_envelope(envelope, ttl_seconds=300)
+            mailbox = WebhookMailbox.create_from_envelope(
+                envelope, ttl_seconds=300, tenant=tenant,
+            )
             
         return {
             "success": True,
@@ -145,6 +147,7 @@ def publish_slack_wireframe_event(tenant, kind: str, payload: dict) -> dict:
             mailbox = WebhookMailbox.create_from_envelope(
                 envelope,
                 ttl_seconds=300,
+                tenant=tenant,
             )
         return {
             "success": True,
@@ -279,6 +282,7 @@ def publish_slack_contact_event(tenant, payload: dict) -> dict:
             mailbox = WebhookMailbox.create_from_envelope(
                 envelope,
                 ttl_seconds=300,
+                tenant=tenant,
             )
             
             return {

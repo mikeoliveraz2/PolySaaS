@@ -94,17 +94,29 @@ print('TenantApp', ta and ta.status, {k: ('***' if 'pass' in k else extra.get(k)
 "
 ```
 
-## 4. Bookmarks (Capture contacts button)
+## 4. New contact (single) + Capture contacts
 
-Default Odoo Control Panel bookmark is seeded as `odoo.capture_contacts` when endpoints use default bookmarks. Open:
+### Seed dynamic orchestration (once per tenant)
 
-`/dose/apps/<endpoint_host>/`
+```bash
+python manage.py setup_odoo_cp_contact_consumer --schema polysaas
+```
 
-where `endpoint_host` is the netloc of `endpoint_url` (e.g. `odoo:8069`), **or** open Odoo from the sidebar and use the Control Panel.
+Creates Instruction:
+- `POST REQ /events/odoo/control-panel/contact`
+- `eventKey = odoo.control_panel.contact`
+- `executescript = OdooCreatePartner`
 
-Click **Capture contacts**.
+Mailbox consumer must be running (`start_mailbox_consumer`).
 
-## 5. Consume to history
+### Control Panel
+
+1. Sidebar → Odoo **Control Panel**
+2. **New contact** → fill form → Save  
+   → mailbox → orch bar → `OdooCreatePartner` creates `res.partner`
+3. **Capture contacts** → bulk list into Captured Topics (separate flow)
+
+## 5. Consume captured history (bulk only)
 
 1. Admin → **Captured Topics**
 2. Open topic named like **Odoo contacts** (`RES.odoo.contacts.<username>`)

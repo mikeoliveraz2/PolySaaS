@@ -341,7 +341,7 @@
                 'you',
                 kind === 'sale'
                     ? ('New sale: ' + payload.partner_name + ' / ' + payload.order_reference)
-                    : ('New contact: ' + payload.name),
+                    : ('newpolysaascontact ' + payload.name),
                 {}
             );
             var queued = await queueWebhook(kind, payload);

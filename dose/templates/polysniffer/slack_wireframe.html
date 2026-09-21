@@ -3,11 +3,13 @@
 <!-- BINGO: Slack Odoo contact/sale forms — 2026-08-25 -->
 <!-- BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28 -->
 <!-- BINGO: Unified Endpoint Workspace — 2026-09-01 -->
+<!-- Owner-approved 2026-09-22: Odoo Control Panel New contact uses shared form + odoo_contact URL. -->
 {% load static %}
 <div
     class="ps-slack-mock"
     data-mode="{{ slack_wireframe_mode|default:'native' }}"
-    data-contact-url="{% if action_urls.mattermost_contact %}{{ action_urls.mattermost_contact }}{% elif action_urls.slack_contact %}{{ action_urls.slack_contact }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
+    data-contact-url="{% if action_urls.odoo_contact %}{{ action_urls.odoo_contact }}{% elif action_urls.mattermost_contact %}{{ action_urls.mattermost_contact }}{% elif action_urls.slack_contact %}{{ action_urls.slack_contact }}{% else %}{% url 'dose:slack_wireframe_trigger' 'contact' %}{% endif %}"
+    data-contact-path="{% if action_urls.odoo_contact %}/events/odoo/control-panel/contact{% else %}/events/slack/webhook/contact{% endif %}"
     data-sale-url="{% if action_urls.mattermost_sale %}{{ action_urls.mattermost_sale }}{% elif action_urls.slack_sale %}{{ action_urls.slack_sale }}{% else %}{% url 'dose:slack_wireframe_trigger' 'sale' %}{% endif %}"
     data-status-url="{% if endpoint_status_url %}{{ endpoint_status_url }}{% else %}/dose/api/slack-wireframe/status/{% endif %}"
     data-messages-url="{% url 'dose:slack_wireframe_messages' %}"
@@ -17,13 +19,15 @@
         .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span,
         .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span,
         .polysaas-endpoint-home [data-bookmark-target="mattermost.contact"] > span,
-        .polysaas-endpoint-home [data-bookmark-target="mattermost.sale"] > span {
+        .polysaas-endpoint-home [data-bookmark-target="mattermost.sale"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="odoo.contact"] > span {
             display:inline-block; width:28px; height:28px; flex:0 0 28px;
             font-size:0; line-height:0; color:transparent; overflow:hidden;
             background-position:center; background-repeat:no-repeat; background-size:contain;
         }
         .polysaas-endpoint-home [data-bookmark-target="slack.contact"] > span,
-        .polysaas-endpoint-home [data-bookmark-target="mattermost.contact"] > span {
+        .polysaas-endpoint-home [data-bookmark-target="mattermost.contact"] > span,
+        .polysaas-endpoint-home [data-bookmark-target="odoo.contact"] > span {
             background-image:url("{% static 'admin/img/slack_bookmark_contact.png' %}");
         }
         .polysaas-endpoint-home [data-bookmark-target="slack.sale"] > span,
