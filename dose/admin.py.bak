@@ -492,7 +492,88 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         return True
 
     def has_delete_permission(self, request, obj=None):
-        return bool(getattr(request.user, 'is_superuser', False))
+        # Staff can purge captures; schema-safe delete is in TenantAwareModelAdmin.
+        return bool(
+            getattr(request.user, "is_superuser", False)
+            or getattr(request.user, "is_staff", False)
+        )
+
+    def log_deletion(self, request, obj, object_repr):
+        # Skip LogEntry — public/tenant search_path fights caused delete 500s.
+        return None
+
+    def log_deletions(self, request, queryset):
+        return []
+
+    def delete_queryset(self, request, queryset):
+        """Bulk delete: never touch LogEntry; schema-qualified SQL only."""
+        from django.contrib import messages
+        from django.db import connection
+        from dose.admin_base import resolve_request_tenant
+        import traceback
+        import logging
+
+        log = logging.getLogger(__name__)
+        tenant = resolve_request_tenant(request)
+        if tenant is None or not getattr(tenant, "schema_name", None):
+            messages.error(request, "No tenant schema — cannot delete mailbox rows.")
+            raise PermissionError("No tenant schema for mailbox delete")
+        schema = tenant.schema_name
+        table = self.model._meta.db_table
+        # Force tenant path before evaluating the action queryset.
+        connection.cursor().execute(f'SET search_path TO "{schema}", public;')
+        pks = list(queryset.values_list("pk", flat=True))
+        if not pks:
+            messages.warning(request, "No mailbox rows selected.")
+            return
+        try:
+            placeholders = ", ".join(["%s"] * len(pks))
+            with connection.cursor() as cur:
+                cur.execute(
+                    f'DELETE FROM "{schema}"."{table}" WHERE id IN ({placeholders})',
+                    pks,
+                )
+            messages.success(request, f"Deleted {len(pks)} webhook mailbox row(s).")
+            log.info(
+                "[WebhookMailboxAdmin] purged %s rows schema=%s", len(pks), schema
+            )
+        except Exception as exc:
+            log.error(
+                "[WebhookMailboxAdmin] delete_queryset failed:\n%s",
+                traceback.format_exc(),
+            )
+            messages.error(request, f"Mailbox delete failed: {exc}")
+            raise
+
+    def delete_model(self, request, obj):
+        from django.contrib import messages
+        from django.db import connection
+        from dose.admin_base import resolve_request_tenant
+        import traceback
+        import logging
+
+        log = logging.getLogger(__name__)
+        tenant = resolve_request_tenant(request)
+        if tenant is None or not getattr(tenant, "schema_name", None):
+            messages.error(request, "No tenant schema — cannot delete mailbox row.")
+            raise PermissionError("No tenant schema for mailbox delete")
+        schema = tenant.schema_name
+        table = self.model._meta.db_table
+        pk = obj.pk
+        try:
+            with connection.cursor() as cur:
+                cur.execute(
+                    f'DELETE FROM "{schema}"."{table}" WHERE id = %s',
+                    [pk],
+                )
+            messages.success(request, f"Deleted mailbox #{pk}.")
+        except Exception as exc:
+            log.error(
+                "[WebhookMailboxAdmin] delete_model failed:\n%s",
+                traceback.format_exc(),
+            )
+            messages.error(request, f"Mailbox delete failed: {exc}")
+            raise
 
 
 class TaskAdmin(TenantAwareModelAdmin):
