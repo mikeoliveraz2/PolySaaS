@@ -1,11 +1,9 @@
 # Plan: Type 2 Capture & Correlate + Type 1 Extract & Feed  
 ## Mock SNMP → WebhookMailbox → Odoo Maintenance
 
-**Status:** Phase A+B implemented (2026-09-21) — Hostinger seed + week feeds next  
+**Status:** Plan only (Shela + Michael — 2026-09-21)  
 **Branch:** `main`  
 **Audience:** investor / IT-ops buyer demo (PolySysMon narrative bridge)
-
-**Week 1 / Week 2 = data scenarios, not calendar time.** Run `--week 1` then immediately `--week 2` (same devices, different metrics).
 
 ---
 
@@ -103,55 +101,53 @@ Generator script (Week 1 / Week 2)
 
 ---
 
-## Build phases
+## Build phases (proposal — wait for go)
 
-### Phase A — Pipe + mailbox (Type 2) — DONE
+### Phase A — Pipe + mailbox (Type 2 visible)
 
-1. Webhook route: `/dose/webhook/snmp/<tenant_slug>/`
-2. Atomic registered: `SnmpToOdooMaintenance`
-3. Mailbox enroll inside atomic before Odoo RPC
-4. Seed: `python manage.py seed_snmp_odoo_maintenance`
-5. Generator: `scripts/snmp_week_feed.py --week 1|2`
+1. Webhook route already: `/dose/webhook/<source>/<tenant_slug>/` — use `source=snmp`.
+2. Register atomic in generic inbound registry.
+3. `SnmpMailboxEnroll` or enroll inside the atomic **before** Odoo RPC (same as capture enroll-first).
+4. Seed Instruction in `polysaas` (and olient if needed).
+5. Generator script under `scripts/snmp_week_feed.py` → Hostinger URL.
+6. Verify Admin → Webhook mailboxes shows SNMP `records` / payload (theme-aware change form).
 
-### Phase B — Odoo Maintenance feed (Type 1) — DONE (code)
+### Phase B — Odoo Maintenance feed (Type 1)
 
-1. Category “Network / SNMP”
-2. Upsert `maintenance.equipment` by `serial_no` = MAC
-3. Anomaly → `maintenance.request`
-4. Week 1 feed seeds ~20 equipment (idempotent)
+1. Confirm Maintenance module on Odoo; create category “Network / SNMP”.
+2. Atomic upsert `maintenance.equipment`.
+3. On anomaly → `maintenance.request` with name/description from SNMP.
+4. Seed ~20 equipment via Week 1 run (idempotent).
 
-### Phase C — Demo polish — PENDING Hostinger run
+### Phase C — Demo polish
 
-1. Bookmark / Control Panel path to Maintenance Equipment + Requests
-2. Split-screen screenshot (mailbox + Odoo)
-3. Optional Mattermost notify — later
+1. Bookmark / Control Panel path to Odoo Maintenance Equipment + Requests.
+2. One-pager talking points (PolySysMon bridge quote).
+3. Optional: Mattermost notify on new request (reuse OdooInvoiceNotifier pattern — **later**).
 
 ### Defer (do not block this demo)
 
-- Async **pull API** for mailbox subscribers — Admin browse is enough for the film.
+- Async **pull API** for mailbox subscribers (Sunday “#2”) — Admin browse is enough for the film.
 - Real SNMP/MIB / PolySysMon agent.
 - 100 heartbeats × many weeks (noise); scale volume only if the take needs it.
 
 ---
 
-## Generator script
+## Generator script (adapt Shela’s draft)
 
-```text
-python scripts/snmp_week_feed.py --week 1 --tenant polysaas
-python scripts/snmp_week_feed.py --week 2 --tenant polysaas
-```
-
-Default URL: `https://app.prod-polysaas.cloud/dose/webhook/snmp/polysaas/`  
-Week 2 anomalies: fixed device indexes 2, 7, 14 (~15%).
+- `WEBHOOK_URL = https://app.prod-polysaas.cloud/dose/webhook/snmp/polysaas/`
+- Week 1: `error_rate=0.0`, 20 devices.
+- Week 2: uncomment, `error_rate=0.15`.
+- Auth: if webhook requires token later, add header; v1 can match HubSpot-style CSRF-exempt inbound.
 
 ---
 
 ## Risks / speak-up
 
-1. **Maintenance not installed** on shared Odoo → Phase B fails at runtime; check before film.
-2. Generic inbound registry is a small hardcoded map — `SnmpToOdooMaintenance` added (same as HubSpot).
-3. **Volume:** 20 devices × 2 weeks = 40 mailbox rows — clear story.
-4. **Correlate:** MAC in Odoo + mailbox topic/filter; film with two browser windows.
+1. **Maintenance not installed** on shared Odoo → Phase B fails; check before promising film date.
+2. **Generic inbound registry** is a small hardcoded map today — adding `SnmpToOdooMaintenance` is one line (same as HubSpot); longer term prefer full AtomicService registry discovery.
+3. **Volume:** 20 devices × 2 weeks = 40 mailbox rows — clear story. Jumping to 100× without need slows the take.
+4. **Correlate:** v1 correlates by MAC in Odoo + mailbox topic/filter; full “join UI” can be two browser windows (mailbox + Odoo).
 
 ---
 
@@ -164,6 +160,8 @@ Week 2 anomalies: fixed device indexes 2, 7, 14 (~15%).
 
 ---
 
-## Decision
+## Decision needed from Michael / Shela
 
-**Go received** — Phase A+B code landed. Remaining: Hostinger seed + feed + film shots.
+**Go / no-go on Phase A+B implementation next?**  
+If go: target tenant `polysaas` on Hostinger only first; olient second.  
+If wait: this plan stays the source of truth until film date is set.
