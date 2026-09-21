@@ -187,6 +187,7 @@ class CallBackDataAdmin(TenantAwareModelAdmin):
 class WebhookMailboxAdmin(TenantAwareModelAdmin):
     """Browse dumb webhook mailbox envelopes (pending → processed / failed / expired)."""
 
+    change_form_template = 'admin/dose/webhookmailbox/change_form.html'
     list_display = (
         'status',
         'source',
@@ -197,6 +198,8 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         'created_at',
         'expires_at',
     )
+    # Click the Payload / topic cell — those are the rows with inventory data.
+    list_display_links = ('payload_preview', 'topic_short', 'event_id_short')
     list_filter = ('status', 'source', 'created_at')
     search_fields = ('action_path', 'event_id', 'source', 'topic', 'correlation_id', 'error')
     ordering = ('-created_at',)
@@ -221,8 +224,8 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         ('Published data', {
             'fields': ['published_payload'],
             'description': (
-                'Inventory/product rows captured from the Odoo list response '
-                '(result.records), shown as a table when present.'
+                'Also shown in the banner above the form. '
+                'Open rows whose list Payload says \"N record(s)\".'
             ),
         }),
         ('Identity', {
@@ -240,6 +243,21 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
             'classes': ['collapse'],
         }),
     ]
+
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        if object_id:
+            obj = self.get_object(request, object_id)
+            if obj is not None:
+                table = self.published_payload(obj)
+                # Only treat as “has records” when we actually found rows.
+                payload = self._extract_published_payload(obj)
+                records = self._records_from_payload(payload)
+                if records:
+                    extra_context['mailbox_records_table'] = table
+                else:
+                    extra_context['mailbox_records_table'] = ''
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     @staticmethod
     def _extract_published_payload(obj):
