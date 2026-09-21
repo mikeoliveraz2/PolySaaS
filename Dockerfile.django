@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY manage.py test_decompression_view.py ./
 COPY mysite ./mysite
 COPY dose ./dose
+COPY captured_topics ./captured_topics
 COPY llm_router ./llm_router
 COPY parameters ./parameters
 COPY alerts ./alerts
