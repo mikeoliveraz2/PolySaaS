@@ -96,27 +96,3 @@ def publish_mattermost_capture_contacts(tenant, payload: dict) -> dict:
         vendor_key="mattermost",
         action_path="mattermost.capture_contacts",
     )
-
-
-def publish_hubspot_capture_contacts(tenant, payload: dict) -> dict:
-    from dose.services.hubspot_capture_contacts import HubSpotCaptureContacts
-
-    return _publish_capture(
-        tenant,
-        payload,
-        load_service=lambda: HubSpotCaptureContacts,
-        vendor_key="hubspot",
-        action_path="hubspot.capture_contacts",
-    )
-
-
-def publish_slack_capture_contacts(tenant, payload: dict) -> dict:
-    from dose.services.slack_capture_contacts import SlackCaptureContacts
-
-    return _publish_capture(
-        tenant,
-        payload,
-        load_service=lambda: SlackCaptureContacts,
-        vendor_key="slack",
-        action_path="slack.capture_contacts",
-    )
