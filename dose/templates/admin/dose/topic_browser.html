@@ -1,8 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
 <style>
-  /* Own panel owns both bg + fg — Jazzmin dark theme often leaves a white
-     content card while inheriting light text from the shell. */
+  /* Own panel owns both bg + fg — Jazzmin dark themes must not leave dark-on-dark. */
   .ct-panel {
     max-width: 900px;
     margin-top: 1rem;
@@ -11,13 +10,6 @@
     background: #fff;
     color: #212529;
     border: 1px solid rgba(0, 0, 0, 0.08);
-  }
-  html[data-bs-theme="dark"] .ct-panel,
-  html[data-ps-theme="dark"] .ct-panel,
-  body.dark-mode .ct-panel {
-    background: var(--bs-body-bg, #2b3035);
-    color: var(--bs-body-color, #f8f9fa);
-    border-color: var(--bs-border-color, #495057);
   }
   .ct-panel h1 {
     margin: 0 0 1rem;
@@ -47,6 +39,40 @@
     pointer-events: none;
     cursor: not-allowed;
   }
+
+  html[data-bs-theme="dark"] .ct-panel,
+  html[data-ps-theme="darkly"] .ct-panel,
+  html[data-ps-theme="cyborg"] .ct-panel,
+  html[data-ps-theme="slate"] .ct-panel,
+  html[data-ps-theme="solar"] .ct-panel,
+  html[data-ps-theme="superhero"] .ct-panel,
+  body.dark-mode .ct-panel {
+    background: #2b3035;
+    color: #f8f9fa;
+    border-color: #495057;
+  }
+  html[data-bs-theme="dark"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="darkly"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="cyborg"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="slate"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="solar"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="superhero"] .ct-panel .btn-outline-secondary,
+  body.dark-mode .ct-panel .btn-outline-secondary {
+    color: #f8f9fa;
+    border-color: #adb5bd;
+    background-color: transparent;
+  }
+  html[data-bs-theme="dark"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="darkly"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="cyborg"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="slate"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="solar"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="superhero"] .ct-panel .btn-outline-secondary:hover,
+  body.dark-mode .ct-panel .btn-outline-secondary:hover {
+    color: #212529;
+    background-color: #f8f9fa;
+    border-color: #f8f9fa;
+  }
 </style>
 <div class="container-fluid">
   <div class="ct-panel">
@@ -75,7 +101,7 @@
       </div>
     </div>
     {% empty %}
-    <p class="text-muted mb-0">No captured topics yet.</p>
+    <p class="text-muted mb-0" style="color: inherit; opacity: 0.7;">No captured topics yet.</p>
     {% endfor %}
   </div>
 </div>
