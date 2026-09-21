@@ -224,8 +224,8 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         ('Published data', {
             'fields': ['published_payload'],
             'description': (
-                'Also shown in the banner above the form. '
-                'Open rows whose list Payload says \"N record(s)\".'
+                'Inventory rows also appear in the banner above when present. '
+                'Open list rows whose Payload says N record(s).'
             ),
         }),
         ('Identity', {

@@ -4,15 +4,14 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-21 (Monday)
-**Session:** Mailbox change form — theme classes, not hardcoded colors
+**Session:** Mailbox form — theme tokens, drop Jazzmin readonly box
 **Branch:** main
 
 ## Done
-- Webhook mailbox change form uses Jazzmin/Bootstrap theme classes
-  (`card card-outline card-primary`, `alert alert-secondary`, `text-body`)
-  so THEMES light/dark controls contrast everywhere.
-- Removed hardcoded orange/white and forced light-field colors.
+- Removed Jazzmin “Published data” readonly field (white box ignored theme).
+- Records only in `card` + `pre` styled with `--bs-body-*` and the same
+  `data-bs-theme` / `data-ps-theme` dark hooks as the sidebar.
 
 ## Next
-Rebuild → toggle theme; confirm banner + Published records stay readable.
+Rebuild → open a records row in light and dark THEMES; confirm readable.
 Then **#2** async pull API.
