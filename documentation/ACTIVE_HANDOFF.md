@@ -4,19 +4,15 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-21 (Monday)
-**Session:** Mailbox delete 500 — get_current_tenant path restore
+**Session:** Mailbox change form — theme classes, not hardcoded colors
 **Branch:** main
 
-## Root cause
-`get_current_tenant()` looks up Tenant on `public` then **restores the previous
-search_path** (often still `public`). That undid tenant SET before DELETE →
-`webhook_mailbox` missing → 500 on bulk delete of 25 rows.
-
-## Fix
-- `resolve_request_tenant()` — public lookup without path undo footgun.
-- WebhookMailboxAdmin: **skip LogEntry**; schema-qualified bulk DELETE.
-- Ops fallback: `purge_webhook_mailbox --schema polysaas --all`
+## Done
+- Webhook mailbox change form uses Jazzmin/Bootstrap theme classes
+  (`card card-outline card-primary`, `alert alert-secondary`, `text-body`)
+  so THEMES light/dark controls contrast everywhere.
+- Removed hardcoded orange/white and forced light-field colors.
 
 ## Next
-Rebuild django (**full image rebuild**), delete 25 again.
-If still 500, run purge command and paste `docker logs` traceback.
+Rebuild → toggle theme; confirm banner + Published records stay readable.
+Then **#2** async pull API.
