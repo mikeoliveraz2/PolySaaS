@@ -127,7 +127,6 @@ def _object_type_for_target(target: str) -> str:
     for object_type, suffix in (
         ("invoice", "list_invoices"),
         ("contact", "list_contacts"),
-        ("contact", "capture_contacts"),
         ("sale", "list_sales"),
     ):
         if tail == suffix:

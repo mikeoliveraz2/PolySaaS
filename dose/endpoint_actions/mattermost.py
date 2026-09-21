@@ -2,6 +2,7 @@
 # BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16
 # Mattermost endpoint-home actions — Control Panel New contact / New sale
 # Owner-approved 2026-09-14: mirror Slack popup forms → same Odoo mailbox path.
+# Owner-approved 2026-09-21: Capture contacts → Captured Topics.
 import uuid
 
 from django.utils import timezone
@@ -9,6 +10,8 @@ from django.utils import timezone
 from dose.webhook_events import publish_slack_wireframe_event
 
 from .base import EndpointAction, EndpointActionAdapter
+from .contact_capture_publish import publish_mattermost_capture_contacts
+from .list_publisher import list_limit_payload
 
 
 def _payload(kind: str, supplied: dict) -> dict:
@@ -82,6 +85,14 @@ class MattermostEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "passthrough"
     default_bookmarks = (
         {
+            "key": "capture-contacts",
+            "title": "Capture contacts",
+            "destination_type": "direct_event",
+            "target": "mattermost.capture_contacts",
+            "icon": "contact",
+            "description": "GET Mattermost users into Captured Topics",
+        },
+        {
             "key": "new-contact",
             "title": "New contact",
             "destination_type": "popup_form",
@@ -119,6 +130,13 @@ class MattermostEndpointActionAdapter(EndpointActionAdapter):
 
     def actions(self):
         return {
+            "mattermost.capture_contacts": EndpointAction(
+                key="mattermost.capture_contacts",
+                kind="direct_event",
+                title="Capture contacts",
+                build_payload=list_limit_payload,
+                publish=publish_mattermost_capture_contacts,
+            ),
             "mattermost.contact": EndpointAction(
                 key="mattermost.contact",
                 kind="popup_form",

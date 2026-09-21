@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Captured Topics Consume to History — 2026-09-21
 """
 Topic consume — drain typed temporary mailbox topics into history tables.
 
