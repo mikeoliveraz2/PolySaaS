@@ -1,6 +1,7 @@
 <!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
 <!-- BINGO: Founders Beta $10 + Mattermost CP — 2026-09-16 -->
 <!-- Previous BINGOs: Slack home (2026-08-24), dual-feed (2026-08-28), workspace (2026-09-01), Geronimo (2026-09-02) -->
+<!-- Owner-approved 2026-09-22: include contact modal host when action_urls.odoo_contact (New contact). -->
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -8,7 +9,7 @@
 
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260916-1">
+<link rel="stylesheet" href="{% static 'admin/css/endpoint_home.css' %}?v=20260922-1">
 {% endblock %}
 
 {% block content %}
@@ -52,7 +53,7 @@
         <div class="polysaas-endpoint-home__form-host polysaas-endpoint-home__pane">
             {% include surface_template %}
         </div>
-        {% elif action_urls.mattermost_contact or action_urls.slack_contact %}
+        {% elif action_urls.odoo_contact or action_urls.mattermost_contact or action_urls.slack_contact %}
         {# Bookmarks open New contact / New sale; include sheets only (hide wireframe chrome). #}
         <div class="polysaas-endpoint-home__form-host polysaas-endpoint-home__form-host--modals-only" aria-hidden="true">
             {% include "polysniffer/slack_wireframe.html" %}
