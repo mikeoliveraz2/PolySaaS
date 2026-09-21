@@ -10,16 +10,51 @@
     color: #212529;
     border: 1px solid rgba(0, 0, 0, 0.08);
   }
-  html[data-bs-theme="dark"] .ct-panel,
-  html[data-ps-theme="dark"] .ct-panel,
-  body.dark-mode .ct-panel {
-    background: var(--bs-body-bg, #2b3035);
-    color: var(--bs-body-color, #f8f9fa);
-    border-color: var(--bs-border-color, #495057);
+  .ct-panel h1, .ct-panel a.ct-back, .ct-panel p, .ct-panel code { color: inherit; }
+  .ct-panel .table {
+    color: inherit;
+    --bs-table-color: inherit;
+    --bs-table-bg: transparent;
+    --bs-table-striped-color: inherit;
+    --bs-table-striped-bg: rgba(0, 0, 0, 0.04);
+    --bs-table-hover-color: inherit;
+    --bs-table-border-color: rgba(0, 0, 0, 0.12);
   }
-  .ct-panel h1, .ct-panel a.ct-back { color: inherit; }
-  .ct-panel .table { color: inherit; }
-  .ct-panel code { color: inherit; }
+  .ct-panel .table > :not(caption) > * > * {
+    color: inherit;
+    background-color: var(--bs-table-bg);
+    border-color: var(--bs-table-border-color);
+  }
+  .ct-panel .table-striped > tbody > tr:nth-of-type(odd) > * {
+    color: inherit;
+    background-color: var(--bs-table-striped-bg);
+  }
+
+  html[data-bs-theme="dark"] .ct-panel,
+  html[data-ps-theme="darkly"] .ct-panel,
+  html[data-ps-theme="cyborg"] .ct-panel,
+  html[data-ps-theme="slate"] .ct-panel,
+  html[data-ps-theme="solar"] .ct-panel,
+  html[data-ps-theme="superhero"] .ct-panel,
+  body.dark-mode .ct-panel {
+    background: #2b3035;
+    color: #f8f9fa;
+    border-color: #495057;
+  }
+  html[data-bs-theme="dark"] .ct-panel .table,
+  html[data-ps-theme="darkly"] .ct-panel .table,
+  html[data-ps-theme="cyborg"] .ct-panel .table,
+  html[data-ps-theme="slate"] .ct-panel .table,
+  html[data-ps-theme="solar"] .ct-panel .table,
+  html[data-ps-theme="superhero"] .ct-panel .table,
+  body.dark-mode .ct-panel .table {
+    --bs-table-color: #f8f9fa;
+    --bs-table-bg: transparent;
+    --bs-table-striped-color: #f8f9fa;
+    --bs-table-striped-bg: rgba(255, 255, 255, 0.06);
+    --bs-table-hover-color: #f8f9fa;
+    --bs-table-border-color: #495057;
+  }
 </style>
 <div class="container-fluid">
   <div class="ct-panel">
@@ -28,7 +63,7 @@
     <p><code>{{ history.topic }}</code> · {{ history.family_label }} · {{ history.count }} row(s)</p>
 
     {% if not history.supported %}
-    <p class="text-muted">No history for this topic type.</p>
+    <p style="opacity: 0.7;">No history for this topic type.</p>
     {% else %}
     <table class="table table-striped table-sm">
       <thead>

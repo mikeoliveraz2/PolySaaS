@@ -1,5 +1,3 @@
-# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Captured Topics Consume to History — 2026-09-21
 """
 Proxy model so Captured Topics appears as its own Jazzmin sidebar section
 (after Authentication and Authorization), not under Dose Tenant Management.

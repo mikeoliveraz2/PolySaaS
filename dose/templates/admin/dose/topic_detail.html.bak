@@ -1,6 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
 <style>
+  /* Captured Topics panel — own bg+fg so Jazzmin/Bootswatch can't leave dark-on-dark. */
   .ct-panel {
     max-width: 1100px;
     margin-top: 1rem;
@@ -10,21 +11,89 @@
     color: #212529;
     border: 1px solid rgba(0, 0, 0, 0.08);
   }
-  html[data-bs-theme="dark"] .ct-panel,
-  html[data-ps-theme="dark"] .ct-panel,
-  body.dark-mode .ct-panel {
-    background: var(--bs-body-bg, #2b3035);
-    color: var(--bs-body-color, #f8f9fa);
-    border-color: var(--bs-border-color, #495057);
+  .ct-panel h1, .ct-panel h2, .ct-panel a.ct-back,
+  .ct-panel p, .ct-panel strong, .ct-panel code { color: inherit; }
+  .ct-panel .table {
+    color: inherit;
+    --bs-table-color: inherit;
+    --bs-table-bg: transparent;
+    --bs-table-striped-color: inherit;
+    --bs-table-striped-bg: rgba(0, 0, 0, 0.04);
+    --bs-table-hover-color: inherit;
+    --bs-table-border-color: rgba(0, 0, 0, 0.12);
   }
-  .ct-panel h1, .ct-panel h2, .ct-panel a.ct-back { color: inherit; }
-  .ct-panel .table { color: inherit; }
-  .ct-panel code { color: inherit; }
+  .ct-panel .table > :not(caption) > * > * {
+    color: inherit;
+    background-color: var(--bs-table-bg);
+    border-color: var(--bs-table-border-color);
+  }
+  .ct-panel .table-striped > tbody > tr:nth-of-type(odd) > * {
+    color: inherit;
+    background-color: var(--bs-table-striped-bg);
+  }
   .ct-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 1rem; }
   .ct-actions .btn { min-width: 7.5rem; }
   .ct-row-actions { display: flex; gap: 0.4rem; flex-wrap: nowrap; justify-content: flex-end; }
   .ct-row-actions .btn { white-space: nowrap; }
   .ct-when { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  html[data-bs-theme="dark"] .ct-panel,
+  html[data-ps-theme="darkly"] .ct-panel,
+  html[data-ps-theme="cyborg"] .ct-panel,
+  html[data-ps-theme="slate"] .ct-panel,
+  html[data-ps-theme="solar"] .ct-panel,
+  html[data-ps-theme="superhero"] .ct-panel,
+  body.dark-mode .ct-panel {
+    background: #2b3035;
+    color: #f8f9fa;
+    border-color: #495057;
+  }
+  html[data-bs-theme="dark"] .ct-panel .table,
+  html[data-ps-theme="darkly"] .ct-panel .table,
+  html[data-ps-theme="cyborg"] .ct-panel .table,
+  html[data-ps-theme="slate"] .ct-panel .table,
+  html[data-ps-theme="solar"] .ct-panel .table,
+  html[data-ps-theme="superhero"] .ct-panel .table,
+  body.dark-mode .ct-panel .table {
+    --bs-table-color: #f8f9fa;
+    --bs-table-bg: transparent;
+    --bs-table-striped-color: #f8f9fa;
+    --bs-table-striped-bg: rgba(255, 255, 255, 0.06);
+    --bs-table-hover-color: #f8f9fa;
+    --bs-table-border-color: #495057;
+  }
+  html[data-bs-theme="dark"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="darkly"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="cyborg"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="slate"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="solar"] .ct-panel .btn-outline-secondary,
+  html[data-ps-theme="superhero"] .ct-panel .btn-outline-secondary,
+  body.dark-mode .ct-panel .btn-outline-secondary {
+    color: #f8f9fa;
+    border-color: #adb5bd;
+    background-color: transparent;
+  }
+  html[data-bs-theme="dark"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="darkly"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="cyborg"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="slate"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="solar"] .ct-panel .btn-outline-secondary:hover,
+  html[data-ps-theme="superhero"] .ct-panel .btn-outline-secondary:hover,
+  body.dark-mode .ct-panel .btn-outline-secondary:hover {
+    color: #212529;
+    background-color: #f8f9fa;
+    border-color: #f8f9fa;
+  }
+  html[data-bs-theme="dark"] .ct-panel .btn-outline-primary,
+  html[data-ps-theme="darkly"] .ct-panel .btn-outline-primary,
+  html[data-ps-theme="cyborg"] .ct-panel .btn-outline-primary,
+  html[data-ps-theme="slate"] .ct-panel .btn-outline-primary,
+  html[data-ps-theme="solar"] .ct-panel .btn-outline-primary,
+  html[data-ps-theme="superhero"] .ct-panel .btn-outline-primary,
+  body.dark-mode .ct-panel .btn-outline-primary {
+    color: #9ec5fe;
+    border-color: #9ec5fe;
+  }
 </style>
 <div class="container-fluid">
   <div class="ct-panel">

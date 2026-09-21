@@ -1,8 +1,8 @@
 """
 Topic consume — drain typed temporary mailbox topics into history tables.
 
-Admin Topic browser lists topics; Consume moves pending envelopes for one topic
-into the matching history table, then marks those mailbox rows processed.
+Admin Topic browser lists topics; Consume writes envelopes into the matching
+history table, then deletes those mailbox rows so they leave the topic queue.
 """
 from __future__ import annotations
 
@@ -207,16 +207,20 @@ def list_topics() -> list[dict]:
 
 
 def list_topic_envelopes(topic: str, *, limit: int = 100) -> list[dict]:
-    """Peek envelopes on one topic (current tenant schema)."""
+    """Peek envelopes still on the topic queue (current tenant schema)."""
     from dose.models import WebhookMailbox
 
     topic = (topic or "").strip()
-    rows = (
+    # Over-fetch slightly so we can drop any pre-delete drained leftovers.
+    rows = list(
         WebhookMailbox.objects.filter(topic=topic)
-        .order_by("-created_at")[: max(1, int(limit))]
+        .order_by("-created_at")[: max(1, int(limit)) * 2]
     )
     out = []
     for row in rows:
+        # Legacy: older Consume left rows as processed with result.consume=True.
+        if isinstance(row.result, dict) and row.result.get("consume"):
+            continue
         env = row.envelope if isinstance(row.envelope, dict) else {}
         payload = env.get("payload")
         if payload is None:
@@ -238,6 +242,8 @@ def list_topic_envelopes(topic: str, *, limit: int = 100) -> list[dict]:
                 "record_count": record_count,
             }
         )
+        if len(out) >= max(1, int(limit)):
+            break
     return out
 
 
@@ -289,20 +295,14 @@ def consume_envelope(mailbox_id: int, *, also_feed_odoo: bool = True, tenant=Non
             "written": 0,
         }
 
+    mailbox_pk = entry.id
     try:
         entry.mark_claimed()
         n = _consume_one(entry, family)
-        entry.mark_processed(
-            {
-                "consume": True,
-                "family": family,
-                "rows_written": n,
-                "consumed_at": timezone.now().isoformat(),
-                "per_row": True,
-            }
-        )
+        # Drain: history keeps the data; remove envelope from the topic queue.
+        entry.delete()
     except Exception as exc:
-        logger.exception("[TopicConsume] mailbox=%s failed", mailbox_id)
+        logger.exception("[TopicConsume] mailbox=%s failed", mailbox_pk)
         try:
             entry.mark_failed(str(exc))
         except Exception:
@@ -321,7 +321,7 @@ def consume_envelope(mailbox_id: int, *, also_feed_odoo: bool = True, tenant=Non
         "topic": topic,
         "family": family,
         "family_label": FAMILY_LABELS.get(family, family),
-        "mailbox_id": entry.id,
+        "mailbox_id": mailbox_pk,
         "written": n,
         "odoo_feed": odoo_feed,
     }
@@ -385,22 +385,17 @@ def consume_topic(
     odoo_feed = None
 
     for entry in pending:
+        mailbox_pk = entry.id
         try:
             entry.mark_claimed()
             n = _consume_one(entry, family)
             written += n
-            entry.mark_processed(
-                {
-                    "consume": True,
-                    "family": family,
-                    "rows_written": n,
-                    "consumed_at": timezone.now().isoformat(),
-                }
-            )
+            # Drain: history keeps the data; remove envelope from the topic queue.
+            entry.delete()
         except Exception as exc:
             failed += 1
-            errors.append(f"mailbox#{entry.id}: {exc}")
-            logger.exception("[TopicConsume] mailbox=%s failed", entry.id)
+            errors.append(f"mailbox#{mailbox_pk}: {exc}")
+            logger.exception("[TopicConsume] mailbox=%s failed", mailbox_pk)
             try:
                 entry.mark_failed(str(exc))
             except Exception:

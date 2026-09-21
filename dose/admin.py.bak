@@ -273,6 +273,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
             FAMILY_LABELS,
             FAMILY_UNKNOWN,
             classify_topic,
+            consume_envelope,
             consume_topic,
             list_topic_envelopes,
             requeue_topic,
@@ -292,6 +293,25 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                     request,
                     f"Re-queued {result.get('updated', 0)} envelope(s) on {topic!r} to pending.",
                 )
+            elif action == 'consume_one':
+                result = consume_envelope(
+                    request.POST.get('mailbox_id'),
+                    also_feed_odoo=True,
+                    tenant=tenant,
+                )
+                if result.get('ok'):
+                    messages.success(
+                        request,
+                        (
+                            f"Consumed envelope #{result.get('mailbox_id')} → history "
+                            f"({result.get('written')} row(s), {result.get('family_label')})"
+                        ),
+                    )
+                else:
+                    messages.error(
+                        request,
+                        f"Consume failed: {result.get('error') or result}",
+                    )
             else:
                 try:
                     limit = int(request.POST.get('limit') or 100)
