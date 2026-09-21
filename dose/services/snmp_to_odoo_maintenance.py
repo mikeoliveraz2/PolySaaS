@@ -3,7 +3,7 @@ SnmpToOdooMaintenance — dumb webhook enroll onto SNMP topic (pending).
 
 POST /dose/webhook/snmp/<tenant_slug>/
   → enroll WebhookMailbox as pending on topic RES.snmp.telemetry.<slug>
-  → Admin Topic browser → Consume drains to report tables (+ optional Odoo feed)
+  → Admin Topic browser → Consume drains to history (+ optional Odoo feed)
 
 Odoo maintenance.equipment / request writes run on Consume, not in this accept path.
 """
@@ -28,7 +28,7 @@ EQUIPMENT_CATEGORY_NAME = "Network / SNMP"
 
 
 class SnmpToOdooMaintenance(AtomicServiceBase):
-    """SNMP JSON → pending topic mailbox (Consume → report + optional Odoo)."""
+    """SNMP JSON → pending topic mailbox (Consume → history + optional Odoo)."""
 
     atomic_apps = ("odoo",)
     atomic_category = "integration"

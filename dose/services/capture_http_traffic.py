@@ -206,7 +206,7 @@ def _enroll_capture_mailbox(request, instruction_row, topic: str, message: dict,
 
     Always attempts a WebhookMailbox row with the MQ topic and a useful TTL.
     Does not depend on Instruction.save_callbackdata. Status=pending so Topic
-    browser Consume can drain captures into typed report tables.
+    browser Consume can drain captures into typed history tables.
     """
     import uuid
 

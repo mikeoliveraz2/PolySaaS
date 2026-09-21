@@ -111,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox, InventoryProductReport, SnmpTelemetryReport, MaintenanceEquipmentReport
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox, InventoryProductHistory, SnmpTelemetryHistory, MaintenanceEquipmentHistory
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -214,62 +214,120 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                 self.admin_site.admin_view(self.topic_browser_view),
                 name='dose_webhookmailbox_topics',
             ),
+            path(
+                'topics/open/',
+                self.admin_site.admin_view(self.topic_detail_view),
+                name='dose_webhookmailbox_topic_detail',
+            ),
         ]
         return custom + urls
 
-    def topic_browser_view(self, request):
-        """Topic-first browser with Consume → report tables."""
-        from django.contrib import messages
-        from django.shortcuts import redirect, render
-        from django.urls import reverse
-
+    def _set_topic_tenant_path(self, request):
+        from django.db import connection
         from dose.admin_base import resolve_request_tenant
-        from dose.services.topic_consume import consume_topic, list_topics
 
         tenant = resolve_request_tenant(request)
         if tenant is not None:
-            from django.db import connection
             with connection.cursor() as cur:
                 cur.execute(f'SET search_path TO "{tenant.schema_name}", public;')
+        return tenant
 
-        if request.method == 'POST':
-            topic = (request.POST.get('topic') or '').strip()
-            try:
-                limit = int(request.POST.get('limit') or 100)
-            except (TypeError, ValueError):
-                limit = 100
-            result = consume_topic(
-                topic, limit=limit, also_feed_odoo=True, tenant=tenant
-            )
-            if result.get('ok'):
-                messages.success(
-                    request,
-                    (
-                        f"Consumed topic {topic!r}: "
-                        f"claimed={result.get('claimed')} "
-                        f"written={result.get('written')} "
-                        f"family={result.get('family_label')}"
-                        + (
-                            f" odoo={result.get('odoo_feed')}"
-                            if result.get('odoo_feed')
-                            else ''
-                        )
-                    ),
-                )
-            else:
-                messages.error(
-                    request,
-                    f"Consume failed for {topic!r}: {result.get('error') or result}",
-                )
-            return redirect(reverse('admin:dose_webhookmailbox_topics'))
+    def topic_browser_view(self, request):
+        """List of topics (temporary queues). Click one to browse envelopes."""
+        from django.shortcuts import render
 
+        from dose.services.topic_consume import list_topics
+
+        self._set_topic_tenant_path(request)
         context = {
             **self.admin_site.each_context(request),
-            'title': 'Topic browser',
+            'title': 'Topics (temporary queues)',
             'topics': list_topics(),
             'opts': self.model._meta,
         }
         return render(request, 'admin/dose/topic_browser.html', context)
+
+    def topic_detail_view(self, request):
+        """Browse one topic's envelopes; Consume → history; Requeue → pending."""
+        from django.contrib import messages
+        from django.shortcuts import redirect, render
+        from django.urls import reverse
+        from urllib.parse import quote
+
+        from dose.services.topic_consume import (
+            classify_topic,
+            consume_topic,
+            list_topic_envelopes,
+            requeue_topic,
+            FAMILY_LABELS,
+            FAMILY_UNKNOWN,
+        )
+
+        tenant = self._set_topic_tenant_path(request)
+        topic = (request.GET.get('topic') or request.POST.get('topic') or '').strip()
+        if not topic:
+            messages.error(request, 'No topic selected.')
+            return redirect(reverse('admin:dose_webhookmailbox_topics'))
+
+        if request.method == 'POST':
+            action = (request.POST.get('action') or 'consume').strip()
+            if action == 'requeue':
+                result = requeue_topic(topic)
+                messages.success(
+                    request,
+                    f"Re-queued {result.get('updated', 0)} envelope(s) on {topic!r} to pending.",
+                )
+            else:
+                try:
+                    limit = int(request.POST.get('limit') or 100)
+                except (TypeError, ValueError):
+                    limit = 100
+                result = consume_topic(
+                    topic, limit=limit, also_feed_odoo=True, tenant=tenant
+                )
+                if result.get('ok'):
+                    messages.success(
+                        request,
+                        (
+                            f"Consumed {topic!r}: claimed={result.get('claimed')} "
+                            f"written={result.get('written')} "
+                            f"→ {result.get('family_label')}"
+                            + (
+                                f" odoo={result.get('odoo_feed')}"
+                                if result.get('odoo_feed')
+                                else ''
+                            )
+                        ),
+                    )
+                else:
+                    messages.error(
+                        request,
+                        f"Consume failed for {topic!r}: {result.get('error') or result}",
+                    )
+            return redirect(
+                reverse('admin:dose_webhookmailbox_topic_detail')
+                + '?topic='
+                + quote(topic, safe='')
+            )
+
+        family = classify_topic(topic)
+        envelopes = list_topic_envelopes(topic, limit=100)
+        pending = sum(1 for e in envelopes if e['status'] == 'pending')
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'Topic: {topic}',
+            'topic': topic,
+            'family': family,
+            'family_label': FAMILY_LABELS.get(family, family),
+            'consumable': family != FAMILY_UNKNOWN and pending > 0,
+            'can_requeue': any(
+                e['status'] in ('processed', 'failed', 'claimed') for e in envelopes
+            ),
+            'pending_count': pending,
+            'envelopes': envelopes,
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/dose/topic_detail.html', context)
 
     readonly_fields = (
         'event_id',
@@ -1422,7 +1480,7 @@ admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(WebhookMailbox, WebhookMailboxAdmin)
 
 
-class InventoryProductReportAdmin(TenantAwareModelAdmin):
+class InventoryProductHistoryAdmin(TenantAwareModelAdmin):
     list_display = (
         'name', 'default_code', 'list_price', 'odoo_id', 'topic_short', 'consumed_at',
     )
@@ -1440,7 +1498,7 @@ class InventoryProductReportAdmin(TenantAwareModelAdmin):
         return t if len(t) <= 48 else t[:45] + '…'
 
 
-class SnmpTelemetryReportAdmin(TenantAwareModelAdmin):
+class SnmpTelemetryHistoryAdmin(TenantAwareModelAdmin):
     list_display = (
         'device_name', 'device_mac', 'status', 'temperature_c',
         'cpu_utilization', 'topic_short', 'consumed_at',
@@ -1460,7 +1518,7 @@ class SnmpTelemetryReportAdmin(TenantAwareModelAdmin):
         return t if len(t) <= 48 else t[:45] + '…'
 
 
-class MaintenanceEquipmentReportAdmin(TenantAwareModelAdmin):
+class MaintenanceEquipmentHistoryAdmin(TenantAwareModelAdmin):
     list_display = (
         'equipment_name', 'serial_no', 'category', 'anomaly',
         'request_name', 'topic_short', 'consumed_at',
@@ -1479,9 +1537,9 @@ class MaintenanceEquipmentReportAdmin(TenantAwareModelAdmin):
         return t if len(t) <= 48 else t[:45] + '…'
 
 
-admin.site.register(InventoryProductReport, InventoryProductReportAdmin)
-admin.site.register(SnmpTelemetryReport, SnmpTelemetryReportAdmin)
-admin.site.register(MaintenanceEquipmentReport, MaintenanceEquipmentReportAdmin)
+admin.site.register(InventoryProductHistory, InventoryProductHistoryAdmin)
+admin.site.register(SnmpTelemetryHistory, SnmpTelemetryHistoryAdmin)
+admin.site.register(MaintenanceEquipmentHistory, MaintenanceEquipmentHistoryAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)

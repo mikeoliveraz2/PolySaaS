@@ -1,58 +1,49 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
 <div class="container-fluid" style="max-width: 1100px; margin-top: 1rem;">
-  <h1>Topic browser</h1>
-  <p class="text-muted">
-    Temporary queues — one topic, one data type. Peek here; <strong>Consume</strong> drains
-    pending envelopes into the report tables (Inventory products / SNMP / Maintenance).
+  <h1>Topics (temporary queues)</h1>
+  <p>
+    This is the <strong>list of topics</strong>. Click a topic to browse its envelopes.
+    Each topic holds one type of message until you <strong>Consume</strong> it into history.
+  </p>
+  <p class="text-muted mb-2">
+    <strong>History</strong> (after Consume):
+    <a href="{% url 'admin:dose_inventoryproducthistory_changelist' %}">Inventory</a> ·
+    <a href="{% url 'admin:dose_snmptelemetryhistory_changelist' %}">SNMP</a> ·
+    <a href="{% url 'admin:dose_maintenanceequipmenthistory_changelist' %}">Maintenance</a>
+    &nbsp;|&nbsp;
+    <a href="{% url 'admin:dose_webhookmailbox_changelist' %}">All raw envelopes</a>
   </p>
   {% if messages %}
   <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
   {% endif %}
-  <p>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:dose_webhookmailbox_changelist' %}">All mailbox rows</a>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:dose_inventoryproductreport_changelist' %}">Inventory report</a>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:dose_snmptelemetryreport_changelist' %}">SNMP report</a>
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:dose_maintenanceequipmentreport_changelist' %}">Maintenance report</a>
-  </p>
   <table class="table table-striped table-sm">
     <thead>
       <tr>
-        <th>Topic</th>
+        <th>Topic (click to browse)</th>
         <th>Type</th>
         <th>Pending</th>
         <th>Processed</th>
         <th>Failed</th>
         <th>Total</th>
-        <th></th>
       </tr>
     </thead>
     <tbody>
       {% for t in topics %}
       <tr>
-        <td><code>{{ t.topic }}</code></td>
+        <td>
+          <a href="{% url 'admin:dose_webhookmailbox_topic_detail' %}?topic={{ t.topic|urlencode }}">
+            <code>{{ t.topic }}</code>
+          </a>
+        </td>
         <td>{{ t.family_label }}</td>
         <td>{{ t.pending }}</td>
         <td>{{ t.processed }}</td>
         <td>{{ t.failed }}</td>
         <td>{{ t.total }}</td>
-        <td>
-          {% if t.consumable %}
-          <form method="post" style="display:inline;">
-            {% csrf_token %}
-            <input type="hidden" name="topic" value="{{ t.topic }}">
-            <input type="hidden" name="limit" value="100">
-            <button type="submit" class="btn btn-primary btn-sm">Consume</button>
-          </form>
-          {% elif t.family == "unknown" %}
-          <span class="text-muted">no handler</span>
-          {% else %}
-          <span class="text-muted">nothing pending</span>
-          {% endif %}
-        </td>
       </tr>
       {% empty %}
-      <tr><td colspan="7">No topics yet. Capture inventory or POST SNMP feeds first.</td></tr>
+      <tr><td colspan="6">No topics yet. Capture inventory or POST SNMP feeds first.</td></tr>
       {% endfor %}
     </tbody>
   </table>

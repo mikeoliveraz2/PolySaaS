@@ -1,0 +1,92 @@
+"""
+Typed reporting tables — permanent store after a topic is consumed.
+
+One model per data type (matches one-topic-one-type). Lives in tenant schemas.
+Temporary envelopes stay on WebhookMailbox (topic queue) until Consume.
+"""
+from django.db import models
+from django.utils import timezone
+
+
+class InventoryProductReport(models.Model):
+    """Consumed Odoo inventory / product.template rows for analysis."""
+
+    topic = models.CharField(max_length=500, db_index=True)
+    source_event_id = models.CharField(max_length=64, db_index=True)
+    source_mailbox_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    odoo_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=255, blank=True, default="")
+    default_code = models.CharField(max_length=128, blank=True, default="")
+    list_price = models.DecimalField(
+        max_digits=16, decimal_places=4, null=True, blank=True
+    )
+    raw_record = models.JSONField(default=dict, blank=True)
+    consumed_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "report_inventory_product"
+        verbose_name = "Inventory product (report)"
+        verbose_name_plural = "Inventory products (report)"
+        ordering = ["-consumed_at", "-id"]
+        indexes = [
+            models.Index(fields=["topic", "consumed_at"], name="inv_prod_topic_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name or self.default_code or self.odoo_id or self.pk}"
+
+
+class SnmpTelemetryReport(models.Model):
+    """Consumed SNMP telemetry envelopes for analysis."""
+
+    topic = models.CharField(max_length=500, db_index=True)
+    source_event_id = models.CharField(max_length=64, db_index=True)
+    source_mailbox_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    device_mac = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    device_name = models.CharField(max_length=255, blank=True, default="")
+    ip_address = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(max_length=32, blank=True, default="")
+    cpu_utilization = models.FloatField(null=True, blank=True)
+    temperature_c = models.FloatField(null=True, blank=True)
+    raw_record = models.JSONField(default=dict, blank=True)
+    consumed_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "report_snmp_telemetry"
+        verbose_name = "SNMP telemetry (report)"
+        verbose_name_plural = "SNMP telemetry (report)"
+        ordering = ["-consumed_at", "-id"]
+        indexes = [
+            models.Index(fields=["topic", "consumed_at"], name="snmp_tel_topic_idx"),
+            models.Index(fields=["device_mac", "consumed_at"], name="snmp_tel_mac_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.device_name or self.device_mac or self.pk} ({self.status})"
+
+
+class MaintenanceEquipmentReport(models.Model):
+    """Consumed maintenance.equipment-shaped rows for analysis."""
+
+    topic = models.CharField(max_length=500, db_index=True)
+    source_event_id = models.CharField(max_length=64, db_index=True)
+    source_mailbox_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    equipment_name = models.CharField(max_length=255, blank=True, default="")
+    serial_no = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    category = models.CharField(max_length=128, blank=True, default="")
+    anomaly = models.BooleanField(default=False)
+    request_name = models.CharField(max_length=255, blank=True, default="")
+    raw_record = models.JSONField(default=dict, blank=True)
+    consumed_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "report_maintenance_equipment"
+        verbose_name = "Maintenance equipment (report)"
+        verbose_name_plural = "Maintenance equipment (report)"
+        ordering = ["-consumed_at", "-id"]
+        indexes = [
+            models.Index(fields=["topic", "consumed_at"], name="maint_eq_topic_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.equipment_name or self.serial_no or self.pk}"

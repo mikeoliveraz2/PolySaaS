@@ -35,9 +35,9 @@ from .app_credential import AppCredential
 from .hubspot_portlet import HubSpotPortletDefinition, UserHubSpotPortlet
 from .founder_signup import FounderSignup
 from .webhook_mailbox import WebhookMailbox
-from .topic_report import (
-    InventoryProductReport,
-    SnmpTelemetryReport,
-    MaintenanceEquipmentReport,
+from .topic_history import (
+    InventoryProductHistory,
+    SnmpTelemetryHistory,
+    MaintenanceEquipmentHistory,
 )
 from .endpoint_bookmark import EndpointBookmark
