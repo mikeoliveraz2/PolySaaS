@@ -4,34 +4,28 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-21 (Monday)
-**Session:** Topic browser + Consume → report tables
+**Session:** Topics + Consume → history (not “report”)
 **Branch:** main
 
 ## Done
-- **Topic model (aligned):** temp store = typed topic; Consume drains to report tables;
-  Admin browses end tables.
-- Models: `InventoryProductReport`, `SnmpTelemetryReport`, `MaintenanceEquipmentReport`
-  (`dose/models/topic_report.py`, migration `0066_topic_report_tables`).
-- Service: `dose/services/topic_consume.py` (list topics + consume).
-- Admin: Topic browser at `/admin/dose/webhookmailbox/topics/` with **Consume** button;
-  report changelists registered.
-- Captures + SNMP enroll as **pending** (not processed). Background trigger consumer
-  skips capture/snmp so Consume owns the drain.
-- SNMP Odoo feed moved to Consume (optional after SNMP topic drain).
-- Stripe webhook route restored earlier (`/dose/webhook/stripe/`).
+- Topic list at `/admin/dose/webhookmailbox/topics/` — click a topic to browse envelopes.
+- Topic detail: peek envelopes, **Consume → history**, **Re-queue processed → pending**.
+- History tables (renamed from report): Inventory / SNMP / Maintenance.
+  Models: `InventoryProductHistory`, `SnmpTelemetryHistory`, `MaintenanceEquipmentHistory`.
+  Migrations: `0066` then `0067_topic_history_rename`.
 
-## Next (Hostinger)
-1. Deploy this commit so mailbox list shows **Topic browser / Consume**.
-2. Open `/admin/dose/webhookmailbox/topics/` (not the raw envelope list).
-3. `python manage.py migrate` for 0066 if not applied.
-4. Old Processed SNMP rows need requeue before Consume:
-   `python manage.py requeue_topic_pending --schema polysaas --all-captures`
-5. Consume inventory product topic first, then browse Inventory products (report).
+## How to use
+1. Topics page = temporary queues (list).
+2. Click a topic = browse that queue.
+3. Consume = move pending into history.
+4. History changelists = permanent analysis store.
 
-## Note
-Older mailbox rows already marked `processed` will not Consume until re-queued
-(or new inventory sniff / new SNMP posts).
+## Hostinger
+```text
+python manage.py migrate
+```
+Then open Topics → click `RES.product.template…` → Re-queue if needed → Consume → Inventory history.
 
 ## Do not
-- Put tenant-owned report rows in `public`.
-- Run Odoo writes on webhook accept for SNMP (Consume path only).
+- Call history tables “reports.”
+- Put tenant-owned history in `public`.

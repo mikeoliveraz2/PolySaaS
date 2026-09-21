@@ -111,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox, InventoryProductReport, SnmpTelemetryReport, MaintenanceEquipmentReport
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox, InventoryProductHistory, SnmpTelemetryHistory, MaintenanceEquipmentHistory
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -248,7 +248,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         return render(request, 'admin/dose/topic_browser.html', context)
 
     def topic_detail_view(self, request):
-        """Browse one topic's envelopes; Consume → report table; Requeue → pending."""
+        """Browse one topic's envelopes; Consume → history; Requeue → pending."""
         from django.contrib import messages
         from django.shortcuts import redirect, render
         from django.urls import reverse
@@ -1480,7 +1480,7 @@ admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(WebhookMailbox, WebhookMailboxAdmin)
 
 
-class InventoryProductReportAdmin(TenantAwareModelAdmin):
+class InventoryProductHistoryAdmin(TenantAwareModelAdmin):
     list_display = (
         'name', 'default_code', 'list_price', 'odoo_id', 'topic_short', 'consumed_at',
     )
@@ -1498,7 +1498,7 @@ class InventoryProductReportAdmin(TenantAwareModelAdmin):
         return t if len(t) <= 48 else t[:45] + '…'
 
 
-class SnmpTelemetryReportAdmin(TenantAwareModelAdmin):
+class SnmpTelemetryHistoryAdmin(TenantAwareModelAdmin):
     list_display = (
         'device_name', 'device_mac', 'status', 'temperature_c',
         'cpu_utilization', 'topic_short', 'consumed_at',
@@ -1518,7 +1518,7 @@ class SnmpTelemetryReportAdmin(TenantAwareModelAdmin):
         return t if len(t) <= 48 else t[:45] + '…'
 
 
-class MaintenanceEquipmentReportAdmin(TenantAwareModelAdmin):
+class MaintenanceEquipmentHistoryAdmin(TenantAwareModelAdmin):
     list_display = (
         'equipment_name', 'serial_no', 'category', 'anomaly',
         'request_name', 'topic_short', 'consumed_at',
@@ -1537,9 +1537,9 @@ class MaintenanceEquipmentReportAdmin(TenantAwareModelAdmin):
         return t if len(t) <= 48 else t[:45] + '…'
 
 
-admin.site.register(InventoryProductReport, InventoryProductReportAdmin)
-admin.site.register(SnmpTelemetryReport, SnmpTelemetryReportAdmin)
-admin.site.register(MaintenanceEquipmentReport, MaintenanceEquipmentReportAdmin)
+admin.site.register(InventoryProductHistory, InventoryProductHistoryAdmin)
+admin.site.register(SnmpTelemetryHistory, SnmpTelemetryHistoryAdmin)
+admin.site.register(MaintenanceEquipmentHistory, MaintenanceEquipmentHistoryAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)

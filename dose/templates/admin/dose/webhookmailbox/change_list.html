@@ -1,16 +1,15 @@
 {% extends "admin/change_list.html" %}
 {% block content %}
 <div class="alert alert-info" style="margin: 0 0 1rem 0;">
-  This list is raw envelopes (peek). Topics and <strong>Consume</strong> are on the
-  <a class="btn btn-primary btn-sm" href="{% url 'admin:dose_webhookmailbox_topics' %}">Topic browser</a>.
-  Rows already marked Processed were written by the old path and will not Consume until re-queued.
+  Prefer the <a href="{% url 'admin:dose_webhookmailbox_topics' %}">Topics</a> hub
+  (Browse queue + History per topic). This raw list mixes all topics.
 </div>
 {{ block.super }}
 {% endblock %}
 {% block object-tools-items %}
   <li>
     <a href="{% url 'admin:dose_webhookmailbox_topics' %}" class="btn btn-primary btn-sm">
-      Topic browser / Consume
+      Topics hub
     </a>
   </li>
   {{ block.super }}

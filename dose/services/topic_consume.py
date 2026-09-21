@@ -53,6 +53,103 @@ def classify_topic(topic: str, *, source: str = "", action_path: str = "") -> st
     return FAMILY_UNKNOWN
 
 
+def list_topic_history(topic: str, *, limit: int = 100) -> dict:
+    """
+    History rows for one topic (after Consume). Returns family + column headers + rows.
+    """
+    from dose.models.topic_history import (
+        InventoryProductHistory,
+        MaintenanceEquipmentHistory,
+        SnmpTelemetryHistory,
+    )
+
+    topic = (topic or "").strip()
+    family = classify_topic(topic)
+    limit = max(1, int(limit))
+
+    if family == FAMILY_INVENTORY:
+        qs = InventoryProductHistory.objects.filter(topic=topic).order_by("-consumed_at")[
+            :limit
+        ]
+        columns = ["name", "default_code", "list_price", "odoo_id", "consumed_at"]
+        rows = [
+            [
+                r.name,
+                r.default_code,
+                str(r.list_price) if r.list_price is not None else "",
+                r.odoo_id,
+                r.consumed_at,
+            ]
+            for r in qs
+        ]
+    elif family == FAMILY_SNMP:
+        qs = SnmpTelemetryHistory.objects.filter(topic=topic).order_by("-consumed_at")[
+            :limit
+        ]
+        columns = [
+            "device_name",
+            "device_mac",
+            "status",
+            "temperature_c",
+            "cpu_utilization",
+            "consumed_at",
+        ]
+        rows = [
+            [
+                r.device_name,
+                r.device_mac,
+                r.status,
+                r.temperature_c,
+                r.cpu_utilization,
+                r.consumed_at,
+            ]
+            for r in qs
+        ]
+    elif family == FAMILY_MAINTENANCE:
+        qs = MaintenanceEquipmentHistory.objects.filter(topic=topic).order_by(
+            "-consumed_at"
+        )[:limit]
+        columns = [
+            "equipment_name",
+            "serial_no",
+            "category",
+            "anomaly",
+            "request_name",
+            "consumed_at",
+        ]
+        rows = [
+            [
+                r.equipment_name,
+                r.serial_no,
+                r.category,
+                r.anomaly,
+                r.request_name,
+                r.consumed_at,
+            ]
+            for r in qs
+        ]
+    else:
+        return {
+            "topic": topic,
+            "family": family,
+            "family_label": FAMILY_LABELS.get(family, family),
+            "columns": [],
+            "rows": [],
+            "count": 0,
+            "supported": False,
+        }
+
+    return {
+        "topic": topic,
+        "family": family,
+        "family_label": FAMILY_LABELS.get(family, family),
+        "columns": columns,
+        "rows": rows,
+        "count": len(rows),
+        "supported": True,
+    }
+
+
 def list_topics() -> list[dict]:
     """Aggregate mailbox rows by topic (current search_path / tenant schema)."""
     from dose.models import WebhookMailbox

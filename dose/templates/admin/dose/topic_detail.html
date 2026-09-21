@@ -35,12 +35,11 @@
     </form>
     {% endif %}
 
-    {% if family == "inventory_product" %}
-    <a class="btn btn-outline-secondary" href="{% url 'admin:dose_inventoryproducthistory_changelist' %}">Open Inventory history</a>
-    {% elif family == "snmp_telemetry" %}
-    <a class="btn btn-outline-secondary" href="{% url 'admin:dose_snmptelemetryhistory_changelist' %}">Open SNMP history</a>
-    {% elif family == "maintenance_equipment" %}
-    <a class="btn btn-outline-secondary" href="{% url 'admin:dose_maintenanceequipmenthistory_changelist' %}">Open Maintenance history</a>
+    {% if family != "unknown" %}
+    <a class="btn btn-outline-secondary"
+       href="{% url 'admin:dose_webhookmailbox_topic_history' %}?topic={{ topic|urlencode }}">
+      Open history
+    </a>
     {% endif %}
   </p>
 

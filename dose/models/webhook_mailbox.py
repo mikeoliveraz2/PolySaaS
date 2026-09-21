@@ -89,8 +89,8 @@ drains them into typed history tables.
 
     class Meta:
         db_table = 'webhook_mailbox'
-        verbose_name = 'Webhook mailbox'
-        verbose_name_plural = 'Webhook mailboxes'
+        verbose_name = 'Topic'
+        verbose_name_plural = 'Topics'
         indexes = [
             models.Index(fields=['status', 'expires_at'], name='mailbox_consumer_idx'),
             models.Index(fields=['status', 'created_at'], name='mailbox_status_idx'),

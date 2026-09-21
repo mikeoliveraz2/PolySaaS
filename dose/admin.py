@@ -111,7 +111,7 @@ from django import forms
 from admin_interface.models import Theme
 
 # Import existing models
-from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox, InventoryProductHistory, SnmpTelemetryHistory, MaintenanceEquipmentHistory
+from .models import Instruction, CallBackData, Task, MLEngine, MLPrompt, PassThroughEndpoint, EndpointBookmark, DoseMessage, UserProfile, UserTenantMembership, PolySnifferRun, Subscription, AppCredential, PromoCode, FounderSignup, WebhookMailbox
 # Import polysniffer admin to register TrafficLog
 try:
     import dose.polysniffer.admin  # noqa: F401
@@ -219,8 +219,23 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                 self.admin_site.admin_view(self.topic_detail_view),
                 name='dose_webhookmailbox_topic_detail',
             ),
+            path(
+                'topics/history/',
+                self.admin_site.admin_view(self.topic_history_view),
+                name='dose_webhookmailbox_topic_history',
+            ),
         ]
         return custom + urls
+
+    def changelist_view(self, request, extra_context=None):
+        """Single hub: Topics widget — not a flat mixed envelope dump."""
+        from django.shortcuts import redirect
+        from django.urls import reverse
+
+        # Escape hatch for debug: ?raw=1 shows the mixed envelope list.
+        if request.GET.get('raw') == '1':
+            return super().changelist_view(request, extra_context=extra_context)
+        return redirect(reverse('admin:dose_webhookmailbox_topics'))
 
     def _set_topic_tenant_path(self, request):
         from django.db import connection
@@ -233,34 +248,71 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         return tenant
 
     def topic_browser_view(self, request):
-        """List of topics (temporary queues). Click one to browse envelopes."""
-        from django.shortcuts import render
+        """One scalable Topics widget: browse queue + history per topic."""
+        from django.contrib import messages
+        from django.shortcuts import redirect, render
+        from django.urls import reverse
+        from urllib.parse import quote
 
-        from dose.services.topic_consume import list_topics
+        from dose.services.topic_consume import consume_topic, list_topics, requeue_topic
 
-        self._set_topic_tenant_path(request)
+        tenant = self._set_topic_tenant_path(request)
+
+        if request.method == 'POST':
+            topic = (request.POST.get('topic') or '').strip()
+            action = (request.POST.get('action') or '').strip()
+            if action == 'requeue' and topic:
+                result = requeue_topic(topic)
+                messages.success(
+                    request,
+                    f"Re-queued {result.get('updated', 0)} on {topic!r} → pending.",
+                )
+            elif action == 'consume' and topic:
+                try:
+                    limit = int(request.POST.get('limit') or 100)
+                except (TypeError, ValueError):
+                    limit = 100
+                result = consume_topic(
+                    topic, limit=limit, also_feed_odoo=True, tenant=tenant
+                )
+                if result.get('ok'):
+                    messages.success(
+                        request,
+                        (
+                            f"Consumed {topic!r}: "
+                            f"claimed={result.get('claimed')} "
+                            f"written={result.get('written')}"
+                        ),
+                    )
+                else:
+                    messages.error(
+                        request,
+                        f"Consume failed: {result.get('error') or result}",
+                    )
+            return redirect(reverse('admin:dose_webhookmailbox_topics'))
+
         context = {
             **self.admin_site.each_context(request),
-            'title': 'Topics (temporary queues)',
+            'title': 'Topics',
             'topics': list_topics(),
             'opts': self.model._meta,
         }
         return render(request, 'admin/dose/topic_browser.html', context)
 
     def topic_detail_view(self, request):
-        """Browse one topic's envelopes; Consume → history; Requeue → pending."""
+        """Browse one topic's pending/processed envelopes (queue peek)."""
         from django.contrib import messages
         from django.shortcuts import redirect, render
         from django.urls import reverse
         from urllib.parse import quote
 
         from dose.services.topic_consume import (
+            FAMILY_LABELS,
+            FAMILY_UNKNOWN,
             classify_topic,
             consume_topic,
             list_topic_envelopes,
             requeue_topic,
-            FAMILY_LABELS,
-            FAMILY_UNKNOWN,
         )
 
         tenant = self._set_topic_tenant_path(request)
@@ -315,7 +367,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         pending = sum(1 for e in envelopes if e['status'] == 'pending')
         context = {
             **self.admin_site.each_context(request),
-            'title': f'Topic: {topic}',
+            'title': f'Topic queue: {topic}',
             'topic': topic,
             'family': family,
             'family_label': FAMILY_LABELS.get(family, family),
@@ -328,6 +380,29 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
             'opts': self.model._meta,
         }
         return render(request, 'admin/dose/topic_detail.html', context)
+
+    def topic_history_view(self, request):
+        """History for one topic (after Consume) — same Topics widget, not a separate model admin."""
+        from django.contrib import messages
+        from django.shortcuts import redirect, render
+        from django.urls import reverse
+
+        from dose.services.topic_consume import list_topic_history
+
+        self._set_topic_tenant_path(request)
+        topic = (request.GET.get('topic') or '').strip()
+        if not topic:
+            messages.error(request, 'No topic selected.')
+            return redirect(reverse('admin:dose_webhookmailbox_topics'))
+
+        history = list_topic_history(topic, limit=200)
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'History: {topic}',
+            'history': history,
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/dose/topic_history.html', context)
 
     readonly_fields = (
         'event_id',
@@ -1479,67 +1554,9 @@ admin.site.register(Instruction, InstructionAdmin)
 admin.site.register(CallBackData, CallBackDataAdmin)
 admin.site.register(WebhookMailbox, WebhookMailboxAdmin)
 
+# History is browsed from the single Topics hub (per-topic History link),
+# not as separate sidebar ModelAdmins — that does not scale to many topics.
 
-class InventoryProductHistoryAdmin(TenantAwareModelAdmin):
-    list_display = (
-        'name', 'default_code', 'list_price', 'odoo_id', 'topic_short', 'consumed_at',
-    )
-    list_filter = ('consumed_at',)
-    search_fields = ('name', 'default_code', 'topic', 'source_event_id')
-    ordering = ('-consumed_at',)
-    readonly_fields = (
-        'topic', 'source_event_id', 'source_mailbox_id', 'odoo_id',
-        'name', 'default_code', 'list_price', 'raw_record', 'consumed_at',
-    )
-
-    @admin.display(description='Topic')
-    def topic_short(self, obj):
-        t = obj.topic or ''
-        return t if len(t) <= 48 else t[:45] + '…'
-
-
-class SnmpTelemetryHistoryAdmin(TenantAwareModelAdmin):
-    list_display = (
-        'device_name', 'device_mac', 'status', 'temperature_c',
-        'cpu_utilization', 'topic_short', 'consumed_at',
-    )
-    list_filter = ('status', 'consumed_at')
-    search_fields = ('device_name', 'device_mac', 'topic', 'source_event_id')
-    ordering = ('-consumed_at',)
-    readonly_fields = (
-        'topic', 'source_event_id', 'source_mailbox_id', 'device_mac',
-        'device_name', 'ip_address', 'status', 'cpu_utilization',
-        'temperature_c', 'raw_record', 'consumed_at',
-    )
-
-    @admin.display(description='Topic')
-    def topic_short(self, obj):
-        t = obj.topic or ''
-        return t if len(t) <= 48 else t[:45] + '…'
-
-
-class MaintenanceEquipmentHistoryAdmin(TenantAwareModelAdmin):
-    list_display = (
-        'equipment_name', 'serial_no', 'category', 'anomaly',
-        'request_name', 'topic_short', 'consumed_at',
-    )
-    list_filter = ('anomaly', 'consumed_at')
-    search_fields = ('equipment_name', 'serial_no', 'topic', 'request_name')
-    ordering = ('-consumed_at',)
-    readonly_fields = (
-        'topic', 'source_event_id', 'source_mailbox_id', 'equipment_name',
-        'serial_no', 'category', 'anomaly', 'request_name', 'raw_record', 'consumed_at',
-    )
-
-    @admin.display(description='Topic')
-    def topic_short(self, obj):
-        t = obj.topic or ''
-        return t if len(t) <= 48 else t[:45] + '…'
-
-
-admin.site.register(InventoryProductHistory, InventoryProductHistoryAdmin)
-admin.site.register(SnmpTelemetryHistory, SnmpTelemetryHistoryAdmin)
-admin.site.register(MaintenanceEquipmentHistory, MaintenanceEquipmentHistoryAdmin)
 admin.site.register(MLEngine, MLEngineAdmin)
 admin.site.register(MLPrompt, MLPromptAdmin)
 admin.site.register(PassThroughEndpoint, PassThroughEndpointAdmin)
