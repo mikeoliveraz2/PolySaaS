@@ -188,6 +188,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
     """Browse dumb webhook mailbox envelopes (pending → processed / failed / expired)."""
 
     change_form_template = 'admin/dose/webhookmailbox/change_form.html'
+    change_list_template = 'admin/dose/webhookmailbox/change_list.html'
     list_display = (
         'status',
         'source',
