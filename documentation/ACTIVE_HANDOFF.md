@@ -3,25 +3,21 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
-**Date:** 2026-09-20 (Sunday) — EOD
-**Session:** Inventory mailbox capture verified (Hooray)
+**Date:** 2026-09-21 (Monday)
+**Session:** Fix WebhookMailbox admin delete 500
 **Branch:** main
-**Latest:** `90015500` (+ this handoff/doc commit)
 
-## Done today
-- Schema-safe WebhookMailbox (no Tenant FK; `db_table=webhook_mailbox`).
-- **CapturePostResponse** captures Odoo `web_search_read` **result.records**
-  (Inventory products) into mailbox.
-- Admin list shows `N record(s)`; change form **Published inventory records**
-  banner shows the product table.
-- Hostinger verified: product.template rows with 10 inventory products visible.
+## Done
+- Hostinger 500 deleting mailbox rows: `log_deletion(s)` set
+  `search_path=public` *before* delete, and bulk `delete_queryset` never
+  restored the tenant schema → `webhook_mailbox` missing in public.
+- `TenantAwareModelAdmin`: restore tenant `search_path` after admin log
+  writes; implement `delete_queryset` + `log_deletions`.
 
-Doc: `documentation/SESSION_2026-09-20_INVENTORY_MAILBOX_CAPTURE.md`
+## Next
+- Rebuild django on Hostinger; delete a mailbox row again.
+- Then **#2** async pull API (from Sunday handoff).
 
-## Tomorrow — #2
-**Async pull API** for mailbox subscribers (by topic / mailbox id, until TTL).
-Capture + Admin browse is complete; pull is next.
-
-## Do not
-- Treat `/odoo/action-384` navigate rows as inventory data.
-- Put tenant-owned mailbox rows in `public`.
+## Prior
+Inventory capture verified — see
+`documentation/SESSION_2026-09-20_INVENTORY_MAILBOX_CAPTURE.md`
