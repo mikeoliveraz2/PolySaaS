@@ -1,74 +1,107 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
-<div class="container-fluid" style="max-width: 1100px; margin-top: 1rem;">
-  <p><a href="{% url 'admin:dose_webhookmailbox_topics' %}">&larr; All topics</a></p>
-  <h1>Topic queue</h1>
-  <p><code>{{ topic }}</code> · {{ family_label }} · pending {{ pending_count }}</p>
+<style>
+  .ct-panel {
+    max-width: 1100px;
+    margin-top: 1rem;
+    padding: 1rem 1.25rem 1.25rem;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: #212529;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html[data-bs-theme="dark"] .ct-panel,
+  html[data-ps-theme="dark"] .ct-panel,
+  body.dark-mode .ct-panel {
+    background: var(--bs-body-bg, #2b3035);
+    color: var(--bs-body-color, #f8f9fa);
+    border-color: var(--bs-border-color, #495057);
+  }
+  .ct-panel h1, .ct-panel h2, .ct-panel a.ct-back { color: inherit; }
+  .ct-panel .table { color: inherit; }
+  .ct-panel code { color: inherit; }
+  .ct-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 1rem; }
+  .ct-actions .btn { min-width: 7.5rem; }
+</style>
+<div class="container-fluid">
+  <div class="ct-panel">
+    <p class="mb-2"><a class="ct-back" href="{% url 'admin:dose_webhookmailbox_topics' %}">&larr; All topics</a></p>
+    <h1>Browse Topic</h1>
+    <p class="mb-1"><strong>{{ family_label }}</strong> · pending {{ pending_count }}</p>
+    <p class="mb-3"><code>{{ topic }}</code></p>
 
-  {% if messages %}
-  <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
-  {% endif %}
-
-  <p>
-    {% if consumable %}
-    <form method="post" style="display:inline;">
-      {% csrf_token %}
-      <input type="hidden" name="topic" value="{{ topic }}">
-      <input type="hidden" name="action" value="consume">
-      <input type="hidden" name="limit" value="100">
-      <button type="submit" class="btn btn-primary">Consume → history</button>
-    </form>
-    {% elif family == "unknown" %}
-    <span class="text-muted">No consume handler for this topic type.</span>
-    {% else %}
-    <span class="text-muted">Nothing pending to consume.</span>
+    {% if messages %}
+    <ul class="messagelist">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>
     {% endif %}
 
-    {% if can_requeue %}
-    <form method="post" style="display:inline; margin-left: 0.5rem;">
-      {% csrf_token %}
-      <input type="hidden" name="topic" value="{{ topic }}">
-      <input type="hidden" name="action" value="requeue">
-      <button type="submit" class="btn btn-outline-secondary">
-        Re-queue processed → pending
-      </button>
-    </form>
-    {% endif %}
+    <div class="ct-actions">
+      {% if consumable %}
+      <form method="post" style="display:inline;">
+        {% csrf_token %}
+        <input type="hidden" name="topic" value="{{ topic }}">
+        <input type="hidden" name="action" value="consume">
+        <input type="hidden" name="limit" value="100">
+        <button type="submit" class="btn btn-sm btn-primary">Consume → history</button>
+      </form>
+      {% endif %}
 
-    {% if family != "unknown" %}
-    <a class="btn btn-outline-secondary"
-       href="{% url 'admin:dose_webhookmailbox_topic_history' %}?topic={{ topic|urlencode }}">
-      Open history
-    </a>
-    {% endif %}
-  </p>
+      {% if can_requeue %}
+      <form method="post" style="display:inline;">
+        {% csrf_token %}
+        <input type="hidden" name="topic" value="{{ topic }}">
+        <input type="hidden" name="action" value="requeue">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Re-queue → pending</button>
+      </form>
+      {% endif %}
 
-  <h2>Envelopes on this topic</h2>
-  <table class="table table-striped table-sm">
-    <thead>
-      <tr>
-        <th>Status</th>
-        <th>Records</th>
-        <th>Event</th>
-        <th>Created</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for e in envelopes %}
-      <tr>
-        <td>{{ e.status }}</td>
-        <td>{% if e.record_count != None %}{{ e.record_count }}{% else %}—{% endif %}</td>
-        <td><code>{{ e.event_id|truncatechars:20 }}</code></td>
-        <td>{{ e.created_at }}</td>
-        <td>
-          <a href="{% url 'admin:dose_webhookmailbox_change' e.id %}">Open</a>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="5">No envelopes on this topic.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      {% if family != "unknown" %}
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{% url 'admin:dose_webhookmailbox_topic_history' %}?topic={{ topic|urlencode }}">
+        Topic History
+      </a>
+      {% endif %}
+    </div>
+
+    <h2>Envelopes</h2>
+    <p class="text-muted small">Click <strong>Browse records</strong> to open the captured rows for that envelope.</p>
+    <table class="table table-striped table-sm">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Records</th>
+          <th>Event</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in envelopes %}
+        <tr>
+          <td>{{ e.status }}</td>
+          <td>
+            {% if e.record_count %}
+            <a class="btn btn-sm btn-primary"
+               href="{% url 'admin:dose_webhookmailbox_change' e.id %}">
+              Browse records ({{ e.record_count }})
+            </a>
+            {% else %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="{% url 'admin:dose_webhookmailbox_change' e.id %}">
+              Browse envelope
+            </a>
+            {% endif %}
+          </td>
+          <td><code>{{ e.event_id|truncatechars:20 }}</code></td>
+          <td>{{ e.created_at }}</td>
+          <td>
+            <a href="{% url 'admin:dose_webhookmailbox_change' e.id %}">Open</a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No envelopes on this topic.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}
