@@ -3,7 +3,13 @@
 {% block extrastyle %}
 {{ block.super }}
 <style>
-  /* Layout only — colors come from Jazzmin / Bootstrap theme classes */
+  /*
+    Follow PolySaaS / Jazzmin theme tokens (same hooks as sidebar + instruction embed).
+    Do not hardcode orange/white or force light-only field colors.
+  */
+  .mailbox-records-card {
+    margin-bottom: 1rem;
+  }
   .mailbox-records-pre {
     margin: 0;
     max-height: 40rem;
@@ -11,18 +17,55 @@
     white-space: pre;
     font-size: 0.85rem;
     line-height: 1.4;
+    padding: 0.75rem;
+    border-radius: 0.25rem;
+    color: var(--bs-body-color, #212529);
+    background-color: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+  }
+
+  html[data-bs-theme="dark"] .mailbox-records-pre,
+  html[data-ps-theme="darkly"] .mailbox-records-pre,
+  html[data-ps-theme="cyborg"] .mailbox-records-pre,
+  html[data-ps-theme="slate"] .mailbox-records-pre,
+  html[data-ps-theme="solar"] .mailbox-records-pre,
+  html[data-ps-theme="superhero"] .mailbox-records-pre,
+  body.dark-mode .mailbox-records-pre {
+    color: var(--bs-body-color, #f8f9fa);
+    background-color: var(--bs-body-bg, #212529);
+    border-color: var(--bs-border-color, #495057);
+  }
+
+  /* If Jazzmin still renders a readonly box on this page, inherit theme too */
+  .app-dose.model-webhookmailbox .form-group .readonly,
+  .app-dose.model-webhookmailbox .form-control[readonly],
+  .app-dose.model-webhookmailbox fieldset .description {
+    color: var(--bs-body-color, inherit) !important;
+    background-color: var(--bs-tertiary-bg, var(--bs-body-bg, transparent)) !important;
+    border-color: var(--bs-border-color, transparent) !important;
+  }
+
+  html[data-bs-theme="dark"] .app-dose.model-webhookmailbox .form-group .readonly,
+  html[data-ps-theme="darkly"] .app-dose.model-webhookmailbox .form-group .readonly,
+  html[data-ps-theme="cyborg"] .app-dose.model-webhookmailbox .form-group .readonly,
+  html[data-ps-theme="slate"] .app-dose.model-webhookmailbox .form-group .readonly,
+  html[data-ps-theme="solar"] .app-dose.model-webhookmailbox .form-group .readonly,
+  html[data-ps-theme="superhero"] .app-dose.model-webhookmailbox .form-group .readonly,
+  body.dark-mode .app-dose.model-webhookmailbox .form-group .readonly {
+    color: var(--bs-body-color, #f8f9fa) !important;
+    background-color: var(--bs-body-bg, #2b3035) !important;
   }
 </style>
 {% endblock %}
 
 {% block field_sets %}
 {% if mailbox_records_table %}
-<div class="card card-outline card-primary mb-3">
+<div class="card card-outline card-primary mailbox-records-card">
   <div class="card-header">
     <h3 class="card-title mb-0">Published inventory records</h3>
   </div>
   <div class="card-body p-3">
-    <pre class="mailbox-records-pre mb-0 text-body">{{ mailbox_records_table }}</pre>
+    <pre class="mailbox-records-pre">{{ mailbox_records_table }}</pre>
   </div>
 </div>
 {% else %}

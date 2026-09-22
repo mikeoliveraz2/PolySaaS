@@ -1,3 +1,6 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Captured Topics Consume to History — 2026-09-21 -->
+<!-- Owner-approved 2026-09-22: title follows topic family (Contacts ≠ inventory). -->
 {% extends "admin/change_form.html" %}
 
 {% block extrastyle %}
@@ -62,7 +65,7 @@
 {% if mailbox_records_table %}
 <div class="card card-outline card-primary mailbox-records-card">
   <div class="card-header">
-    <h3 class="card-title mb-0">Published inventory records</h3>
+    <h3 class="card-title mb-0">{{ mailbox_records_title|default:"Published records" }}</h3>
   </div>
   <div class="card-body p-3">
     <pre class="mailbox-records-pre">{{ mailbox_records_table }}</pre>
@@ -72,8 +75,8 @@
 <div class="alert alert-secondary mb-3" role="status">
   No <code>records[]</code> on this mailbox row.
   Go back and click a row whose <strong>Payload</strong> column says
-  <em>N record(s)</em> (for example <em>10 record(s) — Cable tie pack</em>),
-  not the navigate <em>get_response</em> / action-384 row.
+  <em>N record(s)</em>,
+  not a navigate / action-capture row with no list payload.
 </div>
 {% endif %}
 {{ block.super }}

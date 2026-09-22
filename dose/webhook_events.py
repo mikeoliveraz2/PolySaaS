@@ -31,6 +31,9 @@ SLACK_WIREFRAME_ACTIONS = {
 # Odoo Control Panel → New contact (dynamic orch → OdooCreatePartner)
 ODOO_CP_CONTACT_ACTION_PATH = "/events/odoo/control-panel/contact"
 ODOO_CP_CONTACT_EVENT_KEY = "odoo.control_panel.contact"
+# Type 3: refine invoice narration mid-stream (async mailbox after action_post)
+ODOO_INVOICE_REFINE_ACTION_PATH = "/events/odoo/invoice/refine"
+ODOO_INVOICE_REFINE_EVENT_KEY = "odoo.invoice.refine"
 SLACK_CONTACT_ACTION_PATH = "/events/slack/message/contact"
 SLACK_CONTACT_EVENT_KEY = "slack.message.contact"
 SLACK_CONTACT_ROUTING_KEY = "polysaas.events.slack.message.contact"
@@ -199,6 +202,66 @@ def publish_odoo_cp_contact_event(tenant, payload: dict) -> dict:
 
     try:
         envelope = build_odoo_cp_contact_envelope(tenant, payload)
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                return {"success": False, "error": "invalid tenant schema"}
+            mailbox = WebhookMailbox.create_from_envelope(
+                envelope,
+                ttl_seconds=300,
+                tenant=tenant,
+            )
+        return {
+            "success": True,
+            "event_id": envelope["event_id"],
+            "action_path": envelope["action_path"],
+            "mailbox_id": mailbox.id,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "error": f"Failed to write to mailbox: {exc}",
+        }
+
+
+def build_odoo_invoice_refine_envelope(tenant, payload: dict) -> dict:
+    """Passthrough invoice Post → async refine of account.move.narration."""
+    move_ids = payload.get("move_ids") or []
+    if not isinstance(move_ids, list):
+        move_ids = [move_ids]
+    event_seed = json.dumps(
+        {
+            "tenant": tenant.schema_name,
+            "kind": "odoo_invoice_refine",
+            "move_ids": move_ids,
+            "source_path": payload.get("source_path", ""),
+        },
+        sort_keys=True,
+    )
+    return {
+        "kind": TRIGGER_ENVELOPE_KIND,
+        "event_id": hashlib.sha256(event_seed.encode("utf-8")).hexdigest(),
+        "correlation_id": str(uuid.uuid4()),
+        "tenant_schema": tenant.schema_name,
+        "source": "odoo",
+        "action_path": ODOO_INVOICE_REFINE_ACTION_PATH,
+        "method": "POST",
+        "direction": "REQ",
+        "event_key": ODOO_INVOICE_REFINE_EVENT_KEY,
+        "actor": {"external_user_id": "odoo-passthrough"},
+        "payload": {
+            "move_ids": move_ids,
+            "source_path": payload.get("source_path", ""),
+        },
+        "received_at": timezone.now().isoformat(),
+    }
+
+
+def publish_odoo_invoice_refine_event(tenant, payload: dict) -> dict:
+    """Queue Type 3 invoice narration refine in tenant WebhookMailbox."""
+    from dose.models import WebhookMailbox
+
+    try:
+        envelope = build_odoo_invoice_refine_envelope(tenant, payload)
         with tenant_schema_search_path(tenant) as ok:
             if not ok:
                 return {"success": False, "error": "invalid tenant schema"}
