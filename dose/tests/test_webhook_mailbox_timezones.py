@@ -25,6 +25,17 @@ class WebhookMailboxTimezoneTests(SimpleTestCase):
         expires = filter_rows.call_args.kwargs["expires_at__gt"]
         self.assertIsNotNone(expires.tzinfo)
 
+    @patch("dose.models.webhook_mailbox.WebhookMailbox.objects.filter")
+    def test_actionable_dequeue_skips_topic_drain(self, filter_rows):
+        qs = filter_rows.return_value
+        qs.exclude.return_value = qs
+        qs.order_by.return_value.__getitem__.return_value = []
+
+        WebhookMailbox.dequeue_pending(None, limit=5, actionable_only=True)
+
+        qs.exclude.assert_any_call(source__in=["passthrough", "snmp"])
+        qs.exclude.assert_any_call(envelope__kind="polysaas.capture.v1")
+
     @patch("dose.models.webhook_mailbox.timezone.now")
     def test_aware_expiry_is_supported(self, now):
         current = datetime(2026, 8, 22, 2, 0, tzinfo=timezone.utc)

@@ -94,7 +94,9 @@ class WebhookMailboxConsumer:
                 return 0
             
             # Dequeue pending entries
-            pending = WebhookMailbox.dequeue_pending(tenant, limit=self.batch_size)
+            pending = WebhookMailbox.dequeue_pending(
+                tenant, limit=self.batch_size, actionable_only=True,
+            )
             
             if not pending:
                 return 0

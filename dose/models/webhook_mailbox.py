@@ -190,13 +190,23 @@ drains them into typed history tables.
         return row
 
     @classmethod
-    def dequeue_pending(cls, tenant=None, limit=10):
-        """Pending rows still within useful retention (current schema only)."""
+    def dequeue_pending(cls, tenant=None, limit=10, *, actionable_only=False):
+        """Pending rows still within useful retention (current schema only).
+
+        ``actionable_only`` leaves topic-browser captures pending but does not
+        hand them to the mailbox consumer. Those rows were filling the batch
+        and the invoice Note refine never got a turn.
+        """
         now = timezone.now()
-        return cls.objects.filter(
+        qs = cls.objects.filter(
             status='pending',
             expires_at__gt=now,
-        ).order_by('created_at')[:limit]
+        )
+        if actionable_only:
+            qs = qs.exclude(source__in=['passthrough', 'snmp']).exclude(
+                envelope__kind='polysaas.capture.v1',
+            )
+        return qs.order_by('created_at')[:limit]
 
     @classmethod
     def expire_old_entries(cls):
