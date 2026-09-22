@@ -10,6 +10,15 @@ from dose.webhook_events import (
 )
 
 
+# Odoo often puts action_post only in the JSON body; URL is plain call_button.
+# Also seed URL-contains action_post for builds that bake the method into the path.
+_ENQUEUE_PATHS = (
+    "/web/dataset/call_button",
+    "action_post",
+    "/web/dataset/call_kw",
+)
+
+
 class Command(BaseCommand):
     help = (
         "Create/update Odoo invoice Post enqueue + RefineOdooInvoiceDescription "
@@ -34,41 +43,32 @@ class Command(BaseCommand):
             if not ok:
                 raise CommandError(f"Could not select tenant schema: {schema}")
 
-            # 1) Passthrough match: any URL containing action_post → enqueue (filters account.move)
-            enqueue, created_e = Instruction.objects.update_or_create(
-                tenant=tenant,
-                requestpath="action_post",
-                requestmethod="POST",
-                direction="RES",
-                defaults={
-                    "match_type": "contains",
-                    "eventKey": "odoo.invoice.action_post.enqueue",
-                    "executescript": "EnqueueOdooInvoiceRefine",
-                    "description": (
-                        "Type 3: on invoice Post (action_post) "
-                        "enqueue narration refine (async mailbox)"
-                    ),
-                    "save_callbackdata": True,
-                },
-            )
-            # Retire older call_button-only enqueue rows (superseded by action_post contains)
-            obsolete, _ = Instruction.objects.filter(
-                tenant=tenant,
-                executescript="EnqueueOdooInvoiceRefine",
-                requestpath="/web/dataset/call_button",
-            ).exclude(pk=enqueue.pk).delete()
-            if obsolete:
-                self.stdout.write(f"  Removed {obsolete} obsolete call_button enqueue row(s)")
+            for path in _ENQUEUE_PATHS:
+                for direction in ("RES", "REQ"):
+                    enqueue, created_e = Instruction.objects.update_or_create(
+                        tenant=tenant,
+                        requestpath=path,
+                        requestmethod="POST",
+                        direction=direction,
+                        defaults={
+                            "match_type": "contains",
+                            "eventKey": "odoo.invoice.action_post.enqueue",
+                            "executescript": "EnqueueOdooInvoiceRefine",
+                            "description": (
+                                "Type 3: on invoice Post — enqueue Note refine "
+                                f"(path contains {path!r}, {direction}; "
+                                "atomic filters account.move + action_post)"
+                            ),
+                            "save_callbackdata": True,
+                        },
+                    )
+                    verb = "Created" if created_e else "Updated"
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"{verb} Enqueue #{enqueue.pk}: POST {direction} contains {path!r}"
+                        )
+                    )
 
-            verb_e = "Created" if created_e else "Updated"
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"{verb_e} EnqueueOdooInvoiceRefine instruction #{enqueue.pk} "
-                    f"(contains action_post RES)"
-                )
-            )
-
-            # 2) Mailbox consumer: refine narration
             refine, created_r = Instruction.objects.update_or_create(
                 tenant=tenant,
                 requestpath=ODOO_INVOICE_REFINE_ACTION_PATH,
@@ -80,7 +80,7 @@ class Command(BaseCommand):
                     "executescript": "RefineOdooInvoiceDescription",
                     "description": (
                         "Type 3: RefineOdooInvoiceDescription — AI clean "
-                        "account.move.narration"
+                        "account.move.narration + note lines"
                     ),
                     "save_callbackdata": True,
                 },
@@ -95,7 +95,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.WARNING(
-                "Confirm live Post path via orch bar if call_button does not match; "
-                "adjust enqueue Instruction.requestpath if needed."
+                "Mailbox consumer must be running. After seed: hard-refresh passthrough, "
+                "Reset to Draft → Confirm again (or new invoice) to fire Type 3."
             )
         )

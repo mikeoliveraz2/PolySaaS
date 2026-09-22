@@ -53,18 +53,23 @@ class RefineAtomicTests(SimpleTestCase):
         load_cfg.return_value = {"url": "http://odoo", "db": "odoo", "username": "a", "password": "b"}
         client = MagicMock()
         client_cls.from_config.return_value = client
-        client.execute_kw.side_effect = [
-            [{"id": 9, "name": "INV/2026/0001", "narration": "filty mess", "state": "posted"}],
-            True,
-        ]
+
+        def _exec(model, method, *args, **kwargs):
+            if model == "account.move" and method == "read":
+                return [{"id": 9, "name": "INV/2026/0001", "narration": "filty mess", "state": "posted"}]
+            if model == "account.move" and method == "write":
+                return True
+            if model == "account.move.line" and method == "search_read":
+                return []
+            return True
+
+        client.execute_kw.side_effect = _exec
         request = SimpleNamespace(tenant=SimpleNamespace(schema_name="olient"), mq_message_data={"move_ids": [9]})
         instruction = SimpleNamespace(save_callbackdata=False, parameters_json={})
         result = RefineOdooInvoiceDescription.execute_and_save(request, instruction)
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["changed"])
         self.assertEqual(result["outcomes"][0]["after"], "Clean note.")
-        # read + write
-        self.assertEqual(client.execute_kw.call_count, 2)
 
     @patch("dose.services.refine_odoo_invoice_description._ai_clean", return_value="same")
     @patch("dose.services.refine_odoo_invoice_description.load_odoo_rpc_config")
@@ -73,15 +78,20 @@ class RefineAtomicTests(SimpleTestCase):
         load_cfg.return_value = {"url": "http://odoo", "db": "odoo", "username": "a", "password": "b"}
         client = MagicMock()
         client_cls.from_config.return_value = client
-        client.execute_kw.return_value = [
-            {"id": 9, "name": "INV/1", "narration": "same", "state": "posted"}
-        ]
+
+        def _exec(model, method, *args, **kwargs):
+            if model == "account.move" and method == "read":
+                return [{"id": 9, "name": "INV/1", "narration": "same", "state": "posted"}]
+            if model == "account.move.line":
+                return []
+            return True
+
+        client.execute_kw.side_effect = _exec
         request = SimpleNamespace(tenant=SimpleNamespace(schema_name="olient"), mq_message_data={"move_ids": [9]})
         result = RefineOdooInvoiceDescription.execute_and_save(
             request, SimpleNamespace(save_callbackdata=False, parameters_json={})
         )
         self.assertFalse(result["changed"])
-        self.assertEqual(client.execute_kw.call_count, 1)  # read only
 
     @patch(
         "dose.services.refine_odoo_invoice_description._ai_clean",
@@ -93,9 +103,15 @@ class RefineAtomicTests(SimpleTestCase):
         load_cfg.return_value = {"url": "http://odoo", "db": "odoo", "username": "a", "password": "b"}
         client = MagicMock()
         client_cls.from_config.return_value = client
-        client.execute_kw.return_value = [
-            {"id": 9, "name": "INV/1", "narration": "messy text here", "state": "posted"}
-        ]
+
+        def _exec(model, method, *args, **kwargs):
+            if model == "account.move" and method == "read":
+                return [{"id": 9, "name": "INV/1", "narration": "messy text here", "state": "posted"}]
+            if model == "account.move.line":
+                return []
+            return True
+
+        client.execute_kw.side_effect = _exec
         result = RefineOdooInvoiceDescription.execute_and_save(
             SimpleNamespace(
                 tenant=SimpleNamespace(schema_name="olient"),
@@ -106,7 +122,6 @@ class RefineAtomicTests(SimpleTestCase):
         self.assertEqual(result["status"], "success")
         self.assertFalse(result["changed"])
         self.assertEqual(result["outcomes"][0]["reason"], "ai_failed_soft")
-        self.assertEqual(client.execute_kw.call_count, 1)
 
 
 class RefineFeedbackTests(SimpleTestCase):

@@ -170,109 +170,7 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
     if isinstance(row, dict):
         invoice_name = str(row.get("name") or "") or f"#{move_id}"
 
-    changed = False
-    after = before
-    line_outcomes = []
-    reason = ""
-
-    # Header narration (Terms / Note)
-    if len(before.strip()) >= _MIN_LEN:
-        try:
-            cleaned = _ai_clean(before)
-            cleaned = (cleaned or "").strip() or before
-            if _text_hash(cleaned) != _text_hash(before):
-                client.execute_kw(
-                    "account.move",
-                    "write",
-                    [[move_id], {"narration": cleaned}],
-                )
-                after = cleaned
-                changed = True
-            else:
-                reason = "no_change"
-        except Exception as exc:
-            logger.warning(
-                "[RefineOdooInvoiceDescription] narration AI/write failed move=%s: %s",
-                move_id,
-                exc,
-            )
-            reason = "ai_failed_soft"
-    else:
-        reason = "empty_or_short"
-
-    # Line notes from "Add a note" (display_type line_note / note)
-    try:
-        note_lines = client.execute_kw(
-            "account.move.line",
-            "search_read",
-            [[("move_id", "=", move_id), ("display_type", "in", ["line_note", "note"])]],
-            {"fields": ["id", "name", "display_type"]},
-        )
-    except Exception as exc:
-        logger.warning(
-            "[RefineOdooInvoiceDescription] note lines read failed move=%s: %s",
-            move_id,
-            exc,
-        )
-        note_lines = []
-
-    for line in note_lines or []:
-        if not isinstance(line, dict):
-            continue
-        line_id = line.get("id")
-        line_before = str(line.get("name") or "")
-        if not line_id or len(line_before.strip()) < _MIN_LEN:
-            continue
-        try:
-            line_after = _ai_clean(line_before)
-            line_after = (line_after or "").strip() or line_before
-            if _text_hash(line_after) == _text_hash(line_before):
-                line_outcomes.append(
-                    {
-                        "line_id": line_id,
-                        "before": line_before,
-                        "after": line_before,
-                        "changed": False,
-                    }
-                )
-                continue
-            client.execute_kw(
-                "account.move.line",
-                "write",
-                [[line_id], {"name": line_after}],
-            )
-            changed = True
-            line_outcomes.append(
-                {
-                    "line_id": line_id,
-                    "before": line_before,
-                    "after": line_after,
-                    "changed": True,
-                }
-            )
-        except Exception as exc:
-            logger.warning(
-                "[RefineOdooInvoiceDescription] note line %s failed: %s",
-                line_id,
-                exc,
-            )
-            line_outcomes.append(
-                {
-                    "line_id": line_id,
-                    "before": line_before,
-                    "after": line_before,
-                    "changed": False,
-                    "error": str(exc),
-                    "fail_soft": True,
-                }
-            )
-
-    if changed:
-        reason = "refined"
-    elif line_outcomes and not reason:
-        reason = "no_change"
-
-    if not changed and reason == "empty_or_short" and not line_outcomes:
+    if len(before.strip()) < _MIN_LEN:
         return {
             "status": "success",
             "move_id": move_id,
@@ -281,7 +179,54 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
             "after": before,
             "changed": False,
             "reason": "empty_or_short",
-            "line_notes": [],
+        }
+
+    try:
+        after = _ai_clean(before)
+    except Exception as exc:
+        logger.warning("[RefineOdooInvoiceDescription] AI failed move=%s: %s", move_id, exc)
+        return {
+            "status": "success",
+            "move_id": move_id,
+            "invoice_name": invoice_name,
+            "before": before,
+            "after": before,
+            "changed": False,
+            "reason": "ai_failed_soft",
+            "detail": str(exc),
+            "fail_soft": True,
+        }
+
+    after = (after or "").strip() or before
+    if _text_hash(after) == _text_hash(before):
+        return {
+            "status": "success",
+            "move_id": move_id,
+            "invoice_name": invoice_name,
+            "before": before,
+            "after": before,
+            "changed": False,
+            "reason": "no_change",
+        }
+
+    try:
+        client.execute_kw(
+            "account.move",
+            "write",
+            [[move_id], {"narration": after}],
+        )
+    except Exception as exc:
+        logger.error("[RefineOdooInvoiceDescription] write failed move=%s: %s", move_id, exc)
+        return {
+            "status": "error",
+            "move_id": move_id,
+            "invoice_name": invoice_name,
+            "before": before,
+            "after": after,
+            "changed": False,
+            "error": "write_failed",
+            "detail": str(exc),
+            "fail_soft": True,
         }
 
     return {
@@ -290,15 +235,12 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
         "invoice_name": invoice_name,
         "before": before,
         "after": after,
-        "changed": changed,
-        "reason": reason,
+        "changed": True,
         "model": "account.move",
         "field": "narration",
-        "line_notes": line_outcomes,
         "before_hash": _text_hash(before),
         "after_hash": _text_hash(after),
         "odoo": pub,
-        "fail_soft": True,
     }
 
 
