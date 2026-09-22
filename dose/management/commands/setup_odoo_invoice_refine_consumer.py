@@ -96,6 +96,6 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.WARNING(
                 "Mailbox consumer must be running. After seed: hard-refresh passthrough, "
-                "Reset to Draft → Confirm again (or new invoice) to fire Type 3."
+                "Reset to Draft -> Confirm again (or new invoice) to fire Type 3."
             )
         )
