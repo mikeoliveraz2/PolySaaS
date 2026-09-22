@@ -1,13 +1,15 @@
-"""Refine Odoo invoice narration mid-stream via AI (Type 3).
+"""Refine Odoo invoice Note mid-stream (Type 3).
 
-Mailbox consumer atomic:
-  read account.move.narration → AI clean → write back if changed.
+One atomic, two entries:
+  - Live Confirm POST (account.move action_post): publish a mailbox job and
+    return immediately. The passthrough already forwarded that POST to Odoo.
+  - Mailbox replay: read account.move.narration → AI clean → write back.
 
 Guardrails:
   - Tenant schema on every ORM/RPC
   - Idempotent: skip write when cleaned equals current (no refine loop)
   - Fail soft: AI/RPC errors leave Odoo text untouched
-  - Field: narration only (v1)
+  - Field: narration (the invoice Note) plus "Add a note" lines
   - PII: send narration text only to the LLM
 """
 from __future__ import annotations
@@ -58,79 +60,248 @@ class RefineOdooInvoiceDescription(AtomicServiceBase):
 
     @staticmethod
     def execute_and_save(request, instruction_row):
-        payload = _extract_payload(request, instruction_row)
-        move_ids = _coerce_move_ids(payload.get("move_ids") or payload.get("move_id"))
-        if not move_ids:
-            result = service_result(
-                "RefineOdooInvoiceDescription",
-                status="error",
-                error="missing_move_id",
-            )
-            maybe_save_callback(
-                request, instruction_row, result, description="Invoice refine missing move id"
-            )
-            return result
+        # Mailbox replay already carries move ids. Do that before the Confirm
+        # gate so writing the Note back cannot queue another refine.
+        if _is_mailbox_replay(request):
+            return _refine_moves(request, instruction_row)
 
-        config = load_odoo_rpc_config(request=request, instruction_row=instruction_row)
-        pub = public_config(config)
-        outcomes = []
+        body = _request_json(request)
+        path = getattr(request, "path", "") or ""
+        if _is_invoice_action_post(body, path):
+            return _queue_confirm(request, instruction_row, body)
 
-        try:
-            client = OdooRpcClient.from_config(config)
-            client.authenticate()
-        except OdooRpcError as exc:
-            logger.error("[RefineOdooInvoiceDescription] RPC auth: %s", exc)
-            result = service_result(
-                "RefineOdooInvoiceDescription",
-                status="error",
-                error=exc.status,
-                detail=str(exc),
-                odoo=pub,
-                # Fail soft: posting already succeeded; do not raise.
-                fail_soft=True,
-            )
-            maybe_save_callback(
-                request, instruction_row, result, description="Invoice refine RPC auth failed"
-            )
-            return result
-        except Exception as exc:
-            logger.error("[RefineOdooInvoiceDescription] unexpected auth: %s", exc)
-            result = service_result(
-                "RefineOdooInvoiceDescription",
-                status="error",
-                error="error",
-                detail=str(exc),
-                odoo=pub,
-                fail_soft=True,
-            )
-            maybe_save_callback(
-                request, instruction_row, result, description="Invoice refine auth error"
-            )
-            return result
+        return service_result(
+            "RefineOdooInvoiceDescription",
+            status="skipped",
+            reason="not_account_move_action_post",
+        )
 
-        for move_id in move_ids:
-            outcomes.append(_refine_one(client, move_id, pub))
 
-        any_changed = any(o.get("changed") for o in outcomes)
-        any_error = any(o.get("status") == "error" for o in outcomes)
-        status = "error" if any_error and not any_changed else "success"
+def _refine_moves(request, instruction_row):
+    payload = _extract_payload(request, instruction_row)
+    move_ids = _coerce_move_ids(payload.get("move_ids") or payload.get("move_id"))
+    if not move_ids:
         result = service_result(
             "RefineOdooInvoiceDescription",
-            status=status,
-            outcomes=outcomes,
-            changed=any_changed,
-            invoice_ref=_primary_ref(outcomes),
-            move_ids=move_ids,
+            status="error",
+            error="missing_move_id",
+        )
+        maybe_save_callback(
+            request, instruction_row, result, description="Invoice refine missing move id"
+        )
+        return result
+
+    config = load_odoo_rpc_config(request=request, instruction_row=instruction_row)
+    pub = public_config(config)
+    outcomes = []
+
+    try:
+        client = OdooRpcClient.from_config(config)
+        client.authenticate()
+    except OdooRpcError as exc:
+        logger.error("[RefineOdooInvoiceDescription] RPC auth: %s", exc)
+        result = service_result(
+            "RefineOdooInvoiceDescription",
+            status="error",
+            error=exc.status,
+            detail=str(exc),
+            odoo=pub,
+            # Fail soft: posting already succeeded; do not raise.
+            fail_soft=True,
+        )
+        maybe_save_callback(
+            request, instruction_row, result, description="Invoice refine RPC auth failed"
+        )
+        return result
+    except Exception as exc:
+        logger.error("[RefineOdooInvoiceDescription] unexpected auth: %s", exc)
+        result = service_result(
+            "RefineOdooInvoiceDescription",
+            status="error",
+            error="error",
+            detail=str(exc),
             odoo=pub,
             fail_soft=True,
         )
         maybe_save_callback(
-            request,
-            instruction_row,
-            result,
-            description=_callback_description(outcomes),
+            request, instruction_row, result, description="Invoice refine auth error"
         )
         return result
+
+    for move_id in move_ids:
+        outcomes.append(_refine_one(client, move_id, pub))
+
+    any_changed = any(o.get("changed") for o in outcomes)
+    any_error = any(o.get("status") == "error" for o in outcomes)
+    status = "error" if any_error and not any_changed else "success"
+    result = service_result(
+        "RefineOdooInvoiceDescription",
+        status=status,
+        outcomes=outcomes,
+        changed=any_changed,
+        invoice_ref=_primary_ref(outcomes),
+        move_ids=move_ids,
+        odoo=pub,
+        fail_soft=True,
+    )
+    maybe_save_callback(
+        request,
+        instruction_row,
+        result,
+        description=_callback_description(outcomes),
+    )
+    return result
+
+
+def _queue_confirm(request, instruction_row, body: Any):
+    """Publish the refine job. Do not read or rewrite the Confirm POST."""
+    tenant = tenant_from_request(request)
+    move_ids = _extract_move_ids(body)
+    if not move_ids:
+        result = service_result(
+            "RefineOdooInvoiceDescription",
+            status="skipped",
+            reason="no_move_ids",
+        )
+        maybe_save_callback(
+            request, instruction_row, result, description="Invoice refine skipped — no move id"
+        )
+        return result
+    if tenant is None:
+        result = service_result(
+            "RefineOdooInvoiceDescription",
+            status="error",
+            error="no_tenant",
+            move_ids=move_ids,
+        )
+        maybe_save_callback(
+            request, instruction_row, result, description="Invoice refine no tenant"
+        )
+        return result
+
+    from dose.webhook_events import publish_odoo_invoice_refine_event
+
+    published = publish_odoo_invoice_refine_event(
+        tenant,
+        {
+            "move_ids": move_ids,
+            "source_path": getattr(request, "path", "") or "",
+        },
+    )
+    if not published.get("success"):
+        result = service_result(
+            "RefineOdooInvoiceDescription",
+            status="error",
+            error=published.get("error") or "mailbox_enroll_failed",
+            move_ids=move_ids,
+            fail_soft=True,
+        )
+        maybe_save_callback(
+            request, instruction_row, result, description="Invoice refine queue failed"
+        )
+        return result
+
+    result = service_result(
+        "RefineOdooInvoiceDescription",
+        status="success",
+        queued=True,
+        move_ids=move_ids,
+        mailbox_id=published.get("mailbox_id"),
+        event_id=published.get("event_id"),
+    )
+    maybe_save_callback(
+        request,
+        instruction_row,
+        result,
+        description=f"Queued invoice Note refine for move(s) {move_ids}",
+    )
+    logger.info(
+        "[RefineOdooInvoiceDescription] queued move_ids=%s mailbox=%s",
+        move_ids,
+        published.get("mailbox_id"),
+    )
+    return result
+
+
+def _is_mailbox_replay(request) -> bool:
+    data = getattr(request, "mq_message_data", None) if request is not None else None
+    if not isinstance(data, dict) or not data:
+        return False
+    nested = data.get("normalized_data")
+    payload = nested if isinstance(nested, dict) and nested else data
+    return bool(_coerce_move_ids(payload.get("move_ids") or payload.get("move_id")))
+
+
+def _request_json(request) -> Any:
+    raw = getattr(request, "body", b"") or b""
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        text = str(raw)
+    text = (text or "").strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"_raw": text[:2000]}
+
+
+_ACTION_POST_RE = re.compile(r"action_post", re.I)
+_ACCOUNT_MOVE_RE = re.compile(r"account\.move", re.I)
+
+
+def _is_invoice_action_post(body: Any, path: str) -> bool:
+    blob = path or ""
+    if isinstance(body, dict):
+        blob += " " + json.dumps(body, default=str)
+    elif body:
+        blob += " " + str(body)
+    return bool(_ACTION_POST_RE.search(blob) and _ACCOUNT_MOVE_RE.search(blob))
+
+
+def _extract_move_ids(body: Any) -> list[int]:
+    """Best-effort parse of Odoo call_button / call_kw JSON-RPC bodies."""
+    ids: list[int] = []
+
+    def _take(value):
+        if isinstance(value, int) and value > 0:
+            ids.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                _take(item)
+        elif isinstance(value, dict):
+            for key in ("id", "res_id", "resId"):
+                if key in value:
+                    _take(value[key])
+
+    if not isinstance(body, dict):
+        return []
+
+    params = body.get("params") if isinstance(body.get("params"), dict) else body
+    if not isinstance(params, dict):
+        return []
+
+    args = params.get("args")
+    if isinstance(args, list) and args:
+        first = args[0]
+        if isinstance(first, list):
+            _take(first)
+        else:
+            _take(first)
+
+    kwargs = params.get("kwargs") if isinstance(params.get("kwargs"), dict) else {}
+    _take(kwargs.get("ids"))
+    _take(params.get("ids"))
+    _take(body.get("ids"))
+
+    seen = set()
+    out = []
+    for mid in ids:
+        if mid not in seen:
+            seen.add(mid)
+            out.append(mid)
+    return out
 
 
 def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:

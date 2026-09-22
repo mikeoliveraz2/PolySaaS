@@ -3,7 +3,11 @@ BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
 BINGO: Demo Tenant Odoo Embed o_web_client Shell — commit 7d05920e
 BINGO: Odoo Passthrough Layout Fix — 2026-06-09
 BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
-Owner-approved 2026-09-22: Type 3 — poll DoseMessages onto green bar after invoice Post refine. -->
+Owner-approved 2026-09-22: Type 3 — poll DoseMessages onto green bar after invoice Post refine.
+Owner-approved 2026-09-22: Type 3 cache-bust t4 + force re-fetch standing_by on same path.
+Owner-approved 2026-09-22: cache-bust t5 — browser still served pre-standing_by JS after Confirm.
+Owner-approved 2026-09-22: cache-bust t6 — drop stale navigate responses racing no-match over ready.
+Owner-approved 2026-09-22: cache-bust t7 — server-paint standing_by; never overwrite with empty navigate. -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -451,8 +455,10 @@ body.polysaas-passthrough-embed-page {
             &nbsp;|&nbsp;
             <span style="font-size:12px;color:#aaa;">menu_id: <span id="pss-orch-menu" style="color:#fde68a;">—</span></span>
             &nbsp;|&nbsp;
-            <span style="font-size:12px;color:#aaa;">orch: <span id="pss-orch-status" style="color:#93c5fd;">waiting…</span></span>
-            <span id="pss-orch-event" style="display:none;margin-left:8px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;"></span>
+            <span style="font-size:12px;color:#aaa;">orch: <span id="pss-orch-status"
+                {% if embed_orch_status %}style="color:#86efac;" data-ps-orch-standing="1"{% else %}style="color:#93c5fd;"{% endif %}
+                >{% if embed_orch_status %}{{ embed_orch_status }}{% else %}waiting…{% endif %}</span></span>
+            <span id="pss-orch-event" style="{% if embed_orch_standing_by %}display:inline;{% else %}display:none;{% endif %}margin-left:8px;padding:2px 8px;background:#166534;border-radius:3px;font-size:12px;color:#86efac;">{% if embed_orch_standing_by %}⚡ {{ embed_orch_standing_by }}{% endif %}</span>
         </div>
         <button type="button" id="pss-insert-instruction-btn"
             onclick="if(window.PolySaaSOrchBar){PolySaaSOrchBar.openFromButton(event);}"
@@ -511,7 +517,7 @@ body.polysaas-passthrough-embed-page {
 
 {% block extrajs %}
 {{ block.super }}
-<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260922-t3"></script>
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260922-t7"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
 {# Type 3: surface mailbox-consumer DoseMessages (e.g. invoice note refined) on the green bar. #}
 <script>

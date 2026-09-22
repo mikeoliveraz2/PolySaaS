@@ -31,8 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 def proxy_prefix_for_endpoint(endpoint: PassThroughEndpoint) -> str:
-    """Build /pt/admin/<host>/ only from the tenant PassThroughEndpoint row."""
+    """Build /pt/admin/<slug>/ from the tenant PassThroughEndpoint row (BINGO 2026-08-02)."""
     try:
+        slug = (getattr(endpoint, "slug", None) or "").strip()
+        if slug:
+            return f"/pt/admin/{slug}/"
         if hasattr(endpoint, "get_proxy_prefix"):
             return endpoint.get_proxy_prefix().rstrip("/") + "/"
         from urllib.parse import urlparse

@@ -143,6 +143,10 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _odoo_proxy_prefix_from_endpoint(endpoint) -> str:
+        # Owner-approved 2026-08-02: proxy prefix from endpoint.slug (not hostname).
+        slug = (getattr(endpoint, "slug", None) or "").strip()
+        if slug:
+            return f"/pt/admin/{slug}"
         if hasattr(endpoint, "get_proxy_prefix"):
             return endpoint.get_proxy_prefix().rstrip("/")
         url = getattr(endpoint, "endpoint_url", "") or ""
@@ -250,10 +254,11 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
         mode = self._polysaas_display_mode(request)
         self._ensure_odoo_theme_sync_for_request(request, mode)
         print(f"[ODOO HANDLER] embed context: body_scope=True, display_mode={mode}")
-        return {
+        ctx = {
             'embed_enable_odoo_body_scope': True,
             'embed_polysaas_display_mode': mode,
         }
+        return ctx
 
     def passthrough_embed_scope_classes(self, request, raw_html, upstream_root_classes=''):
         """Preserve Odoo o_dark/o_light on embed scope — never on Jazzmin document.body."""

@@ -1,3 +1,5 @@
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 from django.db import models
 
 class PassThroughEndpoint(models.Model):
@@ -47,15 +49,14 @@ class PassThroughEndpoint(models.Model):
     endpoint_url = models.CharField(max_length=300, help_text="Full URL to any page inside the service (e.g. http://nextcloud.polysaas.online or http://service-name:80 for internal Docker)")
     description = models.CharField(max_length=200, blank=True, default="", help_text="Description or purpose of this endpoint")
     created_at = models.DateTimeField(auto_now_add=True)
-    # URL identity is slug: /pt/admin/<slug>/… → load this row → use endpoint_url.
-    # There is no separate "trigger" field or hostname-as-identity.
+    # Legacy metadata only. Passthrough identity is always endpoint_url's host.
     slug = models.CharField(
         max_length=100,
         blank=True,
         default="",
         help_text=(
-            "Passthrough URL identity: menu and /pt/admin/<slug>/ resolve this row. "
-            "Upstream target is always endpoint_url from this record."
+            "Optional application label. Passthrough routing does not use this field; "
+            "the endpoint_url record is the sole source of truth."
         ),
     )
     discovered_subpaths = models.JSONField(default=dict, blank=True, help_text="Auto-discovered subpaths for this endpoint")
@@ -165,18 +166,14 @@ class PassThroughEndpoint(models.Model):
                 return "External Service"
 
     def get_proxy_prefix(self) -> str:
-        """Browser proxy prefix for this endpoint — /pt/admin/<slug> (no trailing slash)."""
-        seg = (self.slug or "").strip().strip("/")
-        if not seg and self.endpoint_url:
-            try:
-                from urllib.parse import urlparse
-                seg = (urlparse(self.endpoint_url).netloc or "").strip()
-            except Exception:
-                seg = ""
-        return f"/pt/admin/{seg}" if seg else "/pt/admin"
+        """Return /pt/admin/<host> derived only from the stored endpoint_url."""
+        from urllib.parse import urlparse
+
+        host = (urlparse(self.endpoint_url or "").netloc or "").strip()
+        return f"/pt/admin/{host}" if host else "/pt/admin"
 
     def get_menu_url(self):
-        """Menu URL — /pt/admin/<slug>/[+starting_uri]. Upstream is always endpoint_url."""
+        """Return /pt/admin/<host>/<starting_uri> without changing endpoint_url."""
         prefix = self.get_proxy_prefix().rstrip("/")
         if prefix == "/pt/admin":
             return "/"
@@ -195,8 +192,10 @@ class PassThroughEndpoint(models.Model):
         if self.show_in_menu:
             if not self.endpoint_url:
                 errors['endpoint_url'] = "Endpoint URL is required when 'Show in menu' is enabled"
-            if not (self.slug or "").strip():
-                errors['slug'] = "Slug is required when 'Show in menu' is enabled (URL identity)"
+            else:
+                from urllib.parse import urlparse
+                if not urlparse(self.endpoint_url).netloc:
+                    errors['endpoint_url'] = "Endpoint URL must include a scheme and host"
 
         if errors:
             raise ValidationError(errors)

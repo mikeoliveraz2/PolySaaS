@@ -234,6 +234,8 @@ def build_odoo_invoice_refine_envelope(tenant, payload: dict) -> dict:
             "kind": "odoo_invoice_refine",
             "move_ids": move_ids,
             "source_path": payload.get("source_path", ""),
+            # Include correlation so Reset→Confirm on the same move can re-queue.
+            "correlation_id": str(uuid.uuid4()),
         },
         sort_keys=True,
     )

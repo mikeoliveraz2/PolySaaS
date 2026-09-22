@@ -38,6 +38,57 @@ class EnqueueParseTests(SimpleTestCase):
         self.assertEqual(_extract_move_ids(body), [7, 8])
 
 
+class ConfirmQueueTests(SimpleTestCase):
+    def _confirm_request(self):
+        body = {
+            "params": {
+                "model": "account.move",
+                "method": "action_post",
+                "args": [[42]],
+            }
+        }
+        return SimpleNamespace(
+            path="/web/dataset/call_button",
+            body=__import__("json").dumps(body).encode(),
+            tenant=SimpleNamespace(schema_name="polysaas"),
+            mq_message_data=None,
+        )
+
+    @patch("dose.webhook_events.publish_odoo_invoice_refine_event")
+    @patch("dose.services.refine_odoo_invoice_description.OdooRpcClient")
+    def test_confirm_queues_and_does_not_call_odoo(self, client_cls, publish):
+        publish.return_value = {"success": True, "mailbox_id": 3, "event_id": "abc"}
+        instruction = SimpleNamespace(save_callbackdata=False, parameters_json={})
+        result = RefineOdooInvoiceDescription.execute_and_save(self._confirm_request(), instruction)
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["queued"])
+        self.assertEqual(result["move_ids"], [42])
+        publish.assert_called_once()
+        client_cls.from_config.assert_not_called()
+
+    @patch("dose.webhook_events.publish_odoo_invoice_refine_event")
+    def test_enqueue_alias_delegates(self, publish):
+        publish.return_value = {"success": True, "mailbox_id": 4, "event_id": "def"}
+        result = EnqueueOdooInvoiceRefine.execute_and_save(
+            self._confirm_request(),
+            SimpleNamespace(save_callbackdata=False, parameters_json={}),
+        )
+        self.assertTrue(result["queued"])
+        self.assertEqual(result["move_ids"], [42])
+
+    def test_unrelated_post_skipped(self):
+        request = SimpleNamespace(
+            path="/web/dataset/call_button",
+            body=b'{"params":{"model":"sale.order","method":"action_confirm","args":[[1]]}}',
+            tenant=SimpleNamespace(schema_name="polysaas"),
+        )
+        result = RefineOdooInvoiceDescription.execute_and_save(
+            request, SimpleNamespace(save_callbackdata=False, parameters_json={})
+        )
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "not_account_move_action_post")
+
+
 class RefineAtomicTests(SimpleTestCase):
     def test_selector(self):
         self.assertEqual(RefineOdooInvoiceDescription.atomic_apps, ("odoo",))
@@ -153,3 +204,28 @@ class RefineFeedbackTests(SimpleTestCase):
             "RefineOdooInvoiceDescription",
         )
         self.assertIn("no change", text.lower())
+
+    def test_feedback_queued(self):
+        instr = SimpleNamespace(eventKey="odoo.invoice.action_post", executescript="RefineOdooInvoiceDescription")
+        text, level = feedback_text_for_result(
+            instr,
+            {"status": "success", "queued": True, "move_ids": [42]},
+            "RefineOdooInvoiceDescription",
+        )
+        self.assertIn("refining note", text.lower())
+        self.assertEqual(level, "info")
+
+    def test_feedback_ai_unavailable(self):
+        instr = SimpleNamespace(eventKey="odoo.invoice.refine", executescript="RefineOdooInvoiceDescription")
+        text, level = feedback_text_for_result(
+            instr,
+            {
+                "status": "success",
+                "changed": False,
+                "invoice_ref": "INV/1",
+                "outcomes": [{"changed": False, "reason": "ai_failed_soft"}],
+            },
+            "RefineOdooInvoiceDescription",
+        )
+        self.assertIn("unavailable", text.lower())
+        self.assertEqual(level, "warning")

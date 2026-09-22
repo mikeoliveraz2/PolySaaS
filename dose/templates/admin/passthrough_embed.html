@@ -4,7 +4,11 @@ BINGO: Demo Tenant Odoo Embed o_web_client Shell — commit 7d05920e
 BINGO: Odoo Passthrough Layout Fix — 2026-06-09
 BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 Owner-approved 2026-09-22: Type 3 — poll DoseMessages onto green bar after invoice Post refine.
-Owner-approved 2026-09-22: Type 3 cache-bust t4 + force re-fetch standing_by on same path. -->
+Owner-approved 2026-09-22: Type 3 cache-bust t4 + force re-fetch standing_by on same path.
+Owner-approved 2026-09-22: cache-bust t5 — browser still served pre-standing_by JS after Confirm.
+Owner-approved 2026-09-22: cache-bust t6 — drop stale navigate responses racing no-match over ready.
+Owner-approved 2026-09-22: cache-bust t7 — server-paint standing_by; never overwrite with empty navigate.
+Owner-approved 2026-09-22: cache-bust t8 — invoice/odoo paths always show Type 3 standing (no more no-match flash). -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -512,7 +516,7 @@ body.polysaas-passthrough-embed-page {
 
 {% block extrajs %}
 {{ block.super }}
-<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260922-t4"></script>
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260923-t9"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
 {# Type 3: surface mailbox-consumer DoseMessages (e.g. invoice note refined) on the green bar. #}
 <script>
@@ -524,8 +528,32 @@ body.polysaas-passthrough-embed-page {
         return m ? decodeURIComponent(m[1]) : '';
     }
     function show(msg) {
-        if (window.PolySaaSOrchBar && window.__psOrchBarInstance && window.__psOrchBarInstance.showEvent) {
-            window.__psOrchBarInstance.showEvent(msg);
+        var bar = window.__psOrchBarInstance;
+        var st = document.getElementById('pss-orch-status');
+        var label = 'noted';
+        var ok = true;
+        if (/refining/i.test(msg)) {
+            label = 'refining note…';
+            ok = null;
+        } else if (/refined/i.test(msg)) {
+            label = 'refined';
+            ok = true;
+        } else if (/no change/i.test(msg)) {
+            label = 'no change';
+            ok = true;
+        } else if (/unavailable|skipped|failed/i.test(msg)) {
+            label = 'refine skipped';
+            ok = false;
+        }
+        if (bar && bar.setStatus) {
+            bar.setStatus(label, ok);
+        } else if (st) {
+            st.textContent = label;
+            st.style.color = ok === false ? '#fca5a5' : '#86efac';
+        }
+        if (st) st.setAttribute('data-ps-orch-result', '1');
+        if (bar && bar.showEvent) {
+            bar.showEvent(msg);
             return;
         }
         if (typeof window.__psShowOrchEvent === 'function') {
@@ -533,11 +561,6 @@ body.polysaas-passthrough-embed-page {
             return;
         }
         var el = document.getElementById('pss-orch-event');
-        var st = document.getElementById('pss-orch-status');
-        if (st) {
-            st.textContent = /refined/i.test(msg) ? 'SUCCESS' : 'ACTIVE';
-            st.style.color = '#86efac';
-        }
         if (el) {
             el.textContent = (msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg));
             el.style.display = 'inline';

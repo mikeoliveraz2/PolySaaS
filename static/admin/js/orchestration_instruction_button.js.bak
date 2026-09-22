@@ -222,11 +222,19 @@
 
     OrchestrationBar.prototype.notifyOrchestration = function (fullPath, pathOnly, force) {
         if (!pathOnly) return;
+        // Ignore placeholder / root until Odoo SPA settles on a real action path.
+        if (pathOnly === '/' || pathOnly === 'loading…' || pathOnly === 'detecting…' || pathOnly === '—') {
+            return;
+        }
         // force=true: re-hit navigate API on same path (first paint can race CSRF/tenant/seed).
         if (!force && pathOnly === this._lastOrchPath) return;
         this._lastOrchPath = pathOnly;
         var self = this;
+        // Drop stale responses: early "/" notify must not overwrite a later invoice-path result.
+        var seq = (this._orchNotifySeq = (this._orchNotifySeq || 0) + 1);
+        var notifyPath = pathOnly;
         this.setStatus('checking…', null);
+        // Send pathOnly (stable SPA path) — fullPath can include hash noise.
         fetch('/dose/api/orchestration-navigate/', {
             method: 'POST',
             credentials: 'same-origin',
@@ -234,8 +242,9 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken()
             },
-            body: JSON.stringify({ path: fullPath, method: 'GET' })
+            body: JSON.stringify({ path: pathOnly, method: 'GET' })
         }).then(function (r) {
+            if (seq !== self._orchNotifySeq) return null;
             if (!r.ok) {
                 self.setStatus('API error (' + r.status + ')', false);
                 self.showEvent('orchestration API failed (' + r.status + ')');
@@ -243,7 +252,9 @@
             }
             return r.json();
         }).then(function (data) {
-            if (!data) return;
+            if (!data || seq !== self._orchNotifySeq) return;
+            // Path changed while in flight — discard.
+            if (notifyPath !== self._lastOrchPath) return;
             if (data.status === 'no_tenant') {
                 self.setStatus('no tenant', false);
                 self.showEvent('orchestration: no tenant');
@@ -260,12 +271,23 @@
                 self.setStatus('ready — refine on Post', true);
                 self.showEvent(standing[0]);
                 self.updateButtonLabel(true);
+                var stEl = document.getElementById(self.config.statusElId);
+                if (stEl) stEl.setAttribute('data-ps-orch-standing', '1');
+                console.log('[ORCH-BTN] standing_by', standing);
             } else {
+                // Do not wipe a server-painted standing_by with a racing empty navigate.
+                var stHold = document.getElementById(self.config.statusElId);
+                if (stHold && stHold.getAttribute('data-ps-orch-standing') === '1') {
+                    console.log('[ORCH-BTN] keep standing_by (server/prior); empty navigate ignored', data);
+                    return;
+                }
                 self.setStatus('no instruction match', false);
                 self.showEvent('no match for ' + pathOnly);
                 self.updateButtonLabel(false);
+                console.log('[ORCH-BTN] no match; standing_by empty', data);
             }
         }).catch(function () {
+            if (seq !== self._orchNotifySeq) return;
             self.setStatus('API error', false);
             self.showEvent('orchestration API failed');
         });
@@ -472,8 +494,17 @@
         this.bindModalClose();
         this.installHistoryHooks();
         this.updateBar(true);
-        setInterval(function () { self.updateBar(false); }, 2000);
-        [500, 1500, 3500].forEach(function (ms) {
+        setInterval(function () {
+            var st = document.getElementById(self.config.statusElId);
+            var txt = st ? (st.textContent || '') : '';
+            // Keep re-fetching until standing_by/match sticks (stale race / CSRF race).
+            if (/no instruction match|checking|waiting|API error/i.test(txt)) {
+                self.updateBar(true);
+            } else {
+                self.updateBar(false);
+            }
+        }, 2000);
+        [500, 1500, 3500, 6000].forEach(function (ms) {
             setTimeout(function () {
                 if (self.config.reinstallHooks) self._hooksInstalled = false;
                 self.installHistoryHooks();

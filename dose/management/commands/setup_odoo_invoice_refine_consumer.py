@@ -1,4 +1,9 @@
-"""Seed Type 3 Odoo invoice narration refine (enqueue + consumer)."""
+"""Seed Type 3: one passthrough Instruction plus the mailbox transport row.
+
+Both rows call RefineOdooInvoiceDescription. The passthrough row matches the
+invoice Confirm POST. The mailbox row is how that same atomic runs after Odoo
+has accepted the post, without holding the HTTP response.
+"""
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
@@ -9,18 +14,12 @@ from dose.webhook_events import (
     ODOO_INVOICE_REFINE_EVENT_KEY,
 )
 
-
-# Odoo often puts action_post only in the JSON body; URL is plain call_button.
-# Also seed URL-contains action_post for builds that bake the method into the path.
-_ENQUEUE_PATHS = (
-    "/web/dataset/call_button",
-    "action_post",
-    "/web/dataset/call_kw",
-)
+# Captured Odoo Confirm URL. action_post lives in the JSON body, not the path.
+_CONFIRM_PATH = "/web/dataset/call_button"
 
 
 def _default_odoo_rpc_params() -> dict:
-    """Seed Refine instruction with the same Odoo the platform settings use."""
+    """Seed the mailbox refine row with the platform Odoo settings."""
     from django.conf import settings
 
     return {
@@ -33,8 +32,8 @@ def _default_odoo_rpc_params() -> dict:
 
 class Command(BaseCommand):
     help = (
-        "Create/update Odoo invoice Post enqueue + RefineOdooInvoiceDescription "
-        "mailbox consumer (Type 3 mid-stream refine)."
+        "Create/update the Type 3 invoice Confirm instruction. "
+        "One atomic: RefineOdooInvoiceDescription."
     )
 
     def add_arguments(self, parser):
@@ -55,31 +54,40 @@ class Command(BaseCommand):
             if not ok:
                 raise CommandError(f"Could not select tenant schema: {schema}")
 
-            for path in _ENQUEUE_PATHS:
-                for direction in ("RES", "REQ"):
-                    enqueue, created_e = Instruction.objects.update_or_create(
-                        tenant=tenant,
-                        requestpath=path,
-                        requestmethod="POST",
-                        direction=direction,
-                        defaults={
-                            "match_type": "contains",
-                            "eventKey": "odoo.invoice.action_post.enqueue",
-                            "executescript": "EnqueueOdooInvoiceRefine",
-                            "description": (
-                                "Type 3: on invoice Post — enqueue Note refine "
-                                f"(path contains {path!r}, {direction}; "
-                                "atomic filters account.move + action_post)"
-                            ),
-                            "save_callbackdata": True,
-                        },
+            removed, _ = Instruction.objects.filter(
+                executescript="EnqueueOdooInvoiceRefine",
+            ).delete()
+            if removed:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Removed {removed} EnqueueOdooInvoiceRefine instruction(s)"
                     )
-                    verb = "Created" if created_e else "Updated"
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            f"{verb} Enqueue #{enqueue.pk}: POST {direction} contains {path!r}"
-                        )
-                    )
+                )
+
+            confirm, created_c = Instruction.objects.update_or_create(
+                tenant=tenant,
+                requestpath=_CONFIRM_PATH,
+                requestmethod="POST",
+                direction="RES",
+                defaults={
+                    "match_type": "contains",
+                    "eventKey": "odoo.invoice.action_post",
+                    "executescript": "RefineOdooInvoiceDescription",
+                    "description": (
+                        "Type 3: invoice Confirm POST — queue Note refine "
+                        "(atomic filters account.move + action_post; POST is not rewritten)"
+                    ),
+                    "save_callbackdata": True,
+                    "parameters_json": _default_odoo_rpc_params(),
+                },
+            )
+            verb_c = "Created" if created_c else "Updated"
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"{verb_c} RefineOdooInvoiceDescription instruction #{confirm.pk}: "
+                    f"POST RES contains {_CONFIRM_PATH!r}"
+                )
+            )
 
             refine, created_r = Instruction.objects.update_or_create(
                 tenant=tenant,
@@ -91,8 +99,8 @@ class Command(BaseCommand):
                     "eventKey": ODOO_INVOICE_REFINE_EVENT_KEY,
                     "executescript": "RefineOdooInvoiceDescription",
                     "description": (
-                        "Type 3: RefineOdooInvoiceDescription — AI clean "
-                        "account.move.narration + note lines"
+                        "Type 3 mailbox transport: RefineOdooInvoiceDescription "
+                        "cleans account.move.narration after Confirm"
                     ),
                     "save_callbackdata": True,
                     "parameters_json": _default_odoo_rpc_params(),
@@ -101,14 +109,14 @@ class Command(BaseCommand):
             verb_r = "Created" if created_r else "Updated"
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"{verb_r} RefineOdooInvoiceDescription instruction #{refine.pk}: "
+                    f"{verb_r} mailbox transport instruction #{refine.pk}: "
                     f"{ODOO_INVOICE_REFINE_ACTION_PATH}"
                 )
             )
 
         self.stdout.write(
             self.style.WARNING(
-                "Mailbox consumer must be running. After seed: hard-refresh passthrough, "
-                "Reset to Draft -> Confirm again (or new invoice) to fire Type 3."
+                "Mailbox consumer must be running. Confirm a draft invoice through "
+                "passthrough; the green bar reports the Note refine after Odoo posts."
             )
         )

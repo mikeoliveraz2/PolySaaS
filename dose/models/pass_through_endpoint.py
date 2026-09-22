@@ -166,7 +166,14 @@ class PassThroughEndpoint(models.Model):
                 return "External Service"
 
     def get_proxy_prefix(self) -> str:
-        """Return /pt/admin/<host> derived only from the stored endpoint_url."""
+        """Return /pt/admin/<slug> — slug is the URL identity (BINGO 2026-08-02).
+
+        Hostname-in-path was legacy; middleware routes by slug. Shim PROXY_PREFIX
+        must match the browser URL (/pt/admin/odoo/...) or Confirm RPCs miss orch.
+        """
+        slug = (self.slug or "").strip()
+        if slug:
+            return f"/pt/admin/{slug}"
         from urllib.parse import urlparse
 
         host = (urlparse(self.endpoint_url or "").netloc or "").strip()

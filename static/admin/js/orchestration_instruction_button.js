@@ -222,11 +222,28 @@
 
     OrchestrationBar.prototype.notifyOrchestration = function (fullPath, pathOnly, force) {
         if (!pathOnly) return;
+        // Ignore placeholder / root until Odoo SPA settles on a real action path.
+        if (pathOnly === '/' || pathOnly === 'loading…' || pathOnly === 'detecting…' || pathOnly === '—') {
+            return;
+        }
         // force=true: re-hit navigate API on same path (first paint can race CSRF/tenant/seed).
         if (!force && pathOnly === this._lastOrchPath) return;
+        var pathChanged = pathOnly !== this._lastOrchPath;
         this._lastOrchPath = pathOnly;
         var self = this;
+        // Drop stale responses: early "/" notify must not overwrite a later invoice-path result.
+        var seq = (this._orchNotifySeq = (this._orchNotifySeq || 0) + 1);
+        var notifyPath = pathOnly;
+        var stEl0 = document.getElementById(this.config.statusElId);
+        if (pathChanged && stEl0) {
+            stEl0.removeAttribute('data-ps-orch-result');
+        }
+        // Confirm result stays until the user navigates. Page GETs do not paint Type 3.
+        if (stEl0 && stEl0.getAttribute('data-ps-orch-result') === '1') {
+            return;
+        }
         this.setStatus('checking…', null);
+        // Send pathOnly (stable SPA path) — fullPath can include hash noise.
         fetch('/dose/api/orchestration-navigate/', {
             method: 'POST',
             credentials: 'same-origin',
@@ -234,8 +251,9 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken()
             },
-            body: JSON.stringify({ path: fullPath, method: 'GET' })
+            body: JSON.stringify({ path: pathOnly, method: 'GET' })
         }).then(function (r) {
+            if (seq !== self._orchNotifySeq) return null;
             if (!r.ok) {
                 self.setStatus('API error (' + r.status + ')', false);
                 self.showEvent('orchestration API failed (' + r.status + ')');
@@ -243,29 +261,30 @@
             }
             return r.json();
         }).then(function (data) {
-            if (!data) return;
+            if (!data || seq !== self._orchNotifySeq) return;
+            // Path changed while in flight — discard.
+            if (notifyPath !== self._lastOrchPath) return;
             if (data.status === 'no_tenant') {
                 self.setStatus('no tenant', false);
                 self.showEvent('orchestration: no tenant');
                 return;
             }
+            var stNow = document.getElementById(self.config.statusElId);
+            if (stNow && stNow.getAttribute('data-ps-orch-result') === '1') {
+                return;
+            }
             var matched = data.matched || 0;
             var saved = data.callback_saved || 0;
-            var standing = data.standing_by || [];
             if (matched > 0) {
                 self.setStatus('matched ' + matched + ', saved ' + saved, saved > 0);
                 self.showEvent('matched ' + matched + ' — CallBackData saved: ' + saved);
                 self.updateButtonLabel(true);
-            } else if (standing.length) {
-                self.setStatus('ready — refine on Post', true);
-                self.showEvent(standing[0]);
-                self.updateButtonLabel(true);
             } else {
-                self.setStatus('no instruction match', false);
-                self.showEvent('no match for ' + pathOnly);
+                self.setStatus('waiting…', null);
                 self.updateButtonLabel(false);
             }
         }).catch(function () {
+            if (seq !== self._orchNotifySeq) return;
             self.setStatus('API error', false);
             self.showEvent('orchestration API failed');
         });
@@ -472,8 +491,16 @@
         this.bindModalClose();
         this.installHistoryHooks();
         this.updateBar(true);
-        setInterval(function () { self.updateBar(false); }, 2000);
-        [500, 1500, 3500].forEach(function (ms) {
+        setInterval(function () {
+            var st = document.getElementById(self.config.statusElId);
+            var txt = st ? (st.textContent || '') : '';
+            if (/no instruction match|checking|API error/i.test(txt)) {
+                self.updateBar(true);
+            } else {
+                self.updateBar(false);
+            }
+        }, 2000);
+        [500, 1500, 3500, 6000].forEach(function (ms) {
             setTimeout(function () {
                 if (self.config.reinstallHooks) self._hooksInstalled = false;
                 self.installHistoryHooks();

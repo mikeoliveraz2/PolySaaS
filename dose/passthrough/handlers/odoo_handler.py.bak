@@ -143,6 +143,10 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
     @staticmethod
     def _odoo_proxy_prefix_from_endpoint(endpoint) -> str:
+        # Owner-approved 2026-08-02: proxy prefix from endpoint.slug (not hostname).
+        slug = (getattr(endpoint, "slug", None) or "").strip()
+        if slug:
+            return f"/pt/admin/{slug}"
         if hasattr(endpoint, "get_proxy_prefix"):
             return endpoint.get_proxy_prefix().rstrip("/")
         url = getattr(endpoint, "endpoint_url", "") or ""
