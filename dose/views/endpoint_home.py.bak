@@ -2,6 +2,7 @@
 # BINGO: Slack producer/consumer home — 2026-08-24
 # FIX 2026-08-26 (owner-approved): scope producers/consumers to the current endpoint app.
 # BINGO: Geronimo Chat Integration — 2026-09-02
+# Owner-approved 2026-09-22: Odoo Control Panel New contact form_key + orch consumer.
 import json
 from urllib.parse import urlsplit
 
@@ -78,7 +79,11 @@ def _consumer_belongs_to_endpoint(endpoint, row) -> bool:
         # Slack→Odoo wireframe pipes live on the Slack home, not Odoo.
         if _is_slack_pipe_blob(blob):
             return False
-        return "odoo" in blob
+        return (
+            "odoo" in blob
+            or "control-panel/contact" in blob
+            or "control_panel.contact" in blob
+        )
     if app == "mattermost":
         return "mattermost" in blob or (
             " mm " in f" {blob} " or blob.startswith("mm ") or "/mm/" in blob
@@ -91,11 +96,14 @@ def _consumer_belongs_to_endpoint(endpoint, row) -> bool:
 
 
 def _form_key_for_instruction(row):
-    """Map known Slack consumers to wireframe/popup form keys."""
+    """Map known consumers to wireframe/popup form keys."""
     event = (row.eventKey or "").strip().lower()
     path = (row.requestpath or "").strip().lower()
-    if "slack.webhook.contact" in event or path.endswith(
-        "/events/slack/webhook/contact"
+    if (
+        "slack.webhook.contact" in event
+        or path.endswith("/events/slack/webhook/contact")
+        or "odoo.control_panel.contact" in event
+        or path.endswith("/events/odoo/control-panel/contact")
     ):
         return "contact"
     if "slack.webhook.sale" in event or path.endswith("/events/slack/webhook/sale"):

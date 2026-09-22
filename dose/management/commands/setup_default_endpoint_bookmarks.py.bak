@@ -20,6 +20,24 @@ class Command(BaseCommand):
         from dose.models import EndpointBookmark, PassThroughEndpoint
 
         with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = %s)",
+                [schema],
+            )
+            if not cursor.fetchone()[0]:
+                raise CommandError(f"Tenant schema does not exist: {schema}")
+            cursor.execute(
+                "SELECT to_regclass(%s), to_regclass(%s)",
+                [
+                    f"{schema}.{PassThroughEndpoint._meta.db_table}",
+                    f"{schema}.{EndpointBookmark._meta.db_table}",
+                ],
+            )
+            endpoint_table, bookmark_table = cursor.fetchone()
+            if endpoint_table is None or bookmark_table is None:
+                raise CommandError(
+                    f"Tenant schema {schema} is missing endpoint/bookmark tables."
+                )
             cursor.execute(f'SET search_path TO "{schema}",public;')
         created_count = 0
         updated_count = 0

@@ -1,8 +1,19 @@
 from django.core.management.base import BaseCommand, CommandError
-from django.db import connection
+from django.db import connection, models
 
 from dose.endpoint_actions import adapter_for_endpoint
 from dose.management.schema_utils import assert_safe_schema_identifier
+
+# Superseded by key=contacts → *.capture_contacts (shared Captured Topics queue).
+OBSOLETE_BOOKMARK_KEYS = frozenset({"capture-contacts"})
+OBSOLETE_CONTACT_TARGETS = frozenset(
+    {
+        "odoo.list_contacts",
+        "hubspot.list_contacts",
+        "mattermost.list_contacts",
+        "slack.list_contacts",
+    }
+)
 
 
 class Command(BaseCommand):
@@ -62,6 +73,17 @@ class Command(BaseCommand):
                 )
                 created_count += int(created)
                 updated_count += int(not created)
+            retired = EndpointBookmark.objects.filter(
+                endpoint=endpoint,
+                is_active=True,
+            ).filter(
+                models.Q(key__in=OBSOLETE_BOOKMARK_KEYS)
+                | models.Q(target__in=OBSOLETE_CONTACT_TARGETS)
+            ).update(is_active=False)
+            if retired:
+                self.stdout.write(
+                    f"  {endpoint.get_menu_title()}: deactivated {retired} obsolete Contacts bookmark(s)"
+                )
         self.stdout.write(
             self.style.SUCCESS(
                 f"{schema}: created={created_count}, updated={updated_count}"

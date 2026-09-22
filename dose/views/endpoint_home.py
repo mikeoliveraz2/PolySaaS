@@ -3,6 +3,7 @@
 # FIX 2026-08-26 (owner-approved): scope producers/consumers to the current endpoint app.
 # BINGO: Geronimo Chat Integration — 2026-09-02
 # Owner-approved 2026-09-22: Odoo Control Panel New contact form_key + orch consumer.
+# Owner-approved 2026-09-22: one Contacts bookmark — drop legacy capture-contacts / list_contacts dupes.
 import json
 from urllib.parse import urlsplit
 
@@ -190,6 +191,45 @@ def _default_bookmark_view(endpoint, definition, adapter):
     return _bookmark_view(endpoint, bookmark, adapter)
 
 
+def _is_contacts_capture_bookmark(bookmark) -> bool:
+    target = (bookmark.get("target") or "").lower()
+    key = (bookmark.get("key") or "").lower()
+    return target.endswith(".capture_contacts") or key == "capture-contacts"
+
+
+def _is_legacy_contacts_list_bookmark(bookmark) -> bool:
+    return (bookmark.get("target") or "").lower().endswith(".list_contacts")
+
+
+def _dedupe_contacts_bookmarks(bookmarks: list) -> list:
+    """One Contacts action per Control Panel — shared Captured Topics capture only."""
+    captures = [b for b in bookmarks if _is_contacts_capture_bookmark(b)]
+    legacy = [b for b in bookmarks if _is_legacy_contacts_list_bookmark(b)]
+    neutral = [
+        b
+        for b in bookmarks
+        if not _is_contacts_capture_bookmark(b) and not _is_legacy_contacts_list_bookmark(b)
+    ]
+
+    kept = None
+    if captures:
+        kept = next(
+            (b for b in captures if (b.get("key") or "").lower() == "contacts"),
+            captures[0],
+        )
+    elif legacy:
+        kept = legacy[0]
+
+    if kept is None:
+        return bookmarks
+
+    order = {id(b): i for i, b in enumerate(bookmarks)}
+    out = neutral[:]
+    out.append(kept)
+    out.sort(key=lambda b: order.get(id(b), 999))
+    return out
+
+
 @login_required
 @require_GET
 def endpoint_home(request, endpoint_host: str):
@@ -225,7 +265,7 @@ def endpoint_home(request, endpoint_host: str):
             ):
                 continue
         filtered.append(bookmark)
-    bookmarks = filtered
+    bookmarks = _dedupe_contacts_bookmarks(filtered)
 
     consumers = _list_consumers(tenant, endpoint)
     producers = list_producers(endpoint, consumers)
