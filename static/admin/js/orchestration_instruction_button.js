@@ -220,8 +220,10 @@
         el._t = setTimeout(function () { el.style.display = 'none'; }, 12000);
     };
 
-    OrchestrationBar.prototype.notifyOrchestration = function (fullPath, pathOnly) {
-        if (!pathOnly || pathOnly === this._lastOrchPath) return;
+    OrchestrationBar.prototype.notifyOrchestration = function (fullPath, pathOnly, force) {
+        if (!pathOnly) return;
+        // force=true: re-hit navigate API on same path (first paint can race CSRF/tenant/seed).
+        if (!force && pathOnly === this._lastOrchPath) return;
         this._lastOrchPath = pathOnly;
         var self = this;
         this.setStatus('checking…', null);
@@ -287,7 +289,7 @@
         if (actionEl) actionEl.textContent = info.action || '—';
 
         if (forceNotify || info.pathOnly !== this._lastOrchPath) {
-            this.notifyOrchestration(info.fullPath, info.pathOnly);
+            this.notifyOrchestration(info.fullPath, info.pathOnly, !!forceNotify);
         }
     };
 
