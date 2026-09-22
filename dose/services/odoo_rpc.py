@@ -47,7 +47,12 @@ def public_config(config: dict | None) -> dict:
 
 
 def load_odoo_rpc_config(request=None, instruction_row=None) -> dict:
-    """Resolve url / db / username / password for the current tenant."""
+    """Resolve url / db / username / password for the current tenant.
+
+    Priority (later wins): Django settings → PassThroughEndpoint → TenantApp
+    extra_config → atomic Parameters → Instruction config.
+    Endpoint must override settings so refine hits the same Odoo as passthrough.
+    """
     config = {
         "url": str(getattr(settings, "ODOO_SHARED_URL", "http://localhost:8086") or "").rstrip("/"),
         "db": str(getattr(settings, "ODOO_SHARED_DB", "odoo") or "odoo"),
@@ -63,6 +68,8 @@ def load_odoo_rpc_config(request=None, instruction_row=None) -> dict:
         except Exception:
             tenant = None
 
+    _apply_passthrough_endpoint(config)
+
     extra = _tenant_app_extra(tenant)
     if extra:
         if extra.get("odoo_url"):
@@ -76,7 +83,6 @@ def load_odoo_rpc_config(request=None, instruction_row=None) -> dict:
         if extra.get("odoo_password"):
             config["password"] = str(extra["odoo_password"])
 
-    _apply_passthrough_endpoint(config)
     _apply_atomic_parameters(request, config)
     _apply_instruction_config(instruction_row, config)
     return config
@@ -114,11 +120,12 @@ def _apply_passthrough_endpoint(config: dict) -> None:
             )
         if odoo_ep is None:
             return
-        if odoo_ep.endpoint_url and not config.get("url"):
+        # Always prefer the live passthrough endpoint over settings defaults.
+        if odoo_ep.endpoint_url:
             config["url"] = odoo_ep.endpoint_url.rstrip("/")
-        if odoo_ep.auth_username and not config.get("username"):
+        if odoo_ep.auth_username:
             config["username"] = odoo_ep.auth_username
-        if odoo_ep.auth_password and not config.get("password"):
+        if odoo_ep.auth_password:
             config["password"] = odoo_ep.auth_password
     except Exception as exc:
         logger.warning("[OdooRpc] PassThroughEndpoint config skipped: %s", exc)

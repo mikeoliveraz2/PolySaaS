@@ -19,6 +19,18 @@ _ENQUEUE_PATHS = (
 )
 
 
+def _default_odoo_rpc_params() -> dict:
+    """Seed Refine instruction with the same Odoo the platform settings use."""
+    from django.conf import settings
+
+    return {
+        "odoo_url": str(getattr(settings, "ODOO_SHARED_URL", "") or "").rstrip("/"),
+        "odoo_db": str(getattr(settings, "ODOO_SHARED_DB", "odoo") or "odoo"),
+        "odoo_login": str(getattr(settings, "ODOO_XMLRPC_ADMIN_LOGIN", "admin") or "admin"),
+        "odoo_password": str(getattr(settings, "ODOO_XMLRPC_ADMIN_PASSWORD", "") or ""),
+    }
+
+
 class Command(BaseCommand):
     help = (
         "Create/update Odoo invoice Post enqueue + RefineOdooInvoiceDescription "
@@ -83,6 +95,7 @@ class Command(BaseCommand):
                         "account.move.narration + note lines"
                     ),
                     "save_callbackdata": True,
+                    "parameters_json": _default_odoo_rpc_params(),
                 },
             )
             verb_r = "Created" if created_r else "Updated"
