@@ -17,10 +17,10 @@ silent single sign-on. No login form is ever shown to the user.
 - Channel list loads (Off-Topic, Town Square, DMs: feedbackbot, grok)
 - Messages readable in Town Square
 - Message send confirmed (`polysaast122: "Hello everyone"` posted successfully)
-- WebSocket connects directly to upstream Mattermost (`wss://polysaas-mattermost.onrender.com`)
+- WebSocket connects directly to upstream Mattermost (`wss://mm.prod-polysaas.cloud`)
 - No "Team Not Found" error (fixed in v16 shim — fake-join intercept)
 - No logout loop
-- No `chrome-error://chromewebdata/` crash (resolved by upgrading Render to Pro always-on)
+- No `chrome-error://chromewebdata/` crash (resolved by Hostinger always-on hosting)
 
 ---
 
@@ -73,7 +73,7 @@ Key mechanisms in v16:
 
 ## Architecture Notes
 
-- Render.com upgraded to **Pro (always-on)** — eliminates cold-start latency that was causing concurrent proxy request overload on the Django dev server
+- Hostinger VPS is always-on — no Render cold-start latency
 - SSO credentials stored in `TenantApp.extra_config`: `mm_token`, `mm_user_id`
 - Token stored in Django session as `mm_sidebar_auth_token`
 - Handler: `MattermostPassthroughHandler` in `dose/passthrough/handlers/mattermost_handler.py`

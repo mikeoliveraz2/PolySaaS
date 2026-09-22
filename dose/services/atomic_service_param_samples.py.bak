@@ -111,7 +111,7 @@ ATOMIC_SERVICE_PARAM_SAMPLES: Dict[str, Dict[str, Any]] = {
         'note': 'Triggered from MQ; uses TenantApp.extra_config for mm_url/mm_token when not in JSON.',
     },
     'OdooCustomerSync': {
-        'odoo_url': 'https://polysaas-odoo2.onrender.com',
+        'odoo_url': 'https://odoo.prod-polysaas.cloud',
         'odoo_db': 'odoo',
         'note': 'MQ message body carries customer payload; optional Odoo connection overrides here.',
     },

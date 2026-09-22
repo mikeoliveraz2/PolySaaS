@@ -25,6 +25,8 @@
 # Native = /admin/polysniffer/sniff/<host>/native/ (no green bar).
 # Passthrough = workspace/passthrough with orchestration bar + consumer bind.
 # Do not launch Native via /pt/polysniff/ (that path is passthrough-mode).
+# Owner-approved 2026-08-23: Slack wireframe Live events pane — mailbox +
+# DoseMessage in workspace poll; suppress HAR noise while wireframe is on.
 from __future__ import annotations
 
 import json
@@ -33,6 +35,8 @@ import logging
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -64,6 +68,123 @@ def _native_browse_subpath(endpoint) -> str:
     return path
 
 
+def _mailbox_context(endpoint) -> dict:
+    """Return handler-declared webhook/mailbox plumbing, if any."""
+    handler = resolve_handler_for_endpoint(endpoint)
+    hook = getattr(handler, "polysniffer_mailbox_context", None)
+    if not callable(hook):
+        return {}
+    return hook(endpoint) or {}
+
+
+def _wireframe_context(endpoint) -> dict:
+    """Return handler-owned demo surface configuration, if declared."""
+    handler = resolve_handler_for_endpoint(endpoint)
+    hook = getattr(handler, "polysniffer_wireframe_context", None)
+    if not callable(hook):
+        return {}
+    context = hook(endpoint) or {}
+    return context if context.get("enabled") else {}
+
+
+def _include_mailbox_in_poll(*, mode: str, wireframe: bool, source: str) -> bool:
+    """Passthrough always; Native only when the Slack wireframe event pane is on."""
+    if not source:
+        return False
+    return mode == "passthrough" or bool(wireframe)
+
+
+def _mailbox_outcome(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    for atomic in result.get("results") or []:
+        if not isinstance(atomic, dict):
+            continue
+        if atomic.get("partner_id"):
+            return f"partner #{atomic['partner_id']}"
+        if atomic.get("order_name") or atomic.get("order_id"):
+            return str(atomic.get("order_name") or f"order #{atomic.get('order_id')}")
+        if atomic.get("status") in ("error", "failed"):
+            return str(atomic.get("detail") or atomic.get("error") or "error")
+    return str(result.get("status") or "")
+
+
+def _mailbox_transaction_state(row_status: str, result) -> str:
+    """Normalize mailbox + atomic results for both orchestration bars."""
+    if row_status in ("pending", "claimed", "failed", "expired"):
+        return row_status
+    if row_status != "processed" or not isinstance(result, dict):
+        return row_status or "unknown"
+    if result.get("status") == "no_instruction" or result.get("matched", 0) == 0:
+        return "no_consumer"
+    atomic_results = [
+        item for item in (result.get("results") or []) if isinstance(item, dict)
+    ]
+    if any(item.get("status") in ("error", "failed") for item in atomic_results):
+        return "failed"
+    if any(item.get("status") == "success" for item in atomic_results):
+        return "success"
+    return "processed"
+
+
+def _serialize_mailbox_event(row) -> dict:
+    """Expose action evidence without leaking Slack tokens/response URLs."""
+    envelope = row.envelope or {}
+    raw_payload = envelope.get("payload") or {}
+    allowed_payload = {
+        "command",
+        "text",
+        "user_id",
+        "user_name",
+        "channel_id",
+        "channel_name",
+        "team_id",
+        # Slack wireframe demo fields
+        "demo_id",
+        "name",
+        "email",
+        "phone",
+        "partner_name",
+        "partner_email",
+        "order_reference",
+        "note",
+    }
+    payload = {
+        key: raw_payload.get(key)
+        for key in allowed_payload
+        if raw_payload.get(key) not in (None, "")
+    }
+    result = row.result if isinstance(row.result, dict) else {}
+    return {
+        "id": row.id,
+        "source": row.source,
+        "event_key": envelope.get("event_key", ""),
+        "action_path": row.action_path,
+        "method": envelope.get("method", "POST"),
+        "direction": envelope.get("direction", "REQ"),
+        "status": row.status,
+        "transaction_state": _mailbox_transaction_state(row.status, result),
+        "result_status": result.get("status", ""),
+        "matched": result.get("matched", 0),
+        "executed": result.get("executed", len(result.get("results") or [])),
+        "outcome": _mailbox_outcome(result),
+        "error": (row.error or "")[:500],
+        "payload": payload,
+        "created_at": row.created_at.strftime("%H:%M:%S") if row.created_at else "",
+        "processed_at": row.processed_at.strftime("%H:%M:%S") if row.processed_at else "",
+    }
+
+
+def _serialize_dose_message(row) -> dict:
+    return {
+        "id": row.id,
+        "message": row.message,
+        "level": row.level,
+        "author": "PolySaaS" if row.user_id is None else "you",
+        "created_at": row.created_at.strftime("%H:%M:%S") if row.created_at else "",
+    }
+
+
 @staff_member_required
 def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_path: str = ""):
     """PolySniffer workspace — native capture (no orch bar) or passthrough + green bar."""
@@ -91,11 +212,28 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
     browse_subpath = _native_browse_subpath(endpoint)
     upstream_browse_url = f"{upstream_url}{browse_subpath}" if upstream_url else ""
     active_session = get_sniff_capture_session(request, endpoint_host) if active_mode else None
+    wireframe = _wireframe_context(endpoint)
 
     app_launch_url = ""
     pt_embed_ctx = None
     native_embed_ctx = None
-    if active_session and active_mode == "native":
+    if active_session and wireframe:
+        wireframe_body = render_to_string(
+            "polysniffer/slack_wireframe.html",
+            {"slack_wireframe_mode": active_mode},
+            request=request,
+        )
+        if active_mode == "native":
+            native_embed_ctx = {"native_embed_body": mark_safe(wireframe_body)}
+        elif active_mode == "passthrough":
+            orch_bar = render_to_string(
+                "polysniffer/sniff_pt_orchestration_bar.html",
+                request=request,
+            )
+            pt_embed_ctx = {
+                "passthrough_embed_body": mark_safe(orch_bar + wireframe_body)
+            }
+    elif active_session and active_mode == "native":
         # FIX 2026-08-21 (owner-approved): Inline Native — embed forwarder HTML in
         # the workspace left pane (no <object>, no iframe). Same pattern as
         # Passthrough inline, without the green orchestration bar.
@@ -164,6 +302,7 @@ def sniff_shell(request, endpoint_host: str, mode: str | None = None, browse_pat
         "poll_url": poll_url,
         "schema": schema,
         "native_top_level": False,
+        "wireframe_enabled": bool(wireframe),
     }
     if native_embed_ctx:
         context.update(native_embed_ctx)
@@ -189,6 +328,10 @@ def workspace_poll(request, endpoint_host: str):
         if not tenant:
             return JsonResponse({"success": False, "error": "no tenant context"}, status=400)
 
+        endpoint = get_endpoint_by_host(endpoint_host, request)
+        mailbox_context = _mailbox_context(endpoint)
+        wireframe_context = _wireframe_context(endpoint)
+
         ensure_trafficlog_capture_columns(request)
         _ensure_tenant_schema(tenant)
 
@@ -200,26 +343,17 @@ def workspace_poll(request, endpoint_host: str):
             since_id = int(request.GET.get("since_id", 0))
         except (TypeError, ValueError):
             since_id = 0
+        try:
+            mailbox_since_id = int(request.GET.get("mailbox_since_id", 0))
+        except (TypeError, ValueError):
+            mailbox_since_id = 0
+        try:
+            messages_since_id = int(request.GET.get("messages_since_id", 0))
+        except (TypeError, ValueError):
+            messages_since_id = 0
 
         session = get_sniff_capture_session(request, endpoint_host)
-        qs = TrafficLog.objects.all()
-        if session:
-            qs = qs.filter(capture_session=session)
-        else:
-            if mode == "passthrough":
-                qs = qs.filter(client_path__contains=f"/pt/admin/{endpoint_host}")
-            else:
-                qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
-
-        if not session:
-            qs = qs.filter(capture_source=mode)
-        if since_id:
-            qs = qs.filter(id__gt=since_id)
-            logs = list(qs.order_by("id")[:100])
-        else:
-            # Initial backfill: newest rows first in UI (client prepends in id order).
-            logs = list(qs.order_by("-id")[:100])
-            logs.reverse()
+        wireframe_mode = bool(wireframe_context)
 
         try:
             def _preview(text):
@@ -228,33 +362,96 @@ def workspace_poll(request, endpoint_host: str):
             def _more(text):
                 return len(text or "") > 500
 
-            captures = [
-                {
-                    "id": log.id,
-                    "method": log.method,
-                    "url": log.url,
-                    "path": log.path,
-                    "client_path": log.client_path,
-                    "status_code": log.status_code,
-                    "capture_source": log.capture_source,
-                    "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
-                    "duration_ms": log.duration_ms,
-                    "headers": log.headers or {},
-                    "cookies": getattr(log, "cookies", None) or {},
-                    "query_params": log.query_params or {},
-                    "body_preview": _preview(log.body or ""),
-                    "body_more": _more(log.body or ""),
-                    "response_headers": log.response_headers or {},
-                    "response_body_preview": _preview(log.response_body or ""),
-                    "response_body_more": _more(log.response_body or ""),
-                }
-                for log in logs
-            ]
+            captures = []
+            if not wireframe_mode:
+                qs = TrafficLog.objects.all()
+                if session:
+                    qs = qs.filter(capture_session=session)
+                else:
+                    if mode == "passthrough":
+                        qs = qs.filter(client_path__contains=f"/pt/admin/{endpoint_host}")
+                    else:
+                        qs = qs.filter(client_path__contains=f"/sniff/{endpoint_host}/")
+
+                if not session:
+                    qs = qs.filter(capture_source=mode)
+                if since_id:
+                    qs = qs.filter(id__gt=since_id)
+                    logs = list(qs.order_by("id")[:100])
+                else:
+                    # Initial backfill: newest rows first in UI (client prepends in id order).
+                    logs = list(qs.order_by("-id")[:100])
+                    logs.reverse()
+
+                captures = [
+                    {
+                        "id": log.id,
+                        "method": log.method,
+                        "url": log.url,
+                        "path": log.path,
+                        "client_path": log.client_path,
+                        "status_code": log.status_code,
+                        "capture_source": log.capture_source,
+                        "captured_at": log.captured_at.strftime("%H:%M:%S") if log.captured_at else "",
+                        "duration_ms": log.duration_ms,
+                        "headers": log.headers or {},
+                        "cookies": getattr(log, "cookies", None) or {},
+                        "query_params": log.query_params or {},
+                        "body_preview": _preview(log.body or ""),
+                        "body_more": _more(log.body or ""),
+                        "response_headers": log.response_headers or {},
+                        "response_body_preview": _preview(log.response_body or ""),
+                        "response_body_more": _more(log.response_body or ""),
+                    }
+                    for log in logs
+                ]
+
+            mailbox_events = []
+            if _include_mailbox_in_poll(
+                mode=mode,
+                wireframe=wireframe_mode,
+                source=mailbox_context.get("source") or "",
+            ):
+                from dose.models import WebhookMailbox
+
+                mailbox_qs = WebhookMailbox.objects.filter(
+                    source=mailbox_context["source"]
+                )
+                if mailbox_since_id:
+                    mailbox_qs = mailbox_qs.filter(id__gt=mailbox_since_id)
+                else:
+                    mailbox_qs = mailbox_qs.order_by("-id")[:100]
+                mailbox_rows = list(mailbox_qs.order_by("id")[:100]) if mailbox_since_id else list(mailbox_qs)
+                mailbox_rows.sort(key=lambda row: row.id)
+
+                for row in mailbox_rows:
+                    mailbox_events.append(_serialize_mailbox_event(row))
+
+            messages = []
+            if wireframe_mode:
+                from django.db.models import Q
+
+                from dose.models import DoseMessage
+
+                msg_qs = DoseMessage.objects.all()
+                user = getattr(request, "user", None)
+                if user is not None and getattr(user, "is_authenticated", False):
+                    msg_qs = msg_qs.filter(Q(user_id=user.pk) | Q(user_id__isnull=True))
+                if messages_since_id:
+                    msg_qs = msg_qs.filter(id__gt=messages_since_id)
+                    msg_rows = list(msg_qs.order_by("id")[:100])
+                else:
+                    msg_rows = list(msg_qs.order_by("-id")[:50])
+                    msg_rows.reverse()
+                messages = [_serialize_dose_message(row) for row in msg_rows]
         except Exception as exc:
             return JsonResponse(
                 {
                     "success": True,
                     "captures": [],
+                    "mailbox_events": [],
+                    "messages": [],
+                    "wireframe_enabled": wireframe_mode,
                     "session_active": bool(session),
                     "session_name": session.capture_name if session else "",
                     "mode": mode,
@@ -266,6 +463,9 @@ def workspace_poll(request, endpoint_host: str):
             {
                 "success": True,
                 "captures": captures,
+                "mailbox_events": mailbox_events,
+                "messages": messages,
+                "wireframe_enabled": wireframe_mode,
                 "session_active": bool(session),
                 "session_name": session.capture_name if session else "",
                 "mode": mode,
@@ -277,6 +477,9 @@ def workspace_poll(request, endpoint_host: str):
             {
                 "success": True,
                 "captures": [],
+                "mailbox_events": [],
+                "messages": [],
+                "wireframe_enabled": False,
                 "session_active": False,
                 "session_name": "",
                 "mode": "native",

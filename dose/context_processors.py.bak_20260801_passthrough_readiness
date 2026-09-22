@@ -357,7 +357,7 @@ def admin_navigation(request):
             # The middleware reads the trigger segment as a hostname to build the upstream URL.
             # Using the slug (e.g. 'odoo') instead of the hostname produces http://odoo which
             # fails for Render-hosted services. Using the netloc (e.g.
-            # 'polysaas-odoo2.onrender.com') lets the middleware infer the correct https:// URL.
+            # 'odoo.prod-polysaas.cloud') lets the middleware infer the correct https:// URL.
             _pt_netloc = urlparse(endpoint.endpoint_url).netloc or endpoint.slug
             url = f'/pt/admin/{_pt_netloc}/'
             if endpoint.starting_uri and endpoint.starting_uri not in ('/', ''):

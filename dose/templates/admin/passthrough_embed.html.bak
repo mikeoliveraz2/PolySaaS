@@ -2,7 +2,8 @@
 BINGO: Odoo One-Way PolySaaS Light/Dark Toggle — commit 04c5ec2e
 BINGO: Demo Tenant Odoo Embed o_web_client Shell — commit 7d05920e
 BINGO: Odoo Passthrough Layout Fix — 2026-06-09
-BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0 -->
+BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
+Owner-approved 2026-09-22: Type 3 — poll DoseMessages onto green bar after invoice Post refine. -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -510,8 +511,62 @@ body.polysaas-passthrough-embed-page {
 
 {% block extrajs %}
 {{ block.super }}
-<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260629-2"></script>
+<script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260922-t3"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
+{# Type 3: surface mailbox-consumer DoseMessages (e.g. invoice note refined) on the green bar. #}
+<script>
+(function () {
+    'use strict';
+    var seen = {};
+    function csrf() {
+        var m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+    function show(msg) {
+        if (window.PolySaaSOrchBar && window.__psOrchBarInstance && window.__psOrchBarInstance.showEvent) {
+            window.__psOrchBarInstance.showEvent(msg);
+            return;
+        }
+        if (typeof window.__psShowOrchEvent === 'function') {
+            window.__psShowOrchEvent(msg);
+            return;
+        }
+        var el = document.getElementById('pss-orch-event');
+        var st = document.getElementById('pss-orch-status');
+        if (st) {
+            st.textContent = /refined/i.test(msg) ? 'SUCCESS' : 'ACTIVE';
+            st.style.color = '#86efac';
+        }
+        if (el) {
+            el.textContent = (msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg));
+            el.style.display = 'inline';
+        }
+    }
+    function interesting(text) {
+        if (!text) return false;
+        return /invoice|refin|queued|description|note/i.test(text);
+    }
+    function poll() {
+        fetch('/dose/api/unread-dosemessages/', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || !data.messages) return;
+                var list = data.messages || data.unread || [];
+                if (!Array.isArray(list) && data.results) list = data.results;
+                list.forEach(function (row) {
+                    var id = row.id || row.pk;
+                    var text = row.message || row.text || '';
+                    if (!id || seen[id] || !interesting(text)) return;
+                    seen[id] = true;
+                    show(text);
+                });
+            })
+            .catch(function () {});
+    }
+    setInterval(poll, 2500);
+    setTimeout(poll, 800);
+})();
+</script>
 {% if embed_mailbox_poll_url and not embed_slack_wireframe %}
 <script src="{% static 'admin/js/orchestration_bar.js' %}?v=20260823-1"></script>
 <script id="pss-mailbox-bridge"

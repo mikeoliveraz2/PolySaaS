@@ -40,7 +40,7 @@ def _get_mattermost_base_url() -> str:
         or str(getattr(settings, "MATTERMOST_URL", "") or "").strip()
     ).rstrip("/")
     if not url:
-        return "https://polysaas-mattermost.onrender.com"
+        return "https://mm.prod-polysaas.cloud"
     return url
 
 

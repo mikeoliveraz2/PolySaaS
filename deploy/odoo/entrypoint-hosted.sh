@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # First stderr line: if deploy logs never show this, the kernel did not run this script (shebang/CRLF,
 # wrong entrypoint, or Render start command bypassing the image ENTRYPOINT). See README.txt.
-echo "[entrypoint-render] boot line1 pid=$$ 0=$0" >&2
+echo "[entrypoint-hosted] boot line1 pid=$$ 0=$0" >&2
 # This file must use LF line endings only (CRLF breaks the shebang on Linux / Render).
 # Render sets PORT to the HTTP listener (e.g. 10000). Odoo's /entrypoint.sh reuses the name PORT
 # for Postgres — unreliable on Render. We skip /entrypoint.sh for DB checks and run odoo with
@@ -17,13 +17,13 @@ if [ -z "${HOST_VAL}" ]; then
   _eodb="${ODOO_DB_HOST:-}"
   _pgh="${PGHOST:-}"
   _hst="${HOST:-}"
-  echo "[entrypoint-render] debug: ODOO_DB_HOST_empty=$([ -z "${_eodb}" ] && echo yes || echo no) PGHOST_empty=$([ -z "${_pgh}" ] && echo yes || echo no) HOST_empty=$([ -z "${_hst}" ] && echo yes || echo no)" >&2
+  echo "[entrypoint-hosted] debug: ODOO_DB_HOST_empty=$([ -z "${_eodb}" ] && echo yes || echo no) PGHOST_empty=$([ -z "${_pgh}" ] && echo yes || echo no) HOST_empty=$([ -z "${_hst}" ] && echo yes || echo no)" >&2
   echo "FATAL: Set ODOO_DB_HOST (required) to the Postgres internal hostname. Legacy: PGHOST or HOST. Not a postgresql:// URL." >&2
   exit 1
 fi
 export HOST="$HOST_VAL"
 
-RENDER_HTTP_PORT="${PORT:-8069}"
+HTTP_PORT="${PORT:-8069}"
 
 RUNTIME_LOGIN="$(id -un)"
 USER_VAL="${ODOO_DB_USER:-${DB_USER:-${PGUSER:-${POSTGRES_USER:-}}}}"
@@ -67,35 +67,35 @@ if [ -r "$ODOO_BASE" ]; then
   umask 077
   grep -Ev '^[[:space:]]*(db_port|db_host|db_user|db_password)[[:space:]]*=' "$ODOO_BASE" >"$TMP_RC" || true
   if [ ! -s "$TMP_RC" ]; then
-    echo "[entrypoint-render] WARNING: stripped odoo.conf empty; using minimal [options] only." >&2
+    echo "[entrypoint-hosted] WARNING: stripped odoo.conf empty; using minimal [options] only." >&2
     printf '%s\n' '[options]' >"$TMP_RC"
   fi
   chmod 600 "$TMP_RC" 2>/dev/null || true
   export ODOO_RC="$TMP_RC"
 else
-  echo "[entrypoint-render] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
+  echo "[entrypoint-hosted] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
 fi
 
-echo "[entrypoint-render] waiting for Postgres ${HOST}:${DB_PORT} dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
+echo "[entrypoint-hosted] waiting for Postgres ${HOST}:${DB_PORT} dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
 n=0
 while [ "$n" -lt 60 ]; do
   if PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
     psql -h "$HOST" -p "$DB_PORT" -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' >/dev/null 2>&1; then
-    echo "[entrypoint-render] Postgres is reachable." >&2
+    echo "[entrypoint-hosted] Postgres is reachable." >&2
     break
   fi
   n=$((n + 1))
   if [ "$n" -eq 60 ]; then
-    echo "[entrypoint-render] diagnostic (last psql attempt):" >&2
+    echo "[entrypoint-hosted] diagnostic (last psql attempt):" >&2
     PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
       psql -h "$HOST" -p "$DB_PORT" -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' 2>&1 | tail -n 8 >&2 || true
-    echo "[entrypoint-render] FATAL: could not connect after 60 attempts. Check ODOO_DB_HOST, ODOO_DB_USER, ODOO_DB_PASSWORD, ODOO_DB_NAME=${DBN_VAL}, ODOO_DB_PORT=${DB_PORT}, PGSSLMODE." >&2
+    echo "[entrypoint-hosted] FATAL: could not connect after 60 attempts. Check ODOO_DB_HOST, ODOO_DB_USER, ODOO_DB_PASSWORD, ODOO_DB_NAME=${DBN_VAL}, ODOO_DB_PORT=${DB_PORT}, PGSSLMODE." >&2
     exit 1
   fi
   sleep 2
 done
 
-echo "[entrypoint-render] starting odoo http_port=${RENDER_HTTP_PORT} db=${HOST}:${DB_PORT} dbname=${DBN_VAL}" >&2
+echo "[entrypoint-hosted] starting odoo http_port=${HTTP_PORT} db=${HOST}:${DB_PORT} dbname=${DBN_VAL}" >&2
 
 unset PORT 2>/dev/null || true
 
@@ -104,7 +104,7 @@ unset PORT 2>/dev/null || true
 # the service after the first good deploy (avoids an extra psql probe every boot).
 _invoke_odoo() {
   odoo \
-    --http-port="${RENDER_HTTP_PORT}" \
+    --http-port="${HTTP_PORT}" \
     --proxy-mode \
     --db_host="$HOST" \
     --db_port="${DB_PORT}" \
@@ -122,13 +122,13 @@ if [ "${ODOO_AUTO_INIT:-0}" = "1" ] || [ "${ODOO_AUTO_INIT:-}" = "true" ] || [ "
       "SELECT state FROM ir_module_module WHERE name = 'web' LIMIT 1;" 2>/dev/null || echo "ERROR"
   )"
   WEB_STATE_CLEAN="$(printf '%s' "${WEB_STATE}" | tr -d '[:space:]')"
-  echo "[entrypoint-render] ODOO_AUTO_INIT: web module state='${WEB_STATE_CLEAN}' (raw='${WEB_STATE}')" >&2
+  echo "[entrypoint-hosted] ODOO_AUTO_INIT: web module state='${WEB_STATE_CLEAN}' (raw='${WEB_STATE}')" >&2
   if [ "${WEB_STATE_CLEAN}" = "installed" ]; then
-    echo "[entrypoint-render] ODOO_AUTO_INIT: web module already installed; skipping -i." >&2
+    echo "[entrypoint-hosted] ODOO_AUTO_INIT: web module already installed; skipping -i." >&2
   else
-    echo "[entrypoint-render] ODOO_AUTO_INIT: web module not installed; running -i base,web --stop-after-init..." >&2
+    echo "[entrypoint-hosted] ODOO_AUTO_INIT: web module not installed; running -i base,web --stop-after-init..." >&2
     _invoke_odoo -i base,web --stop-after-init
-    echo "[entrypoint-render] ODOO_AUTO_INIT: install step finished." >&2
+    echo "[entrypoint-hosted] ODOO_AUTO_INIT: install step finished." >&2
   fi
 fi
 
@@ -137,7 +137,7 @@ if [ "${1:-}" = "odoo" ]; then
 fi
 
 exec odoo \
-  --http-port="${RENDER_HTTP_PORT}" \
+  --http-port="${HTTP_PORT}" \
   --proxy-mode \
   --db_host="$HOST" \
   --db_port="${DB_PORT}" \

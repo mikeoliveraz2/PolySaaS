@@ -20,7 +20,7 @@ Endpoints
 Environment
 -------------
   PEERS_UPSTREAM_DJANGO_URL   Required. Base URL only, no path. Example:
-                              https://polysaas-core.onrender.com
+                              https://app.prod-polysaas.cloud
 
   AI_PEERS_WEBHOOK_TOKEN      Optional. If set, JSON body must include the same
                               token field as Mattermost/Django expect (defense

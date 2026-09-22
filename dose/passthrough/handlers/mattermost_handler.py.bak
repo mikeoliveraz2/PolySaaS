@@ -1,5 +1,6 @@
 # =============================================================================
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Hostinger Mattermost passthrough Town Square — 2026-09-13 — commit c94bd17b — see documentation/BINGO_HOSTINGER_MM_PASSTHROUGH_2026-09-13.md
 # BINGO: Mattermost passthrough restored — PolySaaSOline Town Square — 2026-09-07 — commit b4b6be03
 # BINGO: Mattermost slug identity + SSO Town Square working — 2026-08-02 — see documentation/BINGO_MATTERMOST_SLUG_IDENTITY_SSO_WORKING_2026-08-02.md
 # BINGO: PolySaaS → Mattermost one-way theme sync — commit 10427a4d
@@ -2083,7 +2084,7 @@ try {{
                 print(f'[MM RESP] Login-shell safety-net error: {exc}')
 
         # Proxy URL makes the SPA request /api/v4/teams/name/pt (etc.). Recover with the user's real team.
-        _bogus_slugs = frozenset({'pt', 'admin', 'polysaas-mattermost.onrender.com'})
+        _bogus_slugs = frozenset({'pt', 'admin', 'mm.prod-polysaas.cloud'})
         _missing_team = re.search(r'/api/v4/teams/name/([^/?#]+)/?(?:\?|$)', combined)
         if resp.status_code in (403, 404) and _missing_team:
             _missing_slug = _missing_team.group(1)
@@ -2452,7 +2453,7 @@ try {{
         var m = _mmApiPath(url).match(/^\\/api\\/v4\\/teams\\/name\\/([^/?#]+)/);
         return m ? m[1] : null;
     }}
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
     function _mmBogusTeamSlug(url) {{
         var slug = _mmTeamNameSlug(url);
         return (slug && _bogusTeamSlugs[slug]) ? slug : null;
@@ -4333,7 +4334,7 @@ try {{
     }}
 
     /* Passthrough URL makes SPA use bogus team slugs (pt, admin, host) — resolve via /users/me/teams */
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
 
     function _mmResolveTeamsFromMe() {{
         if (!MMAUTHTOKEN) return Promise.resolve(null);

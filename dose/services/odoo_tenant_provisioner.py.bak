@@ -16,7 +16,7 @@ Architecture:
     so the sidebar "Odoo" link appears immediately.
 
 Settings used:
-  ODOO_SHARED_URL              — e.g. https://polysaas-odoo2.onrender.com
+  ODOO_SHARED_URL              — e.g. https://odoo.prod-polysaas.cloud
   ODOO_SHARED_DB               — e.g. odoodb
   ODOO_SHARED_ADMIN_LOGIN      — e.g. odooAdmin
   POLYSAAS_APP_ADMIN_PASSWORD  — shared admin password (e.g. PolySaaS2026!)

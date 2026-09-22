@@ -611,7 +611,7 @@ class MattermostPassthroughHandler:
         pwd_attr = h(password, quote=True)
         user_email_js = json.dumps(user_email)
         mm_origin = (getattr(endpoint, "endpoint_url", "") or "").rstrip("/")
-        mm_url_js = json.dumps(mm_origin or "https://polysaas-mattermost.onrender.com")
+        mm_url_js = json.dumps(mm_origin or "https://mm.prod-polysaas.cloud")
 
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Sign in · Mattermost</title>

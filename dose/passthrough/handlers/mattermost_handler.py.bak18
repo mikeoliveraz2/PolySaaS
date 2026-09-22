@@ -644,7 +644,7 @@ try {{
                 document.cookie = 'MMAUTHTOKEN=' + token + '; path=/; max-age=86400; SameSite=Lax';
                 setStatus('Success! Loading...');
                 // Write token to IndexedDB so Mattermost Redux hydrates correctly
-                var mmUrl = 'https://polysaas-mattermost.onrender.com';
+                var mmUrl = 'https://mm.prod-polysaas.cloud';
                 try {{
                     var req = indexedDB.open('localforage', 2);
                     req.onsuccess = function(e) {{
@@ -1815,7 +1815,7 @@ try {{
     }}
 
     /* TEAMS NOT REQUIRED FOR LOGIN (Michael) — /api/v4/teams/name/* shim intercept disabled.
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
     ... teams/name intercept ...
     */
 

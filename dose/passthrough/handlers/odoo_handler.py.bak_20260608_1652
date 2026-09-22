@@ -88,8 +88,8 @@ class OdooPassthroughHandler:
             proxy_prefix = f"/pt/admin/{_path_parts[2]}"
             trigger = _path_parts[2]
         else:
-            proxy_prefix = "/pt/admin/polysaas-odoo2.onrender.com"
-            trigger = "polysaas-odoo2.onrender.com"
+            proxy_prefix = "/pt/admin/odoo.prod-polysaas.cloud"
+            trigger = "odoo.prod-polysaas.cloud"
         
         # Get base origin for direct asset loading
         origin = endpoint_url.rstrip("/")

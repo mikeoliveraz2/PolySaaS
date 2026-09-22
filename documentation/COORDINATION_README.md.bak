@@ -489,7 +489,7 @@ Key secrets include: `django-secret-key`, `dose-db-password`, `db-host`, `db-por
 ### Keys in .env (already set)
 - `XAI_API_KEY` ✅
 - `GEMINI_API_KEY` ✅
-- `MATTERMOST_URL=https://polysaas-mattermost.onrender.com` ✅
+- `MATTERMOST_URL=https://mm.prod-polysaas.cloud` ✅
 - `BOT_TOKEN_SUPERGROK`, `BOT_TOKEN_GEM`, `BOT_TOKEN_CC` ✅
 
 ### Blocker — Listener Token Expired
@@ -671,7 +671,7 @@ The blank page persists despite fixes. Current theory:
 4. Click Odoo passthrough link
 5. Check full debug output in console
 
-**Or:** Test via URL directly: `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/web/login`
+**Or:** Test via URL directly: `http://localhost:8000/pt/admin/odoo.prod-polysaas.cloud/web/login`
 
 **Assistant will:**
 - Help interpret local debug output
@@ -822,8 +822,8 @@ Fixed passthrough endpoint visibility and functionality for the current tenant. 
 - `dose/passthrough/handlers/odoo_handler.py` - Added fallback and debug logging for body extraction
 
 ### URLs Configured
-- Odoo: `https://polysaas-odoo2.onrender.com`
-- Mattermost: `https://polysaas-mattermost.onrender.com`
+- Odoo: `https://odoo.prod-polysaas.cloud`
+- Mattermost: `https://mm.prod-polysaas.cloud`
 - NextCloud: `http://polysaas-nextcloud:80` (internal Docker)
 
 ---
@@ -1223,7 +1223,7 @@ Changed strategy from client-side JSON-RPC auto-login to **server-side SSO** whe
 
 ### Next Session First Task
 1. **Restart local server** if needed (`python manage.py runserver`)
-2. **Navigate to Odoo passthrough** (e.g. `http://localhost:8000/pt/admin/polysaas-odoo2.onrender.com/`)
+2. **Navigate to Odoo passthrough** (e.g. `http://localhost:8000/pt/admin/odoo.prod-polysaas.cloud/`)
 3. **Watch for alert sequence**:
    - `[PolySaaS Odoo] Auto-login starting for: ...`
    - `[PolySaaS Odoo] Calling SSO endpoint...`

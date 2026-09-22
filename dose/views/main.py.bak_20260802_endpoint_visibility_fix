@@ -964,7 +964,7 @@ def _build_landing_page_context(request):
 
 
 def _resolve_landing_passthrough_endpoint(trigger):
-    """NOTE: trigger is now a hostname (e.g. polysaas-odoo2.onrender.com).
+    """NOTE: trigger is now a hostname (e.g. odoo.prod-polysaas.cloud).
     Lookup by endpoint_url hostname match."""
     from dose.models import PassThroughEndpoint
     from urllib.parse import urlparse

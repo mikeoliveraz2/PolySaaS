@@ -1,7 +1,7 @@
 """
 Compare admin index behaviour without changing templates.
 
-Usage (local or Render shell):
+Usage (local or Hostinger shell):
 
   python manage.py diagnose_admin_dashboard --email you@example.com
 
@@ -10,8 +10,8 @@ Reports HTTP status, resolved template, app_list length from context, Jazzmin
 card count in HTML, and whether the PolySaaS orchestration strip is present.
 
 The test client defaults to Host: testserver, which is not in typical production
-ALLOWED_HOSTS (e.g. Render). This command picks a valid Host automatically, or
-use ``--http-host`` to override.
+ALLOWED_HOSTS. This command picks a valid Host automatically, or use
+``--http-host`` to override.
 """
 
 from __future__ import annotations
@@ -29,16 +29,18 @@ def _http_host_for_test_client(explicit: str = "") -> str:
     if (explicit or "").strip():
         return explicit.strip()
 
-    raw = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
-    if raw:
-        host = urlparse(raw).hostname
-        if host:
-            return host
+    # Prefer public app URL when set (Hostinger / Dokploy).
+    for env_key in ("POLYSAAS_PUBLIC_URL", "APP_PUBLIC_URL", "SITE_URL"):
+        raw = os.environ.get(env_key, "").strip()
+        if raw:
+            host = urlparse(raw).hostname
+            if host:
+                return host
 
     hosts = list(getattr(settings, "ALLOWED_HOSTS", []) or [])
     if "*" in hosts:
         return "testserver"
-    for cand in ("localhost", "127.0.0.1"):
+    for cand in ("localhost", "127.0.0.1", "app.prod-polysaas.cloud"):
         if cand in hosts:
             return cand
     for h in hosts:
@@ -48,13 +50,13 @@ def _http_host_for_test_client(explicit: str = "") -> str:
     for h in hosts:
         hs = str(h)
         if hs.startswith("."):
-            # e.g. ".onrender.com" → any subdomain is accepted by Django
+            # e.g. ".prod-polysaas.cloud" → any subdomain is accepted by Django
             return f"shell-diagnostic{hs}"
     return "localhost"
 
 
 class Command(BaseCommand):
-    help = "GET /admin/ as a user and print admin index diagnostics (local vs Render)."
+    help = "GET /admin/ as a user and print admin index diagnostics (local vs Hostinger)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -71,7 +73,7 @@ class Command(BaseCommand):
             "--http-host",
             dest="http_host",
             default="",
-            help="Host header for the test request (default: derived from ALLOWED_HOSTS / RENDER_EXTERNAL_URL).",
+            help="Host header for the test request (default: derived from ALLOWED_HOSTS / POLYSAAS_PUBLIC_URL).",
         )
 
     def handle(self, *args, **options):

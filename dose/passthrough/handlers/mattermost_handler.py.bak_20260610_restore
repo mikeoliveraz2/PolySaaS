@@ -3281,7 +3281,7 @@ try {{
     }}
 
     /* Passthrough URL makes SPA use bogus team slugs (pt, admin, host) — resolve via /users/me/teams */
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
 
     function _mmResolveTeamsFromMe() {{
         if (!MMAUTHTOKEN) return Promise.resolve(null);

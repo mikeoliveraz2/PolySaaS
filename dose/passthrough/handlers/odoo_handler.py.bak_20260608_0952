@@ -638,7 +638,7 @@ class OdooPassthroughHandler:
             db_name = extra.get("odoo_db") or getattr(settings, 'ODOO_SHARED_DB', 'odoodb')
 
             # Resolve Odoo base URL from settings (reliable) or extra_config
-            odoo_url = extra.get("odoo_url") or getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+            odoo_url = extra.get("odoo_url") or getattr(settings, 'ODOO_SHARED_URL', 'https://odoo.prod-polysaas.cloud')
             print(f"[ODOO HANDLER] get_upstream_cookies: tenant={tenant.slug}, login={login_id}, db={db_name}, url={odoo_url}")
 
             resp = _req.post(

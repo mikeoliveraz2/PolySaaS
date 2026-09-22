@@ -1048,7 +1048,7 @@ window.location.replace('/');
         # If we already have a session token, validate it with upstream before reusing.
         # Reusing a valid token avoids unnecessary plugin auth (which creates a new Mattermost
         # session and may invalidate the one the browser SPA is already using).
-        # If the token is invalid (e.g. Mattermost restarted on Render.com free tier), clear
+        # If the token is invalid (e.g. Mattermost restarted / session invalidated), clear
         # it and fall through to fresh plugin auth below.
         existing_tok = (request.session.get(self._SIDEBAR_AUTH_SESSION_KEY) or '').strip()
         if existing_tok:
@@ -2084,7 +2084,7 @@ try {{
                 print(f'[MM RESP] Login-shell safety-net error: {exc}')
 
         # Proxy URL makes the SPA request /api/v4/teams/name/pt (etc.). Recover with the user's real team.
-        _bogus_slugs = frozenset({'pt', 'admin', 'polysaas-mattermost.onrender.com'})
+        _bogus_slugs = frozenset({'pt', 'admin', 'mm.prod-polysaas.cloud'})
         _missing_team = re.search(r'/api/v4/teams/name/([^/?#]+)/?(?:\?|$)', combined)
         if resp.status_code in (403, 404) and _missing_team:
             _missing_slug = _missing_team.group(1)
@@ -2453,7 +2453,7 @@ try {{
         var m = _mmApiPath(url).match(/^\\/api\\/v4\\/teams\\/name\\/([^/?#]+)/);
         return m ? m[1] : null;
     }}
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
     function _mmBogusTeamSlug(url) {{
         var slug = _mmTeamNameSlug(url);
         return (slug && _bogusTeamSlugs[slug]) ? slug : null;
@@ -4334,7 +4334,7 @@ try {{
     }}
 
     /* Passthrough URL makes SPA use bogus team slugs (pt, admin, host) — resolve via /users/me/teams */
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
 
     function _mmResolveTeamsFromMe() {{
         if (!MMAUTHTOKEN) return Promise.resolve(null);

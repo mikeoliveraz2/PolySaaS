@@ -127,7 +127,7 @@ class OdooInvoiceNotifier(AtomicServiceBase):
     @staticmethod
     def _load_mm_config(request):
         config = {
-            'mm_url': 'https://polysaas-mattermost.onrender.com',
+            'mm_url': 'https://mm.prod-polysaas.cloud',
             'mm_token': '',
             'mm_channel': 'town-square',
         }

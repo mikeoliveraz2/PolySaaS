@@ -72,7 +72,7 @@ class AtomicServiceSelectorTests(SimpleTestCase):
         self.assertTrue(service_visible_for_app(CaptureGetResponse, "salesforce"))
 
     def test_empty_slug_falls_back_to_url(self):
-        ep = SimpleNamespace(slug="", endpoint_url="https://polysaas-mattermost.onrender.com", menu_title="Mattermost")
+        ep = SimpleNamespace(slug="", endpoint_url="https://mm.prod-polysaas.cloud", menu_title="Mattermost")
         self.assertEqual(app_key_from_endpoint(ep), "mattermost")
 
     def test_app_query_param_accepts_any_slug(self):

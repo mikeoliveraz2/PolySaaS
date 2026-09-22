@@ -1,0 +1,71 @@
+# Dynamic Traefik configuration for Render
+# This file is watched by Traefik and allows runtime updates
+
+http:
+  routers:
+    # Default Traefik service route (for testing)
+    traefik-default:
+      rule: "Host(`traefik-yw2j.onrender.com`)"
+      service: polysaas-core
+      entryPoints:
+        - web
+      priority: 1
+
+    # PolySaaS Core (Render web service)
+    polysaas-core:
+      rule: "Host(`production.polysaas.online`)"
+      service: polysaas-core
+      entryPoints:
+        - web
+      priority: 100
+
+    # Odoo
+    odoo:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
+      service: odoo
+      entryPoints:
+        - web
+      middlewares:
+        - strip-odoo
+
+    # Mattermost
+    mattermost:
+      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost`)"
+      service: mattermost
+      entryPoints:
+        - web
+      middlewares:
+        - strip-mattermost
+
+  services:
+    # Render service URLs
+    polysaas-core:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://app.prod-polysaas.cloud
+
+    odoo:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://odoo.prod-polysaas.cloud
+
+    mattermost:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: https://mm.prod-polysaas.cloud
+
+  middlewares:
+    strip-odoo:
+      stripprefix:
+        prefixes:
+          - /odoo
+        forceSlash: false
+
+    strip-mattermost:
+      stripprefix:
+        prefixes:
+          - /mattermost
+        forceSlash: false

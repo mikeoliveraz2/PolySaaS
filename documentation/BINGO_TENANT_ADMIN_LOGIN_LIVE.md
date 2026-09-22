@@ -3,7 +3,7 @@
 **Date:** April 21, 2026
 **Status:** **Verified in production** — tenant created, admin user authenticated, admin dashboard loads.
 **Branch:** `main`
-**Primary URL:** `https://polysaas-core.onrender.com`
+**Primary URL:** `https://app.prod-polysaas.cloud`
 
 ---
 

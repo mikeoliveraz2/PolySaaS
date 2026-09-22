@@ -1,71 +1,44 @@
-# Dynamic Traefik configuration for Render
-# This file is watched by Traefik and allows runtime updates
+# Dynamic Traefik configuration for Hostinger / Dokploy (local lab optional).
+# Prefer deploy/hostinger Traefik labels in production.
 
 http:
   routers:
-    # Default Traefik service route (for testing)
-    traefik-default:
-      rule: "Host(`traefik-yw2j.onrender.com`)"
-      service: polysaas-core
-      entryPoints:
-        - web
-      priority: 1
-
-    # PolySaaS Core (Render web service)
     polysaas-core:
-      rule: "Host(`production.polysaas.online`)"
+      rule: "Host(`app.prod-polysaas.cloud`)"
       service: polysaas-core
       entryPoints:
         - web
       priority: 100
 
-    # Odoo
     odoo:
-      rule: "Host(`production.polysaas.online`) && PathPrefix(`/odoo`)"
+      rule: "Host(`odoo.prod-polysaas.cloud`)"
       service: odoo
       entryPoints:
         - web
-      middlewares:
-        - strip-odoo
+      priority: 100
 
-    # Mattermost
     mattermost:
-      rule: "Host(`production.polysaas.online`) && PathPrefix(`/mattermost`)"
+      rule: "Host(`mm.prod-polysaas.cloud`)"
       service: mattermost
       entryPoints:
         - web
-      middlewares:
-        - strip-mattermost
+      priority: 100
 
   services:
-    # Render service URLs
     polysaas-core:
       loadBalancer:
-        passHostHeader: false
+        passHostHeader: true
         servers:
-          - url: https://polysaas-core.onrender.com
+          - url: http://django:8000
 
     odoo:
       loadBalancer:
-        passHostHeader: false
+        passHostHeader: true
         servers:
-          - url: https://polysaas-odoo2.onrender.com
+          - url: http://odoo:8069
 
     mattermost:
       loadBalancer:
-        passHostHeader: false
+        passHostHeader: true
         servers:
-          - url: https://polysaas-mattermost.onrender.com
-
-  middlewares:
-    strip-odoo:
-      stripprefix:
-        prefixes:
-          - /odoo
-        forceSlash: false
-
-    strip-mattermost:
-      stripprefix:
-        prefixes:
-          - /mattermost
-        forceSlash: false
+          - url: http://mattermost:8065

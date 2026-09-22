@@ -14,7 +14,7 @@ if [ -z "${HOST_VAL}" ]; then
 fi
 export HOST="$HOST_VAL"
 
-RENDER_HTTP_PORT="${PORT:-8069}"
+HTTP_PORT="${PORT:-8069}"
 
 RUNTIME_LOGIN="$(id -un)"
 # Prefer explicit DB role names (Render / polysaas-odoo env group uses ODOO_DB_USER).
@@ -41,7 +41,7 @@ export HOST USER="${USER_VAL}" PASSWORD="${DB_PASS}"
 export PGHOST="${HOST}" PGPORT=5432 PGUSER="${USER_VAL}" PGPASSWORD="${DB_PASS}" PGDATABASE="${DBN_VAL}"
 
 # Render Postgres (internal hostnames like dpg-*) expect TLS — "prefer" often never connects.
-# https://render.com/docs/postgresql-creating-a-database
+# https://www.postgresql.org/docs/
 if [ -z "${PGSSLMODE:-}" ]; then
   case "$HOST" in
     dpg-*)
@@ -60,35 +60,35 @@ if [ -r "$ODOO_BASE" ]; then
   umask 077
   grep -Ev '^[[:space:]]*(db_port|db_host|db_user|db_password)[[:space:]]*=' "$ODOO_BASE" >"$TMP_RC" || true
   if [ ! -s "$TMP_RC" ]; then
-    echo "[entrypoint-render] WARNING: stripped odoo.conf empty; using minimal [options] only." >&2
+    echo "[entrypoint-hosted] WARNING: stripped odoo.conf empty; using minimal [options] only." >&2
     printf '%s\n' '[options]' >"$TMP_RC"
   fi
   chmod 600 "$TMP_RC" 2>/dev/null || true
   export ODOO_RC="$TMP_RC"
 else
-  echo "[entrypoint-render] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
+  echo "[entrypoint-hosted] WARNING: cannot read ODOO_RC base at $ODOO_BASE; using defaults." >&2
 fi
 
-echo "[entrypoint-render] waiting for Postgres ${HOST}:5432 dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
+echo "[entrypoint-hosted] waiting for Postgres ${HOST}:5432 dbname=${DBN_VAL} PGSSLMODE=${PGSSLMODE}..." >&2
 n=0
 while [ "$n" -lt 60 ]; do
   if PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
     psql -h "$HOST" -p 5432 -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' >/dev/null 2>&1; then
-    echo "[entrypoint-render] Postgres is reachable." >&2
+    echo "[entrypoint-hosted] Postgres is reachable." >&2
     break
   fi
   n=$((n + 1))
   if [ "$n" -eq 60 ]; then
-    echo "[entrypoint-render] diagnostic (last psql attempt):" >&2
+    echo "[entrypoint-hosted] diagnostic (last psql attempt):" >&2
     PGPASSWORD="$DB_PASS" PGSSLMODE="${PGSSLMODE}" \
       psql -h "$HOST" -p 5432 -U "$USER_VAL" -d "$DBN_VAL" -c 'select 1' 2>&1 | tail -n 8 >&2 || true
-    echo "[entrypoint-render] FATAL: could not connect after 60 attempts. Verify ODOO_DB_USER/PASSWORD, that database \"${DBN_VAL}\" exists on this server, and PGSSLMODE (Render: we default to require for dpg-* hosts)." >&2
+    echo "[entrypoint-hosted] FATAL: could not connect after 60 attempts. Verify ODOO_DB_USER/PASSWORD, that database \"${DBN_VAL}\" exists on this server, and PGSSLMODE (Render: we default to require for dpg-* hosts)." >&2
     exit 1
   fi
   sleep 2
 done
 
-echo "[entrypoint-render] starting odoo http_port=${RENDER_HTTP_PORT} db=${HOST}:5432 dbname=${DBN_VAL}" >&2
+echo "[entrypoint-hosted] starting odoo http_port=${HTTP_PORT} db=${HOST}:5432 dbname=${DBN_VAL}" >&2
 
 # Drop inherited Render PORT before starting Odoo so nothing in the stack misreads it as DB.
 unset PORT 2>/dev/null || true
@@ -98,7 +98,7 @@ if [ "${1:-}" = "odoo" ]; then
 fi
 
 exec odoo \
-  --http-port="${RENDER_HTTP_PORT}" \
+  --http-port="${HTTP_PORT}" \
   --proxy-mode \
   --db_host="$HOST" \
   --db_port=5432 \

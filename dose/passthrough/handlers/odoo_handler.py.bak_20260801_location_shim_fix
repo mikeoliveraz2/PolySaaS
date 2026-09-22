@@ -822,7 +822,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             odoo_url = (
                 extra.get('odoo_url')
                 or ta.app_url
-                or getattr(settings, 'ODOO_SHARED_URL', 'https://polysaas-odoo2.onrender.com')
+                or getattr(settings, 'ODOO_SHARED_URL', 'https://odoo.prod-polysaas.cloud')
             ).rstrip('/')
             scheme = self._polysaas_display_mode(request)
 

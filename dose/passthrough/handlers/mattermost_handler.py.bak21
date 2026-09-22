@@ -1940,7 +1940,7 @@ try {{
     }}
 
     /* TEAMS NOT REQUIRED FOR LOGIN (Michael) — /api/v4/teams/name/* shim intercept disabled.
-    var _bogusTeamSlugs = {{'pt':1,'admin':1,'polysaas-mattermost.onrender.com':1}};
+    var _bogusTeamSlugs = {{'pt':1,'admin':1,'mm.prod-polysaas.cloud':1}};
     ... teams/name intercept ...
     */
 
