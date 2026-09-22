@@ -8,7 +8,8 @@ Owner-approved 2026-09-22: Type 3 cache-bust t4 + force re-fetch standing_by on 
 Owner-approved 2026-09-22: cache-bust t5 — browser still served pre-standing_by JS after Confirm.
 Owner-approved 2026-09-22: cache-bust t6 — drop stale navigate responses racing no-match over ready.
 Owner-approved 2026-09-22: cache-bust t7 — server-paint standing_by; never overwrite with empty navigate.
-Owner-approved 2026-09-22: cache-bust t8 — invoice/odoo paths always show Type 3 standing (no more no-match flash). -->
+Owner-approved 2026-09-22: cache-bust t8 — invoice/odoo paths always show Type 3 standing (no more no-match flash).
+Owner-approved 2026-09-23: newest DoseMessage wins so refining note does not cover the result. -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -577,7 +578,8 @@ body.polysaas-passthrough-embed-page {
                 if (!data || !data.messages) return;
                 var list = data.messages || data.unread || [];
                 if (!Array.isArray(list) && data.results) list = data.results;
-                list.forEach(function (row) {
+                // API is newest-first. Apply oldest first so the latest Note result wins.
+                list.slice().reverse().forEach(function (row) {
                     var id = row.id || row.pk;
                     var text = row.message || row.text || '';
                     if (!id || seen[id] || !interesting(text)) return;

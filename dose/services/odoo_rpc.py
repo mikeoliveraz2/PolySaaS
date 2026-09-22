@@ -27,6 +27,8 @@ class OdooRpcError(Exception):
         self.status = status
         extra.pop("password", None)
         extra.pop("odoo_password", None)
+        extra.pop("session_id", None)
+        extra.pop("odoo_session_id", None)
         self.extra = extra
 
     def as_dict(self) -> dict:
@@ -191,6 +193,7 @@ class OdooRpcClient:
         self.timeout = timeout
         self.uid: Optional[int] = None
         self.transport: Optional[str] = None
+        self.session_id = ""
 
     @classmethod
     def from_config(cls, config: dict) -> "OdooRpcClient":
@@ -201,7 +204,27 @@ class OdooRpcClient:
             password=config.get("password") or "",
         )
 
+    @classmethod
+    def for_session(cls, url: str, session_id: str) -> "OdooRpcClient":
+        """Reuse the Odoo session that already opened the invoice page."""
+        client = cls(url=url or "", db="", username="session", password="")
+        client.session_id = (session_id or "").strip()
+        client.transport = "session"
+        return client
+
     def authenticate(self) -> int:
+        if self.session_id:
+            info = self._web_jsonrpc("/web/session/get_session_info", {})
+            uid = info.get("uid") if isinstance(info, dict) else None
+            if not uid:
+                raise OdooRpcError(
+                    "auth_failed",
+                    "Odoo session expired",
+                    url=self.url,
+                )
+            self.uid = int(uid)
+            self.transport = "session"
+            return self.uid
         if not self.url or not self.db or not self.username or not self.password:
             raise OdooRpcError(
                 "error",
@@ -244,6 +267,16 @@ class OdooRpcClient:
         args = list(args) if args is not None else []
         kwargs = dict(kwargs) if kwargs else {}
         try:
+            if self.transport == "session":
+                return self._web_jsonrpc(
+                    "/web/dataset/call_kw",
+                    {
+                        "model": model,
+                        "method": method,
+                        "args": args,
+                        "kwargs": kwargs,
+                    },
+                )
             if self.transport == "xmlrpc":
                 return self._xmlrpc_execute_kw(model, method, args, kwargs)
             return self._jsonrpc_execute_kw(model, method, args, kwargs)
@@ -259,6 +292,36 @@ class OdooRpcClient:
             "username": self.username,
             "password": self.password,
         }
+
+    def _web_jsonrpc(self, path: str, params: dict) -> Any:
+        """Call an Odoo web route with the browser session cookie. No password."""
+        endpoint = urljoin(self.url + "/", path.lstrip("/"))
+        try:
+            resp = requests.post(
+                endpoint,
+                json={"jsonrpc": "2.0", "method": "call", "params": params, "id": 1},
+                cookies={"session_id": self.session_id},
+                timeout=self.timeout,
+            )
+        except (requests.ConnectionError, ConnectionRefusedError) as exc:
+            raise OdooRpcError(
+                "connection_refused",
+                f"Could not connect to Odoo at {self.url}",
+                url=self.url,
+            ) from exc
+        if resp.status_code >= 500:
+            raise OdooRpcError("error", f"Odoo HTTP {resp.status_code}", url=self.url)
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise OdooRpcError("error", "Odoo session response was not JSON", url=self.url) from exc
+        if not isinstance(data, dict):
+            raise OdooRpcError("error", "Odoo session response was not an object", url=self.url)
+        if data.get("error"):
+            err = data["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            raise OdooRpcError("auth_failed", msg or "Odoo session rejected", url=self.url)
+        return data.get("result")
 
     def _jsonrpc_call(self, service: str, method: str, args: list) -> Any:
         payload = {

@@ -223,6 +223,21 @@ def publish_odoo_cp_contact_event(tenant, payload: dict) -> dict:
         }
 
 
+def _refine_mailbox_payload(payload: dict, move_ids: list) -> dict:
+    """Job body for the consumer. Session cookie stays here, never in logs."""
+    body = {
+        "move_ids": move_ids,
+        "source_path": payload.get("source_path", ""),
+    }
+    session_id = str(payload.get("odoo_session_id") or "").strip()
+    odoo_url = str(payload.get("odoo_url") or "").rstrip("/")
+    if session_id:
+        body["odoo_session_id"] = session_id
+    if odoo_url:
+        body["odoo_url"] = odoo_url
+    return body
+
+
 def build_odoo_invoice_refine_envelope(tenant, payload: dict) -> dict:
     """Passthrough invoice Post → async refine of account.move.narration."""
     move_ids = payload.get("move_ids") or []
@@ -250,10 +265,7 @@ def build_odoo_invoice_refine_envelope(tenant, payload: dict) -> dict:
         "direction": "REQ",
         "event_key": ODOO_INVOICE_REFINE_EVENT_KEY,
         "actor": {"external_user_id": "odoo-passthrough"},
-        "payload": {
-            "move_ids": move_ids,
-            "source_path": payload.get("source_path", ""),
-        },
+        "payload": _refine_mailbox_payload(payload, move_ids),
         "received_at": timezone.now().isoformat(),
     }
 

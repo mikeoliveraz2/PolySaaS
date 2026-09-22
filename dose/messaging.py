@@ -41,6 +41,9 @@ def feedback_text_for_result(instruction, result: dict, service_name: str) -> tu
     """Return (message, level) for an orchestration atomic result."""
     level = "success"
     if isinstance(result, dict) and result.get("status") in ("error", "failed"):
+        # Invoice refine failures must say "refine" so the green bar leaves "refining note…".
+        if result.get("move_ids"):
+            return "Invoice description refine skipped (Odoo session)", "warning"
         level = "error"
         detail = result.get("detail") or result.get("error") or "unknown error"
         return f"Consumer failed: {detail}", level

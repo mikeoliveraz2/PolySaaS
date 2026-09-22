@@ -3,7 +3,8 @@
 One atomic, two entries:
   - Live Confirm POST (account.move action_post): publish a mailbox job and
     return immediately. The passthrough already forwarded that POST to Odoo.
-  - Mailbox replay: read account.move.narration → AI clean → write back.
+  - Mailbox replay: read account.move.narration → AI clean → write back
+    with the same Odoo session that posted the invoice.
 
 Guardrails:
   - Tenant schema on every ORM/RPC
@@ -91,13 +92,11 @@ def _refine_moves(request, instruction_row):
         )
         return result
 
-    config = load_odoo_rpc_config(request=request, instruction_row=instruction_row)
-    pub = public_config(config)
     outcomes = []
+    pub = {}
 
     try:
-        client = OdooRpcClient.from_config(config)
-        client.authenticate()
+        client, pub = _open_odoo_client(request, instruction_row, payload)
     except OdooRpcError as exc:
         logger.error("[RefineOdooInvoiceDescription] RPC auth: %s", exc)
         result = service_result(
@@ -181,13 +180,15 @@ def _queue_confirm(request, instruction_row, body: Any):
 
     from dose.webhook_events import publish_odoo_invoice_refine_event
 
-    published = publish_odoo_invoice_refine_event(
-        tenant,
-        {
-            "move_ids": move_ids,
-            "source_path": getattr(request, "path", "") or "",
-        },
-    )
+    session = _cached_odoo_session(request)
+    job = {
+        "move_ids": move_ids,
+        "source_path": getattr(request, "path", "") or "",
+    }
+    if session.get("odoo_session_id") and session.get("odoo_url"):
+        job["odoo_session_id"] = session["odoo_session_id"]
+        job["odoo_url"] = session["odoo_url"]
+    published = publish_odoo_invoice_refine_event(tenant, job)
     if not published.get("success"):
         result = service_result(
             "RefineOdooInvoiceDescription",
@@ -221,6 +222,67 @@ def _queue_confirm(request, instruction_row, body: Any):
         published.get("mailbox_id"),
     )
     return result
+
+
+def _open_odoo_client(request, instruction_row, payload: dict):
+    """Prefer the invoice-page session. Password login is only a fallback."""
+    session_id = str(payload.get("odoo_session_id") or "").strip()
+    session_url = str(payload.get("odoo_url") or "").rstrip("/")
+    if not session_id or not session_url:
+        live = _cached_odoo_session(request)
+        session_id = session_id or live.get("odoo_session_id") or ""
+        session_url = session_url or live.get("odoo_url") or ""
+    if session_id and session_url:
+        client = OdooRpcClient.for_session(session_url, session_id)
+        pub = public_config({"url": session_url, "username": "session"})
+        client.authenticate()
+        return client, pub
+
+    config = load_odoo_rpc_config(request=request, instruction_row=instruction_row)
+    client = OdooRpcClient.from_config(config)
+    client.authenticate()
+    return client, public_config(config)
+
+
+def _cached_odoo_session(request) -> dict:
+    """Read the session passthrough already uses to show Odoo. Do not log it."""
+    out = {"odoo_session_id": "", "odoo_url": ""}
+    tenant = tenant_from_request(request)
+    if tenant is None:
+        return out
+    try:
+        from django.conf import settings
+
+        from dose.models import TenantApp
+        from dose.models.pass_through_endpoint import PassThroughEndpoint
+        from dose.tenant_app_lookup import tenant_schema_search_path
+
+        with tenant_schema_search_path(tenant) as ok:
+            if not ok:
+                return out
+            ta = (
+                TenantApp.objects.filter(app_name="odoo", status="active")
+                .order_by("-id")
+                .first()
+            )
+            extra = ta.extra_config if ta and isinstance(ta.extra_config, dict) else {}
+            out["odoo_session_id"] = str(extra.get("odoo_session_id") or "").strip()
+            endpoint = (
+                PassThroughEndpoint.objects.filter(slug="odoo", is_enabled=True)
+                .order_by("-id")
+                .first()
+            )
+            if endpoint is not None and getattr(endpoint, "endpoint_url", ""):
+                out["odoo_url"] = str(endpoint.endpoint_url).rstrip("/")
+            if not out["odoo_url"]:
+                out["odoo_url"] = str(
+                    extra.get("odoo_url") or getattr(ta, "app_url", "") or ""
+                ).rstrip("/")
+        if not out["odoo_url"]:
+            out["odoo_url"] = str(getattr(settings, "ODOO_SHARED_URL", "") or "").rstrip("/")
+    except Exception as exc:
+        logger.warning("[RefineOdooInvoiceDescription] session lookup skipped: %s", exc)
+    return out
 
 
 def _is_mailbox_replay(request) -> bool:

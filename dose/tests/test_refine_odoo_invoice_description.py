@@ -174,6 +174,112 @@ class RefineAtomicTests(SimpleTestCase):
         self.assertFalse(result["changed"])
         self.assertEqual(result["outcomes"][0]["reason"], "ai_failed_soft")
 
+    @patch("dose.services.refine_odoo_invoice_description._cached_odoo_session")
+    @patch("dose.webhook_events.publish_odoo_invoice_refine_event")
+    @patch("dose.services.refine_odoo_invoice_description.OdooRpcClient")
+    def test_confirm_stashes_session_outside_the_bar_result(self, client_cls, publish, session):
+        session.return_value = {
+            "odoo_session_id": "sid-secret",
+            "odoo_url": "http://odoo:8069",
+        }
+        publish.return_value = {"success": True, "mailbox_id": 9, "event_id": "e1"}
+        body = {
+            "params": {
+                "model": "account.move",
+                "method": "action_post",
+                "args": [[42]],
+            }
+        }
+        result = RefineOdooInvoiceDescription.execute_and_save(
+            SimpleNamespace(
+                path="/web/dataset/call_button",
+                body=__import__("json").dumps(body).encode(),
+                tenant=SimpleNamespace(schema_name="polysaas"),
+                mq_message_data=None,
+            ),
+            SimpleNamespace(save_callbackdata=False, parameters_json={}),
+        )
+        job = publish.call_args[0][1]
+        self.assertEqual(job["odoo_session_id"], "sid-secret")
+        self.assertEqual(job["odoo_url"], "http://odoo:8069")
+        self.assertNotIn("sid-secret", __import__("json").dumps(result))
+        client_cls.from_config.assert_not_called()
+        client_cls.for_session.assert_not_called()
+
+    @patch("dose.services.refine_odoo_invoice_description._ai_clean", return_value="Clean note.")
+    @patch("dose.services.refine_odoo_invoice_description.load_odoo_rpc_config")
+    @patch("dose.services.refine_odoo_invoice_description.OdooRpcClient")
+    def test_replay_uses_session_cookie_not_password(self, client_cls, load_cfg, _ai):
+        client = MagicMock()
+        client_cls.for_session.return_value = client
+
+        def _exec(model, method, *args, **kwargs):
+            if model == "account.move" and method == "read":
+                return [{"id": 9, "name": "INV/1", "narration": "filty mess", "state": "posted"}]
+            if model == "account.move" and method == "write":
+                return True
+            if model == "account.move.line" and method == "search_read":
+                return []
+            return True
+
+        client.execute_kw.side_effect = _exec
+        result = RefineOdooInvoiceDescription.execute_and_save(
+            SimpleNamespace(
+                tenant=SimpleNamespace(schema_name="polysaas"),
+                mq_message_data={
+                    "move_ids": [9],
+                    "odoo_session_id": "sid-secret",
+                    "odoo_url": "http://odoo:8069",
+                },
+            ),
+            SimpleNamespace(save_callbackdata=False, parameters_json={}),
+        )
+        self.assertTrue(result["changed"])
+        client_cls.for_session.assert_called_once_with("http://odoo:8069", "sid-secret")
+        client.authenticate.assert_called_once()
+        load_cfg.assert_not_called()
+        client_cls.from_config.assert_not_called()
+        self.assertNotIn("sid-secret", __import__("json").dumps(result))
+
+
+class SessionCookieRpcTests(SimpleTestCase):
+    @patch("dose.services.odoo_rpc.requests.post")
+    def test_session_calls_send_cookie_not_password(self, post):
+        from dose.services.odoo_rpc import OdooRpcClient
+
+        response = MagicMock()
+        response.status_code = 200
+        response.json.side_effect = [
+            {"result": {"uid": 7}},
+            {"result": [{"id": 9, "narration": "x"}]},
+        ]
+        post.return_value = response
+        client = OdooRpcClient.for_session("http://odoo:8069", "sid-secret")
+        self.assertEqual(client.authenticate(), 7)
+        client.execute_kw("account.move", "read", [[9], ["narration"]])
+        auth_call, read_call = post.call_args_list
+        self.assertEqual(auth_call.kwargs["cookies"], {"session_id": "sid-secret"})
+        self.assertNotIn("password", str(auth_call.kwargs["json"]))
+        self.assertTrue(read_call.args[0].endswith("/web/dataset/call_kw"))
+        self.assertEqual(read_call.kwargs["cookies"]["session_id"], "sid-secret")
+        self.assertEqual(read_call.kwargs["json"]["params"]["model"], "account.move")
+
+    def test_envelope_keeps_session_on_the_job_only(self):
+        from dose.webhook_events import build_odoo_invoice_refine_envelope
+
+        envelope = build_odoo_invoice_refine_envelope(
+            SimpleNamespace(schema_name="polysaas"),
+            {
+                "move_ids": [13],
+                "source_path": "/web/dataset/call_button",
+                "odoo_session_id": "sid-secret",
+                "odoo_url": "http://odoo:8069",
+            },
+        )
+        self.assertEqual(envelope["payload"]["odoo_session_id"], "sid-secret")
+        self.assertEqual(envelope["payload"]["move_ids"], [13])
+        self.assertNotIn("sid-secret", envelope["event_id"])
+
 
 class RefineFeedbackTests(SimpleTestCase):
     def test_feedback_refined(self):
@@ -214,6 +320,22 @@ class RefineFeedbackTests(SimpleTestCase):
         )
         self.assertIn("refining note", text.lower())
         self.assertEqual(level, "info")
+
+    def test_feedback_session_failure_is_visible_on_the_bar(self):
+        instr = SimpleNamespace(eventKey="odoo.invoice.refine", executescript="RefineOdooInvoiceDescription")
+        text, level = feedback_text_for_result(
+            instr,
+            {
+                "status": "error",
+                "error": "auth_failed",
+                "detail": "Odoo authentication failed",
+                "move_ids": [13],
+                "fail_soft": True,
+            },
+            "RefineOdooInvoiceDescription",
+        )
+        self.assertIn("refine skipped", text.lower())
+        self.assertEqual(level, "warning")
 
     def test_feedback_ai_unavailable(self):
         instr = SimpleNamespace(eventKey="odoo.invoice.refine", executescript="RefineOdooInvoiceDescription")
