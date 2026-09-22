@@ -1,7 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Demo Tenant instruction filter — commit 7d05920e
 # BINGO: Production Preview demo — CallBackData eventKey dedupe — 2026-06-15
-# Owner-approved 2026-09-22: Type 3 — do not gate-consume on status=skipped; clearer Post refine DoseMessages.
 
 """
 Orchestration Hook — bridges PolySniffer traffic capture and dynamic orchestration.
@@ -400,6 +399,8 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
             )
             continue
 
+        _mark_instruction_executed_at_action(request, instruction_row)
+
         executescript_name = normalize_executescript_value(
             getattr(instruction_row, 'executescript', None) or ''
         )
@@ -434,18 +435,6 @@ def check_orchestration_trigger(request, upstream_path, app_name, tenant,
                     atomic_result = {'status': 'error', 'error': str(exc), **atomic_result}
         else:
             orch_log('match_no_executescript', instruction_id=instruction_row.id)
-
-        # Type 3 enqueue filters in-code (call_button ≠ always action_post).
-        # Do not consume the action gate on skipped — otherwise Post never re-fires.
-        if atomic_result.get('status') == 'skipped':
-            orch_log(
-                'orch_skipped_no_gate',
-                instruction_id=instruction_row.id,
-                reason=atomic_result.get('reason') or atomic_result.get('error'),
-            )
-            continue
-
-        _mark_instruction_executed_at_action(request, instruction_row)
 
         if _save_callback_data(request, instruction_row, atomic_result, tenant):
             saved_count += 1
@@ -531,16 +520,7 @@ def _create_dose_message(request, instruction_row, atomic_result, service_name):
         event_key = getattr(instruction_row, 'eventKey', '') or ''
         msg_text = f"Orchestration: {service_name} executed ({event_key})" if event_key else f"Orchestration: {service_name} executed"
         if isinstance(atomic_result, dict):
-            if atomic_result.get('queued') and atomic_result.get('move_ids'):
-                ids = atomic_result.get('move_ids')
-                msg_text = f"Invoice Post — refining note (move {ids[0] if ids else '?'})…"
-                status = 'info'
-            elif atomic_result.get('changed') and (
-                atomic_result.get('invoice_ref') or atomic_result.get('outcomes')
-            ):
-                ref = atomic_result.get('invoice_ref') or 'invoice'
-                msg_text = f"Invoice {ref} description refined"
-            elif atomic_result.get('invoice_ref') and not atomic_result.get('queued'):
+            if atomic_result.get('invoice_ref'):
                 msg_text = f"Invoice {atomic_result['invoice_ref']} detected — orchestration triggered"
             elif atomic_result.get('event') == 'navigation':
                 ok = atomic_result.get('status') == 'sent'

@@ -4,6 +4,7 @@ DoseMessage rows live in the tenant schema. Auth users live in public. The
 ORM FK stays so unread filters still work; the database constraint is off so a
 public user id does not have to exist in tenant auth_user.
 """
+# Owner-approved 2026-09-22: Type 3 invoice refine feedback copy.
 from __future__ import annotations
 
 import logging
@@ -67,6 +68,26 @@ def feedback_text_for_result(instruction, result: dict, service_name: str) -> tu
         if result.get("order_name") or result.get("order_id"):
             name = result.get("order_name") or f"#{result.get('order_id')}"
             return f"Odoo draft quotation {name}", level
+
+        # Type 3: invoice narration refine
+        if result.get("outcomes") is not None or result.get("changed") is not None:
+            outcomes = result.get("outcomes") or []
+            changed = [o for o in outcomes if isinstance(o, dict) and o.get("changed")]
+            if changed:
+                ref = (
+                    result.get("invoice_ref")
+                    or changed[0].get("invoice_name")
+                    or changed[0].get("move_id")
+                    or "invoice"
+                )
+                return f"Invoice {ref} description refined", level
+            if any(
+                isinstance(o, dict) and o.get("reason") == "ai_failed_soft" for o in outcomes
+            ):
+                return "Invoice description refine skipped (AI unavailable)", "warning"
+            if outcomes:
+                ref = result.get("invoice_ref") or "invoice"
+                return f"Invoice {ref} description — no change", "info"
 
     event_key = getattr(instruction, "eventKey", "") or ""
     name = getattr(instruction, "executescript", None) or service_name or "OrchestratedEvent"

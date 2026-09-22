@@ -70,7 +70,13 @@ def feedback_text_for_result(instruction, result: dict, service_name: str) -> tu
             return f"Odoo draft quotation {name}", level
 
         # Type 3: invoice narration refine
-        if result.get("outcomes") is not None or result.get("changed") is not None:
+        if result.get("queued") and result.get("move_ids"):
+            ids = result.get("move_ids") or []
+            return f"Invoice Post — refining note (move {ids[0]})…", "info"
+        if result.get("outcomes") is not None or (
+            result.get("changed") is not None
+            and (result.get("invoice_ref") or result.get("move_ids"))
+        ):
             outcomes = result.get("outcomes") or []
             changed = [o for o in outcomes if isinstance(o, dict) and o.get("changed")]
             if changed:
