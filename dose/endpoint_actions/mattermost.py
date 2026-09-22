@@ -3,6 +3,7 @@
 # Mattermost endpoint-home actions — Control Panel New contact / New sale
 # Owner-approved 2026-09-14: mirror Slack popup forms → same Odoo mailbox path.
 # Owner-approved 2026-09-21: Capture contacts → Captured Topics.
+# Owner-approved 2026-09-22: bookmark title Contacts (shared topic; no "Capture" repeat).
 import uuid
 
 from django.utils import timezone
@@ -85,12 +86,12 @@ class MattermostEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "passthrough"
     default_bookmarks = (
         {
-            "key": "capture-contacts",
-            "title": "Capture contacts",
+            "key": "contacts",
+            "title": "Contacts",
             "destination_type": "direct_event",
             "target": "mattermost.capture_contacts",
             "icon": "contact",
-            "description": "GET Mattermost users into Captured Topics",
+            "description": "GET contacts into the shared Captured Topics Contacts queue",
         },
         {
             "key": "new-contact",
@@ -133,7 +134,7 @@ class MattermostEndpointActionAdapter(EndpointActionAdapter):
             "mattermost.capture_contacts": EndpointAction(
                 key="mattermost.capture_contacts",
                 kind="direct_event",
-                title="Capture contacts",
+                title="Contacts",
                 build_payload=list_limit_payload,
                 publish=publish_mattermost_capture_contacts,
             ),

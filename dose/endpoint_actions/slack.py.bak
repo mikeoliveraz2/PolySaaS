@@ -2,6 +2,7 @@
 # BINGO: Slack Odoo contact/sale forms — 2026-08-25
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # BINGO: Geronimo Chat Integration — 2026-09-02
+# Owner-approved 2026-09-22: Capture contacts → Captured Topics.
 import uuid
 
 from django.utils import timezone
@@ -9,6 +10,8 @@ from django.utils import timezone
 from dose.webhook_events import publish_slack_wireframe_event
 
 from .base import EndpointAction, EndpointActionAdapter
+from .contact_capture_publish import publish_slack_capture_contacts
+from .list_publisher import list_limit_payload
 
 
 def _payload(kind: str, supplied: dict) -> dict:
@@ -81,6 +84,14 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "external"
     default_bookmarks = (
         {
+            "key": "capture-contacts",
+            "title": "Capture contacts",
+            "destination_type": "direct_event",
+            "target": "slack.capture_contacts",
+            "icon": "contact",
+            "description": "GET Slack users into Captured Topics",
+        },
+        {
             "key": "channel-home",
             "title": "Channel home",
             "destination_type": "mock_surface",
@@ -144,6 +155,13 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
 
     def actions(self):
         return {
+            "slack.capture_contacts": EndpointAction(
+                key="slack.capture_contacts",
+                kind="direct_event",
+                title="Capture contacts",
+                build_payload=list_limit_payload,
+                publish=publish_slack_capture_contacts,
+            ),
             "slack.contact": EndpointAction(
                 key="slack.contact",
                 kind="popup_form",

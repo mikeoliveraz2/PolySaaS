@@ -1,10 +1,9 @@
 """
 Cross-app contact capture → Captured Topics mailbox enroll.
 
-External apps (Odoo, Mattermost, Slack, HubSpot) list contacts via their
+External apps (Odoo, Mattermost, later Slack/HubSpot) list contacts via their
 APIs; we normalize to a common record shape and enroll a polysaas.capture.v1
-envelope on the shared topic RES.contacts.<actor> for Consume → ContactHistory.
-Source app is kept on each record (not in the topic key).
+envelope on topic RES.<app>.contacts.<actor> for Consume → ContactHistory.
 """
 from __future__ import annotations
 
@@ -46,10 +45,10 @@ def normalize_contact(
     }
 
 
-def contact_topic(source_app: str = "", actor: str = "system") -> str:
-    """Shared contacts topic for every app — source_app is on the record, not the key."""
+def contact_topic(source_app: str, actor: str = "system") -> str:
+    app = (source_app or "app").strip().lower().replace(" ", ".") or "app"
     user = (actor or "system").strip().lower().replace(" ", ".") or "system"
-    return f"RES.contacts.{user}"
+    return f"RES.{app}.contacts.{user}"
 
 
 def enroll_contact_capture(

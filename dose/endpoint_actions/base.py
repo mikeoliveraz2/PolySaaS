@@ -1,6 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Unified Endpoint Workspace — 2026-09-01
 # BINGO: Geronimo Chat Integration — 2026-09-02
+# Owner-approved 2026-09-22: capture_contacts is Captured Topics only — not a CallBackData panel.
 from dataclasses import dataclass
 from typing import Callable
 
@@ -120,14 +121,18 @@ class EndpointActionAdapter:
 
 
 def _object_type_for_target(target: str) -> str:
-    """Map a list action target onto the object type its rows describe."""
+    """Map a list action target onto the object type its rows describe.
+
+    capture_contacts is intentionally omitted — those rows land in the shared
+    Captured Topics Contacts queue (ContactHistory), not CallBackData panels.
+    Odoo already has its own contacts in-app; we do not mirror them here.
+    """
     if not target:
         return ""
     tail = target.rsplit(".", 1)[-1]
     for object_type, suffix in (
         ("invoice", "list_invoices"),
         ("contact", "list_contacts"),
-        ("contact", "capture_contacts"),
         ("sale", "list_sales"),
     ):
         if tail == suffix:

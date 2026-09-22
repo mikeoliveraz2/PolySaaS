@@ -4,6 +4,7 @@
 # FIX 2026-09-01 (owner-approved): shared ListSpec publisher; Browse corrected to external.
 # BINGO: Geronimo Chat Integration — 2026-09-02
 # Owner-approved 2026-09-22: Capture contacts → Captured Topics.
+# Owner-approved 2026-09-22: one Contacts bookmark (shared topic); drop CallBackData duplicate.
 from __future__ import annotations
 
 from dose.endpoint_browser import endpoint_app_logo_key
@@ -69,20 +70,12 @@ class HubspotEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "external"
     default_bookmarks = (
         {
-            "key": "capture-contacts",
-            "title": "Capture contacts",
-            "destination_type": "direct_event",
-            "target": "hubspot.capture_contacts",
-            "icon": "ctc",
-            "description": "GET HubSpot contacts into Captured Topics",
-        },
-        {
             "key": "contacts",
             "title": "Contacts",
             "destination_type": "direct_event",
-            "target": "hubspot.list_contacts",
+            "target": "hubspot.capture_contacts",
             "icon": "ctc",
-            "description": "Fetch current HubSpot contacts into CallBackData",
+            "description": "GET contacts into the shared Captured Topics Contacts queue",
         },
         {
             "key": "sales",
@@ -117,14 +110,15 @@ class HubspotEndpointActionAdapter(EndpointActionAdapter):
             "hubspot.capture_contacts": EndpointAction(
                 key="hubspot.capture_contacts",
                 kind="direct_event",
-                title="Capture contacts",
+                title="Contacts",
                 build_payload=list_limit_payload,
                 publish=publish_hubspot_capture_contacts,
             ),
+            # Kept for older bindings; not a default bookmark.
             "hubspot.list_contacts": EndpointAction(
                 key="hubspot.list_contacts",
                 kind="direct_event",
-                title="Contacts",
+                title="Contacts (CallBackData)",
                 build_payload=list_limit_payload,
                 publish=make_publisher(LIST_CONTACTS),
             ),

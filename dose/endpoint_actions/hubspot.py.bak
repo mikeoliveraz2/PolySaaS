@@ -3,12 +3,14 @@
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # FIX 2026-09-01 (owner-approved): shared ListSpec publisher; Browse corrected to external.
 # BINGO: Geronimo Chat Integration — 2026-09-02
+# Owner-approved 2026-09-22: Capture contacts → Captured Topics.
 from __future__ import annotations
 
 from dose.endpoint_browser import endpoint_app_logo_key
 from dose.passthrough.orchestration_log import ensure_tenant_search_path
 
 from .base import EndpointAction, EndpointActionAdapter
+from .contact_capture_publish import publish_hubspot_capture_contacts
 from .list_publisher import ListSpec, list_limit_payload, make_publisher
 
 
@@ -67,6 +69,14 @@ class HubspotEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "external"
     default_bookmarks = (
         {
+            "key": "capture-contacts",
+            "title": "Capture contacts",
+            "destination_type": "direct_event",
+            "target": "hubspot.capture_contacts",
+            "icon": "ctc",
+            "description": "GET HubSpot contacts into Captured Topics",
+        },
+        {
             "key": "contacts",
             "title": "Contacts",
             "destination_type": "direct_event",
@@ -104,6 +114,13 @@ class HubspotEndpointActionAdapter(EndpointActionAdapter):
 
     def actions(self):
         return {
+            "hubspot.capture_contacts": EndpointAction(
+                key="hubspot.capture_contacts",
+                kind="direct_event",
+                title="Capture contacts",
+                build_payload=list_limit_payload,
+                publish=publish_hubspot_capture_contacts,
+            ),
             "hubspot.list_contacts": EndpointAction(
                 key="hubspot.list_contacts",
                 kind="direct_event",

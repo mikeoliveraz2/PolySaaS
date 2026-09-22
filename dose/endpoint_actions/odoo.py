@@ -5,6 +5,7 @@
 # BINGO: Geronimo Chat Integration — 2026-09-02
 # Owner-approved 2026-09-21: Capture contacts → Captured Topics.
 # Owner-approved 2026-09-22: New contact popup → OdooCreatePartner orch.
+# Owner-approved 2026-09-22: one Contacts bookmark (shared topic); drop CallBackData duplicate.
 from __future__ import annotations
 
 import uuid
@@ -140,20 +141,12 @@ class OdooEndpointActionAdapter(EndpointActionAdapter):
             "description": "Add one contact → OdooCreatePartner orchestration",
         },
         {
-            "key": "capture-contacts",
-            "title": "Capture contacts",
-            "destination_type": "direct_event",
-            "target": "odoo.capture_contacts",
-            "icon": "ctc",
-            "description": "GET Odoo customer contacts into Captured Topics",
-        },
-        {
             "key": "contacts",
             "title": "Contacts",
             "destination_type": "direct_event",
-            "target": "odoo.list_contacts",
+            "target": "odoo.capture_contacts",
             "icon": "ctc",
-            "description": "Fetch current customer contacts into CallBackData",
+            "description": "GET contacts into the shared Captured Topics Contacts queue",
         },
         {
             "key": "sales",
@@ -205,14 +198,15 @@ class OdooEndpointActionAdapter(EndpointActionAdapter):
             "odoo.capture_contacts": EndpointAction(
                 key="odoo.capture_contacts",
                 kind="direct_event",
-                title="Capture contacts",
+                title="Contacts",
                 build_payload=list_limit_payload,
                 publish=publish_odoo_capture_contacts,
             ),
+            # Kept for older Instruction / CallBackData bindings; not a default bookmark.
             "odoo.list_contacts": EndpointAction(
                 key="odoo.list_contacts",
                 kind="direct_event",
-                title="Contacts",
+                title="Contacts (CallBackData)",
                 build_payload=list_limit_payload,
                 publish=make_publisher(LIST_CONTACTS),
             ),

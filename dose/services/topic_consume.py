@@ -1,6 +1,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Captured Topics Consume to History — 2026-09-21
 # Owner-approved 2026-09-21: FAMILY_CONTACTS + ContactHistory consume.
+# Owner-approved 2026-09-22: one shared Contacts label (not per-app).
 """
 Topic consume — drain typed temporary mailbox topics into history tables.
 
@@ -37,7 +38,7 @@ FAMILY_DESCRIPTIONS = {
     FAMILY_INVENTORY: "Odoo inventory / product list captures in this topic queue.",
     FAMILY_SNMP: "SNMP device telemetry captures in this topic queue.",
     FAMILY_MAINTENANCE: "Maintenance equipment captures in this topic queue.",
-    FAMILY_CONTACTS: "Cross-app contact list captures (Odoo, Mattermost, …).",
+    FAMILY_CONTACTS: "Contact list captures from any subscribed app (shared topic).",
     FAMILY_UNKNOWN: "Captured traffic with no Consume handler yet.",
 }
 
@@ -46,14 +47,7 @@ def topic_display_name(topic: str, family: str) -> str:
     """Short human name for the Captured Topics list."""
     t = (topic or "").strip().lower()
     if family == FAMILY_CONTACTS:
-        if "mattermost" in t:
-            return "Mattermost contacts"
-        if "odoo" in t:
-            return "Odoo contacts"
-        if "slack" in t:
-            return "Slack contacts"
-        if "hubspot" in t:
-            return "HubSpot contacts"
+        # One queue for every app — do not prefix with Odoo/Mattermost/etc.
         return "Contacts"
     if family == FAMILY_INVENTORY and "product.product" in t:
         return "Inventory variants"
@@ -186,7 +180,10 @@ def list_topic_history(topic: str, *, limit: int = 100) -> dict:
             for r in qs
         ]
     elif family == FAMILY_CONTACTS:
-        qs = ContactHistory.objects.filter(topic=topic).order_by("-consumed_at")[:limit]
+        # Shared Contacts history — include legacy per-app topic keys.
+        qs = ContactHistory.objects.filter(topic__icontains=".contacts.").order_by(
+            "-consumed_at"
+        )[:limit]
         columns = [
             "source_app",
             "name",
@@ -230,8 +227,24 @@ def list_topic_history(topic: str, *, limit: int = 100) -> dict:
     }
 
 
+def _contact_topic_filter():
+    """Q for every contacts-family mailbox topic (shared + legacy per-app keys)."""
+    from django.db.models import Q
+
+    return (
+        Q(topic__icontains=".contacts.")
+        | Q(topic__icontains="capture_contacts")
+        | Q(action_path__icontains="capture_contacts")
+        | Q(action_path__icontains="/contacts")
+    )
+
+
 def list_topics() -> list[dict]:
-    """Aggregate mailbox rows by topic (current search_path / tenant schema)."""
+    """Aggregate mailbox rows by topic (current search_path / tenant schema).
+
+    Contact captures share one queue — collapse shared + legacy per-app keys
+    into a single Contacts row pointing at RES.contacts.system.
+    """
     from dose.models import WebhookMailbox
 
     rows = (
@@ -241,9 +254,16 @@ def list_topics() -> list[dict]:
         .order_by("topic")
     )
     out = []
+    contacts_seen = False
     for row in rows:
         topic = row["topic"] or ""
         family = classify_topic(topic)
+        if family == FAMILY_CONTACTS:
+            if contacts_seen:
+                continue
+            contacts_seen = True
+            topic = "RES.contacts.system"
+            family = FAMILY_CONTACTS
         out.append(
             {
                 "topic": topic,
@@ -257,16 +277,23 @@ def list_topics() -> list[dict]:
     return out
 
 
+def _is_shared_contacts_topic(topic: str) -> bool:
+    t = (topic or "").strip().lower()
+    return t.startswith("res.contacts.") or classify_topic(topic) == FAMILY_CONTACTS
+
+
 def list_topic_envelopes(topic: str, *, limit: int = 100) -> list[dict]:
     """Peek envelopes still on the topic queue (current tenant schema)."""
     from dose.models import WebhookMailbox
 
     topic = (topic or "").strip()
     # Over-fetch slightly so we can drop any pre-delete drained leftovers.
-    rows = list(
-        WebhookMailbox.objects.filter(topic=topic)
-        .order_by("-created_at")[: max(1, int(limit)) * 2]
-    )
+    qs = WebhookMailbox.objects.all()
+    if _is_shared_contacts_topic(topic):
+        qs = qs.filter(_contact_topic_filter())
+    else:
+        qs = qs.filter(topic=topic)
+    rows = list(qs.order_by("-created_at")[: max(1, int(limit)) * 2])
     out = []
     for row in rows:
         # Legacy: older Consume left rows as processed with result.consume=True.
@@ -306,9 +333,12 @@ def requeue_topic(topic: str) -> dict:
     if not topic:
         return {"ok": False, "error": "missing_topic", "updated": 0}
     qs = WebhookMailbox.objects.filter(
-        topic=topic,
         status__in=["processed", "failed", "claimed"],
     )
+    if _is_shared_contacts_topic(topic):
+        qs = qs.filter(_contact_topic_filter())
+    else:
+        qs = qs.filter(topic=topic)
     updated = qs.update(
         status="pending",
         processed_at=None,
@@ -396,13 +426,16 @@ def consume_topic(
     if not topic:
         return {"ok": False, "error": "missing_topic", "written": 0}
 
-    pending = list(
-        WebhookMailbox.objects.filter(
-            topic=topic,
-            status="pending",
-            expires_at__gt=timezone.now(),
-        ).order_by("created_at")[: max(1, int(limit))]
+    pending_qs = WebhookMailbox.objects.filter(
+        status="pending",
+        expires_at__gt=timezone.now(),
     )
+    if _is_shared_contacts_topic(topic):
+        pending_qs = pending_qs.filter(_contact_topic_filter())
+        topic = "RES.contacts.system"
+    else:
+        pending_qs = pending_qs.filter(topic=topic)
+    pending = list(pending_qs.order_by("created_at")[: max(1, int(limit))])
     if not pending:
         return {
             "ok": True,
@@ -614,14 +647,16 @@ def _write_maintenance(entry) -> int:
 
 def _write_contacts(entry) -> int:
     from dose.models.topic_history import ContactHistory
+    from dose.services.contact_capture import contact_topic
 
     records = _payload_records(entry)
+    shared_topic = contact_topic(actor="system")
     n = 0
     with transaction.atomic():
         for rec in records:
             raw = rec.get("raw_record") if isinstance(rec.get("raw_record"), dict) else rec
             ContactHistory.objects.create(
-                topic=entry.topic or "",
+                topic=shared_topic,
                 source_event_id=entry.event_id or "",
                 source_mailbox_id=entry.id,
                 source_app=str(rec.get("source_app") or "")[:32],

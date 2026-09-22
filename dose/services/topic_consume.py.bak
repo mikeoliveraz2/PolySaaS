@@ -1,5 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Captured Topics Consume to History — 2026-09-21
+# Owner-approved 2026-09-21: FAMILY_CONTACTS + ContactHistory consume.
 """
 Topic consume — drain typed temporary mailbox topics into history tables.
 
@@ -21,12 +22,14 @@ logger = logging.getLogger(__name__)
 FAMILY_INVENTORY = "inventory_product"
 FAMILY_SNMP = "snmp_telemetry"
 FAMILY_MAINTENANCE = "maintenance_equipment"
+FAMILY_CONTACTS = "contacts"
 FAMILY_UNKNOWN = "unknown"
 
 FAMILY_LABELS = {
     FAMILY_INVENTORY: "Inventory products",
     FAMILY_SNMP: "SNMP telemetry",
     FAMILY_MAINTENANCE: "Maintenance equipment",
+    FAMILY_CONTACTS: "Contacts",
     FAMILY_UNKNOWN: "Other captured traffic",
 }
 
@@ -34,6 +37,7 @@ FAMILY_DESCRIPTIONS = {
     FAMILY_INVENTORY: "Odoo inventory / product list captures in this topic queue.",
     FAMILY_SNMP: "SNMP device telemetry captures in this topic queue.",
     FAMILY_MAINTENANCE: "Maintenance equipment captures in this topic queue.",
+    FAMILY_CONTACTS: "Cross-app contact list captures (Odoo, Mattermost, …).",
     FAMILY_UNKNOWN: "Captured traffic with no Consume handler yet.",
 }
 
@@ -41,6 +45,16 @@ FAMILY_DESCRIPTIONS = {
 def topic_display_name(topic: str, family: str) -> str:
     """Short human name for the Captured Topics list."""
     t = (topic or "").strip().lower()
+    if family == FAMILY_CONTACTS:
+        if "mattermost" in t:
+            return "Mattermost contacts"
+        if "odoo" in t:
+            return "Odoo contacts"
+        if "slack" in t:
+            return "Slack contacts"
+        if "hubspot" in t:
+            return "HubSpot contacts"
+        return "Contacts"
     if family == FAMILY_INVENTORY and "product.product" in t:
         return "Inventory variants"
     if family == FAMILY_INVENTORY:
@@ -69,6 +83,17 @@ def classify_topic(topic: str, *, source: str = "", action_path: str = "") -> st
         return FAMILY_SNMP
     if "maintenance" in blob:
         return FAMILY_MAINTENANCE
+    # Contacts before inventory: ".contacts." must not match product. paths.
+    if any(
+        x in blob
+        for x in (
+            ".contacts.",
+            "capture_contacts",
+            "contact_list",
+            "/contacts",
+        )
+    ):
+        return FAMILY_CONTACTS
     if any(
         x in blob
         for x in (
@@ -89,6 +114,7 @@ def list_topic_history(topic: str, *, limit: int = 100) -> dict:
     History rows for one topic (after Consume). Returns family + column headers + rows.
     """
     from dose.models.topic_history import (
+        ContactHistory,
         InventoryProductHistory,
         MaintenanceEquipmentHistory,
         SnmpTelemetryHistory,
@@ -155,6 +181,29 @@ def list_topic_history(topic: str, *, limit: int = 100) -> dict:
                 r.category,
                 r.anomaly,
                 r.request_name,
+                r.consumed_at,
+            ]
+            for r in qs
+        ]
+    elif family == FAMILY_CONTACTS:
+        qs = ContactHistory.objects.filter(topic=topic).order_by("-consumed_at")[:limit]
+        columns = [
+            "source_app",
+            "name",
+            "email",
+            "phone",
+            "company",
+            "username",
+            "consumed_at",
+        ]
+        rows = [
+            [
+                r.source_app,
+                r.name,
+                r.email,
+                r.phone,
+                r.company,
+                r.username,
                 r.consumed_at,
             ]
             for r in qs
@@ -430,6 +479,8 @@ def _consume_one(entry, family: str) -> int:
         return _write_snmp(entry)
     if family == FAMILY_MAINTENANCE:
         return _write_maintenance(entry)
+    if family == FAMILY_CONTACTS:
+        return _write_contacts(entry)
     raise ValueError(f"unsupported family {family}")
 
 
@@ -556,6 +607,32 @@ def _write_maintenance(entry) -> int:
                 anomaly=bool(rec.get("anomaly")),
                 request_name=str(rec.get("request_name") or "")[:255],
                 raw_record=rec,
+            )
+            n += 1
+    return n
+
+
+def _write_contacts(entry) -> int:
+    from dose.models.topic_history import ContactHistory
+
+    records = _payload_records(entry)
+    n = 0
+    with transaction.atomic():
+        for rec in records:
+            raw = rec.get("raw_record") if isinstance(rec.get("raw_record"), dict) else rec
+            ContactHistory.objects.create(
+                topic=entry.topic or "",
+                source_event_id=entry.event_id or "",
+                source_mailbox_id=entry.id,
+                source_app=str(rec.get("source_app") or "")[:32],
+                external_id=str(rec.get("external_id") or rec.get("id") or "")[:128],
+                name=str(rec.get("name") or "")[:255],
+                email=str(rec.get("email") or "")[:255],
+                phone=str(rec.get("phone") or "")[:64],
+                company=str(rec.get("company") or rec.get("parent_name") or "")[:255],
+                username=str(rec.get("username") or "")[:128],
+                active=bool(rec.get("active", True)),
+                raw_record=raw if isinstance(raw, dict) else {},
             )
             n += 1
     return n

@@ -4,10 +4,16 @@
 # FIX 2026-09-01 (owner-approved): three copied publishers replaced by shared ListSpec.
 # BINGO: Geronimo Chat Integration — 2026-09-02
 # Owner-approved 2026-09-21: Capture contacts → Captured Topics.
+# Owner-approved 2026-09-22: New contact popup → OdooCreatePartner orch.
 from __future__ import annotations
+
+import uuid
+
+from django.utils import timezone
 
 from dose.endpoint_browser import endpoint_app_logo_key
 from dose.passthrough.orchestration_log import ensure_tenant_search_path
+from dose.webhook_events import publish_odoo_cp_contact_event
 
 from .base import EndpointAction, EndpointActionAdapter
 from .contact_capture_publish import publish_odoo_capture_contacts
@@ -17,6 +23,47 @@ from .list_publisher import ListSpec, list_limit_payload, make_publisher
 def _guard(tenant, label):
     """Resolved from this module's globals so tests can patch it here."""
     return ensure_tenant_search_path(tenant, label)
+
+
+def _new_contact_payload(supplied: dict) -> dict:
+    """Same fields as Slack/Mattermost contact popup → OdooCreatePartner."""
+    allowed = {
+        "name": 120,
+        "email": 120,
+        "phone": 40,
+        "street": 120,
+        "city": 80,
+        "zip": 20,
+        "is_company": 8,
+    }
+    unknown = set(supplied) - set(allowed)
+    if unknown:
+        raise ValueError("Unsupported field(s): " + ", ".join(sorted(unknown)))
+    cleaned = {}
+    for field, maximum in allowed.items():
+        value = supplied.get(field, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            raise ValueError(f"{field} must be text")
+        cleaned[field] = value.strip()[:maximum]
+    if supplied and not cleaned["name"]:
+        raise ValueError("name is required")
+
+    token = uuid.uuid4().hex[:10]
+    stamp = timezone.now().strftime("%Y%m%d-%H%M%S")
+    payload = {
+        "demo_id": token,
+        "name": cleaned["name"] or f"Odoo Contact {stamp}",
+        "email": cleaned["email"] or f"odoo.contact.{token}@example.com",
+        "phone": cleaned["phone"] or "+1 555 0100",
+        "is_company": cleaned["is_company"].lower()
+        in ("1", "true", "yes", "company"),
+    }
+    for field in ("street", "city", "zip"):
+        if cleaned[field]:
+            payload[field] = cleaned[field]
+    return payload
 
 
 def _load_list_invoices():
@@ -85,6 +132,14 @@ class OdooEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "passthrough"
     default_bookmarks = (
         {
+            "key": "new-contact",
+            "title": "New contact",
+            "destination_type": "popup_form",
+            "target": "odoo.contact",
+            "icon": "contact",
+            "description": "Add one contact → OdooCreatePartner orchestration",
+        },
+        {
             "key": "capture-contacts",
             "title": "Capture contacts",
             "destination_type": "direct_event",
@@ -140,6 +195,13 @@ class OdooEndpointActionAdapter(EndpointActionAdapter):
 
     def actions(self):
         return {
+            "odoo.contact": EndpointAction(
+                key="odoo.contact",
+                kind="popup_form",
+                title="New contact",
+                build_payload=_new_contact_payload,
+                publish=publish_odoo_cp_contact_event,
+            ),
             "odoo.capture_contacts": EndpointAction(
                 key="odoo.capture_contacts",
                 kind="direct_event",

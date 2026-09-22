@@ -3,6 +3,7 @@
 # BINGO: Slack → Odoo + HubSpot dual-feed — 2026-08-28
 # BINGO: Geronimo Chat Integration — 2026-09-02
 # Owner-approved 2026-09-22: Capture contacts → Captured Topics.
+# Owner-approved 2026-09-22: bookmark title Contacts (shared topic; no "Capture" repeat).
 import uuid
 
 from django.utils import timezone
@@ -84,12 +85,12 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
     browse_mode = "external"
     default_bookmarks = (
         {
-            "key": "capture-contacts",
-            "title": "Capture contacts",
+            "key": "contacts",
+            "title": "Contacts",
             "destination_type": "direct_event",
             "target": "slack.capture_contacts",
             "icon": "contact",
-            "description": "GET Slack users into Captured Topics",
+            "description": "GET contacts into the shared Captured Topics Contacts queue",
         },
         {
             "key": "channel-home",
@@ -158,7 +159,7 @@ class SlackEndpointActionAdapter(EndpointActionAdapter):
             "slack.capture_contacts": EndpointAction(
                 key="slack.capture_contacts",
                 kind="direct_event",
-                title="Capture contacts",
+                title="Contacts",
                 build_payload=list_limit_payload,
                 publish=publish_slack_capture_contacts,
             ),
