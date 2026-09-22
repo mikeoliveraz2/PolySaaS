@@ -15,6 +15,8 @@
 # replace patch above only catches JS-driven navigation; a native anchor click never touches
 # setAttribute(), location.href=, or pushState, so it still 404'd against the PolySaaS origin.
 # BINGO: Odoo Anchor Click Navigation Fix — 2026-08-02
+# Owner-approved 2026-09-22: Type 3 — rewrite absolute Odoo-origin fetch/XHR URLs through
+# PROXY_PREFIX so invoice Confirm/action_post hits passthrough orch (not direct Render).
 
 import logging
 import re
@@ -554,7 +556,16 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             return False
         return 'oe_login_form' in html_lower or 'o_login_auth' in html_lower
 
-    def get_client_side_shim(self, proxy_prefix, odoo_login=None, odoo_password=None, odoo_db=None, display_mode='light', enable_auto_login=False):
+    def get_client_side_shim(
+        self,
+        proxy_prefix,
+        odoo_login=None,
+        odoo_password=None,
+        odoo_db=None,
+        display_mode='light',
+        enable_auto_login=False,
+        odoo_origin=None,
+    ):
         """Client shim: rewrite fetch/XHR/navigation/form POSTs through /pt/admin/<trigger>/."""
         import json
         auto_login_js = ""
@@ -607,13 +618,16 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             }})();
             """
 
+        safe_odoo_origin = json.dumps((odoo_origin or "").rstrip("/") or "")
+
         return f"""
         <script>
         (function() {{
             var PROXY_PREFIX = "{proxy_prefix}";
+            var ODOO_ORIGIN = {safe_odoo_origin};
             var PS_DISPLAY_MODE = "{display_mode}";
             document.cookie = 'color_scheme=' + PS_DISPLAY_MODE + '; path=/; max-age=' + (365 * 24 * 60 * 60) + '; SameSite=Lax';
-            console.log('[ODOO SHIM] color_scheme set to', PS_DISPLAY_MODE);
+            console.log('[ODOO SHIM] color_scheme set to', PS_DISPLAY_MODE, 'odoo_origin=', ODOO_ORIGIN || '(none)');
 
             function applyOdooThemeVisuals() {{
                 /* Never add Odoo classes to Jazzmin document.body — breaks admin shell. */
@@ -639,6 +653,10 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 try {{
                     var parsed = new URL(url, window.location.origin);
                     if (parsed.origin === window.location.origin) {{
+                        return parsed.pathname + parsed.search + parsed.hash;
+                    }}
+                    /* Absolute upstream Odoo host (e.g. Render) — force through proxy. */
+                    if (ODOO_ORIGIN && parsed.origin === ODOO_ORIGIN) {{
                         return parsed.pathname + parsed.search + parsed.hash;
                     }}
                 }} catch (e) {{}}
@@ -1071,10 +1089,18 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
 
         display_mode = self._polysaas_display_mode(request)
         self._ensure_odoo_theme_sync_for_request(request, display_mode)
+        upstream = endpoint_url or getattr(self.endpoint, "endpoint_url", None) or ""
+        try:
+            from urllib.parse import urlparse
+            _p = urlparse(upstream)
+            odoo_origin = f"{_p.scheme}://{_p.netloc}" if _p.scheme and _p.netloc else ""
+        except Exception:
+            odoo_origin = ""
         shim_js = self.get_client_side_shim(
             prefix, odoo_login, odoo_password, odoo_db,
             display_mode=display_mode,
             enable_auto_login=is_login_html,
+            odoo_origin=odoo_origin,
         )
         if is_login_html:
             print(f"[ODOO HANDLER] Login page detected — client auto-login fallback enabled")
