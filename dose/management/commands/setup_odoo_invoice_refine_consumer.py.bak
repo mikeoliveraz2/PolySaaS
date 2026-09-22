@@ -34,10 +34,10 @@ class Command(BaseCommand):
             if not ok:
                 raise CommandError(f"Could not select tenant schema: {schema}")
 
-            # 1) Passthrough match: any URL containing action_post → enqueue (filters account.move)
+            # 1) Passthrough match: call_button → enqueue mailbox (async)
             enqueue, created_e = Instruction.objects.update_or_create(
                 tenant=tenant,
-                requestpath="action_post",
+                requestpath="/web/dataset/call_button",
                 requestmethod="POST",
                 direction="RES",
                 defaults={
@@ -45,26 +45,17 @@ class Command(BaseCommand):
                     "eventKey": "odoo.invoice.action_post.enqueue",
                     "executescript": "EnqueueOdooInvoiceRefine",
                     "description": (
-                        "Type 3: on invoice Post (action_post) "
+                        "Type 3: on invoice Post (call_button/action_post) "
                         "enqueue narration refine (async mailbox)"
                     ),
                     "save_callbackdata": True,
                 },
             )
-            # Retire older call_button-only enqueue rows (superseded by action_post contains)
-            obsolete, _ = Instruction.objects.filter(
-                tenant=tenant,
-                executescript="EnqueueOdooInvoiceRefine",
-                requestpath="/web/dataset/call_button",
-            ).exclude(pk=enqueue.pk).delete()
-            if obsolete:
-                self.stdout.write(f"  Removed {obsolete} obsolete call_button enqueue row(s)")
-
             verb_e = "Created" if created_e else "Updated"
             self.stdout.write(
                 self.style.SUCCESS(
                     f"{verb_e} EnqueueOdooInvoiceRefine instruction #{enqueue.pk} "
-                    f"(contains action_post RES)"
+                    f"(contains /web/dataset/call_button RES)"
                 )
             )
 

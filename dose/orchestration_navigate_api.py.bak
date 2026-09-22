@@ -74,4 +74,5 @@ def orchestration_navigate_api(request):
         'callback_saved': saved,
         'matched_req': (result_req or {}).get('matched', 0),
         'matched_res': (result_res or {}).get('matched', 0),
+        'capture_mailbox_fix': '6d0f7f4e+enroll_first',
     })

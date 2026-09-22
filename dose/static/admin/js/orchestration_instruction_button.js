@@ -1,6 +1,7 @@
 // THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 // BINGO: Nextcloud in Jazzmin panel, no iframe — 2026-08-13
 // BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
+// Owner-approved 2026-09-22: Type 3 standing_by on invoice SPA (refine fires on Post, not list GET).
 /**
  * Passthrough orchestration bar + green instruction button (new top-level window → Django admin).
  */
@@ -248,9 +249,14 @@
             }
             var matched = data.matched || 0;
             var saved = data.callback_saved || 0;
+            var standing = data.standing_by || [];
             if (matched > 0) {
                 self.setStatus('matched ' + matched + ', saved ' + saved, saved > 0);
                 self.showEvent('matched ' + matched + ' — CallBackData saved: ' + saved);
+                self.updateButtonLabel(true);
+            } else if (standing.length) {
+                self.setStatus('ready — refine on Post', true);
+                self.showEvent(standing[0]);
                 self.updateButtonLabel(true);
             } else {
                 self.setStatus('no instruction match', false);
