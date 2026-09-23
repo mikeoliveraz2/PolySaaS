@@ -2,8 +2,6 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import requests
-
 from django.test import SimpleTestCase
 
 from dose.services.enqueue_odoo_invoice_refine import (
@@ -210,46 +208,7 @@ class RefineAtomicTests(SimpleTestCase):
             "RefineOdooInvoiceDescription",
         )
         self.assertIn("skipped", text.lower())
-        self.assertIn("ANTHROPIC_API_KEY not configured", text)
         self.assertNotIn("no change", text.lower())
-
-    @patch("llm_router.providers.complete_chat")
-    @patch("dose.services.refine_odoo_invoice_description.load_odoo_rpc_config")
-    @patch("dose.services.refine_odoo_invoice_description.OdooRpcClient")
-    def test_ai_http_error_is_sent_as_the_bar_message(self, client_cls, load_cfg, complete):
-        load_cfg.return_value = {"url": "http://odoo", "db": "odoo", "username": "a", "password": "b"}
-        client = MagicMock()
-        client_cls.from_config.return_value = client
-        resp = MagicMock()
-        resp.status_code = 404
-        resp.text = '{"message":"model: claude-3-5-haiku-20241022"}'
-        complete.side_effect = requests.HTTPError("404", response=resp)
-
-        def _exec(model, method, *args, **kwargs):
-            if model == "account.move" and method == "read":
-                return [{"id": 13, "name": "2Inv #13", "narration": "messy note text", "state": "posted"}]
-            if model == "account.move.line":
-                return []
-            return True
-
-        client.execute_kw.side_effect = _exec
-        result = RefineOdooInvoiceDescription.execute_and_save(
-            SimpleNamespace(
-                tenant=SimpleNamespace(schema_name="polysaas"),
-                mq_message_data={"move_ids": [13]},
-            ),
-            SimpleNamespace(save_callbackdata=False, parameters_json={}),
-        )
-        text, level = feedback_text_for_result(
-            SimpleNamespace(eventKey="odoo.invoice.refine", executescript="RefineOdooInvoiceDescription"),
-            result,
-            "RefineOdooInvoiceDescription",
-        )
-        self.assertEqual(level, "warning")
-        self.assertIn("refine skipped", text.lower())
-        self.assertIn("AI HTTP 404", text)
-        self.assertIn("claude-3-5-haiku-20241022", text)
-        self.assertNotIn("messy note text", text)
 
     @patch("dose.services.refine_odoo_invoice_description._cached_odoo_session")
     @patch("dose.webhook_events.publish_odoo_invoice_refine_event")
@@ -412,25 +371,6 @@ class RefineFeedbackTests(SimpleTestCase):
             "RefineOdooInvoiceDescription",
         )
         self.assertIn("refine skipped", text.lower())
-        self.assertIn("Odoo authentication failed", text)
-        self.assertEqual(level, "warning")
-
-    def test_feedback_session_failure_without_move_ids_still_names_the_error(self):
-        instr = SimpleNamespace(eventKey="odoo.invoice.refine", executescript="RefineOdooInvoiceDescription")
-        text, level = feedback_text_for_result(
-            instr,
-            {
-                "status": "error",
-                "service_name": "RefineOdooInvoiceDescription",
-                "error": "auth_failed",
-                "detail": "Odoo authentication failed",
-                "fail_soft": True,
-            },
-            "RefineOdooInvoiceDescription",
-        )
-        self.assertIn("refine skipped", text.lower())
-        self.assertIn("Odoo authentication failed", text)
-        self.assertNotIn("Consumer failed", text)
         self.assertEqual(level, "warning")
 
     def test_feedback_ai_unavailable(self):

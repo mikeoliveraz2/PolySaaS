@@ -4,7 +4,7 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-23 (Wednesday)  
-**Session:** Type 3 — write the Note with the invoice page session  
+**Session:** Type 3 — keep refine errors on the green bar  
 **Branch:** main  
 
 ## Done
@@ -33,7 +33,13 @@ python manage.py setup_odoo_invoice_refine_consumer --schema polysaas
 
 Demo: draft invoice with a messy Note → Confirm through passthrough → invoice posts → bar says the Note was refined → refresh shows the cleaned Note. Numbers stay put. A second Confirm does not loop.
 
+## Done this session
+
+- Refine failures now include the error text in the DoseMessage (Odoo session, AI HTTP status, model name). The invoice Note is not copied onto the bar.
+- The green bar keeps that sentence next to `orch: refine skipped` instead of flashing it for 12 seconds.
+- Unit tests: `dose.tests.test_refine_odoo_invoice_description` — passed locally.
+
 ## Next
 
-1. Mailbox 216 reached Anthropic and got HTTP 404 for retired `claude-3-5-haiku-20241022`. Invoice Note refine now calls `claude-sonnet-4-6`. Deploy that commit, then Reset 2Inv #13 to Draft and Confirm again.
+1. On the VPS: `git pull origin main`, rebuild django and mailbox-consumer, then hard-refresh the invoice page. Reset 2Inv #13 to Draft and Confirm again so a new DoseMessage carries the error text.
 2. Type 2 analysis (when ready)

@@ -37,13 +37,64 @@ def create_dose_message(*, tenant, user=None, message: str, level: str = "info")
         return None
 
 
+def _short_bar_detail(text: str, limit: int = 180) -> str:
+    """One line, capped, safe to show on the green bar."""
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) > limit:
+        return cleaned[: limit - 1].rstrip() + "…"
+    return cleaned
+
+
+def _is_invoice_refine(instruction, result: dict, service_name: str) -> bool:
+    blob = " ".join(
+        [
+            str(getattr(instruction, "executescript", "") or ""),
+            str(service_name or ""),
+            str(result.get("service_name") or ""),
+            str(getattr(instruction, "eventKey", "") or ""),
+        ]
+    ).lower()
+    compact = blob.replace(" ", "")
+    return (
+        "refineodooinvoicedescription" in compact
+        or "invoice.refine" in blob
+        or "invoice/refine" in blob
+    )
+
+
+def _refine_error_detail(result: dict) -> str:
+    detail = str(result.get("detail") or "").strip()
+    if detail:
+        return _short_bar_detail(detail)
+    err = str(result.get("error") or "").strip()
+    if err == "auth_failed":
+        return "Odoo authentication failed"
+    if err and err not in ("error", "failed"):
+        return _short_bar_detail(err)
+    for outcome in result.get("outcomes") or []:
+        if not isinstance(outcome, dict):
+            continue
+        piece = str(outcome.get("detail") or outcome.get("error") or "").strip()
+        if piece:
+            return _short_bar_detail(piece)
+        for line in outcome.get("line_notes") or []:
+            if isinstance(line, dict) and line.get("error"):
+                return _short_bar_detail(line.get("error"))
+    return ""
+
+
 def feedback_text_for_result(instruction, result: dict, service_name: str) -> tuple[str, str]:
     """Return (message, level) for an orchestration atomic result."""
     level = "success"
     if isinstance(result, dict) and result.get("status") in ("error", "failed"):
         # Invoice refine failures must say "refine" so the green bar leaves "refining note…".
-        if result.get("move_ids"):
-            return "Invoice description refine skipped (Odoo session)", "warning"
+        # The error text itself is part of the message so the bar can show why.
+        if _is_invoice_refine(instruction, result if isinstance(result, dict) else {}, service_name):
+            detail = _refine_error_detail(result)
+            msg = "Invoice description refine skipped"
+            if detail:
+                msg += f": {detail}"
+            return msg, "warning"
         level = "error"
         detail = result.get("detail") or result.get("error") or "unknown error"
         return f"Consumer failed: {detail}", level
@@ -93,7 +144,11 @@ def feedback_text_for_result(instruction, result: dict, service_name: str) -> tu
             if any(
                 isinstance(o, dict) and o.get("reason") == "ai_failed_soft" for o in outcomes
             ):
-                return "Invoice description refine skipped (AI unavailable)", "warning"
+                detail = _refine_error_detail({"outcomes": outcomes})
+                msg = "Invoice description refine skipped (AI unavailable)"
+                if detail:
+                    msg += f": {detail}"
+                return msg, "warning"
             if outcomes:
                 ref = result.get("invoice_ref") or "invoice"
                 return f"Invoice {ref} description — no change", "info"

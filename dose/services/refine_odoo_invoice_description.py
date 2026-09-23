@@ -104,6 +104,7 @@ def _refine_moves(request, instruction_row):
             status="error",
             error=exc.status,
             detail=str(exc),
+            move_ids=move_ids,
             odoo=pub,
             # Fail soft: posting already succeeded; do not raise.
             fail_soft=True,
@@ -119,6 +120,7 @@ def _refine_moves(request, instruction_row):
             status="error",
             error="error",
             detail=str(exc),
+            move_ids=move_ids,
             odoo=pub,
             fail_soft=True,
         )
@@ -407,6 +409,7 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
     after = before
     line_outcomes = []
     reason = ""
+    ai_detail = ""
 
     # Header narration (Terms / Note)
     if len(before.strip()) >= _MIN_LEN:
@@ -430,6 +433,7 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
                 exc,
             )
             reason = "ai_failed_soft"
+            ai_detail = _public_error(exc)
     else:
         reason = "empty_or_short"
 
@@ -489,13 +493,15 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
                 line_id,
                 exc,
             )
+            if not ai_detail:
+                ai_detail = _public_error(exc)
             line_outcomes.append(
                 {
                     "line_id": line_id,
                     "before": line_before,
                     "after": line_before,
                     "changed": False,
-                    "error": str(exc),
+                    "error": _public_error(exc),
                     "fail_soft": True,
                 }
             )
@@ -520,7 +526,7 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
             "line_notes": [],
         }
 
-    return {
+    outcome = {
         "status": "success",
         "move_id": move_id,
         "invoice_name": invoice_name,
@@ -536,6 +542,17 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
         "odoo": pub,
         "fail_soft": True,
     }
+    if ai_detail:
+        outcome["detail"] = ai_detail
+    return outcome
+
+
+def _public_error(exc: BaseException) -> str:
+    """Short error for the green bar. Do not include the invoice note."""
+    text = " ".join(str(exc or "").split())
+    if len(text) > 180:
+        text = text[:179].rstrip() + "…"
+    return text
 
 
 def _ai_clean(text: str) -> str:
@@ -552,13 +569,23 @@ def _ai_clean(text: str) -> str:
         user_tier="standard",
         reason="invoice_note_refine",
     )
-    out = complete_chat(
-        plan,
-        messages=[{"role": "user", "content": text}],
-        system_prompt=REFINE_SYSTEM_PROMPT,
-        max_tokens=1024,
-        timeout=45,
-    )
+    import requests
+
+    try:
+        out = complete_chat(
+            plan,
+            messages=[{"role": "user", "content": text}],
+            system_prompt=REFINE_SYSTEM_PROMPT,
+            max_tokens=1024,
+            timeout=45,
+        )
+    except requests.HTTPError as exc:
+        resp = getattr(exc, "response", None)
+        status = getattr(resp, "status_code", "?")
+        body = ""
+        if resp is not None:
+            body = " ".join((getattr(resp, "text", "") or "").split())[:160]
+        raise RuntimeError(f"AI HTTP {status}: {body}") from exc
     cleaned = (out or "").strip()
     # Provider misconfig returns bracketed status strings — treat as soft fail.
     if cleaned.startswith("[llm_router]"):
