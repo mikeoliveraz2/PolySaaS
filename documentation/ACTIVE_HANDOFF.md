@@ -45,4 +45,5 @@ Verified on polysaas.online, invoice **2Inv #13**. The green bar showed `orch: r
 
 ## Next
 
-1. Type 2 analysis (when ready)
+1. Dokploy deploy so the Odoo shim can mark invoice forms `ps-odoo-fields-light` and load `odoo_embed_input_contrast.css`. Hard-refresh a draft invoice after the deploy finishes.
+2. Type 2 analysis (when ready)

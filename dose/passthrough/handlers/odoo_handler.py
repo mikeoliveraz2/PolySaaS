@@ -17,6 +17,7 @@
 # BINGO: Odoo Anchor Click Navigation Fix — 2026-08-02
 # Owner-approved 2026-09-22: Type 3 — rewrite absolute Odoo-origin fetch/XHR URLs through
 # PROXY_PREFIX so invoice Confirm/action_post hits passthrough orch (not direct Render).
+# Owner-approved 2026-09-23 (Michael + Shela): shim marks invoice forms ps-odoo-fields-light.
 
 import logging
 import re
@@ -649,6 +650,43 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 }}
             }}
             document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
+
+            /* Form fields stay on Odoo's light classes. The shell can stay dark. */
+            function tagReadableForm(el) {{
+                if (!el || !el.classList || el.classList.contains('ps-odoo-fields-light')) return;
+                el.classList.add('ps-odoo-fields-light');
+                el.classList.add('o_light');
+                el.classList.remove('o_dark');
+            }}
+            function markReadableForms(root) {{
+                var scope = document.querySelector('.polysaas-passthrough-scope');
+                if (!scope) return;
+                var start = (root && root.nodeType === 1 && scope.contains(root)) ? root : scope;
+                if (start.classList && start.classList.contains('o_form_view')) tagReadableForm(start);
+                if (!start.querySelectorAll) return;
+                var forms = start.querySelectorAll('.o_form_view');
+                for (var i = 0; i < forms.length; i++) tagReadableForm(forms[i]);
+            }}
+            markReadableForms(null);
+            var formWatch = new MutationObserver(function (records) {{
+                for (var r = 0; r < records.length; r++) {{
+                    var added = records[r].addedNodes;
+                    for (var n = 0; n < added.length; n++) {{
+                        if (added[n] && added[n].nodeType === 1) markReadableForms(added[n]);
+                    }}
+                }}
+            }});
+            function watchReadableForms() {{
+                var scope = document.querySelector('.polysaas-passthrough-scope');
+                if (!scope) return;
+                markReadableForms(scope);
+                formWatch.observe(scope, {{ childList: true, subtree: true }});
+            }}
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', watchReadableForms);
+            }} else {{
+                watchReadableForms();
+            }}
 
             var ODOO_PATHS = ['/web', '/odoo', '/apps', '/report', '/download', '/api', '/base', '/bus', '/mail', '/longpolling', '/websocket', '/jsonrpc', '/website', '/logo.png', '/logo'];
 
