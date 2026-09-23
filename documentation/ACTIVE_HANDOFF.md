@@ -4,7 +4,7 @@ This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
 **Date:** 2026-09-23 (Wednesday)  
-**Session:** Type 3 — keep refine errors on the green bar  
+**Session:** BINGO — Odoo invoice Note refine on 2Inv #13  
 **Branch:** main  
 
 ## Done
@@ -39,7 +39,10 @@ Demo: draft invoice with a messy Note → Confirm through passthrough → invoic
 - The green bar keeps that sentence next to `orch: refine skipped` instead of flashing it for 12 seconds.
 - Unit tests: `dose.tests.test_refine_odoo_invoice_description` — passed locally.
 
+## BINGO
+
+Verified on polysaas.online, invoice **2Inv #13**. The green bar showed `orch: refined` and `Invoice 2Inv #13 description refined`. The note lines are now "Now we will see if this gets refined." and "Adding second note". `Just another note.` and the product line were left as they were. Doc: `documentation/BINGO_ODOO_INVOICE_NOTE_REFINE_2026-09-23.md`.
+
 ## Next
 
-1. On the VPS: `git pull origin main`, rebuild django and mailbox-consumer, then hard-refresh the invoice page. Reset 2Inv #13 to Draft and Confirm again so a new DoseMessage carries the error text.
-2. Type 2 analysis (when ready)
+1. Type 2 analysis (when ready)

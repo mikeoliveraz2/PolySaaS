@@ -9,7 +9,8 @@ Owner-approved 2026-09-22: cache-bust t5 — browser still served pre-standing_b
 Owner-approved 2026-09-22: cache-bust t6 — drop stale navigate responses racing no-match over ready.
 Owner-approved 2026-09-22: cache-bust t7 — server-paint standing_by; never overwrite with empty navigate.
 Owner-approved 2026-09-22: cache-bust t8 — invoice/odoo paths always show Type 3 standing (no more no-match flash).
-Owner-approved 2026-09-23: newest DoseMessage wins so refining note does not cover the result. -->
+Owner-approved 2026-09-23: newest DoseMessage wins so refining note does not cover the result.
+Owner-approved 2026-09-23: refine errors stay on the green bar with the error text. -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -533,6 +534,7 @@ body.polysaas-passthrough-embed-page {
         var st = document.getElementById('pss-orch-status');
         var label = 'noted';
         var ok = true;
+        var stickyError = false;
         if (/refining/i.test(msg)) {
             label = 'refining note…';
             ok = null;
@@ -545,6 +547,7 @@ body.polysaas-passthrough-embed-page {
         } else if (/unavailable|skipped|failed/i.test(msg)) {
             label = 'refine skipped';
             ok = false;
+            stickyError = true;
         }
         if (bar && bar.setStatus) {
             bar.setStatus(label, ok);
@@ -553,6 +556,22 @@ body.polysaas-passthrough-embed-page {
             st.style.color = ok === false ? '#fca5a5' : '#86efac';
         }
         if (st) st.setAttribute('data-ps-orch-result', '1');
+        if (stickyError) {
+            var errEl = document.getElementById('pss-orch-event');
+            if (errEl) {
+                errEl.textContent = (msg.indexOf('⚡') === 0 ? msg : ('⚡ ' + msg));
+                errEl.style.display = 'inline';
+                errEl.style.background = '#7f1d1d';
+                errEl.style.color = '#fecaca';
+                clearTimeout(errEl._t);
+            }
+            return;
+        }
+        var okEl = document.getElementById('pss-orch-event');
+        if (okEl) {
+            okEl.style.background = '#166534';
+            okEl.style.color = '#86efac';
+        }
         if (bar && bar.showEvent) {
             bar.showEvent(msg);
             return;

@@ -4,6 +4,8 @@ DoseMessage rows live in the tenant schema. Auth users live in public. The
 ORM FK stays so unread filters still work; the database constraint is off so a
 public user id does not have to exist in tenant auth_user.
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Odoo invoice Note refine — 2026-09-23
 # Owner-approved 2026-09-22: Type 3 invoice refine feedback copy.
 from __future__ import annotations
 

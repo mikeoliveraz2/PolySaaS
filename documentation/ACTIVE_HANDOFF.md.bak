@@ -3,30 +3,43 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
-**Date:** 2026-09-22 (Tuesday)  
-**Session:** Odoo Capture contacts setup instructions  
+**Date:** 2026-09-23 (Wednesday)  
+**Session:** Type 3 — keep refine errors on the green bar  
 **Branch:** main  
 
-## Doc
+## Done
 
-**Setup guide:** [documentation/SETUP_ODOO_CAPTURE_CONTACTS.md](SETUP_ODOO_CAPTURE_CONTACTS.md)
+- Type 3 is one atomic: `RefineOdooInvoiceDescription`.
+  - Live invoice Confirm POST (`/web/dataset/call_button`, account.move + action_post) is forwarded to Odoo unchanged, then the atomic queues a mailbox job and returns.
+  - Mailbox replay reads `account.move.narration` (the invoice Note), AI-cleans it, writes it back. Idempotent. Fail-soft.
+  - `EnqueueOdooInvoiceRefine` is only an alias onto that same atomic.
+- Seed: `python manage.py setup_odoo_invoice_refine_consumer --schema polysaas`
+  - One passthrough Instruction: POST RES contains `/web/dataset/call_button` → `RefineOdooInvoiceDescription`
+  - One mailbox transport row on `/events/odoo/invoice/refine` (same atomic)
+  - Removes old `EnqueueOdooInvoiceRefine` instructions
+- Green bar no longer paints “ready — refine on Post” / standing-by. After Confirm it shows the DoseMessage: refining, refined, no change, or AI unavailable.
+- The Note write uses the Odoo `session_id` already stored for the invoice page (`TenantApp.extra_config`). The admin XML-RPC password is not required for this step. The cookie stays on the mailbox job only.
+- VPS proof before this change: mailbox entry 205 ran `RefineOdooInvoiceDescription` and stopped at `Odoo authentication failed`. The bar stayed on “refining note…” because that failure text did not match the bar, and the older queue message was applied last.
+- Unit tests: `dose.tests.test_refine_odoo_invoice_description` — 19 passed.
 
-## Hostinger polysaas — quick path
+## Hostinger after deploy
 
-1. `python manage.py migrate`
-2. Odoo PassThroughEndpoint: slug `odoo`, URL `http://odoo:8069` (already verified on container)
-3. Open `/pt/admin/odoo/` (not host-based `localhost:8069`)
-4. Control Panel → **Capture contacts**
-5. Captured Topics → Consume to History
+```bash
+git pull origin main
+python manage.py setup_odoo_invoice_refine_consumer --schema polysaas
+# mailbox consumer must be running
+# collectstatic + restart so the bar script is ?v=20260923-t9
+```
 
-## Notes
+Demo: draft invoice with a messy Note → Confirm through passthrough → invoice posts → bar says the Note was refined → refresh shows the cleaned Note. Numbers stay put. A second Confirm does not loop.
 
-- Menu/Browse may still link `/pt/admin/<host>/` via `get_menu_url()` — use slug URL `/pt/admin/odoo/`
-- Capture needs Odoo RPC password (env `ODOO_XMLRPC_ADMIN_PASSWORD` or TenantApp.extra_config)
-- Image must include Capture contacts code (`cfb7fa1e+`) for the button
+## Done this session
+
+- Refine failures now include the error text in the DoseMessage (Odoo session, AI HTTP status, model name). The invoice Note is not copied onto the bar.
+- The green bar keeps that sentence next to `orch: refine skipped` instead of flashing it for 12 seconds.
+- Unit tests: `dose.tests.test_refine_odoo_invoice_description` — passed locally.
 
 ## Next
 
-1. Smoke-test Capture contacts on polysaas
-2. Same setup for Slack/HubSpot endpoints when image has `61f026d9`
-3. Type 2 SNMP video
+1. On the VPS: `git pull origin main`, rebuild django and mailbox-consumer, then hard-refresh the invoice page. Reset 2Inv #13 to Draft and Confirm again so a new DoseMessage carries the error text.
+2. Type 2 analysis (when ready)
