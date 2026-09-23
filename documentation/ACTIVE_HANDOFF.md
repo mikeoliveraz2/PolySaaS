@@ -35,5 +35,5 @@ Demo: draft invoice with a messy Note → Confirm through passthrough → invoic
 
 ## Next
 
-1. Mailbox 213 reached Odoo with the page session and found note lines 50, 53, 54. Cleanup stopped: `ANTHROPIC_API_KEY not configured` on mailbox-consumer. The bar said “no change” for that failure. Compose now passes `ANTHROPIC_API_KEY` into the consumer. Put the key in Dokploy env, Deploy, Reset 2Inv #13 to Draft, Confirm again.
+1. Mailbox 216 reached Anthropic and got HTTP 404 for retired `claude-3-5-haiku-20241022`. Invoice Note refine now calls `claude-sonnet-4-6`. Deploy that commit, then Reset 2Inv #13 to Draft and Confirm again.
 2. Type 2 analysis (when ready)

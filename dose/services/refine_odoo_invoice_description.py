@@ -539,10 +539,19 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
 
 
 def _ai_clean(text: str) -> str:
-    from llm_router.providers import complete_chat
-    from llm_router.router import route
+    from django.conf import settings
 
-    plan = route(prompt=text, user_tier="standard", task_hint="chat")
+    from llm_router.providers import complete_chat
+    from llm_router.router import RoutePlan
+
+    # Short notes classify as "lite" and were sent to retired Haiku 3.5 (404).
+    plan = RoutePlan(
+        provider=getattr(settings, "LLM_ROUTER_STANDARD_PROVIDER", "anthropic"),
+        model=getattr(settings, "LLM_ROUTER_STANDARD_MODEL", "claude-sonnet-4-6"),
+        task_bucket="standard",
+        user_tier="standard",
+        reason="invoice_note_refine",
+    )
     out = complete_chat(
         plan,
         messages=[{"role": "user", "content": text}],

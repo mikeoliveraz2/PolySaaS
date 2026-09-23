@@ -30,7 +30,7 @@ def _routes_from_settings() -> dict[tuple[str, str], tuple[str, str]]:
     for tier in tiers:
         r[(tier, "lite")] = (
             getattr(settings, "LLM_ROUTER_LITE_PROVIDER", "anthropic"),
-            getattr(settings, "LLM_ROUTER_LITE_MODEL", "claude-3-5-haiku-20241022"),
+            getattr(settings, "LLM_ROUTER_LITE_MODEL", "claude-haiku-4-5-20251001"),
         )
         r[(tier, "standard")] = (
             getattr(settings, "LLM_ROUTER_STANDARD_PROVIDER", "anthropic"),
