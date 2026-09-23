@@ -174,6 +174,42 @@ class RefineAtomicTests(SimpleTestCase):
         self.assertFalse(result["changed"])
         self.assertEqual(result["outcomes"][0]["reason"], "ai_failed_soft")
 
+    @patch(
+        "dose.services.refine_odoo_invoice_description._ai_clean",
+        side_effect=RuntimeError("[llm_router] ANTHROPIC_API_KEY not configured."),
+    )
+    @patch("dose.services.refine_odoo_invoice_description.load_odoo_rpc_config")
+    @patch("dose.services.refine_odoo_invoice_description.OdooRpcClient")
+    def test_line_note_ai_failure_is_not_no_change(self, client_cls, load_cfg, _ai):
+        load_cfg.return_value = {"url": "http://odoo", "db": "odoo", "username": "a", "password": "b"}
+        client = MagicMock()
+        client_cls.from_config.return_value = client
+
+        def _exec(model, method, *args, **kwargs):
+            if model == "account.move" and method == "read":
+                return [{"id": 9, "name": "2Inv #13", "narration": "", "state": "posted"}]
+            if model == "account.move.line" and method == "search_read":
+                return [{"id": 50, "name": "now we seee if this gets refucking fined", "display_type": "line_note"}]
+            return True
+
+        client.execute_kw.side_effect = _exec
+        result = RefineOdooInvoiceDescription.execute_and_save(
+            SimpleNamespace(
+                tenant=SimpleNamespace(schema_name="polysaas"),
+                mq_message_data={"move_ids": [9]},
+            ),
+            SimpleNamespace(save_callbackdata=False, parameters_json={}),
+        )
+        self.assertFalse(result["changed"])
+        self.assertEqual(result["outcomes"][0]["reason"], "ai_failed_soft")
+        text, _level = feedback_text_for_result(
+            SimpleNamespace(eventKey="odoo.invoice.refine", executescript="RefineOdooInvoiceDescription"),
+            result,
+            "RefineOdooInvoiceDescription",
+        )
+        self.assertIn("skipped", text.lower())
+        self.assertNotIn("no change", text.lower())
+
     @patch("dose.services.refine_odoo_invoice_description._cached_odoo_session")
     @patch("dose.webhook_events.publish_odoo_invoice_refine_event")
     @patch("dose.services.refine_odoo_invoice_description.OdooRpcClient")

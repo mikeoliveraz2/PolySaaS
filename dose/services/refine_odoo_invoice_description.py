@@ -500,8 +500,11 @@ def _refine_one(client: OdooRpcClient, move_id: int, pub: dict) -> dict:
                 }
             )
 
+    line_ai_failed = any(isinstance(lo, dict) and lo.get("error") for lo in line_outcomes)
     if changed:
         reason = "refined"
+    elif line_ai_failed:
+        reason = "ai_failed_soft"
     elif line_outcomes and not reason:
         reason = "no_change"
 
