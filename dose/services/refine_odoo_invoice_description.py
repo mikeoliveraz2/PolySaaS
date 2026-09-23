@@ -14,7 +14,7 @@ Guardrails:
   - PII: send narration text only to the LLM
 """
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo invoice Note refine — 2026-09-23
+# BINGO: Odoo invoice Note refine — 2026-09-23 — commit ac654503
 from __future__ import annotations
 
 import hashlib

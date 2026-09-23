@@ -1,6 +1,6 @@
 """Type 3 invoice refine — unit tests (no live Odoo / LLM)."""
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
-# BINGO: Odoo invoice Note refine — 2026-09-23
+# BINGO: Odoo invoice Note refine — 2026-09-23 — commit ac654503
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
