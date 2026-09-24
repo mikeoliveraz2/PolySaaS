@@ -88,7 +88,8 @@ def run_pt_admin_passthrough_core(request):
                 qs = request.META.get("QUERY_STRING") or ""
                 loc = new_path + (f"?{qs}" if qs else "")
                 print(f"[PT-CORE] Legacy hostname URL -> redirect to slug: {loc}")
-                return HttpResponseRedirect(loc)
+                # Use 307 to preserve HTTP method (POST stays POST, not 302 which converts to GET)
+                return HttpResponse(status=307, headers={'Location': loc})
 
     if endpoint_obj is None:
         print(f"[PT-CORE] No PassThroughEndpoint for slug={slug!r}")

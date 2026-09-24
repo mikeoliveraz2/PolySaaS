@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</title>
+    <style>
+        .ps-vendor {
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: #1f2937;
+            background: #f8fafc;
+            padding: 24px 20px 48px;
+            max-width: 880px;
+            margin: 0 auto;
+        }
+        .ps-vendor h1 {
+            margin: 0 0 6px;
+            font-size: 1.45rem;
+            color: #1f2a44;
+        }
+        .ps-vendor .ps-lead {
+            margin: 0 0 18px;
+            color: #4b5563;
+        }
+        .ps-vendor .ps-card {
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-bottom: 16px;
+        }
+        .ps-vendor label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin: 10px 0 4px;
+        }
+        .ps-vendor input {
+            width: 100%;
+            box-sizing: border-box;
+            background: #ffffff;
+            color: #1f2937;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.95rem;
+        }
+        .ps-vendor .ps-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+        .ps-vendor .ps-row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .ps-vendor button, .ps-vendor .ps-link {
+            display: inline-block;
+            margin-top: 14px;
+            margin-right: 10px;
+            background: #1f2a44;
+            color: #ffffff;
+            border: 0;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .ps-vendor .ps-link.ps-quiet {
+            background: transparent;
+            color: #1f2a44;
+            border: 1px solid #d1d5db;
+        }
+        .ps-vendor button:disabled {
+            opacity: 0.55;
+            cursor: default;
+        }
+        .ps-vendor .ps-note { font-size: 0.85rem; color: #4b5563; margin-top: 8px; }
+        .ps-vendor .ps-msg { margin-top: 10px; color: #4b5563; }
+        @media (max-width: 720px) {
+            .ps-vendor .ps-row,
+            .ps-vendor .ps-row-2 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+{# Slice 1 shell only — criteria and form are stubs; no search/save/RPC. #}
+<div class="ps-vendor" id="ps-vendor">
+    <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
+    <p class="ps-lead">PolySaaS Assist will search and save vendors in a later step. This page is the branded shell.</p>
+
+    <div class="ps-card">
+        <div class="ps-row">
+            <div>
+                <label for="ps-product">Product line</label>
+                <input id="ps-product" type="text" autocomplete="off" placeholder="Packaging film">
+            </div>
+            <div>
+                <label for="ps-region">Region</label>
+                <input id="ps-region" type="text" autocomplete="off" placeholder="Southeast Asia">
+            </div>
+            <div>
+                <label for="ps-price">Price range</label>
+                <input id="ps-price" type="text" autocomplete="off" placeholder="Under $2 per unit">
+            </div>
+        </div>
+        <button type="button" id="ps-find" disabled title="Not wired in Slice 1">Find suppliers</button>
+        <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
+        <p class="ps-note">Criteria are for display only in this slice. Search is not connected.</p>
+    </div>
+
+    <div class="ps-card" id="ps-form-card">
+        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#1f2a44;">Vendor</h2>
+        <label for="ps-name">Name</label>
+        <input id="ps-name" type="text" autocomplete="organization">
+        <div class="ps-row-2">
+            <div>
+                <label for="ps-email">Email</label>
+                <input id="ps-email" type="text" autocomplete="email">
+            </div>
+            <div>
+                <label for="ps-phone">Phone</label>
+                <input id="ps-phone" type="text" autocomplete="tel">
+            </div>
+        </div>
+        <label for="ps-website">Website</label>
+        <input id="ps-website" type="text" autocomplete="url">
+        <button type="button" id="ps-save" disabled title="Not wired in Slice 1">Save to Odoo</button>
+        <p class="ps-msg" id="ps-save-msg">Save is a stub in this slice. No Odoo RPC.</p>
+    </div>
+</div>
+<script>
+(function () {
+    /* Keep ps_orch_page_nav so the shim does not re-fetch/re-navigate this path. */
+    var skip = document.getElementById('ps-odoo-form');
+    if (skip) {
+        skip.addEventListener('click', function () {
+            try {
+                sessionStorage.setItem('ps_orch_skip_page', '1');
+                sessionStorage.removeItem('ps_orch_page_nav');
+            } catch (e) {}
+        });
+    }
+})();
+</script>
+</body>
+</html>

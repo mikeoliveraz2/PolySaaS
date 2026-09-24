@@ -6,6 +6,7 @@
 # Certification: documentation/BINGO_MATTERMOST_COMPOSER_ROLES_2026-06-11.md
 # Owner-approved 2026-08-02: /pt/admin/<slug>/ — DB PassThroughEndpoint is the only identity.
 # No "trigger", no hostname-as-URL-key, no inventing upstream from the path segment.
+# Owner-approved 2026-09-24: generic Instruction→atomic HTML page intercept (all endpoints).
 # dose/passthrough/middleware.py - FINAL - OUT = LAST, IN = FIRST - CHIEF ARCHITECT APPROVED
 import logging
 import requests
@@ -119,6 +120,21 @@ def run_pt_admin_passthrough_core(request):
 
     # Path key for handlers/forwarder that still accept a "trigger" kwarg = slug.
     trigger = (endpoint.slug or slug).strip("/")
+
+    # Generic: matching Instruction whose atomic returns HTML → serve that page
+    # instead of forwarding. Data-driven for every passthrough endpoint.
+    try:
+        from dose.passthrough.instruction_page import try_instruction_page_response
+
+        _instr_page = try_instruction_page_response(
+            request, endpoint, handler, trigger
+        )
+        if _instr_page is not None:
+            request._passthrough_handled = True
+            print("[PT-CORE] Instruction-page intercept (atomic HTML)")
+            return _instr_page
+    except Exception as _ip_exc:
+        print(f"[PT-CORE] instruction_page error (non-blocking): {_ip_exc}")
 
     # Handler hook: some paths (e.g. Mattermost /login) need try_root before upstream fetch.
     if handler and hasattr(handler, "try_root_display_shell_response"):

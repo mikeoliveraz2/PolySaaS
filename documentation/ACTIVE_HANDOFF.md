@@ -3,6 +3,12 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Type 4 POC Slice 1 pushed
+
+- Slice 1 New Vendor Assist code pushed: Instruction `GET /odoo/vendors/new` → atomic `OdooVendorAssist` → branded page + "Vendor page loaded" toast.
+- Next: Dokploy rebuild. Then add the instruction on prod (tenant `polysaas`): path `/odoo/vendors/new`, `GET`, `REQ`, eventKey `odoo.vendor.new.assist`, executescript `OdooVendorAssist`, parameters `{"serve_page": true}`. Then verify on screen via Purchase → Orders → Vendors → New.
+- Slices 2–6 are not started.
+
 **Date:** 2026-09-23 (Wednesday)  
 **Session:** BINGO — Odoo invoice Note refine on 2Inv #13  
 **Branch:** main  
@@ -45,5 +51,5 @@ Verified on polysaas.online, invoice **2Inv #13**. The green bar showed `orch: r
 
 ## Next
 
-1. Dokploy deploy so the Odoo shim can mark invoice forms `ps-odoo-fields-light` and load `odoo_embed_input_contrast.css`. Hard-refresh a draft invoice after the deploy finishes.
+1. Dokploy deploy the invoice-field contrast fix (rules are in the embed page itself, and the shim paints the inputs). Hard-refresh the draft invoice after the deploy finishes. The previous deploy did not change the black fields.
 2. Type 2 analysis (when ready)

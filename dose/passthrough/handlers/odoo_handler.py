@@ -18,6 +18,9 @@
 # Owner-approved 2026-09-22: Type 3 — rewrite absolute Odoo-origin fetch/XHR URLs through
 # PROXY_PREFIX so invoice Confirm/action_post hits passthrough orch (not direct Render).
 # Owner-approved 2026-09-23 (Michael + Shela): shim marks invoice forms ps-odoo-fields-light.
+# Owner-approved 2026-09-24: New Vendor Assist is Instruction→atomic (no path hardcoding in handler).
+# Owner-approved 2026-09-24: shim polls location + hooks Location.assign/href/replace and
+# Navigation API so SPA URL changes that skip pushState still trigger instruction page nav.
 
 import logging
 import re
@@ -651,21 +654,31 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             }}
             document.addEventListener('DOMContentLoaded', applyOdooThemeVisuals);
 
-            /* Form fields stay on Odoo's light classes. The shell can stay dark. */
-            function tagReadableForm(el) {{
-                if (!el || !el.classList || el.classList.contains('ps-odoo-fields-light')) return;
-                el.classList.add('ps-odoo-fields-light');
-                el.classList.add('o_light');
-                el.classList.remove('o_dark');
+            /* Paint invoice inputs in place. A class on .o_form_view never reached these fields. */
+            function paintReadableField(el) {{
+                if (!el || !el.style) return;
+                var tag = (el.tagName || '').toLowerCase();
+                if (tag === 'input') {{
+                    var typ = (el.getAttribute('type') || 'text').toLowerCase();
+                    if (typ === 'checkbox' || typ === 'radio' || typ === 'hidden' || typ === 'button' || typ === 'submit') return;
+                }}
+                if (el.classList) el.classList.add('ps-odoo-fields-light');
+                el.style.setProperty('background-color', '#ffffff', 'important');
+                el.style.setProperty('color', '#1f2937', 'important');
+                el.style.setProperty('-webkit-text-fill-color', '#1f2937', 'important');
+                el.style.setProperty('caret-color', '#1f2937', 'important');
+                el.style.setProperty('color-scheme', 'light');
             }}
             function markReadableForms(root) {{
                 var scope = document.querySelector('.polysaas-passthrough-scope');
                 if (!scope) return;
                 var start = (root && root.nodeType === 1 && scope.contains(root)) ? root : scope;
-                if (start.classList && start.classList.contains('o_form_view')) tagReadableForm(start);
+                if (start.classList && (start.classList.contains('o_form_view') || start.classList.contains('o_input') || start.matches && start.matches('input, textarea, select, .o_input_dropdown'))) {{
+                    paintReadableField(start);
+                }}
                 if (!start.querySelectorAll) return;
-                var forms = start.querySelectorAll('.o_form_view');
-                for (var i = 0; i < forms.length; i++) tagReadableForm(forms[i]);
+                var fields = start.querySelectorAll('.o_form_view input, .o_form_view textarea, .o_form_view select, .o_field_widget input, .o_field_widget textarea, .o_field_widget select, input.o_input, textarea.o_input, .o_input, .o_input_dropdown');
+                for (var i = 0; i < fields.length; i++) paintReadableField(fields[i]);
             }}
             markReadableForms(null);
             var formWatch = new MutationObserver(function (records) {{
@@ -728,6 +741,120 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                 }}
                 return url;
             }}
+
+            /* Owner-approved 2026-09-24: SPA pushState updates the bar without a
+               document GET. If an Instruction exists for the action path, do one
+               full navigation so the server can run the atomic. Data-driven via
+               /dose/api/orchestration-instruction/ — no hardcoded paths. */
+            function coerceNavUrl(url) {{
+                if (!url) return '';
+                if (typeof url === 'string') return url;
+                try {{
+                    if (typeof URL !== 'undefined' && url instanceof URL) {{
+                        return url.pathname + url.search + (url.hash || '');
+                    }}
+                    if (typeof url.href === 'string') return url.href;
+                    return String(url);
+                }} catch (e) {{ return ''; }}
+            }}
+            function pathNorm(pathname) {{
+                var p = (pathname || '').split('?')[0].split('#')[0] || '';
+                if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+                return p || '/';
+            }}
+            function upstreamActionPathFromUrl(url) {{
+                var raw = coerceNavUrl(url);
+                if (!raw) return '';
+                if (raw.indexOf('polysaas_odoo_form=1') >= 0) return '';
+                var rewritten = rewriteUrl(raw);
+                var path = pathNorm(rewritten);
+                try {{
+                    if (rewritten.indexOf('http') === 0) path = pathNorm(new URL(rewritten).pathname);
+                }} catch (e) {{}}
+                if (path.indexOf(PROXY_PREFIX) === 0) {{
+                    path = path.slice(PROXY_PREFIX.length) || '/';
+                    if (path.charAt(0) !== '/') path = '/' + path;
+                }}
+                return pathNorm(path);
+            }}
+            function instructionApiUrl(actionPath) {{
+                var path = (actionPath || '').trim();
+                if (!path) return '';
+                if (path.charAt(0) !== '/') path = '/' + path;
+                var segments = path.replace(/^\\/+|\\/+$/g, '').split('/').filter(Boolean);
+                if (!segments.length) return '';
+                return '/dose/api/orchestration-instruction/' + segments.map(encodeURIComponent).join('/') + '/?method=GET';
+            }}
+            function skipInstructionPageNav() {{
+                if ((window.location.search || '').indexOf('polysaas_odoo_form=1') >= 0) return true;
+                try {{
+                    if (sessionStorage.getItem('ps_orch_skip_page') === '1') return true;
+                }} catch (e) {{}}
+                return false;
+            }}
+            function documentPathMatchesInstruction(currentPath, instrPath) {{
+                /* Same rule as dose.passthrough.instruction_page.document_path_matches_instruction.
+                   Orch matcher may return an Instruction for a shorter SPA URL (/odoo);
+                   only full-navigate when the document path is the rule (or under it). */
+                var cur = pathNorm(currentPath);
+                var rule = pathNorm(instrPath);
+                if (!cur || !rule || rule === '/') return false;
+                if (cur === rule) return true;
+                if (cur.indexOf(rule + '/') === 0) return true;
+                if (cur.indexOf(rule) !== -1) return true;
+                return false;
+            }}
+            function maybeInstructionPageNav(url) {{
+                if (skipInstructionPageNav()) return;
+                var actionPath = upstreamActionPathFromUrl(url || (window.location.pathname + window.location.search));
+                if (!actionPath || actionPath === '/') return;
+                var onceKey = 'ps_orch_page_nav';
+                try {{
+                    var already = sessionStorage.getItem(onceKey);
+                    if (already === actionPath) return;
+                    if (already && already !== actionPath) sessionStorage.removeItem(onceKey);
+                }} catch (e0) {{}}
+                var api = instructionApiUrl(actionPath);
+                if (!api) return;
+                fetch(api, {{ credentials: 'same-origin', headers: {{ 'Accept': 'application/json' }} }})
+                    .then(function (r) {{ return r.json(); }})
+                    .then(function (data) {{
+                        if (!data || data.mode !== 'update' || !data.executescript) return;
+                        var instrPath = data.action_path || '';
+                        if (!documentPathMatchesInstruction(actionPath, instrPath)) {{
+                            console.log('[ODOO SHIM] skip page nav: path ' + actionPath + ' is not document match for ' + instrPath);
+                            return;
+                        }}
+                        try {{ sessionStorage.setItem(onceKey, actionPath); }} catch (e1) {{}}
+                        var jump = PROXY_PREFIX + actionPath;
+                        console.log('[ODOO SHIM] instruction page nav: ' + jump);
+                        window.location.assign(jump);
+                    }})
+                    .catch(function () {{}});
+            }}
+            (function checkInstructionPageOnLoad() {{
+                try {{
+                    maybeInstructionPageNav(window.location.pathname + window.location.search);
+                }} catch (eInit) {{}}
+            }})();
+            /* Odoo 18 often updates the URL without pushState (Navigation API / internal
+               router). The embed Action Path bar still sees it via polling — mirror that
+               here so instruction page nav does not depend on history hooks alone. */
+            setInterval(function () {{
+                try {{
+                    maybeInstructionPageNav(window.location.pathname + window.location.search);
+                }} catch (ePoll) {{}}
+            }}, 1000);
+            try {{
+                if (window.navigation && typeof window.navigation.addEventListener === 'function') {{
+                    window.navigation.addEventListener('navigate', function (event) {{
+                        try {{
+                            var dest = event && event.destination && event.destination.url;
+                            if (dest) maybeInstructionPageNav(dest);
+                        }} catch (eNav) {{}}
+                    }});
+                }}
+            }} catch (eNavApi) {{}}
 
             function rewriteFormAction(form) {{
                 if (!form || form.tagName !== 'FORM') return;
@@ -885,21 +1012,25 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
             var _originalReplaceState = history.replaceState;
             history.pushState = function(state, title, url) {{
                 if (url) {{
-                    var rewritten = rewriteUrl(url);
+                    var rewritten = rewriteUrl(coerceNavUrl(url) || url);
                     if (rewritten !== url) {{
                         console.log('[ODOO SHIM] pushState rewrite: ' + url + ' -> ' + rewritten);
                     }}
-                    return _originalPushState.call(this, state, title, rewritten);
+                    var result = _originalPushState.call(this, state, title, rewritten);
+                    maybeInstructionPageNav(rewritten);
+                    return result;
                 }}
                 return _originalPushState.call(this, state, title, url);
             }};
             history.replaceState = function(state, title, url) {{
                 if (url) {{
-                    var rewritten = rewriteUrl(url);
+                    var rewritten = rewriteUrl(coerceNavUrl(url) || url);
                     if (rewritten !== url) {{
                         console.log('[ODOO SHIM] replaceState rewrite: ' + url + ' -> ' + rewritten);
                     }}
-                    return _originalReplaceState.call(this, state, title, rewritten);
+                    var result = _originalReplaceState.call(this, state, title, rewritten);
+                    maybeInstructionPageNav(rewritten);
+                    return result;
                 }}
                 return _originalReplaceState.call(this, state, title, url);
             }};
@@ -923,6 +1054,7 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                                 console.log('[ODOO SHIM] location.href rewrite: ' + v + ' -> ' + rewritten);
                             }}
                             _locHrefDesc.set.call(this, rewritten);
+                            maybeInstructionPageNav(rewritten);
                         }}
                     }});
                 }}
@@ -932,7 +1064,9 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                     if (rewritten !== url) {{
                         console.log('[ODOO SHIM] location.assign rewrite: ' + url + ' -> ' + rewritten);
                     }}
-                    return _locAssign.call(this, rewritten);
+                    var ret = _locAssign.call(this, rewritten);
+                    maybeInstructionPageNav(rewritten);
+                    return ret;
                 }};
                 var _locReplace = Location.prototype.replace;
                 Location.prototype.replace = function(url) {{
@@ -940,7 +1074,9 @@ class OdooPassthroughHandler(PassthroughHandlerBase):
                     if (rewritten !== url) {{
                         console.log('[ODOO SHIM] location.replace rewrite: ' + url + ' -> ' + rewritten);
                     }}
-                    return _locReplace.call(this, rewritten);
+                    var ret = _locReplace.call(this, rewritten);
+                    maybeInstructionPageNav(rewritten);
+                    return ret;
                 }};
             }} catch (locErr) {{
                 console.warn('[ODOO SHIM] location patch skipped:', locErr);
