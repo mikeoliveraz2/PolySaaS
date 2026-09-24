@@ -1,5 +1,6 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Captured Topics Consume to History — 2026-09-21
+# Owner-approved 2026-09-21: ContactHistory model for cross-app contact capture.
 """
 Typed history tables — permanent store after a topic is consumed.
 
@@ -94,7 +95,39 @@ class MaintenanceEquipmentHistory(models.Model):
         return f"{self.equipment_name or self.serial_no or self.pk}"
 
 
+class ContactHistory(models.Model):
+    """Consumed cross-app contact snapshots (Odoo, Mattermost, …)."""
+
+    topic = models.CharField(max_length=500, db_index=True)
+    source_event_id = models.CharField(max_length=64, db_index=True)
+    source_mailbox_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    source_app = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    external_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    name = models.CharField(max_length=255, blank=True, default="")
+    email = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    phone = models.CharField(max_length=64, blank=True, default="")
+    company = models.CharField(max_length=255, blank=True, default="")
+    username = models.CharField(max_length=128, blank=True, default="")
+    active = models.BooleanField(default=True)
+    raw_record = models.JSONField(default=dict, blank=True)
+    consumed_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "history_contact"
+        verbose_name = "Contact (history)"
+        verbose_name_plural = "Contacts (history)"
+        ordering = ["-consumed_at", "-id"]
+        indexes = [
+            models.Index(fields=["topic", "consumed_at"], name="contact_hist_topic_idx"),
+            models.Index(fields=["source_app", "email"], name="contact_hist_app_email_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name or self.email or self.username or self.pk} ({self.source_app})"
+
+
 # Backward-compatible aliases (old "report" name)
 InventoryProductReport = InventoryProductHistory
 SnmpTelemetryReport = SnmpTelemetryHistory
 MaintenanceEquipmentReport = MaintenanceEquipmentHistory
+ContactReport = ContactHistory

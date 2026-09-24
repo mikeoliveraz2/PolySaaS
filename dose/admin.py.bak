@@ -2,6 +2,7 @@
 # THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
 # BINGO: Orchestration Bar + Instruction Embed — commit 8cd810c0
 # BINGO: Captured Topics Consume to History — 2026-09-21
+# Owner-approved 2026-09-22: mailbox change form title follows topic family (not always inventory).
 # --- Gmail Admin View Integration ---
 from django.apps import apps
 from django.contrib import admin
@@ -427,6 +428,31 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
         if object_id:
             obj = self.get_object(request, object_id)
             if obj is not None:
+                from dose.services.topic_consume import (
+                    FAMILY_CONTACTS,
+                    FAMILY_INVENTORY,
+                    FAMILY_MAINTENANCE,
+                    FAMILY_SNMP,
+                    classify_topic,
+                )
+
+                family = classify_topic(
+                    obj.topic or "",
+                    source=obj.source or "",
+                    action_path=obj.action_path or "",
+                )
+                if family == FAMILY_CONTACTS:
+                    title = "Published contact records"
+                elif family == FAMILY_INVENTORY:
+                    title = "Published inventory records"
+                elif family == FAMILY_SNMP:
+                    title = "Published SNMP records"
+                elif family == FAMILY_MAINTENANCE:
+                    title = "Published maintenance records"
+                else:
+                    title = "Published records"
+                extra_context["mailbox_records_title"] = title
+
                 table = self.published_payload(obj)
                 # Only treat as “has records” when we actually found rows.
                 payload = self._extract_published_payload(obj)

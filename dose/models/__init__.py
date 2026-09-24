@@ -40,5 +40,6 @@ from .topic_history import (
     SnmpTelemetryHistory,
     MaintenanceEquipmentHistory,
     ContactHistory,
+    VendorHistory,
 )
 from .endpoint_bookmark import EndpointBookmark

@@ -5,10 +5,12 @@ The Odoo passthrough handler must not hardcode that path; instruction matching d
 Slice 3 shortlist is curated/demo directory ranked by the same LLM router as
 invoice refine — not live web search. Slice 4 binds a selected row into the
 form. Slice 5 creates the vendor (and optional contact) in Odoo via RPC.
-Slice 6 topic publish is not implemented here.
+Slice 6 enrolls the saved vendor on the shared contacts topic
+(polysaas.capture.v1 / enroll_contact_capture). Frozen Slack customer-create is not used.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -35,13 +37,16 @@ VENDOR_CREATED_MESSAGE = "Vendor created"
 CONTACT_LINKED_MESSAGE = "Contact linked"
 CONTACT_LINK_FAILED_MESSAGE = "Contact link failed — vendor still created"
 VENDOR_CREATE_FAILED_MESSAGE = "Vendor create failed"
+EVENT_PUBLISHED_MESSAGE = "Event published"
+EVENT_PUBLISH_FAILED_MESSAGE = "Event publish failed — vendor saved, retry pending"
 CRITERIA_SESSION_KEY = "odoo_vendor_assist_criteria"
+VENDOR_PUBLISH_SESSION_KEY = "odoo_vendor_assist_published_event_ids"
 CRITERIA_CAPTURE_STEP = "capture_criteria"
 BIND_SELECTION_STEP = "bind"
 SAVE_VENDOR_STEP = "save"
 SHORTLIST_SOURCE_LABEL = "Demo directory"
 # Visible on GET HTML so a screenshot proves which Assist template is live.
-ASSIST_BUILD = "table-visible-20260924+s4+s5"
+ASSIST_BUILD = "table-visible-20260924+s4+s5+s6"
 
 # Curated demo rows only. Ranked/filtered; never fetched from the live web.
 DEMO_VENDOR_DIRECTORY = (
@@ -382,7 +387,7 @@ def _vendor_form_href(request, partner_id: int) -> str:
 
 
 def save_vendor(request, instruction_row):
-    """Slice 5: create company partner (+ optional child contact) in Odoo. No topic publish."""
+    """Slice 5–6: create company (+ optional contact) in Odoo, then enroll capture.v1."""
     payload = _request_payload(request)
     vendor = _vendor_from_bind_payload(payload)
     if not vendor.get("name"):
@@ -473,9 +478,29 @@ def save_vendor(request, instruction_row):
             contact_message = CONTACT_LINK_FAILED_MESSAGE
             emit_vendor_step_message(request, CONTACT_LINK_FAILED_MESSAGE, level="error")
 
+    publish = publish_saved_vendor_capture(
+        request,
+        vendor=vendor,
+        partner_id=partner_id,
+        contact_id=contact_id,
+        payload=payload,
+    )
+    publish_ok = bool(publish.get("success"))
+    publish_deduped = bool(publish.get("deduped"))
+    if publish_ok and not publish_deduped:
+        emit_vendor_step_message(request, EVENT_PUBLISHED_MESSAGE, level="success")
+        publish_message = EVENT_PUBLISHED_MESSAGE
+    elif publish_ok and publish_deduped:
+        publish_message = EVENT_PUBLISHED_MESSAGE
+    else:
+        emit_vendor_step_message(request, EVENT_PUBLISH_FAILED_MESSAGE, level="error")
+        publish_message = EVENT_PUBLISH_FAILED_MESSAGE
+
     messages = [VENDOR_CREATED_MESSAGE]
     if want_contact:
         messages.append(contact_message)
+    if not publish_deduped:
+        messages.append(publish_message)
     public = {
         "ok": True,
         "status": "success",
@@ -489,6 +514,13 @@ def save_vendor(request, instruction_row):
         "contact_id": contact_id,
         "odoo_form_href": form_href,
         "vendor": vendor,
+        "event_published": publish_ok and not publish_deduped,
+        "event_publish_skipped": publish_deduped,
+        "event_publish_message": publish_message,
+        "event_id": publish.get("event_id"),
+        "mailbox_id": publish.get("mailbox_id"),
+        "event_key": publish.get("event_key"),
+        "capture_kind": "polysaas.capture.v1",
     }
     result = service_result(
         "OdooVendorAssist",
@@ -506,10 +538,136 @@ def save_vendor(request, instruction_row):
             "partner_id": partner_id,
             "contact_id": contact_id,
             "contact_linked": contact_ok,
+            "event_published": publish_ok,
+            "event_id": publish.get("event_id"),
         },
         description="New Vendor Assist saved vendor to Odoo",
     )
     return result
+
+
+def _vendor_capture_event_id(tenant, partner_id, email: str) -> str:
+    schema = getattr(tenant, "schema_name", None) or "unknown"
+    raw = f"{schema}|odoo.vendor|{int(partner_id)}|{(email or '').strip().lower()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _session_has_published_event(request, event_id: str) -> bool:
+    session = getattr(request, "session", None)
+    if session is None or not event_id:
+        return False
+    try:
+        seen = session.get(VENDOR_PUBLISH_SESSION_KEY) or []
+        return isinstance(seen, list) and event_id in seen
+    except Exception:
+        return False
+
+
+def _mark_published_event(request, event_id: str) -> None:
+    session = getattr(request, "session", None)
+    if session is None or not event_id:
+        return
+    try:
+        seen = session.get(VENDOR_PUBLISH_SESSION_KEY) or []
+        if not isinstance(seen, list):
+            seen = []
+        if event_id not in seen:
+            seen.append(event_id)
+            session[VENDOR_PUBLISH_SESSION_KEY] = seen[-50:]
+            if hasattr(session, "modified"):
+                session.modified = True
+    except Exception:
+        return
+
+
+def publish_saved_vendor_capture(request, *, vendor, partner_id, contact_id, payload):
+    """Enroll one capture.v1 mailbox row. Fail-soft; never raises."""
+    from dose.services.contact_capture import enroll_contact_capture, normalize_contact
+
+    tenant = tenant_from_request(request)
+    email = str(vendor.get("email") or "").strip()
+    event_id = _vendor_capture_event_id(tenant, partner_id, email)
+    if _session_has_published_event(request, event_id):
+        return {
+            "success": True,
+            "deduped": True,
+            "event_id": event_id,
+            "event_key": "odoo.capture_contacts",
+        }
+
+    session_criteria = _criteria_from_session(request)
+    criteria = {
+        "product_line": str(
+            payload.get("product_line") or session_criteria.get("product_line") or ""
+        ).strip(),
+        "region": str(
+            payload.get("region")
+            or vendor.get("region")
+            or session_criteria.get("region")
+            or ""
+        ).strip(),
+        "price_range": str(
+            payload.get("price_range")
+            or payload.get("price")
+            or vendor.get("price_band")
+            or session_criteria.get("price_range")
+            or ""
+        ).strip(),
+    }
+    actor = "system"
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "username", None):
+        actor = str(user.username)
+
+    record = normalize_contact(
+        source_app="odoo",
+        external_id=partner_id,
+        name=str(vendor.get("name") or "").strip(),
+        email=email,
+        phone=str(vendor.get("phone") or "").strip(),
+        company=str(vendor.get("name") or "").strip(),
+        raw_record={
+            "odoo_vendor_id": partner_id,
+            "odoo_contact_id": contact_id,
+            "vendor_name": str(vendor.get("name") or "").strip(),
+            "email": email,
+            "region": criteria["region"],
+            "product_line": criteria["product_line"],
+            "price_range": criteria["price_range"],
+        },
+    )
+    payload_extra = {
+        "odoo_vendor_id": partner_id,
+        "odoo_contact_id": contact_id,
+        "vendor_name": str(vendor.get("name") or "").strip(),
+        "email": email,
+        "region": criteria["region"],
+        "criteria": criteria,
+        "product_line": criteria["product_line"],
+        "price_range": criteria["price_range"],
+    }
+    try:
+        enroll = enroll_contact_capture(
+            tenant=tenant,
+            source_app="odoo",
+            records=[record],
+            actor=actor,
+            action_path="odoo/contacts",
+            event_key="odoo.capture_contacts",
+            method="POST",
+            event_id=event_id,
+            payload_extra=payload_extra,
+        )
+    except Exception as exc:
+        logger.warning("[OdooVendorAssist] capture enroll failed: %s", exc, exc_info=True)
+        return {"success": False, "error": str(exc), "event_id": event_id}
+
+    enroll = enroll if isinstance(enroll, dict) else {}
+    enroll.setdefault("event_key", "odoo.capture_contacts")
+    enroll.setdefault("event_id", event_id)
+    if enroll.get("success"):
+        _mark_published_event(request, event_id)
+    return enroll
 
 
 def create_odoo_vendor_company(client, vendor: dict) -> int:

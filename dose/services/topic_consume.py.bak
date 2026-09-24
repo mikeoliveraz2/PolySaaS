@@ -2,6 +2,7 @@
 # BINGO: Captured Topics Consume to History — 2026-09-21
 # Owner-approved 2026-09-21: FAMILY_CONTACTS + ContactHistory consume.
 # Owner-approved 2026-09-22: one shared Contacts label (not per-app).
+# Owner-approved 2026-09-22: Captured Topics lists only typed families — hide Odoo action-noise.
 """
 Topic consume — drain typed temporary mailbox topics into history tables.
 
@@ -244,6 +245,10 @@ def list_topics() -> list[dict]:
 
     Contact captures share one queue — collapse shared + legacy per-app keys
     into a single Contacts row pointing at RES.contacts.system.
+
+    Only typed families appear here (Contacts / Inventory / SNMP / Maintenance).
+    Raw PolySniffer ``action-`` captures have no Consume handler — omit them so
+    they do not look like a second Contacts / Odoo row.
     """
     from dose.models import WebhookMailbox
 
@@ -258,6 +263,8 @@ def list_topics() -> list[dict]:
     for row in rows:
         topic = row["topic"] or ""
         family = classify_topic(topic)
+        if family == FAMILY_UNKNOWN:
+            continue
         if family == FAMILY_CONTACTS:
             if contacts_seen:
                 continue
@@ -271,7 +278,7 @@ def list_topics() -> list[dict]:
                 "name": topic_display_name(topic, family),
                 "description": topic_description(topic, family),
                 "family_label": FAMILY_LABELS.get(family, family),
-                "has_history": family != FAMILY_UNKNOWN,
+                "has_history": True,
             }
         )
     return out

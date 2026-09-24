@@ -126,8 +126,36 @@ class ContactHistory(models.Model):
         return f"{self.name or self.email or self.username or self.pk} ({self.source_app})"
 
 
+class VendorHistory(models.Model):
+    """Consumed vendor-created envelopes (history). Publish-only to other apps."""
+
+    topic = models.CharField(max_length=500, db_index=True)
+    source_event_id = models.CharField(max_length=64, db_index=True)
+    source_mailbox_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    odoo_vendor_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    odoo_contact_id = models.BigIntegerField(null=True, blank=True)
+    name = models.CharField(max_length=255, blank=True, default="")
+    email = models.CharField(max_length=255, blank=True, default="")
+    region = models.CharField(max_length=255, blank=True, default="")
+    raw_record = models.JSONField(default=dict, blank=True)
+    consumed_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "history_vendor"
+        verbose_name = "Vendor (history)"
+        verbose_name_plural = "Vendors (history)"
+        ordering = ["-consumed_at", "-id"]
+        indexes = [
+            models.Index(fields=["topic", "consumed_at"], name="vendor_hist_topic_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name or self.odoo_vendor_id or self.pk}"
+
+
 # Backward-compatible aliases (old "report" name)
 InventoryProductReport = InventoryProductHistory
 SnmpTelemetryReport = SnmpTelemetryHistory
 MaintenanceEquipmentReport = MaintenanceEquipmentHistory
 ContactReport = ContactHistory
+VendorReport = VendorHistory

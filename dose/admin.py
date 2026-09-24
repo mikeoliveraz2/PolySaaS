@@ -433,6 +433,7 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                     FAMILY_INVENTORY,
                     FAMILY_MAINTENANCE,
                     FAMILY_SNMP,
+                    FAMILY_VENDORS,
                     classify_topic,
                 )
 
@@ -443,6 +444,8 @@ class WebhookMailboxAdmin(TenantAwareModelAdmin):
                 )
                 if family == FAMILY_CONTACTS:
                     title = "Published contact records"
+                elif family == FAMILY_VENDORS:
+                    title = "Published vendor records"
                 elif family == FAMILY_INVENTORY:
                     title = "Published inventory records"
                 elif family == FAMILY_SNMP:

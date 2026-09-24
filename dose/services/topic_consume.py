@@ -25,6 +25,7 @@ FAMILY_INVENTORY = "inventory_product"
 FAMILY_SNMP = "snmp_telemetry"
 FAMILY_MAINTENANCE = "maintenance_equipment"
 FAMILY_CONTACTS = "contacts"
+FAMILY_VENDORS = "vendors"
 FAMILY_UNKNOWN = "unknown"
 
 FAMILY_LABELS = {
@@ -32,6 +33,7 @@ FAMILY_LABELS = {
     FAMILY_SNMP: "SNMP telemetry",
     FAMILY_MAINTENANCE: "Maintenance equipment",
     FAMILY_CONTACTS: "Contacts",
+    FAMILY_VENDORS: "Vendors",
     FAMILY_UNKNOWN: "Other captured traffic",
 }
 
@@ -40,6 +42,7 @@ FAMILY_DESCRIPTIONS = {
     FAMILY_SNMP: "SNMP device telemetry captures in this topic queue.",
     FAMILY_MAINTENANCE: "Maintenance equipment captures in this topic queue.",
     FAMILY_CONTACTS: "Contact list captures from any subscribed app (shared topic).",
+    FAMILY_VENDORS: "Vendor company captures in this topic queue.",
     FAMILY_UNKNOWN: "Captured traffic with no Consume handler yet.",
 }
 
@@ -50,6 +53,8 @@ def topic_display_name(topic: str, family: str) -> str:
     if family == FAMILY_CONTACTS:
         # One queue for every app — do not prefix with Odoo/Mattermost/etc.
         return "Contacts"
+    if family == FAMILY_VENDORS:
+        return "Vendors"
     if family == FAMILY_INVENTORY and "product.product" in t:
         return "Inventory variants"
     if family == FAMILY_INVENTORY:
@@ -78,6 +83,16 @@ def classify_topic(topic: str, *, source: str = "", action_path: str = "") -> st
         return FAMILY_SNMP
     if "maintenance" in blob:
         return FAMILY_MAINTENANCE
+    if any(
+        x in blob
+        for x in (
+            ".vendors.",
+            "vendor.created",
+            "/events/polysaas/vendor",
+            "vendor_created",
+        )
+    ):
+        return FAMILY_VENDORS
     # Contacts before inventory: ".contacts." must not match product. paths.
     if any(
         x in blob
@@ -113,6 +128,7 @@ def list_topic_history(topic: str, *, limit: int = 100) -> dict:
         InventoryProductHistory,
         MaintenanceEquipmentHistory,
         SnmpTelemetryHistory,
+        VendorHistory,
     )
 
     topic = (topic or "").strip()
@@ -176,6 +192,29 @@ def list_topic_history(topic: str, *, limit: int = 100) -> dict:
                 r.category,
                 r.anomaly,
                 r.request_name,
+                r.consumed_at,
+            ]
+            for r in qs
+        ]
+    elif family == FAMILY_VENDORS:
+        qs = VendorHistory.objects.filter(topic__icontains=".vendors.").order_by(
+            "-consumed_at"
+        )[:limit]
+        columns = [
+            "name",
+            "email",
+            "region",
+            "odoo_vendor_id",
+            "odoo_contact_id",
+            "consumed_at",
+        ]
+        rows = [
+            [
+                r.name,
+                r.email,
+                r.region,
+                r.odoo_vendor_id,
+                r.odoo_contact_id,
                 r.consumed_at,
             ]
             for r in qs
@@ -246,7 +285,7 @@ def list_topics() -> list[dict]:
     Contact captures share one queue — collapse shared + legacy per-app keys
     into a single Contacts row pointing at RES.contacts.system.
 
-    Only typed families appear here (Contacts / Inventory / SNMP / Maintenance).
+    Only typed families appear here (Contacts / Vendors / Inventory / SNMP / Maintenance).
     Raw PolySniffer ``action-`` captures have no Consume handler — omit them so
     they do not look like a second Contacts / Odoo row.
     """
@@ -260,6 +299,7 @@ def list_topics() -> list[dict]:
     )
     out = []
     contacts_seen = False
+    vendors_seen = False
     for row in rows:
         topic = row["topic"] or ""
         family = classify_topic(topic)
@@ -271,6 +311,12 @@ def list_topics() -> list[dict]:
             contacts_seen = True
             topic = "RES.contacts.system"
             family = FAMILY_CONTACTS
+        if family == FAMILY_VENDORS:
+            if vendors_seen:
+                continue
+            vendors_seen = True
+            topic = "RES.vendors.system"
+            family = FAMILY_VENDORS
         out.append(
             {
                 "topic": topic,
@@ -289,6 +335,21 @@ def _is_shared_contacts_topic(topic: str) -> bool:
     return t.startswith("res.contacts.") or classify_topic(topic) == FAMILY_CONTACTS
 
 
+def _vendor_topic_filter():
+    from django.db.models import Q
+
+    return (
+        Q(topic__icontains=".vendors.")
+        | Q(action_path__icontains="/events/polysaas/vendor")
+        | Q(action_path__icontains="vendor/created")
+    )
+
+
+def _is_shared_vendors_topic(topic: str) -> bool:
+    t = (topic or "").strip().lower()
+    return t.startswith("res.vendors.") or classify_topic(topic) == FAMILY_VENDORS
+
+
 def list_topic_envelopes(topic: str, *, limit: int = 100) -> list[dict]:
     """Peek envelopes still on the topic queue (current tenant schema)."""
     from dose.models import WebhookMailbox
@@ -298,6 +359,8 @@ def list_topic_envelopes(topic: str, *, limit: int = 100) -> list[dict]:
     qs = WebhookMailbox.objects.all()
     if _is_shared_contacts_topic(topic):
         qs = qs.filter(_contact_topic_filter())
+    elif _is_shared_vendors_topic(topic):
+        qs = qs.filter(_vendor_topic_filter())
     else:
         qs = qs.filter(topic=topic)
     rows = list(qs.order_by("-created_at")[: max(1, int(limit)) * 2])
@@ -344,6 +407,8 @@ def requeue_topic(topic: str) -> dict:
     )
     if _is_shared_contacts_topic(topic):
         qs = qs.filter(_contact_topic_filter())
+    elif _is_shared_vendors_topic(topic):
+        qs = qs.filter(_vendor_topic_filter())
     else:
         qs = qs.filter(topic=topic)
     updated = qs.update(
@@ -440,6 +505,9 @@ def consume_topic(
     if _is_shared_contacts_topic(topic):
         pending_qs = pending_qs.filter(_contact_topic_filter())
         topic = "RES.contacts.system"
+    elif _is_shared_vendors_topic(topic):
+        pending_qs = pending_qs.filter(_vendor_topic_filter())
+        topic = "RES.vendors.system"
     else:
         pending_qs = pending_qs.filter(topic=topic)
     pending = list(pending_qs.order_by("created_at")[: max(1, int(limit))])
@@ -521,6 +589,8 @@ def _consume_one(entry, family: str) -> int:
         return _write_maintenance(entry)
     if family == FAMILY_CONTACTS:
         return _write_contacts(entry)
+    if family == FAMILY_VENDORS:
+        return _write_vendors(entry)
     raise ValueError(f"unsupported family {family}")
 
 
@@ -675,6 +745,46 @@ def _write_contacts(entry) -> int:
                 username=str(rec.get("username") or "")[:128],
                 active=bool(rec.get("active", True)),
                 raw_record=raw if isinstance(raw, dict) else {},
+            )
+            n += 1
+    return n
+
+
+def _write_vendors(entry) -> int:
+    from dose.models.topic_history import VendorHistory
+    from dose.services.vendor_capture import vendor_topic
+
+    records = _payload_records(entry)
+    if not records:
+        env = entry.envelope if isinstance(entry.envelope, dict) else {}
+        payload = env.get("payload") if isinstance(env.get("payload"), dict) else {}
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        if data:
+            records = [data]
+    shared_topic = vendor_topic(actor="system")
+    n = 0
+    with transaction.atomic():
+        for rec in records:
+            vid = rec.get("odoo_vendor_id") or rec.get("id")
+            cid = rec.get("odoo_contact_id")
+            try:
+                vid = int(vid) if vid is not None and vid != "" else None
+            except (TypeError, ValueError):
+                vid = None
+            try:
+                cid = int(cid) if cid is not None and cid != "" else None
+            except (TypeError, ValueError):
+                cid = None
+            VendorHistory.objects.create(
+                topic=shared_topic,
+                source_event_id=entry.event_id or "",
+                source_mailbox_id=entry.id,
+                odoo_vendor_id=vid,
+                odoo_contact_id=cid,
+                name=str(rec.get("name") or rec.get("vendor_name") or "")[:255],
+                email=str(rec.get("email") or "")[:255],
+                region=str(rec.get("region") or "")[:255],
+                raw_record=rec,
             )
             n += 1
     return n
