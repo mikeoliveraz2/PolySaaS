@@ -228,10 +228,13 @@ def capture_vendor_criteria(request, instruction_row):
         result = service_result(
             "OdooVendorAssist",
             status="error",
+            ok=False,
             json_response=True,
             wrap_passthrough=False,
             message=detail,
             criteria=criteria,
+            vendors=[],
+            shortlist_status=SHORTLIST_FAILED_MESSAGE,
         )
         maybe_save_callback(
             request,
@@ -256,6 +259,11 @@ def capture_vendor_criteria(request, instruction_row):
     except Exception:
         logger.exception("[OdooVendorAssist] shortlist failed")
         vendors, shortlist_ok = [], False
+    if not vendors:
+        vendors = _deterministic_rank_directory(
+            criteria, [dict(row) for row in DEMO_VENDOR_DIRECTORY]
+        )
+        shortlist_ok = False
     if shortlist_ok and vendors:
         shortlist_message = SHORTLIST_RETURNED_MESSAGE
         emit_vendor_step_message(request, shortlist_message, level="success")
@@ -265,13 +273,15 @@ def capture_vendor_criteria(request, instruction_row):
     result = service_result(
         "OdooVendorAssist",
         status="success",
+        ok=True,
         json_response=True,
         wrap_passthrough=False,
         message=CRITERIA_CAPTURED_MESSAGE,
         criteria=criteria,
-        vendors=vendors,
-        suggested_vendors=vendors,
+        vendors=list(vendors),
+        suggested_vendors=list(vendors),
         source=SHORTLIST_SOURCE_LABEL,
+        shortlist_status=shortlist_message,
         shortlist_message=shortlist_message,
         shortlist_ok=shortlist_ok and bool(vendors),
     )
@@ -329,18 +339,18 @@ def _criteria_from_session(request) -> dict:
 
 
 def suggest_vendors(criteria: dict) -> tuple[list, bool]:
-    """Rank the curated demo directory. LLM first; deterministic fallback.
+    """Rank the curated demo directory locally first; optional LLM refine.
 
-    Returns (rows, llm_ranked). Rows are always from DEMO_VENDOR_DIRECTORY.
-    llm_ranked is False when the router is down or JSON is unusable so the
-    page can toast Shortlist search failed while still showing demo rows.
+    Never blocks the Find-suppliers JSON on a slow or 403 LLM. Local rows
+    always come from DEMO_VENDOR_DIRECTORY (3–6). llm_ranked is True only
+    when the router returns a usable ranking within a short timeout.
     """
     catalog = [dict(row) for row in DEMO_VENDOR_DIRECTORY]
+    local_rows = _deterministic_rank_directory(criteria, catalog)
     ranked = _llm_rank_directory(criteria, catalog)
     if ranked:
         return ranked, True
-    fallback = _deterministic_rank_directory(criteria, catalog)
-    return fallback, False
+    return local_rows, False
 
 
 def _llm_rank_directory(criteria: dict, catalog: list) -> list:
@@ -387,7 +397,7 @@ def _llm_rank_directory(criteria: dict, catalog: list) -> list:
                 "Output JSON with an ids array. No markdown."
             ),
             max_tokens=400,
-            timeout=30,
+            timeout=4,
         )
     except Exception as exc:
         logger.warning("[OdooVendorAssist] complete_chat failed: %s", exc)

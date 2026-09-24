@@ -126,14 +126,17 @@ class CriteriaCaptureTests(SimpleTestCase):
                     result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "success")
+        self.assertTrue(result.get("ok"))
         self.assertEqual(result["message"], CRITERIA_CAPTURED_MESSAGE)
         self.assertTrue(result.get("json_response"))
         self.assertEqual(result["criteria"]["product_line"], "Packaging film")
         self.assertEqual(request.session[CRITERIA_SESSION_KEY]["region"], "Southeast Asia")
         self.assertTrue(result.get("suggested_vendors") or result.get("vendors"))
-        vendors = result.get("suggested_vendors") or result.get("vendors")
+        vendors = result.get("vendors") or result.get("suggested_vendors")
         self.assertGreaterEqual(len(vendors), 3)
+        self.assertLessEqual(len(vendors), 6)
         self.assertEqual(result["source"], SHORTLIST_SOURCE_LABEL)
+        self.assertEqual(result["shortlist_status"], SHORTLIST_RETURNED_MESSAGE)
         self.assertEqual(result["shortlist_message"], SHORTLIST_RETURNED_MESSAGE)
         names = [row.get("name") for row in vendors]
         self.assertTrue(any("SeaWrap" in (n or "") for n in names))
@@ -205,11 +208,15 @@ class CriteriaCaptureTests(SimpleTestCase):
                     result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "success")
+        self.assertTrue(result.get("ok"))
         self.assertEqual(result["message"], CRITERIA_CAPTURED_MESSAGE)
-        vendors = result.get("suggested_vendors") or result.get("vendors") or []
+        vendors = result.get("vendors") or result.get("suggested_vendors") or []
         self.assertGreaterEqual(len(vendors), 3)
+        self.assertLessEqual(len(vendors), 6)
         names = " ".join(row.get("name") or "" for row in vendors)
         self.assertIn("Pencil", names)
+        self.assertTrue(any(row.get("main_contact") for row in vendors))
+        self.assertEqual(result["shortlist_status"], SHORTLIST_FAILED_MESSAGE)
         self.assertEqual(result["shortlist_message"], SHORTLIST_FAILED_MESSAGE)
         self.assertFalse(result.get("shortlist_ok"))
         messages = [call.args[1] for call in emit.call_args_list]
@@ -246,8 +253,11 @@ class CriteriaCaptureTests(SimpleTestCase):
                 ):
                     result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
+        self.assertEqual(result["shortlist_status"], SHORTLIST_FAILED_MESSAGE)
         self.assertEqual(result["shortlist_message"], SHORTLIST_FAILED_MESSAGE)
-        self.assertEqual(result.get("vendors") or [], [])
+        vendors = result.get("vendors") or []
+        self.assertGreaterEqual(len(vendors), 3)
+        self.assertTrue(any(row.get("main_contact") for row in vendors))
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertIn(SHORTLIST_FAILED_MESSAGE, messages)
 
@@ -576,6 +586,9 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Demo directory", html)
         self.assertIn("Selection in the next step", html)
         self.assertIn("renderShortlist", html)
+        self.assertIn("pickVendors", html)
+        self.assertIn("shortlist_status", html)
         self.assertNotIn("action: 'search'", html)
         self.assertNotIn("action: 'save'", html)
         self.assertIn("suggested_vendors", html)
+        self.assertIn("JSON.parse(text)", html)

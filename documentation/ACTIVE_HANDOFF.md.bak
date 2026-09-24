@@ -3,7 +3,29 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Type 4 POC Slice 3 (demo-directory shortlist)
+
+- Slice 3 ready. Same **Find suppliers** POST on `/odoo/vendors/new` (same Instruction as Slice 2). After criteria capture, `OdooVendorAssist` ranks a curated **Demo directory** via RoutePlan + `complete_chat` (`LLM_ROUTER_STANDARD_MODEL`). If the LLM is down, a deterministic rank still returns 3–6 rows and toasts **Shortlist search failed**. LLM success toasts **Shortlist returned**.
+- Page shows **Suggested vendors** / **Demo directory**. Rows are not bound (Slice 4). Save to Odoo still stub.
+- Green bar `interesting()` now matches `shortlist` / `suggest`.
+- **No new Instruction.** Same POST REQ row. Deploy only. Optional seed update: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `suggest_vendors: true` on the existing POST parameters; not required for the atomic to run).
+- Verify: POLYSAASADMIN → Purchase → Orders → Vendors → New → Find suppliers → page **Criteria captured** then **Shortlist returned** (or failed + still rows). Green bar follows.
+- Next: Slice 4 select-and-bind. Do not start until owner says go.
+
 ## 2026-09-24 (Thursday) — Type 4 POC Slice 2 (criteria capture)
+
+- Slice 2: operator clicks **Find suppliers** on New Vendor Assist. The page POSTs JSON to the same passthrough path. Instruction `POST REQ /odoo/vendors/new` → same atomic `OdooVendorAssist` records product line / region / price range, stores them in session, and emits DoseMessage **"Criteria captured"** (or a failure line on the green bar).
+- GET page-load still emits **"Vendor page loaded"**. AI shortlist / bind / save / events are not in this slice.
+- Green bar `interesting()` also matches `criteria` so the capture toast shows.
+- After Dokploy deploy, seed the POST instruction (GET row already live):
+
+```bash
+python manage.py setup_odoo_vendor_assist_consumer --schema polysaas
+```
+
+  POST instruction fields if adding by hand: path `/odoo/vendors/new`, method `POST`, direction `REQ`, eventKey `odoo.vendor.new.assist.criteria`, executescript `OdooVendorAssist`, parameters `{"capture_criteria": true}`.
+- Verify: POLYSAASADMIN → Odoo passthrough → Purchase → Orders → Vendors → New → **Find suppliers** (defaults filled) → green bar **Criteria captured**. Form values stay. Save still stub.
+- Next: Slice 3 AI shortlist. Do not start until owner says go.
 
 - Slice 2: operator clicks **Find suppliers** on New Vendor Assist. The page POSTs JSON to the same passthrough path. Instruction `POST REQ /odoo/vendors/new` → same atomic `OdooVendorAssist` records product line / region / price range, stores them in session, and emits DoseMessage **"Criteria captured"** (or a failure line on the green bar).
 - GET page-load still emits **"Vendor page loaded"**. AI shortlist / bind / save / events are not in this slice.
