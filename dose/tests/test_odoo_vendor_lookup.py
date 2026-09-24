@@ -1,4 +1,4 @@
-"""Slice 1–2 — New Vendor Assist: atomic page + criteria capture (no handler hardcoding)."""
+"""Slice 1–3 — New Vendor Assist: page, criteria capture, demo-directory shortlist."""
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -14,6 +14,9 @@ from dose.services.odoo_vendor_lookup import (
     CRITERIA_CAPTURED_MESSAGE,
     CRITERIA_CAPTURE_FAILED_MESSAGE,
     CRITERIA_SESSION_KEY,
+    SHORTLIST_FAILED_MESSAGE,
+    SHORTLIST_RETURNED_MESSAGE,
+    SHORTLIST_SOURCE_LABEL,
     VENDOR_PAGE_LOADED_MESSAGE,
     VENDOR_PAGE_TITLE,
     OdooVendorAssist,
@@ -56,12 +59,11 @@ class AtomicPageTests(SimpleTestCase):
     def test_atomic_declares_passthrough_page(self):
         self.assertTrue(getattr(OdooVendorAssist, "returns_passthrough_page", False))
 
-    def test_slice1_module_has_no_suggest_save_enroll(self):
+    def test_slice1_module_has_no_save_enroll_or_path_hardcode(self):
         import dose.services.odoo_vendor_lookup as mod
 
-        self.assertFalse(hasattr(mod, "suggest_vendors"))
+        self.assertTrue(hasattr(mod, "suggest_vendors"))
         self.assertFalse(hasattr(mod, "save_vendor"))
-        self.assertFalse(hasattr(mod, "parse_vendor_suggestions"))
         self.assertFalse(hasattr(mod, "VENDOR_EVENT_KEY"))
         self.assertFalse(hasattr(mod, "VENDOR_NEW_PATHS"))
         self.assertFalse(hasattr(mod, "is_odoo_vendor_new_path"))
@@ -117,14 +119,28 @@ class CriteriaCaptureTests(SimpleTestCase):
                 "dose.services.odoo_vendor_lookup.maybe_save_callback",
                 return_value=None,
             ):
-                result = OdooVendorAssist.execute_and_save(request, self._instruction())
+                with patch(
+                    "llm_router.providers.complete_chat",
+                    return_value='{"ids": ["seawrap", "mekongfilm", "aseanpack", "graphitepoint"]}',
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["message"], CRITERIA_CAPTURED_MESSAGE)
         self.assertTrue(result.get("json_response"))
         self.assertEqual(result["criteria"]["product_line"], "Packaging film")
         self.assertEqual(request.session[CRITERIA_SESSION_KEY]["region"], "Southeast Asia")
-        emit.assert_called_once_with(request, CRITERIA_CAPTURED_MESSAGE, level="success")
+        self.assertTrue(result.get("suggested_vendors") or result.get("vendors"))
+        vendors = result.get("suggested_vendors") or result.get("vendors")
+        self.assertGreaterEqual(len(vendors), 3)
+        self.assertEqual(result["source"], SHORTLIST_SOURCE_LABEL)
+        self.assertEqual(result["shortlist_message"], SHORTLIST_RETURNED_MESSAGE)
+        names = [row.get("name") for row in vendors]
+        self.assertTrue(any("SeaWrap" in (n or "") for n in names))
+        self.assertTrue(any(row.get("main_contact") for row in vendors))
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertIn(CRITERIA_CAPTURED_MESSAGE, messages)
+        self.assertIn(SHORTLIST_RETURNED_MESSAGE, messages)
 
     def test_post_missing_fields_emits_failure(self):
         import json
@@ -157,6 +173,83 @@ class CriteriaCaptureTests(SimpleTestCase):
         emit.assert_called_once()
         self.assertEqual(emit.call_args.args[1], result["message"])
         self.assertEqual(emit.call_args.kwargs["level"], "error")
+
+    def test_post_shortlist_llm_down_still_returns_rows_and_failed_toast(self):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps(
+                {
+                    "step": "capture_criteria",
+                    "product_line": "Pencils",
+                    "region": "Southeast Asia",
+                    "price_range": "Under $2 per unit",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                return_value=None,
+            ):
+                with patch(
+                    "llm_router.providers.complete_chat",
+                    side_effect=RuntimeError("AI unavailable"),
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["message"], CRITERIA_CAPTURED_MESSAGE)
+        vendors = result.get("suggested_vendors") or result.get("vendors") or []
+        self.assertGreaterEqual(len(vendors), 3)
+        names = " ".join(row.get("name") or "" for row in vendors)
+        self.assertIn("Pencil", names)
+        self.assertEqual(result["shortlist_message"], SHORTLIST_FAILED_MESSAGE)
+        self.assertFalse(result.get("shortlist_ok"))
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertIn(CRITERIA_CAPTURED_MESSAGE, messages)
+        self.assertIn(SHORTLIST_FAILED_MESSAGE, messages)
+
+    def test_post_shortlist_empty_emits_failed(self):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps(
+                {
+                    "step": "capture_criteria",
+                    "product_line": "Packaging film",
+                    "region": "Southeast Asia",
+                    "price_range": "Under $2 per unit",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                return_value=None,
+            ):
+                with patch(
+                    "dose.services.odoo_vendor_lookup.suggest_vendors",
+                    return_value=([], False),
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["shortlist_message"], SHORTLIST_FAILED_MESSAGE)
+        self.assertEqual(result.get("vendors") or [], [])
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertIn(SHORTLIST_FAILED_MESSAGE, messages)
 
     def test_get_still_emits_vendor_page_loaded_not_criteria(self):
         request = RequestFactory().get("/pt/admin/odoo/odoo/vendors/new")
@@ -311,6 +404,38 @@ class InstructionMatchSelectsPageTests(SimpleTestCase):
         find_match.assert_not_called()
 
     @patch("dose.passthrough.orchestration_hook.find_matching_instructions")
+    def test_unmatched_post_step_returns_json_404(self, find_match):
+        find_match.return_value = []
+        request = self.factory.post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data='{"step":"capture_criteria","product_line":"Pencils","region":"Southeast Asia","price_range":"< $2.00 per hundred"}',
+            content_type="application/json",
+        )
+        request.tenant = self.tenant
+        resp = try_instruction_page_response(
+            request, self.endpoint, self.handler, "odoo"
+        )
+        self.assertIsNotNone(resp)
+        self.assertEqual(resp.status_code, 404)
+        body = resp.content.decode("utf-8")
+        self.assertIn("No matching POST instruction", body)
+        self.assertIn("application/json", resp["Content-Type"])
+
+    @patch("dose.passthrough.orchestration_hook.find_matching_instructions")
+    def test_unmatched_post_without_step_still_falls_through(self, find_match):
+        find_match.return_value = []
+        request = self.factory.post(
+            "/pt/admin/odoo/odoo/web/dataset/call_kw",
+            data='{"jsonrpc":"2.0","method":"call","params":{}}',
+            content_type="application/json",
+        )
+        request.tenant = self.tenant
+        resp = try_instruction_page_response(
+            request, self.endpoint, self.handler, "odoo"
+        )
+        self.assertIsNone(resp)
+
+    @patch("dose.passthrough.orchestration_hook.find_matching_instructions")
     @patch("dose.services.atomic_services_registry.get_atomic_service")
     @patch("dose.services.atomic_services_registry.init_atomic_services_registry")
     def test_post_instruction_returns_json_not_html(self, _init, get_svc, find_match):
@@ -416,6 +541,7 @@ class HandlerHasNoVendorHardcodingTests(SimpleTestCase):
         self.assertIn("documentPathMatchesInstruction", source)
         # Must stay generic — no vendor path hardcoding in the embed nav helper.
         self.assertNotIn("/odoo/vendors/new", source)
+        self.assertIn("shortlist", source)
 
     def test_root_splash_still_works_without_vendor_branch(self):
         from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler
@@ -442,6 +568,14 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Packaging film", html)
         self.assertIn("Southeast Asia", html)
         self.assertIn("Under $2 per unit", html)
+        self.assertNotIn("display only", html)
+        self.assertNotIn("Search is not connected", html)
+        self.assertIn("No matching POST instruction", html)
+        self.assertIn("showFindStatus", html)
+        self.assertIn("Suggested vendors", html)
+        self.assertIn("Demo directory", html)
+        self.assertIn("Selection in the next step", html)
+        self.assertIn("renderShortlist", html)
         self.assertNotIn("action: 'search'", html)
         self.assertNotIn("action: 'save'", html)
-        self.assertNotIn("suggest_vendors", html)
+        self.assertIn("suggested_vendors", html)

@@ -3,6 +3,21 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Type 4 POC Slice 2 (criteria capture)
+
+- Slice 2: operator clicks **Find suppliers** on New Vendor Assist. The page POSTs JSON to the same passthrough path. Instruction `POST REQ /odoo/vendors/new` → same atomic `OdooVendorAssist` records product line / region / price range, stores them in session, and emits DoseMessage **"Criteria captured"** (or a failure line on the green bar).
+- GET page-load still emits **"Vendor page loaded"**. AI shortlist / bind / save / events are not in this slice.
+- Green bar `interesting()` also matches `criteria` so the capture toast shows.
+- After Dokploy deploy, seed the POST instruction (GET row already live):
+
+```bash
+python manage.py setup_odoo_vendor_assist_consumer --schema polysaas
+```
+
+  POST instruction fields if adding by hand: path `/odoo/vendors/new`, method `POST`, direction `REQ`, eventKey `odoo.vendor.new.assist.criteria`, executescript `OdooVendorAssist`, parameters `{"capture_criteria": true}`.
+- Verify: POLYSAASADMIN → Odoo passthrough → Purchase → Orders → Vendors → New → **Find suppliers** (defaults filled) → green bar **Criteria captured**. Form values stay. Save still stub.
+- Next: Slice 3 AI shortlist. Do not start until owner says go.
+
 ## 2026-09-24 (Thursday) — Type 4 POC Slice 1 pushed
 
 - Slice 1 New Vendor Assist code pushed: Instruction `GET /odoo/vendors/new` → atomic `OdooVendorAssist` → branded page + "Vendor page loaded" toast.

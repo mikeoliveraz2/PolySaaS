@@ -75,11 +75,14 @@ class Command(BaseCommand):
                     "eventKey": "odoo.vendor.new.assist.criteria",
                     "executescript": _ATOMIC,
                     "description": (
-                        "Slice 2: New Vendor Assist — capture product line / "
-                        "region / price range (POST JSON; DoseMessage toast)"
+                        "Slice 2–3: New Vendor Assist — capture criteria then "
+                        "return a demo-directory shortlist (POST JSON; DoseMessage toasts)"
                     ),
                     "save_callbackdata": True,
-                    "parameters_json": {"capture_criteria": True},
+                    "parameters_json": {
+                        "capture_criteria": True,
+                        "suggest_vendors": True,
+                    },
                 },
             )
             post_verb = "Created" if post_created else "Updated"
@@ -96,6 +99,6 @@ class Command(BaseCommand):
             self.style.WARNING(
                 "Hard-refresh Odoo passthrough, open Vendors -> New. "
                 "Expect Assist page, 'Vendor page loaded', then Find suppliers "
-                "toasts 'Criteria captured'."
+                "toasts 'Criteria captured' then 'Shortlist returned'."
             )
         )

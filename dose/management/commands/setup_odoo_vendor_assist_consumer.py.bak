@@ -49,8 +49,8 @@ class Command(BaseCommand):
                     "eventKey": _EVENT_KEY,
                     "executescript": _ATOMIC,
                     "description": (
-                        "Slice 1: New Vendor Assist — branded replacement page "
-                        "(atomic returns HTML; no AI/RPC yet)"
+                        "New Vendor Assist — branded replacement page "
+                        "(GET: atomic returns HTML)"
                     ),
                     "save_callbackdata": True,
                     "parameters_json": {"serve_page": True},
@@ -65,9 +65,37 @@ class Command(BaseCommand):
                 )
             )
 
+            post_instr, post_created = Instruction.objects.update_or_create(
+                tenant=tenant,
+                requestpath=_VENDOR_NEW_PATH,
+                requestmethod="POST",
+                direction="REQ",
+                defaults={
+                    "match_type": "path",
+                    "eventKey": "odoo.vendor.new.assist.criteria",
+                    "executescript": _ATOMIC,
+                    "description": (
+                        "Slice 2: New Vendor Assist — capture product line / "
+                        "region / price range (POST JSON; DoseMessage toast)"
+                    ),
+                    "save_callbackdata": True,
+                    "parameters_json": {"capture_criteria": True},
+                },
+            )
+            post_verb = "Created" if post_created else "Updated"
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"{post_verb} {_ATOMIC} instruction #{post_instr.pk} in schema "
+                    f"{schema!r}: POST REQ path {_VENDOR_NEW_PATH!r} "
+                    f"(eventKey=odoo.vendor.new.assist.criteria)"
+                )
+            )
+
+
         self.stdout.write(
             self.style.WARNING(
                 "Hard-refresh Odoo passthrough, open Vendors -> New. "
-                "Expect Assist page and green-bar 'Vendor page loaded'."
+                "Expect Assist page, 'Vendor page loaded', then Find suppliers "
+                "toasts 'Criteria captured'."
             )
         )
