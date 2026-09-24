@@ -3,7 +3,19 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Vendor Assist shortlist: JSON POST + always-visible Demo table
+
+- **Root cause:** `instruction_page._json_from_atomic_result` refused JSON whenever the atomic dict also had `html`, so Find suppliers POST could be **admin-wrapped HTML**; the page toasted Criteria captured locally, DoseMessage showed **Shortlist search failed**, and `#ps-shortlist-card` stayed `display:none` until a successful JSON parse.
+- **Fix:** Generic JSON return for POST + Accept/json / X-Requested-With / `json_response` / nested `json` (no path hardcode). Atomic always returns serializable `{vendors: 3–6 demo rows}`. Template unhides `#ps-vendor-shortlist` (static 3-row Demo directory table under Find suppliers) on click; parse errors paint in red on the page; missing vendors shows **No vendors in response**.
+- Tests: `dose.tests.test_odoo_vendor_lookup` — 25 passed.
+- Michael: **Deploy this commit**, hard-refresh New Vendor Assist, click **Find suppliers**. Expect **Suggested vendors / Demo directory** table immediately under the button (SeaWrap, Mekong, ASEAN at minimum). Green bar may still say Shortlist search failed if the LLM is down — that is the toast, not an empty table. No new Instruction. No Slice 4.
+
 ## 2026-09-24 (Thursday) — Slice 3 shortlist render fix (Find suppliers empty table)
+
+- **Root cause:** Find suppliers waited on `complete_chat` (30s, production LLM hang/403) *before* returning demo rows. Criteria DoseMessage fired first, so the page could show **Criteria captured** while the POST never finished the shortlist JSON. JS also required `Content-Type: json` and painted from `suggested_vendors`/`vendors` only after that wait — silent hidden table, no **Shortlist returned/failed**.
+- **Fix:** Rank **Demo directory locally first** (always 3–6 rows, at least one `main_contact`). Optional LLM refine with **4s** timeout. JSON always `{ok, message, criteria, vendors, shortlist_status}`. JS parses JSON even if wrapped/HTML, always opens **Suggested vendors** / **Demo directory**. Status: Criteria captured **and** Shortlist returned or Shortlist search failed.
+- Tests: `dose.tests.test_odoo_vendor_lookup` — 23 passed.
+- Michael: **Deploy this commit**, hard-refresh New Vendor Assist, Find suppliers. Expect table immediately. No new Instruction. No Slice 4.
 
 - **Root cause:** Find suppliers waited on `complete_chat` (30s, production LLM hang/403) *before* returning demo rows. Criteria DoseMessage fired first, so the page could show **Criteria captured** while the POST never finished the shortlist JSON. JS also required `Content-Type: json` and painted from `suggested_vendors`/`vendors` only after that wait — silent hidden table, no **Shortlist returned/failed**.
 - **Fix:** Rank **Demo directory locally first** (always 3–6 rows, at least one `main_contact`). Optional LLM refine with **4s** timeout. JSON always `{ok, message, criteria, vendors, shortlist_status}`. JS parses JSON even if wrapped/HTML, always opens **Suggested vendors** / **Demo directory**. Status: Criteria captured **and** Shortlist returned or Shortlist search failed.

@@ -3,6 +3,13 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Slice 3 shortlist render fix (Find suppliers empty table)
+
+- **Root cause:** Find suppliers waited on `complete_chat` (30s, production LLM hang/403) *before* returning demo rows. Criteria DoseMessage fired first, so the page could show **Criteria captured** while the POST never finished the shortlist JSON. JS also required `Content-Type: json` and painted from `suggested_vendors`/`vendors` only after that wait — silent hidden table, no **Shortlist returned/failed**.
+- **Fix:** Rank **Demo directory locally first** (always 3–6 rows, at least one `main_contact`). Optional LLM refine with **4s** timeout. JSON always `{ok, message, criteria, vendors, shortlist_status}`. JS parses JSON even if wrapped/HTML, always opens **Suggested vendors** / **Demo directory**. Status: Criteria captured **and** Shortlist returned or Shortlist search failed.
+- Tests: `dose.tests.test_odoo_vendor_lookup` — 23 passed.
+- Michael: **Deploy this commit**, hard-refresh New Vendor Assist, Find suppliers. Expect table immediately. No new Instruction. No Slice 4.
+
 ## 2026-09-24 (Thursday) — Type 4 POC Slice 3 (demo-directory shortlist)
 
 - Slice 3 ready. Same **Find suppliers** POST on `/odoo/vendors/new` (same Instruction as Slice 2). After criteria capture, `OdooVendorAssist` ranks a curated **Demo directory** via RoutePlan + `complete_chat` (`LLM_ROUTER_STANDARD_MODEL`). If the LLM is down, a deterministic rank still returns 3–6 rows and toasts **Shortlist search failed**. LLM success toasts **Shortlist returned**.

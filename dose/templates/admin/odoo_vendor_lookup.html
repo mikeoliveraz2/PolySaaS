@@ -89,11 +89,13 @@
         }
         .ps-vendor .ps-note { font-size: 0.85rem; color: #4b5563; margin-top: 8px; }
         .ps-vendor .ps-msg { margin-top: 10px; color: #4b5563; }
+        .ps-vendor .ps-err { margin-top: 8px; color: #b91c1c; font-size: 0.9rem; white-space: pre-wrap; }
         .ps-vendor table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .ps-vendor th, .ps-vendor td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
         .ps-vendor th { color: #6b7280; font-weight: 600; font-size: 0.78rem; }
         .ps-vendor .ps-badge { display: inline-block; font-size: 0.75rem; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 2px 8px; margin-left: 8px; }
-        .ps-vendor .ps-shortlist { display: none; }
+        .ps-vendor .ps-shortlist { margin-top: 16px; }
+        .ps-vendor .ps-shortlist.is-hidden { display: none; }
         .ps-vendor .ps-shortlist.is-open { display: block; }
         @media (max-width: 720px) {
             .ps-vendor .ps-row,
@@ -128,12 +130,22 @@
         <button type="button" id="ps-find">Find suppliers</button>
         <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
         <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria, then returns Suggested vendors from the Demo directory.</p>
-    </div>
+        <p class="ps-err" id="ps-shortlist-error" hidden></p>
 
-    <div class="ps-card ps-shortlist" id="ps-shortlist-card">
-        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#1f2a44;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
-        <p class="ps-note" id="ps-shortlist-note">Selection in the next step.</p>
-        <div id="ps-shortlist-table-wrap"></div>
+        <div class="ps-shortlist is-hidden" id="ps-vendor-shortlist">
+            <h2 style="margin:12px 0 8px;font-size:1.1rem;color:#1f2a44;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
+            <p class="ps-note" id="ps-shortlist-note">Selection in the next step.</p>
+            <div id="ps-shortlist-table-wrap">
+                <table id="ps-demo-table">
+                    <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Website</th><th>Main contact</th></tr></thead>
+                    <tbody>
+                        <tr><td>SeaWrap Packaging</td><td>sales@seawrap.example</td><td>+65 6123 4401</td><td>https://seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
+                        <tr><td>Mekong Film Co</td><td>hello@mekongfilm.example</td><td>+84 28 3999 1200</td><td>https://mekongfilm.example</td><td></td></tr>
+                        <tr><td>ASEAN Pack Supplies</td><td>orders@aseanpack.example</td><td>+66 2 555 0199</td><td>https://aseanpack.example</td><td>Somsak Prasert<br>somsak@aseanpack.example</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <div class="ps-card" id="ps-form-card">
@@ -179,6 +191,17 @@
     var findBtn = document.getElementById('ps-find');
     var note = document.getElementById('ps-criteria-note');
     var shortNote = document.getElementById('ps-shortlist-note');
+    var errEl = document.getElementById('ps-shortlist-error');
+    function showPageError(msg) {
+        if (!errEl) return;
+        if (!msg) {
+            errEl.hidden = true;
+            errEl.textContent = '';
+            return;
+        }
+        errEl.hidden = false;
+        errEl.textContent = msg;
+    }
     function showFindStatus(msg, isError) {
         if (note) {
             note.textContent = msg;
@@ -193,6 +216,13 @@
             shortNote.textContent = msg;
             shortNote.style.color = isError ? '#b91c1c' : '#166534';
         }
+    }
+    function openShortlist() {
+        var card = document.getElementById('ps-vendor-shortlist');
+        if (!card) return;
+        card.classList.remove('is-hidden');
+        card.classList.add('is-open');
+        card.style.display = 'block';
     }
     function esc(s) {
         return String(s == null ? '' : s)
@@ -218,27 +248,23 @@
         {name:'Nordic Timber Crates',email:'export@nordiccrates.example',phone:'+47 21 000 110',website:'https://nordiccrates.example'}
     ];
     function pickVendors(data) {
-        if (!data || typeof data !== 'object') return DEMO_DIRECTORY.slice();
+        if (!data || typeof data !== 'object') return [];
         var raw = data.vendors;
         if (!Array.isArray(raw) || !raw.length) raw = data.suggested_vendors;
         if (!Array.isArray(raw) || !raw.length) {
-            var nested = data.data || data.result || {};
+            var nested = data.data || data.result || data.json || {};
             raw = nested.vendors || nested.suggested_vendors;
         }
-        if (!Array.isArray(raw) || !raw.length) return DEMO_DIRECTORY.slice();
-        var rows = raw.filter(function (row) { return row && typeof row === 'object'; });
-        if (rows.length < 3) return DEMO_DIRECTORY.slice();
-        return rows;
+        if (!Array.isArray(raw) || !raw.length) return [];
+        return raw.filter(function (row) { return row && typeof row === 'object'; });
     }
     function renderShortlist(vendors) {
-        var card = document.getElementById('ps-shortlist-card');
         var wrap = document.getElementById('ps-shortlist-table-wrap');
-        if (!card || !wrap) return;
-        card.classList.add('is-open');
-        card.style.display = 'block';
+        openShortlist();
+        if (!wrap) return;
         var rows = Array.isArray(vendors) ? vendors : [];
         if (!rows.length) {
-            wrap.innerHTML = '<p class="ps-note">No suggested vendors in the demo directory for this search.</p>';
+            wrap.innerHTML = '<p class="ps-note">No vendors in response</p>';
             return;
         }
         var html = '<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Website</th><th>Main contact</th></tr></thead><tbody>';
@@ -306,7 +332,9 @@
             var token = csrfToken();
             if (token) headers['X-CSRFToken'] = token;
             findBtn.disabled = true;
+            showPageError('');
             showFindStatus('Criteria captured', false);
+            openShortlist();
             var postUrl = window.location.pathname + window.location.search;
             fetch(postUrl, {
                 method: 'POST',
@@ -320,35 +348,56 @@
                 })
             }).then(function (r) {
                 return r.text().then(function (text) {
-                    var ct = (r.headers.get('content-type') || '').toLowerCase();
                     var data = {};
                     var isJson = false;
+                    var parseError = '';
                     if (text) {
                         try {
                             data = JSON.parse(text) || {};
                             isJson = true;
                         } catch (e) {
+                            parseError = (e && e.message ? e.message : String(e))
+                                + '\n' + String(text).slice(0, 800);
                             var extracted = text.match(/\{[\s\S]*\}/);
                             if (extracted) {
                                 try {
                                     data = JSON.parse(extracted[0]) || {};
                                     isJson = true;
-                                } catch (e2) { isJson = false; }
+                                    parseError = '';
+                                } catch (e2) {
+                                    parseError = (e2 && e2.message ? e2.message : String(e2))
+                                        + '\n' + String(text).slice(0, 800);
+                                    isJson = false;
+                                }
                             }
                         }
                     }
-                    if (!isJson && ct.indexOf('json') !== -1) isJson = false;
-                    return { ok: r.ok, status: r.status, isJson: isJson, data: data };
+                    return {
+                        ok: r.ok,
+                        status: r.status,
+                        isJson: isJson,
+                        data: data,
+                        parseError: parseError
+                    };
                 });
             }).then(function (res) {
+                if (res.parseError) {
+                    showPageError('JSON parse failed: ' + res.parseError);
+                    showShortlistStatus('Shortlist search failed', true);
+                    openShortlist();
+                    return;
+                }
+                var rows = pickVendors(res.data || {});
+                if (!rows.length) {
+                    showPageError('No vendors in response');
+                }
                 applyFindResult(res.data || {}, res.ok, res.status, res.isJson);
             }).catch(function (err) {
-                showFindStatus(
-                    'Vendor criteria capture failed: ' + (err && err.message ? err.message : 'network error'),
-                    true
-                );
+                var msg = 'Vendor criteria capture failed: ' + (err && err.message ? err.message : 'network error');
+                showFindStatus(msg, true);
+                showPageError(msg);
                 showShortlistStatus('Shortlist search failed', true);
-                renderShortlist(DEMO_DIRECTORY.slice());
+                openShortlist();
             }).then(function () {
                 findBtn.disabled = false;
             });
