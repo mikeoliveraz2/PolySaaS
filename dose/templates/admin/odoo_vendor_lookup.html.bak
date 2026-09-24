@@ -89,6 +89,12 @@
         }
         .ps-vendor .ps-note { font-size: 0.85rem; color: #4b5563; margin-top: 8px; }
         .ps-vendor .ps-msg { margin-top: 10px; color: #4b5563; }
+        .ps-vendor table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .ps-vendor th, .ps-vendor td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+        .ps-vendor th { color: #6b7280; font-weight: 600; font-size: 0.78rem; }
+        .ps-vendor .ps-badge { display: inline-block; font-size: 0.75rem; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 2px 8px; margin-left: 8px; }
+        .ps-vendor .ps-shortlist { display: none; }
+        .ps-vendor .ps-shortlist.is-open { display: block; }
         @media (max-width: 720px) {
             .ps-vendor .ps-row,
             .ps-vendor .ps-row-2 { grid-template-columns: 1fr; }
@@ -96,13 +102,13 @@
     </style>
 </head>
 <body>
-{# Slice 2: Find suppliers captures criteria. Shortlist/save are still stubs. #}
+{# Slice 3: Find suppliers captures criteria then returns a demo-directory shortlist. Save remains a stub. #}
 <div class="ps-vendor" id="ps-vendor">
     <div class="ps-brand">
         <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
         <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
     </div>
-    <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria in this step; search comes later.</p>
+    <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria, then returns a suggested shortlist from a demo directory (not live web search).</p>
 
     <div class="ps-card">
         <div class="ps-row">
@@ -121,7 +127,13 @@
         </div>
         <button type="button" id="ps-find">Find suppliers</button>
         <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
-        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria on the server. The green bar should then say Criteria captured. AI shortlist is not connected yet.</p>
+        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria, then returns Suggested vendors from the Demo directory.</p>
+    </div>
+
+    <div class="ps-card ps-shortlist" id="ps-shortlist-card">
+        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#1f2a44;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
+        <p class="ps-note" id="ps-shortlist-note">Selection in the next step.</p>
+        <div id="ps-shortlist-table-wrap"></div>
     </div>
 
     <div class="ps-card" id="ps-form-card">
@@ -166,6 +178,7 @@
 
     var findBtn = document.getElementById('ps-find');
     var note = document.getElementById('ps-criteria-note');
+    var shortNote = document.getElementById('ps-shortlist-note');
     function showFindStatus(msg, isError) {
         if (note) {
             note.textContent = msg;
@@ -174,6 +187,50 @@
         if (isError && !note) {
             window.alert(msg);
         }
+    }
+    function showShortlistStatus(msg, isError) {
+        if (shortNote) {
+            shortNote.textContent = msg;
+            shortNote.style.color = isError ? '#b91c1c' : '#166534';
+        }
+    }
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+    function contactCell(row) {
+        var c = row && row.main_contact;
+        if (!c) return '';
+        var bits = [];
+        if (c.name) bits.push(esc(c.name));
+        if (c.email) bits.push(esc(c.email));
+        return bits.join('<br>');
+    }
+    function renderShortlist(vendors) {
+        var card = document.getElementById('ps-shortlist-card');
+        var wrap = document.getElementById('ps-shortlist-table-wrap');
+        if (!card || !wrap) return;
+        card.classList.add('is-open');
+        var rows = Array.isArray(vendors) ? vendors : [];
+        if (!rows.length) {
+            wrap.innerHTML = '<p class="ps-note">No suggested vendors in the demo directory for this search.</p>';
+            return;
+        }
+        var html = '<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Website</th><th>Main contact</th></tr></thead><tbody>';
+        rows.forEach(function (row) {
+            html += '<tr>'
+                + '<td>' + esc(row.name) + '</td>'
+                + '<td>' + esc(row.email) + '</td>'
+                + '<td>' + esc(row.phone) + '</td>'
+                + '<td>' + esc(row.website) + '</td>'
+                + '<td>' + contactCell(row) + '</td>'
+                + '</tr>';
+        });
+        html += '</tbody></table><p class="ps-note">Selection in the next step. Rows do not fill the form yet.</p>';
+        wrap.innerHTML = html;
     }
     if (findBtn) {
         findBtn.addEventListener('click', function () {
@@ -228,6 +285,11 @@
                             document.getElementById('ps-price').value = criteria.price_range;
                         }
                     }
+                    var vendors = data.suggested_vendors || data.vendors || [];
+                    renderShortlist(vendors);
+                    var slOk = data.shortlist_ok === true || data.shortlist_message === 'Shortlist returned';
+                    var slMsg = data.shortlist_message || (slOk ? 'Shortlist returned' : 'Shortlist search failed');
+                    showShortlistStatus(slMsg, !slOk);
                     return;
                 }
                 var msg = (data && data.message) || '';

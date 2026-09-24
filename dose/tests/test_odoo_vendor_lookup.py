@@ -126,14 +126,17 @@ class CriteriaCaptureTests(SimpleTestCase):
                     result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "success")
+        self.assertTrue(result.get("ok"))
         self.assertEqual(result["message"], CRITERIA_CAPTURED_MESSAGE)
         self.assertTrue(result.get("json_response"))
         self.assertEqual(result["criteria"]["product_line"], "Packaging film")
         self.assertEqual(request.session[CRITERIA_SESSION_KEY]["region"], "Southeast Asia")
         self.assertTrue(result.get("suggested_vendors") or result.get("vendors"))
-        vendors = result.get("suggested_vendors") or result.get("vendors")
+        vendors = result.get("vendors") or result.get("suggested_vendors")
         self.assertGreaterEqual(len(vendors), 3)
+        self.assertLessEqual(len(vendors), 6)
         self.assertEqual(result["source"], SHORTLIST_SOURCE_LABEL)
+        self.assertEqual(result["shortlist_status"], SHORTLIST_RETURNED_MESSAGE)
         self.assertEqual(result["shortlist_message"], SHORTLIST_RETURNED_MESSAGE)
         names = [row.get("name") for row in vendors]
         self.assertTrue(any("SeaWrap" in (n or "") for n in names))

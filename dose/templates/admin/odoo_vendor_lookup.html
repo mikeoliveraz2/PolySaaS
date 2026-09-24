@@ -209,11 +209,23 @@
         if (c.email) bits.push(esc(c.email));
         return bits.join('<br>');
     }
+    function pickVendors(data) {
+        if (!data || typeof data !== 'object') return [];
+        var raw = data.vendors;
+        if (!Array.isArray(raw) || !raw.length) raw = data.suggested_vendors;
+        if (!Array.isArray(raw) || !raw.length) {
+            var nested = data.data || data.result || {};
+            raw = nested.vendors || nested.suggested_vendors;
+        }
+        if (!Array.isArray(raw)) return [];
+        return raw.filter(function (row) { return row && typeof row === 'object'; });
+    }
     function renderShortlist(vendors) {
         var card = document.getElementById('ps-shortlist-card');
         var wrap = document.getElementById('ps-shortlist-table-wrap');
         if (!card || !wrap) return;
         card.classList.add('is-open');
+        card.style.display = 'block';
         var rows = Array.isArray(vendors) ? vendors : [];
         if (!rows.length) {
             wrap.innerHTML = '<p class="ps-note">No suggested vendors in the demo directory for this search.</p>';
@@ -232,6 +244,44 @@
         html += '</tbody></table><p class="ps-note">Selection in the next step. Rows do not fill the form yet.</p>';
         wrap.innerHTML = html;
     }
+    function applyFindResult(data, httpOk, httpStatus, isJson) {
+        var captured = (data.ok === true || data.status === 'success' || data.message === 'Criteria captured');
+        if (httpOk && captured) {
+            var slMsg = data.shortlist_status || data.shortlist_message || '';
+            var slOk = data.shortlist_ok === true || slMsg === 'Shortlist returned';
+            if (!slMsg) slMsg = slOk ? 'Shortlist returned' : 'Shortlist search failed';
+            var criteria = data.criteria;
+            if (criteria) {
+                if (document.getElementById('ps-product') && criteria.product_line) {
+                    document.getElementById('ps-product').value = criteria.product_line;
+                }
+                if (document.getElementById('ps-region') && criteria.region) {
+                    document.getElementById('ps-region').value = criteria.region;
+                }
+                if (document.getElementById('ps-price') && criteria.price_range) {
+                    document.getElementById('ps-price').value = criteria.price_range;
+                }
+            }
+            renderShortlist(pickVendors(data));
+            showFindStatus((data.message || 'Criteria captured') + '. ' + slMsg, false);
+            showShortlistStatus(slMsg, !slOk);
+            return;
+        }
+        var msg = (data && data.message) || '';
+        if (!msg) {
+            if (httpStatus === 404) {
+                msg = 'No matching POST instruction for this path (HTTP 404). Add POST REQ /odoo/vendors/new.';
+            } else if (httpStatus === 403) {
+                msg = 'Vendor criteria capture failed (HTTP 403 CSRF). Hard-refresh and retry.';
+            } else if (!isJson) {
+                msg = 'Find suppliers failed: server returned HTML (HTTP ' + httpStatus + '). POST instruction may be missing, or Slice 2 is not deployed.';
+            } else {
+                msg = 'Vendor criteria capture failed (HTTP ' + httpStatus + ')';
+            }
+        }
+        showFindStatus(msg, true);
+        showShortlistStatus('Shortlist search failed', true);
+    }
     if (findBtn) {
         findBtn.addEventListener('click', function () {
             var product = (document.getElementById('ps-product') || {}).value || '';
@@ -245,6 +295,7 @@
             var token = csrfToken();
             if (token) headers['X-CSRFToken'] = token;
             findBtn.disabled = true;
+            showFindStatus('Criteria captured', false);
             var postUrl = window.location.pathname + window.location.search;
             fetch(postUrl, {
                 method: 'POST',
@@ -260,56 +311,32 @@
                 return r.text().then(function (text) {
                     var ct = (r.headers.get('content-type') || '').toLowerCase();
                     var data = {};
-                    var isJson = ct.indexOf('json') !== -1;
-                    if (isJson && text) {
-                        try { data = JSON.parse(text) || {}; } catch (e) { isJson = false; }
+                    var isJson = false;
+                    if (text) {
+                        try {
+                            data = JSON.parse(text) || {};
+                            isJson = true;
+                        } catch (e) {
+                            var extracted = text.match(/\{[\s\S]*\}/);
+                            if (extracted) {
+                                try {
+                                    data = JSON.parse(extracted[0]) || {};
+                                    isJson = true;
+                                } catch (e2) { isJson = false; }
+                            }
+                        }
                     }
+                    if (!isJson && ct.indexOf('json') !== -1) isJson = false;
                     return { ok: r.ok, status: r.status, isJson: isJson, data: data };
                 });
             }).then(function (res) {
-                var data = res.data || {};
-                var captured = res.ok && res.isJson && (
-                    data.status === 'success' || data.message === 'Criteria captured'
-                );
-                if (captured) {
-                    showFindStatus(data.message || 'Criteria captured', false);
-                    var criteria = data.criteria;
-                    if (criteria) {
-                        if (document.getElementById('ps-product') && criteria.product_line) {
-                            document.getElementById('ps-product').value = criteria.product_line;
-                        }
-                        if (document.getElementById('ps-region') && criteria.region) {
-                            document.getElementById('ps-region').value = criteria.region;
-                        }
-                        if (document.getElementById('ps-price') && criteria.price_range) {
-                            document.getElementById('ps-price').value = criteria.price_range;
-                        }
-                    }
-                    var vendors = data.suggested_vendors || data.vendors || [];
-                    renderShortlist(vendors);
-                    var slOk = data.shortlist_ok === true || data.shortlist_message === 'Shortlist returned';
-                    var slMsg = data.shortlist_message || (slOk ? 'Shortlist returned' : 'Shortlist search failed');
-                    showShortlistStatus(slMsg, !slOk);
-                    return;
-                }
-                var msg = (data && data.message) || '';
-                if (!msg) {
-                    if (res.status === 404) {
-                        msg = 'No matching POST instruction for this path (HTTP 404). Add POST REQ /odoo/vendors/new.';
-                    } else if (res.status === 403) {
-                        msg = 'Vendor criteria capture failed (HTTP 403 CSRF). Hard-refresh and retry.';
-                    } else if (!res.isJson) {
-                        msg = 'Find suppliers failed: server returned HTML (HTTP ' + res.status + '). POST instruction may be missing, or Slice 2 is not deployed.';
-                    } else {
-                        msg = 'Vendor criteria capture failed (HTTP ' + res.status + ')';
-                    }
-                }
-                showFindStatus(msg, true);
+                applyFindResult(res.data || {}, res.ok, res.status, res.isJson);
             }).catch(function (err) {
                 showFindStatus(
                     'Vendor criteria capture failed: ' + (err && err.message ? err.message : 'network error'),
                     true
                 );
+                showShortlistStatus('Shortlist search failed', true);
             }).then(function () {
                 findBtn.disabled = false;
             });
