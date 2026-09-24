@@ -719,8 +719,8 @@ body.polysaas-passthrough-embed-page {
     }
     function interesting(text) {
         if (!text) return false;
-        // Slice 1 New Vendor Assist: surface "Vendor page loaded" on the green bar.
-        return /invoice|refin|queued|description|note|vendor/i.test(text);
+        // New Vendor Assist: "Vendor page loaded" / "Criteria captured".
+        return /invoice|refin|queued|description|note|vendor|criteria/i.test(text);
     }
     function poll() {
         fetch('/dose/api/unread-dosemessages/', { credentials: 'same-origin' })

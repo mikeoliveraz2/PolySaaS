@@ -35,6 +35,33 @@ def _skip_replacement(request) -> bool:
     return (request.GET.get(_SKIP_REPLACEMENT_QUERY) or "").strip() == "1"
 
 
+def document_path_matches_instruction(upstream_path: str, instruction_path: str) -> bool:
+    """
+    True when this document GET should run the Instruction's page atomic.
+
+    find_matching_instructions also treats a *shorter* URL as a match for a
+    longer rule (e.g. /odoo vs /odoo/vendors/new) for orchestration bucketing.
+    That must not replace the Odoo shell — only the rule path (or a deeper
+    path under it) may select a replacement page.
+    """
+    rule = ((instruction_path or "").split("?")[0].split("#")[0].rstrip("/") or "").lower()
+    norm = ((upstream_path or "").split("?")[0].split("#")[0].rstrip("/") or "").lower()
+    if not rule or not norm or rule == "/":
+        return False
+    if not norm.startswith("/"):
+        norm = "/" + norm
+    if not rule.startswith("/"):
+        rule = "/" + rule
+    if norm == rule:
+        return True
+    if norm.startswith(rule + "/"):
+        return True
+    # contains: rule appears as a contiguous path in the document URL
+    if rule in norm:
+        return True
+    return False
+
+
 def _html_from_atomic_result(result) -> tuple[str | None, str]:
     """Return (html, content_type) when the atomic built a replacement page."""
     if result is None:
@@ -98,12 +125,28 @@ def try_instruction_page_response(request, endpoint, handler, trigger, upstream_
 
     matched = find_matching_instructions(tenant, path, method="GET", direction="REQ")
     if not matched:
+        print(f"[INSTRUCTION-PAGE] no Instruction match for GET {path!r}")
+        return None
+
+    page_matched = [
+        row
+        for row in matched
+        if document_path_matches_instruction(
+            path, getattr(row, "requestpath", None) or ""
+        )
+    ]
+    if not page_matched:
+        print(
+            f"[INSTRUCTION-PAGE] orch matched {len(matched)} row(s) for {path!r} "
+            f"but none are document-path matches (skip replace; avoid /odoo "
+            f"stealing /odoo/vendors/new)"
+        )
         return None
 
     init_atomic_services_registry()
     tenant_name = getattr(tenant, "schema_name", None)
 
-    for instruction_row in matched:
+    for instruction_row in page_matched:
         executescript_name = normalize_executescript_value(
             getattr(instruction_row, "executescript", None) or ""
         )

@@ -34,6 +34,31 @@ class OdooVendorAssist(AtomicServiceBase):
 
     @staticmethod
     def execute_and_save(request, instruction_row):
+        # Orchestration bar POST /dose/api/orchestration-navigate/ only needs a match
+        # count. Full HTML is served on document GET via instruction_page — rendering
+        # admin chrome here was heavy and could surface as gateway 502 on the bar.
+        if getattr(request, "_orch_navigate_api", False) or (
+            "/dose/api/orchestration-navigate" in (getattr(request, "path_info", "") or "")
+        ):
+            emit_vendor_page_loaded(request)
+            result = service_result(
+                "OdooVendorAssist",
+                status="success",
+                matched_only=True,
+                message=VENDOR_PAGE_LOADED_MESSAGE,
+            )
+            maybe_save_callback(
+                request,
+                instruction_row,
+                {
+                    "status": "success",
+                    "matched_only": True,
+                    "message": VENDOR_PAGE_LOADED_MESSAGE,
+                },
+                description="New Vendor Assist matched on navigate (page deferred)",
+            )
+            return result
+
         emit_vendor_page_loaded(request)
         html = render_vendor_assist_html(request)
         result = service_result(

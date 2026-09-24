@@ -13,7 +13,10 @@ Owner-approved 2026-09-23: newest DoseMessage wins so refining note does not cov
 Owner-approved 2026-09-23: refine errors stay on the green bar with the error text.
 BINGO: Odoo invoice Note refine — 2026-09-23 — commit ac654503
 Owner-approved 2026-09-23: Odoo shim adds ps-odoo-fields-light; contrast CSS follows that class.
-Owner-approved 2026-09-24: New Vendor Slice 1 — green bar shows Vendor page loaded DoseMessage. -->
+Owner-approved 2026-09-24: New Vendor Slice 1 — green bar shows Vendor page loaded DoseMessage.
+Owner-approved 2026-09-24: when Action Path changes (SPA URL without document GET),
+ask orchestration-instruction API and full-navigate if a GET Instruction matches
+the document path (generic; no vendor hardcoding). -->
 
 {% extends "admin/base_site.html" %}
 {% load i18n static %}
@@ -545,6 +548,106 @@ body.polysaas-passthrough-embed-page {
 {{ block.super }}
 <script src="{% static 'admin/js/orchestration_instruction_button.js' %}?v=20260923-t9"></script>
 <script>PolySaaSOrchBar.initEmbed();</script>
+{# Owner-approved 2026-09-24: Action Path bar updates when SPA changes location without a
+   document GET. That update proves the path is known; without a follow-up navigation the
+   Instruction atomic never runs. Generic: any matching GET Instruction → one full nav. #}
+<script>
+(function () {
+    'use strict';
+    function pathNorm(pathname) {
+        var p = (pathname || '').split('?')[0].split('#')[0] || '';
+        if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+        return p || '/';
+    }
+    function documentPathMatchesInstruction(currentPath, instrPath) {
+        var cur = pathNorm(currentPath);
+        var rule = pathNorm(instrPath);
+        if (!cur || !rule || rule === '/') return false;
+        if (cur === rule) return true;
+        if (cur.indexOf(rule + '/') === 0) return true;
+        if (cur.indexOf(rule) !== -1) return true;
+        return false;
+    }
+    function proxyPrefix() {
+        var m = (window.location.pathname || '').match(/^(\/pt\/(?:admin|dose)\/[^/]+)/i);
+        return m ? m[1] : '';
+    }
+    function instructionApiUrl(actionPath) {
+        var path = (actionPath || '').trim();
+        if (!path) return '';
+        if (path.charAt(0) !== '/') path = '/' + path;
+        var segments = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+        if (!segments.length) return '';
+        return '/dose/api/orchestration-instruction/' + segments.map(encodeURIComponent).join('/') + '/?method=GET';
+    }
+    function skipInstructionPageNav() {
+        if ((window.location.search || '').indexOf('polysaas_odoo_form=1') >= 0) return true;
+        try {
+            if (sessionStorage.getItem('ps_orch_skip_page') === '1') return true;
+        } catch (e) {}
+        return false;
+    }
+    function maybeInstructionPageNavFromActionPath(actionPath) {
+        if (skipInstructionPageNav()) return;
+        var path = pathNorm(actionPath);
+        if (!path || path === '/') return;
+        if (path === 'loading…' || path === 'detecting…' || path === '—') return;
+        var onceKey = 'ps_orch_page_nav';
+        try {
+            var already = sessionStorage.getItem(onceKey);
+            if (already === path) return;
+            if (already && already !== path) sessionStorage.removeItem(onceKey);
+        } catch (e0) {}
+        var prefix = proxyPrefix();
+        if (!prefix) return;
+        var api = instructionApiUrl(path);
+        if (!api) return;
+        fetch(api, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || data.mode !== 'update' || !data.executescript) return;
+                var instrPath = data.action_path || '';
+                if (!documentPathMatchesInstruction(path, instrPath)) {
+                    console.log('[EMBED] skip page nav: path ' + path + ' is not document match for ' + instrPath);
+                    return;
+                }
+                try { sessionStorage.setItem(onceKey, path); } catch (e1) {}
+                var jump = prefix + path;
+                console.log('[EMBED] instruction page nav (action-path): ' + jump);
+                window.location.assign(jump);
+            })
+            .catch(function () {});
+    }
+    function watchActionPath() {
+        var el = document.getElementById('pss-action-path');
+        if (!el) {
+            setTimeout(watchActionPath, 200);
+            return;
+        }
+        var last = '';
+        function check() {
+            var p = (el.textContent || '').trim();
+            if (!p || p === last) return;
+            last = p;
+            maybeInstructionPageNavFromActionPath(p);
+        }
+        check();
+        if (typeof MutationObserver !== 'undefined') {
+            new MutationObserver(check).observe(el, {
+                childList: true,
+                characterData: true,
+                subtree: true
+            });
+        }
+        setInterval(check, 1000);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', watchActionPath);
+    } else {
+        watchActionPath();
+    }
+})();
+</script>
 {# Type 3: surface mailbox-consumer DoseMessages (e.g. invoice note refined) on the green bar. #}
 <script>
 (function () {

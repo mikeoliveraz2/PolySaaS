@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -11,8 +12,19 @@
             max-width: 880px;
             margin: 0 auto;
         }
-        .ps-vendor h1 {
+        .ps-vendor .ps-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             margin: 0 0 6px;
+        }
+        .ps-vendor .ps-brand img {
+            height: 48px;
+            width: auto;
+            display: block;
+        }
+        .ps-vendor h1 {
+            margin: 0;
             font-size: 1.45rem;
             color: #1f2a44;
         }
@@ -86,7 +98,10 @@
 <body>
 {# Slice 1 shell only — criteria and form are stubs; no search/save/RPC. #}
 <div class="ps-vendor" id="ps-vendor">
-    <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
+    <div class="ps-brand">
+        <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
+        <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
+    </div>
     <p class="ps-lead">PolySaaS Assist will search and save vendors in a later step. This page is the branded shell.</p>
 
     <div class="ps-card">

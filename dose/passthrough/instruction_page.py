@@ -1,17 +1,20 @@
-"""Generic passthrough: serve an atomic's HTML when a GET Instruction matches.
+"""Generic passthrough: serve an atomic response when an Instruction matches.
 
-Applies equally to every passthrough endpoint. No app name or path hardcoding —
-matching is data-driven from tenant-schema Instruction rows via
-find_matching_instructions (same rules as the orchestration bar).
+GET: HTML replacement page. POST: JSON (or HTML) from the same Instruction →
+atomic path. Applies equally to every passthrough endpoint — no app name or
+path hardcoding. Matching is data-driven from tenant-schema Instruction rows
+via find_matching_instructions (same rules as the orchestration bar).
 
 Owner-approved 2026-09-24: Slice 1 New Vendor Assist must prove dynamic
 orchestration (Instruction → Atomic → page), not handler path special-cases.
+Slice 2: POST on the same document path is a follow-up step, not a handler
+hardcode.
 """
 from __future__ import annotations
 
 import logging
 
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 
 logger = logging.getLogger(__name__)
 
@@ -83,16 +86,36 @@ def _html_from_atomic_result(result) -> tuple[str | None, str]:
     return html, ct
 
 
+def _json_from_atomic_result(result) -> dict | None:
+    """Return a JSON-serializable dict when the atomic answered a follow-up POST."""
+    if result is None or not isinstance(result, dict):
+        return None
+    if result.get("html") or result.get("page_html"):
+        return None
+    if result.get("json_response") is True or result.get("returns_json") is True:
+        payload = {
+            key: val
+            for key, val in result.items()
+            if key not in ("wrap_passthrough", "json_response", "returns_json", "html", "page_html")
+        }
+        return payload
+    return None
+
+
 def try_instruction_page_response(request, endpoint, handler, trigger, upstream_path=None):
     """
-    If GET matches an Instruction whose atomic returns HTML, return that response.
+    If the request matches an Instruction whose atomic returns HTML or JSON,
+    return that response.
 
-    Returns HttpResponse (optionally wrapped in passthrough embed) or None to
-    continue normal upstream forwarding.
+    GET serves a replacement page. POST runs the same instruction/atomic path
+    for in-page steps (e.g. criteria capture) without forwarding upstream.
+
+    Returns HttpResponse or None to continue normal upstream forwarding.
     """
-    if (getattr(request, "method", "GET") or "GET").upper() != "GET":
+    method = (getattr(request, "method", "GET") or "GET").upper()
+    if method not in ("GET", "POST"):
         return None
-    if _skip_replacement(request):
+    if method == "GET" and _skip_replacement(request):
         return None
 
     path = upstream_path or getattr(request, "_passthrough_upstream_path", None)
@@ -123,7 +146,7 @@ def try_instruction_page_response(request, endpoint, handler, trigger, upstream_
         logger.warning("[INSTRUCTION-PAGE] import failed: %s", exc)
         return None
 
-    matched = find_matching_instructions(tenant, path, method="GET", direction="REQ")
+    matched = find_matching_instructions(tenant, path, method=method, direction="REQ")
     if not matched:
         print(f"[INSTRUCTION-PAGE] no Instruction match for GET {path!r}")
         return None
@@ -167,6 +190,19 @@ def try_instruction_page_response(request, endpoint, handler, trigger, upstream_
                 "[INSTRUCTION-PAGE] %s failed: %s", executescript_name, exc
             )
             continue
+
+        json_payload = _json_from_atomic_result(result)
+        if json_payload is not None:
+            print(
+                f"[INSTRUCTION-PAGE] Serving atomic JSON for {method} {path!r} "
+                f"via {executescript_name} (instruction "
+                f"{getattr(instruction_row, 'id', '?')})"
+            )
+            request._passthrough_upstream_path = path
+            status_code = 200
+            if json_payload.get("status") in ("error", "failed"):
+                status_code = 400
+            return JsonResponse(json_payload, status=status_code)
 
         html, content_type = _html_from_atomic_result(result)
         if not html:

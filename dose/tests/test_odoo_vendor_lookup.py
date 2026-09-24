@@ -1,4 +1,4 @@
-"""Slice 1 — New Vendor Assist: atomic page + Instruction match (no handler hardcoding)."""
+"""Slice 1–2 — New Vendor Assist: atomic page + criteria capture (no handler hardcoding)."""
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -11,6 +11,9 @@ from dose.passthrough.instruction_page import (
     try_instruction_page_response,
 )
 from dose.services.odoo_vendor_lookup import (
+    CRITERIA_CAPTURED_MESSAGE,
+    CRITERIA_CAPTURE_FAILED_MESSAGE,
+    CRITERIA_SESSION_KEY,
     VENDOR_PAGE_LOADED_MESSAGE,
     VENDOR_PAGE_TITLE,
     OdooVendorAssist,
@@ -78,6 +81,108 @@ class EmitDoseMessageTests(SimpleTestCase):
         self.assertEqual(kwargs["tenant"], request.tenant)
         self.assertEqual(kwargs["message"], VENDOR_PAGE_LOADED_MESSAGE)
         self.assertEqual(kwargs["level"], "success")
+
+
+class CriteriaCaptureTests(SimpleTestCase):
+    def _instruction(self):
+        return SimpleNamespace(
+            id=2,
+            eventKey="odoo.vendor.new.assist.criteria",
+            executescript="OdooVendorAssist",
+            save_callbackdata=False,
+            description="criteria",
+        )
+
+    def test_post_emits_criteria_captured_and_keeps_values(self):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps(
+                {
+                    "step": "capture_criteria",
+                    "product_line": "Packaging film",
+                    "region": "Southeast Asia",
+                    "price_range": "Under $2 per unit",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                return_value=None,
+            ):
+                result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["message"], CRITERIA_CAPTURED_MESSAGE)
+        self.assertTrue(result.get("json_response"))
+        self.assertEqual(result["criteria"]["product_line"], "Packaging film")
+        self.assertEqual(request.session[CRITERIA_SESSION_KEY]["region"], "Southeast Asia")
+        emit.assert_called_once_with(request, CRITERIA_CAPTURED_MESSAGE, level="success")
+
+    def test_post_missing_fields_emits_failure(self):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps(
+                {
+                    "step": "capture_criteria",
+                    "product_line": "",
+                    "region": "",
+                    "price_range": "",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                return_value=None,
+            ):
+                result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn(CRITERIA_CAPTURE_FAILED_MESSAGE, result["message"])
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.args[1], result["message"])
+        self.assertEqual(emit.call_args.kwargs["level"], "error")
+
+    def test_get_still_emits_vendor_page_loaded_not_criteria(self):
+        request = RequestFactory().get("/pt/admin/odoo/odoo/vendors/new")
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+        instruction = SimpleNamespace(
+            id=1,
+            eventKey="odoo.vendor.new.assist",
+            executescript="OdooVendorAssist",
+            save_callbackdata=False,
+            description="test",
+        )
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_page_loaded") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.render_vendor_assist_html",
+                return_value=f"<html><title>{VENDOR_PAGE_TITLE}</title></html>",
+            ):
+                with patch(
+                    "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                    return_value=None,
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, instruction)
+        emit.assert_called_once_with(request)
+        self.assertEqual(result["message"], VENDOR_PAGE_LOADED_MESSAGE)
+        self.assertNotEqual(result.get("message"), CRITERIA_CAPTURED_MESSAGE)
 
 
 class DocumentPathMatchTests(SimpleTestCase):
@@ -205,6 +310,57 @@ class InstructionMatchSelectsPageTests(SimpleTestCase):
         self.assertIsNone(resp)
         find_match.assert_not_called()
 
+    @patch("dose.passthrough.orchestration_hook.find_matching_instructions")
+    @patch("dose.services.atomic_services_registry.get_atomic_service")
+    @patch("dose.services.atomic_services_registry.init_atomic_services_registry")
+    def test_post_instruction_returns_json_not_html(self, _init, get_svc, find_match):
+        post_instruction = SimpleNamespace(
+            id=43,
+            eventKey="odoo.vendor.new.assist.criteria",
+            executescript="OdooVendorAssist",
+            requestpath="/odoo/vendors/new",
+            save_callbackdata=False,
+            description="criteria",
+        )
+        find_match.return_value = [post_instruction]
+        get_svc.return_value = OdooVendorAssist
+        request = self.factory.post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data='{"step":"capture_criteria","product_line":"Packaging film","region":"Southeast Asia","price_range":"Under $2 per unit"}',
+            content_type="application/json",
+        )
+        request.tenant = self.tenant
+        request.user = MagicMock(is_authenticated=True)
+        request.session = {}
+
+        with patch.object(
+            OdooVendorAssist,
+            "execute_and_save",
+            return_value={
+                "status": "success",
+                "json_response": True,
+                "message": CRITERIA_CAPTURED_MESSAGE,
+                "criteria": {
+                    "product_line": "Packaging film",
+                    "region": "Southeast Asia",
+                    "price_range": "Under $2 per unit",
+                },
+            },
+        ) as exec_mock:
+            resp = try_instruction_page_response(
+                request, self.endpoint, self.handler, "odoo"
+            )
+
+        self.assertIsNotNone(resp)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/json", resp["Content-Type"])
+        self.assertIn(CRITERIA_CAPTURED_MESSAGE, resp.content.decode("utf-8"))
+        find_match.assert_called_once_with(
+            self.tenant, "/odoo/vendors/new", method="POST", direction="REQ"
+        )
+        exec_mock.assert_called_once()
+
+
 
 class HandlerHasNoVendorHardcodingTests(SimpleTestCase):
     def test_odoo_handler_source_has_no_vendor_paths(self):
@@ -282,5 +438,10 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Save to Odoo", html)
         self.assertIn("Product line", html)
         self.assertIn("polysaas_odoo_form=1", html)
+        self.assertIn("capture_criteria", html)
+        self.assertIn("Packaging film", html)
+        self.assertIn("Southeast Asia", html)
+        self.assertIn("Under $2 per unit", html)
         self.assertNotIn("action: 'search'", html)
         self.assertNotIn("action: 'save'", html)
+        self.assertNotIn("suggest_vendors", html)

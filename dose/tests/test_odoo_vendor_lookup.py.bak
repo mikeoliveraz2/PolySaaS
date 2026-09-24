@@ -243,6 +243,23 @@ class HandlerHasNoVendorHardcodingTests(SimpleTestCase):
         self.assertIn("documentPathMatchesInstruction", source)
         self.assertIn("orchestration-instruction", source)
         self.assertIn("maybeInstructionPageNav", source)
+        self.assertIn("navigation.addEventListener", source)
+
+    def test_embed_action_path_triggers_instruction_page_nav(self):
+        """Bar Action Path updates prove SPA saw the path; embed must full-nav."""
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "templates"
+            / "admin"
+            / "passthrough_embed.html"
+        )
+        source = path.read_text(encoding="utf-8")
+        self.assertIn("maybeInstructionPageNavFromActionPath", source)
+        self.assertIn("pss-action-path", source)
+        self.assertIn("orchestration-instruction", source)
+        self.assertIn("documentPathMatchesInstruction", source)
+        # Must stay generic — no vendor path hardcoding in the embed nav helper.
+        self.assertNotIn("/odoo/vendors/new", source)
 
     def test_root_splash_still_works_without_vendor_branch(self):
         from dose.passthrough.handlers.odoo_handler import OdooPassthroughHandler

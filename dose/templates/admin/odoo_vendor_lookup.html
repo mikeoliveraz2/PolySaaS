@@ -96,32 +96,32 @@
     </style>
 </head>
 <body>
-{# Slice 1 shell only — criteria and form are stubs; no search/save/RPC. #}
+{# Slice 2: Find suppliers captures criteria. Shortlist/save are still stubs. #}
 <div class="ps-vendor" id="ps-vendor">
     <div class="ps-brand">
         <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
         <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
     </div>
-    <p class="ps-lead">PolySaaS Assist will search and save vendors in a later step. This page is the branded shell.</p>
+    <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria in this step; search comes later.</p>
 
     <div class="ps-card">
         <div class="ps-row">
             <div>
                 <label for="ps-product">Product line</label>
-                <input id="ps-product" type="text" autocomplete="off" placeholder="Packaging film">
+                <input id="ps-product" name="product_line" type="text" autocomplete="off" placeholder="Packaging film" value="{{ product_line|default:'Packaging film' }}">
             </div>
             <div>
                 <label for="ps-region">Region</label>
-                <input id="ps-region" type="text" autocomplete="off" placeholder="Southeast Asia">
+                <input id="ps-region" name="region" type="text" autocomplete="off" placeholder="Southeast Asia" value="{{ region|default:'Southeast Asia' }}">
             </div>
             <div>
                 <label for="ps-price">Price range</label>
-                <input id="ps-price" type="text" autocomplete="off" placeholder="Under $2 per unit">
+                <input id="ps-price" name="price_range" type="text" autocomplete="off" placeholder="Under $2 per unit" value="{{ price_range|default:'Under $2 per unit' }}">
             </div>
         </div>
-        <button type="button" id="ps-find" disabled title="Not wired in Slice 1">Find suppliers</button>
+        <button type="button" id="ps-find">Find suppliers</button>
         <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
-        <p class="ps-note">Criteria are for display only in this slice. Search is not connected.</p>
+        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria. AI shortlist is not connected yet.</p>
     </div>
 
     <div class="ps-card" id="ps-form-card">
@@ -154,6 +154,61 @@
                 sessionStorage.setItem('ps_orch_skip_page', '1');
                 sessionStorage.removeItem('ps_orch_page_nav');
             } catch (e) {}
+        });
+    }
+
+    function csrfToken() {
+        var match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    var findBtn = document.getElementById('ps-find');
+    var note = document.getElementById('ps-criteria-note');
+    if (findBtn) {
+        findBtn.addEventListener('click', function () {
+            var product = (document.getElementById('ps-product') || {}).value || '';
+            var region = (document.getElementById('ps-region') || {}).value || '';
+            var price = (document.getElementById('ps-price') || {}).value || '';
+            var headers = { 'Content-Type': 'application/json' };
+            var token = csrfToken();
+            if (token) headers['X-CSRFToken'] = token;
+            findBtn.disabled = true;
+            fetch(window.location.pathname + window.location.search, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: headers,
+                body: JSON.stringify({
+                    step: 'capture_criteria',
+                    product_line: product.trim(),
+                    region: region.trim(),
+                    price_range: price.trim()
+                })
+            }).then(function (r) {
+                return r.json().then(function (data) {
+                    return { ok: r.ok, data: data || {} };
+                }).catch(function () {
+                    return { ok: r.ok, data: {} };
+                });
+            }).then(function (res) {
+                var msg = (res.data && res.data.message) || (res.ok ? 'Criteria captured' : 'Vendor criteria capture failed');
+                if (note) note.textContent = msg;
+                var criteria = res.data && res.data.criteria;
+                if (criteria) {
+                    if (document.getElementById('ps-product') && criteria.product_line) {
+                        document.getElementById('ps-product').value = criteria.product_line;
+                    }
+                    if (document.getElementById('ps-region') && criteria.region) {
+                        document.getElementById('ps-region').value = criteria.region;
+                    }
+                    if (document.getElementById('ps-price') && criteria.price_range) {
+                        document.getElementById('ps-price').value = criteria.price_range;
+                    }
+                }
+            }).catch(function () {
+                if (note) note.textContent = 'Vendor criteria capture failed';
+            }).then(function () {
+                findBtn.disabled = false;
+            });
         });
     }
 })();
