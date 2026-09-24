@@ -1,4 +1,4 @@
-"""Slice 1–3 — New Vendor Assist: page, criteria capture, demo-directory shortlist."""
+"""Slice 1–4 — New Vendor Assist: page, criteria, shortlist, bind (no Odoo save)."""
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -17,6 +17,8 @@ from dose.services.odoo_vendor_lookup import (
     SHORTLIST_FAILED_MESSAGE,
     SHORTLIST_RETURNED_MESSAGE,
     SHORTLIST_SOURCE_LABEL,
+    BIND_LOADED_MESSAGE,
+    BIND_FAILED_MESSAGE,
     VENDOR_PAGE_LOADED_MESSAGE,
     VENDOR_PAGE_TITLE,
     OdooVendorAssist,
@@ -290,6 +292,83 @@ class CriteriaCaptureTests(SimpleTestCase):
         emit.assert_called_once_with(request)
         self.assertEqual(result["message"], VENDOR_PAGE_LOADED_MESSAGE)
         self.assertNotEqual(result.get("message"), CRITERIA_CAPTURED_MESSAGE)
+
+
+class BindSelectionTests(SimpleTestCase):
+    def _instruction(self):
+        return SimpleNamespace(
+            id=3,
+            eventKey="odoo.vendor.new.assist.criteria",
+            executescript="OdooVendorAssist",
+            save_callbackdata=False,
+            description="bind",
+        )
+
+    def test_post_bind_emits_details_loaded(self):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps(
+                {
+                    "step": "bind",
+                    "bind_selection": True,
+                    "name": "SeaWrap Packaging",
+                    "email": "sales@seawrap.example",
+                    "phone": "+65 6123 4401",
+                    "website": "https://seawrap.example",
+                    "contact_name": "Lina Tan",
+                    "contact_email": "lina.tan@seawrap.example",
+                }
+            ),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                return_value=None,
+            ):
+                result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result.get("ok"))
+        self.assertTrue(result.get("json_response"))
+        self.assertEqual(result["message"], BIND_LOADED_MESSAGE)
+        self.assertEqual(result["vendor"]["name"], "SeaWrap Packaging")
+        self.assertEqual(result["vendor"]["email"], "sales@seawrap.example")
+        self.assertEqual(result["vendor"]["main_contact"]["name"], "Lina Tan")
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertIn(BIND_LOADED_MESSAGE, messages)
+        self.assertNotIn(CRITERIA_CAPTURED_MESSAGE, messages)
+
+    def test_post_bind_missing_name_emits_failure(self):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps({"step": "bind", "bind_selection": True, "name": ""}),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+
+        with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+            with patch(
+                "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                return_value=None,
+            ):
+                result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["message"], BIND_FAILED_MESSAGE)
+        self.assertFalse(result.get("bind_ok"))
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertIn(BIND_FAILED_MESSAGE, messages)
 
 
 class DocumentPathMatchTests(SimpleTestCase):
@@ -698,7 +777,12 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("showFindStatus", html)
         self.assertIn("Suggested vendors", html)
         self.assertIn("Demo directory", html)
-        self.assertIn("Selection in the next step", html)
+        self.assertIn("Click a row to fill the vendor form", html)
+        self.assertIn("data-name=", html)
+        self.assertIn("ps-contact-name", html)
+        self.assertIn("bind_selection", html)
+        self.assertIn("onVendorRowClick", html)
+        self.assertIn("cursor: pointer", html)
         self.assertIn("renderShortlist", html)
         self.assertIn("pickVendors", html)
         self.assertIn("ps-vendor-shortlist", html)
@@ -736,7 +820,7 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Graphite Point Stationery", html)
         self.assertIn("Lina Tan", html)
         self.assertIn("ps-assist-build", html)
-        self.assertIn("Assist build table-visible-20260924", html)
+        self.assertIn("Assist build table-visible-20260924+s4", html)
         self.assertIn("ps-vendor-table-visible", html)
         find_idx = html.find("Find suppliers")
         table_idx = html.find("Suggested vendors")

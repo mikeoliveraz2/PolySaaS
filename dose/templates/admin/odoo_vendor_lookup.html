@@ -148,6 +148,18 @@
         }
         .ps-vendor .ps-shortlist.is-hidden,
         .ps-vendor .ps-shortlist.is-open { display: block !important; }
+        .ps-vendor .ps-demo-table tbody tr,
+        #ps-demo-table tbody tr {
+            cursor: pointer;
+        }
+        .ps-vendor .ps-demo-table tbody tr:hover,
+        #ps-demo-table tbody tr:hover {
+            background: #fef3c7 !important;
+        }
+        .ps-vendor .ps-demo-table tbody tr.is-selected td,
+        #ps-demo-table tbody tr.is-selected td {
+            background: #fde68a !important;
+        }
         @media (max-width: 720px) {
             .ps-vendor .ps-row,
             .ps-vendor .ps-row-2 { grid-template-columns: 1fr; }
@@ -197,7 +209,7 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
         <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
     </div>
-    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"table-visible-20260924" }}</p>
+    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"table-visible-20260924+s4" }}</p>
     <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria, then returns a suggested shortlist from a demo directory (not live web search).</p>
 
     <div class="ps-card">
@@ -218,15 +230,15 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         <button type="button" id="ps-find">Find suppliers</button>
         <div class="ps-shortlist is-open" id="ps-vendor-shortlist" style="display:block;visibility:visible;min-height:360px;overflow:visible;border:3px solid #111827;background:#fff7ed;padding:14px;margin-top:16px;">
             <h2 style="margin:0 0 8px;font-size:1.15rem;color:#111827;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
-            <p class="ps-note" id="ps-shortlist-note">These rows are on the page from first paint. Selection in the next step.</p>
+            <p class="ps-note" id="ps-shortlist-note">These rows are on the page from first paint. Click a row to fill the vendor form.</p>
             <div id="ps-shortlist-table-wrap" style="min-height:220px;overflow:visible;">
                 <table id="ps-demo-table" class="ps-demo-table" style="display:table;width:100%;border:2px solid #111827;">
                     <thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead>
                     <tbody>
-                        <tr><td>SeaWrap Packaging</td><td>https://seawrap.example<br>sales@seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
-                        <tr><td>Mekong Film Co</td><td>https://mekongfilm.example<br>hello@mekongfilm.example</td><td></td></tr>
-                        <tr><td>ASEAN Office Supply</td><td>https://aseanoffice.example<br>orders@aseanoffice.example</td><td>Somsak Prasert<br>somsak@aseanoffice.example</td></tr>
-                        <tr><td>Graphite Point Stationery</td><td>https://graphitepoint.example<br>buy@graphitepoint.example</td><td>Mei Chen<br>mei.chen@graphitepoint.example</td></tr>
+                        <tr class="ps-vendor-row" data-name="SeaWrap Packaging" data-email="sales@seawrap.example" data-phone="+65 6123 4401" data-website="https://seawrap.example" data-contact-name="Lina Tan" data-contact-email="lina.tan@seawrap.example"><td>SeaWrap Packaging</td><td>https://seawrap.example<br>sales@seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
+                        <tr class="ps-vendor-row" data-name="Mekong Film Co" data-email="hello@mekongfilm.example" data-phone="+84 28 3999 1200" data-website="https://mekongfilm.example" data-contact-name="" data-contact-email=""><td>Mekong Film Co</td><td>https://mekongfilm.example<br>hello@mekongfilm.example</td><td></td></tr>
+                        <tr class="ps-vendor-row" data-name="ASEAN Office Supply" data-email="orders@aseanoffice.example" data-phone="+66 2 555 0199" data-website="https://aseanoffice.example" data-contact-name="Somsak Prasert" data-contact-email="somsak@aseanoffice.example"><td>ASEAN Office Supply</td><td>https://aseanoffice.example<br>orders@aseanoffice.example</td><td>Somsak Prasert<br>somsak@aseanoffice.example</td></tr>
+                        <tr class="ps-vendor-row" data-name="Graphite Point Stationery" data-email="buy@graphitepoint.example" data-phone="+60 3 2100 8800" data-website="https://graphitepoint.example" data-contact-name="Mei Chen" data-contact-email="mei.chen@graphitepoint.example"><td>Graphite Point Stationery</td><td>https://graphitepoint.example<br>buy@graphitepoint.example</td><td>Mei Chen<br>mei.chen@graphitepoint.example</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -252,7 +264,17 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         </div>
         <label for="ps-website">Website</label>
         <input id="ps-website" type="text" autocomplete="url">
-        <button type="button" id="ps-save" disabled title="Not wired in Slice 1">Save to Odoo</button>
+        <div class="ps-row-2">
+            <div>
+                <label for="ps-contact-name">Main contact</label>
+                <input id="ps-contact-name" type="text" autocomplete="name">
+            </div>
+            <div>
+                <label for="ps-contact-email">Contact email</label>
+                <input id="ps-contact-email" type="text" autocomplete="email">
+            </div>
+        </div>
+        <button type="button" id="ps-save" disabled title="Not wired in this slice">Save to Odoo</button>
         <p class="ps-msg" id="ps-save-msg">Save is a stub in this slice. No Odoo RPC.</p>
     </div>
 </div>
@@ -331,11 +353,100 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         return bits.join('<br>');
     }
     var DEMO_DIRECTORY = [
-        {name:'SeaWrap Packaging',email:'sales@seawrap.example',website:'https://seawrap.example',main_contact:{name:'Lina Tan',email:'lina.tan@seawrap.example'}},
-        {name:'Mekong Film Co',email:'hello@mekongfilm.example',website:'https://mekongfilm.example'},
-        {name:'ASEAN Office Supply',email:'orders@aseanoffice.example',website:'https://aseanoffice.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanoffice.example'}},
-        {name:'Graphite Point Stationery',email:'buy@graphitepoint.example',website:'https://graphitepoint.example',main_contact:{name:'Mei Chen',email:'mei.chen@graphitepoint.example'}}
+        {name:'SeaWrap Packaging',email:'sales@seawrap.example',phone:'+65 6123 4401',website:'https://seawrap.example',main_contact:{name:'Lina Tan',email:'lina.tan@seawrap.example'}},
+        {name:'Mekong Film Co',email:'hello@mekongfilm.example',phone:'+84 28 3999 1200',website:'https://mekongfilm.example'},
+        {name:'ASEAN Office Supply',email:'orders@aseanoffice.example',phone:'+66 2 555 0199',website:'https://aseanoffice.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanoffice.example'}},
+        {name:'Graphite Point Stationery',email:'buy@graphitepoint.example',phone:'+60 3 2100 8800',website:'https://graphitepoint.example',main_contact:{name:'Mei Chen',email:'mei.chen@graphitepoint.example'}}
     ];
+    function setField(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.value = val == null ? '' : String(val);
+    }
+    function vendorFromRow(tr) {
+        if (!tr || !tr.getAttribute) return null;
+        var cname = tr.getAttribute('data-contact-name') || '';
+        var cemail = tr.getAttribute('data-contact-email') || '';
+        return {
+            name: tr.getAttribute('data-name') || '',
+            email: tr.getAttribute('data-email') || '',
+            phone: tr.getAttribute('data-phone') || '',
+            website: tr.getAttribute('data-website') || '',
+            contact_name: cname,
+            contact_email: cemail
+        };
+    }
+    function fillVendorForm(v) {
+        if (!v) return;
+        setField('ps-name', v.name);
+        setField('ps-email', v.email);
+        setField('ps-phone', v.phone);
+        setField('ps-website', v.website);
+        setField('ps-contact-name', v.contact_name);
+        setField('ps-contact-email', v.contact_email);
+    }
+    function markSelected(tr) {
+        var wrap = document.getElementById('ps-shortlist-table-wrap');
+        if (!wrap) return;
+        wrap.querySelectorAll('tr.is-selected').forEach(function (row) {
+            row.classList.remove('is-selected');
+        });
+        if (tr) tr.classList.add('is-selected');
+    }
+    function postBind(v) {
+        var headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        };
+        var token = csrfToken();
+        if (token) headers['X-CSRFToken'] = token;
+        var postUrl = window.location.pathname + window.location.search;
+        fetch(postUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: headers,
+            body: JSON.stringify({
+                step: 'bind',
+                bind_selection: true,
+                name: v.name,
+                email: v.email,
+                phone: v.phone,
+                website: v.website,
+                contact_name: v.contact_name,
+                contact_email: v.contact_email
+            })
+        }).then(function (r) {
+            return r.text().then(function (text) {
+                var data = {};
+                try { data = JSON.parse(text) || {}; } catch (e) {
+                    var extracted = text && text.match(/\{[\s\S]*\}/);
+                    if (extracted) { try { data = JSON.parse(extracted[0]) || {}; } catch (e2) {} }
+                }
+                return { ok: r.ok, data: unwrapPayload(data) };
+            });
+        }).then(function (res) {
+            var data = res.data || {};
+            var loaded = data.ok === true || data.message === 'Vendor details loaded from selection' || data.bind_ok === true;
+            if (res.ok && loaded) {
+                showShortlistStatus('Vendor details loaded from selection', false);
+                return;
+            }
+            showShortlistStatus((data && data.message) || 'Vendor selection bind failed', true);
+        }).catch(function () {
+            showShortlistStatus('Vendor selection bind failed', true);
+        });
+    }
+    function onVendorRowClick(tr) {
+        var v = vendorFromRow(tr);
+        if (!v || !v.name) {
+            showShortlistStatus('Vendor selection bind failed', true);
+            return;
+        }
+        markSelected(tr);
+        fillVendorForm(v);
+        showShortlistStatus('Vendor details loaded from selection', false);
+        postBind(v);
+    }
     function unwrapPayload(data) {
         if (!data || typeof data !== 'object') return {};
         var inner = data.json || data.data || data.result;
@@ -370,7 +481,14 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         var rows = vendors;
         var html = '<table class="ps-demo-table"><thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead><tbody>';
         rows.forEach(function (row) {
-            html += '<tr>'
+            var c = row.main_contact || {};
+            html += '<tr class="ps-vendor-row"'
+                + ' data-name="' + esc(row.name) + '"'
+                + ' data-email="' + esc(row.email) + '"'
+                + ' data-phone="' + esc(row.phone) + '"'
+                + ' data-website="' + esc(row.website) + '"'
+                + ' data-contact-name="' + esc(c.name) + '"'
+                + ' data-contact-email="' + esc(c.email) + '">'
                 + '<td>' + esc(row.name) + '</td>'
                 + '<td>' + webEmailCell(row) + '</td>'
                 + '<td>' + contactCell(row) + '</td>'
@@ -495,6 +613,14 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
             }).then(function () {
                 findBtn.disabled = false;
             });
+        });
+    }
+    var shortWrap = document.getElementById('ps-shortlist-table-wrap');
+    if (shortWrap) {
+        shortWrap.addEventListener('click', function (ev) {
+            var tr = ev.target && ev.target.closest ? ev.target.closest('tr.ps-vendor-row') : null;
+            if (!tr || !shortWrap.contains(tr)) return;
+            onVendorRowClick(tr);
         });
     }
 })();

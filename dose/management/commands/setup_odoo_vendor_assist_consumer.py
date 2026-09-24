@@ -75,13 +75,15 @@ class Command(BaseCommand):
                     "eventKey": "odoo.vendor.new.assist.criteria",
                     "executescript": _ATOMIC,
                     "description": (
-                        "Slice 2–3: New Vendor Assist — capture criteria then "
-                        "return a demo-directory shortlist (POST JSON; DoseMessage toasts)"
+                        "Slice 2–4: New Vendor Assist — capture criteria, "
+                        "demo-directory shortlist, bind selected row "
+                        "(POST JSON; DoseMessage toasts; no Odoo save)"
                     ),
                     "save_callbackdata": True,
                     "parameters_json": {
                         "capture_criteria": True,
                         "suggest_vendors": True,
+                        "bind_selection": True,
                     },
                 },
             )

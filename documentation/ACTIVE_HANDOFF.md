@@ -1,11 +1,25 @@
+<!-- Shela 2026-09-24: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
+**Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
+
 # Active Handoff
 
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Type 4 POC Slice 4 (select/bind)
+
+**Do not start Slice 5** (no Odoo RPC save) unless Michael says so.
+
+- Click a Suggested vendors row: client fills Name, Email, Phone, Website, Main contact / Contact email from `data-*`. Same POST `/odoo/vendors/new` with `{step:"bind", bind_selection:true}` so `OdooVendorAssist` emits DoseMessage **"Vendor details loaded from selection"**. Missing name → **"Vendor selection bind failed"**; table stays. Save to Odoo still stub.
+- **No new Instruction.** Existing POST REQ row. Optional seed: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `bind_selection: true` on POST parameters).
+- Canary: `Assist build table-visible-20260924+s4`. Tests: `dose.tests.test_odoo_vendor_lookup` — 29 passed. No odoo_handler vendor branch. Frozen `odoo_create_partner.py` untouched. `passthrough_embed.html` unchanged (`interesting()` already matches vendor).
+- **Prod:** Deploy, hard refresh New Vendor Assist, click **SeaWrap**, form fills, toast **Vendor details loaded from selection**.
+
+HEAD hashes: update after this commit lands on origin/main.
+
 ## 2026-09-24 (Thursday) — SHELA: Type 4 POC New Vendor Assist Slices 1–3 (pull origin/main)
 
-**Shela: start here.** Pull `origin/main`. Do **not** start Slice 4 unless Michael says so.
+**Shela: start here for Slices 1–3 context.** Slice 4 is above. Do **not** start Slice 5 unless Michael says so.
 
 ### What this is
 Type 4 POC **New Vendor Assist**, Slices 1–3. Operator path: POLYSAASADMIN → Odoo passthrough → Purchase → Orders → Vendors → **New**. Branded Assist page (not Odoo’s form). GET serves the page + “Vendor page loaded”. **Find suppliers** POSTs JSON; Slice 2 captures criteria (“Criteria captured”). Slice 3 ranks a curated **Demo directory** (not live web). LLM rank **fails on prod** — **Shortlist search failed** toast is expected.

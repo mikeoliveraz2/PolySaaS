@@ -742,6 +742,14 @@ class RenderTemplateTests(SimpleTestCase):
         table_idx = html.find("Suggested vendors")
         self.assertGreater(find_idx, 0)
         self.assertGreater(table_idx, find_idx)
+        sl_start = html.find('id="ps-vendor-shortlist"')
+        sl_end = html.find('id="ps-form-card"')
+        self.assertGreater(sl_start, find_idx)
+        self.assertGreater(sl_end, sl_start)
+        shortlist_block = html[sl_start:sl_end]
+        self.assertNotIn("display:none", shortlist_block)
+        self.assertNotIn("display: none", shortlist_block)
+        self.assertIn("min-height:360px", shortlist_block)
 
     def test_embed_vendor_toasts_latest_only(self):
         path = (
