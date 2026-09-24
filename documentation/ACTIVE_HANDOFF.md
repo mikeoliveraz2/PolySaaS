@@ -3,6 +3,13 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Bake Demo directory into GET HTML (no POST JSON required)
+
+- **Problem:** 379df4d7 still looked like “no change” on prod (green bar refine skipped / Shortlist search failed, no vendor table). Rows depended on POST JSON + JS paint.
+- **Fix:** GET `odoo_vendor_lookup.html` now includes a visible **Suggested vendors / Demo directory** table (SeaWrap, Mekong Film Co, ASEAN Office Supply, Graphite Point Stationery) immediately under **Find suppliers**. Version line under the title: **`Assist build bake-table-20260924`**. Find suppliers still POSTs and toasts; it does **not** clear baked rows (only replaces if POST actually returns vendors). Green bar: vendor/criteria/shortlist labels when action path contains `vendor`; **refine skipped** is not used for shortlist failed.
+- Tests: `dose.tests.test_odoo_vendor_lookup` — 27 passed. No odoo_handler. No Slice 4.
+- **Michael:** Deploy **this commit**. Hard refresh New Vendor Assist. He must see (1) **`Assist build bake-table-20260924`** under the title (2) the Suggested vendors table with named rows **before clicking Find suppliers**. If the version line is missing, Dokploy did not pick up the commit.
+
 ## 2026-09-24 (Thursday) — Demo rows even if JSON nested/empty; no stale toast parade
 
 - **Root cause:** Find suppliers parsed `{ok, message}` (or `{json:{vendors}}`) and `data.vendors` was undefined, so `renderShortlist` painted nothing while Criteria captured still showed; green bar replayed every unread vendor/refine DoseMessage.

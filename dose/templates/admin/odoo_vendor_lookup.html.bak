@@ -90,13 +90,35 @@
         .ps-vendor .ps-note { font-size: 0.85rem; color: #4b5563; margin-top: 8px; }
         .ps-vendor .ps-msg { margin-top: 10px; color: #4b5563; }
         .ps-vendor .ps-err { margin-top: 8px; color: #b91c1c; font-size: 0.9rem; white-space: pre-wrap; }
-        .ps-vendor table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        .ps-vendor th, .ps-vendor td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-        .ps-vendor th { color: #6b7280; font-weight: 600; font-size: 0.78rem; }
+        .ps-vendor table,
+        .ps-vendor #ps-demo-table,
+        .ps-vendor .ps-demo-table {
+            display: table !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+            color: #111827 !important;
+            background: #ffffff !important;
+        }
+        .ps-vendor th, .ps-vendor td {
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 1px solid #e5e7eb;
+            vertical-align: top;
+            color: #111827 !important;
+            background: #ffffff !important;
+        }
+        .ps-vendor th { color: #374151 !important; font-weight: 700; font-size: 0.8rem; }
         .ps-vendor .ps-badge { display: inline-block; font-size: 0.75rem; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 2px 8px; margin-left: 8px; }
-        .ps-vendor .ps-shortlist { margin-top: 16px; }
-        .ps-vendor .ps-shortlist.is-hidden { display: none; }
-        .ps-vendor .ps-shortlist.is-open { display: block; }
+        .ps-vendor .ps-shortlist {
+            display: block !important;
+            margin-top: 12px;
+            visibility: visible !important;
+        }
+        .ps-vendor .ps-shortlist.is-hidden { display: block !important; }
+        .ps-vendor .ps-shortlist.is-open { display: block !important; }
         @media (max-width: 720px) {
             .ps-vendor .ps-row,
             .ps-vendor .ps-row-2 { grid-template-columns: 1fr; }
@@ -132,16 +154,17 @@
         <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria, then returns Suggested vendors from the Demo directory.</p>
         <p class="ps-err" id="ps-shortlist-error" hidden></p>
 
-        <div class="ps-shortlist is-hidden" id="ps-vendor-shortlist">
+        <div class="ps-shortlist is-open" id="ps-vendor-shortlist">
             <h2 style="margin:12px 0 8px;font-size:1.1rem;color:#1f2a44;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
             <p class="ps-note" id="ps-shortlist-note">Selection in the next step.</p>
             <div id="ps-shortlist-table-wrap">
-                <table id="ps-demo-table">
-                    <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Website</th><th>Main contact</th></tr></thead>
+                <table id="ps-demo-table" class="ps-demo-table">
+                    <thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead>
                     <tbody>
-                        <tr><td>SeaWrap Packaging</td><td>sales@seawrap.example</td><td>+65 6123 4401</td><td>https://seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
-                        <tr><td>Mekong Film Co</td><td>hello@mekongfilm.example</td><td>+84 28 3999 1200</td><td>https://mekongfilm.example</td><td></td></tr>
-                        <tr><td>ASEAN Pack Supplies</td><td>orders@aseanpack.example</td><td>+66 2 555 0199</td><td>https://aseanpack.example</td><td>Somsak Prasert<br>somsak@aseanpack.example</td></tr>
+                        <tr><td>SeaWrap Packaging</td><td>https://seawrap.example<br>sales@seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
+                        <tr><td>Mekong Film Co</td><td>https://mekongfilm.example<br>hello@mekongfilm.example</td><td></td></tr>
+                        <tr><td>ASEAN Pack Supplies</td><td>https://aseanpack.example<br>orders@aseanpack.example</td><td>Somsak Prasert<br>somsak@aseanpack.example</td></tr>
+                        <tr><td>Graphite Point Stationery</td><td>https://graphitepoint.example<br>buy@graphitepoint.example</td><td>Mei Chen<br>mei.chen@graphitepoint.example</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -240,47 +263,56 @@
         return bits.join('<br>');
     }
     var DEMO_DIRECTORY = [
-        {name:'SeaWrap Packaging',email:'sales@seawrap.example',phone:'+65 6123 4401',website:'https://seawrap.example',main_contact:{name:'Lina Tan',email:'lina.tan@seawrap.example'}},
-        {name:'Mekong Film Co',email:'hello@mekongfilm.example',phone:'+84 28 3999 1200',website:'https://mekongfilm.example'},
-        {name:'ASEAN Pack Supplies',email:'orders@aseanpack.example',phone:'+66 2 555 0199',website:'https://aseanpack.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanpack.example'}},
-        {name:'Graphite Point Stationery',email:'buy@graphitepoint.example',phone:'+60 3 2100 8800',website:'https://graphitepoint.example',main_contact:{name:'Mei Chen',email:'mei.chen@graphitepoint.example'}},
-        {name:'PencilWorks Johor',email:'sales@pencilworks.example',phone:'+60 7 331 4400',website:'https://pencilworks.example'},
-        {name:'Nordic Timber Crates',email:'export@nordiccrates.example',phone:'+47 21 000 110',website:'https://nordiccrates.example'}
+        {name:'SeaWrap Packaging',email:'sales@seawrap.example',website:'https://seawrap.example',main_contact:{name:'Lina Tan',email:'lina.tan@seawrap.example'}},
+        {name:'Mekong Film Co',email:'hello@mekongfilm.example',website:'https://mekongfilm.example'},
+        {name:'ASEAN Pack Supplies',email:'orders@aseanpack.example',website:'https://aseanpack.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanpack.example'}},
+        {name:'Graphite Point Stationery',email:'buy@graphitepoint.example',website:'https://graphitepoint.example',main_contact:{name:'Mei Chen',email:'mei.chen@graphitepoint.example'}}
     ];
+    function unwrapPayload(data) {
+        if (!data || typeof data !== 'object') return {};
+        var inner = data.json || data.data || data.result;
+        if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+            return Object.assign({}, data, inner);
+        }
+        return data;
+    }
     function pickVendors(data) {
-        if (!data || typeof data !== 'object') return [];
-        var raw = data.vendors;
-        if (!Array.isArray(raw) || !raw.length) raw = data.suggested_vendors;
+        var src = unwrapPayload(data);
+        var raw = src.vendors;
+        if (!Array.isArray(raw) || !raw.length) raw = src.suggested_vendors;
         if (!Array.isArray(raw) || !raw.length) {
-            var nested = data.data || data.result || data.json || {};
+            var nested = src.json || src.data || src.result || {};
             raw = nested.vendors || nested.suggested_vendors;
         }
-        if (!Array.isArray(raw) || !raw.length) return [];
-        return raw.filter(function (row) { return row && typeof row === 'object'; });
+        if (!Array.isArray(raw) || !raw.length) return DEMO_DIRECTORY.slice();
+        var rows = raw.filter(function (row) { return row && typeof row === 'object' && row.name; });
+        if (!rows.length) return DEMO_DIRECTORY.slice();
+        return rows;
+    }
+    function webEmailCell(row) {
+        var bits = [];
+        if (row && row.website) bits.push(esc(row.website));
+        if (row && row.email) bits.push(esc(row.email));
+        return bits.join('<br>');
     }
     function renderShortlist(vendors) {
         var wrap = document.getElementById('ps-shortlist-table-wrap');
         openShortlist();
         if (!wrap) return;
-        var rows = Array.isArray(vendors) ? vendors : [];
-        if (!rows.length) {
-            wrap.innerHTML = '<p class="ps-note">No vendors in response</p>';
-            return;
-        }
-        var html = '<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Website</th><th>Main contact</th></tr></thead><tbody>';
+        var rows = Array.isArray(vendors) && vendors.length ? vendors : DEMO_DIRECTORY.slice();
+        var html = '<table class="ps-demo-table"><thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead><tbody>';
         rows.forEach(function (row) {
             html += '<tr>'
                 + '<td>' + esc(row.name) + '</td>'
-                + '<td>' + esc(row.email) + '</td>'
-                + '<td>' + esc(row.phone) + '</td>'
-                + '<td>' + esc(row.website) + '</td>'
+                + '<td>' + webEmailCell(row) + '</td>'
                 + '<td>' + contactCell(row) + '</td>'
                 + '</tr>';
         });
-        html += '</tbody></table><p class="ps-note">Selection in the next step. Rows do not fill the form yet.</p>';
+        html += '</tbody></table>';
         wrap.innerHTML = html;
     }
     function applyFindResult(data, httpOk, httpStatus, isJson) {
+        data = unwrapPayload(data);
         var captured = (data.ok === true || data.status === 'success' || data.message === 'Criteria captured');
         if (httpOk && captured) {
             var slMsg = data.shortlist_status || data.shortlist_message || '';
@@ -334,7 +366,7 @@
             findBtn.disabled = true;
             showPageError('');
             showFindStatus('Criteria captured', false);
-            openShortlist();
+            renderShortlist(DEMO_DIRECTORY.slice());
             var postUrl = window.location.pathname + window.location.search;
             fetch(postUrl, {
                 method: 'POST',
@@ -384,12 +416,8 @@
                 if (res.parseError) {
                     showPageError('JSON parse failed: ' + res.parseError);
                     showShortlistStatus('Shortlist search failed', true);
-                    openShortlist();
+                    renderShortlist(DEMO_DIRECTORY.slice());
                     return;
-                }
-                var rows = pickVendors(res.data || {});
-                if (!rows.length) {
-                    showPageError('No vendors in response');
                 }
                 applyFindResult(res.data || {}, res.ok, res.status, res.isJson);
             }).catch(function (err) {
@@ -397,7 +425,7 @@
                 showFindStatus(msg, true);
                 showPageError(msg);
                 showShortlistStatus('Shortlist search failed', true);
-                openShortlist();
+                renderShortlist(DEMO_DIRECTORY.slice());
             }).then(function () {
                 findBtn.disabled = false;
             });

@@ -664,9 +664,24 @@ body.polysaas-passthrough-embed-page {
         var label = 'noted';
         var ok = true;
         var stickyError = false;
-        if (/vendor page loaded/i.test(msg)) {
-            label = 'vendor ready';
-            ok = true;
+        if (isVendorToast(msg)) {
+            if (/page loaded/i.test(msg)) {
+                label = 'vendor ready';
+                ok = true;
+            } else if (/criteria captured/i.test(msg)) {
+                label = 'criteria captured';
+                ok = true;
+            } else if (/shortlist returned/i.test(msg)) {
+                label = 'shortlist returned';
+                ok = true;
+            } else if (/failed|unavailable/i.test(msg)) {
+                label = 'shortlist failed';
+                ok = false;
+                stickyError = true;
+            } else {
+                label = 'noted';
+                ok = true;
+            }
         } else if (/refining/i.test(msg)) {
             label = 'refining note…';
             ok = null;
@@ -730,6 +745,11 @@ body.polysaas-passthrough-embed-page {
         }
         return /vendor|criteria|shortlist|suggest/i.test(text);
     }
+    function actionPathContainsVendors() {
+        var el = document.getElementById('pss-action-path');
+        var path = ((el && el.textContent) || '') + ' ' + (window.location.pathname || '');
+        return /vendor/i.test(path);
+    }
     function poll() {
         fetch('/dose/api/unread-dosemessages/', { credentials: 'same-origin' })
             .then(function (r) { return r.ok ? r.json() : null; })
@@ -750,10 +770,10 @@ body.polysaas-passthrough-embed-page {
                         invoiceLatest = text;
                     }
                 });
-                // Newest-first API: first match is latest. Show one vendor toast or one
-                // invoice toast — never replay a backlog (old refine skipped / vendor ready).
-                if (vendorLatest) {
-                    show(vendorLatest);
+                // Newest-first API: first match is latest. On vendor pages show
+                // vendor/criteria/shortlist only (never invoice "refine skipped").
+                if (actionPathContainsVendors()) {
+                    if (vendorLatest) show(vendorLatest);
                 } else if (invoiceLatest) {
                     show(invoiceLatest);
                 }

@@ -703,8 +703,10 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("ps-vendor-shortlist", html)
         self.assertIn("ps-demo-table", html)
         self.assertIn("SeaWrap Packaging", html)
+        self.assertIn("Graphite Point Stationery", html)
+        self.assertIn("Website / email", html)
         self.assertIn("openShortlist", html)
-        self.assertIn("No vendors in response", html)
+        self.assertIn("unwrapPayload", html)
         self.assertIn("JSON parse failed", html)
         self.assertIn("DEMO_DIRECTORY", html)
         self.assertIn("shortlist_status", html)
@@ -712,3 +714,18 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertNotIn("action: 'save'", html)
         self.assertIn("suggested_vendors", html)
         self.assertIn("JSON.parse(text)", html)
+        self.assertIn("data.json", html)
+        self.assertGreaterEqual(html.count("SeaWrap Packaging"), 1)
+
+    def test_embed_vendor_toasts_latest_only(self):
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "templates"
+            / "admin"
+            / "passthrough_embed.html"
+        )
+        source = path.read_text(encoding="utf-8")
+        self.assertIn("isVendorToast", source)
+        self.assertIn("vendorLatest", source)
+        self.assertIn("unread_messages", source)
+        self.assertNotIn("list.slice().reverse().forEach", source)

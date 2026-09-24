@@ -22,6 +22,7 @@ from dose.services.odoo_vendor_lookup import (
     OdooVendorAssist,
     emit_vendor_page_loaded,
     render_vendor_assist_html,
+    ASSIST_BUILD,
 )
 
 
@@ -715,7 +716,31 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("suggested_vendors", html)
         self.assertIn("JSON.parse(text)", html)
         self.assertIn("data.json", html)
+        self.assertIn("ASEAN Office Supply", html)
+        self.assertIn("Assist build", html)
+        self.assertIn(ASSIST_BUILD, html)
+        self.assertIn("These rows are on the page from first paint", html)
         self.assertGreaterEqual(html.count("SeaWrap Packaging"), 1)
+
+    def test_get_html_bakes_suggested_vendors_table(self):
+        """GET page must include named rows without waiting on POST JSON."""
+        request = RequestFactory().get("/pt/admin/odoo/odoo/vendors/new")
+        request.user = MagicMock(is_authenticated=False)
+        request.session = {}
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        html = render_vendor_assist_html(request)
+        self.assertIn("Suggested vendors", html)
+        self.assertIn("SeaWrap", html)
+        self.assertIn("Mekong Film Co", html)
+        self.assertIn("ASEAN Office Supply", html)
+        self.assertIn("Graphite Point Stationery", html)
+        self.assertIn("Lina Tan", html)
+        self.assertIn("ps-assist-build", html)
+        self.assertIn("Assist build bake-table-20260924", html)
+        find_idx = html.find("Find suppliers")
+        table_idx = html.find("Suggested vendors")
+        self.assertGreater(find_idx, 0)
+        self.assertGreater(table_idx, find_idx)
 
     def test_embed_vendor_toasts_latest_only(self):
         path = (
@@ -728,4 +753,6 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("isVendorToast", source)
         self.assertIn("vendorLatest", source)
         self.assertIn("unread_messages", source)
+        self.assertIn("actionPathContainsVendors", source)
+        self.assertIn("shortlist failed", source)
         self.assertNotIn("list.slice().reverse().forEach", source)

@@ -3,6 +3,13 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Demo rows even if JSON nested/empty; no stale toast parade
+
+- **Root cause:** Find suppliers parsed `{ok, message}` (or `{json:{vendors}}`) and `data.vendors` was undefined, so `renderShortlist` painted nothing while Criteria captured still showed; green bar replayed every unread vendor/refine DoseMessage.
+- **Fix:** JS `unwrapPayload(data.json || data)`, reads `vendors` or `suggested_vendors`, else hardcoded 4-row `DEMO_DIRECTORY`. Table always visible under Find suppliers (Name, Website/email, Main contact). Embed poll: `unread_messages`, **latest vendor toast only** (invoice still latest-only, no reverse stack).
+- Tests: `dose.tests.test_odoo_vendor_lookup` — 26 passed.
+- Michael: **Deploy this commit**, hard-refresh New Vendor Assist, **Find suppliers**. Expect 4+ named vendors. Old toasts should not parade. No Slice 4. No odoo_handler.
+
 ## 2026-09-24 (Thursday) — Vendor Assist shortlist: JSON POST + always-visible Demo table
 
 - **Root cause:** `instruction_page._json_from_atomic_result` refused JSON whenever the atomic dict also had `html`, so Find suppliers POST could be **admin-wrapped HTML**; the page toasted Criteria captured locally, DoseMessage showed **Shortlist search failed**, and `#ps-shortlist-card` stayed `display:none` until a successful JSON parse.

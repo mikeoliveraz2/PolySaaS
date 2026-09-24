@@ -132,6 +132,7 @@
         <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
         <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
     </div>
+    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"bake-table-20260924" }}</p>
     <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria, then returns a suggested shortlist from a demo directory (not live web search).</p>
 
     <div class="ps-card">
@@ -150,25 +151,24 @@
             </div>
         </div>
         <button type="button" id="ps-find">Find suppliers</button>
-        <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
-        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria, then returns Suggested vendors from the Demo directory.</p>
-        <p class="ps-err" id="ps-shortlist-error" hidden></p>
-
-        <div class="ps-shortlist is-open" id="ps-vendor-shortlist">
+        <div class="ps-shortlist is-open" id="ps-vendor-shortlist" style="display:block !important;visibility:visible !important;">
             <h2 style="margin:12px 0 8px;font-size:1.1rem;color:#1f2a44;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
-            <p class="ps-note" id="ps-shortlist-note">Selection in the next step.</p>
+            <p class="ps-note" id="ps-shortlist-note">These rows are on the page from first paint. Selection in the next step.</p>
             <div id="ps-shortlist-table-wrap">
-                <table id="ps-demo-table" class="ps-demo-table">
+                <table id="ps-demo-table" class="ps-demo-table" style="display:table !important;width:100%;">
                     <thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead>
                     <tbody>
                         <tr><td>SeaWrap Packaging</td><td>https://seawrap.example<br>sales@seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
                         <tr><td>Mekong Film Co</td><td>https://mekongfilm.example<br>hello@mekongfilm.example</td><td></td></tr>
-                        <tr><td>ASEAN Pack Supplies</td><td>https://aseanpack.example<br>orders@aseanpack.example</td><td>Somsak Prasert<br>somsak@aseanpack.example</td></tr>
+                        <tr><td>ASEAN Office Supply</td><td>https://aseanoffice.example<br>orders@aseanoffice.example</td><td>Somsak Prasert<br>somsak@aseanoffice.example</td></tr>
                         <tr><td>Graphite Point Stationery</td><td>https://graphitepoint.example<br>buy@graphitepoint.example</td><td>Mei Chen<br>mei.chen@graphitepoint.example</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
+        <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
+        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria. The Suggested vendors table above is already filled from the Demo directory.</p>
+        <p class="ps-err" id="ps-shortlist-error" hidden></p>
     </div>
 
     <div class="ps-card" id="ps-form-card">
@@ -265,7 +265,7 @@
     var DEMO_DIRECTORY = [
         {name:'SeaWrap Packaging',email:'sales@seawrap.example',website:'https://seawrap.example',main_contact:{name:'Lina Tan',email:'lina.tan@seawrap.example'}},
         {name:'Mekong Film Co',email:'hello@mekongfilm.example',website:'https://mekongfilm.example'},
-        {name:'ASEAN Pack Supplies',email:'orders@aseanpack.example',website:'https://aseanpack.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanpack.example'}},
+        {name:'ASEAN Office Supply',email:'orders@aseanoffice.example',website:'https://aseanoffice.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanoffice.example'}},
         {name:'Graphite Point Stationery',email:'buy@graphitepoint.example',website:'https://graphitepoint.example',main_contact:{name:'Mei Chen',email:'mei.chen@graphitepoint.example'}}
     ];
     function unwrapPayload(data) {
@@ -284,9 +284,8 @@
             var nested = src.json || src.data || src.result || {};
             raw = nested.vendors || nested.suggested_vendors;
         }
-        if (!Array.isArray(raw) || !raw.length) return DEMO_DIRECTORY.slice();
+        if (!Array.isArray(raw) || !raw.length) return [];
         var rows = raw.filter(function (row) { return row && typeof row === 'object' && row.name; });
-        if (!rows.length) return DEMO_DIRECTORY.slice();
         return rows;
     }
     function webEmailCell(row) {
@@ -299,7 +298,8 @@
         var wrap = document.getElementById('ps-shortlist-table-wrap');
         openShortlist();
         if (!wrap) return;
-        var rows = Array.isArray(vendors) && vendors.length ? vendors : DEMO_DIRECTORY.slice();
+        if (!Array.isArray(vendors) || !vendors.length) return;
+        var rows = vendors;
         var html = '<table class="ps-demo-table"><thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead><tbody>';
         rows.forEach(function (row) {
             html += '<tr>'
@@ -366,7 +366,6 @@
             findBtn.disabled = true;
             showPageError('');
             showFindStatus('Criteria captured', false);
-            renderShortlist(DEMO_DIRECTORY.slice());
             var postUrl = window.location.pathname + window.location.search;
             fetch(postUrl, {
                 method: 'POST',
@@ -416,7 +415,6 @@
                 if (res.parseError) {
                     showPageError('JSON parse failed: ' + res.parseError);
                     showShortlistStatus('Shortlist search failed', true);
-                    renderShortlist(DEMO_DIRECTORY.slice());
                     return;
                 }
                 applyFindResult(res.data || {}, res.ok, res.status, res.isJson);
@@ -425,7 +423,6 @@
                 showFindStatus(msg, true);
                 showPageError(msg);
                 showShortlistStatus('Shortlist search failed', true);
-                renderShortlist(DEMO_DIRECTORY.slice());
             }).then(function () {
                 findBtn.disabled = false;
             });

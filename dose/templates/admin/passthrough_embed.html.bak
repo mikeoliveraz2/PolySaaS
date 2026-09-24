@@ -14,6 +14,7 @@ Owner-approved 2026-09-23: refine errors stay on the green bar with the error te
 BINGO: Odoo invoice Note refine — 2026-09-23 — commit ac654503
 Owner-approved 2026-09-23: Odoo shim adds ps-odoo-fields-light; contrast CSS follows that class.
 Owner-approved 2026-09-24: New Vendor Slice 1 — green bar shows Vendor page loaded DoseMessage.
+Owner-approved 2026-09-24: vendor/shortlist/criteria toasts — latest unread only (no backlog flash).
 Owner-approved 2026-09-24: when Action Path changes (SPA URL without document GET),
 ask orchestration-instruction API and full-navigate if a GET Instruction matches
 the document path (generic; no vendor hardcoding). -->
@@ -722,21 +723,40 @@ body.polysaas-passthrough-embed-page {
         // New Vendor Assist: "Vendor page loaded" / "Criteria captured" / "Shortlist returned".
         return /invoice|refin|queued|description|note|vendor|criteria|shortlist|suggest/i.test(text);
     }
+    function isVendorToast(text) {
+        if (!text) return false;
+        if (/invoice|refin|queued|description/i.test(text) && !/vendor|criteria|shortlist|suggest/i.test(text)) {
+            return false;
+        }
+        return /vendor|criteria|shortlist|suggest/i.test(text);
+    }
     function poll() {
         fetch('/dose/api/unread-dosemessages/', { credentials: 'same-origin' })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
-                if (!data || !data.messages) return;
-                var list = data.messages || data.unread || [];
-                if (!Array.isArray(list) && data.results) list = data.results;
-                // API is newest-first. Apply oldest first so the latest Note result wins.
-                list.slice().reverse().forEach(function (row) {
+                if (!data) return;
+                var list = data.messages || data.unread || data.unread_messages || data.results || [];
+                if (!Array.isArray(list)) list = [];
+                var vendorLatest = null;
+                var invoiceLatest = null;
+                list.forEach(function (row) {
                     var id = row.id || row.pk;
                     var text = row.message || row.text || '';
                     if (!id || seen[id] || !interesting(text)) return;
                     seen[id] = true;
-                    show(text);
+                    if (isVendorToast(text)) {
+                        if (!vendorLatest) vendorLatest = text;
+                    } else if (!invoiceLatest) {
+                        invoiceLatest = text;
+                    }
                 });
+                // Newest-first API: first match is latest. Show one vendor toast or one
+                // invoice toast — never replay a backlog (old refine skipped / vendor ready).
+                if (vendorLatest) {
+                    show(vendorLatest);
+                } else if (invoiceLatest) {
+                    show(invoiceLatest);
+                }
             })
             .catch(function () {});
     }
