@@ -6,6 +6,7 @@ Every agent must read this file before editing or answering.
 ## 2026-09-24 (Thursday) — Type 4 POC Slice 1 pushed
 
 - Slice 1 New Vendor Assist code pushed: Instruction `GET /odoo/vendors/new` → atomic `OdooVendorAssist` → branded page + "Vendor page loaded" toast.
+- Slice 1 works on prod (dynamic orchestration). Next is PolySaaS logo on the branded page, then Slice 2 (not started).
 - Next: Dokploy rebuild. Then add the instruction on prod (tenant `polysaas`): path `/odoo/vendors/new`, `GET`, `REQ`, eventKey `odoo.vendor.new.assist`, executescript `OdooVendorAssist`, parameters `{"serve_page": true}`. Then verify on screen via Purchase → Orders → Vendors → New.
 - Slices 2–6 are not started.
 
