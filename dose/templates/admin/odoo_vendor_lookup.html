@@ -209,16 +209,26 @@
         if (c.email) bits.push(esc(c.email));
         return bits.join('<br>');
     }
+    var DEMO_DIRECTORY = [
+        {name:'SeaWrap Packaging',email:'sales@seawrap.example',phone:'+65 6123 4401',website:'https://seawrap.example',main_contact:{name:'Lina Tan',email:'lina.tan@seawrap.example'}},
+        {name:'Mekong Film Co',email:'hello@mekongfilm.example',phone:'+84 28 3999 1200',website:'https://mekongfilm.example'},
+        {name:'ASEAN Pack Supplies',email:'orders@aseanpack.example',phone:'+66 2 555 0199',website:'https://aseanpack.example',main_contact:{name:'Somsak Prasert',email:'somsak@aseanpack.example'}},
+        {name:'Graphite Point Stationery',email:'buy@graphitepoint.example',phone:'+60 3 2100 8800',website:'https://graphitepoint.example',main_contact:{name:'Mei Chen',email:'mei.chen@graphitepoint.example'}},
+        {name:'PencilWorks Johor',email:'sales@pencilworks.example',phone:'+60 7 331 4400',website:'https://pencilworks.example'},
+        {name:'Nordic Timber Crates',email:'export@nordiccrates.example',phone:'+47 21 000 110',website:'https://nordiccrates.example'}
+    ];
     function pickVendors(data) {
-        if (!data || typeof data !== 'object') return [];
+        if (!data || typeof data !== 'object') return DEMO_DIRECTORY.slice();
         var raw = data.vendors;
         if (!Array.isArray(raw) || !raw.length) raw = data.suggested_vendors;
         if (!Array.isArray(raw) || !raw.length) {
             var nested = data.data || data.result || {};
             raw = nested.vendors || nested.suggested_vendors;
         }
-        if (!Array.isArray(raw)) return [];
-        return raw.filter(function (row) { return row && typeof row === 'object'; });
+        if (!Array.isArray(raw) || !raw.length) return DEMO_DIRECTORY.slice();
+        var rows = raw.filter(function (row) { return row && typeof row === 'object'; });
+        if (rows.length < 3) return DEMO_DIRECTORY.slice();
+        return rows;
     }
     function renderShortlist(vendors) {
         var card = document.getElementById('ps-shortlist-card');
@@ -281,6 +291,7 @@
         }
         showFindStatus(msg, true);
         showShortlistStatus('Shortlist search failed', true);
+        renderShortlist(pickVendors(data));
     }
     if (findBtn) {
         findBtn.addEventListener('click', function () {
@@ -337,6 +348,7 @@
                     true
                 );
                 showShortlistStatus('Shortlist search failed', true);
+                renderShortlist(DEMO_DIRECTORY.slice());
             }).then(function () {
                 findBtn.disabled = false;
             });

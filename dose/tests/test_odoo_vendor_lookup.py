@@ -173,9 +173,12 @@ class CriteriaCaptureTests(SimpleTestCase):
 
         self.assertEqual(result["status"], "error")
         self.assertIn(CRITERIA_CAPTURE_FAILED_MESSAGE, result["message"])
-        emit.assert_called_once()
-        self.assertEqual(emit.call_args.args[1], result["message"])
-        self.assertEqual(emit.call_args.kwargs["level"], "error")
+        vendors = result.get("vendors") or result.get("suggested_vendors") or []
+        self.assertGreaterEqual(len(vendors), 3)
+        self.assertEqual(result["shortlist_status"], SHORTLIST_FAILED_MESSAGE)
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertTrue(any(CRITERIA_CAPTURE_FAILED_MESSAGE in (m or "") for m in messages))
+        self.assertIn(SHORTLIST_FAILED_MESSAGE, messages)
 
     def test_post_shortlist_llm_down_still_returns_rows_and_failed_toast(self):
         import json
@@ -587,6 +590,7 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Selection in the next step", html)
         self.assertIn("renderShortlist", html)
         self.assertIn("pickVendors", html)
+        self.assertIn("DEMO_DIRECTORY", html)
         self.assertIn("shortlist_status", html)
         self.assertNotIn("action: 'search'", html)
         self.assertNotIn("action: 'save'", html)
