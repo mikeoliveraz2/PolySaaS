@@ -498,6 +498,116 @@ class InstructionMatchSelectsPageTests(SimpleTestCase):
         )
         exec_mock.assert_called_once()
 
+    @patch("dose.services.atomic_services_registry.get_atomic_service")
+    @patch("dose.services.atomic_services_registry.init_atomic_services_registry")
+    @patch("dose.passthrough.orchestration_hook.find_matching_instructions")
+    def test_post_returns_json_vendors_even_if_result_also_has_html(
+        self, find_match, _init, get_svc
+    ):
+        """Regression: html on the result must not wrap Find suppliers POST in admin HTML."""
+        import json as json_lib
+
+        post_instruction = SimpleNamespace(
+            id=44,
+            eventKey="odoo.vendor.new.assist.criteria",
+            executescript="OdooVendorAssist",
+            requestpath="/odoo/vendors/new",
+            save_callbackdata=False,
+            description="criteria",
+        )
+        find_match.return_value = [post_instruction]
+        get_svc.return_value = OdooVendorAssist
+        request = self.factory.post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data='{"step":"capture_criteria","product_line":"Packaging film","region":"Southeast Asia","price_range":"Under $2 per unit"}',
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        request.tenant = self.tenant
+        request.user = MagicMock(is_authenticated=True)
+        request.session = {}
+        vendors = [
+            {"name": "SeaWrap Packaging", "email": "sales@seawrap.example"},
+            {"name": "Mekong Film Co", "email": "hello@mekongfilm.example"},
+            {"name": "ASEAN Pack Supplies", "email": "orders@aseanpack.example"},
+        ]
+        with patch.object(
+            OdooVendorAssist,
+            "execute_and_save",
+            return_value={
+                "status": "success",
+                "html": "<html><body>should not wrap POST</body></html>",
+                "content_type": "text/html; charset=utf-8",
+                "wrap_passthrough": True,
+                "message": CRITERIA_CAPTURED_MESSAGE,
+                "vendors": vendors,
+                "json": {
+                    "ok": True,
+                    "message": CRITERIA_CAPTURED_MESSAGE,
+                    "vendors": vendors,
+                },
+            },
+        ):
+            resp = try_instruction_page_response(
+                request, self.endpoint, self.handler, "odoo"
+            )
+        self.assertIsNotNone(resp)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/json", resp["Content-Type"])
+        body = json_lib.loads(resp.content.decode("utf-8"))
+        self.assertGreaterEqual(len(body.get("vendors") or []), 3)
+        self.assertNotIn("<html>", resp.content.decode("utf-8")[:40].lower())
+
+    @patch("dose.services.atomic_services_registry.get_atomic_service")
+    @patch("dose.services.atomic_services_registry.init_atomic_services_registry")
+    @patch("dose.passthrough.orchestration_hook.find_matching_instructions")
+    def test_post_xhr_returns_json_without_json_response_flag(
+        self, find_match, _init, get_svc
+    ):
+        import json as json_lib
+
+        post_instruction = SimpleNamespace(
+            id=45,
+            eventKey="odoo.vendor.new.assist.criteria",
+            executescript="OdooVendorAssist",
+            requestpath="/odoo/vendors/new",
+            save_callbackdata=False,
+            description="criteria",
+        )
+        find_match.return_value = [post_instruction]
+        get_svc.return_value = OdooVendorAssist
+        request = self.factory.post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data='{"step":"capture_criteria","product_line":"Pencils","region":"Southeast Asia","price_range":"Under $2"}',
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        request.tenant = self.tenant
+        request.user = MagicMock(is_authenticated=True)
+        request.session = {}
+        vendors = [
+            {"name": "Graphite Point Stationery"},
+            {"name": "PencilWorks Johor"},
+            {"name": "SeaWrap Packaging"},
+        ]
+        with patch.object(
+            OdooVendorAssist,
+            "execute_and_save",
+            return_value={
+                "status": "success",
+                "message": CRITERIA_CAPTURED_MESSAGE,
+                "vendors": vendors,
+            },
+        ):
+            resp = try_instruction_page_response(
+                request, self.endpoint, self.handler, "odoo"
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/json", resp["Content-Type"])
+        body = json_lib.loads(resp.content.decode("utf-8"))
+        self.assertEqual(len(body["vendors"]), 3)
 
 
 class HandlerHasNoVendorHardcodingTests(SimpleTestCase):
@@ -590,6 +700,12 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Selection in the next step", html)
         self.assertIn("renderShortlist", html)
         self.assertIn("pickVendors", html)
+        self.assertIn("ps-vendor-shortlist", html)
+        self.assertIn("ps-demo-table", html)
+        self.assertIn("SeaWrap Packaging", html)
+        self.assertIn("openShortlist", html)
+        self.assertIn("No vendors in response", html)
+        self.assertIn("JSON parse failed", html)
         self.assertIn("DEMO_DIRECTORY", html)
         self.assertIn("shortlist_status", html)
         self.assertNotIn("action: 'search'", html)

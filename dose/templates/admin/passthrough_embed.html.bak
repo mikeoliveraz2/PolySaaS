@@ -719,8 +719,8 @@ body.polysaas-passthrough-embed-page {
     }
     function interesting(text) {
         if (!text) return false;
-        // New Vendor Assist: "Vendor page loaded" / "Criteria captured".
-        return /invoice|refin|queued|description|note|vendor|criteria/i.test(text);
+        // New Vendor Assist: "Vendor page loaded" / "Criteria captured" / "Shortlist returned".
+        return /invoice|refin|queued|description|note|vendor|criteria|shortlist|suggest/i.test(text);
     }
     function poll() {
         fetch('/dose/api/unread-dosemessages/', { credentials: 'same-origin' })
