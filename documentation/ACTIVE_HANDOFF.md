@@ -1,17 +1,32 @@
+<!-- 2026-09-25 Michael: agents are not architects. -->
+<!-- Rule: `.cursor/rules/no-unilateral-design.mdc` (alwaysApply). -->
+<!-- Describe + ASK before any design swap. Do not silently "improve" URLs, schemas, or topics. -->
+<!-- Do NOT put tenant data in public / tenant_id for convenience. -->
+<!-- Do NOT replace public Odoo URL with Docker `http://odoo:8069` for humans or PolySniffer. -->
+<!-- Hostinger may already have `ODOO_SHARED_URL` / endpoint_url `http://odoo:8069` (AI vs original public URL). -->
+<!-- **No Odoo URL refactor until Type 4 video is done.** Do not "fix PolySniffer" via those URLs now. -->
+<!-- After the video: ASK before restoring the public URL as the stored origin. -->
+
 <!-- Shela 2026-09-25: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
 **Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
 
-## 2026-09-25 (Friday) — Type 4 POC Slice 6 (publish to shared contacts topic)
+## 2026-09-25 (Friday) — Type 4 POC Slice 6 (two topics: Vendors + Contacts)
 
-- **Slice 6 done:** After Odoo company save succeeds (contact optional / fail-soft), `save_vendor` calls `publish_saved_vendor_capture` → `enroll_contact_capture`. Mailbox envelope **kind** `polysaas.capture.v1`. **event_key** `odoo.capture_contacts`, **action_path** `odoo/contacts` (same enroll family as Slack/Odoo contact capture). Topic `RES.contacts.<actor>`. **Do not use** `slack.message.contact` or `polysaas.vendor.created`.
-- Envelope payload includes `odoo_vendor_id`, `odoo_contact_id`, vendor name, email, region, criteria (product line / region / price range).
-- Dedup: stable SHA256 `event_id` (tenant+vendor_id+email) unique on `WebhookMailbox` plus session skip. Second save does not double-publish or re-toast Event published.
-- Fail-soft: enroll failure does not roll back Odoo. DoseMessages: **Event published** / **Event publish failed — vendor saved, retry pending** (separate from Vendor created).
-- **No new Instruction. No consumer. No Mattermost/Slack/HubSpot wiring.** Frozen `odoo_create_partner.py` and `odoo_handler.py` untouched.
-- Canary: `Assist build table-visible-20260924+s4+s5+s6`. Tests: `dose.tests.test_odoo_vendor_lookup` — 36 passed.
-- **Prod:** Deploy, New Vendor Assist, pick a **different** row than SeaWrap if SeaWrap is already saved (e.g. Mekong Film Co). Save. Expect Vendor created, Contact linked (if contact), Event published.
+- **Owner correction:** the earlier “shared topic” answer was where to put the **contact** (Lina Tan), not the vendor company.
+- **Two topics.** After Odoo company save succeeds:
+  1. Publish **one** vendor event to the **Vendors** topic (`enroll_vendor_capture` → `RES.vendors.<actor>`). event_key `polysaas.vendor.created`, action_path `/events/polysaas/vendor/created`, POST, kind `polysaas.capture.v1`. Envelope: odoo_vendor_id, name, email, region, criteria, odoo_contact_id if any. Dedup (tenant, event_id).
+  2. If contact write succeeded, enroll the contact on **Contacts** (`enroll_contact_capture` / `odoo.capture_contacts` / `odoo/contacts`). If contact failed or absent, still publish vendor; skip contact enroll (fail-soft).
+- Fail-soft: publish failures do not roll back Odoo. Toasts: **Vendor created** / **Contact linked** unchanged; **Vendor event published** / **Contact event published**; **Event publish failed — vendor saved, retry pending** if Vendors topic publish fails.
+- **No consumer** that creates records in other apps. Same mailbox browse as Inventory/SNMP/Contacts. Captured Topics lists a **Vendors** row next to Contacts.
+- Frozen `odoo_create_partner.py` and `odoo_handler.py` untouched.
+- Canary: `Assist build table-visible-20260924+s4+s5+s6`. Tests: `dose.tests.test_odoo_vendor_lookup`.
+- **Prod / Michael:** Deploy. New Vendor Assist. Pick **Mekong Film Co** (or a row not already saved). Save. Expect Vendor created (+ Contact linked if a contact exists). Then Admin → **Captured Topics** → **Browse Topic** on **Vendors** AND **Contacts**.
 - **Lina Tan visual check remains on Michael** (Slice 5).
 - **Slice 7 not started** (live web / AI search).
+
+## 2026-09-25 (Friday) — Type 4 POC Slice 6 (publish to shared contacts topic)
+
+- **Superseded** by the two-topic correction above. Do not republish the vendor company onto Contacts.
 
 ## 2026-09-25 (Friday) — Type 4 POC Slice 5 (save to Odoo)
 
@@ -20,14 +35,14 @@
 - After save, **Open Odoo’s form** uses `/odoo/res.partner/<id>` on the passthrough prefix. Unsaved still uses `?polysaas_odoo_form=1`.
 - Canary: `Assist build table-visible-20260924+s4+s5`. Tests: `dose.tests.test_odoo_vendor_lookup`.
 - **No new Instruction.** Optional seed: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `save_vendor: true` on POST parameters).
-- **Slice 6 done** (see top of this file). Locked topic was `polysaas.capture.v1` / enroll path.
+- **Slice 6 done** (see top of this file). Two topics: Vendors for the company, Contacts (`polysaas.capture.v1` enroll) for the contact only.
 - **Slice 7 not started.**
 
-## Slice 6 topic (locked 2026-09-24)
-- Publish to the **shared contacts topic** (`polysaas.capture.v1` / contacts family / existing enroll_contact_capture mailbox pattern).
+## Slice 6 topic (locked 2026-09-25 — owner correction)
+- **Vendors topic** for the vendor company: `polysaas.vendor.created` / `/events/polysaas/vendor/created` / `RES.vendors.<actor>`.
+- **Contacts topic** for the contact only: shared `polysaas.capture.v1` / `enroll_contact_capture` / `odoo.capture_contacts`.
 - Do NOT use `slack.message.contact` (frozen customer-create consumer).
-- Do NOT invent `polysaas.vendor.created` for this POC.
-- Slice 6 waits until Michael says go after Slice 5. Do not implement Slice 6 yet.
+- Do NOT put the vendor company on the Contacts topic.
 
 ## Slice 7 (not started) — live web / AI search
 - Future: enable **live web / AI search** for the vendor shortlist. Today Slice 3 is curated **Demo directory** only.
@@ -43,7 +58,7 @@ Every agent must read this file before editing or answering.
 
 - **Slice 7 (not started):** enable live web / AI search for vendor shortlist. Slice 3 remains curated Demo directory only.
 - Out of scope until Michael says go after Slices 4–6. Do not invent web search now. LLM fail toast remains acceptable for Slice 3.
-- Slice 6 still locked: shared contacts topic `polysaas.capture.v1`, not `slack.message.contact`, not `polysaas.vendor.created`.
+- Slice 6 locked: two topics — Vendors (`polysaas.vendor.created`) for the company; Contacts `polysaas.capture.v1` for the contact only. Not `slack.message.contact`.
 - No Slice 4/5/6/7 code in this pack.
 
 ## 2026-09-24 (Thursday) — Type 4 POC Slice 4 (select/bind)

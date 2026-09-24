@@ -1,0 +1,31 @@
+---
+description: Agents are not architects — do not silently swap product design; freeze Odoo URL refactor until Type 4 video
+alwaysApply: true
+---
+
+# You are not the architect
+
+Michael is owner/architect. Agents do **not** change product design because it is easier for Docker, Django, PolySniffer, or the agent.
+
+If you think there is a better way: **DESCRIBE it and ASK.** Wait for **explicit approval.** Never silently swap the design.
+
+## Forbidden "helpful" redesigns (same class of bug)
+
+- Putting tenant data in `public` or adding `tenant_id` so search/ORM is easier
+- Replacing the **external valid URL** (e.g. `https://odoo.prod-polysaas.cloud`) with a Docker-internal hostname (`http://odoo:8069`) in anything humans or PolySniffer use
+- PolySniffer is built to the **external** URL. Internal compose names are for server-to-server on the Docker network only when Michael already designed that hop
+- Shortening, collapsing, or "simplifying" stored endpoint URLs, action paths, or topic names without asking
+
+```
+# ❌ BAD — store Docker DNS as the product origin
+endpoint_url = "http://odoo:8069"
+
+# ✅ GOOD — public URL for humans / PolySniffer; internal hop only if Michael designed it
+endpoint_url = "https://odoo.prod-polysaas.cloud"
+```
+
+## Current freeze on Odoo URL
+
+- `ODOO_SHARED_URL=http://odoo:8069` / endpoint_url `http://odoo:8069` may already be in Hostinger config (AI-introduced vs original public URL).
+- **Do not refactor this back until Michael says Type 4 video is done.**
+- Do not "fix PolySniffer" by changing those URLs now. After the video, **ASK** before restoring the public URL as the stored origin.
