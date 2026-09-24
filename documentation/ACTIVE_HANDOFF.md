@@ -32,7 +32,7 @@ After **5725f284**, prod showed **`Assist build bake-table-20260924`** but the *
 - `dose/templates/admin/passthrough_embed.html` (`interesting()` already matches vendor/criteria/shortlist — **frozen, not edited this pack**)
 
 ### origin/main
-- **origin/main:** HASH_PLACEHOLDER (replaced after commit)
+- **origin/main:** `4555df1e` (full: `4555df1e58941aa8a3c7c924588e8d6836a9f02b`) — if a follow-up hash-line commit lands, pull again; this pack-up commit is `4555df1e`.
 
 ## 2026-09-24 (Thursday) — Bake Demo directory into GET HTML (no POST JSON required)
 
