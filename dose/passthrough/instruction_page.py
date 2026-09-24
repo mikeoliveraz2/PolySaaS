@@ -128,20 +128,75 @@ def _html_from_atomic_result(result) -> tuple[str | None, str]:
     return html, ct
 
 
-def _json_from_atomic_result(result) -> dict | None:
-    """Return a JSON-serializable dict when the atomic answered a follow-up POST."""
-    if result is None or not isinstance(result, dict):
-        return None
-    if result.get("html") or result.get("page_html"):
-        return None
-    if result.get("json_response") is True or result.get("returns_json") is True:
+def _client_wants_json(request) -> bool:
+    """Generic XHR/JSON follow-up (POST + Accept/json or X-Requested-With)."""
+    method = (getattr(request, "method", "") or "").upper()
+    if method != "POST":
+        return False
+    meta = getattr(request, "META", None) or {}
+    accept = str(meta.get("HTTP_ACCEPT") or "").lower()
+    xrw = str(meta.get("HTTP_X_REQUESTED_WITH") or "").lower()
+    content_type = str(
+        meta.get("CONTENT_TYPE") or getattr(request, "content_type", "") or ""
+    ).lower()
+    if "application/json" in accept or accept.strip() == "application/json":
+        return True
+    if "json" in accept:
+        return True
+    if xrw == "xmlhttprequest":
+        return True
+    if "application/json" in content_type:
+        return True
+    return False
+
+
+def _json_payload_from_result(result: dict) -> dict:
+    if isinstance(result.get("json"), dict):
+        payload = dict(result.get("json"))
+    else:
         payload = {
             key: val
             for key, val in result.items()
-            if key not in ("wrap_passthrough", "json_response", "returns_json", "html", "page_html")
+            if key
+            not in (
+                "wrap_passthrough",
+                "json_response",
+                "returns_json",
+                "html",
+                "page_html",
+                "json",
+                "content_type",
+            )
         }
-        return payload
-    return None
+    # JsonResponse requires JSON-serializable values (no datetime leftover).
+    try:
+        json.dumps(payload, default=str)
+    except TypeError:
+        payload = json.loads(json.dumps(payload, default=str))
+    return payload
+
+
+def _json_from_atomic_result(result, request=None) -> dict | None:
+    """Return a JSON-serializable dict when the atomic answered a follow-up POST.
+
+    Do not refuse JSON only because `html` is also on the result dict — a POST
+    XHR must never be wrapped in admin HTML or fetch().json() / parse fails.
+    """
+    if result is None or not isinstance(result, dict):
+        return None
+    flagged = (
+        result.get("json_response") is True
+        or result.get("returns_json") is True
+        or isinstance(result.get("json"), dict)
+    )
+    wants = _client_wants_json(request) if request is not None else False
+    if not flagged and not wants:
+        return None
+    if not flagged and wants:
+        if result.get("html") or result.get("page_html"):
+            # POST asked for JSON; still return the non-HTML fields.
+            pass
+    return _json_payload_from_result(result)
 
 
 def try_instruction_page_response(request, endpoint, handler, trigger, upstream_path=None):
@@ -241,7 +296,7 @@ def try_instruction_page_response(request, endpoint, handler, trigger, upstream_
             )
             continue
 
-        json_payload = _json_from_atomic_result(result)
+        json_payload = _json_from_atomic_result(result, request)
         if json_payload is not None:
             print(
                 f"[INSTRUCTION-PAGE] Serving atomic JSON for {method} {path!r} "

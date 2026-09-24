@@ -227,20 +227,24 @@ def capture_vendor_criteria(request, instruction_row):
         emit_vendor_step_message(request, detail, level="error")
         emit_vendor_step_message(request, SHORTLIST_FAILED_MESSAGE, level="error")
         demo_rows = _always_demo_directory_rows(criteria)
+        public = {
+            "ok": False,
+            "status": "error",
+            "message": detail,
+            "criteria": criteria,
+            "vendors": list(demo_rows),
+            "suggested_vendors": list(demo_rows),
+            "source": SHORTLIST_SOURCE_LABEL,
+            "shortlist_status": SHORTLIST_FAILED_MESSAGE,
+            "shortlist_message": SHORTLIST_FAILED_MESSAGE,
+            "shortlist_ok": False,
+        }
         result = service_result(
             "OdooVendorAssist",
-            status="error",
-            ok=False,
             json_response=True,
             wrap_passthrough=False,
-            message=detail,
-            criteria=criteria,
-            vendors=list(demo_rows),
-            suggested_vendors=list(demo_rows),
-            source=SHORTLIST_SOURCE_LABEL,
-            shortlist_status=SHORTLIST_FAILED_MESSAGE,
-            shortlist_message=SHORTLIST_FAILED_MESSAGE,
-            shortlist_ok=False,
+            json=dict(public),
+            **public,
         )
         maybe_save_callback(
             request,
@@ -274,20 +278,24 @@ def capture_vendor_criteria(request, instruction_row):
     else:
         shortlist_message = SHORTLIST_FAILED_MESSAGE
         emit_vendor_step_message(request, shortlist_message, level="error")
+    public = {
+        "ok": True,
+        "status": "success",
+        "message": CRITERIA_CAPTURED_MESSAGE,
+        "criteria": criteria,
+        "vendors": list(vendors),
+        "suggested_vendors": list(vendors),
+        "source": SHORTLIST_SOURCE_LABEL,
+        "shortlist_status": shortlist_message,
+        "shortlist_message": shortlist_message,
+        "shortlist_ok": shortlist_ok and bool(vendors),
+    }
     result = service_result(
         "OdooVendorAssist",
-        status="success",
-        ok=True,
         json_response=True,
         wrap_passthrough=False,
-        message=CRITERIA_CAPTURED_MESSAGE,
-        criteria=criteria,
-        vendors=list(vendors),
-        suggested_vendors=list(vendors),
-        source=SHORTLIST_SOURCE_LABEL,
-        shortlist_status=shortlist_message,
-        shortlist_message=shortlist_message,
-        shortlist_ok=shortlist_ok and bool(vendors),
+        json=dict(public),
+        **public,
     )
     maybe_save_callback(
         request,

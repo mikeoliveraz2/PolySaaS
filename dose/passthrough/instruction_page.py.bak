@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 
+import json
+
 from django.http import HttpResponse, JsonResponse
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,46 @@ def _upstream_subpath_from_request(request) -> str:
 
 def _skip_replacement(request) -> bool:
     return (request.GET.get(_SKIP_REPLACEMENT_QUERY) or "").strip() == "1"
+
+
+def _in_page_step_from_request(request) -> str:
+    """Return JSON `step` when this POST is an in-page atomic follow-up."""
+    raw = getattr(request, "body", b"") or b""
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", errors="replace").strip()
+    else:
+        text = str(raw).strip()
+    if not text:
+        return ""
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("step") or "").strip()
+
+
+def _unmatched_post_step_response(request, path: str):
+    """JSON 404 so the page never silently forwards an Assist POST to Odoo."""
+    step = _in_page_step_from_request(request)
+    if not step:
+        return None
+    print(
+        f"[INSTRUCTION-PAGE] no POST Instruction for {path!r} "
+        f"(in-page step={step!r})"
+    )
+    return JsonResponse(
+        {
+            "status": "error",
+            "message": (
+                "No matching POST instruction for this path. "
+                "Find suppliers needs a POST REQ Instruction on the same path."
+            ),
+            "step": step,
+        },
+        status=404,
+    )
 
 
 def document_path_matches_instruction(upstream_path: str, instruction_path: str) -> bool:
@@ -148,7 +190,11 @@ def try_instruction_page_response(request, endpoint, handler, trigger, upstream_
 
     matched = find_matching_instructions(tenant, path, method=method, direction="REQ")
     if not matched:
-        print(f"[INSTRUCTION-PAGE] no Instruction match for GET {path!r}")
+        print(f"[INSTRUCTION-PAGE] no Instruction match for {method} {path!r}")
+        if method == "POST":
+            unmatched = _unmatched_post_step_response(request, path)
+            if unmatched is not None:
+                return unmatched
         return None
 
     page_matched = [
@@ -164,6 +210,10 @@ def try_instruction_page_response(request, endpoint, handler, trigger, upstream_
             f"but none are document-path matches (skip replace; avoid /odoo "
             f"stealing /odoo/vendors/new)"
         )
+        if method == "POST":
+            unmatched = _unmatched_post_step_response(request, path)
+            if unmatched is not None:
+                return unmatched
         return None
 
     init_atomic_services_registry()

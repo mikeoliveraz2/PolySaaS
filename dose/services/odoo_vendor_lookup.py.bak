@@ -225,6 +225,8 @@ def capture_vendor_criteria(request, instruction_row):
     if missing:
         detail = f"{CRITERIA_CAPTURE_FAILED_MESSAGE}: missing {', '.join(missing)}"
         emit_vendor_step_message(request, detail, level="error")
+        emit_vendor_step_message(request, SHORTLIST_FAILED_MESSAGE, level="error")
+        demo_rows = _always_demo_directory_rows(criteria)
         result = service_result(
             "OdooVendorAssist",
             status="error",
@@ -233,8 +235,12 @@ def capture_vendor_criteria(request, instruction_row):
             wrap_passthrough=False,
             message=detail,
             criteria=criteria,
-            vendors=[],
+            vendors=list(demo_rows),
+            suggested_vendors=list(demo_rows),
+            source=SHORTLIST_SOURCE_LABEL,
             shortlist_status=SHORTLIST_FAILED_MESSAGE,
+            shortlist_message=SHORTLIST_FAILED_MESSAGE,
+            shortlist_ok=False,
         )
         maybe_save_callback(
             request,
@@ -259,10 +265,8 @@ def capture_vendor_criteria(request, instruction_row):
     except Exception:
         logger.exception("[OdooVendorAssist] shortlist failed")
         vendors, shortlist_ok = [], False
-    if not vendors:
-        vendors = _deterministic_rank_directory(
-            criteria, [dict(row) for row in DEMO_VENDOR_DIRECTORY]
-        )
+    vendors = _always_demo_directory_rows(criteria, vendors)
+    if len(vendors) < 3:
         shortlist_ok = False
     if shortlist_ok and vendors:
         shortlist_message = SHORTLIST_RETURNED_MESSAGE
@@ -338,18 +342,30 @@ def _criteria_from_session(request) -> dict:
     }
 
 
+def _always_demo_directory_rows(criteria: dict, vendors=None) -> list:
+    """LLM never gates the table. Always 3–6 curated DEMO_VENDOR_DIRECTORY rows."""
+    catalog = [dict(row) for row in DEMO_VENDOR_DIRECTORY]
+    rows = [row for row in (vendors or []) if isinstance(row, dict) and row.get("name")]
+    if len(rows) >= 3:
+        return rows[:6]
+    ranked = _deterministic_rank_directory(criteria, catalog)
+    if len(ranked) >= 3:
+        return ranked[:6]
+    return catalog[:6]
+
+
 def suggest_vendors(criteria: dict) -> tuple[list, bool]:
     """Rank the curated demo directory locally first; optional LLM refine.
 
-    Never blocks the Find-suppliers JSON on a slow or 403 LLM. Local rows
-    always come from DEMO_VENDOR_DIRECTORY (3–6). llm_ranked is True only
-    when the router returns a usable ranking within a short timeout.
+    LLM is optional rank only, never a gate. Local rows always come from
+    DEMO_VENDOR_DIRECTORY (3–6). llm_ranked is True only when the router
+    returns a usable ranking within a short timeout.
     """
     catalog = [dict(row) for row in DEMO_VENDOR_DIRECTORY]
-    local_rows = _deterministic_rank_directory(criteria, catalog)
+    local_rows = _always_demo_directory_rows(criteria)
     ranked = _llm_rank_directory(criteria, catalog)
     if ranked:
-        return ranked, True
+        return _always_demo_directory_rows(criteria, ranked), True
     return local_rows, False
 
 
