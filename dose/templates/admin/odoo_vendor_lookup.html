@@ -693,7 +693,10 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
                     phone: v.phone,
                     website: v.website,
                     contact_name: v.contact_name,
-                    contact_email: v.contact_email
+                    contact_email: v.contact_email,
+                    product_line: ((document.getElementById('ps-product') || {}).value || '').trim(),
+                    region: ((document.getElementById('ps-region') || {}).value || '').trim(),
+                    price_range: ((document.getElementById('ps-price') || {}).value || '').trim()
                 })
             }).then(function (r) {
                 return r.text().then(function (text) {
@@ -711,7 +714,15 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
                     if (data.contact_attempted) {
                         lines.push(data.contact_linked ? 'Contact linked' : (data.contact_message || 'Contact link failed — vendor still created'));
                     }
-                    showSaveStatus(lines.join('. '), !data.contact_linked && !!data.contact_attempted);
+                    if (data.event_publish_skipped) {
+                        /* already enrolled for this vendor; no second event toast */
+                    } else if (data.event_published === true || data.event_publish_message === 'Event published') {
+                        lines.push('Event published');
+                    } else if (data.event_publish_message) {
+                        lines.push(data.event_publish_message);
+                    }
+                    var eventFailed = data.event_publish_message === 'Event publish failed — vendor saved, retry pending';
+                    showSaveStatus(lines.join('. '), (!data.contact_linked && !!data.contact_attempted) || eventFailed);
                     if (data.odoo_form_href) setCreatedVendorFormHref(data.odoo_form_href);
                     return;
                 }

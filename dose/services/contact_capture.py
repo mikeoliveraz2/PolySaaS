@@ -61,12 +61,18 @@ def enroll_contact_capture(
     action_path: str = "",
     event_key: str = "",
     method: str = "GET",
+    event_id: str = "",
+    payload_extra: dict | None = None,
 ) -> dict:
     """
     Enroll normalized contact records into WebhookMailbox (pending).
 
     Returns mailbox enroll summary: success, mailbox_id, topic, record_count.
+    Optional event_id is unique per tenant schema (WebhookMailbox.event_id);
+    a repeat enroll with the same id is a no-op (deduped).
     """
+    from django.db import IntegrityError
+
     from dose.models import WebhookMailbox
     from dose.models.webhook_mailbox import CAPTURE_MAILBOX_TTL_SECONDS
     from dose.tenant_app_lookup import tenant_schema_search_path
@@ -80,8 +86,9 @@ def enroll_contact_capture(
     event_key = event_key or f"{app}.capture_contacts"
 
     clean = [r for r in (records or []) if isinstance(r, dict)]
-    event_id = uuid.uuid4().hex
+    event_id = (event_id or "").strip() or uuid.uuid4().hex
     correlation_id = str(uuid.uuid4())
+    extra = payload_extra if isinstance(payload_extra, dict) else {}
     data = {
         "records": clean,
         "record_count": len(clean),
@@ -89,6 +96,16 @@ def enroll_contact_capture(
         "source": f"{app}_contacts",
         "source_app": app,
     }
+    payload = {
+        "capture": "contact_list",
+        "topic": topic,
+        "data": data,
+        "records": clean,
+        "record_count": len(clean),
+    }
+    for key, value in extra.items():
+        if key not in payload:
+            payload[key] = value
     envelope = {
         "kind": "polysaas.capture.v1",
         "event_id": event_id,
@@ -101,13 +118,7 @@ def enroll_contact_capture(
         "event_key": event_key,
         "topic": topic,
         "actor": {"username": actor or "system"},
-        "payload": {
-            "capture": "contact_list",
-            "topic": topic,
-            "data": data,
-            "records": clean,
-            "record_count": len(clean),
-        },
+        "payload": payload,
         "received_at": dj_timezone.now().isoformat(),
     }
     result_summary = {
@@ -118,11 +129,27 @@ def enroll_contact_capture(
         "record_count": len(clean),
         "data": data,
     }
+    for key, value in extra.items():
+        if key not in result_summary:
+            result_summary[key] = value
 
     try:
         with tenant_schema_search_path(tenant) as ok:
             if not ok:
                 return {"success": False, "error": "invalid tenant schema"}
+            existing = WebhookMailbox.objects.filter(event_id=event_id).first()
+            if existing is not None:
+                return {
+                    "success": True,
+                    "deduped": True,
+                    "mailbox_id": existing.id,
+                    "event_id": event_id,
+                    "topic": topic,
+                    "record_count": len(clean),
+                    "expires_at": existing.expires_at.isoformat()
+                    if existing.expires_at
+                    else None,
+                }
             row = WebhookMailbox.create_from_envelope(
                 envelope,
                 ttl_seconds=CAPTURE_MAILBOX_TTL_SECONDS,
@@ -132,11 +159,21 @@ def enroll_contact_capture(
             )
         return {
             "success": True,
+            "deduped": False,
             "mailbox_id": row.id,
             "event_id": event_id,
             "topic": topic,
             "record_count": len(clean),
             "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        }
+    except IntegrityError:
+        logger.info("[ContactCapture] enroll deduped event_id=%s", event_id)
+        return {
+            "success": True,
+            "deduped": True,
+            "event_id": event_id,
+            "topic": topic,
+            "record_count": len(clean),
         }
     except Exception as exc:
         logger.warning("[ContactCapture] enroll failed: %s", exc, exc_info=True)

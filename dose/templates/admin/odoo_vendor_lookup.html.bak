@@ -274,8 +274,8 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
                 <input id="ps-contact-email" type="text" autocomplete="email">
             </div>
         </div>
-        <button type="button" id="ps-save" disabled title="Not wired in this slice">Save to Odoo</button>
-        <p class="ps-msg" id="ps-save-msg">Save is a stub in this slice. No Odoo RPC.</p>
+        <button type="button" id="ps-save" disabled title="Enter a vendor name or select a suggested vendor">Save to Odoo</button>
+        <p class="ps-msg" id="ps-save-msg">Save creates the vendor in Odoo when Name is filled.</p>
     </div>
 </div>
 <script>
@@ -383,6 +383,7 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         setField('ps-website', v.website);
         setField('ps-contact-name', v.contact_name);
         setField('ps-contact-email', v.contact_email);
+        syncSaveEnabled();
     }
     function markSelected(tr) {
         var wrap = document.getElementById('ps-shortlist-table-wrap');
@@ -621,6 +622,106 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
             var tr = ev.target && ev.target.closest ? ev.target.closest('tr.ps-vendor-row') : null;
             if (!tr || !shortWrap.contains(tr)) return;
             onVendorRowClick(tr);
+        });
+    }
+    var saveBtn = document.getElementById('ps-save');
+    var saveMsg = document.getElementById('ps-save-msg');
+    var odooFormLink = document.getElementById('ps-odoo-form');
+    var blankFormHref = odooFormLink ? odooFormLink.getAttribute('href') : '';
+    function showSaveStatus(msg, isError) {
+        if (saveMsg) {
+            saveMsg.textContent = msg;
+            saveMsg.style.color = isError ? '#b91c1c' : '#166534';
+        }
+        if (note && msg) {
+            note.textContent = msg;
+            note.style.color = isError ? '#b91c1c' : '#166534';
+        }
+    }
+    function formVendorPayload() {
+        return {
+            name: ((document.getElementById('ps-name') || {}).value || '').trim(),
+            email: ((document.getElementById('ps-email') || {}).value || '').trim(),
+            phone: ((document.getElementById('ps-phone') || {}).value || '').trim(),
+            website: ((document.getElementById('ps-website') || {}).value || '').trim(),
+            contact_name: ((document.getElementById('ps-contact-name') || {}).value || '').trim(),
+            contact_email: ((document.getElementById('ps-contact-email') || {}).value || '').trim()
+        };
+    }
+    function syncSaveEnabled() {
+        if (!saveBtn) return;
+        var name = ((document.getElementById('ps-name') || {}).value || '').trim();
+        saveBtn.disabled = !name;
+        saveBtn.title = name ? 'Create this vendor in Odoo' : 'Enter a vendor name or select a suggested vendor';
+    }
+    var nameInput = document.getElementById('ps-name');
+    if (nameInput) {
+        nameInput.addEventListener('input', syncSaveEnabled);
+        nameInput.addEventListener('change', syncSaveEnabled);
+    }
+    syncSaveEnabled();
+    function setCreatedVendorFormHref(href) {
+        if (!odooFormLink || !href) return;
+        odooFormLink.setAttribute('href', href);
+        odooFormLink.setAttribute('target', '_self');
+    }
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+            var v = formVendorPayload();
+            if (!v.name) {
+                showSaveStatus('Vendor create failed', true);
+                return;
+            }
+            var headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            };
+            var token = csrfToken();
+            if (token) headers['X-CSRFToken'] = token;
+            saveBtn.disabled = true;
+            var postUrl = window.location.pathname + window.location.search;
+            fetch(postUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: headers,
+                body: JSON.stringify({
+                    step: 'save',
+                    save_vendor: true,
+                    name: v.name,
+                    email: v.email,
+                    phone: v.phone,
+                    website: v.website,
+                    contact_name: v.contact_name,
+                    contact_email: v.contact_email
+                })
+            }).then(function (r) {
+                return r.text().then(function (text) {
+                    var data = {};
+                    try { data = JSON.parse(text) || {}; } catch (e) {
+                        var extracted = text && text.match(/\{[\s\S]*\}/);
+                        if (extracted) { try { data = JSON.parse(extracted[0]) || {}; } catch (e2) {} }
+                    }
+                    return { ok: r.ok, data: unwrapPayload(data) };
+                });
+            }).then(function (res) {
+                var data = res.data || {};
+                if (data.vendor_created === true || data.message === 'Vendor created') {
+                    var lines = ['Vendor created'];
+                    if (data.contact_attempted) {
+                        lines.push(data.contact_linked ? 'Contact linked' : (data.contact_message || 'Contact link failed — vendor still created'));
+                    }
+                    showSaveStatus(lines.join('. '), !data.contact_linked && !!data.contact_attempted);
+                    if (data.odoo_form_href) setCreatedVendorFormHref(data.odoo_form_href);
+                    return;
+                }
+                showSaveStatus((data && data.message) || 'Vendor create failed', true);
+                if (blankFormHref && odooFormLink) odooFormLink.setAttribute('href', blankFormHref);
+            }).catch(function () {
+                showSaveStatus('Vendor create failed', true);
+            }).then(function () {
+                syncSaveEnabled();
+            });
         });
     }
 })();

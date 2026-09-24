@@ -1,11 +1,24 @@
 <!-- Shela 2026-09-24: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
 **Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
 
+<!-- Shela 2026-09-25: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
+**Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
+
+## 2026-09-25 (Friday) — Type 4 POC Slice 5 (save to Odoo)
+
+- **Slice 5 done:** Save to Odoo POSTs `{step:"save"}` on the same `/odoo/vendors/new` Instruction → `OdooVendorAssist.save_vendor`. Creates `res.partner` company (`is_company=True`, `supplier_rank>0`, `customer_rank=0`) plus optional child contact. Fail-soft on contact. **No topic/mailbox/enroll.** Frozen `odoo_create_partner.py` and `odoo_handler.py` untouched.
+- Toasts: **Vendor created** then **Contact linked**, or **Contact link failed — vendor still created**, or **Vendor create failed**.
+- After save, **Open Odoo’s form** uses `/odoo/res.partner/<id>` on the passthrough prefix. Unsaved still uses `?polysaas_odoo_form=1`.
+- Canary: `Assist build table-visible-20260924+s4+s5`. Tests: `dose.tests.test_odoo_vendor_lookup`.
+- **No new Instruction.** Optional seed: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `save_vendor: true` on POST parameters).
+- **Slice 6 not started.** Locked topic remains `polysaas.capture.v1` — do not implement publish yet.
+- **Slice 7 not started.**
+
 ## Slice 6 topic (locked 2026-09-24)
 - Publish to the **shared contacts topic** (`polysaas.capture.v1` / contacts family / existing enroll_contact_capture mailbox pattern).
 - Do NOT use `slack.message.contact` (frozen customer-create consumer).
 - Do NOT invent `polysaas.vendor.created` for this POC.
-- Slice 6 still waits until Slice 4 (bind) and Slice 5 (save) are done. Do not implement Slice 6 yet.
+- Slice 6 waits until Michael says go after Slice 5. Do not implement Slice 6 yet.
 
 ## Slice 7 (not started) — live web / AI search
 - Future: enable **live web / AI search** for the vendor shortlist. Today Slice 3 is curated **Demo directory** only.

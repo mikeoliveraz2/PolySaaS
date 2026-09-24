@@ -1,6 +1,18 @@
 <!-- Shela 2026-09-25: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
 **Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
 
+## 2026-09-25 (Friday) — Type 4 POC Slice 6 (publish to shared contacts topic)
+
+- **Slice 6 done:** After Odoo company save succeeds (contact optional / fail-soft), `save_vendor` calls `publish_saved_vendor_capture` → `enroll_contact_capture`. Mailbox envelope **kind** `polysaas.capture.v1`. **event_key** `odoo.capture_contacts`, **action_path** `odoo/contacts` (same enroll family as Slack/Odoo contact capture). Topic `RES.contacts.<actor>`. **Do not use** `slack.message.contact` or `polysaas.vendor.created`.
+- Envelope payload includes `odoo_vendor_id`, `odoo_contact_id`, vendor name, email, region, criteria (product line / region / price range).
+- Dedup: stable SHA256 `event_id` (tenant+vendor_id+email) unique on `WebhookMailbox` plus session skip. Second save does not double-publish or re-toast Event published.
+- Fail-soft: enroll failure does not roll back Odoo. DoseMessages: **Event published** / **Event publish failed — vendor saved, retry pending** (separate from Vendor created).
+- **No new Instruction. No consumer. No Mattermost/Slack/HubSpot wiring.** Frozen `odoo_create_partner.py` and `odoo_handler.py` untouched.
+- Canary: `Assist build table-visible-20260924+s4+s5+s6`. Tests: `dose.tests.test_odoo_vendor_lookup` — 36 passed.
+- **Prod:** Deploy, New Vendor Assist, pick a **different** row than SeaWrap if SeaWrap is already saved (e.g. Mekong Film Co). Save. Expect Vendor created, Contact linked (if contact), Event published.
+- **Lina Tan visual check remains on Michael** (Slice 5).
+- **Slice 7 not started** (live web / AI search).
+
 ## 2026-09-25 (Friday) — Type 4 POC Slice 5 (save to Odoo)
 
 - **Slice 5 done:** Save to Odoo POSTs `{step:"save"}` on the same `/odoo/vendors/new` Instruction → `OdooVendorAssist.save_vendor`. Creates `res.partner` company (`is_company=True`, `supplier_rank>0`, `customer_rank=0`) plus optional child contact. Fail-soft on contact. **No topic/mailbox/enroll.** Frozen `odoo_create_partner.py` and `odoo_handler.py` untouched.
@@ -8,7 +20,7 @@
 - After save, **Open Odoo’s form** uses `/odoo/res.partner/<id>` on the passthrough prefix. Unsaved still uses `?polysaas_odoo_form=1`.
 - Canary: `Assist build table-visible-20260924+s4+s5`. Tests: `dose.tests.test_odoo_vendor_lookup`.
 - **No new Instruction.** Optional seed: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `save_vendor: true` on POST parameters).
-- **Slice 6 not started.** Locked topic remains `polysaas.capture.v1` — do not implement publish yet.
+- **Slice 6 done** (see top of this file). Locked topic was `polysaas.capture.v1` / enroll path.
 - **Slice 7 not started.**
 
 ## Slice 6 topic (locked 2026-09-24)
