@@ -1,10 +1,11 @@
-"""New Vendor Assist atomic: branded page + criteria + shortlist + bind.
+"""New Vendor Assist atomic: branded page + criteria + shortlist + bind + save.
 
 Triggered by tenant-schema Instructions matching GET/POST /odoo/vendors/new.
 The Odoo passthrough handler must not hardcode that path; instruction matching does.
 Slice 3 shortlist is curated/demo directory ranked by the same LLM router as
 invoice refine — not live web search. Slice 4 binds a selected row into the
-form (no Odoo RPC).
+form. Slice 5 creates the vendor (and optional contact) in Odoo via RPC.
+Slice 6 topic publish is not implemented here.
 """
 from __future__ import annotations
 
@@ -30,12 +31,17 @@ SHORTLIST_RETURNED_MESSAGE = "Shortlist returned"
 SHORTLIST_FAILED_MESSAGE = "Shortlist search failed"
 BIND_LOADED_MESSAGE = "Vendor details loaded from selection"
 BIND_FAILED_MESSAGE = "Vendor selection bind failed"
+VENDOR_CREATED_MESSAGE = "Vendor created"
+CONTACT_LINKED_MESSAGE = "Contact linked"
+CONTACT_LINK_FAILED_MESSAGE = "Contact link failed — vendor still created"
+VENDOR_CREATE_FAILED_MESSAGE = "Vendor create failed"
 CRITERIA_SESSION_KEY = "odoo_vendor_assist_criteria"
 CRITERIA_CAPTURE_STEP = "capture_criteria"
 BIND_SELECTION_STEP = "bind"
+SAVE_VENDOR_STEP = "save"
 SHORTLIST_SOURCE_LABEL = "Demo directory"
 # Visible on GET HTML so a screenshot proves which Assist template is live.
-ASSIST_BUILD = "table-visible-20260924+s4"
+ASSIST_BUILD = "table-visible-20260924+s4+s5"
 
 # Curated demo rows only. Ranked/filtered; never fetched from the live web.
 DEMO_VENDOR_DIRECTORY = (
@@ -134,6 +140,9 @@ class OdooVendorAssist(AtomicServiceBase):
         if _is_bind_selection_request(request):
             return bind_vendor_selection(request, instruction_row)
 
+        if _is_save_vendor_request(request):
+            return save_vendor(request, instruction_row)
+
         if _is_criteria_capture_request(request):
             return capture_vendor_criteria(request, instruction_row)
 
@@ -221,11 +230,28 @@ def _is_bind_selection_request(request) -> bool:
     return step in (BIND_SELECTION_STEP, "bind_selection")
 
 
+def _is_save_vendor_request(request) -> bool:
+    method = (getattr(request, "method", "GET") or "GET").upper()
+    if method != "POST":
+        return False
+    payload = _request_payload(request)
+    step = str(payload.get("step") or payload.get("action") or "").strip().lower()
+    if payload.get("save_vendor") is True or str(payload.get("save_vendor") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return True
+    return step in (SAVE_VENDOR_STEP, "save_vendor", "save_to_odoo")
+
+
 def _is_criteria_capture_request(request) -> bool:
     method = (getattr(request, "method", "GET") or "GET").upper()
     if method != "POST":
         return False
     if _is_bind_selection_request(request):
+        return False
+    if _is_save_vendor_request(request):
         return False
     if "/dose/api/orchestration-navigate" in (getattr(request, "path_info", "") or ""):
         payload = _request_payload(request)
@@ -343,6 +369,196 @@ def bind_vendor_selection(request, instruction_row):
             description="New Vendor Assist bind failed",
         )
         return result
+
+
+def _vendor_form_href(request, partner_id: int) -> str:
+    """Passthrough path to the created res.partner form (not the Assist page)."""
+    path = getattr(request, "path", None) or getattr(request, "path_info", "") or ""
+    if "/odoo/vendors/new" in path:
+        base = path.split("/odoo/vendors/new")[0]
+    else:
+        base = path.rsplit("/", 1)[0] if "/" in path else ""
+    return f"{base}/odoo/res.partner/{int(partner_id)}"
+
+
+def save_vendor(request, instruction_row):
+    """Slice 5: create company partner (+ optional child contact) in Odoo. No topic publish."""
+    payload = _request_payload(request)
+    vendor = _vendor_from_bind_payload(payload)
+    if not vendor.get("name"):
+        emit_vendor_step_message(request, VENDOR_CREATE_FAILED_MESSAGE, level="error")
+        public = {
+            "ok": False,
+            "status": "error",
+            "message": VENDOR_CREATE_FAILED_MESSAGE,
+            "vendor_created": False,
+            "contact_linked": False,
+            "partner_id": None,
+        }
+        result = service_result(
+            "OdooVendorAssist",
+            json_response=True,
+            wrap_passthrough=False,
+            json=dict(public),
+            **public,
+        )
+        maybe_save_callback(
+            request,
+            instruction_row,
+            {"status": "error", "message": VENDOR_CREATE_FAILED_MESSAGE},
+            description="New Vendor Assist save failed (empty name)",
+        )
+        return result
+
+    try:
+        from dose.services.odoo_rpc import OdooRpcClient, load_odoo_rpc_config
+
+        config = load_odoo_rpc_config(request=request, instruction_row=instruction_row)
+        client = OdooRpcClient.from_config(config)
+        client.authenticate()
+        partner_id = create_odoo_vendor_company(client, vendor)
+    except Exception:
+        logger.exception("[OdooVendorAssist] vendor company create failed")
+        emit_vendor_step_message(request, VENDOR_CREATE_FAILED_MESSAGE, level="error")
+        public = {
+            "ok": False,
+            "status": "error",
+            "message": VENDOR_CREATE_FAILED_MESSAGE,
+            "vendor_created": False,
+            "contact_linked": False,
+            "partner_id": None,
+        }
+        result = service_result(
+            "OdooVendorAssist",
+            json_response=True,
+            wrap_passthrough=False,
+            json=dict(public),
+            **public,
+        )
+        maybe_save_callback(
+            request,
+            instruction_row,
+            {"status": "error", "message": VENDOR_CREATE_FAILED_MESSAGE},
+            description="New Vendor Assist save failed (company)",
+        )
+        return result
+
+    emit_vendor_step_message(request, VENDOR_CREATED_MESSAGE, level="success")
+    form_href = _vendor_form_href(request, partner_id)
+    contact = vendor.get("main_contact") if isinstance(vendor.get("main_contact"), dict) else {}
+    contact_name = str(contact.get("name") or "").strip()
+    contact_email = str(contact.get("email") or "").strip()
+    contact_phone = str(contact.get("phone") or payload.get("contact_phone") or "").strip()
+    want_contact = bool(contact_name or contact_email or contact_phone)
+
+    contact_id = None
+    contact_ok = False
+    contact_message = ""
+    if want_contact:
+        try:
+            contact_id = link_odoo_vendor_contact(
+                client,
+                partner_id,
+                {
+                    "name": contact_name or contact_email,
+                    "email": contact_email,
+                    "phone": contact_phone,
+                },
+            )
+            contact_ok = True
+            contact_message = CONTACT_LINKED_MESSAGE
+            emit_vendor_step_message(request, CONTACT_LINKED_MESSAGE, level="success")
+        except Exception:
+            logger.exception("[OdooVendorAssist] vendor contact link failed")
+            contact_message = CONTACT_LINK_FAILED_MESSAGE
+            emit_vendor_step_message(request, CONTACT_LINK_FAILED_MESSAGE, level="error")
+
+    messages = [VENDOR_CREATED_MESSAGE]
+    if want_contact:
+        messages.append(contact_message)
+    public = {
+        "ok": True,
+        "status": "success",
+        "message": VENDOR_CREATED_MESSAGE,
+        "messages": messages,
+        "vendor_created": True,
+        "contact_linked": contact_ok,
+        "contact_attempted": want_contact,
+        "contact_message": contact_message,
+        "partner_id": partner_id,
+        "contact_id": contact_id,
+        "odoo_form_href": form_href,
+        "vendor": vendor,
+    }
+    result = service_result(
+        "OdooVendorAssist",
+        json_response=True,
+        wrap_passthrough=False,
+        json=dict(public),
+        **public,
+    )
+    maybe_save_callback(
+        request,
+        instruction_row,
+        {
+            "status": "success",
+            "message": VENDOR_CREATED_MESSAGE,
+            "partner_id": partner_id,
+            "contact_id": contact_id,
+            "contact_linked": contact_ok,
+        },
+        description="New Vendor Assist saved vendor to Odoo",
+    )
+    return result
+
+
+def create_odoo_vendor_company(client, vendor: dict) -> int:
+    """Create res.partner company with supplier_rank > 0. Vendor-specific; not customer-create."""
+    vals = {
+        "name": str(vendor.get("name") or "").strip(),
+        "is_company": True,
+        "supplier_rank": 1,
+        "customer_rank": 0,
+    }
+    if vendor.get("email"):
+        vals["email"] = str(vendor["email"]).strip()
+    if vendor.get("phone"):
+        vals["phone"] = str(vendor["phone"]).strip()
+    if vendor.get("website"):
+        vals["website"] = str(vendor["website"]).strip()
+    return int(client.execute_kw("res.partner", "create", [vals]))
+
+
+def link_odoo_vendor_contact(client, parent_id: int, contact: dict) -> int:
+    """Create or update a child contact under the vendor. Light email idempotency."""
+    email = str(contact.get("email") or "").strip()
+    name = str(contact.get("name") or email or "Contact").strip()
+    phone = str(contact.get("phone") or "").strip()
+    existing_id = None
+    if email:
+        found = client.execute_kw(
+            "res.partner",
+            "search",
+            [[["parent_id", "=", int(parent_id)], ["email", "=", email]]],
+            {"limit": 1},
+        )
+        if found:
+            existing_id = int(found[0])
+    vals = {
+        "name": name,
+        "is_company": False,
+        "parent_id": int(parent_id),
+        "customer_rank": 0,
+        "supplier_rank": 0,
+    }
+    if email:
+        vals["email"] = email
+    if phone:
+        vals["phone"] = phone
+    if existing_id:
+        client.execute_kw("res.partner", "write", [[existing_id], vals])
+        return existing_id
+    return int(client.execute_kw("res.partner", "create", [vals]))
 
 
 def capture_vendor_criteria(request, instruction_row):

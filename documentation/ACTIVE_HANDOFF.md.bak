@@ -7,14 +7,26 @@
 - Do NOT invent `polysaas.vendor.created` for this POC.
 - Slice 6 still waits until Slice 4 (bind) and Slice 5 (save) are done. Do not implement Slice 6 yet.
 
+## Slice 7 (not started) — live web / AI search
+- Future: enable **live web / AI search** for the vendor shortlist. Today Slice 3 is curated **Demo directory** only.
+- Out of scope until Michael says go **after Slices 4–6**. Do not invent web search now.
+- LLM fail toast remains acceptable for Slice 3.
+
 # Active Handoff
 
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — Slice 7 recorded as future work (docs only)
+
+- **Slice 7 (not started):** enable live web / AI search for vendor shortlist. Slice 3 remains curated Demo directory only.
+- Out of scope until Michael says go after Slices 4–6. Do not invent web search now. LLM fail toast remains acceptable for Slice 3.
+- Slice 6 still locked: shared contacts topic `polysaas.capture.v1`, not `slack.message.contact`, not `polysaas.vendor.created`.
+- No Slice 4/5/6/7 code in this pack.
+
 ## 2026-09-24 (Thursday) — Type 4 POC Slice 4 (select/bind)
 
-**Do not start Slice 5** (no Odoo RPC save) unless Michael says so.
+**Do not start Slice 5** (no Odoo RPC save) unless Michael says so. **Do not start Slice 6 or Slice 7.** Slice 7 (live web / AI search) waits until after 4–6.
 
 - Click a Suggested vendors row: client fills Name, Email, Phone, Website, Main contact / Contact email from `data-*`. Same POST `/odoo/vendors/new` with `{step:"bind", bind_selection:true}` so `OdooVendorAssist` emits DoseMessage **"Vendor details loaded from selection"**. Missing name → **"Vendor selection bind failed"**; table stays. Save to Odoo still stub.
 - **No new Instruction.** Existing POST REQ row. Optional seed: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `bind_selection: true` on POST parameters).
@@ -25,7 +37,7 @@ HEAD: `9bd2edef` (full: `9bd2edef4c2b49e40bd6c5f4073c0cbe3873f76f`).
 
 ## 2026-09-24 (Thursday) — SHELA: Type 4 POC New Vendor Assist Slices 1–3 (pull origin/main)
 
-**Shela: start here for Slices 1–3 context.** Slice 4 is above. Do **not** start Slice 5 unless Michael says so.
+**Shela: start here for Slices 1–3 context.** Slice 4 is above. Do **not** start Slice 5, 6, or 7 unless Michael says so.
 
 ### What this is
 Type 4 POC **New Vendor Assist**, Slices 1–3. Operator path: POLYSAASADMIN → Odoo passthrough → Purchase → Orders → Vendors → **New**. Branded Assist page (not Odoo’s form). GET serves the page + “Vendor page loaded”. **Find suppliers** POSTs JSON; Slice 2 captures criteria (“Criteria captured”). Slice 3 ranks a curated **Demo directory** (not live web). LLM rank **fails on prod** — **Shortlist search failed** toast is expected.

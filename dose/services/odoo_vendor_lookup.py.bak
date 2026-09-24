@@ -1,9 +1,10 @@
-"""New Vendor Assist atomic: branded page + criteria capture + demo shortlist.
+"""New Vendor Assist atomic: branded page + criteria + shortlist + bind.
 
 Triggered by tenant-schema Instructions matching GET/POST /odoo/vendors/new.
 The Odoo passthrough handler must not hardcode that path; instruction matching does.
 Slice 3 shortlist is curated/demo directory ranked by the same LLM router as
-invoice refine — not live web search.
+invoice refine — not live web search. Slice 4 binds a selected row into the
+form (no Odoo RPC).
 """
 from __future__ import annotations
 
@@ -27,11 +28,14 @@ CRITERIA_CAPTURED_MESSAGE = "Criteria captured"
 CRITERIA_CAPTURE_FAILED_MESSAGE = "Vendor criteria capture failed"
 SHORTLIST_RETURNED_MESSAGE = "Shortlist returned"
 SHORTLIST_FAILED_MESSAGE = "Shortlist search failed"
+BIND_LOADED_MESSAGE = "Vendor details loaded from selection"
+BIND_FAILED_MESSAGE = "Vendor selection bind failed"
 CRITERIA_SESSION_KEY = "odoo_vendor_assist_criteria"
 CRITERIA_CAPTURE_STEP = "capture_criteria"
+BIND_SELECTION_STEP = "bind"
 SHORTLIST_SOURCE_LABEL = "Demo directory"
 # Visible on GET HTML so a screenshot proves which Assist template is live.
-ASSIST_BUILD = "table-visible-20260924"
+ASSIST_BUILD = "table-visible-20260924+s4"
 
 # Curated demo rows only. Ranked/filtered; never fetched from the live web.
 DEMO_VENDOR_DIRECTORY = (
@@ -115,7 +119,7 @@ DEFAULT_PRICE_RANGE = "Under $2 per unit"
 
 
 class OdooVendorAssist(AtomicServiceBase):
-    """Build the New Vendor Assist page and record in-page steps (criteria, shortlist)."""
+    """Build the New Vendor Assist page and record in-page steps (criteria, shortlist, bind)."""
 
     atomic_apps = ("odoo",)
     atomic_category = "ui"
@@ -127,6 +131,9 @@ class OdooVendorAssist(AtomicServiceBase):
 
     @staticmethod
     def execute_and_save(request, instruction_row):
+        if _is_bind_selection_request(request):
+            return bind_vendor_selection(request, instruction_row)
+
         if _is_criteria_capture_request(request):
             return capture_vendor_criteria(request, instruction_row)
 
@@ -199,15 +206,143 @@ def _request_payload(request) -> dict:
     return {}
 
 
+def _is_bind_selection_request(request) -> bool:
+    method = (getattr(request, "method", "GET") or "GET").upper()
+    if method != "POST":
+        return False
+    payload = _request_payload(request)
+    step = str(payload.get("step") or payload.get("action") or "").strip().lower()
+    if payload.get("bind_selection") is True or str(payload.get("bind_selection") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return True
+    return step in (BIND_SELECTION_STEP, "bind_selection")
+
+
 def _is_criteria_capture_request(request) -> bool:
     method = (getattr(request, "method", "GET") or "GET").upper()
     if method != "POST":
+        return False
+    if _is_bind_selection_request(request):
         return False
     if "/dose/api/orchestration-navigate" in (getattr(request, "path_info", "") or ""):
         payload = _request_payload(request)
         step = str(payload.get("step") or "").strip()
         return step == CRITERIA_CAPTURE_STEP
     return True
+
+
+def _vendor_from_bind_payload(payload: dict) -> dict:
+    nested = payload.get("vendor") if isinstance(payload.get("vendor"), dict) else {}
+    contact = nested.get("main_contact") if isinstance(nested.get("main_contact"), dict) else {}
+    if not contact:
+        raw = payload.get("main_contact")
+        contact = raw if isinstance(raw, dict) else {}
+    name = str(
+        payload.get("name") or nested.get("name") or payload.get("vendor_name") or ""
+    ).strip()
+    email = str(payload.get("email") or nested.get("email") or "").strip()
+    phone = str(payload.get("phone") or nested.get("phone") or "").strip()
+    website = str(payload.get("website") or nested.get("website") or "").strip()
+    contact_name = str(
+        payload.get("contact_name")
+        or payload.get("main_contact_name")
+        or contact.get("name")
+        or ""
+    ).strip()
+    contact_email = str(
+        payload.get("contact_email")
+        or payload.get("main_contact_email")
+        or contact.get("email")
+        or ""
+    ).strip()
+    vendor = {
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "website": website,
+    }
+    if contact_name or contact_email:
+        vendor["main_contact"] = {"name": contact_name, "email": contact_email}
+    return vendor
+
+
+def bind_vendor_selection(request, instruction_row):
+    """Slice 4: record the selected demo row and toast. No Odoo RPC."""
+    try:
+        payload = _request_payload(request)
+        vendor = _vendor_from_bind_payload(payload)
+        if not vendor.get("name"):
+            emit_vendor_step_message(request, BIND_FAILED_MESSAGE, level="error")
+            public = {
+                "ok": False,
+                "status": "error",
+                "message": BIND_FAILED_MESSAGE,
+                "vendor": vendor,
+                "bind_ok": False,
+            }
+            result = service_result(
+                "OdooVendorAssist",
+                json_response=True,
+                wrap_passthrough=False,
+                json=dict(public),
+                **public,
+            )
+            maybe_save_callback(
+                request,
+                instruction_row,
+                {"status": "error", "message": BIND_FAILED_MESSAGE},
+                description="New Vendor Assist bind failed (missing name)",
+            )
+            return result
+
+        emit_vendor_step_message(request, BIND_LOADED_MESSAGE, level="success")
+        public = {
+            "ok": True,
+            "status": "success",
+            "message": BIND_LOADED_MESSAGE,
+            "vendor": vendor,
+            "bind_ok": True,
+        }
+        result = service_result(
+            "OdooVendorAssist",
+            json_response=True,
+            wrap_passthrough=False,
+            json=dict(public),
+            **public,
+        )
+        maybe_save_callback(
+            request,
+            instruction_row,
+            {"status": "success", "message": BIND_LOADED_MESSAGE, "vendor": vendor},
+            description="New Vendor Assist selection bound",
+        )
+        return result
+    except Exception:
+        logger.exception("[OdooVendorAssist] bind selection failed")
+        emit_vendor_step_message(request, BIND_FAILED_MESSAGE, level="error")
+        public = {
+            "ok": False,
+            "status": "error",
+            "message": BIND_FAILED_MESSAGE,
+            "bind_ok": False,
+        }
+        result = service_result(
+            "OdooVendorAssist",
+            json_response=True,
+            wrap_passthrough=False,
+            json=dict(public),
+            **public,
+        )
+        maybe_save_callback(
+            request,
+            instruction_row,
+            {"status": "error", "message": BIND_FAILED_MESSAGE},
+            description="New Vendor Assist bind failed",
+        )
+        return result
 
 
 def capture_vendor_criteria(request, instruction_row):

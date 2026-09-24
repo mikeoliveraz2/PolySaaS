@@ -1,4 +1,4 @@
-"""Slice 1–4 — New Vendor Assist: page, criteria, shortlist, bind (no Odoo save)."""
+"""Slice 1–5 — New Vendor Assist: page, criteria, shortlist, bind, save to Odoo."""
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -19,6 +19,10 @@ from dose.services.odoo_vendor_lookup import (
     SHORTLIST_SOURCE_LABEL,
     BIND_LOADED_MESSAGE,
     BIND_FAILED_MESSAGE,
+    VENDOR_CREATED_MESSAGE,
+    CONTACT_LINKED_MESSAGE,
+    CONTACT_LINK_FAILED_MESSAGE,
+    VENDOR_CREATE_FAILED_MESSAGE,
     VENDOR_PAGE_LOADED_MESSAGE,
     VENDOR_PAGE_TITLE,
     OdooVendorAssist,
@@ -66,10 +70,16 @@ class AtomicPageTests(SimpleTestCase):
         import dose.services.odoo_vendor_lookup as mod
 
         self.assertTrue(hasattr(mod, "suggest_vendors"))
-        self.assertFalse(hasattr(mod, "save_vendor"))
+        self.assertTrue(hasattr(mod, "save_vendor"))
         self.assertFalse(hasattr(mod, "VENDOR_EVENT_KEY"))
         self.assertFalse(hasattr(mod, "VENDOR_NEW_PATHS"))
         self.assertFalse(hasattr(mod, "is_odoo_vendor_new_path"))
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("enroll_contact_capture", source)
+        self.assertNotIn("polysaas.vendor.created", source)
+        self.assertNotIn("polysaas.capture.v1", source)
+        self.assertNotIn("publish_event", source)
+        self.assertNotIn("topic_publish", source)
 
 
 class EmitDoseMessageTests(SimpleTestCase):
@@ -369,6 +379,203 @@ class BindSelectionTests(SimpleTestCase):
         self.assertFalse(result.get("bind_ok"))
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertIn(BIND_FAILED_MESSAGE, messages)
+
+
+class SaveVendorTests(SimpleTestCase):
+    def _instruction(self):
+        return SimpleNamespace(
+            id=5,
+            eventKey="odoo.vendor.new.assist.criteria",
+            executescript="OdooVendorAssist",
+            save_callbackdata=False,
+            description="save",
+        )
+
+    def _post(self, payload):
+        import json
+
+        request = RequestFactory().post(
+            "/pt/admin/odoo/odoo/vendors/new",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        request.tenant = SimpleNamespace(schema_name="polysaas")
+        request.user = MagicMock(is_authenticated=True, pk=1)
+        request.session = {}
+        return request
+
+    def _rpc_patches(self, execute_kw):
+        client = MagicMock()
+        client.execute_kw.side_effect = execute_kw
+        return (
+            patch(
+                "dose.services.odoo_rpc.load_odoo_rpc_config",
+                return_value={"url": "http://odoo", "db": "odoo", "username": "admin", "password": "x"},
+            ),
+            patch(
+                "dose.services.odoo_rpc.OdooRpcClient.from_config",
+                return_value=client,
+            ),
+            client,
+        )
+
+    def test_save_creates_company_and_contact_toasts(self):
+        request = self._post(
+            {
+                "step": "save",
+                "save_vendor": True,
+                "name": "SeaWrap Packaging",
+                "email": "sales@seawrap.example",
+                "phone": "+65 6123 4401",
+                "website": "https://seawrap.example",
+                "contact_name": "Lina Tan",
+                "contact_email": "lina.tan@seawrap.example",
+            }
+        )
+
+        def execute_kw(model, method, args=None, kwargs=None):
+            self.assertEqual(model, "res.partner")
+            if method == "create":
+                vals = args[0]
+                if vals.get("is_company"):
+                    self.assertTrue(vals["is_company"])
+                    self.assertGreater(vals["supplier_rank"], 0)
+                    self.assertEqual(vals["customer_rank"], 0)
+                    return 101
+                self.assertFalse(vals.get("is_company"))
+                self.assertEqual(vals.get("parent_id"), 101)
+                return 202
+            if method == "search":
+                return []
+            return True
+
+        cfg, from_cfg, client = self._rpc_patches(execute_kw)
+        enroll = MagicMock()
+        with cfg, from_cfg:
+            with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+                with patch(
+                    "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                    return_value=None,
+                ):
+                    with patch.dict(
+                        "sys.modules",
+                        {"dose.services.contact_capture": SimpleNamespace(enroll_contact_capture=enroll)},
+                    ):
+                        result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result.get("vendor_created"))
+        self.assertTrue(result.get("contact_linked"))
+        self.assertEqual(result["partner_id"], 101)
+        self.assertEqual(result["contact_id"], 202)
+        self.assertIn("/odoo/res.partner/101", result.get("odoo_form_href") or "")
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertEqual(messages, [VENDOR_CREATED_MESSAGE, CONTACT_LINKED_MESSAGE])
+        enroll.assert_not_called()
+        client.authenticate.assert_called()
+
+    def test_save_contact_fail_keeps_vendor(self):
+        request = self._post(
+            {
+                "step": "save",
+                "name": "SeaWrap Packaging",
+                "contact_name": "Lina Tan",
+                "contact_email": "lina.tan@seawrap.example",
+            }
+        )
+
+        def execute_kw(model, method, args=None, kwargs=None):
+            if method == "create":
+                vals = args[0]
+                if vals.get("is_company"):
+                    return 77
+                raise RuntimeError("contact rpc failed")
+            if method == "search":
+                return []
+            return True
+
+        cfg, from_cfg, _client = self._rpc_patches(execute_kw)
+        with cfg, from_cfg:
+            with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+                with patch(
+                    "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                    return_value=None,
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertTrue(result.get("vendor_created"))
+        self.assertFalse(result.get("contact_linked"))
+        self.assertEqual(result["partner_id"], 77)
+        self.assertEqual(result["message"], VENDOR_CREATED_MESSAGE)
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertIn(VENDOR_CREATED_MESSAGE, messages)
+        self.assertIn(CONTACT_LINK_FAILED_MESSAGE, messages)
+        self.assertNotIn(VENDOR_CREATE_FAILED_MESSAGE, messages)
+
+    def test_save_company_fail_skips_contact(self):
+        request = self._post(
+            {
+                "step": "save",
+                "name": "SeaWrap Packaging",
+                "contact_email": "lina.tan@seawrap.example",
+            }
+        )
+
+        def execute_kw(model, method, args=None, kwargs=None):
+            raise RuntimeError("company rpc failed")
+
+        cfg, from_cfg, client = self._rpc_patches(execute_kw)
+        with cfg, from_cfg:
+            with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+                with patch(
+                    "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                    return_value=None,
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, self._instruction())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["message"], VENDOR_CREATE_FAILED_MESSAGE)
+        self.assertFalse(result.get("vendor_created"))
+        self.assertIsNone(result.get("partner_id"))
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertEqual(messages, [VENDOR_CREATE_FAILED_MESSAGE])
+        self.assertEqual(client.execute_kw.call_count, 1)
+
+    def test_save_empty_name_fails_without_rpc(self):
+        request = self._post({"step": "save", "name": ""})
+        cfg, from_cfg, client = self._rpc_patches(lambda *a, **k: 1)
+        with cfg, from_cfg:
+            with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
+                with patch(
+                    "dose.services.odoo_vendor_lookup.maybe_save_callback",
+                    return_value=None,
+                ):
+                    result = OdooVendorAssist.execute_and_save(request, self._instruction())
+        self.assertEqual(result["message"], VENDOR_CREATE_FAILED_MESSAGE)
+        client.authenticate.assert_not_called()
+        messages = [call.args[1] for call in emit.call_args_list]
+        self.assertEqual(messages, [VENDOR_CREATE_FAILED_MESSAGE])
+
+    def test_save_path_does_not_publish_or_enroll(self):
+        import ast
+
+        source = Path("dose/services/odoo_vendor_lookup.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        save_fn = None
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "save_vendor":
+                save_fn = node
+        self.assertIsNotNone(save_fn)
+        names = [n.id for n in ast.walk(save_fn) if isinstance(n, ast.Name)]
+        attrs = [n.attr for n in ast.walk(save_fn) if isinstance(n, ast.Attribute)]
+        banned = {
+            "enroll_contact_capture",
+            "publish",
+            "publish_event",
+            "topic_publish",
+            "mailbox",
+        }
+        self.assertFalse(banned.intersection(names) or banned.intersection(attrs))
 
 
 class DocumentPathMatchTests(SimpleTestCase):
@@ -797,6 +1004,8 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("shortlist_status", html)
         self.assertNotIn("action: 'search'", html)
         self.assertNotIn("action: 'save'", html)
+        self.assertIn("step: 'save'", html)
+        self.assertIn("save_vendor", html)
         self.assertIn("suggested_vendors", html)
         self.assertIn("JSON.parse(text)", html)
         self.assertIn("data.json", html)
@@ -820,7 +1029,7 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Graphite Point Stationery", html)
         self.assertIn("Lina Tan", html)
         self.assertIn("ps-assist-build", html)
-        self.assertIn("Assist build table-visible-20260924+s4", html)
+        self.assertIn("Assist build table-visible-20260924+s4+s5", html)
         self.assertIn("ps-vendor-table-visible", html)
         find_idx = html.find("Find suppliers")
         table_idx = html.find("Suggested vendors")
