@@ -90,9 +90,24 @@
         .ps-vendor .ps-note { font-size: 0.85rem; color: #4b5563; margin-top: 8px; }
         .ps-vendor .ps-msg { margin-top: 10px; color: #4b5563; }
         .ps-vendor .ps-err { margin-top: 8px; color: #b91c1c; font-size: 0.9rem; white-space: pre-wrap; }
+        /* Beat passthrough_embed overflow:hidden clip of the baked rows. */
+        .polysaas-passthrough-scope:has(.ps-vendor),
+        .polysaas-passthrough-scope:has(#ps-vendor) {
+            overflow: auto !important;
+            contain: none !important;
+            height: auto !important;
+            max-height: none !important;
+            clip: auto !important;
+            clip-path: none !important;
+        }
+        body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
+            overflow: visible !important;
+        }
         .ps-vendor table,
         .ps-vendor #ps-demo-table,
-        .ps-vendor .ps-demo-table {
+        .ps-vendor .ps-demo-table,
+        table.ps-demo-table,
+        #ps-demo-table {
             display: table !important;
             visibility: visible !important;
             opacity: 1 !important;
@@ -101,6 +116,10 @@
             font-size: 0.95rem;
             color: #111827 !important;
             background: #ffffff !important;
+            height: auto !important;
+            max-height: none !important;
+            clip: auto !important;
+            clip-path: none !important;
         }
         .ps-vendor th, .ps-vendor td {
             text-align: left;
@@ -126,13 +145,43 @@
     </style>
 </head>
 <body>
+<style id="ps-vendor-table-visible">
+/* In body so it wins over passthrough_embed shield overflow:hidden (head CSS cannot). */
+.polysaas-passthrough-scope:has(.ps-vendor),
+.polysaas-passthrough-scope:has(#ps-vendor) {
+    overflow: auto !important;
+    contain: none !important;
+    height: auto !important;
+    max-height: none !important;
+    clip: auto !important;
+    clip-path: none !important;
+}
+body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
+    overflow: visible !important;
+}
+#ps-vendor, .ps-vendor, #ps-vendor-shortlist, #ps-shortlist-table-wrap {
+    display: block !important;
+    visibility: visible !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    clip: auto !important;
+    clip-path: none !important;
+}
+#ps-demo-table, table.ps-demo-table {
+    display: table !important;
+    visibility: visible !important;
+    width: 100% !important;
+    border: 1px solid #cbd5e1;
+}
+</style>
 {# Slice 3: Find suppliers captures criteria then returns a demo-directory shortlist. Save remains a stub. #}
 <div class="ps-vendor" id="ps-vendor">
     <div class="ps-brand">
         <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
         <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
     </div>
-    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"bake-table-20260924" }}</p>
+    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"table-visible-20260924" }}</p>
     <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria, then returns a suggested shortlist from a demo directory (not live web search).</p>
 
     <div class="ps-card">

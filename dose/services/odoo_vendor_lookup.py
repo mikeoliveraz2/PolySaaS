@@ -31,7 +31,7 @@ CRITERIA_SESSION_KEY = "odoo_vendor_assist_criteria"
 CRITERIA_CAPTURE_STEP = "capture_criteria"
 SHORTLIST_SOURCE_LABEL = "Demo directory"
 # Visible on GET HTML so a screenshot proves which Assist template is live.
-ASSIST_BUILD = "bake-table-20260924"
+ASSIST_BUILD = "table-visible-20260924"
 
 # Curated demo rows only. Ranked/filtered; never fetched from the live web.
 DEMO_VENDOR_DIRECTORY = (

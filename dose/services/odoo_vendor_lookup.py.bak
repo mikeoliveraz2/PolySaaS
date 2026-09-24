@@ -30,6 +30,8 @@ SHORTLIST_FAILED_MESSAGE = "Shortlist search failed"
 CRITERIA_SESSION_KEY = "odoo_vendor_assist_criteria"
 CRITERIA_CAPTURE_STEP = "capture_criteria"
 SHORTLIST_SOURCE_LABEL = "Demo directory"
+# Visible on GET HTML so a screenshot proves which Assist template is live.
+ASSIST_BUILD = "bake-table-20260924"
 
 # Curated demo rows only. Ranked/filtered; never fetched from the live web.
 DEMO_VENDOR_DIRECTORY = (
@@ -501,7 +503,7 @@ def render_vendor_assist_html(request) -> str:
     """Branded shell HTML with criteria fields (search/save still stubs)."""
     from django.template.loader import render_to_string
 
-    ctx = {"page_title": VENDOR_PAGE_TITLE}
+    ctx = {"page_title": VENDOR_PAGE_TITLE, "assist_build": ASSIST_BUILD}
     ctx.update(_criteria_from_session(request))
     return render_to_string(
         "admin/odoo_vendor_lookup.html",

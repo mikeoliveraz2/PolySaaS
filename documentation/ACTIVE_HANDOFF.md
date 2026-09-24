@@ -3,6 +3,37 @@
 This file is the canonical startup and end-of-day handoff.
 Every agent must read this file before editing or answering.
 
+## 2026-09-24 (Thursday) — SHELA: Type 4 POC New Vendor Assist Slices 1–3 (pull origin/main)
+
+**Shela: start here.** Pull `origin/main`. Do **not** start Slice 4 unless Michael says so.
+
+### What this is
+Type 4 POC **New Vendor Assist**, Slices 1–3. Operator path: POLYSAASADMIN → Odoo passthrough → Purchase → Orders → Vendors → **New**. Branded Assist page (not Odoo’s form). GET serves the page + “Vendor page loaded”. **Find suppliers** POSTs JSON; Slice 2 captures criteria (“Criteria captured”). Slice 3 ranks a curated **Demo directory** (not live web). LLM rank **fails on prod** — **Shortlist search failed** toast is expected.
+
+### Architecture (do not put vendor paths in the Odoo handler)
+- Instruction **GET** `/odoo/vendors/new` → atomic `OdooVendorAssist` (`serve_page`)
+- Instruction **POST** `/odoo/vendors/new` → same atomic (`capture_criteria` / shortlist)
+- Generic instruction_page match only. **No hardcoded vendor path in the handler.**
+
+### Prod
+- Tenant **POLYSAASADMIN** / schema `polysaas`
+- GET + POST Instructions exist
+- Slice 2 verified (Criteria captured)
+
+### Bug Shela should look at
+After **5725f284**, prod showed **`Assist build bake-table-20260924`** but the **Suggested vendors** table was **not visible** under Find suppliers (likely `display:none` and/or passthrough_embed **`overflow:hidden` / clip** on `.polysaas-passthrough-scope`). This pack-up finishes a visibility WIP: table always in GET HTML under Find suppliers; body CSS `#ps-vendor-table-visible` tries to unclip the embed; version line **`Assist build table-visible-20260924`**. Tests: `dose.tests.test_odoo_vendor_lookup` — 27 passed.
+
+### Key files
+- `dose/services/odoo_vendor_lookup.py`
+- `dose/templates/admin/odoo_vendor_lookup.html`
+- `dose/passthrough/instruction_page.py`
+- `dose/tests/test_odoo_vendor_lookup.py`
+- `dose/management/commands/setup_odoo_vendor_assist_consumer.py`
+- `dose/templates/admin/passthrough_embed.html` (`interesting()` already matches vendor/criteria/shortlist — **frozen, not edited this pack**)
+
+### origin/main
+- **origin/main:** HASH_PLACEHOLDER (replaced after commit)
+
 ## 2026-09-24 (Thursday) — Bake Demo directory into GET HTML (no POST JSON required)
 
 - **Problem:** 379df4d7 still looked like “no change” on prod (green bar refine skipped / Shortlist search failed, no vendor table). Rows depended on POST JSON + JS paint.
