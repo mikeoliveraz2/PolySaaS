@@ -1,4 +1,6 @@
 """Slice 1–7 — New Vendor Assist: page, criteria, AI/demo shortlist, bind, save, capture enroll."""
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Type 4 New Vendor Assist — 2026-09-25
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

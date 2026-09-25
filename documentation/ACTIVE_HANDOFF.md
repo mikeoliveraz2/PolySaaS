@@ -13,6 +13,14 @@
 <!-- Shela 2026-09-25: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
 **Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
 
+## 2026-09-25 (Friday) — BINGO: Type 4 New Vendor Assist Slices 1–7
+
+- **BINGO declared** (Michael). Certification: [BINGO_TYPE4_NEW_VENDOR_ASSIST_2026-09-25.md](BINGO_TYPE4_NEW_VENDOR_ASSIST_2026-09-25.md). GOLD ZIP: `D:\BINGO ZIPS\BINGO_TYPE4_VENDOR_ASSIST_2026-09-25.zip`.
+- **Slice 7 done.** Instruction spine GET+POST `/odoo/vendors/new` → `OdooVendorAssist`. No handler hardcode. Two topics (Vendors + Contacts). Contact on shared `capture.v1`; vendor on Vendors topic.
+- **No Odoo URL refactor** until Type 4 video is done.
+- **No further slices** unless Michael says so. Frozen vendor-assist sources: do not edit without owner permission.
+- Canary: `Assist build table-visible-20260924+s4+s5+s6+s7`.
+
 ## 2026-09-25 (Friday) — Type 4 POC Slice 7 (AI / LLM shortlist)
 
 - **Slice 7 done:** Find suppliers still POST `/odoo/vendors/new` → `OdooVendorAssist.capture_vendor_criteria` → `suggest_vendors`. Uses existing `RoutePlan` + `complete_chat` (`LLM_ROUTER_STANDARD_MODEL`). **No web-search helper exists on the router** — no new paid search API. LLM JSON vendors are labeled **AI suggested**. Timeout 8s. Fail-soft: Demo directory rows + toast **Shortlist search failed**. Success: **Shortlist returned**. **Criteria captured** remains a separate toast. Demo directory (SeaWrap, Mekong, etc.) stays as fallback and padding when AI returns few.

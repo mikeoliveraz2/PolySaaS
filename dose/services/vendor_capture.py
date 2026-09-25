@@ -5,6 +5,8 @@ Same WebhookMailbox / polysaas.capture.v1 stack as Contacts / Inventory / SNMP.
 Topic key is RES.vendors.<actor> so Captured Topics lists a Vendors row.
 Publish-only: no Instruction that creates records in other apps.
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Type 4 New Vendor Assist — 2026-09-25
 from __future__ import annotations
 
 import logging

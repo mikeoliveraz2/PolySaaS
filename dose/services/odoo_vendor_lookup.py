@@ -8,6 +8,8 @@ LLM. Demo directory remains fallback and padding. Slice 4 binds a selected
 row. Slice 5 creates the vendor in Odoo via RPC. Slice 6 publishes Vendors (polysaas.vendor.created)
 and Contacts topics. Frozen Slack customer-create is not used.
 """
+# THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION
+# BINGO: Type 4 New Vendor Assist — 2026-09-25
 from __future__ import annotations
 
 import hashlib

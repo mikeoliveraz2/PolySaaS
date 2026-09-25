@@ -13,6 +13,14 @@
 <!-- Shela 2026-09-25: read documentation/AGENT_NOTES_VENDOR_ASSIST.md before any vendor-assist edit. -->
 **Vendor Assist agents:** read [AGENT_NOTES_VENDOR_ASSIST.md](AGENT_NOTES_VENDOR_ASSIST.md) before editing.
 
+## 2026-09-25 (Friday) — Type 4 POC Slice 7 (AI / LLM shortlist)
+
+- **Slice 7 done:** Find suppliers still POST `/odoo/vendors/new` → `OdooVendorAssist.capture_vendor_criteria` → `suggest_vendors`. Uses existing `RoutePlan` + `complete_chat` (`LLM_ROUTER_STANDARD_MODEL`). **No web-search helper exists on the router** — no new paid search API. LLM JSON vendors are labeled **AI suggested**. Timeout 8s. Fail-soft: Demo directory rows + toast **Shortlist search failed**. Success: **Shortlist returned**. **Criteria captured** remains a separate toast. Demo directory (SeaWrap, Mekong, etc.) stays as fallback and padding when AI returns few.
+- **No new Instruction.** No odoo_handler vendor branch. Frozen `odoo_create_partner.py` untouched. No Odoo URL refactor. No new mailbox topics. No Slice 6 consumer.
+- Canary: `Assist build table-visible-20260924+s4+s5+s6+s7`. Tests: `dose.tests.test_odoo_vendor_lookup`.
+- **Prod / Michael:** Deploy. New Vendor Assist. Find suppliers. Expect **AI suggested** rows (or Demo directory + **Shortlist search failed** if the router times out). Table stays visible. Bind/save/dual publish unchanged.
+- Web search beyond the LLM would need Michael’s approval (new API key/vendor).
+
 ## 2026-09-25 (Friday) — Type 4 POC Slice 6 (two topics: Vendors + Contacts)
 
 - **Owner correction:** the earlier “shared topic” answer was where to put the **contact** (Lina Tan), not the vendor company.
@@ -25,7 +33,7 @@
 - Canary: `Assist build table-visible-20260924+s4+s5+s6`. Tests: `dose.tests.test_odoo_vendor_lookup` — 37 passed (local). `0069_vendor_history` is standard `CreateModel` (runs via `migrate_all_schemas`). No Odoo URL refactor.
 - **Prod / Michael:** Deploy. New Vendor Assist. Pick **Mekong Film Co** (or a row not already saved). Save. Expect Vendor created (+ Contact linked if a contact exists). Then Admin → **Captured Topics** → **Browse Topic** on **Vendors** AND **Contacts**.
 - **Lina Tan visual check remains on Michael** (Slice 5).
-- **Slice 7 not started** (live web / AI search).
+- **Slice 7 done** (see top of this file). LLM-only shortlist; no web-search API.
 
 ## 2026-09-25 (Friday) — Type 4 POC Slice 6 (publish to shared contacts topic)
 
@@ -39,7 +47,7 @@
 - Canary: `Assist build table-visible-20260924+s4+s5`. Tests: `dose.tests.test_odoo_vendor_lookup`.
 - **No new Instruction.** Optional seed: `python manage.py setup_odoo_vendor_assist_consumer --schema polysaas` (adds `save_vendor: true` on POST parameters).
 - **Slice 6 done** (see top of this file). Two topics: Vendors for the company, Contacts (`polysaas.capture.v1` enroll) for the contact only.
-- **Slice 7 not started.**
+- **Slice 7 done** (LLM-only; see top).
 
 ## Slice 6 topic (locked 2026-09-25 — owner correction)
 - **Vendors topic** for the vendor company: `polysaas.vendor.created` / `/events/polysaas/vendor/created` / `RES.vendors.<actor>`.
@@ -47,10 +55,8 @@
 - Do NOT use `slack.message.contact` (frozen customer-create consumer).
 - Do NOT put the vendor company on the Contacts topic.
 
-## Slice 7 (not started) — live web / AI search
-- Future: enable **live web / AI search** for the vendor shortlist. Today Slice 3 is curated **Demo directory** only.
-- Out of scope until Michael says go **after Slices 4–6**. Do not invent web search now.
-- LLM fail toast remains acceptable for Slice 3.
+## Slice 7 (done 2026-09-25) — AI router shortlist
+- LLM via existing router; Demo directory fallback. No paid web search without owner approval.
 
 # Active Handoff
 

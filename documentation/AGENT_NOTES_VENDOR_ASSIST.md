@@ -1,3 +1,5 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Type 4 New Vendor Assist — 2026-09-25 -->
 <!-- AGENT CONTEXT — Michael 2026-09-25 — read before any vendor-assist edit -->
 
 ## Type 4 Vendor Assist — locked spine

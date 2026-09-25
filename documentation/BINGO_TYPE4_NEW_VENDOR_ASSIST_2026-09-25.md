@@ -1,0 +1,61 @@
+<!-- THIS CODE IS FROZEN — NO CHANGES TO THIS CODE ARE ALLOWED WITHOUT THE OWNER'S PERMISSION -->
+<!-- BINGO: Type 4 New Vendor Assist — 2026-09-25 -->
+
+# BINGO: Type 4 New Vendor Assist (Slices 1–7)
+
+**Date:** 2026-09-25  
+**Status:** VERIFIED WORKING  
+**Commit:** *(filled in follow-up commit after this BINGO pack lands)*  
+**Branch:** main  
+**Canary:** `Assist build table-visible-20260924+s4+s5+s6+s7`
+
+## What was verified
+
+Type 4 **New Vendor Assist** through Slice 7 on the Instruction spine — **GET and POST** `/odoo/vendors/new` → atomic **`OdooVendorAssist`**. Matching is data-driven from tenant-schema Instruction rows. **No vendor path hardcode** in the Odoo passthrough handler. Frozen `odoo_create_partner.py` and `odoo_handler.py` were not changed for this work and are **not** in this freeze set.
+
+| Slice | Verified behavior |
+| --- | --- |
+| 1 | Branded Assist page via Instruction page replacement |
+| 2 | POST on the same document path (criteria / follow-up), not a handler special-case |
+| 3 | Suggested vendors table; Demo directory shortlist |
+| 4 | Bind selected row into the form (`step: bind`) |
+| 5 | Save to Odoo (`step: save`) — company vendor + optional contact, fail-soft contact |
+| 6 | Two topics: **Vendors** for the company; **Contacts** for the contact on shared `polysaas.capture.v1`. No multi-app consumer |
+| 7 | AI/web shortlist via existing LLM router; **demo fallback**. Fail toast **Shortlist search failed** plus a **visible table** is accepted |
+
+**Slice 6 detail:** contact enrolls on shared capture (`enroll_contact_capture` / Contacts topic). Vendor company publishes to the **Vendors** topic (`polysaas.vendor.created`, action path `/events/polysaas/vendor/created`).
+
+**Odoo URL:** no refactor of stored `odoo:8069` / public origin. Frozen until after the Type 4 video; do not “fix PolySniffer” via those URLs now.
+
+## Screenshot proof
+
+### Assist page — Find suppliers, Suggested vendors, bind Graphite Point
+
+Assist page — Find suppliers, Suggested vendors table, bind Graphite Point, Criteria captured + Shortlist search failed (demo fallback). Date 2026-09-25.
+
+![Assist page with shortlist, Graphite Point bind, Criteria captured and Shortlist search failed](assets/BINGO_TYPE4_VENDOR_ASSIST_2026-09-25_shortlist.jpg)
+
+### Captured Topics — Vendors browse (Graphite Point Stationery)
+
+Captured Topics Vendors browse — Graphite Point Stationery published, path `/events/polysaas/vendor/created`.
+
+![Vendors topic browse showing Graphite Point Stationery](assets/BINGO_TYPE4_VENDOR_ASSIST_2026-09-25_vendors_topic.jpg)
+
+## Frozen source files
+
+- `dose/services/odoo_vendor_lookup.py`
+- `dose/services/vendor_capture.py`
+- `dose/templates/admin/odoo_vendor_lookup.html`
+- `dose/passthrough/instruction_page.py`
+- `dose/tests/test_odoo_vendor_lookup.py`
+- `dose/management/commands/setup_odoo_vendor_assist_consumer.py`
+- `documentation/AGENT_NOTES_VENDOR_ASSIST.md`
+
+**Listed only (not freeze-bannered):** shared Jazzmin/admin surfaces such as `dose/admin.py` / topic history helpers if they gained a Vendors row as a small addition — those are large shared modules, not a Type 4-only file.
+
+`documentation/ACTIVE_HANDOFF.md` stays the living handoff and is not frozen.
+
+## Not frozen (intentionally)
+
+- `dose/passthrough/handlers/odoo_handler.py` — no Type 4 vendor branch
+- `dose/services/odoo_create_partner.py` — frozen customer-create; untouched

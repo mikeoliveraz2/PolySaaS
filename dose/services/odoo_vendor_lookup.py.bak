@@ -2,12 +2,11 @@
 
 Triggered by tenant-schema Instructions matching GET/POST /odoo/vendors/new.
 The Odoo passthrough handler must not hardcode that path; instruction matching does.
-Slice 3 shortlist is curated/demo directory ranked by the same LLM router as
-invoice refine — not live web search. Slice 4 binds a selected row into the
-form. Slice 5 creates the vendor (and optional contact) in Odoo via RPC.
-Slice 6 publishes the company to the Vendors topic (polysaas.vendor.created)
-and the contact (if saved) to the shared Contacts topic (capture.v1).
-Frozen Slack customer-create is not used.
+Slice 7 shortlist uses the existing LLM router (RoutePlan + complete_chat).
+There is no web-search tool on that router; AI suggested rows come from the
+LLM. Demo directory remains fallback and padding. Slice 4 binds a selected
+row. Slice 5 creates the vendor in Odoo via RPC. Slice 6 publishes Vendors (polysaas.vendor.created)
+and Contacts topics. Frozen Slack customer-create is not used.
 """
 from __future__ import annotations
 
@@ -48,8 +47,10 @@ CRITERIA_CAPTURE_STEP = "capture_criteria"
 BIND_SELECTION_STEP = "bind"
 SAVE_VENDOR_STEP = "save"
 SHORTLIST_SOURCE_LABEL = "Demo directory"
+AI_SOURCE_LABEL = "AI suggested"
+LLM_SHORTLIST_TIMEOUT_SECONDS = 8
 # Visible on GET HTML so a screenshot proves which Assist template is live.
-ASSIST_BUILD = "table-visible-20260924+s4+s5+s6"
+ASSIST_BUILD = "table-visible-20260924+s4+s5+s6+s7"
 
 # Curated demo rows only. Ranked/filtered; never fetched from the live web.
 DEMO_VENDOR_DIRECTORY = (
@@ -819,7 +820,7 @@ def capture_vendor_criteria(request, instruction_row):
         detail = f"{CRITERIA_CAPTURE_FAILED_MESSAGE}: missing {', '.join(missing)}"
         emit_vendor_step_message(request, detail, level="error")
         emit_vendor_step_message(request, SHORTLIST_FAILED_MESSAGE, level="error")
-        demo_rows = _always_demo_directory_rows(criteria)
+        demo_rows = _label_rows(_always_demo_directory_rows(criteria), SHORTLIST_SOURCE_LABEL)
         public = {
             "ok": False,
             "status": "error",
@@ -862,8 +863,8 @@ def capture_vendor_criteria(request, instruction_row):
     except Exception:
         logger.exception("[OdooVendorAssist] shortlist failed")
         vendors, shortlist_ok = [], False
-    vendors = _always_demo_directory_rows(criteria, vendors)
-    if len(vendors) < 3:
+    if not vendors:
+        vendors = _label_rows(_always_demo_directory_rows(criteria), SHORTLIST_SOURCE_LABEL)
         shortlist_ok = False
     if shortlist_ok and vendors:
         shortlist_message = SHORTLIST_RETURNED_MESSAGE
@@ -878,7 +879,7 @@ def capture_vendor_criteria(request, instruction_row):
         "criteria": criteria,
         "vendors": list(vendors),
         "suggested_vendors": list(vendors),
-        "source": SHORTLIST_SOURCE_LABEL,
+        "source": _shortlist_source_summary(vendors),
         "shortlist_status": shortlist_message,
         "shortlist_message": shortlist_message,
         "shortlist_ok": shortlist_ok and bool(vendors),
@@ -955,23 +956,68 @@ def _always_demo_directory_rows(criteria: dict, vendors=None) -> list:
     return catalog[:6]
 
 
+def _label_rows(rows: list, source: str) -> list:
+    labeled = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        item["source"] = source
+        labeled.append(item)
+    return labeled
+
+
+def _shortlist_source_summary(vendors: list) -> str:
+    labels = []
+    for row in vendors or []:
+        label = str((row or {}).get("source") or "").strip()
+        if label and label not in labels:
+            labels.append(label)
+    if AI_SOURCE_LABEL in labels and SHORTLIST_SOURCE_LABEL in labels:
+        return f"{AI_SOURCE_LABEL} + {SHORTLIST_SOURCE_LABEL}"
+    if AI_SOURCE_LABEL in labels:
+        return AI_SOURCE_LABEL
+    return SHORTLIST_SOURCE_LABEL
+
+
+def _merge_ai_and_demo(criteria: dict, ai_rows: list) -> list:
+    """Keep AI rows first; pad with Demo directory when the LLM returns few."""
+    merged = _label_rows(ai_rows, AI_SOURCE_LABEL)
+    seen = {str(row.get("name") or "").strip().lower() for row in merged if row.get("name")}
+    if len(merged) >= 3:
+        return merged[:6]
+    for demo in _always_demo_directory_rows(criteria):
+        name = str(demo.get("name") or "").strip().lower()
+        if not name or name in seen:
+            continue
+        item = dict(demo)
+        item["source"] = SHORTLIST_SOURCE_LABEL
+        merged.append(item)
+        seen.add(name)
+        if len(merged) >= 6:
+            break
+    if len(merged) < 3:
+        merged.extend(
+            _label_rows(_always_demo_directory_rows(criteria), SHORTLIST_SOURCE_LABEL)
+        )
+    return merged[:6]
+
+
 def suggest_vendors(criteria: dict) -> tuple[list, bool]:
-    """Rank the curated demo directory locally first; optional LLM refine.
+    """LLM shortlist via RoutePlan/complete_chat; Demo directory fail-soft.
 
-    LLM is optional rank only, never a gate. Local rows always come from
-    DEMO_VENDOR_DIRECTORY (3–6). llm_ranked is True only when the router
-    returns a usable ranking within a short timeout.
+    No web-search helper exists on the router. Timeout is short. Empty or
+    failed LLM still returns curated Demo directory rows.
     """
-    catalog = [dict(row) for row in DEMO_VENDOR_DIRECTORY]
-    local_rows = _always_demo_directory_rows(criteria)
-    ranked = _llm_rank_directory(criteria, catalog)
-    if ranked:
-        return _always_demo_directory_rows(criteria, ranked), True
-    return local_rows, False
+    ai_rows = _llm_suggest_vendors(criteria)
+    if ai_rows:
+        return _merge_ai_and_demo(criteria, ai_rows), True
+    demo = _label_rows(_always_demo_directory_rows(criteria), SHORTLIST_SOURCE_LABEL)
+    return demo, False
 
 
-def _llm_rank_directory(criteria: dict, catalog: list) -> list:
-    """Ask the standard router to pick 3–6 catalog ids. Never live search."""
+def _llm_suggest_vendors(criteria: dict) -> list:
+    """Ask the standard router for a vendor JSON list. No paid search API."""
     try:
         from django.conf import settings
 
@@ -988,33 +1034,25 @@ def _llm_rank_directory(criteria: dict, catalog: list) -> list:
         user_tier="standard",
         reason="odoo_vendor_assist_shortlist",
     )
-    slim = [
-        {
-            "id": row.get("id"),
-            "name": row.get("name"),
-            "region": row.get("region"),
-            "product_line": row.get("product_line"),
-            "price_band": row.get("price_band"),
-        }
-        for row in catalog
-    ]
     prompt = (
-        "Rank this curated demo vendor directory for the operator criteria. "
-        "Do not invent vendors or search the web. Return JSON only: "
-        '{"ids": ["id1", "id2"]} with 3 to 6 ids from the catalog, best first.\n'
-        f"Criteria: {json.dumps(criteria)}\n"
-        f"Catalog: {json.dumps(slim)}"
+        "Suggest 3 to 6 supplier companies matching the operator criteria "
+        "(product line, region, price). Use general knowledge only. "
+        "Return JSON only: "
+        '{"vendors":[{"name":"...","email":"...","phone":"...","website":"...",'
+        '"region":"...","product_line":"...","price_band":"...",'
+        '"main_contact":{"name":"...","email":"..."}}]}. No markdown.\n'
+        f"Criteria: {json.dumps(criteria)}"
     )
     try:
         out = complete_chat(
             plan,
             messages=[{"role": "user", "content": prompt}],
             system_prompt=(
-                "You rank a closed demo directory for PolySaaS New Vendor Assist. "
-                "Output JSON with an ids array. No markdown."
+                "You suggest a short vendor list for PolySaaS New Vendor Assist. "
+                "Output JSON with a vendors array. No markdown."
             ),
-            max_tokens=400,
-            timeout=4,
+            max_tokens=800,
+            timeout=LLM_SHORTLIST_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         logger.warning("[OdooVendorAssist] complete_chat failed: %s", exc)
@@ -1022,12 +1060,8 @@ def _llm_rank_directory(criteria: dict, catalog: list) -> list:
     text = (out or "").strip()
     if text.startswith("[llm_router]"):
         return []
-    ids = _parse_ranked_ids(text)
-    by_id = {str(row.get("id")): row for row in catalog}
-    picked = [by_id[i] for i in ids if i in by_id]
-    if len(picked) < 3:
-        return []
-    return picked[:6]
+    vendors = _parse_suggested_vendor_rows(text)
+    return vendors[:6]
 
 
 def _parse_ranked_ids(text: str) -> list:
@@ -1052,6 +1086,48 @@ def _parse_ranked_ids(text: str) -> list:
         elif isinstance(item, dict) and item.get("id"):
             out.append(str(item.get("id")).strip())
     return [i for i in out if i]
+
+
+def _parse_suggested_vendor_rows(text: str) -> list:
+    blob = (text or "").strip()
+    match = re.search(r"\{.*\}", blob, re.DOTALL)
+    if match:
+        blob = match.group(0)
+    try:
+        data = json.loads(blob)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+    raw = []
+    if isinstance(data, dict):
+        raw = data.get("vendors") or data.get("suggested_vendors") or []
+    elif isinstance(data, list):
+        raw = data
+    rows = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        contact = item.get("main_contact") if isinstance(item.get("main_contact"), dict) else {}
+        rows.append(
+            {
+                "id": str(item.get("id") or re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")[:40],
+                "name": name,
+                "email": str(item.get("email") or "").strip(),
+                "phone": str(item.get("phone") or "").strip(),
+                "website": str(item.get("website") or "").strip(),
+                "region": str(item.get("region") or "").strip(),
+                "product_line": str(item.get("product_line") or "").strip(),
+                "price_band": str(item.get("price_band") or item.get("price_range") or "").strip(),
+                "main_contact": {
+                    "name": str(contact.get("name") or item.get("contact_name") or "").strip(),
+                    "email": str(contact.get("email") or item.get("contact_email") or "").strip(),
+                },
+                "source": AI_SOURCE_LABEL,
+            }
+        )
+    return rows
 
 
 def _deterministic_rank_directory(criteria: dict, catalog: list) -> list:
