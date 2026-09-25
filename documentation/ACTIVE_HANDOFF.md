@@ -15,7 +15,7 @@
 
 ## 2026-09-25 (Friday) — BINGO: Type 4 New Vendor Assist Slices 1–7
 
-- **BINGO declared** (Michael). Certification: [BINGO_TYPE4_NEW_VENDOR_ASSIST_2026-09-25.md](BINGO_TYPE4_NEW_VENDOR_ASSIST_2026-09-25.md). GOLD ZIP: `D:\BINGO ZIPS\BINGO_TYPE4_VENDOR_ASSIST_2026-09-25.zip`.
+- **BINGO declared** (Michael). Certification: [BINGO_TYPE4_NEW_VENDOR_ASSIST_2026-09-25.md](BINGO_TYPE4_NEW_VENDOR_ASSIST_2026-09-25.md). Commit **42e7026d**. GOLD ZIP: `D:\BINGO ZIPS\BINGO_TYPE4_VENDOR_ASSIST_2026-09-25.zip`.
 - **Slice 7 done.** Instruction spine GET+POST `/odoo/vendors/new` → `OdooVendorAssist`. No handler hardcode. Two topics (Vendors + Contacts). Contact on shared `capture.v1`; vendor on Vendors topic.
 - **No Odoo URL refactor** until Type 4 video is done.
 - **No further slices** unless Michael says so. Frozen vendor-assist sources: do not edit without owner permission.
