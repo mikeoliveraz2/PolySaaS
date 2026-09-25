@@ -1,4 +1,4 @@
-"""Slice 1–6 — New Vendor Assist: page, criteria, shortlist, bind, save, capture enroll."""
+"""Slice 1–7 — New Vendor Assist: page, criteria, AI/demo shortlist, bind, save, capture enroll."""
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -17,6 +17,7 @@ from dose.services.odoo_vendor_lookup import (
     SHORTLIST_FAILED_MESSAGE,
     SHORTLIST_RETURNED_MESSAGE,
     SHORTLIST_SOURCE_LABEL,
+    AI_SOURCE_LABEL,
     BIND_LOADED_MESSAGE,
     BIND_FAILED_MESSAGE,
     VENDOR_CREATED_MESSAGE,
@@ -143,8 +144,20 @@ class CriteriaCaptureTests(SimpleTestCase):
             ):
                 with patch(
                     "llm_router.providers.complete_chat",
-                    return_value='{"ids": ["seawrap", "mekongfilm", "aseanpack", "graphitepoint"]}',
-                ):
+                    return_value=(
+                        '{"vendors":['
+                        '{"name":"AI Film Partners","email":"sales@aifilm.example",'
+                        '"phone":"+65 1000 0001","website":"https://aifilm.example",'
+                        '"region":"Southeast Asia","product_line":"Packaging film",'
+                        '"price_band":"Under $2 per unit",'
+                        '"main_contact":{"name":"Ava Lee","email":"ava@aifilm.example"}},'
+                        '{"name":"Router Pack Co","email":"hello@routerpack.example",'
+                        '"website":"https://routerpack.example"},'
+                        '{"name":"Sonnet Wrap Ltd","email":"buy@sonnetwrap.example",'
+                        '"website":"https://sonnetwrap.example"}'
+                        ']}'
+                    ),
+                ) as chat:
                     result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "success")
@@ -157,12 +170,16 @@ class CriteriaCaptureTests(SimpleTestCase):
         vendors = result.get("vendors") or result.get("suggested_vendors")
         self.assertGreaterEqual(len(vendors), 3)
         self.assertLessEqual(len(vendors), 6)
-        self.assertEqual(result["source"], SHORTLIST_SOURCE_LABEL)
+        self.assertEqual(result["source"], AI_SOURCE_LABEL)
         self.assertEqual(result["shortlist_status"], SHORTLIST_RETURNED_MESSAGE)
         self.assertEqual(result["shortlist_message"], SHORTLIST_RETURNED_MESSAGE)
         names = [row.get("name") for row in vendors]
-        self.assertTrue(any("SeaWrap" in (n or "") for n in names))
+        self.assertTrue(any("AI Film Partners" in (n or "") for n in names))
+        self.assertTrue(any(row.get("source") == AI_SOURCE_LABEL for row in vendors))
         self.assertTrue(any(row.get("main_contact") for row in vendors))
+        self.assertTrue(result.get("shortlist_ok"))
+        chat.assert_called()
+        self.assertEqual(chat.call_args.kwargs.get("timeout"), 8)
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertIn(CRITERIA_CAPTURED_MESSAGE, messages)
         self.assertIn(SHORTLIST_RETURNED_MESSAGE, messages)
@@ -244,6 +261,8 @@ class CriteriaCaptureTests(SimpleTestCase):
         self.assertEqual(result["shortlist_status"], SHORTLIST_FAILED_MESSAGE)
         self.assertEqual(result["shortlist_message"], SHORTLIST_FAILED_MESSAGE)
         self.assertFalse(result.get("shortlist_ok"))
+        self.assertEqual(result["source"], SHORTLIST_SOURCE_LABEL)
+        self.assertTrue(all(row.get("source") == SHORTLIST_SOURCE_LABEL for row in vendors))
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertIn(CRITERIA_CAPTURED_MESSAGE, messages)
         self.assertIn(SHORTLIST_FAILED_MESSAGE, messages)
@@ -1223,7 +1242,9 @@ class RenderTemplateTests(SimpleTestCase):
         self.assertIn("Graphite Point Stationery", html)
         self.assertIn("Lina Tan", html)
         self.assertIn("ps-assist-build", html)
-        self.assertIn("Assist build table-visible-20260924+s4+s5+s6", html)
+        self.assertIn("AI suggested", html)
+        self.assertIn("Source", html)
+        self.assertIn("Assist build table-visible-20260924+s4+s5+s6+s7", html)
         self.assertIn("Event published", html)
         self.assertIn("ps-vendor-table-visible", html)
         find_idx = html.find("Find suppliers")

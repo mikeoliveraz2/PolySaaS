@@ -24,6 +24,8 @@ from dose.services.odoo_vendor_lookup import (
     CONTACT_LINK_FAILED_MESSAGE,
     VENDOR_CREATE_FAILED_MESSAGE,
     EVENT_PUBLISHED_MESSAGE,
+    VENDOR_EVENT_PUBLISHED_MESSAGE,
+    CONTACT_EVENT_PUBLISHED_MESSAGE,
     EVENT_PUBLISH_FAILED_MESSAGE,
     VENDOR_PAGE_LOADED_MESSAGE,
     VENDOR_PAGE_TITLE,
@@ -79,8 +81,9 @@ class AtomicPageTests(SimpleTestCase):
         self.assertFalse(hasattr(mod, "is_odoo_vendor_new_path"))
         source = Path(mod.__file__).read_text(encoding="utf-8")
         self.assertIn("enroll_contact_capture", source)
+        self.assertIn("enroll_vendor_capture", source)
         self.assertIn("polysaas.capture.v1", source)
-        self.assertNotIn("polysaas.vendor.created", source)
+        self.assertIn("polysaas.vendor.created", source)
         self.assertNotIn('event_key="slack.message.contact"', source)
         self.assertNotIn("event_key='slack.message.contact'", source)
         self.assertIn('event_key="odoo.capture_contacts"', source)
@@ -432,6 +435,18 @@ class SaveVendorTests(SimpleTestCase):
             "mailbox_id": 9,
             "event_id": kwargs.get("event_id") or "evt",
             "topic": "RES.contacts.system",
+            "event_key": kwargs.get("event_key") or "odoo.capture_contacts",
+            "record_count": 1,
+        }
+
+    def _vendor_enroll_ok(self, **kwargs):
+        return {
+            "success": True,
+            "deduped": False,
+            "mailbox_id": 8,
+            "event_id": kwargs.get("event_id") or "evt-v",
+            "topic": "RES.vendors.system",
+            "event_key": kwargs.get("event_key") or "polysaas.vendor.created",
             "record_count": 1,
         }
 
@@ -470,6 +485,7 @@ class SaveVendorTests(SimpleTestCase):
 
         cfg, from_cfg, client = self._rpc_patches(execute_kw)
         enroll = MagicMock(side_effect=self._enroll_ok)
+        vendor_enroll = MagicMock(side_effect=self._vendor_enroll_ok)
         with cfg, from_cfg:
             with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
                 with patch(
@@ -480,7 +496,11 @@ class SaveVendorTests(SimpleTestCase):
                         "dose.services.contact_capture.enroll_contact_capture",
                         enroll,
                     ):
-                        result = OdooVendorAssist.execute_and_save(request, self._instruction())
+                        with patch(
+                            "dose.services.vendor_capture.enroll_vendor_capture",
+                            vendor_enroll,
+                        ):
+                            result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "success")
         self.assertTrue(result.get("vendor_created"))
@@ -491,23 +511,30 @@ class SaveVendorTests(SimpleTestCase):
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertEqual(
             messages,
-            [VENDOR_CREATED_MESSAGE, CONTACT_LINKED_MESSAGE, EVENT_PUBLISHED_MESSAGE],
+            [
+                VENDOR_CREATED_MESSAGE,
+                CONTACT_LINKED_MESSAGE,
+                VENDOR_EVENT_PUBLISHED_MESSAGE,
+                CONTACT_EVENT_PUBLISHED_MESSAGE,
+            ],
         )
+        vendor_enroll.assert_called_once()
+        vkw = vendor_enroll.call_args.kwargs
+        self.assertEqual(vkw["event_key"], "polysaas.vendor.created")
+        self.assertEqual(vkw["action_path"], "/events/polysaas/vendor/created")
+        rec = vkw["record"]
+        self.assertEqual(rec["odoo_vendor_id"], 101)
+        self.assertEqual(rec["odoo_contact_id"], 202)
+        self.assertEqual(rec["name"], "SeaWrap Packaging")
+        self.assertEqual(rec["email"], "sales@seawrap.example")
+        self.assertEqual(rec["region"], "Southeast Asia")
+        self.assertEqual(rec["criteria"]["product_line"], "Packaging film")
         enroll.assert_called_once()
         kw = enroll.call_args.kwargs
         self.assertEqual(kw["event_key"], "odoo.capture_contacts")
         self.assertEqual(kw["action_path"], "odoo/contacts")
         self.assertEqual(kw["source_app"], "odoo")
         self.assertNotEqual(kw["event_key"], "slack.message.contact")
-        self.assertNotIn("vendor.created", kw["event_key"])
-        self.assertNotIn("vendor/created", kw["action_path"])
-        extra = kw["payload_extra"]
-        self.assertEqual(extra["odoo_vendor_id"], 101)
-        self.assertEqual(extra["odoo_contact_id"], 202)
-        self.assertEqual(extra["vendor_name"], "SeaWrap Packaging")
-        self.assertEqual(extra["email"], "sales@seawrap.example")
-        self.assertEqual(extra["region"], "Southeast Asia")
-        self.assertEqual(extra["criteria"]["product_line"], "Packaging film")
         self.assertTrue(kw["event_id"])
         client.authenticate.assert_called()
 
@@ -533,6 +560,7 @@ class SaveVendorTests(SimpleTestCase):
 
         cfg, from_cfg, _client = self._rpc_patches(execute_kw)
         enroll = MagicMock(side_effect=self._enroll_ok)
+        vendor_enroll = MagicMock(side_effect=self._vendor_enroll_ok)
         with cfg, from_cfg:
             with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
                 with patch(
@@ -543,7 +571,11 @@ class SaveVendorTests(SimpleTestCase):
                         "dose.services.contact_capture.enroll_contact_capture",
                         enroll,
                     ):
-                        result = OdooVendorAssist.execute_and_save(request, self._instruction())
+                        with patch(
+                            "dose.services.vendor_capture.enroll_vendor_capture",
+                            vendor_enroll,
+                        ):
+                            result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertTrue(result.get("vendor_created"))
         self.assertFalse(result.get("contact_linked"))
@@ -552,9 +584,11 @@ class SaveVendorTests(SimpleTestCase):
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertIn(VENDOR_CREATED_MESSAGE, messages)
         self.assertIn(CONTACT_LINK_FAILED_MESSAGE, messages)
-        self.assertIn(EVENT_PUBLISHED_MESSAGE, messages)
+        self.assertIn(VENDOR_EVENT_PUBLISHED_MESSAGE, messages)
+        self.assertNotIn(CONTACT_EVENT_PUBLISHED_MESSAGE, messages)
         self.assertNotIn(VENDOR_CREATE_FAILED_MESSAGE, messages)
-        enroll.assert_called_once()
+        vendor_enroll.assert_called_once()
+        enroll.assert_not_called()
 
     def test_save_company_fail_skips_contact(self):
         request = self._post(
@@ -570,6 +604,7 @@ class SaveVendorTests(SimpleTestCase):
 
         cfg, from_cfg, client = self._rpc_patches(execute_kw)
         enroll = MagicMock()
+        vendor_enroll = MagicMock()
         with cfg, from_cfg:
             with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
                 with patch(
@@ -580,7 +615,11 @@ class SaveVendorTests(SimpleTestCase):
                         "dose.services.contact_capture.enroll_contact_capture",
                         enroll,
                     ):
-                        result = OdooVendorAssist.execute_and_save(request, self._instruction())
+                        with patch(
+                            "dose.services.vendor_capture.enroll_vendor_capture",
+                            vendor_enroll,
+                        ):
+                            result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["message"], VENDOR_CREATE_FAILED_MESSAGE)
@@ -590,11 +629,13 @@ class SaveVendorTests(SimpleTestCase):
         self.assertEqual(messages, [VENDOR_CREATE_FAILED_MESSAGE])
         self.assertEqual(client.execute_kw.call_count, 1)
         enroll.assert_not_called()
+        vendor_enroll.assert_not_called()
 
     def test_save_empty_name_fails_without_rpc(self):
         request = self._post({"step": "save", "name": ""})
         cfg, from_cfg, client = self._rpc_patches(lambda *a, **k: 1)
         enroll = MagicMock()
+        vendor_enroll = MagicMock()
         with cfg, from_cfg:
             with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
                 with patch(
@@ -605,12 +646,17 @@ class SaveVendorTests(SimpleTestCase):
                         "dose.services.contact_capture.enroll_contact_capture",
                         enroll,
                     ):
-                        result = OdooVendorAssist.execute_and_save(request, self._instruction())
+                        with patch(
+                            "dose.services.vendor_capture.enroll_vendor_capture",
+                            vendor_enroll,
+                        ):
+                            result = OdooVendorAssist.execute_and_save(request, self._instruction())
         self.assertEqual(result["message"], VENDOR_CREATE_FAILED_MESSAGE)
         client.authenticate.assert_not_called()
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertEqual(messages, [VENDOR_CREATE_FAILED_MESSAGE])
         enroll.assert_not_called()
+        vendor_enroll.assert_not_called()
 
     def test_save_ok_publish_fail_keeps_vendor_and_fail_toast(self):
         request = self._post({"step": "save", "name": "Mekong Film Co", "email": "hello@mekongfilm.example"})
@@ -622,6 +668,7 @@ class SaveVendorTests(SimpleTestCase):
 
         cfg, from_cfg, _client = self._rpc_patches(execute_kw)
         enroll = MagicMock(return_value={"success": False, "error": "mailbox down"})
+        vendor_enroll = MagicMock(return_value={"success": False, "error": "mailbox down"})
         with cfg, from_cfg:
             with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
                 with patch(
@@ -632,7 +679,11 @@ class SaveVendorTests(SimpleTestCase):
                         "dose.services.contact_capture.enroll_contact_capture",
                         enroll,
                     ):
-                        result = OdooVendorAssist.execute_and_save(request, self._instruction())
+                        with patch(
+                            "dose.services.vendor_capture.enroll_vendor_capture",
+                            vendor_enroll,
+                        ):
+                            result = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertTrue(result.get("vendor_created"))
         self.assertEqual(result["partner_id"], 55)
@@ -640,6 +691,9 @@ class SaveVendorTests(SimpleTestCase):
         messages = [call.args[1] for call in emit.call_args_list]
         self.assertEqual(messages, [VENDOR_CREATED_MESSAGE, EVENT_PUBLISH_FAILED_MESSAGE])
         self.assertNotIn(EVENT_PUBLISHED_MESSAGE, messages)
+        self.assertNotIn(VENDOR_EVENT_PUBLISHED_MESSAGE, messages)
+        vendor_enroll.assert_called_once()
+        enroll.assert_not_called()
 
     def test_save_dedup_does_not_double_publish(self):
         payload = {
@@ -656,6 +710,7 @@ class SaveVendorTests(SimpleTestCase):
 
         cfg, from_cfg, _client = self._rpc_patches(execute_kw)
         enroll = MagicMock(side_effect=self._enroll_ok)
+        vendor_enroll = MagicMock(side_effect=self._vendor_enroll_ok)
         with cfg, from_cfg:
             with patch("dose.services.odoo_vendor_lookup.emit_vendor_step_message") as emit:
                 with patch(
@@ -666,15 +721,20 @@ class SaveVendorTests(SimpleTestCase):
                         "dose.services.contact_capture.enroll_contact_capture",
                         enroll,
                     ):
-                        first = OdooVendorAssist.execute_and_save(request, self._instruction())
-                        second = OdooVendorAssist.execute_and_save(request, self._instruction())
+                        with patch(
+                            "dose.services.vendor_capture.enroll_vendor_capture",
+                            vendor_enroll,
+                        ):
+                            first = OdooVendorAssist.execute_and_save(request, self._instruction())
+                            second = OdooVendorAssist.execute_and_save(request, self._instruction())
 
         self.assertTrue(first.get("event_published"))
         self.assertTrue(second.get("event_publish_skipped"))
         self.assertFalse(second.get("event_published"))
-        enroll.assert_called_once()
+        vendor_enroll.assert_called_once()
+        enroll.assert_not_called()
         first_msgs = [call.args[1] for call in emit.call_args_list]
-        self.assertEqual(first_msgs.count(EVENT_PUBLISHED_MESSAGE), 1)
+        self.assertEqual(first_msgs.count(VENDOR_EVENT_PUBLISHED_MESSAGE), 1)
 
     def test_save_enrolls_capture_v1_not_vendor_created_topic(self):
         import ast
@@ -689,9 +749,27 @@ class SaveVendorTests(SimpleTestCase):
         self.assertIsNotNone(save_fn)
         names = [n.id for n in ast.walk(save_fn) if isinstance(n, ast.Name)]
         self.assertIn("publish_saved_vendor_capture", names)
-        self.assertNotIn("polysaas.vendor.created", source)
+        self.assertIn("polysaas.vendor.created", source)
         self.assertIn('event_key="odoo.capture_contacts"', source)
         self.assertNotIn('event_key="slack.message.contact"', source)
+
+    def test_classify_topic_lists_vendors_family(self):
+        from dose.services.topic_consume import (
+            FAMILY_CONTACTS,
+            FAMILY_VENDORS,
+            classify_topic,
+            topic_display_name,
+        )
+
+        self.assertEqual(
+            classify_topic("RES.vendors.system", action_path="/events/polysaas/vendor/created"),
+            FAMILY_VENDORS,
+        )
+        self.assertEqual(topic_display_name("RES.vendors.system", FAMILY_VENDORS), "Vendors")
+        self.assertEqual(
+            classify_topic("RES.contacts.system", action_path="odoo/contacts"),
+            FAMILY_CONTACTS,
+        )
 
 
 class DocumentPathMatchTests(SimpleTestCase):

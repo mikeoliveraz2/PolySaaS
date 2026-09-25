@@ -1,32 +1,20 @@
-<!-- AGENT CONTEXT — Michael 2026-09-24 — read before any vendor-assist edit -->
+<!-- AGENT CONTEXT — Michael 2026-09-25 — read before any vendor-assist edit -->
 
 ## Type 4 Vendor Assist — locked spine
 - Path: GET+POST `/odoo/vendors/new` → Instruction → atomic `OdooVendorAssist`
 - NOT hardcoded in the Odoo passthrough handler. If you add an if-vendor branch in the handler, REJECT and undo.
 - Odoo remains SoR. No second vendor table.
 - Frozen customer-create service: do not modify.
-
-## HEAD / pack
-- main HEAD: `e01da081`
-- vendor pack: `4555df1e`
-- Key files: `dose/services/odoo_vendor_lookup.py`, `dose/templates/admin/odoo_vendor_lookup.html`, `dose/passthrough/instruction_page.py`, `dose/tests/test_odoo_vendor_lookup.py`, `dose/management/commands/setup_odoo_vendor_assist_consumer.py`
+- No Odoo URL refactor (`odoo:8069`) until Type 4 video is done.
 
 ## Slice status
-- Slices 1–6 done. **Do not start Slice 7** (live web / AI search) unless Michael says go.
-- Slice 6 (two topics): vendor company → `enroll_vendor_capture` / **Vendors** (`polysaas.vendor.created`). Contact → `enroll_contact_capture` / **Contacts** (`capture.v1`, `odoo.capture_contacts`). No `slack.message.contact`. No consumer that writes other apps.
-- Slice 3: LLM shortlist **fail toast is acceptable**; curated Demo directory only until Slice 7.
-
-## Active bug (fix this, nothing else)
-- After `5725f284`, page may show build line `Assist build bake-table-20260924` or WIP `table-visible-20260924`.
-- **Suggested vendors table not visible** (hidden or clipped). Target build canary: `Assist build table-visible-20260924`.
-- Change only template/CSS needed for table visibility. Annotate every edit in the PR/commit body:
-  `ANNOTATION: table visibility only — no Slice 4 — no handler vendor special-case`
+- Slices 1–7 done on the same GET/POST Instruction. **No new Instruction.**
+- Slice 7: Find suppliers uses existing LLM router (`RoutePlan` + `complete_chat` / `LLM_ROUTER_STANDARD_MODEL`). There is **no web-search tool** on that router. Rows from the LLM are labeled **AI suggested**. Fail-soft (8s timeout) paints curated **Demo directory** rows and toasts **Shortlist search failed**. Success toasts **Shortlist returned** (Criteria captured stays its own toast). SeaWrap/Mekong/etc. stay as fallback/padding.
+- Slice 6 (two topics): vendor company → `enroll_vendor_capture` / **Vendors**. Contact → `enroll_contact_capture` / **Contacts**. No consumer that writes other apps.
+- Canary: `Assist build table-visible-20260924+s4+s5+s6+s7`
 
 ## Toasts (do not collapse into one)
-Per-step DoseMessage on success and failure: page loaded, criteria captured, shortlist returned/failed, etc.
+Per-step DoseMessage on success and failure: page loaded, criteria captured, shortlist returned/failed, bind, save, publish.
 
 ## Out of scope
-Live web vendor search, multi-app fan-out wiring, new hosts, pixel Odoo clone, Slice 5–6 until ordered.
-
-## Done for this bug
-Screenshot: build string `table-visible-20260924` + **visible** Suggested vendors table. Stop.
+Paid web search APIs / new hosts (needs Michael approval), multi-app fan-out consumer, URL redesign, handler vendor special-case.

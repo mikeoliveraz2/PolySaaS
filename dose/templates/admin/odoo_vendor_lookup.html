@@ -203,14 +203,14 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
     border: 2px solid #111827 !important;
 }
 </style>
-{# Slice 3: Find suppliers captures criteria then returns a demo-directory shortlist. Save remains a stub. #}
+{# Slice 7: Find suppliers captures criteria then LLM shortlist with Demo directory fallback. #}
 <div class="ps-vendor" id="ps-vendor">
     <div class="ps-brand">
         <img src="{% static 'img/PolySaaS-Industrial-Logo.png' %}" alt="PolySaaS">
         <h1>{{ page_title|default:"New Vendor (PolySaaS Assist)" }}</h1>
     </div>
-    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"table-visible-20260924+s4" }}</p>
-    <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria, then returns a suggested shortlist from a demo directory (not live web search).</p>
+    <p class="ps-build" id="ps-assist-build" style="margin:0 0 10px;font-size:0.8rem;color:#374151;">Assist build {{ assist_build|default:"table-visible-20260924+s4+s5+s6+s7" }}</p>
+    <p class="ps-lead">Enter what you need, then Find suppliers. PolySaaS Assist records the criteria, then asks the AI router for a shortlist (AI suggested). If that search fails, the Demo directory rows stay on the table.</p>
 
     <div class="ps-card">
         <div class="ps-row">
@@ -230,21 +230,21 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         <button type="button" id="ps-find">Find suppliers</button>
         <div class="ps-shortlist is-open" id="ps-vendor-shortlist" style="display:block;visibility:visible;min-height:360px;overflow:visible;border:3px solid #111827;background:#fff7ed;padding:14px;margin-top:16px;">
             <h2 style="margin:0 0 8px;font-size:1.15rem;color:#111827;">Suggested vendors <span class="ps-badge">Demo directory</span></h2>
-            <p class="ps-note" id="ps-shortlist-note">These rows are on the page from first paint. Click a row to fill the vendor form.</p>
+            <p class="ps-note" id="ps-shortlist-note">These rows are on the page from first paint. Click a row to fill the vendor form. Source column shows AI suggested vs Demo directory.</p>
             <div id="ps-shortlist-table-wrap" style="min-height:220px;overflow:visible;">
                 <table id="ps-demo-table" class="ps-demo-table" style="display:table;width:100%;border:2px solid #111827;">
-                    <thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th><th>Source</th></tr></thead>
                     <tbody>
-                        <tr class="ps-vendor-row" data-name="SeaWrap Packaging" data-email="sales@seawrap.example" data-phone="+65 6123 4401" data-website="https://seawrap.example" data-contact-name="Lina Tan" data-contact-email="lina.tan@seawrap.example"><td>SeaWrap Packaging</td><td>https://seawrap.example<br>sales@seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td></tr>
-                        <tr class="ps-vendor-row" data-name="Mekong Film Co" data-email="hello@mekongfilm.example" data-phone="+84 28 3999 1200" data-website="https://mekongfilm.example" data-contact-name="" data-contact-email=""><td>Mekong Film Co</td><td>https://mekongfilm.example<br>hello@mekongfilm.example</td><td></td></tr>
-                        <tr class="ps-vendor-row" data-name="ASEAN Office Supply" data-email="orders@aseanoffice.example" data-phone="+66 2 555 0199" data-website="https://aseanoffice.example" data-contact-name="Somsak Prasert" data-contact-email="somsak@aseanoffice.example"><td>ASEAN Office Supply</td><td>https://aseanoffice.example<br>orders@aseanoffice.example</td><td>Somsak Prasert<br>somsak@aseanoffice.example</td></tr>
-                        <tr class="ps-vendor-row" data-name="Graphite Point Stationery" data-email="buy@graphitepoint.example" data-phone="+60 3 2100 8800" data-website="https://graphitepoint.example" data-contact-name="Mei Chen" data-contact-email="mei.chen@graphitepoint.example"><td>Graphite Point Stationery</td><td>https://graphitepoint.example<br>buy@graphitepoint.example</td><td>Mei Chen<br>mei.chen@graphitepoint.example</td></tr>
+                        <tr class="ps-vendor-row" data-name="SeaWrap Packaging" data-email="sales@seawrap.example" data-phone="+65 6123 4401" data-website="https://seawrap.example" data-contact-name="Lina Tan" data-contact-email="lina.tan@seawrap.example" data-source="Demo directory"><td>SeaWrap Packaging</td><td>https://seawrap.example<br>sales@seawrap.example</td><td>Lina Tan<br>lina.tan@seawrap.example</td><td>Demo directory</td></tr>
+                        <tr class="ps-vendor-row" data-name="Mekong Film Co" data-email="hello@mekongfilm.example" data-phone="+84 28 3999 1200" data-website="https://mekongfilm.example" data-contact-name="" data-contact-email="" data-source="Demo directory"><td>Mekong Film Co</td><td>https://mekongfilm.example<br>hello@mekongfilm.example</td><td></td><td>Demo directory</td></tr>
+                        <tr class="ps-vendor-row" data-name="ASEAN Office Supply" data-email="orders@aseanoffice.example" data-phone="+66 2 555 0199" data-website="https://aseanoffice.example" data-contact-name="Somsak Prasert" data-contact-email="somsak@aseanoffice.example" data-source="Demo directory"><td>ASEAN Office Supply</td><td>https://aseanoffice.example<br>orders@aseanoffice.example</td><td>Somsak Prasert<br>somsak@aseanoffice.example</td><td>Demo directory</td></tr>
+                        <tr class="ps-vendor-row" data-name="Graphite Point Stationery" data-email="buy@graphitepoint.example" data-phone="+60 3 2100 8800" data-website="https://graphitepoint.example" data-contact-name="Mei Chen" data-contact-email="mei.chen@graphitepoint.example" data-source="Demo directory"><td>Graphite Point Stationery</td><td>https://graphitepoint.example<br>buy@graphitepoint.example</td><td>Mei Chen<br>mei.chen@graphitepoint.example</td><td>Demo directory</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
         <a class="ps-link ps-quiet" id="ps-odoo-form" href="{{ request.path }}?polysaas_odoo_form=1">Open Odoo’s form</a>
-        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria. The Suggested vendors table above is already filled from the Demo directory.</p>
+        <p class="ps-note" id="ps-criteria-note">Find suppliers records these criteria, then fills AI suggested rows when the router answers. Demo directory stays as fallback.</p>
         <p class="ps-err" id="ps-shortlist-error" hidden></p>
     </div>
 
@@ -480,19 +480,22 @@ body.polysaas-passthrough-embed-page .dose-content-col:has(.ps-vendor) {
         if (!wrap) return;
         if (!Array.isArray(vendors) || !vendors.length) return; /* keep baked GET table */
         var rows = vendors;
-        var html = '<table class="ps-demo-table"><thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th></tr></thead><tbody>';
+        var html = '<table class="ps-demo-table"><thead><tr><th>Name</th><th>Website / email</th><th>Main contact</th><th>Source</th></tr></thead><tbody>';
         rows.forEach(function (row) {
             var c = row.main_contact || {};
+            var src = row.source || 'Demo directory';
             html += '<tr class="ps-vendor-row"'
                 + ' data-name="' + esc(row.name) + '"'
                 + ' data-email="' + esc(row.email) + '"'
                 + ' data-phone="' + esc(row.phone) + '"'
                 + ' data-website="' + esc(row.website) + '"'
                 + ' data-contact-name="' + esc(c.name) + '"'
-                + ' data-contact-email="' + esc(c.email) + '">'
+                + ' data-contact-email="' + esc(c.email) + '"'
+                + ' data-source="' + esc(src) + '">'
                 + '<td>' + esc(row.name) + '</td>'
                 + '<td>' + webEmailCell(row) + '</td>'
                 + '<td>' + contactCell(row) + '</td>'
+                + '<td>' + esc(src) + '</td>'
                 + '</tr>';
         });
         html += '</tbody></table>';

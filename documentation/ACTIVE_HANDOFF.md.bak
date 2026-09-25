@@ -22,7 +22,7 @@
 - Fail-soft: publish failures do not roll back Odoo. Toasts: **Vendor created** / **Contact linked** unchanged; **Vendor event published** / **Contact event published**; **Event publish failed — vendor saved, retry pending** if Vendors topic publish fails.
 - **No consumer** that creates records in other apps. Same mailbox browse as Inventory/SNMP/Contacts. Captured Topics lists a **Vendors** row next to Contacts.
 - Frozen `odoo_create_partner.py` and `odoo_handler.py` untouched.
-- Canary: `Assist build table-visible-20260924+s4+s5+s6`. Tests: `dose.tests.test_odoo_vendor_lookup`.
+- Canary: `Assist build table-visible-20260924+s4+s5+s6`. Tests: `dose.tests.test_odoo_vendor_lookup` — 37 passed (local). `0069_vendor_history` is standard `CreateModel` (runs via `migrate_all_schemas`). No Odoo URL refactor.
 - **Prod / Michael:** Deploy. New Vendor Assist. Pick **Mekong Film Co** (or a row not already saved). Save. Expect Vendor created (+ Contact linked if a contact exists). Then Admin → **Captured Topics** → **Browse Topic** on **Vendors** AND **Contacts**.
 - **Lina Tan visual check remains on Michael** (Slice 5).
 - **Slice 7 not started** (live web / AI search).
